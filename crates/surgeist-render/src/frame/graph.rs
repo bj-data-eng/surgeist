@@ -1,4 +1,5 @@
 use crate::accounting::{Account, AccountedVec, RenderWork, SharedValue};
+use std::ops::ControlFlow;
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -1312,6 +1313,34 @@ struct VelloSpanFlush {
     next_parent_locality: CaptureParentLocality,
 }
 
+// One flat command scope. Suspended scopes retain their own coordinate and clip
+// state; only the completed parent image propagates across a wrapper return.
+struct CommandPlanningFrame {
+    commands: RenderCommands,
+    next_command: usize,
+    parent: PlannedGraphParent,
+    state: SemanticCommandPlanningState,
+    span: AccountedVec<RenderCommand>,
+}
+
+struct CommandContinuation {
+    frame: CommandPlanningFrame,
+    // None returns from a wrapper; Some completes a separately captured group.
+    group: Option<GroupSourceCompletion>,
+}
+
+struct GroupSourceCompletion {
+    layer: NormalizedLayer,
+    layer_transform: Transform,
+    layer_to_surface: Transform,
+    destination_to_layer_local: DestinationToLayerLocalMapping,
+    capture_space: CaptureBoundsCoordinateSpace,
+    source_forced_empty: bool,
+    source_is_coverage: bool,
+}
+
+type PreparedLayerSource = ControlFlow<Option<PlannedGraphResource>, CommandPlanningFrame>;
+
 pub(super) struct SemanticFrameGraphPlanner<'a> {
     account: &'a Account,
     context: FrameContext,
@@ -1592,38 +1621,222 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         }
     }
 
+    fn command_frame(
+        &self,
+        commands: RenderCommands,
+        parent: PlannedGraphParent,
+        state: SemanticCommandPlanningState,
+    ) -> Result<CommandPlanningFrame> {
+        Ok(CommandPlanningFrame {
+            commands,
+            next_command: 0,
+            parent,
+            state,
+            span: self.account.retained(0)?,
+        })
+    }
+
     fn plan_commands(
         &mut self,
         commands: RenderCommands,
-        mut parent: PlannedGraphParent,
-        mut state: SemanticCommandPlanningState,
+        parent: PlannedGraphParent,
+        state: SemanticCommandPlanningState,
     ) -> Result<PlannedGraphParent> {
-        let mut span = self.account.retained(0)?;
-        for command in commands.iter() {
-            self.account.work(RenderWork::CommandVisits, 1)?;
-            let command = command.clone();
-            if command_is_local_to_capture(&command, state.parent_locality, self.account)? {
-                span.push(command)?;
+        self.plan_command_frame(self.command_frame(commands, parent, state)?)
+    }
+
+    fn plan_command_frame(
+        &mut self,
+        mut frame: CommandPlanningFrame,
+    ) -> Result<PlannedGraphParent> {
+        // The vector admits both backing growth and relocation through Ledger.
+        // Its elements own no other continuation, so refusal drops pending work
+        // without recursive destruction.
+        let mut pending: AccountedVec<CommandContinuation> = self.account.temporary(0)?;
+        loop {
+            let command = frame.commands.get(frame.next_command);
+            if let Some(command) = command {
+                self.account.work(RenderWork::CommandVisits, 1)?;
+                let command = command.clone();
+                frame.next_command += 1;
+                if command_is_local_to_capture(&command, frame.state.parent_locality, self.account)?
+                {
+                    frame.span.push(command)?;
+                    continue;
+                }
+
+                let flush = self.flush_vello_span(
+                    RenderCommands::new_in(frame.span, self.account)?,
+                    frame.parent,
+                    &frame.state,
+                )?;
+                frame.parent = flush.parent;
+                frame.state.parent_locality = flush.next_parent_locality;
+                frame.span = self.account.retained(0)?;
+                let RenderCommand::Layer { layer, children } = command else {
+                    return Err(Error::new(
+                        BackendErrorCode::RenderFailed,
+                        "frame partition classified a non-layer command as a custom boundary",
+                    ));
+                };
+                let layer_transform = layer
+                    .transform
+                    .then_in(frame.state.capture_transform, self.account)?;
+                let layer_to_surface =
+                    layer_transform.then_in(frame.state.parent_to_surface, self.account)?;
+                // The shader's destination coordinates belong to the parent image.
+                // Ancestor transforms still determine raster density for local captures.
+                let layer_to_destination = match frame.state.capture_space {
+                    CaptureBoundsCoordinateSpace::Local => layer_transform,
+                    CaptureBoundsCoordinateSpace::SurfaceGrid => layer_to_surface,
+                    #[cfg(test)]
+                    CaptureBoundsCoordinateSpace::ForcedMappedForTest => layer_to_surface,
+                };
+                let inverse = destination_to_layer_local_mapping(layer_to_destination)?;
+                // A singular own geometric clip has no operation coverage. A singular
+                // source without that clip remains a transparent source operation.
+                if inverse.is_none() && layer.clip.is_some() {
+                    frame.state.parent_locality = CaptureParentLocality::External;
+                    continue;
+                }
+                if layer.isolation == LayerIsolation::ClipOnly {
+                    let clip = layer.clip.clone().ok_or_else(|| {
+                        Error::new(
+                            BackendErrorCode::RenderFailed,
+                            "a clip-only layer reached graph planning without clip geometry",
+                        )
+                    })?;
+                    let mut child_state = frame.state.clone();
+                    child_state.capture_transform = layer_transform;
+                    let mut clips = clone_list(&child_state.outer_clips, self.account)?;
+                    clips.push(SemanticOuterClip {
+                        clip,
+                        transform: layer_transform,
+                    })?;
+                    child_state.outer_clips =
+                        SharedValue::from_accounted(clips, &self.account.storage())?;
+                    let child = self.command_frame(children, frame.parent, child_state)?;
+                    if pending.len() == pending.capacity() {
+                        pending.grow(pending.capacity().max(1))?;
+                    }
+                    pending.push(CommandContinuation { frame, group: None })?;
+                    frame = child;
+                    continue;
+                }
+                let is_transparent_wrapper = layer.clip.is_none()
+                    && !layer.explicit_isolation
+                    && layer.mask.is_none()
+                    && layer.backdrop.is_none()
+                    && layer.foreground_filters.is_none()
+                    && (layer.opacity - 1.0).abs() < f32::EPSILON
+                    && layer.composition.is_source_over_normal();
+                if is_transparent_wrapper {
+                    let mut child_state = frame.state.clone();
+                    child_state.capture_transform = layer_transform;
+                    let child = self.command_frame(children, frame.parent, child_state)?;
+                    if pending.len() == pending.capacity() {
+                        pending.grow(pending.capacity().max(1))?;
+                    }
+                    pending.push(CommandContinuation { frame, group: None })?;
+                    frame = child;
+                    continue;
+                }
+
+                let bounded_domain = layer.explicit_isolation
+                    || (!layer.composition.is_source_over() && !layer.composition.is_plus())
+                    || commands_require_composition_domain(&children, self.account)?;
+                let destination_to_layer_local = match inverse {
+                    Some(inverse) => inverse,
+                    None if bounded_domain => DestinationToLayerLocalMapping {
+                        affine: Transform::identity(),
+                    },
+                    None => {
+                        frame.state.parent_locality = CaptureParentLocality::External;
+                        continue;
+                    }
+                };
+                let source_forced_empty = inverse.is_none()
+                    || layer.opacity <= 0.0
+                    || layer
+                        .mask
+                        .as_ref()
+                        .is_some_and(crate::command::RenderLayerMask::annihilates_source);
+                // The blur samples its own grid, even when the parent and other layers
+                // use the final surface grid for pixel-sensitive drawing.
+                let capture_space = if layer.foreground_filters.is_some() {
+                    CaptureBoundsCoordinateSpace::Local
+                } else {
+                    frame.state.capture_space
+                };
+                let finite_source = bounded_domain && layer.foreground_filters.is_none();
+                let source_is_coverage = layer
+                    .mask
+                    .as_ref()
+                    .is_some_and(RenderLayerMask::supplies_coverage);
+                // The compositor requires a source binding even when mask sampling supplies the source.
+                let completion = GroupSourceCompletion {
+                    layer,
+                    layer_transform,
+                    layer_to_surface,
+                    destination_to_layer_local,
+                    capture_space,
+                    source_forced_empty,
+                    source_is_coverage,
+                };
+                let source = if source_forced_empty || source_is_coverage {
+                    Some(
+                        self.declare_transparent_parent(frame.parent.spatial)?
+                            .current,
+                    )
+                } else {
+                    match self.prepare_layer_source(
+                        children,
+                        layer_to_surface,
+                        capture_space,
+                        finite_source.then_some((frame.parent.spatial, layer_to_destination)),
+                    )? {
+                        ControlFlow::Break(source) => source,
+                        ControlFlow::Continue(child) => {
+                            if pending.len() == pending.capacity() {
+                                pending.grow(pending.capacity().max(1))?;
+                            }
+                            pending.push(CommandContinuation {
+                                frame,
+                                group: Some(completion),
+                            })?;
+                            frame = child;
+                            continue;
+                        }
+                    }
+                };
+                frame.parent =
+                    self.finish_group_source(completion, source, frame.parent, &frame.state)?;
+                frame.state.parent_locality = CaptureParentLocality::External;
                 continue;
             }
 
-            let flush =
-                self.flush_vello_span(RenderCommands::new_in(span, self.account)?, parent, &state)?;
-            parent = flush.parent;
-            state.parent_locality = flush.next_parent_locality;
-            span = self.account.retained(0)?;
-            let RenderCommand::Layer { layer, children } = command else {
-                return Err(Error::new(
-                    BackendErrorCode::RenderFailed,
-                    "frame partition classified a non-layer command as a custom boundary",
-                ));
+            let completed = self
+                .flush_vello_span(
+                    RenderCommands::new_in(frame.span, self.account)?,
+                    frame.parent,
+                    &frame.state,
+                )?
+                .parent;
+            let Some(continuation) = pending.pop() else {
+                return Ok(completed);
             };
-            parent = self.plan_external_layer(layer, children, parent, &state)?;
-            state.parent_locality = CaptureParentLocality::External;
+            frame = continuation.frame;
+            frame.parent = match continuation.group {
+                None => completed,
+                Some(group) => self.finish_group_source(
+                    group,
+                    Some(completed.current),
+                    frame.parent,
+                    &frame.state,
+                )?,
+            };
+            frame.state.parent_locality = CaptureParentLocality::External;
         }
-        Ok(self
-            .flush_vello_span(RenderCommands::new_in(span, self.account)?, parent, &state)?
-            .parent)
     }
 
     fn flush_vello_span(
@@ -1741,100 +1954,22 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         })
     }
 
-    fn plan_external_layer(
+    fn finish_group_source(
         &mut self,
-        layer: NormalizedLayer,
-        children: RenderCommands,
+        completion: GroupSourceCompletion,
+        mut source: Option<PlannedGraphResource>,
         parent: PlannedGraphParent,
         state: &SemanticCommandPlanningState,
     ) -> Result<PlannedGraphParent> {
-        let layer_transform = layer
-            .transform
-            .then_in(state.capture_transform, self.account)?;
-        let layer_to_surface = layer_transform.then_in(state.parent_to_surface, self.account)?;
-        // The shader's destination coordinates belong to the parent image.
-        // Ancestor transforms still determine raster density for local captures.
-        let layer_to_destination = match state.capture_space {
-            CaptureBoundsCoordinateSpace::Local => layer_transform,
-            CaptureBoundsCoordinateSpace::SurfaceGrid => layer_to_surface,
-            #[cfg(test)]
-            CaptureBoundsCoordinateSpace::ForcedMappedForTest => layer_to_surface,
-        };
-        let inverse = destination_to_layer_local_mapping(layer_to_destination)?;
-        // A singular own geometric clip has no operation coverage. A singular
-        // source without that clip remains a transparent source operation.
-        if inverse.is_none() && layer.clip.is_some() {
-            return Ok(parent);
-        }
-        if layer.isolation == LayerIsolation::ClipOnly {
-            let clip = layer.clip.clone().ok_or_else(|| {
-                Error::new(
-                    BackendErrorCode::RenderFailed,
-                    "a clip-only layer reached graph planning without clip geometry",
-                )
-            })?;
-            let mut child_state = state.clone();
-            child_state.capture_transform = layer_transform;
-            let mut clips = clone_list(&child_state.outer_clips, self.account)?;
-            clips.push(SemanticOuterClip {
-                clip,
-                transform: layer_transform,
-            })?;
-            child_state.outer_clips = SharedValue::from_accounted(clips, &self.account.storage())?;
-            return self.plan_commands(children, parent, child_state);
-        }
-        let is_transparent_wrapper = layer.clip.is_none()
-            && !layer.explicit_isolation
-            && layer.mask.is_none()
-            && layer.backdrop.is_none()
-            && layer.foreground_filters.is_none()
-            && (layer.opacity - 1.0).abs() < f32::EPSILON
-            && layer.composition.is_source_over_normal();
-        if is_transparent_wrapper {
-            let mut child_state = state.clone();
-            child_state.capture_transform = layer_transform;
-            return self.plan_commands(children, parent, child_state);
-        }
-
-        let bounded_domain = layer.explicit_isolation
-            || (!layer.composition.is_source_over() && !layer.composition.is_plus())
-            || commands_require_composition_domain(&children, self.account)?;
-        let destination_to_layer_local = match inverse {
-            Some(inverse) => inverse,
-            None if bounded_domain => DestinationToLayerLocalMapping {
-                affine: Transform::identity(),
-            },
-            None => return Ok(parent),
-        };
-        let source_forced_empty = inverse.is_none()
-            || layer.opacity <= 0.0
-            || layer
-                .mask
-                .as_ref()
-                .is_some_and(crate::command::RenderLayerMask::annihilates_source);
-        // The blur samples its own grid, even when the parent and other layers
-        // use the final surface grid for pixel-sensitive drawing.
-        let capture_space = if layer.foreground_filters.is_some() {
-            CaptureBoundsCoordinateSpace::Local
-        } else {
-            state.capture_space
-        };
-        let finite_source = bounded_domain && layer.foreground_filters.is_none();
-        let source_is_coverage = layer
-            .mask
-            .as_ref()
-            .is_some_and(RenderLayerMask::supplies_coverage);
-        // The compositor requires a source binding even when mask sampling supplies the source.
-        let mut source = if source_forced_empty || source_is_coverage {
-            Some(self.declare_transparent_parent(parent.spatial)?.current)
-        } else {
-            self.plan_layer_source(
-                children,
-                layer_to_surface,
-                capture_space,
-                finite_source.then_some((parent.spatial, layer_to_destination)),
-            )?
-        };
+        let GroupSourceCompletion {
+            layer,
+            layer_transform,
+            layer_to_surface,
+            destination_to_layer_local,
+            capture_space,
+            source_forced_empty,
+            source_is_coverage,
+        } = completion;
         if let Some(backdrop) = layer.backdrop.as_ref().filter(|_| !source_forced_empty) {
             source = self.plan_backdrop_group(
                 backdrop,
@@ -1913,6 +2048,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         )
     }
 
+    #[cfg(test)]
     fn plan_layer_source(
         &mut self,
         children: RenderCommands,
@@ -1920,11 +2056,26 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         capture_space: CaptureBoundsCoordinateSpace,
         finite_domain: Option<(NonEmptyFrameSpatialPlan, Transform)>,
     ) -> Result<Option<PlannedGraphResource>> {
+        match self.prepare_layer_source(children, raster_transform, capture_space, finite_domain)? {
+            ControlFlow::Break(source) => Ok(source),
+            ControlFlow::Continue(frame) => Ok(Some(self.plan_command_frame(frame)?.current)),
+        }
+    }
+
+    fn prepare_layer_source(
+        &mut self,
+        children: RenderCommands,
+        raster_transform: Transform,
+        capture_space: CaptureBoundsCoordinateSpace,
+        finite_domain: Option<(NonEmptyFrameSpatialPlan, Transform)>,
+    ) -> Result<PreparedLayerSource> {
         let domain = match finite_domain {
             Some((spatial, layer_to_destination)) => {
                 let Some(inverse) = destination_to_layer_local_mapping(layer_to_destination)?
                 else {
-                    return Ok(Some(self.declare_transparent_parent(spatial)?.current));
+                    return Ok(ControlFlow::Break(Some(
+                        self.declare_transparent_parent(spatial)?.current,
+                    )));
                 };
                 SemanticContributionDomain::RootOutputBounded(
                     LogicalBounds::NonEmpty(spatial.logical_bounds)
@@ -1942,7 +2093,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             self.account,
         )?;
         if contribution.commands.is_empty() && finite_domain.is_none() {
-            return Ok(None);
+            return Ok(ControlFlow::Break(None));
         }
         let spatial = if let Some((spatial, _)) = finite_domain
             && capture_space != CaptureBoundsCoordinateSpace::Local
@@ -1958,7 +2109,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             let Some(logical_bounds) =
                 spatial_bounds.require_non_empty_for_graph("layer source bounds")?
             else {
-                return Ok(None);
+                return Ok(ControlFlow::Break(None));
             };
             let logical_bounds = if capture_space == CaptureBoundsCoordinateSpace::SurfaceGrid {
                 let Some(bounds) = capture_space.resolve(
@@ -1967,19 +2118,19 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     raster_transform,
                 )?
                 else {
-                    return Ok(None);
+                    return Ok(ControlFlow::Break(None));
                 };
                 bounds
             } else {
                 logical_bounds
             };
             match self.plan_foreground_bounds(logical_bounds, raster_transform, capture_space)? {
-                FrameSpatialPlan::Empty(_) => return Ok(None),
+                FrameSpatialPlan::Empty(_) => return Ok(ControlFlow::Break(None)),
                 FrameSpatialPlan::NonEmpty(spatial) => spatial,
             }
         };
         let source_parent = self.declare_transparent_parent(spatial)?;
-        let source_parent = self.plan_commands(
+        let frame = self.command_frame(
             contribution.commands,
             source_parent,
             SemanticCommandPlanningState {
@@ -1999,7 +2150,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 outer_clips: shared_copy(&[], self.account)?,
             },
         )?;
-        Ok(Some(source_parent.current))
+        Ok(ControlFlow::Continue(frame))
     }
 
     fn plan_backdrop_group(
@@ -2688,6 +2839,8 @@ pub(super) fn graph_build<T>(result: GraphBuildResult<T>) -> Result<T> {
 
 #[cfg(all(test, not(target_family = "wasm")))]
 mod capture_stack_tests;
+#[cfg(all(test, not(target_family = "wasm")))]
+mod construction_stack_tests;
 
 #[cfg(test)]
 mod diagnostic_tests {
