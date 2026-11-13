@@ -194,9 +194,10 @@ pub(super) fn template_attributes_reflect_the_live_native_element() {
         let result = evaluate(scope, r#"
             (() => {
                 const template = document.createElement('template');
-                for (const key of ['htmlFor', 'shadowRootMode', 'shadowRootSlotAssignment',
-                    'shadowRootCustomElementRegistry', 'shadowRootDelegatesFocus',
-                    'shadowRootSerializable', 'shadowRootClonable']) {
+                const keys = ['content', 'htmlFor', 'shadowRootMode', 'shadowRootDelegatesFocus',
+                    'shadowRootSerializable', 'shadowRootSlotAssignment', 'shadowRootClonable',
+                    'shadowRootCustomElementRegistry'];
+                for (const key of keys.slice(1)) {
                     const descriptor = Object.getOwnPropertyDescriptor(HTMLTemplateElement.prototype, key);
                     if (!descriptor?.get || !descriptor?.set ||
                         !descriptor.enumerable || !descriptor.configurable) return 'missing ' + key;
@@ -210,6 +211,8 @@ pub(super) fn template_attributes_reflect_the_live_native_element() {
                     try { descriptor.get.call(new Proxy(template, {})); return 'invalid getter'; }
                     catch (error) { if (!(error instanceof TypeError)) return error.name; }
                 }
+                if (Object.keys(HTMLTemplateElement.prototype).join() !== keys.join())
+                    return 'declaration order';
                 if (template.htmlFor !== '' || template.shadowRootMode !== '' ||
                     template.shadowRootSlotAssignment !== 'named' ||
                     template.shadowRootCustomElementRegistry !== '') return 'missing defaults';
