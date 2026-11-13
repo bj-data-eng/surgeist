@@ -9,6 +9,7 @@ use crate::block::{
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::flex::{AbsoluteChild, FlexComputation, begin_flex_computation};
+use crate::grid::{GridContinuation, PositionedGridChild, begin_grid_computation};
 use crate::{
     Compute, ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
     LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LayoutTree, PhysicalAxis, Traverse,
@@ -29,6 +30,7 @@ enum Request<Node, S: LayoutScalar> {
     },
     AdvanceBlock,
     AdvanceFlex,
+    AdvanceGrid,
     FloatTrial(FloatTrialRequest<Node, S>),
     Complete(CompletedRequest<S>),
 }
@@ -87,6 +89,7 @@ enum PendingRequest {
     BlockAxis,
     Block,
     Flex,
+    Grid,
 }
 
 struct BlockRequest<'input, Node, S: LayoutScalar> {
@@ -103,12 +106,20 @@ struct FlexRequest<Node, S: LayoutScalar> {
     child: Option<AbsoluteChild<Node, S>>,
 }
 
+struct GridRequest<'input, Node, S: LayoutScalar> {
+    computation: GridContinuation<'input, Node, S>,
+    completion: ChildCompletion<Node, S>,
+    projection: OutputProjection,
+    child: Option<PositionedGridChild<'input, Node, S>>,
+}
+
 struct PendingRequests<'input, Node, S: LayoutScalar> {
     order: Vec<PendingRequest>,
     hidden: Vec<(HiddenChildren<Node>, OutputProjection)>,
     block_axes: Vec<(BlockAxisDemand<Node, S>, InlineContentChild<Node, S>)>,
     blocks: Vec<BlockRequest<'input, Node, S>>,
     flexes: Vec<FlexRequest<Node, S>>,
+    grids: Vec<GridRequest<'input, Node, S>>,
 }
 
 impl<Node, S: LayoutScalar> PendingRequests<'_, Node, S> {
@@ -119,6 +130,7 @@ impl<Node, S: LayoutScalar> PendingRequests<'_, Node, S> {
             block_axes: Vec::new(),
             blocks: Vec::new(),
             flexes: Vec::new(),
+            grids: Vec::new(),
         }
     }
 
@@ -321,6 +333,9 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                             Some(Display::Flex) => {
                                 self.begin_flex(node, input, completion, projection, pending)?
                             }
+                            Some(Display::Grid | Display::GridLanes) => {
+                                self.begin_grid(node, input, completion, projection, pending)?
+                            }
                             _ => {
                                 let output = ordinary(
                                     self.compute_uncached_layout_body(node, input, initial),
@@ -342,6 +357,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 }
                 Request::AdvanceBlock => self.advance_block(pending)?,
                 Request::AdvanceFlex => self.advance_flex(pending)?,
+                Request::AdvanceGrid => self.advance_grid(pending)?,
                 Request::FloatTrial(trial) => return Ok(RequestProgress::FloatTrial(trial)),
                 Request::Complete(output) => match pending.order.pop() {
                     None => return Ok(RequestProgress::Complete(output)),
@@ -370,6 +386,14 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                             .computation
                             .accept_child(self, child, output.layout())?;
                         Request::AdvanceFlex
+                    }
+                    Some(PendingRequest::Grid) => {
+                        let parent = pending.grids.last_mut().expect("active Grid request");
+                        let child = parent.child.take().expect("pending Grid child request");
+                        parent
+                            .computation
+                            .accept_child(self, child, output.layout())?;
+                        Request::AdvanceGrid
                     }
                 },
             };
@@ -529,6 +553,80 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
             .try_reserve(1)
             .map_err(|_| reserve_error(child.node))?;
         order.push(PendingRequest::Flex);
+        Ok(Request::Child {
+            node: child.node,
+            input: child.input,
+            projection: OutputProjection::Layout,
+        })
+    }
+
+    fn begin_grid(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        completion: ChildCompletion<Tree::Node, Tree::Scalar>,
+        projection: OutputProjection,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        match begin_grid_computation(self, node, input)? {
+            ControlFlow::Break(output) => {
+                self.finish_container_request(node, input, completion, projection, output)
+            }
+            ControlFlow::Continue(mut computation) => match computation.advance(self)? {
+                ControlFlow::Break(output) => {
+                    self.finish_container_request(node, input, completion, projection, output)
+                }
+                ControlFlow::Continue(child) => {
+                    pending
+                        .grids
+                        .try_reserve(1)
+                        .map_err(|_| reserve_error(node))?;
+                    let request = Self::schedule_grid_child(&child, &mut pending.order)?;
+                    pending.grids.push(GridRequest {
+                        computation,
+                        completion,
+                        projection,
+                        child: Some(child),
+                    });
+                    Ok(request)
+                }
+            },
+        }
+    }
+
+    fn advance_grid(
+        &mut self,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        let parent = pending.grids.last_mut().expect("active Grid request");
+        match parent.computation.advance(self)? {
+            ControlFlow::Break(output) => {
+                let parent = pending.grids.pop().expect("completed Grid request");
+                let (node, input) = parent.computation.request();
+                self.finish_container_request(
+                    node,
+                    input,
+                    parent.completion,
+                    parent.projection,
+                    output,
+                )
+            }
+            ControlFlow::Continue(child) => {
+                let request = Self::schedule_grid_child(&child, &mut pending.order)?;
+                parent.child = Some(child);
+                Ok(request)
+            }
+        }
+    }
+
+    fn schedule_grid_child(
+        child: &PositionedGridChild<'input, Tree::Node, Tree::Scalar>,
+        order: &mut Vec<PendingRequest>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        order
+            .try_reserve(1)
+            .map_err(|_| reserve_error(child.node))?;
+        order.push(PendingRequest::Grid);
         Ok(Request::Child {
             node: child.node,
             input: child.input,

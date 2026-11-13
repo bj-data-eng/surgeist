@@ -16,7 +16,7 @@ use crate::{
     LayoutOperation,
 };
 
-mod absolute;
+pub(super) mod absolute;
 mod baseline;
 mod minimum;
 mod scroll;
@@ -41,6 +41,134 @@ pub(super) struct GridChildrenLayout<Node, S: LayoutScalar = Scalar> {
 
 pub(super) type GridChildrenLayoutResult<Node, S, M> =
     LayoutResultOf<Node, GridChildrenLayout<Node, S>, S, M>;
+
+pub(super) type GridChildPlacementResult<'input, Node, S, M> =
+    LayoutResultOf<Node, GridChildPlacement<'input, Node, S>, S, M>;
+
+pub(super) type GridChildPlacementStart<'input, Node, S, M> = LayoutResultOf<
+    Node,
+    ControlFlow<GridChildrenLayout<Node, S>, GridChildPlacement<'input, Node, S>>,
+    S,
+    M,
+>;
+
+pub(super) struct GridChildPlacement<'input, Node, S: LayoutScalar> {
+    node: Node,
+    positioned: Option<PositionedGridItems<'input, Node, S>>,
+    contributions: Vec<GridChildContribution<S>>,
+    alignment: TrackAlignmentSubject<S>,
+    padding: Edges<S>,
+    reporting: GridLayoutReporting<Node, S>,
+    contained_track_size: Option<Size<S>>,
+}
+
+pub(super) enum TrackAlignmentSubject<S: LayoutScalar> {
+    Ordinary(GridTrackScrollBounds<S>),
+    Lanes(Result<crate::ScrollRectOf<S>, crate::ScrollRectErrorOf<S>>),
+}
+
+impl<'input, Node: Copy, S: LayoutScalar> GridChildPlacement<'input, Node, S> {
+    pub(super) fn begin<M>(
+        placement: PositionedGridPlacement<'input, '_, Node, S>,
+        pending: Vec<PendingAbsoluteGridItem<Node>>,
+        contributions: Vec<GridChildContribution<S>>,
+        alignment: TrackAlignmentSubject<S>,
+        reporting: GridLayoutReporting<Node, S>,
+    ) -> GridChildPlacementResult<'input, Node, S, M> {
+        let node = placement.node;
+        let padding = placement.constants.padding;
+        let positioned = PositionedGridItems::begin(placement, pending, &contributions)?;
+        Ok(Self {
+            node,
+            positioned,
+            contributions,
+            alignment,
+            padding,
+            reporting,
+            contained_track_size: None,
+        })
+    }
+
+    pub(super) fn with_contained_track_size(mut self, size: Size<S>) -> Self {
+        self.contained_track_size = Some(size);
+        self
+    }
+
+    pub(super) fn next<'tree, Tree, M>(&mut self, tree: &Tree) -> PositionedStep<'input, Node, S, M>
+    where
+        Tree: Compute<'tree, M, Node = Node, Scalar = S>,
+    {
+        match &mut self.positioned {
+            Some(positioned) => positioned.next(tree),
+            None => Ok(None),
+        }
+    }
+
+    pub(super) fn accept<'tree, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        child: PositionedGridChild<'input, Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'tree, M, Node = Node, Scalar = S>,
+    {
+        self.contributions.push(child.finish(tree, output)?);
+        Ok(())
+    }
+
+    pub(super) fn finish<M>(self) -> GridChildrenLayoutResult<Node, S, M> {
+        let Self {
+            node,
+            contributions,
+            alignment,
+            padding,
+            reporting,
+            contained_track_size,
+            ..
+        } = self;
+        let range_error = |error| layout_child_geometry_error(node, node, error);
+        let flow_axes = reporting.flow_axes;
+        let bounds = match alignment {
+            TrackAlignmentSubject::Ordinary(bounds) => Some(bounds),
+            TrackAlignmentSubject::Lanes(_) => None,
+        };
+        let contributions = grid_scroll_contributions(contributions, bounds, flow_axes, padding)
+            .map_err(range_error)?;
+        let track_subject = match alignment {
+            TrackAlignmentSubject::Ordinary(bounds) => bounds.rect,
+            TrackAlignmentSubject::Lanes(subject) => {
+                subject.map_err(|error| layout_child_geometry_error(node, node, error))?
+            }
+        };
+        let mut layout = report_grid_children(node, contributions, track_subject, reporting)?;
+        debug_assert_eq!(
+            layout
+                .contributions
+                .content_size_from_anchor(Point::ZERO)
+                .ok(),
+            Some(layout.visible_content_size)
+        );
+        if let Some(size) = contained_track_size {
+            layout.visible_content_size = max_size(layout.visible_content_size, size);
+        }
+        Ok(layout)
+    }
+
+    pub(super) fn compute<'tree, Tree, M>(
+        mut self,
+        tree: &mut Tree,
+    ) -> GridChildrenLayoutResult<Node, S, M>
+    where
+        Tree: Compute<'tree, M, Node = Node, Scalar = S>,
+    {
+        while let Some(child) = self.next(tree)? {
+            let output = tree.compute_child(child.node, child.input)?;
+            self.accept(tree, child, output)?;
+        }
+        self.finish()
+    }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct GridLines {
@@ -430,7 +558,7 @@ pub(super) fn layout_grid_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     context: GridLayoutContext<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-) -> GridChildrenLayoutResult<Tree::Node, Tree::Scalar, M>
+) -> GridChildPlacementResult<'input, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -745,15 +873,14 @@ where
         sizing_stage.has_resolved_axis(GridAxisKind::Column),
         sizing_stage.has_resolved_axis(GridAxisKind::Row),
     );
-    let track_scroll_bounds = || GridTrackScrollBounds {
+    let track_bounds = GridTrackScrollBounds {
         rect: track_subject,
         present: LogicalSizeOf::new(
             resolved_axes.inline && !columns.is_empty(),
             resolved_axes.block && !rows.is_empty(),
         ),
     };
-    layout_positioned_grid_items(
-        tree,
+    GridChildPlacement::begin(
         PositionedGridPlacement {
             node,
             style,
@@ -761,27 +888,16 @@ where
             containing_size,
             scroll_box,
             placements,
-            column_geometry: &logical_column_geometry,
-            row_geometry: &logical_row_geometry,
+            column_geometry: logical_column_geometry,
+            row_geometry: logical_row_geometry,
             lines,
             containing_auto_scrollbar_pass,
-            bounds: PositionedGridBounds::Ordinary(track_scroll_bounds()),
+            bounds: PositionedGridBounds::Ordinary(track_bounds),
         },
         pending_absolute,
-        &mut child_contributions,
-    )?;
-    let contributions = grid_scroll_contributions(
         child_contributions,
-        Some(track_scroll_bounds()),
-        constants.flow_axes,
-        constants.padding,
-    )
-    .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    let layout = report_grid_children(
-        node,
-        contributions,
+        TrackAlignmentSubject::Ordinary(track_bounds),
         GridLayoutReporting {
-            track_subject,
             active_alignment_axes: LogicalSizeOf::new(
                 resolved_axes.inline && style.justify_content.is_some(),
                 resolved_axes.block && style.align_content.is_some(),
@@ -792,15 +908,7 @@ where
             execution_input,
             executed_inventory,
         },
-    )?;
-    debug_assert_eq!(
-        layout
-            .contributions
-            .content_size_from_anchor(Point::ZERO)
-            .ok(),
-        Some(layout.visible_content_size)
-    );
-    Ok(layout)
+    )
 }
 
 pub(super) fn grid_area_inline_offset<S: LayoutScalar>(offsets: &[S], area: GridArea<S>) -> S {

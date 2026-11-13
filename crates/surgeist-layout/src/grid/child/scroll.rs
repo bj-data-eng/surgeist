@@ -15,6 +15,7 @@ pub(in crate::grid) struct GridChildContribution<S: LayoutScalar = Scalar> {
     pub(in crate::grid) in_flow: bool,
 }
 
+#[derive(Clone, Copy)]
 pub(in crate::grid) struct GridTrackScrollBounds<S: LayoutScalar> {
     pub(in crate::grid) rect: crate::ScrollRectOf<S>,
     pub(in crate::grid) present: LogicalSizeOf<bool>,
@@ -78,7 +79,6 @@ pub(in crate::grid) fn grid_track_alignment_subject<S: LayoutScalar>(
 }
 
 pub(in crate::grid) struct GridLayoutReporting<Node, S: LayoutScalar> {
-    pub(in crate::grid) track_subject: crate::ScrollRectOf<S>,
     pub(in crate::grid) active_alignment_axes: LogicalSizeOf<bool>,
     pub(in crate::grid) flow_axes: FlowAxes,
     pub(in crate::grid) baselines: BaselinesOf<S>,
@@ -90,6 +90,7 @@ pub(in crate::grid) struct GridLayoutReporting<Node, S: LayoutScalar> {
 pub(in crate::grid) fn report_grid_children<Node, S, M>(
     node: Node,
     mut contributions: ScrollContributionAccumulatorOf<S>,
+    track_subject: crate::ScrollRectOf<S>,
     reporting: GridLayoutReporting<Node, S>,
 ) -> GridChildrenLayoutResult<Node, S, M>
 where
@@ -97,7 +98,6 @@ where
     S: LayoutScalar,
 {
     let GridLayoutReporting {
-        track_subject,
         active_alignment_axes,
         flow_axes,
         baselines,

@@ -1,5 +1,5 @@
 use super::*;
-use crate::error::{layout_child_geometry_error, sizing_resolution_error};
+use crate::error::sizing_resolution_error;
 use crate::geometry::{LogicalAxis, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::grid::intrinsic_stage::{IntrinsicStageFrame, intrinsic_role_grid};
 use crate::sizing::resolve::{
@@ -1331,7 +1331,7 @@ fn consume_lane_opening<S: LayoutScalar>(skipped: &mut Vec<Range<S>>, occupied: 
 
 pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(super) scroll_box: CanonicalScrollBoxOf<S>,
-    pub(super) style: &'a GridContainerProjection<'a, S>,
+    pub(super) style: &'a GridContainerProjection<'input, S>,
     pub(super) constants: &'a Constants<S>,
     pub(super) minimum_functions: GridMinimumParentFunctions<'a, S>,
     pub(super) container_content_box_size: LogicalSizeOf<S>,
@@ -2687,7 +2687,7 @@ pub(super) fn layout_grid_lanes_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: GridLanesLayoutInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-) -> GridChildrenLayoutResult<Tree::Node, Tree::Scalar, M>
+) -> GridChildPlacementStart<'input, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -2732,7 +2732,7 @@ where
                 ),
             )?;
         }
-        return Ok(GridChildrenLayout {
+        return Ok(ControlFlow::Break(GridChildrenLayout {
             executed_baselines: execution_input.run_mode().is_perform_layout().then(|| {
                 ExecutedBaselineInventory::empty(
                     node,
@@ -2772,7 +2772,7 @@ where
                 rows: Vec::new(),
                 columns: Vec::new(),
             },
-        });
+        }));
     }
 
     let flow_axes = constants.flow_axes;
@@ -2860,7 +2860,7 @@ where
         sizing_stage,
     )?
     else {
-        return Ok(GridChildrenLayout {
+        return Ok(ControlFlow::Break(GridChildrenLayout {
             executed_baselines: None,
             visible_content_size: Size::ZERO,
             contributions: empty_grid_contributions(),
@@ -2869,7 +2869,7 @@ where
                 rows: Vec::new(),
                 columns: Vec::new(),
             },
-        });
+        }));
     };
     let logical_content_box_inset = flow_axes.logical_edges(constants.content_box_inset);
     let column_geometry = parent_context
@@ -3161,8 +3161,9 @@ where
         containing_size,
     );
     lane_report.replace_stacking_baselines(&pending_items, flow_axes, &mut baselines.baselines);
-    layout_positioned_grid_items(
-        tree,
+    let stacking_start = lane_axis_alignment_start + lane_report.range_start;
+    let stacking_end = lane_axis_alignment_start + lane_report.range_end;
+    GridChildPlacement::begin(
         PositionedGridPlacement {
             node,
             style,
@@ -3170,42 +3171,31 @@ where
             containing_size,
             scroll_box,
             placements,
-            column_geometry: &column_geometry,
-            row_geometry: &row_geometry,
+            column_geometry,
+            row_geometry,
             lines: context.lines,
             containing_auto_scrollbar_pass,
             bounds: PositionedGridBounds::Lanes {
-                start: lane_axis_alignment_start + lane_report.range_start,
-                end: lane_axis_alignment_start + lane_report.range_end,
+                start: stacking_start,
+                end: stacking_end,
             },
         },
         pending_absolute,
-        &mut child_contributions,
-    )?;
-    let contributions =
-        grid_scroll_contributions(child_contributions, None, flow_axes, constants.padding)
-            .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    let track_subject = grid_track_alignment_subject(GridTrackAlignmentGeometry {
-        sizes: LogicalSizeOf::new(columns, rows),
-        offsets: LogicalSizeOf::new(&column_offsets, &row_offsets),
-        fallback_origin: LogicalPointOf::new(
-            logical_content_box_inset.inline_start,
-            logical_content_box_inset.block_start,
-        ),
-        flow_axes,
-        containing_size,
-        stacking_range: Some((
-            lane_axis.logical_axis(),
-            lane_axis_alignment_start + lane_report.range_start,
-            lane_axis_alignment_start + lane_report.range_end,
-        )),
-    })
-    .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    report_grid_children(
-        node,
-        contributions,
+        child_contributions,
+        // Consume this result after positioned children and scroll contributions,
+        // so geometry errors retain their original order.
+        TrackAlignmentSubject::Lanes(grid_track_alignment_subject(GridTrackAlignmentGeometry {
+            sizes: LogicalSizeOf::new(columns, rows),
+            offsets: LogicalSizeOf::new(&column_offsets, &row_offsets),
+            fallback_origin: LogicalPointOf::new(
+                logical_content_box_inset.inline_start,
+                logical_content_box_inset.block_start,
+            ),
+            flow_axes,
+            containing_size,
+            stacking_range: Some((lane_axis.logical_axis(), stacking_start, stacking_end)),
+        })),
         GridLayoutReporting {
-            track_subject,
             active_alignment_axes: LogicalSizeOf::new(
                 style.justify_content.is_some(),
                 style.align_content.is_some(),
@@ -3217,6 +3207,7 @@ where
             executed_inventory,
         },
     )
+    .map(ControlFlow::Continue)
 }
 
 pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>(
