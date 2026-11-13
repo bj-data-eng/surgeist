@@ -129,9 +129,9 @@ JSON as the typed values. Dictionary conversion visits inherited members before
 derived members, sorts each declaration lexicographically, and converts each
 member immediately after reading it. Undefined and null dictionaries use the
 declared member defaults. `ShadowRootInit` preserves omission and explicit null
-for `customElementRegistry`. A non-null registry value fails interface
-conversion because this profile has no native registry objects. Other
-dictionaries requiring unavailable native brands remain outside this inventory.
+for `customElementRegistry` and refuses non-null values in this attachment
+profile. Element creation options separately accept an exact host-projected
+registry brand.
 
 `Conversion::argument` converts one already-selected declaration argument from
 `arguments.get(descriptor.index())`. Optional omission and explicit undefined
@@ -164,8 +164,9 @@ values and conversion descriptors derive from the single
 descriptors select the string or dictionary alternative and retain the exact
 UTF-16 payload. Their dictionary distinguishes omission, explicit null and
 the exact brand of a host-projected registry. The host qualifies that identity
-against its canonical registry. General union and overload selection have
-separate binding work.
+against the receiving Document's canonical registry. The hosted factories
+execute reached autonomous and customized built-in definitions synchronously.
+General union and overload selection have separate binding work.
 
 [Runtime's native document attachment](../surgeist-runtime/README.md) installs
 the standard `CSS` namespace in the selected Window realm. `CSS.escape` uses

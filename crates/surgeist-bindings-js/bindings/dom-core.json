@@ -4986,11 +4986,14 @@
     "Document.createElement:0/call": {
       "kind": "native",
       "adapter": "document.createelement.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"}],
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs", "symbol": "create_element"}
+      ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Supply synchronous constructors and reactions for reached definitions and accept scoped registries when their canonical lifecycle is available.",
+          "contract": "Admit scoped registries when their canonical lifecycle is available and form-associated definitions when their canonical form reactions are available.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document"
         },
         {
@@ -5003,11 +5006,14 @@
     "Document.createElementNS:0/call": {
       "kind": "native",
       "adapter": "document.createelementns.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"}],
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs", "symbol": "create_element"}
+      ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "Supply synchronous constructors and reactions for reached definitions and accept scoped registries when their canonical lifecycle is available.",
+          "contract": "Admit scoped registries when their canonical lifecycle is available and form-associated definitions when their canonical form reactions are available.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document"
         },
         {
