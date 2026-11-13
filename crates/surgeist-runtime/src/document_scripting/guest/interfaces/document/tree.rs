@@ -275,7 +275,14 @@ impl Capture {
             return Err(error.into());
         };
         let original = scope.dom_exception(name, &[])?;
-        self.drain_native_reactions(scope, owner, events, operation)?;
+        if self
+            .drain_native_reactions(scope, owner, events, operation)
+            .is_err()
+        {
+            // This edit failed before reaction delivery began. If delivery
+            // also refuses, expose the original native cause at the boundary.
+            return Err(error.into());
+        }
         Ok(Completion::Throw(original))
     }
 }
