@@ -2013,6 +2013,26 @@ impl ActiveReactionQueue {
         events: &GuestEvents,
     ) -> Result<(), DocumentGuestEventError> {
         loop {
+            let empty = self
+                .reactions
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?
+                .is_empty();
+            if empty
+                && events
+                    .public
+                    .as_ref()
+                    .is_some_and(|public| public.backup_reactions_scheduled.get())
+            {
+                // A callback can append another backup occurrence for this
+                // receiver. Finish its FIFO before advancing the element queue.
+                let registration = owner
+                    .attachment
+                    .get()
+                    .and_then(|attachment| attachment.registration.upgrade())
+                    .ok_or(DocumentScriptNativeError::Revoked)?;
+                capture.take_older_backup_reactions(scope, owner, events, &registration, self)?;
+            }
             let upgrade = {
                 let reactions = self
                     .reactions
