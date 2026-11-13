@@ -556,9 +556,9 @@ impl DocumentScriptHost {
         // The permit still authenticates the original native registration.
         let progress = resume_retained_attribute(&self.native, limits, false)?;
         if let Ok(result) = &progress
-            && let Some(operation) = guest_terminal_operation(result)
+            && let Some(terminal) = guest_terminal_result(result)
         {
-            self.deliver_resumed_source_reactions(permit, operation)?;
+            self.deliver_resumed_source_reactions(permit, terminal)?;
         }
         Ok(progress)
     }

@@ -446,9 +446,10 @@ impl DocumentScriptHost {
         self.check_permit(permit)?;
         let progress = self.native.resume_style(operation, limits, true)?;
         if let Ok(result) = &progress
-            && guest_terminal_operation(result) == Some(operation)
+            && let Some(terminal) = guest_terminal_result(result)
+            && terminal.operation == operation
         {
-            self.deliver_resumed_source_reactions(permit, operation)?;
+            self.deliver_resumed_source_reactions(permit, terminal)?;
         }
         Ok(progress)
     }

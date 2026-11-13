@@ -65,7 +65,7 @@ impl DocumentScriptHost {
     fn deliver_resumed_source_reactions(
         &mut self,
         permit: &DocumentScriptPermit,
-        operation: surgeist_dom::DomSourceOperationId,
+        terminal: GuestTerminalSource<'_>,
     ) -> Result<(), DocumentGuestEventError> {
         if self.attachment()?.realm.check_owner_active().is_err()
             || self
@@ -98,13 +98,28 @@ impl DocumentScriptHost {
         if registration.custom_element_reaction_segments() == 0 {
             return Ok(());
         }
-        let capture = Capture {
-            callbacks: public.callbacks.clone(),
-            origin: None,
-            _backing: events.reserve(&owner, size_of::<Capture>())?,
-        };
         self.in_document(permit, |scope| {
-            match capture.drain_native_reactions(scope, &owner, &events, operation) {
+            let drain = |scope: &mut Scope<'_>| {
+                let capture = Capture {
+                    callbacks: public.callbacks.clone(),
+                    origin: None,
+                    _backing: events.reserve(&owner, size_of::<Capture>())?,
+                };
+                capture.drain_native_reactions(scope, &owner, &events, terminal.operation)
+            };
+            if let Some(cause) = terminal.error {
+                type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
+                let backing = match events.reserve(
+                    &owner,
+                    PriorFailure::storage_bytes() + 2 * size_of::<usize>(),
+                ) {
+                    Ok(backing) => backing,
+                    Err(_) => return refuse(scope, &events.refusal, cause.clone().into()),
+                };
+                let prior = PriorFailure::new(&scope.realm_authority()?, backing)?;
+                return scope.complete_after_host_failure(&prior, cause.clone().into(), drain);
+            }
+            match drain(scope) {
                 Ok(()) => Ok(()),
                 Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
                     Err(error)
@@ -116,21 +131,36 @@ impl DocumentScriptHost {
     }
 }
 
-fn guest_terminal_operation(
-    result: &DomSourceDriveProgress,
-) -> Option<surgeist_dom::DomSourceOperationId> {
+struct GuestTerminalSource<'a> {
+    operation: surgeist_dom::DomSourceOperationId,
+    error: Option<&'a surgeist_dom::DomError>,
+}
+
+fn guest_terminal_result(result: &DomSourceDriveProgress) -> Option<GuestTerminalSource<'_>> {
     use surgeist_dom::DomSourceProgress as Source;
+    let complete = |done: &surgeist_dom::DomSourceCompletion| GuestTerminalSource {
+        operation: done.operation(),
+        error: done
+            .cancellation_requested()
+            .then_some(&surgeist_dom::DomError::Cancelled),
+    };
+    fn failed(failure: &surgeist_dom::DomSourceFailure) -> GuestTerminalSource<'_> {
+        GuestTerminalSource {
+            operation: failure.operation(),
+            error: Some(failure.error()),
+        }
+    }
     let source = match result {
-        DomSourceDriveProgress::Complete(done) => return Some(done.operation()),
-        DomSourceDriveProgress::Failed(failure) => return Some(failure.operation()),
+        DomSourceDriveProgress::Complete(done) => return Some(complete(done)),
+        DomSourceDriveProgress::Failed(failure) => return Some(failed(failure)),
         DomSourceDriveProgress::InlineSource { source, .. } => source,
         DomSourceDriveProgress::MetaSource(outcome) => outcome.source(),
         DomSourceDriveProgress::InlineFullscreenHandoff { .. }
         | DomSourceDriveProgress::Pending { .. } => return None,
     };
     match source {
-        Source::Complete(done) => Some(done.operation()),
-        Source::Failed(failure) => Some(failure.operation()),
+        Source::Complete(done) => Some(complete(done)),
+        Source::Failed(failure) => Some(failed(failure)),
         Source::Request(_) => None,
     }
 }
