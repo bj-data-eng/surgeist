@@ -168,7 +168,9 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
     )
     .unwrap();
     let environment = environment(&mut dom);
-    let report = report();
+    // The `a` element holds the record of its hyperlink state beside the records of the
+    // Document and the nodes, which makes the seventeen records the growth below needs.
+    let report = report_for("<!doctype html><a>private</a>");
     // This literal has seven source subjects and seventeen metadata records.
     // The selected geometric banks hold eight Rows while metadata grows from
     // sixteen to thirty-two. Both metadata allocations coexist during copying;

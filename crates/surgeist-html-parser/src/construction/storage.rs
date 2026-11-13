@@ -114,6 +114,17 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
+        let facts = match ParseFacts::new(control) {
+            Ok(facts) => facts,
+            Err(error) => {
+                release_vector(control, documents, documents_allocation)?;
+                release_vector(control, bases, bases_allocation)?;
+                release_vector(control, forms, forms_allocation)?;
+                release_vector(control, node_joins, node_joins_allocation)?;
+                release_vector(control, values, allocation)?;
+                return Err(error);
+            }
+        };
         // Indexed by `KindList`.
         let kind_slots = [
             KindSlots {
@@ -177,6 +188,7 @@ impl SessionStorage {
                 tree_stamp: NonZeroU32::new(1),
                 topology_changes: Some(0),
                 detail_origins,
+                facts,
             },
         };
         let kind = match root {
@@ -197,13 +209,12 @@ impl SessionStorage {
         // that could fail while the session is live and unreleased.
         if root_is_document {
             let facts = (|| {
-                let prepared = session.prepare_payload_slot_owned(control)?;
-                session
-                    .payloads
-                    .push_row(
-                        prepared,
-                        RetainedPayload::Document {
-                            node: Some(0),
+                let documents = &mut session.payloads.facts.documents;
+                documents.admit(control, 1)?;
+                documents
+                    .push(
+                        0,
+                        template::DocumentFacts {
                             state: template::DocumentState::Ordinary { inert: None },
                             class: crate::HtmlDocumentClass::Html,
                             meta: meta::MetaHistory::offline(),

@@ -265,19 +265,12 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: usize,
     ) -> Result<Option<usize>, SessionError> {
-        for row in &self.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Document {
-                node: Some(node),
-                meta,
-                ..
-            } = row
-                && *node == document
-            {
-                return Ok(meta.csp);
-            }
-        }
-        Ok(None)
+        Ok(self
+            .payloads
+            .facts
+            .documents
+            .get(c, document)?
+            .and_then(|document| document.meta.csp))
     }
     pub(super) fn csp_pending(&self, c: &mut ParseControl) -> Result<bool, SessionError> {
         let Some(slot) = self.csp_slot() else {

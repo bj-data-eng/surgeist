@@ -745,6 +745,7 @@ fn formatting_child_transfer_preserves_existing_destination_order_and_backlinks(
             .current,
         session.active().unwrap().construction.len() as u64
             + session.active().unwrap().payloads.values.len() as u64
+            + session.active().unwrap().payloads.facts.documents.len() as u64
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -1090,7 +1091,9 @@ fn formatting_child_transfer_stops_with_an_ordered_coherent_prefix_and_reclaims_
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            storage.construction.len() as u64 + storage.payloads.values.len() as u64
+            storage.construction.len() as u64
+                + storage.payloads.values.len() as u64
+                + storage.payloads.facts.documents.len() as u64
         );
         if result.is_err() {
             // The sweep leaves `remaining` work credits, so the first stop

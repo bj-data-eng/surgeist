@@ -922,13 +922,14 @@ fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
 #[test]
 fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    // Before script creation Document/html + completion/cause/nonce/join
-    // owners retain 13 slots, including html's independent creation row.
-    // Script metadata is reserved first: 14 stops at document/native preflight.
+    // Before script creation Document/html + cause/nonce/join
+    // owners retain 12 slots, including html's independent creation row; the
+    // completion of the Document is a field of the session and admits none.
+    // Script metadata is reserved first: 13 stops at document/native preflight.
     // Script adds document/creation metadata, name/URI, its node-join cell,
-    // cause and two nonce slots: completed 22. At 21 the tag is transferred
+    // cause and two nonce slots: completed 21. At 20 the tag is transferred
     // but the node-join cell cannot be admitted; every initialized row is retained.
-    for cap in [14, 21, 22] {
+    for cap in [13, 20, 21] {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><script>"),
             limits()
@@ -959,10 +960,10 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             crate::construction::CreationContext::Ordinary,
             &capability,
         );
-        assert_eq!(incoming.is_some(), cap == 14);
+        assert_eq!(incoming.is_some(), cap == 13);
         assert_eq!(
             session.active().unwrap().construction.len(),
-            if cap == 22 { 3 } else { 2 }
+            if cap == 21 { 3 } else { 2 }
         );
         let count = session
             .active()
@@ -972,14 +973,14 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             .iter()
             .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
             .count();
-        if cap == 22 {
+        if cap == 21 {
             result.unwrap();
             assert_eq!(count, 1);
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                22
+                21
             );
         } else {
             assert!(matches!(
@@ -1005,7 +1006,7 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
         assert_eq!(c.stop(), first);
         assert_eq!(
             c.usage().resource(HtmlParseResource::ManagedNodes).current,
-            if cap == 22 { 3 } else { 2 }
+            if cap == 21 { 3 } else { 2 }
         );
     }
 }

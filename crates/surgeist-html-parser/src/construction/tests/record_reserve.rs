@@ -38,22 +38,23 @@ fn combined_template_record_reserve_one_short_precedes_inert_document_and_cache_
     let storage = session.active().unwrap();
     assert_eq!(storage.construction.len(), 1);
     assert_eq!(storage.payloads.values.len(), payloads);
-    assert!(storage.payloads.values.iter().any(|payload| matches!(
-        payload,
-        RetainedPayload::Document {
-            node: Some(0),
-            state: template::DocumentState::Ordinary { inert: None },
-            ..
-        }
-    )));
-    assert!(!storage.payloads.values.iter().any(|payload| matches!(
-        payload,
-        RetainedPayload::Template { .. }
-            | RetainedPayload::Document {
-                state: template::DocumentState::InertTemplate,
-                ..
-            }
-    )));
+    assert!(matches!(
+        storage
+            .payloads
+            .facts
+            .documents
+            .row(0)
+            .map(|document| document.state),
+        Some(template::DocumentState::Ordinary { inert: None })
+    ));
+    assert!(
+        !storage
+            .payloads
+            .values
+            .iter()
+            .any(|payload| matches!(payload, RetainedPayload::Template { .. }))
+    );
+    assert_eq!(storage.payloads.facts.documents.len(), 1);
     // The reservation grows two banks, the rows and then their depths. The limit that is one byte
     // short of both refuses the second, and the first keeps the room it reserved, as a grown bank
     // does: the parse holds what it held and the rows the geometric rule chose, the greater of the
