@@ -258,11 +258,19 @@ fn check_parked_style_edit(with_reaction: bool) {
                     &cancel,
                 )
                 .unwrap();
+            if with_reaction {
+                dom.raw_mut()
+                    .resume_source_edit(parked.operation(), SOURCE, &cancel)
+                    .unwrap()
+                    .request_cancel();
+            }
         })
         .unwrap();
     assert!(matches!(
         stopped.settle_pending_style_edit(parked.operation(), SOURCE).unwrap().unwrap(),
-        DomSourceDriveProgress::Complete(done) if done.operation() == parked.operation()
+        DomSourceDriveProgress::Complete(done)
+            if done.operation() == parked.operation()
+                && done.cancellation_requested() == with_reaction
     ));
     if with_reaction {
         stopped = stopped
