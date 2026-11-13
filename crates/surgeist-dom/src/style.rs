@@ -53,6 +53,7 @@ pub struct DomStyleState {
     pub(crate) sheet: Option<DomStyleSheet>,
     pub(crate) next_association: u64,
     pub(crate) availability: DomStyleSheetAvailability,
+    pub(crate) imported: bool,
 }
 impl DomStyleState {
     pub(crate) fn fresh() -> Self {
@@ -61,6 +62,7 @@ impl DomStyleState {
             sheet: None,
             next_association: 0,
             availability: DomStyleSheetAvailability::Established,
+            imported: false,
         }
     }
     /// Retain actual creation history and the adapter's complete original
@@ -75,6 +77,7 @@ impl DomStyleState {
             sheet: None,
             next_association: 0,
             availability,
+            imported: true,
         }
     }
     pub fn association_availability(&self) -> DomStyleSheetAvailability {
@@ -160,6 +163,25 @@ pub struct DomStyleSource {
     pub(crate) title: Option<surgeist_html::values::DocumentString>,
     pub(crate) blocking: Option<surgeist_html::values::DocumentString>,
     pub(crate) nonce: surgeist_html::values::DocumentString,
+    pub(crate) nonce_content: DomStyleNonceContent,
+}
+
+/// Source-time nonce attribute for the inline CSP check.
+#[derive(Clone, Debug)]
+pub enum DomStyleNonceContent {
+    /// No null-namespace nonce content attribute was present.
+    Absent,
+    /// Exact content value on a Style with no original tokenizer history.
+    Present(surgeist_html::values::DocumentString),
+    /// The imported Style's tokenizer nonceability has not been established.
+    TokenizerHistoryUnavailable(surgeist_html::values::DocumentString),
+}
+
+/// Admitted storage from a live Style CSP request. It can outlive the request
+/// and grants no authority to acknowledge an operation.
+#[derive(Debug)]
+pub struct DomStyleCspRetention {
+    pub(crate) _debit: Option<crate::store::custody::Debit>,
 }
 impl DomStyleSource {
     fn retained_strings(&self) -> impl Iterator<Item = &surgeist_html::values::DocumentString> {
@@ -169,6 +191,11 @@ impl DomStyleSource {
             self.title.as_ref(),
             self.blocking.as_ref(),
             Some(&self.nonce),
+            match &self.nonce_content {
+                DomStyleNonceContent::Present(value)
+                | DomStyleNonceContent::TokenizerHistoryUnavailable(value) => Some(value),
+                DomStyleNonceContent::Absent => None,
+            },
         ]
         .into_iter()
         .flatten()
@@ -254,6 +281,10 @@ impl DomStyleSource {
     }
     pub fn nonce(&self) -> &surgeist_html::values::DocumentString {
         &self.nonce
+    }
+    /// The current content value and tokenizer qualification for nonce matching.
+    pub fn nonce_content(&self) -> &DomStyleNonceContent {
+        &self.nonce_content
     }
 }
 /// The actual source algorithm requiring composition with an external owner.

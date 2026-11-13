@@ -90,6 +90,8 @@ pub enum DomStyleUnavailable {
     RootList,
     /// Full current CSP policy/evaluation has not been supplied.
     InlinePolicy,
+    /// The executing realm has no native Window violation-delivery owner.
+    ViolationTarget,
     /// The actual media/environment or rendering observation is unavailable.
     Environment,
     /// Imports exist; this owner has not obtained their critical-resource outcomes.
@@ -2020,6 +2022,10 @@ impl DomSession {
     /// Controlled canonical access. No bound mutable owner can be extracted.
     pub fn dom(&mut self) -> DomEventDom<'_> {
         DomEventDom::borrow(&mut self.dom)
+    }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn read_dom(&self) -> &Dom {
+        &self.dom
     }
     /// An immutable historical capture which does not retain mutable custody.
     pub fn snapshot(&self) -> DomSnapshot {

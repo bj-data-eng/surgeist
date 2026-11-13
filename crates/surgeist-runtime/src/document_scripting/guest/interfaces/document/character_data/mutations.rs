@@ -1,9 +1,7 @@
 //! Web IDL CharacterData reads and the original canonical Source edit.
 
 use super::*;
-use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
-};
+use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
 use surgeist_bindings_js::conversion::{
     IntegerType,
     declarations::{
@@ -16,7 +14,7 @@ use surgeist_bindings_js::conversion::{
     },
 };
 use surgeist_bindings_js::{IntegerValue, dom_exception::DomExceptionName};
-use surgeist_dom::DomSourceEdit;
+use surgeist_dom::{DomSourceEdit, DomSourceStatus};
 
 #[derive(Clone, Copy)]
 enum Operation {
@@ -259,23 +257,33 @@ impl Capture {
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let (data, _backing) = copy_native_data(owner, events, units)?;
-        let (result, pending) = self.with_native(owner, |session, _| {
-            let mut source = session.source_execution();
-            let mut dom = session.dom();
-            let result = source.apply(
-                &mut dom,
-                DomSourceEdit::replace_data(node.node(), offset, count, data),
-                events.limits.source_edits,
-                &mut DomSourceServices {
-                    meta: None,
-                    execution_scope: None,
-                    style_policy: &mut |_| None,
-                    url: None,
-                },
-                &owner.cancellation,
-            );
-            Ok((result, dom.pending_source_edit()))
-        })?;
+        let event = owner.active_event_request();
+        let (mut result, parent) =
+            self.callbacks
+                .with_qualified_session(owner, event.as_ref(), |session, _| {
+                    let mut source = session.source_execution();
+                    let mut dom = session.dom();
+                    let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
+                    let result = source.apply(
+                        &mut dom,
+                        DomSourceEdit::replace_data(node.node(), offset, count, data),
+                        events.limits.source_edits,
+                        &mut guest_source_services(&mut |_| None),
+                        &owner.cancellation,
+                    );
+                    Ok((result, parent))
+                })?;
+        owner.finish_guest_style(
+            &mut result,
+            events.limits.source_edits,
+            Some(scope.realm_authority()?.identity()),
+        );
+        let pending = owner
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .read_dom()
+            .pending_source_edit();
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DocumentScriptNativeError::from(DomError::Cancelled).into())
@@ -290,7 +298,7 @@ impl Capture {
                 Err(DocumentScriptNativeError::from(failure.into_parts().1).into())
             }
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::IndexSize)))
-                if pending.is_none() =>
+                if pending.map(DomSourceStatus::operation) == parent =>
             {
                 index_size(scope)
             }

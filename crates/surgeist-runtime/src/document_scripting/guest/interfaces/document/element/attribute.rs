@@ -4,7 +4,7 @@ mod node;
 
 use super::{super::character_data::copy_native_data, *};
 use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
+    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError,
     document_scripting::guest::{
         AttributeReply, PendingAttribute,
         reports::{ViolationBacking, ViolationOrigin, ViolationQueue, violation_error},
@@ -157,18 +157,30 @@ impl Capture {
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
-        let mut no_style = |_: &surgeist_dom::DomStyleSource| None;
-        let mut services = attribute_services(&mut no_style);
         let event = owner.active_event_request();
-        let (mut result, mut pending, parent) =
+        let (mut result, parent) =
             self.callbacks
                 .with_qualified_session(owner, event.as_ref(), |session, _| {
                     let mut source = session.source_execution();
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
-                    let result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-                    Ok((result, dom.pending_source_edit(), parent))
+                    let result = source.apply(
+                        &mut dom,
+                        edit,
+                        limits,
+                        &mut guest_source_services(&mut |_| None),
+                        cancel,
+                    );
+                    Ok((result, parent))
                 })?;
+        let realm = scope.realm_authority()?.identity();
+        owner.finish_guest_style(&mut result, limits, Some(realm));
+        let mut pending = owner
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .read_dom()
+            .pending_source_edit();
         let mut abrupt = None;
         let mut output = None;
         if let Ok(DomSourceDriveProgress::Pending {
@@ -205,7 +217,7 @@ impl Capture {
                     return Err(error);
                 }
             };
-            ((result, pending), abrupt) = continue_attribute(owner, retained, limits)?;
+            ((result, pending), abrupt) = continue_attribute(owner, retained, limits, true)?;
         }
         if let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeAttachmentOutput(request),
@@ -223,9 +235,10 @@ impl Capture {
                 .map_err(|_| DocumentScriptNativeError::Busy)?
                 .take();
             if let Some(retained) = retained {
-                ((result, pending), abrupt) = continue_attribute(owner, retained, limits)?;
+                ((result, pending), abrupt) = continue_attribute(owner, retained, limits, true)?;
             } else {
-                (result, pending) = resume_attribute_source(owner, request.operation(), limits)?;
+                (result, pending) =
+                    resume_attribute_source(owner, request.operation(), limits, Some(realm))?;
                 if result.is_err() {
                     discard_attachment_output(owner, request);
                 }
@@ -406,6 +419,7 @@ impl Capture {
         let header = events.reserve(owner, size_of::<PendingAttribute>())?;
         let mut retained = Box::new(PendingAttribute {
             request,
+            realm: scope.realm_authority()?.identity(),
             reply: AttributeReply::Abandon,
             parent: owner.active_attribute.get(),
             interrupted_parent: None,
@@ -541,7 +555,7 @@ fn resume_retained_attribute(
     if abandon && !matches!(retained.reply, AttributeReply::Accepted { .. }) {
         retained.reply = AttributeReply::Abandon;
     }
-    let ((progress, _), abrupt) = continue_attribute(owner, retained, limits)?;
+    let ((progress, _), abrupt) = continue_attribute(owner, retained, limits, !abandon)?;
     if abandon
         && let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeAttachmentOutput(request),
@@ -572,7 +586,7 @@ fn resume_retained_attribute(
             .map_err(|_| DocumentScriptNativeError::Busy)?
             .take()
             .ok_or(DocumentScriptNativeError::SourceAccess)?;
-        let ((progress, _), _) = continue_attribute(owner, retained, limits)?;
+        let ((progress, _), _) = continue_attribute(owner, retained, limits, !abandon)?;
         return Ok(progress);
     }
     if let (Ok(DomSourceDriveProgress::Failed(failure)), Some(error)) = (&progress, abrupt)
@@ -587,11 +601,13 @@ fn continue_attribute(
     owner: &NativeOwner,
     mut retained: Box<PendingAttribute>,
     limits: DomSourceLimits,
+    live: bool,
 ) -> Result<(NativeAttributeProgress, Option<Error>), DocumentGuestEventError> {
     let request = retained.request;
+    let realm = live.then_some(retained.realm);
     let attempted = retained
         .acknowledge(owner, limits)
-        .and_then(|()| resume_attribute_source(owner, request.operation(), limits));
+        .and_then(|()| resume_attribute_source(owner, request.operation(), limits, realm));
     let terminal = matches!(
         &attempted,
         Ok((
@@ -704,35 +720,27 @@ fn resume_attribute_source(
     owner: &NativeOwner,
     operation: surgeist_dom::DomSourceOperationId,
     limits: DomSourceLimits,
+    realm: Option<RealmId>,
 ) -> Result<NativeAttributeProgress, DocumentGuestEventError> {
-    let mut session = owner
+    let mut result = {
+        let mut session = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        session.source_execution().resume(
+            &mut session.dom(),
+            operation,
+            limits,
+            &mut guest_source_services(&mut |_| None),
+            &owner.cancellation,
+        )
+    };
+    owner.finish_guest_style(&mut result, limits, realm);
+    let session = owner
         .session
-        .try_borrow_mut()
+        .try_borrow()
         .map_err(|_| DocumentScriptNativeError::Busy)?;
-    let mut source = session.source_execution();
-    let mut dom = session.dom();
-    let mut no_style = |_: &surgeist_dom::DomStyleSource| None;
-    let result = source.resume(
-        &mut dom,
-        operation,
-        limits,
-        &mut attribute_services(&mut no_style),
-        &owner.cancellation,
-    );
-    Ok((result, dom.pending_source_edit()))
-}
-
-fn attribute_services(
-    style_policy: &mut dyn FnMut(
-        &surgeist_dom::DomStyleSource,
-    ) -> Option<surgeist_dom::DomStyleInlineCspObservation>,
-) -> DomSourceServices<'_> {
-    DomSourceServices {
-        meta: None,
-        execution_scope: None,
-        style_policy,
-        url: None,
-    }
+    Ok((result, session.read_dom().pending_source_edit()))
 }
 
 fn accept_mismatch(

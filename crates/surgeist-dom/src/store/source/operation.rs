@@ -190,7 +190,82 @@ impl Drop for DomSourceLease<'_> {
         self.dom.observe_source_lifecycle();
     }
 }
+/// A read-only loan of the exact pending Style request's Source controller.
+pub struct DomStyleCspBudget<'a> {
+    draft: &'a Draft,
+}
+
+impl DomStyleCspBudget<'_> {
+    /// Charge one operation against the original cumulative Source budget.
+    pub fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.draft.source_step(cancel)
+    }
+
+    /// Check transient byte headroom without retaining it.
+    pub fn admit_bytes(&self, bytes: usize, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.draft.source_admit(bytes, cancel)
+    }
+
+    /// Retain payload against the Source's original storage controller.
+    pub fn retain(
+        &self,
+        bytes: usize,
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomStyleCspRetention, DomError> {
+        if units
+            .checked_mul(size_of::<u16>())
+            .is_none_or(|extent| extent > bytes)
+        {
+            return Err(DomError::RepresentationExhausted);
+        }
+        self.step(cancel)?;
+        let budget = formation::Formation::new(self.draft, cancel)?
+            .ok_or(DomError::InvalidSourceOperation)?;
+        budget.retain_payload(storage::Payload { bytes, units }, cancel)?;
+        Ok(DomStyleCspRetention {
+            _debit: budget.into_debit(),
+        })
+    }
+}
+
 impl Dom {
+    /// Identify the current operation if it has reached an external Style
+    /// request. This grants no authority to inspect or acknowledge the request.
+    pub fn pending_style_source_edit(&self) -> Option<DomSourceOperationId> {
+        let operation = self.source_operation.as_ref()?;
+        operation.request.as_ref()?;
+        Some(operation.id)
+    }
+
+    /// Qualify metering for the exact reached inline Style request.
+    pub fn inline_csp_budget(
+        &self,
+        request: &DomStyleRequest,
+    ) -> Result<DomStyleCspBudget<'_>, DomError> {
+        let op = self
+            .source_operation
+            .as_ref()
+            .filter(|op| op.id == request.source().operation())
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let dialog::OperationDraft::Segment(draft) = &op.draft else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let expected = op.request.as_ref().ok_or(DomError::StyleProtocol)?;
+        if request.action != DomStyleAction::Update(Action::CheckInlineCsp)
+            || expected.action != request.action
+            || !Arc::ptr_eq(&expected.source, &request.source)
+            || op.receipt.is_some()
+        {
+            return Err(DomError::StyleFactsMismatch);
+        }
+        if op.cancelled && !op.published && !op.event_exposed && draft.compound_failure().is_none()
+        {
+            return Err(DomError::Cancelled);
+        }
+        Ok(DomStyleCspBudget { draft })
+    }
+
     /// Whether this canonical owner retains any actual mutable Style CSSOM root.
     /// Historical snapshots and parsed pending associations do not count.
     pub fn has_style_cssom_roots(&self) -> bool {
@@ -980,6 +1055,12 @@ impl Operation {
             cancel,
         )?;
         let nonce = element.nonce();
+        let nonce_content = self.draft.control_attribute(
+            frame.key,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Nonce,
+            cancel,
+        )?;
+        let nonce_history_unavailable = element.style_state().is_some_and(|style| style.imported);
         let mut bytes = size_of::<DomStyleSource>()
             .checked_add(size_of::<Vec<u16>>())
             .ok_or(DomError::RepresentationExhausted)?;
@@ -987,7 +1068,7 @@ impl Operation {
             .retained_payload_units()?
             .checked_add(length)
             .ok_or(DomError::RepresentationExhausted)?;
-        for (index, string) in [Some(base_url), media, title, blocking, nonce]
+        for (index, string) in [Some(base_url), media, title, blocking, nonce, nonce_content]
             .into_iter()
             .enumerate()
         {
@@ -1058,6 +1139,16 @@ impl Operation {
         let nonce = nonce
             .map(|value| self.own_attribute_value(value, budget, cancel))
             .transpose()?;
+        let nonce_content = match nonce_content
+            .map(|value| self.own_attribute_value(value, budget, cancel))
+            .transpose()?
+        {
+            Some(value) if nonce_history_unavailable => {
+                DomStyleNonceContent::TokenizerHistoryUnavailable(value)
+            }
+            Some(value) => DomStyleNonceContent::Present(value),
+            None => DomStyleNonceContent::Absent,
+        };
         let source = formation::allocated_arc(DomStyleSource {
             operation: self.id,
             ordinal: match frame.invocation {
@@ -1076,6 +1167,7 @@ impl Operation {
             title,
             blocking,
             nonce: nonce.unwrap_or_default(),
+            nonce_content,
         });
         Ok(source)
     }
@@ -2894,21 +2986,32 @@ impl DomSourceLease<'_> {
             }
         }
     }
+    /// Borrow the exact pending request's work and storage controller.
+    pub fn inline_csp_budget(
+        &self,
+        request: &DomStyleRequest,
+    ) -> Result<DomStyleCspBudget<'_>, DomError> {
+        if self.complete || self.id != request.source().operation() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.dom.inline_csp_budget(request)
+    }
+
     pub fn accept_inline_csp(
         &mut self,
         request: &DomStyleRequest,
         observation: &DomStyleInlineCspObservation,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let op = self.dom.source_operation.as_mut().expect("live lease");
-        let expected = op.request.as_ref().ok_or(DomError::StyleProtocol)?;
-        if expected.action != DomStyleAction::Update(Action::CheckInlineCsp)
-            || !Arc::ptr_eq(&expected.source, &request.source)
-            || !matches_inline_csp_source(request, observation)
-            || op.receipt.is_some()
-        {
+        self.inline_csp_budget(request)?;
+        if !matches_inline_csp_source(request, observation) {
             return Err(DomError::StyleFactsMismatch);
         }
+        let op = self
+            .dom
+            .source_operation
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
         op.refresh_admission(cancel)?;
         op.draft.source_step(cancel)?;
         // Observation owns its source clone as well as its policy bank. Its

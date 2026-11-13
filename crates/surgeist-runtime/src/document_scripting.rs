@@ -174,6 +174,7 @@ struct NativeOwner {
     active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
     active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
+    pending_style: Cell<Option<(surgeist_dom::DomSourceOperationId, RealmId)>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
@@ -358,7 +359,15 @@ impl NativeOwner {
         let Some(native) = Rc::get_mut(&mut owner) else {
             return Err(owner);
         };
-        if native.pending_attribute.get_mut().is_some() {
+        let pending_source = native.session.get_mut().read_dom().pending_source_edit();
+        if native.pending_attribute.get_mut().is_some()
+            || pending_source.is_some_and(|status| {
+                native
+                    .pending_style
+                    .get_mut()
+                    .is_some_and(|pending| pending.0 == status.operation())
+            })
+        {
             return Err(owner);
         }
         if let Some(attachment) = native.attachment.get() {
@@ -487,6 +496,7 @@ impl PreparedDocumentScriptHost {
                 active_attached_event: RefCell::new(None),
                 active_attribute: Cell::new(None),
                 pending_attribute: RefCell::new(None),
+                pending_style: Cell::new(None),
                 trusted_types_reports: RefCell::new(None),
                 cancellation,
                 storage_limit,
@@ -1348,9 +1358,25 @@ impl fmt::Debug for NativeOwner {
 }
 
 impl StoppedDocumentScriptHost {
+    /// Borrow the original native owners for recovery after engine disposal.
+    /// The loan can bind a missing producer or raise its limits before retry.
+    pub fn with_native<T>(
+        &mut self,
+        action: impl FnOnce(&mut DomEventDom<'_>, HostedRuntime, DomSourceRuntime) -> T,
+    ) -> Result<T, DocumentScriptNativeError> {
+        let mut session = self
+            .native
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let hosted = session.hosted_execution();
+        let source = session.source_execution();
+        Ok(action(&mut session.dom(), hosted, source))
+    }
+
     /// Recover the same native Session. Its historical scripting facts remain
     /// usable with their exact historical snapshots.
-    /// A retained attribute write must be settled before recovery.
+    /// Retained attribute and Style edits must be settled before recovery.
     pub fn into_session(self) -> Result<DomSession, Self> {
         NativeOwner::recover(self.native).map_err(|native| Self { native })
     }

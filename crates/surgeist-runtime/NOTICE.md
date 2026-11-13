@@ -6,10 +6,9 @@ This notice covers the `surgeist-runtime` 0.1.0 source distribution described by
 ## Dependencies
 
 Sibling Surgeist dependencies are source owned in this repository. This notice
-also covers the direct native entropy dependency below; it does not claim a
-complete transitive or compiled-release inventory. The default feature set is
-empty. This source distribution contains no vendored implementation of that
-dependency; its accompanying license files are retained for attribution.
+also covers the direct native entropy dependency and optional Style CSP hash
+dependencies. The default feature set is empty. The license files accompany
+the dependency attributions for this source distribution.
 
 ### getrandom 0.3.4
 
@@ -25,6 +24,22 @@ typed unavailable branch; no JavaScript entropy backend is selected here.
 Both license files are exact copies from the already installed 0.3.4 source
 package. Its MIT notice retains the 2018–2025 rust-random and 2014 Rust Project
 copyrights. No dependency source is copied into Surgeist implementation files.
+
+### sha2 0.10.9
+
+The `document-scripting` feature uses the RustCrypto Developers' SHA-256,
+SHA-384 and SHA-512 implementations for inline Style CSP.
+
+* Licenses: [MIT](licenses/rustcrypto-hashes/LICENSE-MIT) OR [Apache-2.0](licenses/rustcrypto-hashes/LICENSE-APACHE)
+* Homepage: [RustCrypto hashes](https://github.com/RustCrypto/hashes)
+
+### base64 0.22.1
+
+The `document-scripting` feature uses base64, with copyright by Alice Maz,
+to encode the digest in the spelling required by the CSP comparison.
+
+* Licenses: [MIT](licenses/base64/LICENSE-MIT) OR [Apache-2.0](licenses/base64/LICENSE-APACHE)
+* Homepage: [base64](https://github.com/marshallpierce/rust-base64)
 
 ## Native history UUID generation
 

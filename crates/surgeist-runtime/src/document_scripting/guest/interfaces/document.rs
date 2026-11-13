@@ -17,9 +17,23 @@ mod fragment;
 mod ordinary;
 mod parent_node;
 mod shadow;
+mod style_policy;
 mod text;
 mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
+
+fn guest_source_services(
+    style_policy: &mut dyn FnMut(
+        &surgeist_dom::DomStyleSource,
+    ) -> Option<surgeist_dom::DomStyleInlineCspObservation>,
+) -> crate::DomSourceServices<'_> {
+    crate::DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy,
+        url: None,
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(in crate::document_scripting::guest) enum GuestNode {

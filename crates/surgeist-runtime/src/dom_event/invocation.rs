@@ -72,7 +72,27 @@ impl<C> DomEventDispatcher<C> {
             return Err(DomEventDispatchError::WrongContinuation);
         }
         self.association.validate(dom.raw())?;
-        let node = document.node();
+        let mut node = document.node();
+        if let Some(element) = report.element() {
+            let snapshot = dom.snapshot();
+            let mut candidate = element;
+            loop {
+                match snapshot.node_with(candidate, || self.storage.step(1, cancel)) {
+                    Ok(current) if current.id() == document.node() => {
+                        node = element;
+                        break;
+                    }
+                    Ok(current) => {
+                        let Some(parent) = current.shadow_including_parent() else {
+                            break;
+                        };
+                        candidate = parent;
+                    }
+                    Err(DomEventDispatchError::Dom(DomError::StaleNode)) => break,
+                    Err(error) => return Err(error),
+                }
+            }
+        }
         self.validate_target(dom.raw(), &node.into(), cancel)?;
         self.storage.step(1, cancel)?;
         let payload = csp::CspEventData::native(dom, &self.storage, document, report, cancel)?;

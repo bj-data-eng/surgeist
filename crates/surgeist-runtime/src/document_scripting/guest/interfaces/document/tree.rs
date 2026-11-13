@@ -1,11 +1,9 @@
 //! Structural Node methods over the original canonical Source operation.
 
 use super::*;
-use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
-};
+use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
 use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
-use surgeist_dom::{DomSourceEdit, DomSourceRequest, DomSourceStatus};
+use surgeist_dom::{DomSourceEdit, DomSourceStatus};
 
 #[derive(Clone, Copy)]
 enum Method {
@@ -211,41 +209,32 @@ impl Capture {
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
         let event = owner.active_event_request();
-        let (result, pending, parent) =
+        let (mut result, parent) =
             self.callbacks
                 .with_qualified_session(owner, event.as_ref(), |session, _| {
                     let mut source = session.source_execution();
-                    let mut services = DomSourceServices {
-                        meta: None,
-                        execution_scope: None,
-                        style_policy: &mut |_| None,
-                        url: None,
-                    };
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
-                    let mut result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-                    while let Ok(DomSourceDriveProgress::Pending {
-                        request: DomSourceRequest::MetaCsp(request),
-                        ..
-                    }) = result
-                    {
-                        if let Err(error) =
-                            session.service_trusted_types_meta_csp(request, limits, cancel)
-                        {
-                            result = Err(error.into());
-                            break;
-                        }
-                        dom = session.dom();
-                        result = source.resume(
-                            &mut dom,
-                            request.operation(),
-                            limits,
-                            &mut services,
-                            cancel,
-                        );
-                    }
-                    Ok((result, session.dom().pending_source_edit(), parent))
+                    let result = source.apply(
+                        &mut dom,
+                        edit,
+                        limits,
+                        &mut guest_source_services(&mut |_| None),
+                        cancel,
+                    );
+                    Ok((result, parent))
                 })?;
+        owner.finish_guest_tree_policies(
+            &mut result,
+            limits,
+            scope.realm_authority()?.identity(),
+        )?;
+        let pending = owner
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .read_dom()
+            .pending_source_edit();
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DomError::Cancelled.into())

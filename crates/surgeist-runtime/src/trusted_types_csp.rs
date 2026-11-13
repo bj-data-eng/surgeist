@@ -17,12 +17,16 @@ mod factory;
 mod provider;
 mod reports;
 #[cfg(feature = "document-scripting")]
+mod style_hash;
+#[cfg(feature = "document-scripting")]
 pub(crate) use attribute::AttributeMismatchProgress;
 pub use attribute::{AttributeMismatch, AttributePolicies, AttributePolicyError};
 pub use factory::{AdmittedPolicyCreation, PolicyCreation, PolicyCreationError, PolicyFactory};
 pub use provider::{PolicyListCapacity, PolicyListError, PolicyProcessor};
 #[cfg(feature = "document-scripting")]
 pub(crate) use reports::attribute_sink_name;
+#[cfg(feature = "document-scripting")]
+pub(crate) use reports::prepare_style_violation;
 pub use reports::{ReportError, ViolationReport};
 
 /// The source and disposition of one delivered CSP policy.
@@ -37,7 +41,7 @@ pub enum PolicyDelivery {
 }
 
 impl PolicyDelivery {
-    fn enforces(self) -> bool {
+    pub(crate) fn enforces(self) -> bool {
         self != Self::ReportOnlyHeader
     }
 
@@ -59,6 +63,63 @@ pub struct Policy {
 }
 
 impl Policy {
+    /// Evaluate inline Style keywords, nonces and exact source hashes.
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn inline_style<E: From<surgeist_dom::DomError>>(
+        &self,
+        nonce: &surgeist_dom::DomStyleNonceContent,
+        hashes: &mut style_hash::StyleHashes<'_>,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(bool, bool)>, E> {
+        let serialized =
+            HtmlCspSerializedPolicy::new(self.serialized.code_units(), self.delivery.source());
+        for name in [b"style-src-elem".as_slice(), b"style-src", b"default-src"] {
+            let Some(directive) = serialized.directive_with(name, step)? else {
+                continue;
+            };
+            let mut values = directive.values();
+            let mut allows_inline = false;
+            let mut has_credential = false;
+            let mut unavailable = false;
+            let mut report_sample = false;
+            while let Some(token) = values.next_with(step)? {
+                if let Some(value) = inline_credential(token, b"'nonce-", step)? {
+                    has_credential = true;
+                    match nonce {
+                        surgeist_dom::DomStyleNonceContent::Present(nonce)
+                            if matching_nonce(value, nonce.code_units(), step)? =>
+                        {
+                            return Ok(Some((true, false)));
+                        }
+                        surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable(nonce)
+                            if matching_nonce(value, nonce.code_units(), step)? =>
+                        {
+                            unavailable = true;
+                        }
+                        _ => {}
+                    }
+                } else {
+                    for algorithm in style_hash::Algorithm::ALL {
+                        if let Some(value) = inline_credential(token, algorithm.prefix(), step)? {
+                            has_credential = true;
+                            if hashes.matches(algorithm, value, step)? {
+                                return Ok(Some((true, false)));
+                            }
+                            break;
+                        }
+                    }
+                }
+                allows_inline |= keyword(token, b"'unsafe-inline'");
+                report_sample |= token
+                    .iter()
+                    .copied()
+                    .eq(b"'report-sample'".iter().copied().map(u16::from));
+            }
+            return Ok((!unavailable).then_some((allows_inline && !has_credential, report_sample)));
+        }
+        Ok(Some((true, false)))
+    }
+
     /// Select the first occurrence of each directive in an individual CSP.
     /// The meter runs before inspecting source code units.
     pub fn parse<E>(
@@ -129,6 +190,58 @@ impl Policy {
     }
 }
 
+#[cfg(feature = "document-scripting")]
+pub(crate) use style_hash::StyleHashes;
+
+#[cfg(feature = "document-scripting")]
+fn inline_credential<'a, E>(
+    token: &'a [u16],
+    prefix: &[u8],
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<&'a [u16]>, E> {
+    let Some((head, tail)) = token.split_at_checked(prefix.len()) else {
+        return Ok(None);
+    };
+    if !keyword(head, prefix) {
+        return Ok(None);
+    }
+    let Some((&0x27, value)) = tail.split_last() else {
+        return Ok(None);
+    };
+    let unpadded = value
+        .strip_suffix(&[0x3d, 0x3d])
+        .or_else(|| value.strip_suffix(&[0x3d]))
+        .unwrap_or(value);
+    if unpadded.is_empty() {
+        return Ok(None);
+    }
+    for &unit in unpadded {
+        step()?;
+        if !matches!(unit, 0x41..=0x5a | 0x61..=0x7a | 0x30..=0x39 | 0x2b | 0x2f | 0x2d | 0x5f) {
+            return Ok(None);
+        }
+    }
+    Ok(Some(value))
+}
+
+#[cfg(feature = "document-scripting")]
+fn matching_nonce<E>(
+    expected: &[u16],
+    actual: &[u16],
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    if expected.len() != actual.len() {
+        return Ok(false);
+    }
+    for (expected, actual) in expected.iter().zip(actual) {
+        step()?;
+        if expected != actual {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 fn keyword(units: &[u16], literal: &[u8]) -> bool {
     units.len() == literal.len()
         && units.iter().zip(literal).all(|(&unit, byte)| {
@@ -190,6 +303,8 @@ pub enum Directive {
     RequireTrustedTypesFor,
     /// `trusted-types` on a policy factory invocation.
     TrustedTypes,
+    /// `style-src-elem` is the effective directive for an inline Style element.
+    StyleSrcElem,
 }
 
 /// One ordered CSP violation candidate. The Global's report owner provides

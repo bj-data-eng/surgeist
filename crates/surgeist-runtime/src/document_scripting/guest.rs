@@ -365,6 +365,7 @@ pub(crate) struct GuestBacking {
 
 /// A retained verification decision for the original native attribute write.
 pub(super) struct PendingAttribute {
+    realm: RealmId,
     request: surgeist_dom::DomSourceAttributeVerificationRequest,
     reply: AttributeReply,
     parent: Option<surgeist_dom::DomSourceAttributeVerificationRequest>,
