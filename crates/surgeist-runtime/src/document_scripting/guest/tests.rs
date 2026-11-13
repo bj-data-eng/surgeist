@@ -51,6 +51,38 @@ pub(in crate::document_scripting) fn element_factory_qualifies_the_explicit_regi
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn registry_when_defined_retains_original_promise_and_constructor()
+ {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const registry = customElements;
+            if (typeof registry.whenDefined !== 'function') return false;
+            const waiting = registry.whenDefined('x-waiting');
+            if (!(waiting instanceof Promise) || registry.whenDefined('x-waiting') !== waiting) return false;
+            globalThis.definitionResults = [];
+            waiting.then(value => definitionResults.push(value));
+            registry.whenDefined('Invalid').catch(error => definitionResults.push(error.name));
+            const conversion = {};
+            registry.whenDefined({ toString() { throw conversion; } })
+                .catch(error => definitionResults.push(error === conversion));
+            try { registry.define('x-waiting', {}); } catch {}
+            if (registry.whenDefined('x-waiting') !== waiting) return false;
+            globalThis.exactDefinition = class extends HTMLElement {};
+            registry.define('x-waiting', exactDefinition);
+            const resolved = registry.whenDefined('x-waiting');
+            if (resolved === waiting || !(resolved instanceof Promise)) return false;
+            resolved.then(value => definitionResults.push(value));
+            return definitionResults.length === 0;
+        })()"#)
+    }).unwrap();
+    host.checkpoint().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "definitionResults.length === 4 && definitionResults.filter(value => value === exactDefinition).length === 2 && definitionResults.includes('SyntaxError') && definitionResults.includes(true)")
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_definition_preserves_guest_identity_and_failure() {
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();
