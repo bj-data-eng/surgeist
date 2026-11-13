@@ -695,6 +695,135 @@ fn document_factory_reaches_the_selected_definition_before_allocating_an_element
 }
 
 #[test]
+fn definition_candidates_include_closed_shadow_in_tree_order() {
+    use surgeist_html::construction::HtmlShadowRootMode;
+    use surgeist_html::values::Namespace;
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let snapshot = dom.snapshot();
+    let document_view = snapshot.document(document).unwrap();
+    let DomRegistryBinding::Registry(registry) = document_view.metadata().custom_element_registry()
+    else {
+        panic!("hosted registry");
+    };
+    let root = document_view.document_element().unwrap();
+    let mut batch = DomBatch::new();
+    let host = batch.create_element_ns(document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Closed));
+    let inside = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let light = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let outside = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let _detached = batch.create_element_ns(document, Namespace::html(), "x-upgrade");
+    let other_namespace = batch.create_element_ns(document, Namespace::svg(), "x-upgrade");
+    batch.insert_before(&inside, &shadow, None);
+    batch.insert_before(&light, &host, None);
+    batch.insert_before(&host, root, None);
+    batch.insert_before(&other_namespace, root, None);
+    batch.insert_before(&outside, root, None);
+    let commit = dom.apply(batch, &cancel()).unwrap();
+    let expected = [&inside, &light, &outside].map(|node| commit.created(node).unwrap().unwrap());
+    let snapshot = dom.snapshot();
+    let root = snapshot.node(document.node()).unwrap();
+    let definition =
+        HtmlCustomElementDefinition::new("x-upgrade".into(), "x-upgrade".into(), false, false);
+    let work = std::cell::Cell::new(0usize);
+    let mut actual = Vec::new();
+    root.visit_custom_element_upgrade_candidates_with(
+        (registry, &definition),
+        || {
+            work.set(work.get() + 1);
+            Ok::<_, DomError>(())
+        },
+        |_| Ok(()),
+        |node| {
+            actual.push(node);
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(actual, expected);
+    let mut visits = 0;
+    assert!(matches!(
+        root.visit_custom_element_upgrade_candidates_with(
+            (registry, &definition),
+            || Ok(()),
+            |_| Err::<(), _>(DomError::AllocationFailed),
+            |_| {
+                visits += 1;
+                Ok(())
+            },
+        ),
+        Err(DomError::AllocationFailed)
+    ));
+    assert_eq!(visits, 0);
+    let remaining = std::cell::Cell::new(work.get() - 1);
+    assert!(matches!(
+        root.visit_custom_element_upgrade_candidates_with(
+            (registry, &definition),
+            || {
+                let next = remaining.get().checked_sub(1).ok_or(DomError::Cancelled)?;
+                remaining.set(next);
+                Ok(())
+            },
+            |_| Ok(()),
+            |_| Ok(()),
+        ),
+        Err(DomError::Cancelled)
+    ));
+    let mut buttons = Vec::new();
+    for saved in [Some("x-button"), Some("x-other"), None] {
+        let created = source(
+            &mut dom,
+            DomSourceEdit::create_element_with_options(
+                document.node(),
+                DomElementCreationName::Local("button".into()),
+                DomElementCreationOptions {
+                    is: saved.map(Into::into),
+                    registry: None,
+                },
+            ),
+        );
+        let Some(DomSourceOutput::Node(button)) = created.output() else {
+            panic!("button");
+        };
+        buttons.push(button);
+    }
+    let parent = dom
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut connect = DomBatch::new();
+    for button in &buttons {
+        connect.insert_before(*button, parent, None);
+    }
+    dom.apply(connect, &cancel()).unwrap();
+    let snapshot = dom.snapshot();
+    let customized =
+        HtmlCustomElementDefinition::new("x-button".into(), "button".into(), false, false);
+    let mut matching = Vec::new();
+    snapshot
+        .node(document.node())
+        .unwrap()
+        .visit_custom_element_upgrade_candidates_with(
+            (registry, &customized),
+            || Ok::<_, DomError>(()),
+            |_| Ok(()),
+            |node| {
+                matching.push(node);
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(matching, [buttons[0]]);
+}
+
+#[test]
 fn customized_factory_publishes_one_receiver_and_retries_its_closing_phase() {
     use surgeist_html::{
         elements::native::HtmlCustomElementState,

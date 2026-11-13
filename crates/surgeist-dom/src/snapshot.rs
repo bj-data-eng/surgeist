@@ -574,6 +574,106 @@ impl<'a> DomNode<'a> {
             }
         }
     }
+    /// Visit matching custom-element definition candidates in shadow-including
+    /// preorder, including closed roots. Each retained traversal allocation
+    /// uses the caller's scratch admission and each visited node is metered.
+    pub fn visit_custom_element_upgrade_candidates_with<E: From<DomError>, Backing>(
+        self,
+        (registry, definition): (
+            crate::DomRegistryId,
+            &surgeist_html_semantics::HtmlCustomElementDefinition,
+        ),
+        mut step: impl FnMut() -> Result<(), E>,
+        mut reserve: impl FnMut(usize) -> Result<Backing, E>,
+        mut visit: impl FnMut(NodeId) -> Result<(), E>,
+    ) -> Result<(), E> {
+        if !matches!(self.kind(), DomNodeKind::Document(_)) {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        if registry.owner() != self.snapshot.owner() {
+            return Err(DomError::ForeignOwner.into());
+        }
+        let customized = !crate::names::same_code_units(
+            definition.name().code_units(),
+            definition.local_name().code_units(),
+            &mut step,
+        )?;
+        let mut siblings = self.children();
+        let mut shadow = None;
+        let mut pending = (Vec::<&[NodeId]>::new(), None);
+        loop {
+            let id = if let Some(root) = shadow.take() {
+                root
+            } else if let Some((&id, remaining)) = siblings.split_first() {
+                siblings = remaining;
+                id
+            } else if let Some(remaining) = pending.0.pop() {
+                step()?;
+                siblings = remaining;
+                continue;
+            } else {
+                return Ok(());
+            };
+            step()?;
+            let node = self.snapshot.node_with(id, &mut step)?;
+            if let Some(element) = node.as_element()
+                && element.custom_element_registry()
+                    == crate::DomRegistryBinding::Registry(registry)
+                && crate::names::in_html_namespace_with(element.name(), &mut step)?
+                && crate::names::same_code_units(
+                    element.name().local_name().code_units(),
+                    definition.local_name().code_units(),
+                    &mut step,
+                )?
+                && (!customized
+                    || match element.saved_is() {
+                        Some(saved) => crate::names::same_code_units(
+                            saved.code_units(),
+                            definition.name().code_units(),
+                            &mut step,
+                        )?,
+                        None => false,
+                    })
+            {
+                visit(id)?;
+            }
+            let children = node.children();
+            shadow = node.hosted_shadow_root();
+            if children.is_empty() && shadow.is_none() {
+                continue;
+            }
+            if !siblings.is_empty() {
+                step()?;
+                if pending.0.len() == pending.0.capacity() {
+                    let capacity = pending
+                        .0
+                        .capacity()
+                        .checked_mul(2)
+                        .ok_or(DomError::RepresentationExhausted)?
+                        .max(1);
+                    let bytes = capacity
+                        .checked_mul(size_of::<&[NodeId]>())
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    let backing = reserve(bytes)?;
+                    let mut replacement = Vec::new();
+                    replacement
+                        .try_reserve_exact(capacity)
+                        .map_err(|_| DomError::AllocationFailed)?;
+                    if replacement.capacity() > capacity {
+                        return Err(DomError::AllocationFailed.into());
+                    }
+                    for &frame in &pending.0 {
+                        step()?;
+                        replacement.push(frame);
+                    }
+                    pending = (replacement, Some(backing));
+                }
+                pending.0.push(siblings);
+            }
+            siblings = children;
+        }
+    }
+
     /// Inclusive preorder visiting each hosted root immediately after its host,
     /// before the host's ordinary children, independent of open/closed mode.
     pub fn shadow_including_tree_order(self) -> DomTreeOrder<'a> {
