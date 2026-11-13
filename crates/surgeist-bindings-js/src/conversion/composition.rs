@@ -1,6 +1,25 @@
-use crate::{PropertyKey, Value, ValueKind};
+use crate::{PropertyKey, Value, ValueKind, declarations::ElementCreationArgument};
 
 use super::{Conversion, Converted, Failure, IntegerType, Rule, Type, Work};
+
+pub(super) fn element_creation_argument<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<ElementCreationArgument>, Failure> {
+    let kind = cx.scope.kind(input);
+    let (value, storage) = match cx.core(kind)? {
+        ValueKind::Object | ValueKind::Null | ValueKind::Undefined => {
+            let Converted { value, storage } =
+                cx.value(&super::declarations::element_creation_options(), input)?;
+            (ElementCreationArgument::Options(value), storage)
+        }
+        _ => {
+            let Converted { value, storage } = cx.value(&super::types::DOM_STRING, input)?;
+            (ElementCreationArgument::String(value), storage)
+        }
+    };
+    Ok(Converted { value, storage })
+}
 
 /// Closed typed descriptors compose without accepting downstream conversion
 /// implementations or guest handles as owned conversion results.

@@ -144,16 +144,19 @@ impl Draft {
             None
         } else {
             let formation = source::formation::Formation::new(self, cancel)?;
-            let element = self.native_element_ns(
-                namespace,
-                qualified_name,
-                self.document_metadata(document)?.document_environment(),
+            let element = self.native_element(
+                &crate::DomElementCreationName::Qualified(
+                    namespace.clone(),
+                    qualified_name.clone(),
+                ),
+                &crate::DomElementCreationOptions::default(),
+                self.document_metadata(document)?,
                 formation.as_ref(),
                 cancel,
             )?;
             let root =
                 self.allocate_element_formed(element, document, limits, cancel, formation)?;
-            self.initialize_native_element(root, limits, cancel)?;
+            self.initialize_native_element(root, false, limits, cancel)?;
             Some(root)
         };
         // Root name validation precedes any doctype operand/effect. The real
@@ -359,8 +362,15 @@ impl Draft {
         let operand = source::formation::Formation::new(self, cancelled)?;
         let local_name = source::formation::string(local_name, operand.as_ref(), cancelled)?;
         let formation = source::formation::Formation::new(self, cancelled)?;
-        let element = self.native_element(&local_name, metadata, formation.as_ref(), cancelled)?;
-        drop(local_name);
+        let name = crate::DomElementCreationName::Local(local_name);
+        let element = self.native_element(
+            &name,
+            &crate::DomElementCreationOptions::default(),
+            metadata,
+            formation.as_ref(),
+            cancelled,
+        )?;
+        drop(name);
         drop(operand);
         let key = self.allocate_element_formed(element, document, limits, cancelled, formation)?;
         Ok(key)

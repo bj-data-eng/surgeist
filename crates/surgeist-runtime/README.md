@@ -314,6 +314,13 @@ Native Documents and ordinary Fragments use their registered creation realm
 on first exposure, including after their original host retires. Ancestry and
 event paths share the same wrapper. The Fragment factory uses the receiver
 Document's realm. The attached Window supplies its own constructor authority.
+`Document.createElement` and `Document.createElementNS` form the canonical
+detached Element and admit its exact wrapper in the receiver's registered
+creation realm before publication. DOM owns name validation, namespace and
+prefix handling, and initialization of supported element families. The
+ordinary factory path accepts the legacy string and the creation dictionary,
+including saved `is` and an explicit null registry. A non-null guest registry
+brand and synchronous custom-element execution are pending.
 Native ShadowRoots inherit DocumentFragment and expose their canonical host,
 mode, focus delegation, slot assignment, clonability and serializability.
 Element.shadowRoot exposes open roots. Node root reads and event paths use

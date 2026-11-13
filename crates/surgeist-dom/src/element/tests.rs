@@ -76,6 +76,7 @@ fn native(names: &mut Names, local: &str) -> DomElement {
     let cancel = AtomicBool::new(false);
     let formed = DomElement::native(
         name,
+        None,
         crate::DomDocumentEnvironment::new(crate::DomNativeInputPlatform::headless()),
         ElementFormation::new(
             &names.registry,

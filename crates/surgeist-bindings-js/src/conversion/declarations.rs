@@ -8,6 +8,8 @@ use super::{
 use crate::TrustedAttributeValue;
 use crate::declarations::DocumentReadyState;
 use crate::declarations::DocumentVisibilityState;
+use crate::declarations::ElementCreationArgument;
+use crate::declarations::ElementCreationOptions;
 use crate::declarations::EventInit;
 use crate::declarations::EventListenerOptions;
 use crate::declarations::GetRootNodeOptions;
@@ -54,6 +56,47 @@ fn convert_get_root_node_options<'s>(
         None => false,
     };
     Ok(cx.plain(GetRootNodeOptions { composed }))
+}
+
+/// Complete dictionary conversion for `ElementCreationOptions`.
+pub fn element_creation_options() -> Type<ElementCreationOptions> {
+    Type::scalar(convert_element_creation_options)
+}
+
+fn convert_element_creation_options<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<ElementCreationOptions>, Failure> {
+    let object = cx.dictionary("ElementCreationOptions", input)?;
+    let custom_element_registry_is_null = match cx.member(
+        input,
+        object,
+        &[
+            99, 117, 115, 116, 111, 109, 69, 108, 101, 109, 101, 110, 116, 82, 101, 103, 105, 115,
+            116, 114, 121,
+        ],
+    )? {
+        Some(value) => cx.null_interface_member("CustomElementRegistry", &value)?,
+        None => false,
+    };
+    let is = match cx.member(input, object, &[105, 115])? {
+        Some(value) => Some(cx.value(&types::DOM_STRING, &value)?),
+        None => None,
+    };
+    let Converted { value: is, storage } = match is {
+        Some(Converted { value, storage }) => Converted {
+            value: Some(value),
+            storage,
+        },
+        None => cx.plain(None),
+    };
+    Ok(Converted {
+        value: ElementCreationOptions {
+            custom_element_registry_is_null,
+            is,
+        },
+        storage,
+    })
 }
 
 /// Complete dictionary conversion for `ShadowRootInit`.
@@ -404,6 +447,25 @@ pub fn document_create_element_0_local_name() -> Argument<Type<DomString>> {
     )
 }
 
+fn default_document_create_element_0_options(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<ElementCreationArgument>, Failure> {
+    Ok(cx.plain(ElementCreationArgument::Options(
+        ElementCreationOptions::default(),
+    )))
+}
+
+/// Selected argument `Document.createElement:0/options` (not overload selection).
+pub fn document_create_element_0_options() -> Argument<Type<ElementCreationArgument>> {
+    Argument::new(
+        "Document.createElement:0/options",
+        1,
+        true,
+        Type::scalar(super::composition::element_creation_argument),
+        Some(default_document_create_element_0_options),
+    )
+}
+
 /// Selected argument `Document.createElementNS:0/namespace` (not overload selection).
 pub fn document_create_element_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
@@ -423,6 +485,25 @@ pub fn document_create_element_ns_0_qualified_name() -> Argument<Type<DomString>
         false,
         types::DOM_STRING,
         None,
+    )
+}
+
+fn default_document_create_element_ns_0_options(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<ElementCreationArgument>, Failure> {
+    Ok(cx.plain(ElementCreationArgument::Options(
+        ElementCreationOptions::default(),
+    )))
+}
+
+/// Selected argument `Document.createElementNS:0/options` (not overload selection).
+pub fn document_create_element_ns_0_options() -> Argument<Type<ElementCreationArgument>> {
+    Argument::new(
+        "Document.createElementNS:0/options",
+        2,
+        true,
+        Type::scalar(super::composition::element_creation_argument),
+        Some(default_document_create_element_ns_0_options),
     )
 }
 

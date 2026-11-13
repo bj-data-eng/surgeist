@@ -691,8 +691,14 @@ def field_name(name):
 
 
 def null_registry_member(member):
-    return (member.get("id") == "ShadowRootInit.customElementRegistry"
+    return (member.get("id") in {"ShadowRootInit.customElementRegistry", "ElementCreationOptions.customElementRegistry"}
             and member["type"] == {"kind": "nullable", "inner": {"kind": "named", "name": "CustomElementRegistry"}}
+            and not member["required"] and "default" not in member)
+
+
+def string_member(member):
+    return (member.get("id") == "ElementCreationOptions.is"
+            and member["type"] == {"kind": "named", "name": "DOMString"}
             and not member["required"] and "default" not in member)
 
 
@@ -704,8 +710,8 @@ def member_field(member):
 def lower_values(data):
     """Lower validated declarations for the selected conversion profiles.
 
-    Boolean and enumeration members need no interface brand. ShadowRootInit
-    also admits the null alternative of its unavailable registry interface.
+    Scalar members need no interface brand. The selected registry profiles
+    admit the null alternative of the unavailable registry interface.
     The normalized member order is also the later conversion read order.
     """
     definitions = {d["name"]: d for d in data["declarations"] if not d.get("partial", False)}
@@ -730,7 +736,9 @@ def lower_values(data):
                 if ty["kind"] != "named" or ty.get("attributes"):
                     return None
                 target = definitions.get(ty["name"])
-                if ty["name"] != "boolean" and (target is None or target["kind"] != "enumeration"):
+                if ty["name"] != "boolean" and (target is None or target["kind"] != "enumeration") and not (
+                    string_member(m)
+                ):
                     return None
             require(all(previous["name"] != m["name"] for previous in result), "duplicate inherited dictionary member")
             result.append(m)
@@ -761,7 +769,7 @@ def member_type(member):
     if null_registry_member(member):
         return "bool"
     name = member["type"]["name"]
-    value = "bool" if name == "boolean" else name
+    value = {"boolean": "bool", "DOMString": "DomString"}.get(name, name)
     return value if member["required"] or "default" in member else "Option<" + value + ">"
 
 
@@ -786,6 +794,8 @@ def emit_values(model):
               "// Source-adapted WHATWG declarations: licenses/whatwg/LICENSE and NOTICE.md.",
               "//! Typed IDL values from the retained binding description.",
               "//!", "//! These values do not install interfaces or convert guest inputs.", ""]
+    if any(string_member(m) for d in model["dictionaries"] for m in d["members"]):
+        result += ["use crate::DomString;", ""]
     enumerations = {d["name"]: d for d in model["enumerations"]}
     for d in model["enumerations"]:
         result += ["/// Values of the declared `" + d["name"] + "` enumeration.",
@@ -806,7 +816,8 @@ def emit_values(model):
     for d in model["dictionaries"]:
         defaults = None if any(m["required"] for m in d["members"]) else [member_default(m, enumerations) for m in d["members"]]
         derive_default = defaults is not None and all(value in {"false", "None"} for value in defaults)
-        derives = "Clone, Copy, Debug, " + ("Default, " if derive_default else "") + "PartialEq, Eq"
+        copy = "" if any(string_member(m) for m in d["members"]) else "Clone, Copy, "
+        derives = copy + "Debug, " + ("Default, " if derive_default else "") + "PartialEq, Eq"
         doc = ("Complete `" + d["name"] + "` dictionary value for the admitted registry profile."
                if any(null_registry_member(m) for m in d["members"])
                else "Complete brand-free `" + d["name"] + "` dictionary value.")
@@ -822,7 +833,19 @@ def emit_values(model):
             result += ["impl Default for " + d["name"] + " {", "    fn default() -> Self {", "        Self {"]
             result += ["            " + member_field(m) + ": " + value + "," for m, value in zip(d["members"], defaults)]
             result += ["        }", "    }", "}", ""]
+    if element_creation_dictionary(model):
+        result += ["/// The declared string or dictionary input to the Document element factories.",
+                   "#[derive(Debug, PartialEq, Eq)]",
+                   "pub enum ElementCreationArgument {",
+                   "    /// The legacy string alternative.",
+                   "    String(DomString),",
+                   "    /// The dictionary alternative in the admitted registry profile.",
+                   "    Options(ElementCreationOptions),", "}", ""]
     return "\n".join(result)
+
+
+def element_creation_dictionary(model):
+    return any(d["name"] == "ElementCreationOptions" for d in model["dictionaries"])
 
 
 def conversion_type(ty, model, aliases=frozenset()):
@@ -845,6 +868,11 @@ def conversion_type(ty, model, aliases=frozenset()):
     ]:
         return ("TrustedAttributeValue", "Type<TrustedAttributeValue>",
                 "types::TRUSTED_ATTRIBUTE_VALUE")
+    if ty["kind"] == "union" and ty["members"] == [
+        {"kind": "named", "name": "DOMString"}, {"kind": "named", "name": "ElementCreationOptions"}
+    ] and element_creation_dictionary(model):
+        return ("ElementCreationArgument", "Type<ElementCreationArgument>",
+                "Type::scalar(super::composition::element_creation_argument)")
     if ty["kind"] != "named":
         return None
     name = ty["name"]
@@ -912,8 +940,11 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
               "    Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,", "};"]
     if any(a["info"][0] == "TrustedAttributeValue" for a in arguments):
         result.append("use crate::TrustedAttributeValue;")
-    for definition in sorted(model["enumerations"] + model["dictionaries"], key=lambda definition: definition["name"]):
-        result.append("use crate::declarations::" + definition["name"] + ";")
+    imports = [d["name"] for d in model["enumerations"] + model["dictionaries"]]
+    if any(a["info"][0] == "ElementCreationArgument" for a in arguments):
+        imports.append("ElementCreationArgument")
+    for name in sorted(imports):
+        result.append("use crate::declarations::" + name + ";")
     result += ["use crate::{DomString, IntegerKind, IntegerMode, IntegerValue, UsvString, Value};", ""]
     for definition in model["enumerations"]:
         name = definition["name"]
@@ -929,6 +960,7 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
     enumerations = {d["name"]: d for d in model["enumerations"]}
     for definition in model["dictionaries"]:
         name, function = definition["name"], field_name(definition["name"])
+        retained_string = next((m for m in definition["members"] if string_member(m)), None)
         result += ["/// Complete dictionary conversion for `" + name + "`.",
                    "pub fn " + function + "() -> Type<" + name + "> {",
                    "    Type::scalar(convert_" + function + ")", "}", "",
@@ -953,6 +985,8 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
                 result += ["    )? {"]
             if null_registry_member(member):
                 result += ["        Some(value) => cx.null_interface_member(\"CustomElementRegistry\", &value)?,"]
+            elif string_member(member):
+                result += ["        Some(value) => Some(cx.value(&types::DOM_STRING, &value)?),"]
             else:
                 descriptor = conversion_type(member["type"], model)[2]
                 optional = not member["required"] and "default" not in member
@@ -963,8 +997,18 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
                 default = member_default(member, enumerations)
                 result.append("        None => " + default + ",")
             result += ["    };"]
+        if retained_string:
+            field = member_field(retained_string)
+            result += ["    let Converted { value: " + field + ", storage } = match " + field + " {",
+                       "        Some(Converted { value, storage }) => Converted {",
+                       "            value: Some(value),", "            storage,", "        },",
+                       "        None => cx.plain(None),", "    };"]
         fields = ", ".join(member_field(m) for m in definition["members"])
-        if len(fields) <= 18:
+        if retained_string:
+            result += ["    Ok(Converted {", "        value: " + name + " {"]
+            result += ["            " + member_field(m) + "," for m in definition["members"]]
+            result += ["        },", "        storage,", "    })", "}", ""]
+        elif len(fields) <= 18:
             result += ["    Ok(cx.plain(" + name + " { " + fields + " }))", "}", ""]
         else:
             result += ["    Ok(cx.plain(" + name + " {"]
@@ -991,6 +1035,8 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
             kind = default["kind"]
             if kind == "empty_dictionary":
                 expression = output + "::default()"
+                if output == "ElementCreationArgument":
+                    expression = "ElementCreationArgument::Options(\n        ElementCreationOptions::default(),\n    )"
             elif kind == "boolean":
                 expression = str(default["value"]).lower()
             elif kind == "integer":

@@ -4986,24 +4986,34 @@
     "Document.createElement:0/call": {
       "kind": "native",
       "adapter": "document.createelement.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_element"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"}],
       "requirements": [
         {
-          "owner": "surgeist-dom",
-          "contract": "Exact nondefault options/registry and reached family initialization contract for createElement; preserve existing admitted default native profiles.",
+          "owner": "surgeist-runtime",
+          "contract": "Supply the authentic non-null registry brand and synchronous constructor and reaction path for reached custom-element definitions.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document"
+        },
+        {
+          "owner": "surgeist-dom",
+          "contract": "Supply the reached native element-family initializers and hosted frame, iframe, and SVG Script state where the current native profile refuses them.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-create-element"
         }
       ]
     },
     "Document.createElementNS:0/call": {
       "kind": "native",
       "adapter": "document.createelementns.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_element_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"}],
       "requirements": [
         {
-          "owner": "surgeist-dom",
-          "contract": "Exact nondefault options/registry and reached family initialization contract for createElementNS; preserve existing admitted default native profiles.",
+          "owner": "surgeist-runtime",
+          "contract": "Supply the authentic non-null registry brand and synchronous constructor and reaction path for reached custom-element definitions.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document"
+        },
+        {
+          "owner": "surgeist-dom",
+          "contract": "Supply the reached native element-family initializers and hosted frame, iframe, and SVG Script state where the current native profile refuses them.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-create-element"
         }
       ]
     },

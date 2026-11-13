@@ -34,6 +34,90 @@ fn bytes(dom: &Dom) -> usize {
 }
 
 #[test]
+fn prepared_detached_element_publishes_only_after_projection_and_watch_admission() {
+    use crate::{DomElementCreationName, DomElementCreationOptions, DomSourceLimits, Namespace};
+    use std::cell::Cell;
+
+    struct Projection<'a>(&'a Cell<usize>);
+    impl Drop for Projection<'_> {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let source = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    let input = || {
+        (
+            DomElementCreationName::Qualified(Namespace::from_uri("urn:test"), "p:Exact".into()),
+            DomElementCreationOptions::default(),
+        )
+    };
+    let before = dom.snapshot().stamp();
+    let refusal = dom.create_detached_element_with_node_retirement_watch(
+        document,
+        input(),
+        (&inbox, 4),
+        (source, GENEROUS),
+        &cancel,
+        |name| {
+            name.step()?;
+            assert_eq!(
+                name.name().local_name().code_units(),
+                [69, 120, 97, 99, 116]
+            );
+            Err::<(), _>(DomError::NotSupported)
+        },
+    );
+    assert!(matches!(refusal, Err(DomError::NotSupported)));
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert!(dom.pending_source_edit().is_none());
+    assert!(dom.node_retirements.is_none());
+
+    let drops = Cell::new(0);
+    let refused_watch = dom.create_detached_element_with_node_retirement_watch(
+        document,
+        input(),
+        (&inbox, 4),
+        (source, DomNodeRetirementLimits::new(16_000_000, 0)),
+        &cancel,
+        |_| Ok::<_, DomError>(Projection(&drops)),
+    );
+    assert!(matches!(
+        refused_watch,
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(drops.get(), 1);
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert!(dom.pending_source_edit().is_none());
+    assert!(dom.node_retirements.is_none());
+
+    let (watched, projection) = dom
+        .create_detached_element_with_node_retirement_watch(
+            document,
+            input(),
+            (&inbox, 4),
+            (source, GENEROUS),
+            &cancel,
+            |_| Ok::<_, DomError>(Projection(&drops)),
+        )
+        .unwrap();
+    assert_ne!(dom.snapshot().stamp(), before);
+    assert!(dom.snapshot().node(watched.node()).is_ok());
+    assert_eq!(drops.get(), 1);
+    drop(projection);
+    assert_eq!(drops.get(), 2);
+    let mut retire = DomBatch::new();
+    retire.destroy(watched.node());
+    dom.apply(retire, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (watched.node(), 4));
+    assert!(inbox.take().is_none());
+}
+
+#[test]
 fn creation_and_watch_refusal_preserve_the_original_dom_publication() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, original) = fixture(&cancel);

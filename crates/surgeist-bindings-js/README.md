@@ -160,8 +160,11 @@ first. Cleanup guards enter no SDK code, and cleanup diagnostics remain readable
 after an account drops. Enumeration attribute assignment ignores a nonmember
 after one coercion. Generated
 values and conversion descriptors derive from the single
-[authored description](bindings/dom-core.json). Dictionaries that require native
-brands and union and overload selection have separate binding work.
+[authored description](bindings/dom-core.json). The Document element factory
+descriptors select the string or dictionary alternative and retain the exact
+UTF-16 payload. Their dictionary supports absent or null registry members.
+Native registry brands and general union and overload selection have separate
+binding work.
 
 [Runtime's native document attachment](../surgeist-runtime/README.md) installs
 the standard `CSS` namespace in the selected Window realm. `CSS.escape` uses

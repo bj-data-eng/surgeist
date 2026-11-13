@@ -522,7 +522,7 @@ impl Draft {
             };
             self.allocate_formed(kind, document, limits, cancel, formation)?
         };
-        self.initialize_native_element(copy, limits, cancel)?;
+        self.initialize_native_element(copy, false, limits, cancel)?;
         if let transaction::KindRead::Element(element) = original.kind() {
             let cause = if element
                 .input_state()

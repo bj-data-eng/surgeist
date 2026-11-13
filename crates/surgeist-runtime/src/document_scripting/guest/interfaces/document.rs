@@ -13,6 +13,7 @@ mod attr;
 mod attr_factory;
 mod character_data;
 pub(super) mod element;
+mod element_factory;
 mod fragment;
 mod ordinary;
 mod parent_node;
@@ -162,6 +163,7 @@ impl DocumentPrototypes {
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         fragment::install_factory(scope, &document, &funding.capture)?;
         attr_factory::install(scope, &document, &funding.capture)?;
+        element_factory::install(scope, &document, &funding.capture)?;
         tree::install_adoption(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         parent_node::install(
