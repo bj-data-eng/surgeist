@@ -882,7 +882,7 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
     set_style: impl Fn(u32, u32, &mut NodeInputOf<S>),
     request: LayoutRootRequestOf<S>,
     sibling_style: NodeInputOf<S>,
-) {
+) -> crate::CompletedLayoutBatchOf<u32, S> {
     let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
     let inset = |value| {
         crate::LengthAutoOf::value(crate::LengthPercentageOf::px(S::from_f64(value)).unwrap())
@@ -947,6 +947,7 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
         assert_eq!(output.location, location);
         assert_eq!(output.source_index, crate::SourceIndex::new(0));
     }
+    batch
 }
 
 #[test]
@@ -1481,6 +1482,71 @@ fn deep_collapsed_flex_chain_preserves_leaf_height() {
         || {
             assert_collapsed_flex_chain::<f32>(6);
             assert_collapsed_flex_chain::<f64>(6);
+        },
+    );
+}
+
+fn assert_baseline_flex_chain<S: LayoutScalar>(depth: u32) {
+    let batch = assert_layout_chain_with_request::<S>(
+        Display::Flex,
+        crate::Position::Relative,
+        depth,
+        |node, leaf, style| {
+            style.size.width =
+                crate::PreferredSizeOf::px(S::from_f64(if node == 0 { 60.0 } else { 120.0 }));
+            style.min_size.width =
+                crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::ZERO).unwrap());
+            style.align_items = Some(if node == 0 {
+                crate::AlignItems::Baseline
+            } else {
+                crate::AlignItems::FlexStart
+            });
+            if node == leaf {
+                style.display = Display::Block;
+            }
+        },
+        standalone(),
+        NodeInputOf {
+            display: Display::None,
+            ..NodeInputOf::default()
+        },
+    );
+    let mut size_queries = 0;
+    for entry in batch.cache_store_entries() {
+        if entry.node() == 1
+            && entry.input().run_mode() == crate::RunMode::ComputeSize
+            && entry.input().physical_baseline_demand()
+            && entry.output().size == Size::new(S::from_f64(60.0), S::from_f64(40.0))
+        {
+            size_queries += 1;
+            // The empty Block's line-under edge is 40px. Each sole item
+            // propagates it at a zero normal offset through both ports.
+            let expected = crate::Point::new(None, Some(S::from_f64(40.0)));
+            assert_eq!(entry.output().first_baselines, expected);
+            assert_eq!(entry.output().last_baselines, expected);
+        }
+    }
+    assert!(size_queries > 0, "settled baseline size query is retained");
+}
+
+#[test]
+fn shallow_flex_baseline_chain_exports_settled_ports() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_flex_baseline_chain_exports_settled_ports",
+        || {
+            assert_baseline_flex_chain::<f32>(2);
+            assert_baseline_flex_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_flex_baseline_chain_exports_settled_ports() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_flex_baseline_chain_exports_settled_ports",
+        || {
+            assert_baseline_flex_chain::<f32>(24);
+            assert_baseline_flex_chain::<f64>(24);
         },
     );
 }

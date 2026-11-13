@@ -1533,20 +1533,6 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
     }
 }
 
-pub(super) fn compute_sized_item<'input, Tree, M>(
-    tree: &mut Tree,
-    item: &ResolvedFlexItem<Tree::Node, Tree::Scalar>,
-    style: &FlexItemProjection<'_, Tree::Scalar>,
-    constants: &Constants<Tree::Scalar>,
-    mode: RunMode,
-) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let input = sized_item_request(tree, item, style, constants, mode)?;
-    tree.compute_child(item.node, input)
-}
-
 pub(super) fn sized_item_request<'input, Tree, M>(
     tree: &Tree,
     item: &ResolvedFlexItem<Tree::Node, Tree::Scalar>,

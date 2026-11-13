@@ -1,10 +1,10 @@
 use super::distribution_number::DistributionNumber;
 use super::flexible_lengths::{clamp_cross_size, flex_main_size, flex_used_space};
-use super::items::{FinalFlexItem, ResolvedFlexItem};
+use super::items::{FinalFlexItem, FlexItemRequest, ResolvedFlexItem, sized_item_request};
 use super::lines::FlexLine;
 use super::{
-    AlignContent, AlignItems, BaselinesOf, ComputeOutputOf, Constants, Direction, FlexAxes,
-    LayoutScalar, Point, Size,
+    AlignContent, AlignItems, BaselinesOf, Compute, ComputeOutputOf, Constants, Direction,
+    FlexAxes, LayoutScalar, Point, RunMode, Size, with_flex_item_projection,
 };
 use crate::WritingMode;
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
@@ -12,7 +12,7 @@ use crate::layout_math::OptionalSizeExt;
 use crate::output::PhysicalBaseline;
 use crate::{Edges, LayoutResultOf, LengthResolutionStatus};
 use core::cmp::Ordering;
-use core::ops::{Add, Div};
+use core::ops::{Add, ControlFlow, Div};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FlexItemBaseline<S: LayoutScalar> {
@@ -378,13 +378,13 @@ impl BaselinePort {
     }
 }
 
-fn baseline_export_item<'a, Item, S: LayoutScalar>(
-    items: &'a [Item],
+fn baseline_export_item<Item, S: LayoutScalar>(
+    items: &[Item],
     lines: &[FlexLine<S>],
     axes: FlexAxes,
     port: BaselinePort,
     sharing_group: impl Fn(&Item) -> Option<(BaselinePort, PhysicalSide)>,
-) -> Option<(&'a Item, Option<BaselinePort>)> {
+) -> Option<(usize, Option<BaselinePort>)> {
     let first = matches!(port, BaselinePort::First);
     // Line and item slices remain in collection order, before axis reversal.
     let from_first_line = first != axes.cross_is_reversed();
@@ -394,40 +394,40 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
     } else {
         lines.next_back()?
     };
-    let line_items = &items[line.start..line.end];
+    let line_items = line.start..line.end;
     let from_start = first != axes.main_is_reversed();
     if axes.main_logical_axis() == LogicalAxis::Inline {
         let preferred_edge = port.fallback_side(axes.flow_axes());
         let mut fallback_group = None;
-        let mut consider = |item: &'a Item| {
-            let (item_port, edge) = sharing_group(item)?;
-            fallback_group.get_or_insert((item, item_port));
-            (edge == preferred_edge).then_some((item, item_port))
+        let mut consider = |index| {
+            let (item_port, edge) = sharing_group(&items[index])?;
+            fallback_group.get_or_insert((index, item_port));
+            (edge == preferred_edge).then_some((index, item_port))
         };
         let sharing = if from_start {
-            line_items.iter().find_map(&mut consider)
+            line_items.clone().find_map(&mut consider)
         } else {
-            line_items.iter().rev().find_map(&mut consider)
+            line_items.clone().rev().find_map(&mut consider)
         };
         if let Some((item, port)) = sharing.or(fallback_group) {
             return Some((item, Some(port)));
         }
     }
     // An edge line can retain a strut without containing a rendered item.
-    let fallback_items = if line_items.is_empty() {
+    let mut fallback_items = if line_items.is_empty() {
         let line = if from_first_line {
             lines.find(|line| line.start < line.end)?
         } else {
             lines.rfind(|line| line.start < line.end)?
         };
-        &items[line.start..line.end]
+        line.start..line.end
     } else {
         line_items
     };
     let fallback = if from_start {
-        fallback_items.first()
+        fallback_items.next()
     } else {
-        fallback_items.last()
+        fallback_items.next_back()
     };
     fallback.map(|item| (item, None))
 }
@@ -436,50 +436,14 @@ pub(super) fn resolved_vertical_baselines<Node: Copy, S: LayoutScalar, M>(
     items: &[ResolvedFlexItem<Node, S>],
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
-    mut measure: impl FnMut(
-        &ResolvedFlexItem<Node, S>,
-    ) -> LayoutResultOf<Node, Option<ComputeOutputOf<S>>, S, M>,
 ) -> LayoutResultOf<Node, BaselinesOf<S>, S, M> {
-    let axes = constants.axes;
-    let mut last_measurement = None;
-    let mut baseline_for_port = |port| {
-        let Some((item, sharing_port)) = baseline_export_item(items, lines, axes, port, |item| {
-            item.baseline
-                .sharing_group(item.baseline_preference(axes), axes)
-        }) else {
+    let baseline_for_port = |port| {
+        let Some((index, sharing_port)) =
+            resolved_baseline_item(items, lines, constants.axes, port)
+        else {
             return Ok(Point::NONE);
         };
-        let measured = match last_measurement {
-            Some((index, output)) if index == item.source_index => output,
-            _ => {
-                let output = measure(item)?;
-                last_measurement = Some((item.source_index, output));
-                output
-            }
-        };
-        let mut baseline = item.baseline;
-        let size = if let Some(output) = measured {
-            baseline.refresh(output);
-            output.size
-        } else {
-            item.target_size
-        };
-        let location = axes.point_from_main_cross(
-            item.normal_main_location(constants, size)
-                .map_err(|value| {
-                    crate::error::sizing_resolution_error(
-                        item.node,
-                        LengthResolutionStatus::InvalidNumeric { value }.into(),
-                    )
-                })?,
-            item.normal_cross_location(constants, size),
-        );
-        Ok(match port {
-            BaselinePort::First => {
-                baseline.translated_start_item(size, location, axes, sharing_port)
-            }
-            BaselinePort::Last => baseline.translated_end_item(size, location, axes, sharing_port),
-        })
+        resolved_baseline_point(&items[index], constants, port, sharing_port, None)
     };
     Ok(BaselinesOf {
         first: baseline_for_port(BaselinePort::First)?,
@@ -487,16 +451,178 @@ pub(super) fn resolved_vertical_baselines<Node: Copy, S: LayoutScalar, M>(
     })
 }
 
+fn resolved_baseline_item<Node, S: LayoutScalar>(
+    items: &[ResolvedFlexItem<Node, S>],
+    lines: &[FlexLine<S>],
+    axes: FlexAxes,
+    port: BaselinePort,
+) -> Option<(usize, Option<BaselinePort>)> {
+    baseline_export_item(items, lines, axes, port, |item| {
+        item.baseline
+            .sharing_group(item.baseline_preference(axes), axes)
+    })
+}
+
+fn resolved_baseline_point<Node: Copy, S: LayoutScalar, M>(
+    item: &ResolvedFlexItem<Node, S>,
+    constants: &Constants<S>,
+    port: BaselinePort,
+    sharing_port: Option<BaselinePort>,
+    measured: Option<ComputeOutputOf<S>>,
+) -> LayoutResultOf<Node, Point<Option<S>>, S, M> {
+    let axes = constants.axes;
+    let mut baseline = item.baseline;
+    let size = if let Some(output) = measured {
+        baseline.refresh(output);
+        output.size
+    } else {
+        item.target_size
+    };
+    let location = axes.point_from_main_cross(
+        item.normal_main_location(constants, size)
+            .map_err(|value| {
+                crate::error::sizing_resolution_error(
+                    item.node,
+                    LengthResolutionStatus::InvalidNumeric { value }.into(),
+                )
+            })?,
+        item.normal_cross_location(constants, size),
+    );
+    Ok(match port {
+        BaselinePort::First => baseline.translated_start_item(size, location, axes, sharing_port),
+        BaselinePort::Last => baseline.translated_end_item(size, location, axes, sharing_port),
+    })
+}
+
+pub(super) struct BaselineExport<Node, S: LayoutScalar> {
+    items: Vec<ResolvedFlexItem<Node, S>>,
+    lines: Vec<FlexLine<S>>,
+    phase: BaselineExportPhase<S>,
+}
+
+enum BaselineExportPhase<S: LayoutScalar> {
+    First,
+    Last {
+        first: Point<Option<S>>,
+        measurement: Option<(usize, ComputeOutputOf<S>)>,
+    },
+    Complete(BaselinesOf<S>),
+}
+
+pub(super) struct BaselineChild<Node, S: LayoutScalar> {
+    pub(super) request: FlexItemRequest<Node, S>,
+    index: usize,
+    sharing_port: Option<BaselinePort>,
+}
+
+type BaselineStep<Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<BaselinesOf<S>, BaselineChild<Node, S>>, S, M>;
+
+impl<Node: Copy, S: LayoutScalar> BaselineExport<Node, S> {
+    pub(super) fn new(items: Vec<ResolvedFlexItem<Node, S>>, lines: Vec<FlexLine<S>>) -> Self {
+        Self {
+            items,
+            lines,
+            phase: BaselineExportPhase::First,
+        }
+    }
+
+    pub(super) fn advance<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        constants: &Constants<S>,
+    ) -> BaselineStep<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            let (port, measurement) = match self.phase {
+                BaselineExportPhase::First => (BaselinePort::First, None),
+                BaselineExportPhase::Last { measurement, .. } => (BaselinePort::Last, measurement),
+                BaselineExportPhase::Complete(baselines) => {
+                    return Ok(ControlFlow::Break(baselines));
+                }
+            };
+            let Some((index, sharing_port)) =
+                resolved_baseline_item(&self.items, &self.lines, constants.axes, port)
+            else {
+                self.record(Point::NONE, None);
+                continue;
+            };
+            let item = &self.items[index];
+            if let Some((source_index, output)) = measurement
+                && source_index == item.source_index
+            {
+                let point =
+                    resolved_baseline_point(item, constants, port, sharing_port, Some(output))?;
+                self.record(point, None);
+                continue;
+            }
+            let input = with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                sized_item_request(tree, item, &style, constants, RunMode::ComputeSize)
+            })?;
+            return Ok(ControlFlow::Continue(BaselineChild {
+                request: FlexItemRequest {
+                    node: item.node,
+                    input,
+                },
+                index,
+                sharing_port,
+            }));
+        }
+    }
+
+    pub(super) fn accept<M>(
+        &mut self,
+        constants: &Constants<S>,
+        child: BaselineChild<Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let port = match self.phase {
+            BaselineExportPhase::First => BaselinePort::First,
+            BaselineExportPhase::Last { .. } => BaselinePort::Last,
+            BaselineExportPhase::Complete(_) => {
+                unreachable!("completed Flex baseline export has no pending child")
+            }
+        };
+        let item = &self.items[child.index];
+        let point =
+            resolved_baseline_point(item, constants, port, child.sharing_port, Some(output))?;
+        self.record(point, Some((item.source_index, output)));
+        Ok(())
+    }
+
+    fn record(
+        &mut self,
+        point: Point<Option<S>>,
+        measurement: Option<(usize, ComputeOutputOf<S>)>,
+    ) {
+        self.phase = match self.phase {
+            BaselineExportPhase::First => BaselineExportPhase::Last {
+                first: point,
+                measurement,
+            },
+            BaselineExportPhase::Last { first, .. } => {
+                BaselineExportPhase::Complete(BaselinesOf { first, last: point })
+            }
+            BaselineExportPhase::Complete(_) => {
+                unreachable!("completed Flex baseline export has no remaining port")
+            }
+        };
+    }
+}
+
 pub(super) fn first_final_vertical_baseline<Node, S: LayoutScalar>(
     items: &[FinalFlexItem<Node, S>],
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let (item, sharing_port) =
+    let (index, sharing_port) =
         baseline_export_item(items, lines, constants.axes, BaselinePort::First, |item| {
             item.baseline
                 .sharing_group(item.baseline_preference, constants.axes)
         })?;
+    let item = &items[index];
     Some(item.baseline.translated_start_item(
         item.output.size,
         item.normal_location,
@@ -510,11 +636,12 @@ pub(super) fn last_final_vertical_baseline<Node, S: LayoutScalar>(
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let (item, sharing_port) =
+    let (index, sharing_port) =
         baseline_export_item(items, lines, constants.axes, BaselinePort::Last, |item| {
             item.baseline
                 .sharing_group(item.baseline_preference, constants.axes)
         })?;
+    let item = &items[index];
     Some(item.baseline.translated_end_item(
         item.output.size,
         item.normal_location,
