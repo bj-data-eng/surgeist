@@ -5972,7 +5972,7 @@
       "owner": "surgeist-bindings-js",
       "contract": "Concatenate the current contiguous ordinary Text siblings in source order, preserving UTF-16 and not including Comment data.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-text-wholetext",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "visit_contiguous_text_with"}],
       "requirements": []
     },
     "ProcessingInstruction.constructor:0/construct": {

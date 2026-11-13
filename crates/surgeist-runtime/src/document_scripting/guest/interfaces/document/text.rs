@@ -4,6 +4,23 @@ use super::{character_data::copy_native_data, *};
 use surgeist_bindings_js::conversion::types::DOM_STRING;
 use surgeist_dom::DomSourceEdit;
 
+pub(super) fn install_whole_text<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"wholeText"),
+        &ascii(b"get wholeText"),
+        true,
+        Callback::new(move |scope, arguments| handler.whole_text(scope, arguments)),
+    )?;
+    Ok(())
+}
+
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
@@ -58,6 +75,29 @@ pub(super) fn install<'scope>(
 }
 
 impl Capture {
+    fn whole_text<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(GuestNode::Text(node)) = tree::projected_node(scope, arguments.receiver())? else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Text required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let value = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(node)?;
+                let mut text = TextBuffer::default();
+                node.visit_contiguous_text_with(|| read.step(), |data| text.append(read, data))?;
+                Ok(text)
+            })?;
+            self.copy_dom_units(scope, &value.units)
+        })();
+        complete(scope, &events, result)
+    }
+
     fn read_node_text<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -190,6 +230,49 @@ struct TextBuffer {
     _source_units: Option<NativeTextUnits>,
 }
 
+impl TextBuffer {
+    fn append(
+        &mut self,
+        read: &NativeRead<'_>,
+        data: &DocumentString,
+    ) -> Result<(), DocumentGuestEventError> {
+        let length = self
+            .units
+            .len()
+            .checked_add(data.len())
+            .ok_or(Error::StringTooLong)?;
+        if length > self.units.capacity() {
+            let capacity = length.max(self.units.capacity().saturating_mul(2));
+            let bytes = capacity
+                .checked_mul(size_of::<u16>())
+                .ok_or(Error::StringTooLong)?;
+            let backing = read.reserve(bytes)?;
+            let source_units = read.retain_text_units(capacity)?;
+            let mut units = Vec::new();
+            units
+                .try_reserve_exact(capacity)
+                .map_err(|_| Error::Allocation)?;
+            if units.capacity() != capacity {
+                return Err(Error::Allocation.into());
+            }
+            for &unit in &self.units {
+                read.step()?;
+                units.push(unit);
+            }
+            *self = Self {
+                units,
+                _backing: Some(backing),
+                _source_units: source_units,
+            };
+        }
+        for &unit in data.code_units() {
+            read.step()?;
+            self.units.push(unit);
+        }
+        Ok(())
+    }
+}
+
 fn collect_text(
     read: &NativeRead<'_>,
     node: surgeist_dom::DomNode<'_>,
@@ -198,42 +281,7 @@ fn collect_text(
     node.visit_descendant_text_with(
         || read.step(),
         |bytes| read.reserve(bytes),
-        |data| {
-            let length = text
-                .units
-                .len()
-                .checked_add(data.len())
-                .ok_or(Error::StringTooLong)?;
-            if length > text.units.capacity() {
-                let capacity = length.max(text.units.capacity().saturating_mul(2));
-                let bytes = capacity
-                    .checked_mul(size_of::<u16>())
-                    .ok_or(Error::StringTooLong)?;
-                let backing = read.reserve(bytes)?;
-                let source_units = read.retain_text_units(capacity)?;
-                let mut units = Vec::new();
-                units
-                    .try_reserve_exact(capacity)
-                    .map_err(|_| Error::Allocation)?;
-                if units.capacity() != capacity {
-                    return Err(Error::Allocation.into());
-                }
-                for &unit in &text.units {
-                    read.step()?;
-                    units.push(unit);
-                }
-                text = TextBuffer {
-                    units,
-                    _backing: Some(backing),
-                    _source_units: source_units,
-                };
-            }
-            for &unit in data.code_units() {
-                read.step()?;
-                text.units.push(unit);
-            }
-            Ok(())
-        },
+        |data| text.append(read, data),
     )?;
     Ok(text)
 }

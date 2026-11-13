@@ -1,5 +1,7 @@
 use super::*;
-use crate::document_scripting::guest::tests::{attach_public_nodes, projected_node_id};
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, exhaust_guest_reaction_work, projected_node_id,
+};
 
 pub(super) fn whole_text_reads_the_current_contiguous_native_run() {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -51,5 +53,17 @@ pub(super) fn whole_text_reads_the_current_contiguous_native_run() {
         Ok(())
     })
     .unwrap();
+    assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+    exhaust_guest_reaction_work(&host);
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "wholeSubject.wholeText").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("the wholeText lookup must respect the native work budget: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
     assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
 }
