@@ -2679,3 +2679,53 @@ fn a_value_the_arena_lacks_and_a_run_the_table_lacks_refuse_the_publication_and_
     );
     assert_eq!(snapshot(&storage), before);
 }
+
+/// The names of the banks a publication recorded with its consumer, in order.
+fn recorded_bank_names(meter: &Meter) -> Vec<String> {
+    meter
+        .records
+        .iter()
+        .map(|record| format!("{:?}", record.growth().bank()))
+        .collect()
+}
+
+#[test]
+fn a_published_tree_retains_twenty_bytes_a_node_four_a_child_entry_and_eight_an_attribute_run() {
+    let (storage, [root, ..]) = attributed_tree(false);
+    let mut meter = Meter::default();
+    let Ok(result) = publish_tree(storage, &root, &mut meter) else {
+        panic!("publication refused");
+    };
+    // The tree has five nodes under one root, four of them listed as children, and one element
+    // with attributes. The banks that describe the shape of the tree are the published banks
+    // other than the text block, the attribute rows and the wrapper of the result.
+    let (nodes, roots, children, runs) = (5usize, 1usize, 4usize, 1usize);
+    assert_eq!(result.len(), nodes);
+    let shape: usize = meter
+        .records
+        .iter()
+        .filter(|record| {
+            let name = format!("{:?}", record.growth().bank());
+            name.starts_with("Published")
+                && !name.contains("Attributes")
+                && !name.contains("Contents")
+        })
+        .map(|record| record.reached().capacity() * record.growth().element_size())
+        .sum();
+    assert_eq!(nodes - roots, children);
+    assert_eq!(shape, 20 * nodes + 4 * children + 8 * runs);
+}
+
+#[test]
+fn a_publication_makes_no_bank_of_contents_for_its_records() {
+    let (storage, [root, ..]) = attributed_tree(false);
+    let mut meter = Meter::default();
+    let Ok(_) = publish_tree(storage, &root, &mut meter) else {
+        panic!("publication refused");
+    };
+    let names = recorded_bank_names(&meter);
+    assert!(
+        names.iter().all(|name| !name.contains("Contents")),
+        "{names:?}"
+    );
+}
