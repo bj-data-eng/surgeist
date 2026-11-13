@@ -2688,6 +2688,8 @@ pub(super) fn graph_build<T>(result: GraphBuildResult<T>) -> Result<T> {
 
 #[cfg(all(test, not(target_family = "wasm")))]
 mod capture_stack_tests;
+#[cfg(all(test, not(target_family = "wasm")))]
+mod construction_stack_tests;
 
 #[cfg(test)]
 mod diagnostic_tests {
