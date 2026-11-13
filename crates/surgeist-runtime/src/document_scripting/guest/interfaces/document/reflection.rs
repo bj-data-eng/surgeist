@@ -18,6 +18,7 @@ pub(super) enum Reflection {
 #[derive(Clone, Copy)]
 pub(super) enum Receiver {
     Element,
+    Html,
     Template,
     Meta,
 }
@@ -26,6 +27,12 @@ impl Receiver {
     fn matches(self, node: DomNode<'_>) -> bool {
         match self {
             Self::Element => node.as_element().is_some(),
+            Self::Html => node.as_element().is_some_and(|element| {
+                element
+                    .name()
+                    .namespace_uri()
+                    .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
+            }),
             Self::Template => node.as_template().is_some(),
             Self::Meta => node.as_element().is_some_and(|element| {
                 let name = element.name();
@@ -41,6 +48,7 @@ impl Receiver {
     fn error_message(self) -> &'static [u16] {
         match self {
             Self::Element => const { &ascii(b"Element required") },
+            Self::Html => const { &ascii(b"HTMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
         }
