@@ -525,8 +525,8 @@ impl Draft {
             let registry = match metadata.custom_element_registry() {
                 crate::DomRegistryBinding::Null => crate::DomRegistryBinding::Null,
                 crate::DomRegistryBinding::Registry(id) => {
-                    // The current canonical registry producer admits only Global
-                    // registries. A Global registry is never copied to a clone.
+                    // A scoped registry survives cloning. A Global registry
+                    // belongs only to its Window's associated Document.
                     let record = self
                         .registries
                         .as_deref()

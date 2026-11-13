@@ -345,6 +345,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     node_clone::clone_node_returns_fresh_canonical_subtrees();
     document_import::import_node_uses_destination_and_standard_options();
     scoped_registries::scoped_registries_keep_independent_native_associations();
+    super::guest::tests::registered_origin::scoped_registry_outlives_its_original_navigable();
     node_identity::node_comparisons_use_live_ordinary_ancestry_and_exact_identity();
     node_identity::node_comparisons_refuse_retired_operands();
     node_namespace::namespace_lookups_follow_live_native_names_and_declarations();

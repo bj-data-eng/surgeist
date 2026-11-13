@@ -455,12 +455,12 @@ pub(super) fn install<'scope>(
     fund: &dyn Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
 ) -> Result<Rc<Registry>, DocumentGuestEventError> {
     let prototype = scope.object(ObjectPrototype::Default)?;
-    let fallback = capture(size_of::<(Capture, DomHostedGlobalId)>())?;
+    let fallback = capture(size_of::<Capture>())?;
     let construct = capture(size_of::<(Capture, DomHostedGlobalId)>())?;
     let constructor = scope.constructor(
         &ConstructorCallback::bounded(
             0,
-            move |scope| fallback.registry_prototype(scope, global),
+            move |scope| fallback.registry_prototype(scope),
             move |scope, arguments| construct.construct_scoped_registry(scope, arguments, global),
         ),
         FunctionMetadata {
@@ -718,14 +718,24 @@ impl Capture {
     fn registry_prototype<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        global: DomHostedGlobalId,
     ) -> Result<Value<'scope>, Error> {
-        let (_, events) = self.active(scope)?;
+        let events = self
+            .callbacks
+            .access
+            .get()
+            .and_then(|access| access.events.upgrade())
+            .ok_or(Error::ExpiredIdentity)?;
         let result = (|| {
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let realm = scope.realm_authority()?.identity();
             public.with_registry_step(
                 || events.step(),
-                |registry| !registry.scoped && registry.global == global,
+                |registry| {
+                    registry
+                        .prototype
+                        .as_ref()
+                        .is_some_and(|prototype| prototype.associated_realm().identity() == realm)
+                },
                 |registry| {
                     let prototype = registry.prototype.as_ref().ok_or(Error::ExpiredIdentity)?;
                     Ok(scope.open_callback_object(prototype)?)

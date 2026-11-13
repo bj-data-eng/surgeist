@@ -782,26 +782,31 @@ impl Dom {
             {
                 return Ok(None);
             }
-            let document = dom
-                .dispatch_global_document_current_with::<DomHostedError>(global, &mut || {
-                    operation.draft.source_step(cancel).map_err(Into::into)
-                })
-                .map_err(|error| match error {
-                    DomHostedError::Dom(error) => error,
-                    _ => DomError::HostedSourceUnavailable,
-                })?;
-            let registry_metadata = operation
-                .draft
-                .document_metadata(Key::Existing(document.node()))?;
             let registry_record = operation
                 .draft
                 .creation_registry(definition.registry(), cancel)?;
-            if match registry_record.scoped_origin {
-                Some(origin) => origin != global || registry != definition_registry,
-                None => registry_metadata.custom_element_registry() != definition_registry,
-            } {
-                return Err(DomError::InvalidSourceOperation);
-            }
+            let (document, global) = if let Some(origin) = registry_record.scoped_origin {
+                if origin != global || registry != definition_registry {
+                    return Err(DomError::InvalidSourceOperation);
+                }
+                (registration.0.key.document, registration.0.global)
+            } else {
+                let document = dom
+                    .dispatch_global_document_current_with::<DomHostedError>(global, &mut || {
+                        operation.draft.source_step(cancel).map_err(Into::into)
+                    })
+                    .map_err(|error| match error {
+                        DomHostedError::Dom(error) => error,
+                        _ => DomError::HostedSourceUnavailable,
+                    })?;
+                let metadata = operation
+                    .draft
+                    .document_metadata(Key::Existing(document.node()))?;
+                if metadata.custom_element_registry() != definition_registry {
+                    return Err(DomError::InvalidSourceOperation);
+                }
+                (document, global)
+            };
             let saved_is = element.saved_is().cloned();
             let shadow_forbidden = node.shadow_root().is_some()
                 && operation

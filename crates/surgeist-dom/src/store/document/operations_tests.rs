@@ -382,7 +382,45 @@ fn scoped_registry_publication_preserves_exact_snapshot_and_document_order() {
     );
     assert_eq!(empty.registry(id).unwrap().scoped_document_count(), 0);
 
-    for document in [other.document(), owner.document(), other.document()] {
+    let mut batch = DomBatch::new();
+    let host = batch.create_element(other.document(), "div");
+    let host = apply(&mut dom, batch).created(&host).unwrap().unwrap();
+    source(
+        &mut dom,
+        DomSourceEdit::attach_shadow(
+            host,
+            crate::DomShadowRootInit::new(HtmlShadowRootMode::Open).with_registry(id),
+        ),
+    );
+    let mut batch = DomBatch::new();
+    let moved = batch.create_element(owner.document(), "div");
+    let moved = apply(&mut dom, batch).created(&moved).unwrap().unwrap();
+    source(
+        &mut dom,
+        DomSourceEdit::attach_shadow(
+            moved,
+            crate::DomShadowRootInit::new(HtmlShadowRootMode::Open).with_registry(id),
+        ),
+    );
+    let mut batch = DomBatch::new();
+    let created_document = batch.create_document();
+    batch.insert_before(moved, &created_document, None);
+    let root = dom
+        .snapshot()
+        .document(other.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+    batch.insert_before(host, root, None);
+    let created_document = apply(&mut dom, batch).document(&created_document).unwrap();
+    assert_eq!(
+        dom.snapshot()
+            .scoped_registry_documents_with(id, || Ok::<_, DomError>(()))
+            .unwrap(),
+        &[created_document, other.document()]
+    );
+
+    for document in [owner.document(), other.document()] {
         let candidate = source(
             &mut dom,
             DomSourceEdit::create_element_with_options(
@@ -417,7 +455,7 @@ fn scoped_registry_publication_preserves_exact_snapshot_and_document_order() {
         associated
             .scoped_registry_documents_with(id, || Ok::<_, DomError>(()))
             .unwrap(),
-        &[other.document(), owner.document()]
+        &[created_document, other.document(), owner.document()]
     );
     assert_eq!(empty.registry(id).unwrap().scoped_document_count(), 0);
     let definition =
@@ -455,7 +493,7 @@ fn scoped_registry_publication_preserves_exact_snapshot_and_document_order() {
     assert_eq!(associated.registry(id).unwrap().definition_count(), 0);
     assert_eq!(
         dom.snapshot().registry(id).unwrap().scoped_document_count(),
-        2
+        3
     );
 }
 

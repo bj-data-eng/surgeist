@@ -141,13 +141,25 @@ impl Draft {
         incoming: Option<formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.set_registries_with_debit(
+            next,
+            incoming.and_then(formation::Formation::into_debit),
+            cancel,
+        )
+    }
+
+    pub(in crate::store) fn set_registries_with_debit(
+        &mut self,
+        next: Option<Arc<crate::store::registry::Bank>>,
+        incoming: Option<custody::Debit>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         // A refusal reserving the inverse must destroy the consumed semantic
         // output before its incoming producer credit, including on this path.
         let staged = (next, incoming);
         let retain = self.prepare_undo(cancel)?;
         let registry = self.custody_registry().clone();
         let (next, incoming) = staged;
-        let incoming = incoming.and_then(formation::Formation::into_debit);
         let (next, custody) = match next {
             Some(next) => {
                 let prepared = transaction::auxiliary::prepare_registry(

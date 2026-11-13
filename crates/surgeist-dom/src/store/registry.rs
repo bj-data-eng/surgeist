@@ -507,18 +507,9 @@ impl Dom {
         check_cancel(cancel)?;
         let work = source.work(cancel)?;
         work.step(cancel)?;
-        let document =
-            self.dispatch_global_document_with::<DomHostedError>(global, cancel, &mut || {
-                work.step(cancel)
-            })?;
-        let snapshot = self.snapshot();
         if registry.owner != self.owner {
             return Err(DomError::ForeignOwner.into());
         }
-        let node = snapshot.node_with(document.node(), || work.step(cancel))?;
-        let crate::DomNodeKind::Document(metadata) = node.kind() else {
-            return Err(DomError::WrongNodeKind.into());
-        };
         let record = self
             .state
             .registries
@@ -536,12 +527,21 @@ impl Dom {
             )? {
                 return Err(DomError::NotSupported.into());
             }
-        } else if metadata.custom_element_registry()
-            != crate::DomRegistryBinding::Registry(registry)
-        {
-            return Err(DomHostedError::StaleIdentity);
+        } else {
+            let document =
+                self.dispatch_global_document_with::<DomHostedError>(global, cancel, &mut || {
+                    work.step(cancel)
+                })?;
+            work.step(cancel)?;
+            let crate::DomNodeKind::Document(metadata) =
+                self.state.node(self.owner, document.node())?.kind()
+            else {
+                return Err(DomError::WrongNodeKind.into());
+            };
+            if metadata.custom_element_registry() != crate::DomRegistryBinding::Registry(registry) {
+                return Err(DomHostedError::StaleIdentity);
+            }
         }
-        drop(snapshot);
         let mut draft = self.registry_publication_draft(limits, cancel)?;
         let formation = source::formation::Formation::new(&draft, cancel)?;
         let formation = formation.ok_or(DomError::HostedSourceUnavailable)?;
@@ -636,19 +636,21 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let Some(document_id) = self.published_id(document).map(DocumentId) else {
-            let mut pending = self
-                .pending_scoped_documents
-                .take()
-                .unwrap_or_else(|| self.effect_vec());
-            let reserved = self.select_reserve(&mut pending, 1, cancel);
-            if reserved.is_ok() {
-                pending.push((id, document));
-            }
-            self.pending_scoped_documents = Some(pending);
-            return reserved;
-        };
-        self.record_scoped_registry_document(id, document_id, cancel)
+        if self.pending_scoped_documents.is_none()
+            && let Some(document_id) = self.published_id(document).map(DocumentId)
+        {
+            return self.record_scoped_registry_document(id, document_id, cancel);
+        }
+        let mut pending = self
+            .pending_scoped_documents
+            .take()
+            .unwrap_or_else(|| self.effect_vec());
+        let reserved = self.select_reserve(&mut pending, 1, cancel);
+        if reserved.is_ok() {
+            pending.push((id, document));
+        }
+        self.pending_scoped_documents = Some(pending);
+        reserved
     }
 
     pub(in crate::store) fn resolve_scoped_registry_documents(
@@ -663,9 +665,11 @@ impl Draft {
             let allocation_ids = self.allocation_ids(dom, None, cancel)?;
             for &(registry, key) in pending.iter() {
                 self.source_step(cancel)?;
-                if let Key::Created(index) = key
-                    && let Some(document) = allocation_ids.get(index)
-                {
+                let resolved = match key {
+                    Key::Existing(id) => self.node(key).is_ok().then_some(id),
+                    Key::Created(index) => allocation_ids.get(index),
+                };
+                if let Some(document) = resolved {
                     self.record_scoped_registry_document(registry, DocumentId(document), cancel)?;
                 }
             }
@@ -689,18 +693,40 @@ impl Draft {
                 return Ok(());
             }
         }
-        let formation = source::formation::Formation::new(self, cancel)?
-            .ok_or(DomError::InvalidSourceOperation)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let mut ordinary = self
+            .custody_ledger()
+            .retain(custody::Usage::ZERO, |usage| {
+                self.admit_custody_usage(usage, cancel)
+            })?;
+        let mut admit = |bytes| match &formation {
+            Some(formation) => formation.retain_bytes(bytes, cancel),
+            None => ordinary.grow(custody::Usage::new(bytes, 0), |usage| {
+                self.admit_custody_usage(usage, cancel)
+            }),
+        };
         let identity = custody::MaterializationId::fresh()?;
-        formation.retain_bytes(size_of::<Bank>() + size_of::<ScopedDocuments>(), cancel)?;
+        admit(size_of::<Bank>() + size_of::<ScopedDocuments>())?;
         let capacity = prior
             .len()
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         let mut documents = Vec::new();
-        source::formation::reserve(&mut documents, capacity, Some(&formation), cancel)?;
+        let bytes = capacity
+            .checked_mul(size_of::<DocumentId>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(bytes)?;
+        documents
+            .try_reserve_exact(capacity)
+            .map_err(|_| DomError::AllocationFailed)?;
+        let extra = documents
+            .capacity()
+            .checked_sub(capacity)
+            .and_then(|count| count.checked_mul(size_of::<DocumentId>()))
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(extra)?;
         for &document in prior {
-            formation.step(cancel)?;
+            self.effect_step(cancel)?;
             documents.push(document);
         }
         documents.push(document);
@@ -720,7 +746,7 @@ impl Draft {
                 occurrences: 0,
             },
             identity,
-            |charge| formation.retain_bytes(charge.bytes, cancel),
+            |charge| admit(charge.bytes),
         )?;
         let next = Arc::new(Bank {
             identity,
@@ -730,7 +756,11 @@ impl Draft {
             has_scoped: old.has_scoped,
             _retained: None,
         });
-        self.set_registries(Some(next), Some(formation), cancel)
+        if let Some(formation) = formation {
+            self.set_registries(Some(next), Some(formation), cancel)
+        } else {
+            self.set_registries_with_debit(Some(next), Some(ordinary), cancel)
+        }
     }
 
     pub(in crate::store) fn apply_registry_subtree(
