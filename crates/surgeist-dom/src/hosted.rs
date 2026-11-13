@@ -2119,29 +2119,27 @@ impl DomDocumentScriptRegistration {
         self.0
             .custom_element_reactions
             .get()
-            .map_or(Ok(None), |inbox| inbox.take(Some(operation), inspections))
+            .map_or(Ok(None), |inbox| inbox.take(operation, inspections))
     }
 
-    /// Take the earliest committed reaction segment routed to the backup queue.
-    /// The original registration alone can loan these reactions.
-    pub fn take_backup_custom_element_reactions(
+    /// Dequeue one position from this attachment's backup element queue.
+    /// Reaction receipts for the receiver remain pending until acknowledged.
+    pub fn next_backup_custom_element_receiver(
         &self,
-        inspections: usize,
-    ) -> Result<Option<crate::DomCustomElementReactions>, crate::DomError> {
+        work_remaining: &mut u64,
+    ) -> Result<Option<crate::NodeId>, crate::DomError> {
         if !self.is_active() {
             return Err(crate::DomError::HostedSourceUnavailable);
         }
         self.0
             .custom_element_reactions
             .get()
-            .map_or(Ok(None), |inbox| inbox.take(None, inspections))
+            .map_or(Ok(None), |inbox| inbox.next_backup_receiver(work_remaining))
     }
 
-    /// Move the oldest pending backup reaction for this receiver to the front
-    /// of its segment. Acknowledge just that occurrence before dropping the
-    /// loan. This lets a synchronous reaction drain the receiver's older FIFO.
-    /// The supplied work allowance is reduced for inspected entries and for
-    /// moving and potentially restoring the selected occurrence.
+    /// Loan the oldest pending backup reaction for the receiver. Taking or
+    /// acknowledging it leaves the element's backup queue positions intact.
+    /// The supplied work allowance is reduced for inspected entries.
     pub fn take_backup_custom_element_reaction_for(
         &self,
         receiver: crate::NodeId,

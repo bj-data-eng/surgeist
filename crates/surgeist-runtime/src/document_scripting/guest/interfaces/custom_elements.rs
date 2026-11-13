@@ -906,8 +906,7 @@ impl Capture {
         events: &GuestEvents,
         operation: surgeist_dom::DomSourceOperationId,
     ) -> Result<(), DocumentGuestEventError> {
-        self.drain_reactions(scope, owner, events, Some(operation))
-            .map(drop)
+        self.drain_reactions(scope, owner, events, operation)
     }
 
     pub(super) fn run_backup_reactions<'scope>(
@@ -917,7 +916,14 @@ impl Capture {
         let (owner, events) = self.active(scope)?;
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
         let result = (|| {
-            while self.drain_reactions(scope, &owner, &events, None)? {}
+            let registration = reaction_registration(&owner)?;
+            while let Some(receiver) = use_backup_work(&events, |remaining| {
+                registration.next_backup_custom_element_receiver(remaining)
+            })? {
+                let mut invocation = ReactionInvocation::new(&owner)?;
+                invocation.queue(&events, receiver)?;
+                invocation.drain(self, scope, &events)?;
+            }
             Ok(())
         })();
         public.backup_reactions_scheduled.set(false);
@@ -935,31 +941,20 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        operation: Option<surgeist_dom::DomSourceOperationId>,
-    ) -> Result<bool, DocumentGuestEventError> {
-        let registration = owner
-            .attachment
-            .get()
-            .and_then(|attachment| attachment.registration.upgrade())
-            .ok_or(DocumentScriptNativeError::Revoked)?;
+        operation: surgeist_dom::DomSourceOperationId,
+    ) -> Result<(), DocumentGuestEventError> {
+        let registration = reaction_registration(owner)?;
         let mut invocation = ReactionInvocation::new(owner)?;
-        let mut received = false;
         let result = (|| {
             loop {
                 let inspections = registration.custom_element_reaction_segments();
                 let work =
                     u64::try_from(inspections).map_err(|_| DocumentGuestEventError::WorkLimit)?;
                 events.charge_work(work)?;
-                let batch = match operation {
-                    Some(operation) => {
-                        registration.take_custom_element_reactions(operation, inspections)?
-                    }
-                    None => registration.take_backup_custom_element_reactions(inspections)?,
-                };
+                let batch = registration.take_custom_element_reactions(operation, inspections)?;
                 let Some(mut batch) = batch else {
                     break;
                 };
-                received = true;
                 while let Some(fact) = batch.front() {
                     let reaction = if matches!(
                         fact.kind,
@@ -976,11 +971,10 @@ impl Capture {
                     };
                     if let Some(reaction) = reaction {
                         let queue = invocation.queue(events, fact.element)?;
-                        if operation.is_some()
-                            && events
-                                .public
-                                .as_ref()
-                                .is_some_and(|public| public.backup_reactions_scheduled.get())
+                        if events
+                            .public
+                            .as_ref()
+                            .is_some_and(|public| public.backup_reactions_scheduled.get())
                         {
                             self.take_older_backup_reactions(
                                 scope,
@@ -1000,7 +994,7 @@ impl Capture {
                 }
             }
             invocation.drain(self, scope, events)?;
-            Ok(received)
+            Ok(())
         })();
         drop(invocation);
         result
@@ -1015,14 +1009,8 @@ impl Capture {
         queue: &ActiveReactionQueue,
     ) -> Result<(), DocumentGuestEventError> {
         loop {
-            let available = events.limits.work.saturating_sub(events.budget.work.get());
-            let mut remaining = available;
-            let backup = registration
-                .take_backup_custom_element_reaction_for(queue.receiver, &mut remaining);
-            events.charge_work(available - remaining)?;
-            let Some(mut backup) = backup.map_err(|error| match error {
-                surgeist_dom::DomError::SourceOutputLimit => DocumentGuestEventError::WorkLimit,
-                other => DocumentGuestEventError::from(other),
+            let Some(mut backup) = use_backup_work(events, |remaining| {
+                registration.take_backup_custom_element_reaction_for(queue.receiver, remaining)
             })?
             else {
                 return Ok(());
@@ -1784,6 +1772,30 @@ impl QueuedReaction {
     }
 }
 
+fn reaction_registration(
+    owner: &NativeOwner,
+) -> Result<Rc<DomDocumentScriptRegistration>, DocumentScriptNativeError> {
+    owner
+        .attachment
+        .get()
+        .and_then(|attachment| attachment.registration.upgrade())
+        .ok_or(DocumentScriptNativeError::Revoked)
+}
+
+fn use_backup_work<T>(
+    events: &GuestEvents,
+    action: impl FnOnce(&mut u64) -> Result<T, surgeist_dom::DomError>,
+) -> Result<T, DocumentGuestEventError> {
+    let available = events.limits.work.saturating_sub(events.budget.work.get());
+    let mut remaining = available;
+    let result = action(&mut remaining);
+    events.charge_work(available - remaining)?;
+    result.map_err(|error| match error {
+        surgeist_dom::DomError::SourceOutputLimit => DocumentGuestEventError::WorkLimit,
+        other => DocumentGuestEventError::from(other),
+    })
+}
+
 struct InvocationEntry {
     queue: Rc<ActiveReactionQueue>,
     installed: bool,
@@ -2050,11 +2062,7 @@ impl ActiveReactionQueue {
             {
                 // A callback can append another backup occurrence for this
                 // receiver. Finish its FIFO before advancing the element queue.
-                let registration = owner
-                    .attachment
-                    .get()
-                    .and_then(|attachment| attachment.registration.upgrade())
-                    .ok_or(DocumentScriptNativeError::Revoked)?;
+                let registration = reaction_registration(owner)?;
                 capture.take_older_backup_reactions(scope, owner, events, &registration, self)?;
             }
             let upgrade = {

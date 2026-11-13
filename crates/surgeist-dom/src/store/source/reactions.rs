@@ -53,6 +53,7 @@ struct Reaction {
     element: NodeId,
     definition: crate::DomRegistryDefinitionId,
     kind: ReactionKind<crate::DocumentId>,
+    delivered: bool,
 }
 
 impl Reaction {
@@ -93,18 +94,14 @@ impl Reaction {
 pub struct DomCustomElementReactions {
     slot: Arc<Slot>,
     batch: Batch,
-    selected: Option<SelectedReaction>,
-}
-
-struct SelectedReaction {
-    cursor: usize,
-    offset: usize,
+    selected: Option<usize>,
 }
 
 #[derive(Default)]
 struct Batch {
     facts: Vec<Reaction>,
     cursor: usize,
+    backup_pending: usize,
     _backing: Option<custody::Debit>,
     _strings: Vec<custody::SharedDebit>,
 }
@@ -145,18 +142,23 @@ impl DomCustomElementReactions {
     }
 
     fn remaining(&self) -> &[Reaction] {
-        let remaining = &self.batch.facts[self.batch.cursor..];
-        match &self.selected {
-            Some(selected) if self.batch.cursor == selected.cursor => &remaining[..1],
+        match self.selected {
+            Some(index) if !self.batch.facts[index].delivered => &self.batch.facts[index..=index],
             Some(_) => &[],
-            None => remaining,
+            None => &self.batch.facts[self.batch.cursor..],
         }
     }
 
     /// Mark the front occurrence settled after its exact native/guest path.
     pub fn acknowledge_front(&mut self) {
-        if !self.remaining().is_empty() {
-            self.batch.cursor += 1;
+        match self.selected {
+            Some(index) if !self.batch.facts[index].delivered => {
+                self.batch.facts[index].delivered = true;
+                self.batch.backup_pending -= 1;
+            }
+            Some(_) => {}
+            None if self.batch.cursor < self.batch.facts.len() => self.batch.cursor += 1,
+            None => {}
         }
     }
 }
@@ -172,13 +174,8 @@ impl std::fmt::Debug for DomCustomElementReactions {
 
 impl Drop for DomCustomElementReactions {
     fn drop(&mut self) {
-        if let Some(selected) = &self.selected
-            && self.batch.cursor == selected.cursor
-        {
-            self.batch.facts[selected.cursor..=selected.cursor + selected.offset].rotate_left(1);
-        }
         let mut slot = self.slot.lock();
-        *slot = if self.batch.cursor == self.batch.facts.len() {
+        *slot = if self.batch.cursor == self.batch.facts.len() && self.batch.backup_pending == 0 {
             SlotState::Settled
         } else {
             SlotState::Ready(std::mem::take(&mut self.batch))
@@ -204,7 +201,7 @@ impl Inbox {
 
     pub(crate) fn take(
         &self,
-        operation: Option<crate::DomSourceOperationId>,
+        operation: crate::DomSourceOperationId,
         inspections: usize,
     ) -> Result<Option<DomCustomElementReactions>, DomError> {
         let mut queue = self.lock();
@@ -219,12 +216,7 @@ impl Inbox {
             if let Some(slot) = head.front()
                 && !matches!(*slot.lock(), SlotState::Settled)
             {
-                if selected.is_none()
-                    && match operation {
-                        Some(operation) => !slot.backup && slot.operation == operation,
-                        None => slot.backup,
-                    }
-                {
+                if selected.is_none() && !slot.backup && slot.operation == operation {
                     selected = Some(slot.clone());
                 }
                 retained.append(&mut head);
@@ -252,51 +244,82 @@ impl Inbox {
         self.lock().len()
     }
 
+    pub(crate) fn next_backup_receiver(
+        &self,
+        work_remaining: &mut u64,
+    ) -> Result<Option<NodeId>, DomError> {
+        let mut queue = self.lock();
+        let mut retained = LinkedList::new();
+        let result = loop {
+            if queue.is_empty() {
+                break Ok(None);
+            }
+            if let Err(error) = charge_inspection(work_remaining) {
+                break Err(error);
+            }
+            let tail = queue.split_off(1);
+            let mut head = std::mem::replace(&mut *queue, tail);
+            let Some(slot) = head.front() else {
+                break Err(DomError::InvalidSourceOperation);
+            };
+            let mut state = slot.lock();
+            let result = match &mut *state {
+                SlotState::Ready(batch) if slot.backup => {
+                    let receiver = batch.facts.get(batch.cursor).map(|fact| fact.element);
+                    if receiver.is_some() {
+                        batch.cursor += 1;
+                    }
+                    if batch.cursor == batch.facts.len() && batch.backup_pending == 0 {
+                        *state = SlotState::Settled;
+                    }
+                    Ok(receiver)
+                }
+                SlotState::Loaned if slot.backup => Err(DomError::InvalidSourceOperation),
+                _ => Ok(None),
+            };
+            let settled = matches!(*state, SlotState::Settled);
+            drop(state);
+            if !settled {
+                retained.append(&mut head);
+            }
+            if !matches!(result, Ok(None)) {
+                break result;
+            }
+        };
+        retained.append(&mut queue);
+        *queue = retained;
+        result
+    }
+
     pub(crate) fn take_backup_for_receiver(
         &self,
         receiver: NodeId,
         work_remaining: &mut u64,
     ) -> Result<Option<DomCustomElementReactions>, DomError> {
-        let mut charge = |units| -> Result<(), DomError> {
-            *work_remaining = work_remaining
-                .checked_sub(units)
-                .ok_or(DomError::SourceOutputLimit)?;
-            Ok(())
-        };
         let queue = self.lock();
         for slot in queue.iter() {
-            charge(1)?;
+            charge_inspection(work_remaining)?;
             if !slot.backup {
                 continue;
             }
             let mut state = slot.lock();
             let batch = match &mut *state {
-                SlotState::Ready(batch) => batch,
-                SlotState::Settled => continue,
+                SlotState::Ready(batch) if batch.backup_pending != 0 => batch,
+                SlotState::Ready(_) | SlotState::Settled => continue,
                 SlotState::Loaned => return Err(DomError::InvalidSourceOperation),
             };
-            let remaining = &mut batch.facts[batch.cursor..];
-            for (index, fact) in remaining.iter().enumerate() {
-                charge(1)?;
-                if fact.element != receiver {
+            for (index, fact) in batch.facts.iter().enumerate() {
+                charge_inspection(work_remaining)?;
+                if fact.delivered || fact.element != receiver {
                     continue;
                 }
-                let moves = u64::try_from(index)
-                    .ok()
-                    .and_then(|index| index.checked_mul(2))
-                    .ok_or(DomError::SourceOutputLimit)?;
-                charge(moves)?;
-                remaining[..=index].rotate_right(1);
                 let SlotState::Ready(batch) = std::mem::replace(&mut *state, SlotState::Loaned)
                 else {
                     return Err(DomError::InvalidSourceOperation);
                 };
                 return Ok(Some(DomCustomElementReactions {
                     slot: slot.clone(),
-                    selected: Some(SelectedReaction {
-                        cursor: batch.cursor,
-                        offset: index,
-                    }),
+                    selected: Some(index),
                     batch,
                 }));
             }
@@ -305,9 +328,11 @@ impl Inbox {
     }
 
     pub(crate) fn has_pending(&self) -> bool {
-        self.lock()
-            .iter()
-            .any(|slot| !matches!(*slot.lock(), SlotState::Settled))
+        self.lock().iter().any(|slot| match &*slot.lock() {
+            SlotState::Ready(batch) if slot.backup => batch.backup_pending != 0,
+            SlotState::Ready(_) | SlotState::Loaned => true,
+            SlotState::Settled => false,
+        })
     }
 
     pub(crate) fn discard(&self) -> Result<usize, DomError> {
@@ -318,12 +343,23 @@ impl Inbox {
                 SlotState::Loaned => Err(DomError::InvalidSourceOperation),
                 SlotState::Settled => Ok(count),
                 SlotState::Ready(batch) => count
-                    .checked_add(batch.facts.len() - batch.cursor)
+                    .checked_add(if slot.backup {
+                        batch.backup_pending
+                    } else {
+                        batch.facts.len() - batch.cursor
+                    })
                     .ok_or(DomError::RepresentationExhausted),
             })?;
         queue.clear();
         Ok(count)
     }
+}
+
+fn charge_inspection(work_remaining: &mut u64) -> Result<(), DomError> {
+    *work_remaining = work_remaining
+        .checked_sub(1)
+        .ok_or(DomError::SourceOutputLimit)?;
+    Ok(())
 }
 
 pub(in crate::store) struct ReactionFacts {
@@ -428,7 +464,8 @@ impl Publication {
             return Err(error);
         }
         slot.backup = true;
-        Ok(!batch.facts.is_empty())
+        batch.backup_pending = batch.facts.len();
+        Ok(batch.backup_pending != 0)
     }
 
     pub(in crate::store) fn publish(mut self) {
@@ -699,6 +736,7 @@ impl Draft {
             facts.push(Reaction {
                 element,
                 definition: entry.definition,
+                delivered: false,
                 kind: match &entry.kind {
                     ReactionKind::Upgrade => ReactionKind::Upgrade,
                     ReactionKind::Connected => ReactionKind::Connected,
@@ -734,6 +772,7 @@ impl Draft {
             state: Mutex::new(SlotState::Ready(Batch {
                 facts,
                 cursor: 0,
+                backup_pending: 0,
                 _backing: budget.into_debit(),
                 _strings: strings,
             })),

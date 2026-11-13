@@ -2167,11 +2167,11 @@ pub struct surgeist_dom::DomDocumentScriptRegistration(_)
 impl surgeist_dom::DomDocumentScriptRegistration
 pub fn surgeist_dom::DomDocumentScriptRegistration::custom_element_reaction_segments(&self) -> usize
 pub fn surgeist_dom::DomDocumentScriptRegistration::is_active(&self) -> bool
+pub fn surgeist_dom::DomDocumentScriptRegistration::next_backup_custom_element_receiver(&self, work_remaining: &mut u64) -> core::result::Result<core::option::Option<surgeist_dom::NodeId>, surgeist_dom::DomError>
 pub fn surgeist_dom::DomDocumentScriptRegistration::observe_custom_element_reactions(&self) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::DomDocumentScriptRegistration::revoke(&self)
 pub const fn surgeist_dom::DomDocumentScriptRegistration::storage_bytes() -> usize
 pub fn surgeist_dom::DomDocumentScriptRegistration::take_backup_custom_element_reaction_for(&self, receiver: surgeist_dom::NodeId, work_remaining: &mut u64) -> core::result::Result<core::option::Option<surgeist_dom::DomCustomElementReactions>, surgeist_dom::DomError>
-pub fn surgeist_dom::DomDocumentScriptRegistration::take_backup_custom_element_reactions(&self, inspections: usize) -> core::result::Result<core::option::Option<surgeist_dom::DomCustomElementReactions>, surgeist_dom::DomError>
 pub fn surgeist_dom::DomDocumentScriptRegistration::take_custom_element_reactions(&self, operation: surgeist_dom::DomSourceOperationId, inspections: usize) -> core::result::Result<core::option::Option<surgeist_dom::DomCustomElementReactions>, surgeist_dom::DomError>
 impl core::ops::drop::Drop for surgeist_dom::DomDocumentScriptRegistration
 pub fn surgeist_dom::DomDocumentScriptRegistration::drop(&mut self)
