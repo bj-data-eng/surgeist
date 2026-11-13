@@ -96,16 +96,24 @@ fn attach_window(
 }
 
 pub(super) fn verify_declarative_shadow_reuse() {
-    for (mode, markup, assertion) in [
+    for (mode, markup, assertion, reenter) in [
         (
             HtmlShadowRootMode::Open,
             "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
             "observed === original && observed === shadowHost.shadowRoot",
+            false,
+        ),
+        (
+            HtmlShadowRootMode::Open,
+            "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
+            "observed === original && observed === shadowHost.shadowRoot",
+            true,
         ),
         (
             HtmlShadowRootMode::Closed,
             "<template shadowrootmode=closed shadowrootdelegatesfocus><p>child</p></template>",
             "original === null && shadowHost.shadowRoot === null && observed.mode === 'closed'",
+            false,
         ),
     ] {
         let cancel = Arc::new(AtomicBool::new(false));
@@ -174,16 +182,24 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         const marker = globalThis.shadowReuseException = {{}};
                         customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {{
                             disconnectedCallback() {{ calls.push(this); throw marker; }}
+                            connectedCallback() {{ calls.push('connected'); }}
                         }});
                         const custom = globalThis.shadowReuseReceiver =
                             document.createElement('x-shadow-reuse-reaction');
                         original.appendChild(custom);
+                        calls.length = 0;
                         Promise.resolve().then(() => calls.push('before'));
                     }}
                     const observed = shadowHost.attachShadow({{mode: "{matching}"}});
                     if (original !== null) {{
                         if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
                             return false;
+                        if ({reenter}) {{
+                            shadowHost.appendChild(shadowReuseReceiver);
+                            if (shadowReuseCalls.length !== 2 ||
+                                shadowReuseCalls[0] !== shadowReuseReceiver ||
+                                shadowReuseCalls[1] !== 'connected') return false;
+                        }}
                         Promise.resolve().then(() => shadowReuseCalls.push('after'));
                     }}
                     try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
@@ -222,11 +238,13 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 DocumentGuestCustomElementCallback::Disconnected
             );
             host.in_document(&permit, |scope| {
-                let correct = evaluate(
-                    scope,
+                let correct = evaluate(scope, if reenter {
+                    "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls.slice(1).join(',') === 'connected,before,after'"
+                } else {
                     "shadowReuseCalls.length === 3 && shadowReuseCalls[0] === 'before' && \
-                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'after'",
-                )?;
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'after'"
+                })?;
                 assert!(scope.boolean(&correct)?);
                 let marker = evaluate(scope, "shadowReuseException")?;
                 let thrown = scope.import(report.exception.value())?;
