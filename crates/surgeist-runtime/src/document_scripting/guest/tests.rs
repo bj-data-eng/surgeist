@@ -29,6 +29,28 @@ pub(in crate::document_scripting) fn custom_element_registry_identity_is_canonic
     }).unwrap();
 }
 
+pub(in crate::document_scripting) fn element_factory_qualifies_the_explicit_registry() {
+    let mut host = public_node_host(5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const registry = window.customElements;
+            const opts = { customElementRegistry: registry };
+            const throws = (action, name) => {
+                try { action(); } catch (error) { return error.name === name; }
+                return false;
+            };
+            return document.createElement('div', opts).customElementRegistry === registry
+                && document.createElementNS('http://www.w3.org/2000/svg', 's:circle', opts).customElementRegistry === registry
+                && throws(() => new Document().createElement('div', opts), 'NotSupportedError')
+                && throws(() => document.createElement('div', { ...opts, is: 'x-div' }), 'NotSupportedError')
+                && throws(() => document.createElement('bad name', { ...opts, is: 'x-div' }), 'InvalidCharacterError')
+                && throws(() => document.createElement('div', { customElementRegistry: Object.create(registry) }), 'TypeError')
+                && throws(() => document.createElement('div', { customElementRegistry: new Proxy(registry, {}) }), 'TypeError');
+        })()"#)
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn assert_queued_trusted_types_violations(
     host: &DocumentScriptHost,
     expected: &[(usize, &str, &str)],
