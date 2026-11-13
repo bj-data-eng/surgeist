@@ -31,6 +31,19 @@ pub(super) fn guest_style_update_matches_the_exact_nonce() {
     guest_insertion(Some("style-src 'unsafe-inline' 'nonce-='"), None, true);
 }
 
+pub(super) fn guest_style_violations_retarget_at_dispatch() {
+    for detached in [false, true] {
+        guest_style(
+            Some("default-src 'none' 'report-sample'"),
+            None,
+            "p { color: red }".into(),
+            false,
+            false,
+            Some(detached),
+        );
+    }
+}
+
 fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_sheet: bool) {
     guest_style(
         policy,
@@ -38,6 +51,7 @@ fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_s
         "p { color: red }".into(),
         expected_sheet,
         false,
+        None,
     );
 }
 
@@ -48,7 +62,7 @@ pub(super) fn guest_style_hashes_exact_utf16_source() {
         "style-src 'sha384-ZpslxsY6hfdNIsLGwaQZKfU02y2K0sdrZNXJHB4s9COv3KEMfNvwaUs_zHVcjxej'",
         "style-src 'sha512-/N6GXxQAO2l9ump/adcHcT/yWxws7as1i5T93IlKmYXjD6shH1GqcykwLwi1Ob0uUTyxFBrXFgwg/Zk5WuqePg=='",
     ] {
-        guest_style(Some(policy), None, text.clone(), true, true);
+        guest_style(Some(policy), None, text.clone(), true, true, None);
     }
     let mut units: Vec<u16> = "p::before { content: \"é😀".encode_utf16().collect();
     units.push(0xd800);
@@ -59,6 +73,7 @@ pub(super) fn guest_style_hashes_exact_utf16_source() {
         DocumentString::from_utf16(units),
         true,
         false,
+        None,
     );
     guest_style(
         Some("style-src 'unsafe-inline' 'sha256-ngewhhP73WDIbgwseeu52VAAJgKdGUsu1IUQQsAm8m4'"),
@@ -66,6 +81,7 @@ pub(super) fn guest_style_hashes_exact_utf16_source() {
         text,
         false,
         false,
+        None,
     );
 }
 
@@ -75,6 +91,7 @@ fn guest_style(
     text: DocumentString,
     expected_sheet: bool,
     edit_after_match: bool,
+    detach_before_report: Option<bool>,
 ) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
@@ -127,6 +144,14 @@ fn guest_style(
     let permit = host.permit().unwrap();
     expose_public_node_for_source_test(&mut host, &permit, body, "styleParent");
     expose_public_node_for_source_test(&mut host, &permit, style, "inlineStyle");
+    if detach_before_report.is_some() {
+        host.in_document(&permit, |scope| {
+            evaluate(scope, r#"
+                globalThis.styleViolations = [];
+                document.addEventListener('securitypolicyviolation', event => styleViolations.push(event));
+            "#).map(drop)
+        }).unwrap();
+    }
     if let Some((value, slot_only)) = nonce {
         host.in_document(&permit, |scope| {
             evaluate(scope, "styleParent.appendChild(inlineStyle)")?;
@@ -219,5 +244,51 @@ fn guest_style(
                 .sheets()
                 .is_empty()
         );
+    }
+    if let Some(detached) = detach_before_report {
+        host.in_document(&permit, |scope| {
+            let count = evaluate(scope, "styleViolations.length")?;
+            let zero = scope.primitive(Primitive::Number(0.0))?;
+            assert!(scope.strict_equals(&count, &zero)?);
+            if detached {
+                evaluate(scope, "styleParent.removeChild(inlineStyle)")?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert!(matches!(
+            host.run_attached_csp_violation_task(&permit, EVENT.dispatch)
+                .unwrap(),
+            DocumentCspViolationProgress::Complete(_)
+        ));
+        host.in_document(&permit, |scope| {
+            let target = if detached { "document" } else { "inlineStyle" };
+            let result = evaluate(
+                scope,
+                &format!(
+                    r#"
+                (() => {{
+                    const event = styleViolations[0];
+                    return styleViolations.length === 1 &&
+                        event instanceof SecurityPolicyViolationEvent &&
+                        event.isTrusted && event.target === {target} &&
+                        event.blockedURI === 'inline' &&
+                        event.effectiveDirective === 'style-src-elem' &&
+                        event.originalPolicy === "default-src 'none' 'report-sample'" &&
+                        event.disposition === 'enforce' && event.sample === 'p {{ color: red }}';
+                }})()
+            "#
+                ),
+            )?;
+            let yes = scope.primitive(Primitive::Boolean(true))?;
+            assert!(scope.strict_equals(&result, &yes)?);
+            Ok(())
+        })
+        .unwrap();
+        assert!(matches!(
+            host.run_attached_csp_violation_task(&permit, EVENT.dispatch)
+                .unwrap(),
+            DocumentCspViolationProgress::Empty
+        ));
     }
 }
