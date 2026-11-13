@@ -110,7 +110,10 @@ impl Policy {
                     }
                 }
                 allows_inline |= keyword(token, b"'unsafe-inline'");
-                report_sample |= keyword(token, b"'report-sample'");
+                report_sample |= token
+                    .iter()
+                    .copied()
+                    .eq(b"'report-sample'".iter().copied().map(u16::from));
             }
             return Ok((!unavailable).then_some((allows_inline && !has_credential, report_sample)));
         }

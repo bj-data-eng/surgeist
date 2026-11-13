@@ -14,7 +14,7 @@ use surgeist_bindings_js::conversion::{
     },
 };
 use surgeist_bindings_js::{IntegerValue, dom_exception::DomExceptionName};
-use surgeist_dom::DomSourceEdit;
+use surgeist_dom::{DomSourceEdit, DomSourceStatus};
 
 #[derive(Clone, Copy)]
 enum Operation {
@@ -257,17 +257,22 @@ impl Capture {
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let (data, _backing) = copy_native_data(owner, events, units)?;
-        let mut result = self.with_native(owner, |session, _| {
-            let mut source = session.source_execution();
-            let mut dom = session.dom();
-            Ok(source.apply(
-                &mut dom,
-                DomSourceEdit::replace_data(node.node(), offset, count, data),
-                events.limits.source_edits,
-                &mut guest_source_services(&mut |_| None),
-                &owner.cancellation,
-            ))
-        })?;
+        let event = owner.active_event_request();
+        let (mut result, parent) =
+            self.callbacks
+                .with_qualified_session(owner, event.as_ref(), |session, _| {
+                    let mut source = session.source_execution();
+                    let mut dom = session.dom();
+                    let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
+                    let result = source.apply(
+                        &mut dom,
+                        DomSourceEdit::replace_data(node.node(), offset, count, data),
+                        events.limits.source_edits,
+                        &mut guest_source_services(&mut |_| None),
+                        &owner.cancellation,
+                    );
+                    Ok((result, parent))
+                })?;
         owner.finish_guest_style(&mut result, events.limits.source_edits);
         let pending = owner
             .session
@@ -289,7 +294,7 @@ impl Capture {
                 Err(DocumentScriptNativeError::from(failure.into_parts().1).into())
             }
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::IndexSize)))
-                if pending.is_none() =>
+                if pending.map(DomSourceStatus::operation) == parent =>
             {
                 index_size(scope)
             }

@@ -95,20 +95,11 @@ fn character_data_edit_in_a_native_listener_settles_style_before_return() {
     };
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
     assert!(receipt.default_prevented());
-    let snapshot = host.snapshot().unwrap();
-    let after = snapshot
-        .node(style)
-        .unwrap()
-        .as_style()
-        .unwrap()
-        .sheet()
-        .unwrap()
-        .unwrap();
-    assert_ne!(after.id(), &before);
-    assert_eq!(
-        styles.snapshot(document.node()).unwrap().unwrap().sheets(),
-        &[after.id().clone()]
-    );
+    let cssom = styles.snapshot(document.node()).unwrap().unwrap();
+    let [after] = cssom.sheets() else {
+        panic!("the nested Style edit must leave one associated sheet");
+    };
+    assert_ne!(after, &before);
     host.with_native(|dom, _, mut source| {
         assert!(matches!(
             source.resume(dom, request.operation(), SOURCE, &mut services, &cancel).unwrap(),
@@ -116,6 +107,19 @@ fn character_data_edit_in_a_native_listener_settles_style_before_return() {
         ));
     })
     .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(
+        snapshot
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .unwrap()
+            .id(),
+        after
+    );
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, "changedDuringListener")?;
         assert!(scope.boolean(&result)?);
