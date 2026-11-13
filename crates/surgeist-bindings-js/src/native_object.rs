@@ -34,6 +34,12 @@ pub struct NativeObjectToken<T> {
     marker: PhantomData<Rc<T>>,
 }
 
+impl<T> NativeObjectToken<T> {
+    pub(crate) fn identity_parts(&self) -> (u64, u32) {
+        (self.owner, self.index)
+    }
+}
+
 /// Prototype and creation realm for an unpublished native projection.
 pub enum NativeProjectionPrototype<'value, 'scope> {
     /// Use the current realm and an ordinary scoped prototype choice.
@@ -69,6 +75,14 @@ struct AbortProjection<'borrow, 'scope> {
 }
 
 impl<'scope, T> PreparedNativeProjection<'_, 'scope, T> {
+    pub(crate) fn token(&self) -> NativeObjectToken<T> {
+        NativeObjectToken {
+            owner: self.abort.projected.holder.owner,
+            index: self.abort.projected.index,
+            marker: PhantomData,
+        }
+    }
+
     /// Publish the private projection after the host's own commit. Binding its
     /// native payload and transferring its holder require no engine operation.
     pub fn publish<R>(

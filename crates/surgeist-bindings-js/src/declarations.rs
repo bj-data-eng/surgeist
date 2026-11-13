@@ -4,7 +4,7 @@
 //!
 //! These values do not install interfaces or convert guest inputs.
 
-use crate::DomString;
+use crate::{CustomElementRegistryIdentity, DomString};
 
 /// Values of the declared `ShadowRootMode` enumeration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -132,8 +132,8 @@ pub struct GetRootNodeOptions {
 /// Complete `ElementCreationOptions` dictionary value for the admitted registry profile.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ElementCreationOptions {
-    /// Whether `customElementRegistry` was explicitly supplied as null.
-    pub custom_element_registry_is_null: bool,
+    /// A supplied null or exact branded registry identity.
+    pub custom_element_registry: Option<Option<CustomElementRegistryIdentity>>,
     /// The declared `is` member.
     pub is: Option<DomString>,
 }

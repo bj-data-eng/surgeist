@@ -50,13 +50,22 @@ impl Bank {
         &self.records
     }
     pub(crate) fn get(&self, id: DomRegistryId) -> Result<&Record, DomError> {
+        self.get_with(id, &mut || Ok(()))
+    }
+    pub(in crate::store) fn get_with(
+        &self,
+        id: DomRegistryId,
+        step: &mut impl FnMut() -> Result<(), DomError>,
+    ) -> Result<&Record, DomError> {
         if id.owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
         if id.generation != 1 {
             return Err(DomError::StaleNode);
         }
-        self.records.get(id.slot).ok_or(DomError::StaleNode)
+        self.records
+            .get_with(id.slot, step)?
+            .ok_or(DomError::StaleNode)
     }
     pub(crate) fn form(
         old: Option<&Self>,
@@ -245,6 +254,15 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.select_element_registry_with(key, None, cancel)
+    }
+
+    pub(super) fn select_element_registry_with(
+        &mut self,
+        key: Key,
+        selected: Option<crate::DomRegistryBinding>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let node = self.node(key)?;
         let Some(element) = node.element() else {
@@ -256,13 +274,13 @@ impl Draft {
                 DomError::WrongNodeKind => DomError::WrongDocument,
                 error => error,
             })?;
-        let binding = metadata.custom_element_registry();
+        let binding = selected.unwrap_or_else(|| metadata.custom_element_registry());
         if let crate::DomRegistryBinding::Registry(id) = binding {
             let record = self
                 .registries
                 .as_ref()
                 .ok_or(DomError::HostedSourceUnavailable)?
-                .get(id)?;
+                .get_with(id, &mut || self.source_step(cancel))?;
             if element.common_state().html().is_some() {
                 let registry =
                     surgeist_html_semantics::HtmlCapturedRegistry::Registry(record.local.clone());

@@ -696,6 +696,10 @@ def null_registry_member(member):
             and not member["required"] and "default" not in member)
 
 
+def branded_registry_member(member):
+    return null_registry_member(member) and member.get("id") == "ElementCreationOptions.customElementRegistry"
+
+
 def string_member(member):
     return (member.get("id") == "ElementCreationOptions.is"
             and member["type"] == {"kind": "named", "name": "DOMString"}
@@ -704,14 +708,14 @@ def string_member(member):
 
 def member_field(member):
     name = field_name(member["name"])
-    return name + "_is_null" if null_registry_member(member) else name
+    return name + "_is_null" if null_registry_member(member) and not branded_registry_member(member) else name
 
 
 def lower_values(data):
     """Lower validated declarations for the selected conversion profiles.
 
-    Scalar members need no interface brand. The selected registry profiles
-    admit the null alternative of the unavailable registry interface.
+    Scalar members need no interface brand. Registry members use the selected
+    brand conversion profile of their owning dictionary.
     The normalized member order is also the later conversion read order.
     """
     definitions = {d["name"]: d for d in data["declarations"] if not d.get("partial", False)}
@@ -766,6 +770,8 @@ def units_literal(value):
 
 
 def member_type(member):
+    if branded_registry_member(member):
+        return "Option<Option<CustomElementRegistryIdentity>>"
     if null_registry_member(member):
         return "bool"
     name = member["type"]["name"]
@@ -774,6 +780,8 @@ def member_type(member):
 
 
 def member_default(member, enumerations):
+    if branded_registry_member(member):
+        return "None"
     if null_registry_member(member):
         return "false"
     value = member.get("default")
@@ -794,8 +802,13 @@ def emit_values(model):
               "// Source-adapted WHATWG declarations: licenses/whatwg/LICENSE and NOTICE.md.",
               "//! Typed IDL values from the retained binding description.",
               "//!", "//! These values do not install interfaces or convert guest inputs.", ""]
-    if any(string_member(m) for d in model["dictionaries"] for m in d["members"]):
-        result += ["use crate::DomString;", ""]
+    imports = [name for name, accepts in [("CustomElementRegistryIdentity", branded_registry_member),
+                                           ("DomString", string_member)]
+               if any(accepts(m) for d in model["dictionaries"] for m in d["members"])]
+    if len(imports) == 1:
+        result += ["use crate::" + imports[0] + ";", ""]
+    elif imports:
+        result += ["use crate::{" + ", ".join(imports) + "};", ""]
     enumerations = {d["name"]: d for d in model["enumerations"]}
     for d in model["enumerations"]:
         result += ["/// Values of the declared `" + d["name"] + "` enumeration.",
@@ -826,6 +839,8 @@ def emit_values(model):
         for m in d["members"]:
             doc = ("Whether `customElementRegistry` was explicitly supplied as null."
                    if null_registry_member(m) else "The declared `" + m["name"] + "` member.")
+            if branded_registry_member(m):
+                doc = "A supplied null or exact branded registry identity."
             result += ["    /// " + doc,
                        "    pub " + member_field(m) + ": " + member_type(m) + ","]
         result += ["}", ""]
@@ -983,7 +998,9 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
                     result += ["            " + line for line in textwrap.wrap(member_units[1:-1] + ",", width=88)]
                     result += ["        ],"]
                 result += ["    )? {"]
-            if null_registry_member(member):
+            if branded_registry_member(member):
+                result += ["        Some(value) => Some(cx.custom_element_registry_member(&value)?),"]
+            elif null_registry_member(member):
                 result += ["        Some(value) => cx.null_interface_member(\"CustomElementRegistry\", &value)?,"]
             elif string_member(member):
                 result += ["        Some(value) => Some(cx.value(&types::DOM_STRING, &value)?),"]

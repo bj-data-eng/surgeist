@@ -319,8 +319,11 @@ detached Element and admit its exact wrapper in the receiver's registered
 creation realm before publication. DOM owns name validation, namespace and
 prefix handling, and initialization of supported element families. The
 ordinary factory path accepts the legacy string and the creation dictionary,
-including saved `is` and an explicit null registry. A non-null guest registry
-brand and synchronous custom-element execution are pending.
+including saved `is`, an explicit null registry and the receiving Document's
+exact Global registry object. `Window.customElements` and the Document,
+Element and ShadowRoot registry getters share that canonical identity. Scoped
+registry construction, definition registration and synchronous custom-element
+execution are pending.
 Native ShadowRoots inherit DocumentFragment and expose their canonical host,
 mode, focus delegation, slot assignment, clonability and serializability.
 Element.shadowRoot exposes open roots. Node root reads and event paths use
@@ -331,7 +334,7 @@ of the same mode. The wrapper uses the root's creation realm and keeps its
 exact retirement watch. Reuse returns the existing wrapper when available
 and preserves the root's settings while removing its ordinary children.
 The synchronous binding requires one complete Source publication. Native
-custom element registry objects are unavailable in this profile.
+custom element registry options for `attachShadow` admit null.
 `DocumentGuestEventLimits` includes the native watch storage and work limits.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's

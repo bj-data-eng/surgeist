@@ -442,8 +442,8 @@ pub enum DomElementCreationName {
 pub struct DomElementCreationOptions {
     /// An exact saved `is` value supplied by the dictionary.
     pub is: Option<DocumentString>,
-    /// Select no registry instead of looking up the receiver's registry.
-    pub null_registry: bool,
+    /// An explicit registry selection, including null, or the receiver's default.
+    pub registry: Option<crate::DomRegistryBinding>,
 }
 
 /// One ordinary detached node creation with no connected-tree effects.

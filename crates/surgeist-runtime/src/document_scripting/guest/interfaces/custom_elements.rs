@@ -1,6 +1,7 @@
 //! Guest identity for the canonical custom element registry.
 
 use super::*;
+use surgeist_bindings_js::CustomElementRegistryIdentity;
 use surgeist_dom::{DomNodeKind, DomRegistryBinding, DomRegistryId, DomSnapshot};
 
 const INTERFACE: &[u16] = &ascii(b"CustomElementRegistry");
@@ -8,6 +9,7 @@ const INTERFACE: &[u16] = &ascii(b"CustomElementRegistry");
 pub(super) struct GlobalRegistry {
     id: DomRegistryId,
     object: RetainedCallbackObject,
+    identity: CustomElementRegistryIdentity,
 }
 
 pub(in crate::document_scripting) fn document_registry(
@@ -52,8 +54,10 @@ pub(super) fn install<'scope>(
         },
     )?;
     document::install_interface(scope, window, INTERFACE, &constructor, &prototype)?;
-    let object =
-        scope.project_retained_native_object(ObjectPrototype::Object(&prototype), id, fund)?;
+    let (object, identity) = scope.project_custom_element_registry(
+        ObjectPrototype::Object(&prototype),
+        |payload, holder| Ok::<_, DocumentGuestEventError>((fund(payload)?, fund(holder)?)),
+    )?;
     let handler = capture(size_of::<(Capture, DocumentId)>())?;
     let getter = scope.fixed_arity_function(
         &Callback::new(move |scope, arguments| handler.window_registry(scope, arguments, document)),
@@ -70,7 +74,11 @@ pub(super) fn install<'scope>(
         None,
         true,
     )?;
-    Ok(GlobalRegistry { id, object })
+    Ok(GlobalRegistry {
+        id,
+        object,
+        identity,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -169,15 +177,40 @@ impl Capture {
 }
 
 impl PublicEventBindings {
+    pub(super) fn native_registry(
+        &self,
+        read: &NativeRead<'_>,
+        identity: CustomElementRegistryIdentity,
+    ) -> Result<DomRegistryId, DocumentGuestEventError> {
+        self.with_registry(
+            read,
+            |registry| registry.identity == identity,
+            |registry| Ok(registry.id),
+        )
+    }
+
     fn open_registry<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         read: &NativeRead<'_>,
         id: DomRegistryId,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        self.with_registry(
+            read,
+            |registry| registry.id == id,
+            |registry| Ok(scope.open_callback_object(&registry.object)?),
+        )
+    }
+
+    fn with_registry<T>(
+        &self,
+        read: &NativeRead<'_>,
+        mut matches: impl FnMut(&GlobalRegistry) -> bool,
+        use_registry: impl FnOnce(&GlobalRegistry) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
         read.step()?;
-        if self.custom_elements.id == id {
-            return Ok(scope.open_callback_object(&self.custom_elements.object)?);
+        if matches(&self.custom_elements) {
+            return use_registry(&self.custom_elements);
         }
         let origins = self
             .origins
@@ -186,8 +219,8 @@ impl PublicEventBindings {
         let mut next = origins.as_deref();
         while let Some(origin) = next {
             read.step()?;
-            if origin.custom_elements.id == id {
-                return Ok(scope.open_callback_object(&origin.custom_elements.object)?);
+            if matches(&origin.custom_elements) {
+                return use_registry(&origin.custom_elements);
             }
             next = origin.next.as_deref();
         }

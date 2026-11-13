@@ -2690,12 +2690,12 @@ impl Draft {
     fn initialize_native_element(
         &mut self,
         key: Key,
-        null_registry: bool,
+        registry: Option<crate::DomRegistryBinding>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !null_registry {
-            self.select_element_registry(key, cancel)?;
+        if registry != Some(crate::DomRegistryBinding::Null) {
+            self.select_element_registry_with(key, registry, cancel)?;
         }
         self.initialize_template_contents(key, limits, cancel)?;
         if self.node(key)?.hyperlink().is_some() {
@@ -3613,7 +3613,7 @@ impl Draft {
                         cancelled,
                         metadata_formation,
                     )?;
-                    self.initialize_native_element(key, options.null_registry, limits, cancelled)?;
+                    self.initialize_native_element(key, options.registry, limits, cancelled)?;
                     self.register_ticket(key, cancelled)?;
                     return Ok(());
                 }
@@ -3689,7 +3689,7 @@ impl Draft {
                 }
                 let key =
                     self.allocate_formed(kind, document, limits, cancelled, metadata_formation)?;
-                self.initialize_native_element(key, false, limits, cancelled)?;
+                self.initialize_native_element(key, None, limits, cancelled)?;
                 self.register_ticket(key, cancelled)?;
             }
             Command::Import {

@@ -416,7 +416,7 @@ fn element_creation_options(process: &mut Process) -> TestResult {
             else {
                 panic!("expected empty options dictionary");
             };
-            assert!(!options.custom_element_registry_is_null);
+            assert_eq!(options.custom_element_registry, None);
             assert!(options.is.is_none());
         }
         let number = scope.primitive(Primitive::Number(42.0))?;
@@ -435,7 +435,7 @@ fn element_creation_options(process: &mut Process) -> TestResult {
         else {
             panic!("expected the dictionary alternative");
         };
-        assert!(options.custom_element_registry_is_null);
+        assert_eq!(options.custom_element_registry, Some(None));
         assert_eq!(options.is.as_ref().expect("is").as_code_units(), [0xd800]);
         let order = scope.evaluate(&units("order"))?;
         assert_eq!(scope.to_utf16(&order)?, units("ris"));

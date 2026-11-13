@@ -241,6 +241,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::element_factory_admits_exact_projection_work();
     super::guest::tests::custom_element_registry_identity_is_canonical();
     super::guest::tests::element_factory_qualifies_the_explicit_registry();
+    super::guest::tests::registered_origin::registered_origin_registry_keeps_exact_wrapper();
     super::guest::tests::registered_origin::registered_character_factory_refuses_without_publication(
     );
     public_and_source_comment_projection_share_identity();

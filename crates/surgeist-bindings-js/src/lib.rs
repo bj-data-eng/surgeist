@@ -77,6 +77,7 @@ mod backend;
 mod callback_object;
 pub mod conversion;
 pub mod css;
+mod custom_elements;
 pub mod declarations;
 pub mod dom_exception;
 mod error;
@@ -90,6 +91,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub use callback_object::{CallbackObject, RetainedCallbackObject};
+pub use custom_elements::CustomElementRegistryIdentity;
 pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};

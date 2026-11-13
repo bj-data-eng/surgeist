@@ -387,7 +387,7 @@ impl surgeist_bindings_js::declarations::SlotAssignmentMode
 pub fn surgeist_bindings_js::declarations::SlotAssignmentMode::as_code_units(self) -> &'static [u16]
 pub fn surgeist_bindings_js::declarations::SlotAssignmentMode::from_code_units(units: &[u16]) -> core::option::Option<Self>
 pub struct surgeist_bindings_js::declarations::ElementCreationOptions
-pub surgeist_bindings_js::declarations::ElementCreationOptions::custom_element_registry_is_null: bool
+pub surgeist_bindings_js::declarations::ElementCreationOptions::custom_element_registry: core::option::Option<core::option::Option<surgeist_bindings_js::CustomElementRegistryIdentity>>
 pub surgeist_bindings_js::declarations::ElementCreationOptions::is: core::option::Option<surgeist_bindings_js::DomString>
 pub struct surgeist_bindings_js::declarations::EventInit
 pub surgeist_bindings_js::declarations::EventInit::bubbles: bool
@@ -624,6 +624,7 @@ pub fn surgeist_bindings_js::ConstructorInvocation<'scope>::is_empty(&self) -> b
 pub fn surgeist_bindings_js::ConstructorInvocation<'scope>::len(&self) -> usize
 pub fn surgeist_bindings_js::ConstructorInvocation<'scope>::new_target(&self) -> &surgeist_bindings_js::Value<'scope>
 pub fn surgeist_bindings_js::ConstructorInvocation<'scope>::prototype(&self) -> &surgeist_bindings_js::Value<'scope>
+pub struct surgeist_bindings_js::CustomElementRegistryIdentity
 pub struct surgeist_bindings_js::DomString(_)
 impl surgeist_bindings_js::DomString
 pub fn surgeist_bindings_js::DomString::as_code_units(&self) -> &[u16]
@@ -755,6 +756,8 @@ pub fn surgeist_bindings_js::Scope<'scope>::project_retained_native_object_in_pr
 pub fn surgeist_bindings_js::Scope<'scope>::retained_native_object_bytes<T, Storage>(&self) -> core::result::Result<(usize, usize), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::set_native_object_reference<T: 'static>(&mut self, object: &surgeist_bindings_js::Value<'scope>, slot: u32, reference: core::option::Option<&surgeist_bindings_js::Value<'scope>>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::try_project_retained_native_object<T: 'static, Storage: 'static, R, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::NativeProjectionPrototype<'_, 'scope>, payload: T, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>, commit: impl core::ops::function::FnOnce(&T) -> core::result::Result<R, E>) -> core::result::Result<(surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::RetainedCallbackObject, R), E>
+impl<'scope> surgeist_bindings_js::Scope<'scope>
+pub fn surgeist_bindings_js::Scope<'scope>::project_custom_element_registry<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, admit: impl core::ops::function::FnOnce(usize, usize) -> core::result::Result<(Storage, Storage), E>) -> core::result::Result<(surgeist_bindings_js::RetainedCallbackObject, surgeist_bindings_js::CustomElementRegistryIdentity), E>
 impl<'scope> surgeist_bindings_js::Scope<'scope>
 pub fn surgeist_bindings_js::Scope<'scope>::project_named_trusted_type<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, data: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::TrustedTypeData>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, E>
 pub fn surgeist_bindings_js::Scope<'scope>::project_trusted_type<Storage: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>, data: surgeist_bindings_js::conversion::Converted<core::option::Option<surgeist_bindings_js::TrustedTypeData>>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<Storage, E>) -> core::result::Result<core::option::Option<surgeist_bindings_js::Value<'scope>>, E>

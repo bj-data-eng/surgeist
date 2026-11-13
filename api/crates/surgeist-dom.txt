@@ -2158,7 +2158,7 @@ impl core::cmp::PartialEq for surgeist_dom::DomElement
 pub fn surgeist_dom::DomElement::eq(&self, other: &Self) -> bool
 pub struct surgeist_dom::DomElementCreationOptions
 pub surgeist_dom::DomElementCreationOptions::is: core::option::Option<surgeist_html::internal::values::document_string::DocumentString>
-pub surgeist_dom::DomElementCreationOptions::null_registry: bool
+pub surgeist_dom::DomElementCreationOptions::registry: core::option::Option<surgeist_dom::DomRegistryBinding>
 pub struct surgeist_dom::DomElementTaskAssociation
 impl surgeist_dom::DomElementTaskAssociation
 pub const fn surgeist_dom::DomElementTaskAssociation::document(self) -> surgeist_dom::DocumentId

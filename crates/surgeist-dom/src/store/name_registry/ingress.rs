@@ -308,8 +308,31 @@ impl Draft {
                 self.native_qualified_name(namespace, name, budget, cancel)?
             }
         };
-        if options.null_registry && options.is.is_some() {
+        if options.registry.is_some() && options.is.is_some() {
             return Err(DomError::NotSupported);
+        }
+        if let Some(crate::DomRegistryBinding::Registry(id)) = options.registry {
+            self.source_step(cancel)?;
+            let record = self
+                .registries
+                .as_ref()
+                .ok_or(DomError::HostedSourceUnavailable)?
+                .get_with(id, &mut || self.source_step(cancel))?;
+            let scope = record
+                .capture
+                .registry_scope(&record.local)
+                .map_err(DomError::SelectCapture)?;
+            use surgeist_html_semantics::HtmlRegistryScope;
+            match scope {
+                HtmlRegistryScope::Global
+                    if document.custom_element_registry()
+                        != crate::DomRegistryBinding::Registry(id) =>
+                {
+                    return Err(DomError::NotSupported);
+                }
+                HtmlRegistryScope::Unavailable => return Err(DomError::HostedSourceUnavailable),
+                HtmlRegistryScope::Global | HtmlRegistryScope::Scoped => (),
+            }
         }
         self.form_native_element(
             name,
