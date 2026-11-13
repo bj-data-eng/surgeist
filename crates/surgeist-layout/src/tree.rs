@@ -33,6 +33,9 @@ pub trait LayoutTree: Traverse {
         false
     }
 
+    /// Measures the immutable leaf for the supplied content-space request.
+    /// Within one layout call, the same node and request may reuse a
+    /// successful measurement.
     fn measure_leaf(
         &self,
         _node: Self::Node,

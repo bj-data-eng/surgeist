@@ -379,28 +379,32 @@ pub(crate) fn compute_tree_leaf_with_intrinsic_icb<Tree>(
 where
     Tree: LayoutTree,
 {
+    compute_leaf_with_sampler(node, input, style, intrinsic_icb, |request| {
+        sample_tree_leaf(tree, node, request)
+    })
+}
+
+pub(crate) fn sample_tree_leaf<Tree: LayoutTree>(
+    tree: &Tree,
+    node: Tree::Node,
+    request: LeafMeasureInputOf<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, Size<Tree::Scalar>, Tree::Scalar, Tree::MeasureError> {
     let site = LayoutErrorSiteOf::Node(node);
-    compute_leaf_with_sampler(
-        node,
-        input,
-        style,
-        intrinsic_icb,
-        |measure_input| match tree.measure_leaf(node, measure_input) {
-            Some(Ok(output)) => Ok(output),
-            Some(Err(error)) => Err(LayoutErrorOf::new(
-                site,
-                LayoutOperation::LeafMeasurement,
-                LayoutErrorKindOf::Measurement(error),
-            )),
-            None => Err(LayoutErrorOf::new(
-                site,
-                LayoutOperation::LeafMeasurement,
-                LayoutErrorKindOf::InternalInvariant(
-                    LayoutInternalInvariant::MissingLeafMeasurementProvider,
-                ),
-            )),
-        },
-    )
+    match tree.measure_leaf(node, request) {
+        Some(Ok(output)) => Ok(output),
+        Some(Err(error)) => Err(LayoutErrorOf::new(
+            site,
+            LayoutOperation::LeafMeasurement,
+            LayoutErrorKindOf::Measurement(error),
+        )),
+        None => Err(LayoutErrorOf::new(
+            site,
+            LayoutOperation::LeafMeasurement,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::MissingLeafMeasurementProvider,
+            ),
+        )),
+    }
 }
 
 /// Private producer injection for operation-local native observations. All
