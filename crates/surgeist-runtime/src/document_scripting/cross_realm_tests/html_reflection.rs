@@ -4,6 +4,82 @@ use crate::document_scripting::guest::tests::{
     expose_public_node_for_source_test, projected_node_id,
 };
 
+pub(super) fn heading_offset_reflects_the_distinct_getter_and_setter_ranges() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel, 8_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"(() => {
+            const d = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'headingOffset');
+            if (!d || !d.get || !d.set || !d.enumerable || !d.configurable ||
+                d.get.length !== 0 || d.set.length !== 1 ||
+                d.get.name !== 'get headingOffset' || d.set.name !== 'set headingOffset')
+                return 'headingOffset descriptor';
+            const keys = Object.keys(HTMLElement.prototype);
+            if (!(keys.indexOf('popover') < keys.indexOf('headingOffset') &&
+                keys.indexOf('headingOffset') < keys.indexOf('headingReset'))) return 'order';
+            const html = document.createElement('div');
+            for (const receiver of [{}, Object.create(HTMLElement.prototype),
+                document.createElementNS('urn:foreign', 'div')]) {
+                let converted = false, getRejected = false, setRejected = false;
+                try { d.get.call(receiver); } catch(e) { getRejected = e instanceof TypeError; }
+                try { d.set.call(receiver, {valueOf() {converted = true; return 1; }}); }
+                catch(e) { setRejected = e instanceof TypeError; }
+                if (!getRejected || !setRejected || converted) return 'brand';
+            }
+            html.setAttributeNS('urn:foreign', 'headingoffset', '7');
+            if (html.headingOffset !== 0) return 'missing/null namespace';
+            for (const [raw, expected] of [['0',0], ['8',8], ['9',8], [' +12tail',8],
+                ['-0',0], ['-1',0], ['',0], ['garbage',0], ['0x10',0], ['7.9',7],
+                ['\ud800',0], ['7\ud800',7], ['9'.repeat(100),8]]) {
+                html.setAttributeNS(null, 'headingoffset', raw);
+                if (html.headingOffset !== expected || html.getAttributeNS(null,'headingoffset') !== raw)
+                    return 'get ' + raw;
+            }
+            for (const [input, stored, expected] of [[-0,'0',0], [7.9,'7',7], [9,'9',8],
+                [2147483647,'2147483647',8], [2147483648,'0',0], [4294967295,'0',0],
+                [4294967296,'0',0], [4294967297,'1',1], [-1,'0',0], [NaN,'0',0],
+                [Infinity,'0',0], [-Infinity,'0',0], [null,'0',0], [undefined,'0',0], [true,'1',1]]) {
+                html.headingOffset = input;
+                if (html.headingOffset !== expected || html.getAttributeNS(null,'headingoffset') !== stored)
+                    return 'set ' + String(input);
+            }
+            for (const input of [Symbol(), 1n]) {
+                let rejected = false;
+                try { html.headingOffset = input; } catch(e) { rejected = e instanceof TypeError; }
+                if (!rejected || html.getAttributeNS(null,'headingoffset') !== '1') return 'ToNumber';
+            }
+            html.headingOffset = {valueOf() { html.headingOffset = 4; return 9; }};
+            if (html.headingOffset !== 8 || html.getAttributeNS(null,'headingoffset') !== '9')
+                return 'conversion reentry';
+            const original = new Error('original');
+            try { html.headingOffset = {valueOf() {throw original;}}; return 'missing abrupt'; }
+            catch(e) { if (e !== original) return 'wrong abrupt'; }
+            if (html.getAttributeNS(null,'headingoffset') !== '9') return 'abrupt mutation';
+            const calls = [];
+            customElements.define('x-heading-offset', class extends HTMLElement {
+                static observedAttributes = ['headingoffset'];
+                attributeChangedCallback(name, oldValue, newValue, namespace) {
+                    calls.push([oldValue,newValue,namespace,this.headingOffset]);
+                }
+            });
+            const custom = document.createElement('x-heading-offset');
+            custom.headingOffset = 12;
+            custom.headingOffset = 2147483648;
+            if (JSON.stringify(calls) !== JSON.stringify([[null,'12',null,8],['12','0',null,0]]))
+                return 'synchronous reactions';
+            const unknown = document.createElement('heading-offset-unknown');
+            unknown.headingOffset = 6;
+            if (unknown.headingOffset !== 6) return 'unknown HTML';
+            return 'ok';
+        })()"#)?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    }).unwrap();
+    host.stop().into_session().unwrap();
+}
+
 pub(super) fn local_keyword_reflections_follow_current_native_attributes() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (session, target) = hosted_session(&cancel, 0);
