@@ -355,7 +355,9 @@ pub use store::source::operation::meta::{
     DomMetaSourcePreparation, DomMetaSourcePublished, DomMetaSourceRuntimeHold, DomMetaSourceStep,
     DomSourceMetaCspError, DomSourceMetaCspProcessorFailure,
 };
-pub use store::source::operation::{DomSourceEventFiringLoan, DomSourceLease, DomStyleCspBudget};
+pub use store::source::operation::{
+    DomPreparedElementName, DomSourceEventFiringLoan, DomSourceLease, DomStyleCspBudget,
+};
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCspRetention,
     DomStyleCssomOwnerBinding, DomStyleCssomPublicationRejection, DomStyleCssomRoot,

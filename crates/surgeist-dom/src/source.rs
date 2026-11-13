@@ -427,6 +427,25 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 
+/// Name input for one detached Element in its receiving Document.
+#[derive(Clone, Debug)]
+pub enum DomElementCreationName {
+    /// Apply the document-sensitive whole-local-name rule.
+    Local(DocumentString),
+    /// Validate and split the supplied namespace and qualified name.
+    Qualified(Namespace, DocumentString),
+}
+
+/// Converted options for Document element creation. DOM checks their
+/// combination after validating the requested element name.
+#[derive(Clone, Debug, Default)]
+pub struct DomElementCreationOptions {
+    /// An exact saved `is` value supplied by the dictionary.
+    pub is: Option<DocumentString>,
+    /// Select no registry instead of looking up the receiver's registry.
+    pub null_registry: bool,
+}
+
 /// One ordinary detached node creation with no connected-tree effects.
 #[derive(Debug)]
 pub enum DomDetachedNodeCreation {
@@ -831,7 +850,11 @@ impl DomSourceEdit {
     }
     /// Request one `create_element` operation on the canonical owner.
     pub fn create_element(document: NodeId, local_name: impl Into<DocumentString>) -> Self {
-        Self::create(Creation::Element(local_name.into()), Some(document.into()))
+        Self::create_element_with_options(
+            document,
+            DomElementCreationName::Local(local_name.into()),
+            DomElementCreationOptions::default(),
+        )
     }
     /// Request one `create_element_ns` operation on the canonical owner.
     pub fn create_element_ns(
@@ -839,13 +862,18 @@ impl DomSourceEdit {
         namespace: Namespace,
         qualified_name: impl Into<DocumentString>,
     ) -> Self {
-        Self::create(
-            Creation::ElementNs {
-                namespace,
-                name: qualified_name.into(),
-            },
-            Some(document.into()),
+        Self::create_element_with_options(
+            document,
+            DomElementCreationName::Qualified(namespace, qualified_name.into()),
+            DomElementCreationOptions::default(),
         )
+    }
+    pub(crate) fn create_element_with_options(
+        document: NodeId,
+        name: DomElementCreationName,
+        options: DomElementCreationOptions,
+    ) -> Self {
+        Self::create(Creation::Element { name, options }, Some(document.into()))
     }
     /// Request creation of one empty detached Attr in the selected Document.
     pub fn create_attribute(

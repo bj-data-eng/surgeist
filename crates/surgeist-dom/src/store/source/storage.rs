@@ -458,14 +458,20 @@ pub(in crate::store) fn commands(
                 ..
             } => payload.string(value)?,
             Command::Create { kind, .. } => match kind {
-                Creation::Element(value) | Creation::Text(value) | Creation::Comment(value) => {
-                    payload.string(value)?
-                }
-                Creation::ElementNs { namespace, name } => {
-                    if let Some(uri) = namespace.uri() {
-                        payload.string(uri)?;
+                Creation::Text(value) | Creation::Comment(value) => payload.string(value)?,
+                Creation::Element { name, options } => {
+                    match name {
+                        crate::DomElementCreationName::Local(name) => payload.string(name)?,
+                        crate::DomElementCreationName::Qualified(namespace, name) => {
+                            if let Some(uri) = namespace.uri() {
+                                payload.string(uri)?;
+                            }
+                            payload.string(name)?;
+                        }
                     }
-                    payload.string(name)?;
+                    if let Some(value) = &options.is {
+                        payload.string(value)?;
+                    }
                 }
                 Creation::Attr { namespace, name } => {
                     if let Some(uri) = namespace.as_ref().and_then(|namespace| namespace.uri()) {

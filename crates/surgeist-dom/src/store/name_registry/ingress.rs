@@ -294,11 +294,39 @@ impl Draft {
 
     pub(in crate::store) fn native_element(
         &self,
-        local: &DocumentString,
+        name: &crate::DomElementCreationName,
+        options: &crate::DomElementCreationOptions,
         document: &DomDocumentMetadata,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<crate::element::FormedElement, DomError> {
+        let name = match name {
+            crate::DomElementCreationName::Local(name) => {
+                self.native_local_name(name, document, budget, cancel)?
+            }
+            crate::DomElementCreationName::Qualified(namespace, name) => {
+                self.native_qualified_name(namespace, name, budget, cancel)?
+            }
+        };
+        if options.null_registry && options.is.is_some() {
+            return Err(DomError::NotSupported);
+        }
+        self.form_native_element(
+            name,
+            options.is.as_ref(),
+            document.document_environment(),
+            budget,
+            cancel,
+        )
+    }
+
+    fn native_local_name(
+        &self,
+        local: &DocumentString,
+        document: &DomDocumentMetadata,
+        budget: Option<&source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<DomQualifiedName, DomError> {
         if !crate::names::valid_element_local_name(local, &mut || self.name_step(cancel))? {
             return Err(DomError::InvalidCharacter);
         }
@@ -336,17 +364,16 @@ impl Draft {
         drop(raw);
         drop(normalized);
         drop(input);
-        self.form_native_element(name, document.document_environment(), budget, cancel)
+        Ok(name)
     }
 
-    pub(in crate::store) fn native_element_ns(
+    fn native_qualified_name(
         &self,
         namespace: &Namespace,
         qualified: &DocumentString,
-        environment: crate::DomDocumentEnvironment,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
-    ) -> Result<crate::element::FormedElement, DomError> {
+    ) -> Result<DomQualifiedName, DomError> {
         let input = source::formation::Formation::new(self, cancel)?;
         let mut normalized = Normalized::new(&self.names);
         let raw = crate::names::element_name(
@@ -360,7 +387,7 @@ impl Draft {
         drop(raw);
         drop(normalized);
         drop(input);
-        self.form_native_element(name, environment, budget, cancel)
+        Ok(name)
     }
 
     pub(in crate::store) fn native_element_components(
@@ -373,6 +400,7 @@ impl Draft {
         crate::names::validate_element_components(raw, &mut || self.name_step(cancel))?;
         self.form_native_element(
             self.bind_name(raw, budget, cancel)?,
+            None,
             environment,
             budget,
             cancel,
@@ -382,6 +410,7 @@ impl Draft {
     fn form_native_element(
         &self,
         name: DomQualifiedName,
+        saved_is: Option<&DocumentString>,
         environment: crate::DomDocumentEnvironment,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
@@ -398,7 +427,7 @@ impl Draft {
             cancel,
             &mut admit,
         );
-        let mut formed = DomElement::native(name, environment, formation)?;
+        let mut formed = DomElement::native(name, saved_is, environment, formation)?;
         formed.children.name = Some(custody);
         Ok(formed)
     }

@@ -242,10 +242,14 @@ impl DomElement {
     /// The name target is already formed and sealed by the ingress owner.
     pub(crate) fn native(
         name: Arc<Payload<ElementName>>,
+        saved_is: Option<&DocumentString>,
         environment: crate::DomDocumentEnvironment,
         formation: ElementFormation<'_>,
     ) -> Result<FormedElement, DomError> {
-        Self::initialize(name, None, environment, formation)
+        let saved_is = saved_is
+            .map(|value| formation::share_listed(value, formation.budget, formation.cancel))
+            .transpose()?;
+        Self::initialize(name, saved_is, environment, formation)
     }
 
     /// Clone initialization creates fresh native state; it never interns native

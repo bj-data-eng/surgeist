@@ -205,6 +205,15 @@ impl ElementBindings {
         })
     }
 
+    pub(super) fn prototype_for_name(
+        &self,
+        name: &DomQualifiedName,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+    ) -> Result<&RetainedCallbackObject, DocumentGuestEventError> {
+        let interface = element_interface(name, &mut step)?;
+        self.prototype(interface, step)
+    }
+
     fn prototype(
         &self,
         interface: ElementInterface,

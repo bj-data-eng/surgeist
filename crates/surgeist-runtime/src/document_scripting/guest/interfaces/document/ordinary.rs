@@ -1,11 +1,12 @@
 //! Retained custody indexed by exact native node retirement.
 
+use super::super::PublicEventBindings;
 use super::*;
 use surgeist_bindings_js::NativeProjectionPrototype;
 use surgeist_dom::{
-    DomDetachedNodeCreation, DomDocumentScriptRegistration, DomNodeRetirementWatch,
-    DomSourceAttributeAttachmentOutput, DomSourceAttributeVerificationRequest,
-    DomSourceEventRequest,
+    DomDetachedNodeCreation, DomDocumentScriptRegistration, DomElementCreationName,
+    DomElementCreationOptions, DomNodeRetirementWatch, DomSourceAttributeAttachmentOutput,
+    DomSourceAttributeVerificationRequest, DomSourceEventRequest,
 };
 
 pub(super) struct OrdinaryBindings {
@@ -189,6 +190,47 @@ struct Pin {
     _backing: GuestBacking,
 }
 
+struct PreparedPin {
+    backing: GuestBacking,
+    lifetime: Rc<NodeLifetime>,
+    allocation: Box<std::mem::MaybeUninit<Pin>>,
+}
+
+impl PreparedPin {
+    fn new(admission: Admission<'_>) -> Result<Self, DocumentGuestEventError> {
+        let backing = admission.reserve(size_of::<Pin>())?;
+        let lifetime_backing =
+            admission.reserve(size_of::<NodeLifetime>() + 2 * size_of::<usize>())?;
+        Ok(Self {
+            backing,
+            lifetime: Rc::new(NodeLifetime {
+                retired: Cell::new(false),
+                _backing: lifetime_backing,
+            }),
+            allocation: Box::new_uninit(),
+        })
+    }
+
+    fn projection(&self) -> GuestNodeProjection {
+        GuestNodeProjection {
+            node: Cell::new(None),
+            lifetime: Some(self.lifetime.clone()),
+        }
+    }
+
+    fn publish(self, reserved: ReservedSlot<'_>, holder: RetainedCallbackObject, live: LivePin) {
+        reserved.publish(Box::write(
+            self.allocation,
+            Pin {
+                holder,
+                live,
+                lifetime: self.lifetime,
+                _backing: self.backing,
+            },
+        ));
+    }
+}
+
 pub(in crate::document_scripting::guest) struct NodeLifetime {
     retired: Cell<bool>,
     _backing: GuestBacking,
@@ -302,6 +344,115 @@ impl OrdinaryPins {
 }
 
 impl OrdinaryBindings {
+    pub(super) fn create_element<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        capture: &Capture,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        public: &PublicEventBindings,
+        (document, name, options): (
+            DocumentId,
+            DomElementCreationName,
+            DomElementCreationOptions,
+        ),
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let event = owner.active_event_request();
+        let attribute = owner.active_attribute_registration()?;
+        let admission = match (&attribute, &event) {
+            (Some((request, registration)), _) => {
+                Admission::attribute(owner, events, *request, registration)
+            }
+            (None, Some(request)) => Admission::source(owner, events, request),
+            (None, None) => Admission::ordinary(owner, events),
+        };
+        let project = |elements: &element::ElementBindings| {
+            self.project_element(
+                scope,
+                capture,
+                (admission, event.as_ref()),
+                elements,
+                (document, name, options),
+            )
+        };
+        if let Some(global) = public.other_document_origin(owner, events, document)? {
+            public.with_origin_with(
+                global,
+                || admission.step(),
+                |origin| project(&origin.elements),
+            )
+        } else {
+            project(&public.document.element)
+        }
+    }
+
+    fn project_element<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        capture: &Capture,
+        (admission, event): (Admission<'_>, Option<&DomSourceEventRequest>),
+        elements: &element::ElementBindings,
+        (document, name, options): (
+            DocumentId,
+            DomElementCreationName,
+            DomElementCreationOptions,
+        ),
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let Admission { owner, events, .. } = admission;
+        let mut pins = self
+            .pins
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let (key, reserved) = pins.reserve(admission)?;
+        let inbox = self
+            .inbox
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let pin = PreparedPin::new(admission)?;
+        let payload = pin.projection();
+        let (payload_bytes, holder_bytes) =
+            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
+        let backing = (
+            admission.reserve(payload_bytes)?,
+            admission.reserve(holder_bytes)?,
+        );
+        admission.step()?;
+        let (watched, prepared) =
+            capture
+                .callbacks
+                .with_qualified_session(owner, event, |session, _| {
+                    session
+                        .dom()
+                        .raw_mut()
+                        .create_detached_element_with_node_retirement_watch(
+                            document,
+                            (name, options),
+                            (&inbox, key),
+                            (events.limits.source_edits, events.limits.node_retirement),
+                            &owner.cancellation,
+                            |name| {
+                                let step = || {
+                                    name.step()?;
+                                    events.step()
+                                };
+                                let prototype = elements.prototype_for_name(name.name(), step)?;
+                                let prepared = scope.prepare_retained_native_object(
+                                    NodePrototype::Creation(prototype).projection(),
+                                    payload,
+                                    |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                                )?;
+                                #[cfg(test)]
+                                self.qualify_projection()?;
+                                Ok(prepared)
+                            },
+                        )
+                })?;
+        let (_, node, watch) = watched.into_parts();
+        let (value, holder, live) = prepared
+            .publish(|payload| Self::bind_projection(payload, GuestNode::Element(node), watch));
+        pin.publish(reserved, holder, live);
+        Ok(value)
+    }
+
     pub(super) fn new(inbox: DomNodeRetirementInbox) -> Self {
         Self {
             inbox: RefCell::new(inbox),
@@ -565,22 +716,11 @@ impl OrdinaryBindings {
             .inbox
             .try_borrow()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let backing = admission.reserve(size_of::<Pin>())?;
-        let lifetime_backing =
-            admission.reserve(size_of::<NodeLifetime>() + 2 * size_of::<usize>())?;
-        let lifetime = Rc::new(NodeLifetime {
-            retired: Cell::new(false),
-            _backing: lifetime_backing,
-        });
-        let payload = GuestNodeProjection {
-            node: Cell::new(None),
-            lifetime: Some(lifetime.clone()),
-        };
-        let allocation = Box::new_uninit();
+        let pin = PreparedPin::new(admission)?;
         admission.step()?;
         let (value, holder, live) = scope.try_project_retained_native_object(
             prototype.projection(),
-            payload,
+            pin.projection(),
             |payload, holder| {
                 Ok::<_, DocumentGuestEventError>((
                     admission.reserve(payload)?,
@@ -595,16 +735,7 @@ impl OrdinaryBindings {
                 Ok(Self::bind_projection(payload, node, watch))
             },
         )?;
-        let pin = Box::write(
-            allocation,
-            Pin {
-                holder,
-                live,
-                lifetime,
-                _backing: backing,
-            },
-        );
-        reserved.publish(pin);
+        pin.publish(reserved, holder, live);
         Ok(value)
     }
 

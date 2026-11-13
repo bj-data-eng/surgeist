@@ -599,7 +599,7 @@ impl Dom {
                         .map_err(|error| source_error(&visit.source, error))?
                 };
                 draft
-                    .initialize_native_element(key, self.limits, cancelled)
+                    .initialize_native_element(key, false, self.limits, cancelled)
                     .map_err(|error| source_error(&visit.source, error))?;
                 key
             };

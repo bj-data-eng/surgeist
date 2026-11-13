@@ -93,7 +93,9 @@ pub use callback_object::{CallbackObject, RetainedCallbackObject};
 pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
-pub use native_object::{NativeObject, NativeObjectToken, NativeProjectionPrototype};
+pub use native_object::{
+    NativeObject, NativeObjectToken, NativeProjectionPrototype, PreparedNativeProjection,
+};
 pub use trusted_types::{
     TrustedAttributeValue, TrustedPolicyCallback, TrustedType, TrustedTypeData, TrustedTypeKind,
 };

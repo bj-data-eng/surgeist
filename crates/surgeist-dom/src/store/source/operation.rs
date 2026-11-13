@@ -28,6 +28,7 @@ mod scope_tests;
 mod script;
 mod show_modal;
 mod synchronous_node;
+pub use synchronous_node::DomPreparedElementName;
 mod watcher;
 use super::Invocation;
 use super::*;

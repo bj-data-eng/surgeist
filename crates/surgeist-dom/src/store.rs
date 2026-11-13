@@ -2690,10 +2690,13 @@ impl Draft {
     fn initialize_native_element(
         &mut self,
         key: Key,
+        null_registry: bool,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.select_element_registry(key, cancel)?;
+        if !null_registry {
+            self.select_element_registry(key, cancel)?;
+        }
         self.initialize_template_contents(key, limits, cancel)?;
         if self.node(key)?.hyperlink().is_some() {
             self.set_hyperlink_url(key, None, limits, cancel)?;
@@ -3544,14 +3547,14 @@ impl Draft {
                 let raw_units = match &kind {
                     Creation::Document => Some(NATIVE_DOCUMENT_STRING_UNITS),
                     Creation::Fragment => Some(0),
-                    Creation::Element(name) => Some(name.len()),
-                    // A QName separator is not stored in prefix/local fields.
-                    // This cheap lower bound cannot reject an exact-capacity
-                    // prefixed name; allocate admits the complete actual kind.
-                    Creation::ElementNs { namespace, name } => name
-                        .len()
-                        .saturating_sub(1)
-                        .checked_add(namespace.uri().map_or(0, DocumentString::len)),
+                    Creation::Element { name, .. } => match name {
+                        crate::DomElementCreationName::Local(name) => Some(name.len()),
+                        // The QName separator is not stored in prefix/local fields.
+                        crate::DomElementCreationName::Qualified(namespace, name) => name
+                            .len()
+                            .saturating_sub(1)
+                            .checked_add(namespace.uri().map_or(0, DocumentString::len)),
+                    },
                     Creation::Attr {
                         namespace: None,
                         name,
@@ -3595,9 +3598,10 @@ impl Draft {
                     None
                 };
                 let metadata_formation = source::formation::Formation::new(self, cancelled)?;
-                if let Creation::Element(name) = kind {
+                if let Creation::Element { name, options } = kind {
                     let formed = self.native_element(
                         name,
+                        options,
                         self.document_metadata(document)?,
                         metadata_formation.as_ref(),
                         cancelled,
@@ -3609,26 +3613,7 @@ impl Draft {
                         cancelled,
                         metadata_formation,
                     )?;
-                    self.initialize_native_element(key, limits, cancelled)?;
-                    self.register_ticket(key, cancelled)?;
-                    return Ok(());
-                }
-                if let Creation::ElementNs { namespace, name } = kind {
-                    let formed = self.native_element_ns(
-                        namespace,
-                        name,
-                        self.document_metadata(document)?.document_environment(),
-                        metadata_formation.as_ref(),
-                        cancelled,
-                    )?;
-                    let key = self.allocate_element_formed(
-                        formed,
-                        document,
-                        limits,
-                        cancelled,
-                        metadata_formation,
-                    )?;
-                    self.initialize_native_element(key, limits, cancelled)?;
+                    self.initialize_native_element(key, options.null_registry, limits, cancelled)?;
                     self.register_ticket(key, cancelled)?;
                     return Ok(());
                 }
@@ -3647,7 +3632,7 @@ impl Draft {
                         metadata_formation.as_ref(),
                         cancelled,
                     )?),
-                    Creation::Element(_) | Creation::ElementNs { .. } => {
+                    Creation::Element { .. } => {
                         unreachable!("Element was allocated through formed ingress")
                     }
                     Creation::Text(data) => NewNode::Text(source::formation::share_listed(
@@ -3704,7 +3689,7 @@ impl Draft {
                 }
                 let key =
                     self.allocate_formed(kind, document, limits, cancelled, metadata_formation)?;
-                self.initialize_native_element(key, limits, cancelled)?;
+                self.initialize_native_element(key, false, limits, cancelled)?;
                 self.register_ticket(key, cancelled)?;
             }
             Command::Import {

@@ -73,10 +73,9 @@ impl From<&AttachedShadowRoot> for NodeOperand {
 pub(crate) enum Creation {
     Document,
     Fragment,
-    Element(DocumentString),
-    ElementNs {
-        namespace: Namespace,
-        name: DocumentString,
+    Element {
+        name: crate::DomElementCreationName,
+        options: crate::DomElementCreationOptions,
     },
     Attr {
         namespace: Option<Namespace>,
@@ -748,7 +747,13 @@ impl DomBatch {
         document: impl Into<NodeOperand>,
         local_name: impl Into<DocumentString>,
     ) -> CreatedNode {
-        self.create(Creation::Element(local_name.into()), Some(document.into()))
+        self.create(
+            Creation::Element {
+                name: crate::DomElementCreationName::Local(local_name.into()),
+                options: crate::DomElementCreationOptions::default(),
+            },
+            Some(document.into()),
+        )
     }
     /// Namespace-aware native creation with DOM element-name validation.
     /// Known families without their complete native adapter are rejected at apply.
@@ -759,9 +764,9 @@ impl DomBatch {
         qualified_name: impl Into<DocumentString>,
     ) -> CreatedNode {
         self.create(
-            Creation::ElementNs {
-                namespace,
-                name: qualified_name.into(),
+            Creation::Element {
+                name: crate::DomElementCreationName::Qualified(namespace, qualified_name.into()),
+                options: crate::DomElementCreationOptions::default(),
             },
             Some(document.into()),
         )

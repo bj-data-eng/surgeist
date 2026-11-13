@@ -54,10 +54,35 @@ impl ProjectedNativeObject {
     }
 }
 
+/// Private guest object and its admitted backing. Dropping it before
+/// publication discards the native entry and persistent holder immediately.
+pub struct PreparedNativeProjection<'borrow, 'scope, T> {
+    value: Value<'scope>,
+    native: Rc<NativeObject<T>>,
+    abort: AbortProjection<'borrow, 'scope>,
+}
+
 struct AbortProjection<'borrow, 'scope> {
     scope: &'borrow mut Scope<'scope>,
-    projected: &'borrow ProjectedNativeObject,
+    projected: ProjectedNativeObject,
     armed: bool,
+}
+
+impl<'scope, T> PreparedNativeProjection<'_, 'scope, T> {
+    /// Publish the private projection after the host's own commit. Binding its
+    /// native payload and transferring its holder require no engine operation.
+    pub fn publish<R>(
+        mut self,
+        bind: impl FnOnce(&T) -> R,
+    ) -> (Value<'scope>, RetainedCallbackObject, R) {
+        let bound = bind(self.native.payload());
+        let holder = RetainedCallbackObject::new(
+            self.abort.projected.holder.clone(),
+            self.abort.projected.realm.clone(),
+        );
+        self.abort.armed = false;
+        (self.value, holder, bound)
+    }
 }
 
 impl Drop for AbortProjection<'_, '_> {
@@ -180,25 +205,47 @@ impl<'scope> Scope<'scope> {
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
         commit: impl FnOnce(&T) -> Result<R, E>,
     ) -> Result<(Value<'scope>, RetainedCallbackObject, R), E> {
+        let prepared = self.prepare_retained_native_object(prototype, payload, admit)?;
+        let result = commit(prepared.native.payload())?;
+        Ok(prepared.publish(|_| result))
+    }
+
+    /// Requested Rust backing for the payload and persistent holder, in order.
+    pub fn retained_native_object_bytes<T, Storage>(&self) -> Result<(usize, usize), Error> {
+        Ok((
+            self.native_projection_bytes::<T, Storage>()?,
+            self.callback_object_bytes::<Storage>()?,
+        ))
+    }
+
+    /// Form and validate a private projection while the host's output is still
+    /// tentative. Holding it borrows this Scope through publish or abort.
+    pub fn prepare_retained_native_object<T: 'static, Storage: 'static, E: From<Error>>(
+        &mut self,
+        prototype: NativeProjectionPrototype<'_, 'scope>,
+        payload: T,
+        admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
+    ) -> Result<PreparedNativeProjection<'_, 'scope, T>, E> {
         let projected = self.form_retained_native_object(prototype, payload, admit)?;
-        let mut abort = AbortProjection {
+        let abort = AbortProjection {
             scope: self,
-            projected: &projected,
+            projected,
             armed: true,
         };
         let root = abort
             .scope
             .operations
-            .open_callback_object(&projected.holder)?;
+            .open_callback_object(&abort.projected.holder)?;
         let value = abort.scope.value(root);
         let native = abort
             .scope
             .native_object::<T>(&value)?
             .ok_or(Error::ExpectedNativeObject)?;
-        let result = commit(native.payload())?;
-        abort.armed = false;
-        drop(abort);
-        Ok((value, projected.into_holder(), result))
+        Ok(PreparedNativeProjection {
+            value,
+            native,
+            abort,
+        })
     }
 
     fn form_retained_native_object<T: 'static, Storage: 'static, E: From<Error>>(
@@ -221,10 +268,8 @@ impl<'scope> Scope<'scope> {
                 Resolved::Creation(prototype.validated_holder(self)?),
             ),
         };
-        let (projection, holder_backing) = admit(
-            self.native_projection_bytes::<T, Storage>()?,
-            self.callback_object_bytes::<Storage>()?,
-        )?;
+        let (projection_bytes, holder_bytes) = self.retained_native_object_bytes::<T, Storage>()?;
+        let (projection, holder_backing) = admit(projection_bytes, holder_bytes)?;
         let payload = Rc::new(NativeObject::new(payload, projection));
         let backing = Box::new(holder_backing);
         let (holder, index) = match prototype {

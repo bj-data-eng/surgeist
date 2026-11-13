@@ -1,7 +1,8 @@
 //! Native Documents and Fragments in registered creation realms.
 
+use super::super::interfaces::GuestNodeProjection;
 use super::*;
-use surgeist_dom::{DomBatch, NodeId};
+use surgeist_dom::{DomBatch, DomNodeKind, NodeId};
 
 pub(in crate::document_scripting) fn document_element_factories_use_native_names_and_identity() {
     let cancellation = Arc::new(AtomicBool::new(false));
@@ -11,8 +12,7 @@ pub(in crate::document_scripting) fn document_element_factories_use_native_names
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
         assert_guest(scope, "typeof document.createElement === 'function' && typeof document.createElementNS === 'function'")?;
-        assert_guest(
-            scope,
+        let result = scope.evaluate(&units(
             r#"(() => {
                 const throws = (action, name) => {
                     try { action(); } catch (error) { return error.name === name; }
@@ -22,20 +22,102 @@ pub(in crate::document_scripting) fn document_element_factories_use_native_names
                 const second = document.createElement("div");
                 const circle = document.createElementNS("http://www.w3.org/2000/svg", "s:circle");
                 const generic = document.createElementNS("", "DIV");
-                return first !== second && first instanceof HTMLDivElement
+                let conversionOrder = '';
+                let inner;
+                const original = {};
+                const customized = document.createElement(
+                    {toString() { conversionOrder += 'n'; return 'div'; }},
+                    {get is() { conversionOrder += 'i'; return 'x-local'; },
+                     get customElementRegistry() {
+                         conversionOrder += 'r';
+                         inner = document.createElement('span');
+                         return undefined;
+                     }});
+                let preservedThrow = false;
+                try { document.createElement('div', {get is() { throw original; }}); }
+                catch (error) { preservedThrow = error === original; }
+                const inserted = first.appendChild(second);
+                const observed = {
+                    arity: document.createElement.length === 1 && document.createElementNS.length === 2,
+                    html: first !== second && first instanceof HTMLDivElement
                     && first.localName === "div" && first.ownerDocument === document
-                    && first.parentNode === null
-                    && circle instanceof SVGCircleElement && circle.prefix === "s"
-                    && circle.localName === "circle" && circle.ownerDocument === document
-                    && generic instanceof Element && !(generic instanceof HTMLElement)
-                    && generic.namespaceURI === null && generic.localName === "DIV"
-                    && throws(() => document.createElement("bad name"), "InvalidCharacterError")
-                    && throws(() => document.createElementNS(null, "p:div"), "NamespaceError")
-                    && throws(() => Document.prototype.createElement.call({}, "div"), "TypeError");
+                    && first.parentNode === null,
+                    retainedIdentity: inserted === second && second.parentNode === first,
+                    svg: circle instanceof SVGCircleElement && circle.prefix === "s"
+                    && circle.localName === "circle" && circle.ownerDocument === document,
+                    generic: generic instanceof Element && !(generic instanceof HTMLElement)
+                    && generic.namespaceURI === null && generic.localName === "DIV",
+                    customized: customized instanceof HTMLDivElement && customized.getAttribute('is') === null,
+                    conversionOrder: conversionOrder === 'nri',
+                    reentry: inner instanceof HTMLSpanElement && inner.ownerDocument === document,
+                    preservedThrow,
+                    legacy: document.createElement('DIV', 'x-legacy') instanceof HTMLDivElement,
+                    nullRegistry: document.createElement('DIV', {customElementRegistry: null}) instanceof HTMLDivElement,
+                    incompatibleOptions: throws(() => document.createElement('div', {is: 'x-local', customElementRegistry: null}), 'NotSupportedError'),
+                    nameBeforeFlattening: throws(() => document.createElement('bad name', {is: 'x-local', customElementRegistry: null}), 'InvalidCharacterError'),
+                    invalidName: throws(() => document.createElement("bad name"), "InvalidCharacterError"),
+                    invalidNamespace: throws(() => document.createElementNS(null, "p:div"), "NamespaceError"),
+                    wrongReceiver: throws(() => Document.prototype.createElement.call({}, "div"), "TypeError")
+                };
+                for (const [test, ok] of Object.entries(observed)) {
+                    if (!ok) return test;
+                }
+                return 'ok';
             })()"#,
-        )
+        ))?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        let result = scope.evaluate(&units("document.createElement('div', {is: 'x-native'})"))?;
+        let node = scope.native_object::<GuestNodeProjection>(&result)?.unwrap().payload().id().unwrap().node();
+        let null_registry = scope.evaluate(&units("document.createElement('div', {customElementRegistry: null})"))?;
+        let null_node = scope.native_object::<GuestNodeProjection>(&null_registry)?.unwrap().payload().id().unwrap().node();
+        Ok((node, null_node))
     })
-    .unwrap();
+    .map(|(node, null_node)| {
+        let snapshot = host.snapshot().unwrap();
+        let element = snapshot.node(node).unwrap();
+        let DomNodeKind::Element(element) = element.kind() else { panic!("expected element") };
+        assert_eq!(element.saved_is().unwrap().code_units(), units("x-native"));
+        let DomNodeKind::Element(element) = snapshot.node(null_node).unwrap().kind() else { panic!("expected element") };
+        assert_eq!(element.custom_element_registry(), surgeist_dom::DomRegistryBinding::Null);
+    }).unwrap();
+}
+
+pub(in crate::document_scripting) fn borrowed_element_factory_keeps_dom_on_wrapper_refusal() {
+    let RegisteredOrigin {
+        mut host, permit, ..
+    } = retired_origin_with_moved_element();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            globalThis.factoryDocument = originChild.ownerDocument;
+            const svg = Document.prototype.createElementNS.call(factoryDocument, 'http://www.w3.org/2000/svg', 's:circle');
+            return svg.ownerDocument === factoryDocument && svg.localName === 'circle'
+                && svg.prefix === 's' && !(svg instanceof SVGCircleElement)
+                && Object.getPrototypeOf(svg).constructor.name === 'SVGCircleElement';
+        })()"#)
+    }).unwrap();
+    let before = host.snapshot().unwrap();
+    let events = host.guest_events().unwrap();
+    let backing = events.budget.used.get();
+    events
+        .public
+        .as_ref()
+        .unwrap()
+        .refuse_next_ordinary_wrapper_validation();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "Document.prototype.createElement.call(factoryDocument, 'Exact')",
+            ))
+            .map(drop)
+    });
+    assert!(matches!(
+        result,
+        Err(DocumentScriptError::Script(Error::BackendUnavailable))
+    ));
+    assert_eq!(events.budget.used.get(), backing);
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.nodes().count(), before.nodes().count());
 }
 
 struct RegisteredOrigin {
