@@ -3,7 +3,7 @@
 //! This state owns no SDK handle, context, callback or registry. Cleanup can
 //! record a failure here without entering the engine from a Rust destructor.
 
-use std::cell::Cell;
+use std::cell::{Cell, OnceCell};
 use std::rc::Rc;
 
 use crate::Error;
@@ -13,9 +13,11 @@ use crate::conversion::{CleanupFailure, CleanupFault, CleanupPrimary, CleanupSta
 enum Failure {
     Host(Error),
     Cleanup(CleanupFault),
+    CaptureCleanup(crate::capture::CleanupFailure),
 }
 
 pub(crate) struct OwnerState {
+    pub(crate) capture: OnceCell<Rc<crate::capture::Account>>,
     id: u64,
     closed: Cell<bool>,
     failure: Cell<Option<Failure>>,
@@ -26,6 +28,7 @@ pub(crate) struct OwnerState {
 impl OwnerState {
     pub(crate) fn new(id: u64) -> Self {
         Self {
+            capture: OnceCell::new(),
             id,
             closed: Cell::new(false),
             failure: Cell::new(None),
@@ -48,6 +51,13 @@ impl OwnerState {
                 }
                 Err(error)
             }
+            Some(Failure::CaptureCleanup(cleanup)) => {
+                let error = Error::CallbackCaptureCleanup(cleanup);
+                if self.boundaries.get() == 0 && !std::thread::panicking() {
+                    self.failure.set(Some(Failure::Host(error.clone())));
+                }
+                Err(error)
+            }
             None if self.closed.get() => Err(Error::BackendUnavailable),
             None => Ok(()),
         }
@@ -58,7 +68,10 @@ impl OwnerState {
     pub(crate) fn check_host_failure_report(&self) -> Result<(), Error> {
         if self.boundaries.get() != 0
             && !self.closed.get()
-            && matches!(self.failure(), Some(Failure::Cleanup(_)))
+            && matches!(
+                self.failure(),
+                Some(Failure::Cleanup(_) | Failure::CaptureCleanup(_))
+            )
         {
             return Ok(());
         }
@@ -75,6 +88,9 @@ impl OwnerState {
     fn qualify_error(&self, error: Error) -> Error {
         match &error {
             Error::HostFailure(failure) if failure.owner != self.id => Error::ForeignOwner,
+            Error::CallbackCaptureCleanup(failure) if failure.owner != self.id => {
+                Error::ForeignOwner
+            }
             _ => error,
         }
     }
@@ -87,6 +103,9 @@ impl OwnerState {
             // A refused continuation reports immutable cleanup facts, but
             // does not select the outward result before the actual exit.
             Some(Failure::Cleanup(cleanup)) if matches!(&error, Error::ConversionCleanup(failure) if failure.cleanup() == cleanup) => {
+                error
+            }
+            Some(Failure::CaptureCleanup(cleanup)) if matches!(&error, Error::CallbackCaptureCleanup(failure) if failure.same_fault(&cleanup)) => {
                 error
             }
             _ => {
@@ -121,6 +140,17 @@ impl OwnerState {
         self.cleanup.get()
     }
 
+    pub(crate) fn record_capture_cleanup(&self, cleanup: crate::capture::CleanupFailure) {
+        if self.failure().is_none() {
+            if self.boundaries.get() == 0 && !std::thread::panicking() {
+                self.failure
+                    .set(Some(Failure::Host(Error::CallbackCaptureCleanup(cleanup))));
+            } else {
+                self.failure.set(Some(Failure::CaptureCleanup(cleanup)));
+            }
+        }
+    }
+
     /// Describes a local result without choosing a still-active outer exit.
     pub(crate) fn operation_result<T>(&self, result: Result<T, Error>) -> Result<T, Error> {
         match self.failure() {
@@ -135,14 +165,31 @@ impl OwnerState {
                 }
                 Err(error) => Err(combine(self.qualify_error(error), cleanup)),
             },
+            Some(Failure::CaptureCleanup(mut cleanup)) => match result {
+                Ok(value) => {
+                    drop(value);
+                    Err(Error::CallbackCaptureCleanup(cleanup))
+                }
+                Err(Error::Exception(exception)) => {
+                    cleanup.primary = Some(CleanupPrimary::Exception(exception));
+                    Err(Error::CallbackCaptureCleanup(cleanup))
+                }
+                Err(Error::CallbackPanicked) => {
+                    cleanup.primary = Some(CleanupPrimary::CallbackPanicked);
+                    Err(Error::CallbackCaptureCleanup(cleanup))
+                }
+                Err(error) => Err(self.qualify_error(error)),
+            },
             None => result.map_err(|error| self.qualify_error(error)),
         }
     }
 
     pub(crate) fn finalize<T>(&self, result: Result<T, Error>) -> Result<T, Error> {
         let result = self.operation_result(result);
-        if matches!(self.failure(), Some(Failure::Cleanup(_)))
-            && let Err(error) = &result
+        if matches!(
+            self.failure(),
+            Some(Failure::Cleanup(_) | Failure::CaptureCleanup(_))
+        ) && let Err(error) = &result
         {
             self.failure.set(Some(Failure::Host(error.clone())));
         }

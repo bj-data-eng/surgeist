@@ -2064,7 +2064,8 @@ pub(in crate::document_scripting) fn element_projection_admits_exact_work_and_ba
     let before = (events.budget.work().unwrap(), events.budget.used());
     control.in_document(&permit, read).unwrap();
     let binding_work = events.budget.work().unwrap() - before.0;
-    let bytes = events.budget.used() - before.1;
+    let bytes = events.budget.peak_used() - before.1;
+    let retained = events.budget.used() - before.1;
     assert!(binding_work > 0 && bytes > 0);
     drop((control, events));
 
@@ -2086,7 +2087,8 @@ pub(in crate::document_scripting) fn element_projection_admits_exact_work_and_ba
         if accepted {
             result.unwrap();
             assert_eq!(events.budget.work_remaining().unwrap(), 0);
-            assert_eq!(events.budget.used(), events.limits.storage_bytes);
+            assert_eq!(events.budget.used(), before + retained);
+            assert_eq!(events.budget.peak_used(), events.limits.storage_bytes);
         } else {
             let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
                 panic!("one-short Element projection must refuse");
@@ -2806,7 +2808,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     );
     let events = host.guest_events().unwrap();
     host.in_document(&permit, |scope| {
-        let before = events.budget.used();
+        let before = events.budget.used() - events.budget.capture_used();
         scope.evaluate(&units(
             r#"(() => {
                 const callback = () => {};
@@ -2816,14 +2818,14 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
             })()"#,
         ))?;
         assert_eq!(
-            events.budget.used(),
+            events.budget.used() - events.budget.capture_used(),
             before,
             "removal releases the callback holder before the guest turn ends",
         );
         let event = scope.evaluate(&units("new Event('release')"))?;
         let global = scope.global()?;
         scope.set(&global, PropertyKey::String(&units("releaseEvent")), &event)?;
-        let before = events.budget.used();
+        let before = events.budget.used() - events.budget.capture_used();
         scope.evaluate(&units(
             r#"(() => {
                 const callback = () => {};
@@ -2833,7 +2835,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
             })()"#,
         ))?;
         assert_eq!(
-            events.budget.used(),
+            events.budget.used() - events.budget.capture_used(),
             before,
             "once delivery releases the callback holder before the guest turn ends",
         );
@@ -3309,13 +3311,14 @@ fn assert_native_projection_admission(
 ) {
     let source = units(source);
     let read = |scope: &mut Scope<'_>| scope.evaluate(&source).map(drop);
-    let (work, bytes) = {
+    let (work, bytes, retained) = {
         let (mut host, permit) = make_host();
         let events = host.guest_events().unwrap();
         let before = (events.budget.work().unwrap(), events.budget.used());
         host.in_document(&permit, read).unwrap();
         (
             events.budget.work().unwrap() - before.0,
+            events.budget.peak_used() - before.1,
             events.budget.used() - before.1,
         )
     };
@@ -3334,7 +3337,8 @@ fn assert_native_projection_admission(
         if work_available == work && bytes_available == bytes {
             result.unwrap();
             assert_eq!(events.budget.work_remaining().unwrap(), 0);
-            assert_eq!(events.budget.used(), events.limits.storage_bytes);
+            assert_eq!(events.budget.used(), before + retained);
+            assert_eq!(events.budget.peak_used(), events.limits.storage_bytes);
             continue;
         }
         let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {

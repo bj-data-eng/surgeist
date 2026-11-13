@@ -102,6 +102,25 @@ the selected standard's safe-integer bounds for 64-bit range/clamp conversions.
 `IntegerKind` selects a standard IDL type and `IntegerValue` retains that type
 with its corresponding fixed-width Rust payload.
 
+[`capture::Admission`](src/capture.rs) installs a caller-owned incoming-capture
+policy once per process, including for previously created functions. Admit its
+reported setup storage before installation. Each reached nonempty argument
+buffer and receiver, selected argument or NewTarget root requests one work unit
+and its requested Rust body bytes before materialization. The byte request also
+includes the caller's retention body. Allocator metadata, tree-node packing and
+engine storage remain outside these requested-body figures. A process without
+this optional policy reports false from `has_callback_capture_admission` and
+performs unaccounted incoming capture.
+
+`ArgumentValues` and its consuming iterator retain the buffer admission through
+allocation destruction. Individually captured roots retain separate custody
+through registry reaping or process teardown, including after `Scope::retain`.
+Declared prefixes preserve ignored operands, and full variadics capture all
+supplied operands. A failed request stops before its materialization. Fallible
+retention release reports its original error through preallocated cleanup
+custody, preserving an earlier selected guest exception and the first host
+refusal. The read-only cleanup observation survives process destruction.
+
 The other primitive conversions preserve noncoercive boolean semantics, exact
 DOMString code units, USVString surrogate replacement and checked ByteString
 bytes. Restricted and unrestricted floating conversions preserve the selected

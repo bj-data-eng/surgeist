@@ -353,6 +353,13 @@ read-only report custody that survives host refusal and teardown. The
 `node-projection` scope attributes adapter admission for native node pins
 to the attachment's root. Its phase timings are inclusive, including
 nested projection phases. Detailed mode uses Ledger's bounded event buffer.
+The `callback-capture` child scope admits incoming argument buffers and root
+records through the same aggregate guest limits and canonical native retention.
+Each reached request charges one adapter work unit. Temporary buffers release
+when their owning container or iterator drops. Captured roots release at backend
+reaping, while explicitly retained roots keep their original custody. Capture
+refusal precedes argument normalization and native mutation. Release faults
+reach the binding's terminal cleanup report.
 Native Source and retirement retain their own work limits. The report
 covers Rust adapter work and backing, with V8 internals and Web IDL
 conversion accounted for separately.

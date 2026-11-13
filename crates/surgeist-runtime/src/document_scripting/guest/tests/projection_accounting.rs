@@ -28,12 +28,14 @@ fn host(mode: ProfileMode, node_work: u64) -> DocumentScriptHost {
 }
 
 fn projection(report: &DocumentGuestAccountingReport) -> &Observation {
-    let [root, projection] = report.scopes.as_slice() else {
-        panic!("expected one adapter and one projection scope");
+    let [root, projection, capture] = report.scopes.as_slice() else {
+        panic!("expected adapter, projection and callback capture scopes");
     };
     assert_eq!(root.name, "runtime-guest");
     assert_eq!(projection.name, "node-projection");
     assert_eq!(projection.parent, Some(root.scope));
+    assert_eq!(capture.name, "callback-capture");
+    assert_eq!(capture.parent, Some(root.scope));
     projection
 }
 
@@ -58,7 +60,8 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
     let before = (events.budget.work().unwrap(), events.budget.used());
     open(&mut control).unwrap();
     let work = events.budget.work().unwrap() - before.0;
-    let bytes = events.budget.used() - before.1;
+    let bytes = events.budget.peak_used() - before.1;
+    let retained = events.budget.used() - before.1;
     assert!(
         control
             .guest_accounting()
@@ -91,7 +94,8 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
         let attached_bytes = attached.usage.live(DocumentGuestResource::BackingBytes);
         assert!(attached_bytes > 0 && attached.phases > 0);
         let events = host.guest_events().unwrap();
-        let spare = events.limits.storage_bytes - events.budget.used() - bytes;
+        let before_bytes = events.budget.used();
+        let spare = events.limits.storage_bytes - before_bytes - bytes;
         let guard = events.reserve(&host.native, spare).unwrap();
         events.budget.set_work_remaining(work);
         open(&mut host).unwrap();
@@ -110,11 +114,19 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
             report.scopes[0]
                 .usage
                 .live(DocumentGuestResource::BackingBytes),
-            events.limits.storage_bytes as u64
+            (before_bytes + spare + retained) as u64
         );
+        assert_eq!(events.budget.peak_used(), events.limits.storage_bytes);
         assert_eq!(
             current.usage.live(DocumentGuestResource::BackingBytes),
-            attached_bytes + bytes as u64
+            attached_bytes + retained as u64
+        );
+        let capture = &report.scopes[2];
+        assert_eq!(capture.usage.live(DocumentGuestResource::BackingBytes), 0);
+        assert_eq!(
+            capture.usage.work(DocumentGuestWork::Adapter)
+                - initial.scopes[2].usage.work(DocumentGuestWork::Adapter),
+            2
         );
         assert_eq!(report.events.len(), if detailed { 8 } else { 0 });
         assert_eq!(report.dropped_events > 0, detailed);
