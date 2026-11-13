@@ -6,6 +6,13 @@ use crate::{
 };
 
 fn named_receiver_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    named_receiver_chain_with_wrap_style(depth, crate::TextWrapStyle::Auto)
+}
+
+fn named_receiver_chain_with_wrap_style<S: LayoutScalar>(
+    depth: u32,
+    wrap_style: crate::TextWrapStyle,
+) -> PublicLayoutTreeOf<S> {
     let preferred = |value| PreferredSizeOf::px(S::from_f64(value));
     let named = InlineBaselineContext::Named(BaselineName::Alphabetic);
     let atomic = |alignment, following_break| NodeInputOf {
@@ -15,6 +22,7 @@ fn named_receiver_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
             following_break,
         )),
         inline_baseline_context: named,
+        text_wrap_style: wrap_style,
         vertical_align: alignment,
         size: Size::new(preferred(13.0), preferred(7.0)),
         ..NodeInputOf::default()
@@ -27,6 +35,7 @@ fn named_receiver_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
             NodeInputOf {
                 display: Display::Block,
                 inline_baseline_context: named,
+                text_wrap_style: wrap_style,
                 size: Size::new(preferred(13.0), preferred(80.0)),
                 ..NodeInputOf::default()
             },
@@ -66,6 +75,7 @@ fn named_receiver_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
                     NodeInputOf {
                         display: Display::Block,
                         inline_baseline_context: named,
+                        text_wrap_style: wrap_style,
                         size: Size::new(preferred(13.0), preferred(7.0)),
                         ..NodeInputOf::default()
                     },
@@ -100,7 +110,14 @@ fn assert_terminal_receiver<S: LayoutScalar>() {
 }
 
 fn assert_named_refusal<S: LayoutScalar>(depth: u32) {
-    let tree = named_receiver_chain::<S>(depth);
+    assert_named_refusal_with_wrap_style::<S>(depth, crate::TextWrapStyle::Auto);
+}
+
+fn assert_named_refusal_with_wrap_style<S: LayoutScalar>(
+    depth: u32,
+    wrap_style: crate::TextWrapStyle,
+) {
+    let tree = named_receiver_chain_with_wrap_style::<S>(depth, wrap_style);
     let error =
         compute_layout(&tree, 0, standalone()).expect_err("Grid supplies no named baseline");
     // The terminal empty atom supplies Absent. The nearest enclosing atom
@@ -144,10 +161,17 @@ fn deep_named_receiver_returns_typed_refusal_f64() {
 }
 
 fn assert_named_receiver_geometry<S: LayoutScalar>(depth: u32) -> usize {
+    assert_named_receiver_geometry_with_wrap_style::<S>(depth, crate::TextWrapStyle::Auto)
+}
+
+fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
+    depth: u32,
+    wrap_style: crate::TextWrapStyle,
+) -> usize {
     let first_sibling = 3 * depth;
     let first_control = first_sibling + depth;
     let named = InlineBaselineContext::Named(BaselineName::Alphabetic);
-    let mut tree = named_receiver_chain::<S>(depth);
+    let mut tree = named_receiver_chain_with_wrap_style::<S>(depth, wrap_style);
     for layer in 0..depth - 1 {
         let child = 3 * layer + 1;
         let control = first_control + layer;
@@ -309,4 +333,62 @@ fn named_receiver_line_control_work_is_bounded_per_node_f64() {
         .unwrap()
         .join()
         .unwrap();
+}
+
+// The thirteen-unit atoms and authored Mandatory/Forced group endings leave
+// no alternative legal break geometry. Balance must preserve the same boxes
+// and named facts, while its finite Normal fitting owns its ordinary reference.
+#[test]
+fn shallow_balanced_named_receiver_preserves_geometry_and_refusal() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::shallow_balanced_named_receiver_preserves_geometry_and_refusal",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f32>(2, crate::TextWrapStyle::Balance);
+            assert_named_receiver_geometry_with_wrap_style::<f64>(2, crate::TextWrapStyle::Balance);
+            assert_named_refusal_with_wrap_style::<f32>(2, crate::TextWrapStyle::Balance);
+            assert_named_refusal_with_wrap_style::<f64>(2, crate::TextWrapStyle::Balance);
+        },
+    );
+}
+
+#[test]
+fn deep_balanced_named_receiver_publishes_actual_named_lines_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_balanced_named_receiver_publishes_actual_named_lines_f32",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f32>(
+                24,
+                crate::TextWrapStyle::Balance,
+            );
+        },
+    );
+}
+
+#[test]
+fn deep_balanced_named_receiver_publishes_actual_named_lines_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_balanced_named_receiver_publishes_actual_named_lines_f64",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f64>(
+                24,
+                crate::TextWrapStyle::Balance,
+            );
+        },
+    );
+}
+
+#[test]
+fn deep_balanced_named_receiver_returns_typed_refusal_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_balanced_named_receiver_returns_typed_refusal_f32",
+        || assert_named_refusal_with_wrap_style::<f32>(24, crate::TextWrapStyle::Balance),
+    );
+}
+
+#[test]
+fn deep_balanced_named_receiver_returns_typed_refusal_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_balanced_named_receiver_returns_typed_refusal_f64",
+        || assert_named_refusal_with_wrap_style::<f64>(24, crate::TextWrapStyle::Balance),
+    );
 }
