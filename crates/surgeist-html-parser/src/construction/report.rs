@@ -21,11 +21,60 @@ impl FrozenArena {
         let documents = &mut storage.payloads.facts.documents;
         match documents.row_mut(0) {
             Some(document) => {
-                document.meta.csp = Some(usize::MAX);
+                document.meta.csp = Some(csp::PolicyId::at_for_test(usize::MAX));
                 true
             }
             None => false,
         }
+    }
+    /// Names, as the policy of one Document's Meta history, the position one past the last policy
+    /// of the parse's log. Returns whether a log exists and a Document was found to name it.
+    pub(crate) fn corrupt_meta_policy_at_log_end_for_test(&mut self) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        let Some(end) = storage
+            .payloads
+            .facts
+            .csp
+            .as_ref()
+            .map(csp::CspLog::policy_count)
+        else {
+            return false;
+        };
+        match storage.payloads.facts.documents.row_mut(0) {
+            Some(document) => {
+                document.meta.csp = Some(csp::PolicyId::at_for_test(end));
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+#[cfg(test)]
+impl FrozenArena {
+    /// Drops every missing fact of the parse and the names the Documents hold for them, as a
+    /// parse that reached none. The number of facts dropped, and how many of them kept a cause.
+    pub(crate) fn drop_missing_facts_for_test(&mut self) -> (usize, usize) {
+        let Some(storage) = self.storage.as_mut() else {
+            return (0, 0);
+        };
+        let caused = storage
+            .payloads
+            .facts
+            .missing
+            .iter()
+            .filter(|(_, fact)| fact.cause.is_some())
+            .count();
+        let dropped = storage.payloads.facts.missing.drop_rows_for_test();
+        for index in 0..storage.payloads.facts.documents.len() {
+            if let Some(document) = storage.payloads.facts.documents.row_mut(index) {
+                document.meta.gaps = meta::MetaDomainTable::filled(None);
+                document.meta.first = None;
+            }
+        }
+        (dropped, caused)
     }
 }
 
@@ -347,8 +396,8 @@ impl<'a> PreparedReportStorage<'a> {
                     if let base::BaseValue::Unavailable { missing, .. } = frozen {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if !matches!(
-                            storage.payloads.values.get(*missing),
-                            Some(RetainedPayload::MetaMissing {
+                            storage.payloads.facts.missing.row(missing.position()),
+                            Some(meta::MetaMissingFact {
                                 kind: meta::HtmlParseMetaMissingKind::Csp
                                     | meta::HtmlParseMetaMissingKind::CspProcessing(_),
                                 ..
@@ -586,26 +635,6 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_document(storage, document, c)?;
                     }
                 }
-                RetainedPayload::MetaMissing {
-                    document,
-                    subject,
-                    cause,
-                    ..
-                } => {
-                    checked_document(storage, &DocumentRef::Owned(*document), c)?;
-                    checked_node(arena, *subject, c)?;
-                    if let Some(cause) = cause {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        if storage
-                            .evidence
-                            .as_ref()
-                            .and_then(|e| e.retained_cause(cause))
-                            .is_none()
-                        {
-                            return Err(SessionError::WrongToken);
-                        }
-                    }
-                }
                 RetainedPayload::InputSource {
                     token,
                     value_attribute,
@@ -631,6 +660,26 @@ impl<'a> PreparedReportStorage<'a> {
                 return Err(latch_registry_row(c));
             }
         }
+        for (_, missing) in storage.payloads.facts.missing.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                mem::size_of::<meta::MetaMissingFact>() as u64,
+            )?;
+            checked_document(storage, &DocumentRef::Owned(missing.document), c)?;
+            checked_node(arena, missing.subject, c)?;
+            if let Some(cause) = &missing.cause {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if storage
+                    .evidence
+                    .as_ref()
+                    .and_then(|e| e.retained_cause(cause))
+                    .is_none()
+                {
+                    return Err(SessionError::WrongToken);
+                }
+            }
+        }
         for (document, facts) in storage.payloads.facts.documents.iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
@@ -652,12 +701,16 @@ impl<'a> PreparedReportStorage<'a> {
                 checked_raw(storage, raw, c)?;
             }
             // `HtmlParseDocumentMeta` reads these rows without a controller.
-            for slot in [meta.csp, meta.base_csp].into_iter().flatten() {
+            for policy in [meta.csp, meta.base_csp].into_iter().flatten() {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if !matches!(
-                    storage.payloads.values.get(slot),
-                    Some(RetainedPayload::CspPolicy(_))
-                ) {
+                if storage
+                    .payloads
+                    .facts
+                    .csp
+                    .as_ref()
+                    .and_then(|log| log.policy(policy))
+                    .is_none()
+                {
                     return Err(latch_registry_row(c));
                 }
             }
@@ -684,19 +737,14 @@ impl<'a> PreparedReportStorage<'a> {
             for domain in meta::HtmlParseMetaDomain::ALL {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(gap) = meta.gaps.copy(domain) {
-                    let Some(RetainedPayload::MetaMissing {
-                        document: owner,
-                        kind,
-                        ..
-                    }) = storage.payloads.values.get(gap)
-                    else {
+                    let Some(held) = storage.payloads.facts.missing.row(gap.position()) else {
                         return Err(SessionError::WrongToken);
                     };
-                    if *owner != document || kind.domain() != domain {
+                    if held.document != document || held.kind.domain() != domain {
                         return Err(SessionError::WrongToken);
                     }
-                    if earliest.is_none_or(|(index, _)| gap < index) {
-                        earliest = Some((gap, domain));
+                    if earliest.is_none_or(|(index, _)| gap.position() < index) {
+                        earliest = Some((gap.position(), domain));
                     }
                 }
             }
@@ -1046,11 +1094,18 @@ impl<'a> Resolver<'a> {
     }
     fn policy(
         &self,
-        slot: usize,
+        id: csp::PolicyId,
     ) -> Result<Option<&'a surgeist_html::security::csp::HtmlCspAssociation>, Fault> {
-        match self.storage.payloads.values.get(slot) {
-            Some(RetainedPayload::CspPolicy(value)) => Ok(value.value.as_ref()),
-            _ => Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
+        match self
+            .storage
+            .payloads
+            .facts
+            .csp
+            .as_ref()
+            .and_then(|log| log.policy(id))
+        {
+            Some(policy) => Ok(policy.value.as_ref()),
+            None => Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
         }
     }
     fn cause(
@@ -1109,21 +1164,15 @@ impl<'a> Resolver<'a> {
             Some(missing) => HtmlParseDialogDisposition::Unavailable(self.dialog_missing(missing)?),
         })
     }
-    fn meta_missing(&self, slot: usize) -> Result<HtmlParseMetaMissing<'a>, Fault> {
-        let Some(RetainedPayload::MetaMissing {
-            document,
-            subject,
-            kind,
-            cause,
-        }) = self.storage.payloads.values.get(slot)
-        else {
+    fn meta_missing(&self, id: meta::MissingId) -> Result<HtmlParseMetaMissing<'a>, Fault> {
+        let Some(missing) = self.storage.payloads.facts.missing.row(id.position()) else {
             return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
         };
         Ok(HtmlParseMetaMissing {
-            document: self.native(*document)?,
-            subject: self.native(*subject)?,
-            kind,
-            cause: self.cause(cause)?,
+            document: self.native(missing.document)?,
+            subject: self.native(missing.subject)?,
+            kind: &missing.kind,
+            cause: self.cause(&missing.cause)?,
         })
     }
     fn base(&self, value: &'a base::FrozenBase) -> Result<HtmlParseBase<'a>, Fault> {
@@ -1140,9 +1189,9 @@ impl<'a> Resolver<'a> {
         meta: &'a meta::MetaHistory,
     ) -> Result<HtmlParseDocumentMeta<'a>, Fault> {
         let mut fault = None;
-        let gaps = meta.gaps.map(|slot| {
-            let slot = slot?;
-            match self.meta_missing(slot) {
+        let gaps = meta.gaps.map(|id| {
+            let id = id?;
+            match self.meta_missing(id) {
                 Ok(missing) => Some(missing),
                 Err(error) => {
                     fault.get_or_insert(error);
@@ -1155,11 +1204,11 @@ impl<'a> Resolver<'a> {
         }
         // The policy of a domain with a gap is not an answer.
         let csp = match (meta.gaps.get(meta::HtmlParseMetaDomain::Csp), meta.csp) {
-            (None, Some(slot)) => self.policy(slot)?,
+            (None, Some(id)) => self.policy(id)?,
             _ => None,
         };
         let base_policy = match meta.base_csp {
-            Some(slot) => self.policy(slot)?,
+            Some(id) => self.policy(id)?,
             None => None,
         };
         let first = meta

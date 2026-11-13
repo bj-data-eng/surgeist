@@ -312,19 +312,43 @@ impl HtmlParseMetaMissingKind {
         }
     }
 }
+/// The position of a missing dependency in the parse's log of them: assigned when the fact is
+/// pushed, and valid for as long as the parse retains the log.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct MissingId(usize);
+impl MissingId {
+    pub(super) fn position(self) -> usize {
+        self.0
+    }
+    #[cfg(test)]
+    pub(super) fn at_for_test(position: usize) -> Self {
+        Self(position)
+    }
+}
+/// The first unsatisfied operation of one domain of one Document: the Document and node it was
+/// reached at, what was missing, and the cause the parse was in.
+pub(super) struct MetaMissingFact {
+    pub(super) document: usize,
+    pub(super) subject: usize,
+    pub(super) kind: HtmlParseMetaMissingKind,
+    pub(super) cause: Option<provenance::ConstructionCauseRef>,
+}
+/// The size of one missing fact, which report preparation inspects for each.
+#[cfg(test)]
+pub(crate) const MISSING_FACT_BYTES: usize = mem::size_of::<MetaMissingFact>();
 /// Closed current state issued only by the source-created Document constructor.
 /// The original controller has no external UI association or execution path.
 /// It chooses HTML877d's Do-nothing refresh policy, independently of BC state.
 /// Gap slots are at most one per domain, never a transition/event log.
 pub(super) struct MetaHistory {
     pub(super) language: Option<usize>,
-    pub(super) csp: Option<usize>,
-    pub(super) base_csp: Option<usize>,
+    pub(super) csp: Option<csp::PolicyId>,
+    pub(super) base_csp: Option<csp::PolicyId>,
     pub(super) referrer: HtmlReferrerPolicy,
     pub(super) refresh: bool,
     pub(super) theme: Option<surgeist_color::Color>,
     pub(super) scheme: Option<crate::parser::control::CssSchemeValue>,
-    pub(super) gaps: MetaDomainTable<Option<usize>>,
+    pub(super) gaps: MetaDomainTable<Option<MissingId>>,
     pub(super) first: Option<HtmlParseMetaDomain>,
     /// Where each color selection stands since the last walk of the tree.
     pub(super) selections: MetaDomainTable<SelectionIndex>,
@@ -367,7 +391,7 @@ impl SelectionIndex {
 impl MetaHistory {
     /// The first unsatisfied operation recorded for `domain`; the table has one
     /// cell per `HtmlParseMetaDomain`.
-    fn gap(&self, domain: HtmlParseMetaDomain) -> Option<usize> {
+    fn gap(&self, domain: HtmlParseMetaDomain) -> Option<MissingId> {
         self.gaps.copy(domain)
     }
     pub(super) fn offline() -> Self {
@@ -434,7 +458,7 @@ impl SessionStorage {
         &self,
         c: &mut ParseControl,
         document: usize,
-    ) -> Result<Option<usize>, SessionError> {
+    ) -> Result<Option<MissingId>, SessionError> {
         let slot = self.document_slot(c, document)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self
@@ -466,27 +490,26 @@ impl SessionStorage {
             .map_err(|_| latch_registry_row(c))?
             .first
             .is_none();
-        payload_write::<Option<usize>>(c, 1)?;
+        payload_write::<Option<MissingId>>(c, 1)?;
         if first {
             payload_write::<Option<HtmlParseMetaDomain>>(c, 1)?;
         }
-        let prepared = self.prepare_payload_slot_owned(c)?;
+        self.payloads.facts.missing.admit(c, 1)?;
         let gap = self
             .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::MetaMissing {
-                    document,
-                    subject,
-                    kind,
-                    cause,
-                },
-            )
+            .facts
+            .missing
+            .push(MetaMissingFact {
+                document,
+                subject,
+                kind,
+                cause,
+            })
             .map_err(|_| latch_registry_row(c))?;
         let meta = self
             .meta_history_mut(slot)
             .map_err(|_| latch_registry_row(c))?;
-        *meta.gaps.get_mut(domain) = Some(gap);
+        *meta.gaps.get_mut(domain) = Some(MissingId(gap));
         if first {
             meta.first = Some(domain);
         }

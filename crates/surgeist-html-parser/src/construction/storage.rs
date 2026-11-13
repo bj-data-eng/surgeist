@@ -2,7 +2,6 @@
 
 use super::*;
 pub(super) struct SessionStorage {
-    pub(super) csp_slot: Option<usize>,
     #[cfg(test)]
     pub(super) cancel_after_radio_peer: Option<crate::HtmlParseCancellation>,
     pub(super) control: ControlIdentity,
@@ -141,7 +140,6 @@ impl SessionStorage {
             },
         ];
         let mut session = Self {
-            csp_slot: None,
             #[cfg(test)]
             cancel_after_radio_peer: None,
             control: control.identity(),

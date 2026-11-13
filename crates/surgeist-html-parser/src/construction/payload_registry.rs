@@ -62,20 +62,33 @@ pub(super) struct ParseFacts {
     /// The facts of every Document the parse owns: the Document at record 0 and the inert
     /// Document of its templates, keyed by the position of the Document record.
     pub(super) documents: FamilyTable<template::DocumentFacts>,
+    /// The Meta CSP owner's state, policies and transitions; `None` unless the parse enabled the
+    /// Meta CSP service.
+    pub(super) csp: Option<csp::CspLog>,
+    /// The missing dependencies of the Meta histories of the Documents, in the order they were
+    /// reached, named by [`meta::MissingId`].
+    pub(super) missing: RowLog<meta::MetaMissingFact>,
 }
 impl ParseFacts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
+        let missing = RowLog::new(control)?;
+        let documents = match FamilyTable::new(control) {
+            Ok(documents) => documents,
+            Err(error) => {
+                missing.release(control, &control.identity(), |_, _| Ok(()))?;
+                return Err(error);
+            }
+        };
         Ok(Self {
             completion: None,
-            documents: FamilyTable::new(control)?,
+            documents,
+            csp: None,
+            missing,
         })
     }
 }
 
 pub(super) enum RetainedPayload {
-    CspState(Option<Box<csp::State>>),
-    CspPolicy(Box<csp::Policy>),
-    CspTransition(Box<csp::Transition>),
     AssociationDocument(pending_association::DocumentCapture),
     AssociationOccurrence(OwnedVec<pending_association::Occurrence>),
     AssociationCapturedContext(pending_association::CapturedContext),
@@ -134,12 +147,6 @@ pub(super) enum RetainedPayload {
     NodeDocument {
         node: Option<usize>,
         document: DocumentRef,
-    },
-    MetaMissing {
-        document: usize,
-        subject: usize,
-        kind: meta::HtmlParseMetaMissingKind,
-        cause: Option<provenance::ConstructionCauseRef>,
     },
     Template {
         node: Option<usize>,
@@ -723,7 +730,12 @@ impl PayloadStorage {
             facts,
             ..
         } = self;
-        let mut csp_storage = crate::meta_csp::Storage::ZERO;
+        let ParseFacts {
+            documents,
+            csp,
+            missing,
+            ..
+        } = facts;
         let join_entries = node_joins.len() as u64;
         let mut detail_refused = detail_origins.release(control).err();
         // A refused release latches its stop in the controller (`ParseControl::fail`),
@@ -732,16 +744,22 @@ impl PayloadStorage {
         let mut refused = detail_refused.take();
         keep_first(
             &mut refused,
-            facts
-                .documents
-                .release(control, owner, |control, document| {
-                    // The scheme a Document's Meta history selected owns its units.
-                    match document.meta.scheme.take() {
-                        Some(scheme) => scheme.release(control).map_err(SessionError::from),
-                        None => Ok(()),
-                    }
-                }),
+            documents.release(control, owner, |control, document| {
+                // The scheme a Document's Meta history selected owns its units.
+                match document.meta.scheme.take() {
+                    Some(scheme) => scheme.release(control).map_err(SessionError::from),
+                    None => Ok(()),
+                }
+            }),
         );
+        keep_first(&mut refused, missing.release(control, owner, |_, _| Ok(())));
+        // The storage the owner's state holds is returned with the registry's own, below.
+        let mut csp_storage = crate::meta_csp::Storage::ZERO;
+        if let Some(log) = csp {
+            let (held, released) = log.release(control, owner);
+            csp_storage = held;
+            keep_first(&mut refused, released);
+        }
         keep_first(
             &mut refused,
             release_vector(control, node_joins, node_joins_allocation),
@@ -815,13 +833,6 @@ impl PayloadStorage {
             if let Some(usage) = associated_usage {
                 drop(payload);
                 keep_first(&mut refused, usage.release(control, owner));
-                continue;
-            }
-            if let RetainedPayload::CspState(value) = payload {
-                if let Some(value) = value {
-                    csp_storage = value.account.live;
-                    drop(value);
-                }
                 continue;
             }
             if let RetainedPayload::AssociationOccurrence(value) = payload {

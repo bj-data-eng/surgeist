@@ -10,6 +10,75 @@ use surgeist_html::values::DocumentString;
 pub(super) struct Policy {
     pub value: Option<HtmlCspAssociation>,
 }
+/// The position of a policy in the parse's log of them: assigned when the policy is pushed, and
+/// valid for as long as the parse retains the log.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct PolicyId(usize);
+impl PolicyId {
+    #[cfg(test)]
+    pub(super) fn at_for_test(position: usize) -> Self {
+        Self(position)
+    }
+}
+/// The Meta CSP owner's state, the policies it has retained and the transitions that produced
+/// them. The parse holds one when the Meta CSP service is enabled, and it is not a registry row:
+/// no node owns it, and the registry's rows are not the policies or transitions the owner reads.
+pub(super) struct CspLog {
+    /// `None` while [`SessionStorage::with_csp`] has taken it out for a use.
+    state: Option<Box<State>>,
+    policies: RowLog<Box<Policy>>,
+    transitions: RowLog<Box<Transition>>,
+}
+impl CspLog {
+    fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
+        let policies = RowLog::new(control)?;
+        let transitions = match RowLog::new(control) {
+            Ok(transitions) => transitions,
+            Err(error) => {
+                policies.release(control, &control.identity(), |_, _| Ok(()))?;
+                return Err(error);
+            }
+        };
+        Ok(Self {
+            state: None,
+            policies,
+            transitions,
+        })
+    }
+    pub(super) fn policy(&self, id: PolicyId) -> Option<&Policy> {
+        self.policies.row(id.0).map(|policy| &**policy)
+    }
+    /// The policies the log holds.
+    #[cfg(test)]
+    pub(super) fn policy_count(&self) -> usize {
+        self.policies.len()
+    }
+    /// Releases the banks and entries of the log, and returns what the owner's state still held:
+    /// the storage the account of the owner's graph has acquired, which the registry's release
+    /// returns with its own.
+    pub(super) fn release(
+        self,
+        control: &mut ParseControl,
+        owner: &ControlIdentity,
+    ) -> (Storage, Result<(), SessionError>) {
+        let Self {
+            state,
+            policies,
+            transitions,
+        } = self;
+        let held = state.map_or(Storage::ZERO, |state| state.account.live);
+        let mut refused = None;
+        keep_first(
+            &mut refused,
+            policies.release(control, owner, |_, _| Ok(())),
+        );
+        keep_first(
+            &mut refused,
+            transitions.release(control, owner, |_, _| Ok(())),
+        );
+        (held, refused.map_or(Ok(()), Err))
+    }
+}
 pub(super) struct Transition {
     pub value: Option<(
         HtmlMetaCspReceipt,
@@ -34,12 +103,14 @@ pub(super) struct State {
     initial_base: bool,
     initial: Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>,
     owner_usage: Storage,
-    /// The registry rows already summed into `rows_usage`. Rows are appended
-    /// and never removed or reordered while the registry is live, and a
-    /// policy or transition row is complete when the call that pushed it
-    /// returns, so a row below this count never changes its usage.
-    rows_scanned: usize,
-    /// What the policy and transition rows below `rows_scanned` retain.
+    /// The policies already summed into `rows_usage`. Rows are appended and
+    /// never removed or reordered while the log is live, and a policy or
+    /// transition is complete when the call that pushed it returns, so a row
+    /// below this count never changes its usage.
+    policies_scanned: usize,
+    /// The transitions already summed into `rows_usage`, as `policies_scanned`.
+    transitions_scanned: usize,
+    /// What the policies and transitions below the counts retain.
     rows_usage: Storage,
 }
 fn protocol(
@@ -79,19 +150,35 @@ fn native_storage(
     Ok(())
 }
 impl SessionStorage {
-    fn csp_slot(&self) -> Option<usize> {
-        self.csp_slot
+    pub(super) fn csp_enabled(&self) -> bool {
+        self.payloads.facts.csp.is_some()
+    }
+    fn csp_log(&self, c: &mut ParseControl) -> Result<&CspLog, SessionError> {
+        self.payloads
+            .facts
+            .csp
+            .as_ref()
+            .ok_or_else(|| latch_registry_row(c))
+    }
+    fn csp_log_mut(&mut self, c: &mut ParseControl) -> Result<&mut CspLog, SessionError> {
+        self.payloads
+            .facts
+            .csp
+            .as_mut()
+            .ok_or_else(|| latch_registry_row(c))
     }
     fn with_csp<T>(
         &mut self,
         c: &mut ParseControl,
         f: impl FnOnce(&mut Self, &mut ParseControl, &mut State) -> Result<T, SessionError>,
     ) -> Result<T, SessionError> {
-        let slot = self.csp_slot().ok_or(SessionError::WrongToken)?;
-        let RetainedPayload::CspState(value) = self.payloads.row_mut(c, slot)? else {
-            return Err(latch_registry_row(c));
-        };
-        let mut value = value.take().ok_or(SessionError::WrongToken)?;
+        let mut value = self
+            .payloads
+            .facts
+            .csp
+            .as_mut()
+            .and_then(|log| log.state.take())
+            .ok_or(SessionError::WrongToken)?;
         let result = f(self, c, &mut value);
         let settled = value.account.settle(c);
         let result = match (result, settled) {
@@ -101,95 +188,81 @@ impl SessionStorage {
         };
         // Native temporaries have now actually dropped. Reconcile the receipt
         // to the complete graph still retained by original payloads.
-        // A row the closure replaced is a fault of the parser's own, found
-        // below, and is not an account to reconcile.
-        let row_kept = matches!(
-            self.payloads.values.get(slot),
-            Some(RetainedPayload::CspState(_))
-        );
         let result = result.and_then(|out| {
-            if row_kept {
-                self.reconcile_csp(c, &mut value)?;
-            }
+            self.reconcile_csp(c, &mut value)?;
             Ok(out)
         });
-        match self.payloads.values.get_mut(slot) {
-            Some(RetainedPayload::CspState(original)) => {
-                *original = Some(value);
+        match self.payloads.facts.csp.as_mut() {
+            Some(log) => {
+                log.state = Some(value);
                 result
             }
-            _ => {
-                // The state has no row left to return to: credit what it
-                // retained, as the registry's own release would have.
+            None => {
+                // The state has no log left to return to: credit what it
+                // retained, as the release of the log would have.
                 let invariant = latch_registry_row(c);
                 let _ = value.account.live.release(c);
                 Err(invariant)
             }
         }
     }
-    /// What the policy or transition row retains beyond the registry's own
-    /// accounting of its slot; zero for any other row.
-    fn csp_row_usage(row: &RetainedPayload) -> Result<Storage, SessionError> {
-        Ok(match row {
-            RetainedPayload::CspPolicy(v) => {
-                let mut usage = Storage {
-                    bytes: size_of::<Policy>(),
-                    units: 0,
-                    entries: 1,
-                };
-                if let Some(value) = &v.value {
-                    let native = Storage::from(
-                        value
-                            .retained_layout()
-                            .map_err(SessionError::CspProtocol)?
-                            .storage(),
-                    );
-                    usage = usage
-                        .add(
-                            native
-                                .sub(Storage {
-                                    bytes: size_of::<HtmlCspAssociation>(),
-                                    units: 0,
-                                    entries: 1,
-                                })
-                                .ok_or(SessionError::WrongToken)?,
-                        )
-                        .ok_or(SessionError::WrongToken)?;
-                }
-                usage
+    /// What the policy retains beyond the log's own accounting of its row.
+    fn policy_usage(policy: &Policy) -> Result<Storage, SessionError> {
+        let mut usage = Storage {
+            bytes: size_of::<Policy>(),
+            units: 0,
+            entries: 1,
+        };
+        if let Some(value) = &policy.value {
+            let native = Storage::from(
+                value
+                    .retained_layout()
+                    .map_err(SessionError::CspProtocol)?
+                    .storage(),
+            );
+            usage = usage
+                .add(
+                    native
+                        .sub(Storage {
+                            bytes: size_of::<HtmlCspAssociation>(),
+                            units: 0,
+                            entries: 1,
+                        })
+                        .ok_or(SessionError::WrongToken)?,
+                )
+                .ok_or(SessionError::WrongToken)?;
+        }
+        Ok(usage)
+    }
+    /// What the transition retains beyond the log's own accounting of its row.
+    fn transition_usage(transition: &Transition) -> Result<Storage, SessionError> {
+        let mut usage = Storage {
+            bytes: size_of::<Transition>(),
+            units: 0,
+            entries: 1,
+        };
+        if let Some((receipt, retired, request, prepared)) = &transition.value {
+            for (layout, inline) in [
+                (receipt.retained_layout(), size_of::<HtmlMetaCspReceipt>()),
+                (retired.retained_layout(), size_of::<HtmlCspAssociation>()),
+                (request.retained_layout(), size_of::<HtmlMetaCspRequest>()),
+                (prepared.retained_layout(), size_of::<HtmlMetaCspPrepared>()),
+            ] {
+                let native = Storage::from(layout.map_err(SessionError::CspProtocol)?.storage());
+                usage = usage
+                    .add(
+                        native
+                            .sub(Storage {
+                                bytes: inline,
+                                units: 0,
+                                entries: 1,
+                            })
+                            .ok_or(SessionError::WrongToken)?,
+                    )
+                    .ok_or(SessionError::WrongToken)?;
             }
-            RetainedPayload::CspTransition(v) => {
-                let mut usage = Storage {
-                    bytes: size_of::<Transition>(),
-                    units: 0,
-                    entries: 1,
-                };
-                if let Some((receipt, retired, request, prepared)) = &v.value {
-                    for (layout, inline) in [
-                        (receipt.retained_layout(), size_of::<HtmlMetaCspReceipt>()),
-                        (retired.retained_layout(), size_of::<HtmlCspAssociation>()),
-                        (request.retained_layout(), size_of::<HtmlMetaCspRequest>()),
-                        (prepared.retained_layout(), size_of::<HtmlMetaCspPrepared>()),
-                    ] {
-                        let native =
-                            Storage::from(layout.map_err(SessionError::CspProtocol)?.storage());
-                        usage = usage
-                            .add(
-                                native
-                                    .sub(Storage {
-                                        bytes: inline,
-                                        units: 0,
-                                        entries: 1,
-                                    })
-                                    .ok_or(SessionError::WrongToken)?,
-                            )
-                            .ok_or(SessionError::WrongToken)?;
-                    }
-                }
-                usage
-            }
-            _ => Storage::ZERO,
-        })
+        }
+        Ok(usage)
     }
     fn reconcile_csp(&self, c: &mut ParseControl, state: &mut State) -> Result<(), SessionError> {
         let base = state
@@ -200,11 +273,19 @@ impl SessionStorage {
                 entries: 1,
             })
             .ok_or(SessionError::WrongToken)?;
+        let log = self.csp_log(c)?;
         let mut rows = state.rows_usage;
-        for row in self.payloads.values.iter().skip(state.rows_scanned) {
+        for policy in log.policies.rows_from(c, state.policies_scanned)? {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let usage = Self::csp_row_usage(row)?;
-            rows = rows.add(usage).ok_or(SessionError::WrongToken)?;
+            rows = rows
+                .add(Self::policy_usage(policy)?)
+                .ok_or(SessionError::WrongToken)?;
+        }
+        for transition in log.transitions.rows_from(c, state.transitions_scanned)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            rows = rows
+                .add(Self::transition_usage(transition)?)
+                .ok_or(SessionError::WrongToken)?;
         }
         let mut live = base.add(rows).ok_or(SessionError::WrongToken)?;
         if let Some(p) = &state.pending {
@@ -233,9 +314,14 @@ impl SessionStorage {
         {
             // The incremental sum equals a sum over every row.
             let mut all = Storage::ZERO;
-            for row in &self.payloads.values {
+            for (_, policy) in log.policies.iter() {
                 all = all
-                    .add(Self::csp_row_usage(row)?)
+                    .add(Self::policy_usage(policy)?)
+                    .ok_or(SessionError::WrongToken)?;
+            }
+            for (_, transition) in log.transitions.iter() {
+                all = all
+                    .add(Self::transition_usage(transition)?)
                     .ok_or(SessionError::WrongToken)?;
             }
             assert_eq!(
@@ -243,7 +329,8 @@ impl SessionStorage {
                 "the incremental policy row usage equals a full sum"
             );
         }
-        state.rows_scanned = self.payloads.values.len();
+        state.policies_scanned = log.policies.len();
+        state.transitions_scanned = log.transitions.len();
         state.rows_usage = rows;
         Ok(())
     }
@@ -252,19 +339,23 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: usize,
     ) -> Result<Option<&HtmlCspAssociation>, SessionError> {
-        let Some(index) = self.csp_policy_slot(c, document)? else {
+        let Some(id) = self.csp_policy_id(c, document)? else {
             return Ok(None);
         };
-        let RetainedPayload::CspPolicy(value) = self.payloads.row(c, index)? else {
-            return Err(latch_registry_row(c));
-        };
-        Ok(value.value.as_ref())
+        let policy = self
+            .payloads
+            .facts
+            .csp
+            .as_ref()
+            .and_then(|log| log.policy(id))
+            .ok_or_else(|| latch_registry_row(c))?;
+        Ok(policy.value.as_ref())
     }
-    pub(super) fn csp_policy_slot(
+    pub(super) fn csp_policy_id(
         &self,
         c: &mut ParseControl,
         document: usize,
-    ) -> Result<Option<usize>, SessionError> {
+    ) -> Result<Option<PolicyId>, SessionError> {
         Ok(self
             .payloads
             .facts
@@ -272,21 +363,20 @@ impl SessionStorage {
             .get(c, document)?
             .and_then(|document| document.meta.csp))
     }
-    pub(super) fn csp_pending(&self, c: &mut ParseControl) -> Result<bool, SessionError> {
-        let Some(slot) = self.csp_slot() else {
-            return Ok(false);
-        };
-        Ok(matches!(
-            self.payloads.row(c, slot)?,
-            RetainedPayload::CspState(Some(state)) if state.pending.is_some()
-        ))
+    pub(super) fn csp_pending(&self) -> bool {
+        self.payloads
+            .facts
+            .csp
+            .as_ref()
+            .and_then(|log| log.state.as_ref())
+            .is_some_and(|state| state.pending.is_some())
     }
     pub(super) fn ensure_csp_policy(
         &mut self,
         c: &mut ParseControl,
         document: usize,
     ) -> Result<(), SessionError> {
-        if self.csp_slot().is_none() || self.csp_policy(c, document)?.is_some() {
+        if !self.csp_enabled() || self.csp_policy(c, document)?.is_some() {
             return Ok(());
         }
         self.with_csp(c, |this, c, state| {
@@ -305,19 +395,18 @@ impl SessionStorage {
                     association.policy().revision(),
                 ));
             }
-            let prepared = this.prepare_payload_slot_owned(c)?;
+            this.csp_log_mut(c)?.policies.admit(c, 1)?;
             native_storage(c, &mut state.account, size_of::<Policy>())?;
-            let index = this
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::CspPolicy(Box::new(Policy {
+            let index = PolicyId(
+                this.csp_log_mut(c)?
+                    .policies
+                    .push(Box::new(Policy {
                         value: Some(association),
-                    })),
-                )
-                .map_err(|_| latch_registry_row(c))?;
+                    }))
+                    .map_err(|_| latch_registry_row(c))?,
+            );
             let doc = this.document_slot(c, document)?;
-            payload_write::<Option<usize>>(
+            payload_write::<Option<PolicyId>>(
                 c,
                 if state.initial_base && document == 0 {
                     2
@@ -343,7 +432,7 @@ impl SessionStorage {
         document: usize,
         content: DocumentString,
     ) -> Result<bool, SessionError> {
-        if self.csp_slot().is_none() {
+        if !self.csp_enabled() {
             return Ok(false);
         }
         if self
@@ -389,11 +478,11 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: usize,
     ) -> Result<bool, SessionError> {
-        let Some(index) = self.csp_slot() else {
+        let Some(log) = self.payloads.facts.csp.as_ref() else {
             return Ok(true);
         };
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::CspState(Some(state)) = self.payloads.row(c, index)? else {
+        let Some(state) = log.state.as_ref() else {
             return Err(SessionError::WrongToken);
         };
         Ok(state.initial_base
@@ -413,30 +502,27 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let s = self.active_mut()?;
         s.require(c)?;
-        if s.csp_slot().is_some() {
+        if s.csp_enabled() {
             return Err(SessionError::WrongToken);
         }
-        let prepared = s.prepare_payload_slot_owned(c)?;
+        // The log is installed before the state is allocated, so a refusal of the
+        // allocation leaves the log to the release of the parse.
+        let log = CspLog::new(c)?;
+        s.payloads.facts.csp = Some(log);
         let mut account = Account::default();
-        payload_write::<Option<usize>>(c, 1)?;
+        payload_write::<Option<Box<State>>>(c, 1)?;
         native_storage(c, &mut account, size_of::<State>())?;
-        let state_slot = s
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::CspState(Some(Box::new(State {
-                    owner: None,
-                    account,
-                    pending: None,
-                    initial_base,
-                    initial: None,
-                    owner_usage: Storage::ZERO,
-                    rows_scanned: 0,
-                    rows_usage: Storage::ZERO,
-                }))),
-            )
-            .map_err(|_| latch_registry_row(c))?;
-        s.csp_slot = Some(state_slot);
+        s.csp_log_mut(c)?.state = Some(Box::new(State {
+            owner: None,
+            account,
+            pending: None,
+            initial_base,
+            initial: None,
+            owner_usage: Storage::ZERO,
+            policies_scanned: 0,
+            transitions_scanned: 0,
+            rows_usage: Storage::ZERO,
+        }));
         s.with_csp(c, |_, c, state| {
             let owner = HtmlCspOwner::new_with(&mut |a| state.account.admit(c, a, Caller::Parser))
                 .map_err(|e| protocol(c, e))?;
@@ -456,8 +542,7 @@ impl SessionStorage {
         self.with_csp(c, |s, c, state| {
             let pending = state.pending.take().ok_or(SessionError::WrongToken)?;
             let result = (|| {
-                let current_slot = s
-                    .csp_policy_slot(c, pending.document)?
+                s.csp_policy_id(c, pending.document)?
                     .ok_or(SessionError::WrongToken)?;
                 let original = s
                     .csp_policy(c, pending.document)?
@@ -525,16 +610,15 @@ impl SessionStorage {
                     Outcome::Terminal => return Err(SessionError::CspService),
                 };
                 // All receivers and payload backing precede the policy fence.
-                let admission = s.prepare_payload_slot_owned(c)?;
+                s.csp_log_mut(c)?.policies.admit(c, 1)?;
                 native_storage(c, &mut state.account, size_of::<Policy>())?;
-                let next_slot = s
-                    .payloads
-                    .push_row(
-                        admission,
-                        RetainedPayload::CspPolicy(Box::new(Policy { value: None })),
-                    )
-                    .map_err(|_| latch_registry_row(c))?;
-                let admission = s.prepare_payload_slot_owned(c)?;
+                let next_policy = PolicyId(
+                    s.csp_log_mut(c)?
+                        .policies
+                        .push(Box::new(Policy { value: None }))
+                        .map_err(|_| latch_registry_row(c))?,
+                );
+                s.csp_log_mut(c)?.transitions.admit(c, 1)?;
                 native_storage(c, &mut state.account, size_of::<Transition>())?;
                 let transition_cause = pending
                     .cause
@@ -546,20 +630,18 @@ impl SessionStorage {
                             .copy_cause_ref(c, cause)
                     })
                     .transpose()?;
-                let transition_slot = s
-                    .payloads
-                    .push_row(
-                        admission,
-                        RetainedPayload::CspTransition(Box::new(Transition {
-                            value: None,
-                            _cause: transition_cause,
-                            _document: pending.document,
-                            _subject: pending.subject,
-                        })),
-                    )
+                let transition = s
+                    .csp_log_mut(c)?
+                    .transitions
+                    .push(Box::new(Transition {
+                        value: None,
+                        _cause: transition_cause,
+                        _document: pending.document,
+                        _subject: pending.subject,
+                    }))
                     .map_err(|_| latch_registry_row(c))?;
                 let doc = s.document_slot(c, pending.document)?;
-                payload_write::<Option<usize>>(c, 1)?;
+                payload_write::<Option<PolicyId>>(c, 1)?;
                 let publication = state
                     .owner
                     .as_mut()
@@ -569,20 +651,18 @@ impl SessionStorage {
                     })
                     .map_err(|e| protocol(c, e.error))?;
                 let completion = publication.publish();
-                let RetainedPayload::CspPolicy(value) = s.payloads.row_mut(c, next_slot)? else {
+                let log = s.csp_log_mut(c)?;
+                let Some(policy) = log.policies.row_mut(next_policy.0) else {
                     return Err(latch_registry_row(c));
                 };
-                value.value = Some(current);
-                let RetainedPayload::CspTransition(value) =
-                    s.payloads.row_mut(c, transition_slot)?
-                else {
+                policy.value = Some(current);
+                let Some(transition) = log.transitions.row_mut(transition) else {
                     return Err(latch_registry_row(c));
                 };
-                value.value = Some(completion.into_parts());
+                transition.value = Some(completion.into_parts());
                 s.meta_history_mut(doc)
                     .map_err(|_| latch_registry_row(c))?
-                    .csp = Some(next_slot);
-                let _ = current_slot;
+                    .csp = Some(next_policy);
                 Ok(())
             })();
             if result.is_err() {
@@ -601,33 +681,31 @@ mod tests {
     use surgeist_html::security::csp::HtmlCspOwner;
 
     #[test]
-    fn a_meta_csp_state_row_replaced_during_its_use_reports_the_registry_row() {
+    fn a_meta_csp_log_dropped_during_its_use_reports_the_registry_row() {
         let request = request("<body><div id=a>");
         let (mut c, mut session, _proof, _nodes) = graph(&request);
         let storage = session.active_mut().unwrap();
-        let prepared = storage.prepare_payload_slot_owned(&mut c).unwrap();
+        storage.payloads.facts.csp = Some(CspLog::new(&mut c).unwrap());
         let mut account = Account::default();
         native_storage(&mut c, &mut account, size_of::<State>()).unwrap();
-        let slot = storage
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::CspState(Some(Box::new(State {
-                    owner: None,
-                    account,
-                    pending: None,
-                    initial_base: false,
-                    initial: None,
-                    owner_usage: Storage::ZERO,
-                    rows_scanned: 0,
-                    rows_usage: Storage::ZERO,
-                }))),
-            )
-            .unwrap();
-        storage.csp_slot = Some(slot);
-        let result = storage.with_csp(&mut c, |this, _, _| {
-            this.payloads.values[slot] =
-                RetainedPayload::CspPolicy(Box::new(Policy { value: None }));
+        storage.payloads.facts.csp.as_mut().unwrap().state = Some(Box::new(State {
+            owner: None,
+            account,
+            pending: None,
+            initial_base: false,
+            initial: None,
+            owner_usage: Storage::ZERO,
+            policies_scanned: 0,
+            transitions_scanned: 0,
+            rows_usage: Storage::ZERO,
+        }));
+        let result = storage.with_csp(&mut c, |this, c, _| {
+            // The state is out for its use, and the log it returns to is released.
+            let owner = c.identity();
+            let log = this.payloads.facts.csp.take().unwrap();
+            let (held, released) = log.release(c, &owner);
+            released.unwrap();
+            assert_eq!(held, Storage::ZERO);
             Ok(())
         });
         let invariant = HtmlParseStop::InternalInvariant(
@@ -635,7 +713,100 @@ mod tests {
         );
         assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
         assert_eq!(c.stop(), Some(invariant));
-        storage.csp_slot = None;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    /// Installs an empty log and a state that has retained nothing, as the service enables them.
+    fn install_log(storage: &mut SessionStorage, c: &mut ParseControl) {
+        storage.payloads.facts.csp = Some(CspLog::new(c).unwrap());
+        let mut account = Account::default();
+        native_storage(c, &mut account, size_of::<State>()).unwrap();
+        storage.payloads.facts.csp.as_mut().unwrap().state = Some(Box::new(State {
+            owner: None,
+            account,
+            pending: None,
+            initial_base: false,
+            initial: None,
+            owner_usage: Storage::ZERO,
+            policies_scanned: 0,
+            transitions_scanned: 0,
+            rows_usage: Storage::ZERO,
+        }));
+    }
+
+    /// The reconciliation that ends every use of the owner reads the rows pushed since the last
+    /// one. A count of rows already read that is past the end of the log names rows the log never
+    /// held, so it is the registry-row defect and not an empty read.
+    #[test]
+    fn a_scanned_count_past_the_log_is_the_registry_row_defect() {
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        for transitions in [false, true] {
+            let request = request("<body><div id=a>");
+            let (mut c, mut session, _proof, _nodes) = graph(&request);
+            let storage = session.active_mut().unwrap();
+            install_log(storage, &mut c);
+            // The log holds no row, so a count of one is past its end.
+            let result = storage.with_csp(&mut c, |_, _, state| {
+                if transitions {
+                    state.transitions_scanned = 1;
+                } else {
+                    state.policies_scanned = 1;
+                }
+                Ok(())
+            });
+            assert_eq!(
+                result.err(),
+                Some(SessionError::Stop(invariant)),
+                "transitions: {transitions}"
+            );
+            assert_eq!(c.stop(), Some(invariant));
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+        }
+    }
+
+    /// A reconciliation reads one row for each policy and each transition pushed since the last,
+    /// and no other: after one policy and one transition, two rows. The count is taken inside
+    /// the use, after the admissions, so only the reconciliation's own visits are counted.
+    #[test]
+    fn a_reconciliation_visits_exactly_the_policies_and_transitions_pushed_since_the_last() {
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        install_log(storage, &mut c);
+        let visits = |c: &ParseControl| c.usage().work(HtmlParseWorkCategory::RecordVisit);
+        let mut at_end_of_use = 0;
+        storage
+            .with_csp(&mut c, |this, c, state| {
+                let log = this.csp_log_mut(c)?;
+                log.policies.admit(c, 1)?;
+                native_storage(c, &mut state.account, size_of::<Policy>())?;
+                log.policies
+                    .push(Box::new(Policy { value: None }))
+                    .map_err(|_| latch_registry_row(c))?;
+                let log = this.csp_log_mut(c)?;
+                log.transitions.admit(c, 1)?;
+                native_storage(c, &mut state.account, size_of::<Transition>())?;
+                log.transitions
+                    .push(Box::new(Transition {
+                        value: None,
+                        _cause: None,
+                        _document: 0,
+                        _subject: 0,
+                    }))
+                    .map_err(|_| latch_registry_row(c))?;
+                at_end_of_use = visits(c);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(visits(&c) - at_end_of_use, 2);
+        // The rows are now read: a use that pushes nothing visits none.
+        let before = visits(&c);
+        storage.with_csp(&mut c, |_, _, _| Ok(())).unwrap();
+        assert_eq!(visits(&c), before);
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -692,24 +863,6 @@ mod tests {
         for elements in [0, 16, 64] {
             assert_eq!(visits(elements), 0, "{elements} plain elements");
         }
-    }
-
-    #[test]
-    fn a_pending_query_with_a_state_slot_past_the_registry_reports_the_registry_row() {
-        let request = request("<body><div id=a>");
-        let (mut c, mut session, _proof, _nodes) = graph(&request);
-        let storage = session.active_mut().unwrap();
-        assert_eq!(storage.csp_pending(&mut c), Ok(false));
-        storage.csp_slot = Some(storage.payloads.values.len());
-        let result = storage.csp_pending(&mut c);
-        let invariant = HtmlParseStop::InternalInvariant(
-            crate::parser::control::HtmlParseInvariant::RegistryRow,
-        );
-        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
-        assert_eq!(c.stop(), Some(invariant));
-        storage.csp_slot = None;
-        session.release(&mut c).unwrap();
-        storage_zero(&c);
     }
 
     /// The stop for an owner call that the account cannot cover, with the

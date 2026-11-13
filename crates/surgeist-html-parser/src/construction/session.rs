@@ -435,7 +435,6 @@ impl ParserArenaSession {
             }
         };
         let SessionStorage {
-            csp_slot: _,
             control: owner,
             effects,
             evidence,

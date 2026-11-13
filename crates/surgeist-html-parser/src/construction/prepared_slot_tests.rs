@@ -418,6 +418,61 @@ fn template_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() 
     );
 }
 
+/// Sites asked at `function` of `file`, among the sites of the prepared slots of one parse.
+fn sites_at(sites: &[Site], file: &str, function: &str) -> usize {
+    sites
+        .iter()
+        .filter(|site| site.file == file && site.function == function)
+        .count()
+}
+
+/// The Document facts of a parse are rows of a family table: the facts of the parser's Document,
+/// of the inert Document that a template's contents belong to, and of the Document that a
+/// contextual parse captures for its template contents. Each is admitted before its node is
+/// allocated, and the admission is a prepared slot of its own, in front of the payload slot of the
+/// Document's registry row that the same function prepares.
+#[test]
+fn document_facts_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let documents = |source: &'static str| {
+        let (retained, sites) = retained_after_each_prepared_slot(&document(source));
+        assert!(
+            retained.is_empty(),
+            "{:?}",
+            &retained[..retained.len().min(8)]
+        );
+        sites
+    };
+    // The parser's Document, then the inert Document of the outer template. The inner template's
+    // owner is already inert, so its contents belong to that Document and make no other.
+    let sites =
+        documents("<!doctype html><template><p>t</p><template><b>n</b></template></template>");
+    assert_eq!(sites_at(&sites, "src/construction/storage.rs", "new"), 2);
+    let inert = sites_at(
+        &sites,
+        "src/construction/template.rs",
+        "appropriate_contents_document",
+    );
+    // One creation, with the facts admission and the payload slot after it.
+    assert_eq!(inert, 2, "{sites:?}");
+    // The Document a contextual parse captures for the contents of a template.
+    let (retained, sites) =
+        retained_after_each_prepared_slot(&fragment("<template><p>t</p></template>"));
+    assert!(
+        retained.is_empty(),
+        "{:?}",
+        &retained[..retained.len().min(8)]
+    );
+    assert_eq!(
+        sites_at(
+            &sites,
+            "src/construction/context.rs",
+            "captured_contents_document"
+        ),
+        2,
+        "{sites:?}"
+    );
+}
+
 #[test]
 fn script_link_and_details_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
     assert_nothing_retained(
@@ -633,9 +688,16 @@ fn associated_input_rows_leave_nothing_retained_when_the_parse_stops_after_their
 
 /// A processor that attests every policy unchanged, so each reached Meta
 /// admits the rows of a processed policy without any native artifact.
-struct Unchanged {
+pub(super) struct Unchanged {
     authority: HtmlCspProcessorAuthority,
     profile: HtmlCspProcessorProfile,
+}
+impl Unchanged {
+    pub(super) fn new() -> Self {
+        let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(1, &mut allow).unwrap();
+        Self { authority, profile }
+    }
 }
 fn allow(_: HtmlCspLayout) -> Result<(), Infallible> {
     Ok(())
@@ -663,9 +725,7 @@ impl HtmlMetaCspProcessor for Unchanged {
 fn processed_policy_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
     assert_nothing_retained(
         &|limits| {
-            let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
-            let profile = authority.profile_with(1, &mut allow).unwrap();
-            let mut processor = Unchanged { authority, profile };
+            let mut processor = Unchanged::new();
             crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(
                 "<!doctype html><meta http-equiv=content-security-policy content='='><style>a{}</style><meta http-equiv=content-security-policy content='='>",
@@ -679,7 +739,6 @@ fn processed_policy_rows_leave_nothing_retained_when_the_parse_stops_after_their
         &[
             ("src/construction/csp.rs", "service_meta_csp"),
             ("src/construction/csp.rs", "ensure_csp_policy"),
-            ("src/construction/csp.rs", "enable_meta_csp"),
         ],
     );
 }

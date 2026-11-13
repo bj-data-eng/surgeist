@@ -143,7 +143,7 @@ pub(super) struct Context {
     base_observation: Option<usize>,
     captured: Option<usize>,
     policy_missing: bool,
-    csp: Option<usize>,
+    csp: Option<csp::PolicyId>,
     missing: bool,
 }
 pub(super) struct Occurrence {
@@ -896,7 +896,7 @@ impl SessionStorage {
         }
         if let DocumentRef::Owned(document) = document {
             self.ensure_csp_policy(c, *document)?;
-            context.csp = self.csp_policy_slot(c, *document)?;
+            context.csp = self.csp_policy_id(c, *document)?;
         }
         Ok(context)
     }
@@ -1789,10 +1789,15 @@ impl<'a> HtmlParseAssociationContext<'a> {
         };
         // A policy that is missing from the history has no association.
         let csp = match value.csp {
-            Some(slot) if !value.policy_missing => match row(slot)? {
-                RetainedPayload::CspPolicy(policy) => policy.value.as_ref(),
-                _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
-            },
+            Some(id) if !value.policy_missing => storage
+                .payloads
+                .facts
+                .csp
+                .as_ref()
+                .and_then(|log| log.policy(id))
+                .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))?
+                .value
+                .as_ref(),
             _ => None,
         };
         let base_facts = match value.base_document {
@@ -2142,12 +2147,15 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                     }
                 }
                 // `HtmlParseAssociationContext::csp_association` reads this row without a controller,
-                // so its kind is established here, at publication.
+                // so its position in the log is established here, at publication.
                 if let Some(policy) = value.context.csp
-                    && !matches!(
-                        storage.payloads.values.get(policy),
-                        Some(RetainedPayload::CspPolicy(_))
-                    )
+                    && storage
+                        .payloads
+                        .facts
+                        .csp
+                        .as_ref()
+                        .and_then(|log| log.policy(policy))
+                        .is_none()
                 {
                     return Err(latch_registry_row(c));
                 }
@@ -2817,12 +2825,12 @@ mod tests {
         assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
     }
     #[test]
-    fn an_occurrence_whose_policy_row_is_not_a_policy_is_a_fault() {
+    fn an_occurrence_whose_policy_is_not_in_the_log_is_a_fault() {
         let mut report = styled_report();
         corrupt_style_occurrence(
             &mut report,
             |row| !row.context.policy_missing,
-            |row| row.context.csp = Some(usize::MAX),
+            |row| row.context.csp = Some(csp::PolicyId::at_for_test(usize::MAX)),
         );
         assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
     }

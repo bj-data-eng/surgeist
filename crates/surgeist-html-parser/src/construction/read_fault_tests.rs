@@ -817,9 +817,41 @@ fn a_dialog_naming_a_value_that_is_not_a_string_faults_the_cursor() {
 }
 
 #[test]
-fn a_document_naming_a_policy_row_that_is_not_one_faults_the_cursor() {
+fn a_document_naming_a_policy_the_log_does_not_hold_faults_the_cursor() {
     let mut report = parse("<p>A");
-    corrupt_document_meta(&mut report, |meta| meta.csp = Some(usize::MAX));
+    corrupt_document_meta(&mut report, |meta| {
+        meta.csp = Some(csp::PolicyId::at_for_test(usize::MAX));
+    });
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
+}
+
+/// A report parsed with the Meta CSP service enabled, so that its policy log exists.
+fn parse_with_policy_log(html: &'static str) -> crate::HtmlParseReport {
+    let mut processor = prepared_slot_tests::Unchanged::new();
+    crate::HtmlDocumentParseRequest::offline(
+        crate::HtmlSource::utf8(html),
+        crate::parser::tree_builder::tests::limits(100),
+    )
+    .parse_with_meta_csp(&mut processor)
+    .map_err(|failure| failure.parse_failure().first_stop())
+    .unwrap()
+}
+
+#[test]
+fn a_document_naming_the_position_after_the_last_policy_of_an_existing_log_faults_the_cursor() {
+    let mut report = parse_with_policy_log("<p>A");
+    let held = frozen(&mut report)
+        .payloads
+        .facts
+        .csp
+        .as_ref()
+        .expect("the service enabled the log")
+        .policy_count();
+    assert!(held > 0, "the Document holds its initial policy");
+    assert_eq!(metadata_fault(&report), None);
+    corrupt_document_meta(&mut report, |meta| {
+        meta.csp = Some(csp::PolicyId::at_for_test(held));
+    });
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
@@ -831,10 +863,11 @@ fn a_document_naming_a_language_row_that_is_not_a_string_faults_the_cursor() {
 }
 
 #[test]
-fn a_document_naming_a_missing_gap_row_faults_the_cursor() {
+fn a_document_naming_a_missing_fact_the_log_does_not_hold_faults_the_cursor() {
     let mut report = parse("<p>A");
     corrupt_document_meta(&mut report, |meta| {
-        *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Refresh) = Some(usize::MAX);
+        *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Refresh) =
+            Some(meta::MissingId::at_for_test(usize::MAX));
     });
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
