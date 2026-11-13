@@ -277,6 +277,41 @@ pub(in crate::document_scripting) fn registry_define_upgrades_existing_candidate
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn reinserted_candidate_drains_its_queued_upgrade_once() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            const root = document.documentElement;
+            const first = document.createElement('x-reinserted-candidate');
+            const second = document.createElement('x-reinserted-candidate');
+            root.appendChild(first);
+            root.appendChild(second);
+            const calls = [];
+            class Reinserted extends HTMLElement {
+                constructor() {
+                    super();
+                    if (this === first) {
+                        calls.push('first starts');
+                        root.removeChild(second);
+                        root.appendChild(second);
+                        calls.push('first resumes');
+                    } else if (this === second) {
+                        calls.push('second constructs');
+                    }
+                }
+                connectedCallback() {
+                    calls.push(this === first ? 'first connects' : 'second connects');
+                }
+            }
+            customElements.define('x-reinserted-candidate', Reinserted);
+            const expected = ['first starts', 'second constructs', 'second connects', 'first resumes', 'first connects'];
+            return first instanceof Reinserted && second instanceof Reinserted
+                && calls.length === expected.length && calls.every((value, index) => value === expected[index]);
+        })()"#)
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);
