@@ -356,6 +356,42 @@ pub(in crate::document_scripting) fn reentrant_attribute_write_drains_the_receiv
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn custom_element_subtree_reacts_to_connection_changes() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const calls = [];
+            class Connected extends HTMLElement {
+                connectedCallback() { calls.push(['connected', this]); }
+                disconnectedCallback() { calls.push(['disconnected', this]); }
+            }
+            customElements.define('x-connection-changes', Connected);
+            const outer = document.createElement('x-connection-changes');
+            const inner = document.createElement('x-connection-changes');
+            outer.appendChild(inner);
+            if (calls.length !== 0) return false;
+            const root = document.documentElement;
+            root.appendChild(outer);
+            if (calls.length !== 2) return false;
+            root.removeChild(outer);
+            if (calls.length !== 4) return false;
+            root.appendChild(outer);
+            const expected = [
+                ['connected', outer], ['connected', inner],
+                ['disconnected', outer], ['disconnected', inner],
+                ['connected', outer], ['connected', inner],
+            ];
+            return calls.length === expected.length && calls.every(([kind, target], index) =>
+                kind === expected[index][0] && target === expected[index][1]);
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);
