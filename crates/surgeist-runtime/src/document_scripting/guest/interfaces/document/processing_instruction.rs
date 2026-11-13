@@ -1,6 +1,8 @@
 //! Authored processing instructions over the canonical detached-node producer.
 
 use super::*;
+mod pseudo_attributes;
+pub(super) use pseudo_attributes::install as install_pseudo_attributes;
 use surgeist_bindings_js::{
     DomString,
     conversion::{Argument, Converted, Type, declarations},

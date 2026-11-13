@@ -522,6 +522,16 @@ pub(in crate::store) fn commands(
                 payload.string(name)?;
             }
             Command::ReplaceData { data, .. } => payload.string(data)?,
+            Command::ProcessingInstructionAttribute { edit, .. } => {
+                use crate::DomProcessingInstructionAttributeEdit::*;
+                match edit {
+                    Set { name, value } => {
+                        payload.string(name)?;
+                        payload.string(value)?;
+                    }
+                    Remove { name } | Toggle { name, .. } => payload.string(name)?,
+                }
+            }
             Command::SetAttributeValue { value, .. } => payload.string(value)?,
             // A whole-snapshot Import retains its actual missing controlled
             // frontier through Source InputCapture, not a second payload sum.

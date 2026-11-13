@@ -704,6 +704,9 @@ impl Draft {
                 NodeTicket::AttributeAttachment(_, kind) => {
                     NodeOutputKind::AttributeAttachment(*kind)
                 }
+                NodeTicket::ProcessingInstructionAttributePresent(_, present) => {
+                    NodeOutputKind::ProcessingInstructionAttributePresent(*present)
+                }
                 NodeTicket::Node(_)
                     if live.is_some_and(|n| matches!(n.kind(), super::KindRead::Document(_))) =>
                 {
@@ -719,7 +722,9 @@ impl Draft {
                 live.is_some()
                     || matches!(
                         kind,
-                        NodeOutputKind::RemovedAttribute | NodeOutputKind::AttributeAttachment(_)
+                        NodeOutputKind::RemovedAttribute
+                            | NodeOutputKind::AttributeAttachment(_)
+                            | NodeOutputKind::ProcessingInstructionAttributePresent(_)
                     )
             }));
             #[cfg(test)]

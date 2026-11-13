@@ -313,9 +313,11 @@ impl DomSourceScriptSettings {
     }
 }
 
-/// The final identity returned by one completed Source operation.
+/// The value returned by a completed Source operation with an output.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceOutput {
+    /// Whether the named pseudo-attribute is present after a toggle.
+    ProcessingInstructionAttributePresent(bool),
     Range(crate::DomRangeId),
     Node(NodeId),
     Document(crate::DocumentId),
@@ -324,6 +326,23 @@ pub enum DomSourceOutput {
     ViewTransition(DomViewTransitionId),
     ViewTransitionRecord(DomViewTransitionRecordId),
 }
+
+/// One edit to a ProcessingInstruction's ordered pseudo-attribute map.
+#[derive(Clone, Debug)]
+pub enum DomProcessingInstructionAttributeEdit {
+    Set {
+        name: DocumentString,
+        value: DocumentString,
+    },
+    Remove {
+        name: DocumentString,
+    },
+    Toggle {
+        name: DocumentString,
+        force: Option<bool>,
+    },
+}
+
 /// A service boundary or the completion of one requested source operation.
 #[expect(
     clippy::large_enum_variant,
@@ -547,6 +566,16 @@ impl DomDetachedNodeCreation {
 }
 
 impl DomSourceEdit {
+    /// Edit the native map and synchronize the instruction's CharacterData.
+    /// Toggle returns the resulting presence through the Source completion.
+    pub fn edit_processing_instruction_attribute(
+        node: NodeId,
+        edit: DomProcessingInstructionAttributeEdit,
+    ) -> Self {
+        Self {
+            command: Command::ProcessingInstructionAttribute { node, edit },
+        }
+    }
     pub fn exit_fullscreen(document: crate::DocumentId) -> Self {
         Self {
             command: Command::ExitFullscreen {

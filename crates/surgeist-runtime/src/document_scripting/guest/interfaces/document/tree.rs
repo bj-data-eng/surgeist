@@ -255,7 +255,7 @@ impl Capture {
             events,
             drive.progress,
             (drive.parent, drive.pending),
-            completion,
+            |_, _| Ok(completion),
         )
     }
 
@@ -298,7 +298,7 @@ impl Capture {
         })
     }
 
-    fn finish_guest_tree_edit<'scope>(
+    pub(super) fn finish_guest_tree_edit<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
@@ -308,7 +308,10 @@ impl Capture {
             Option<surgeist_dom::DomSourceOperationId>,
             Option<DomSourceStatus>,
         ),
-        completion: Completion<'scope>,
+        complete: impl FnOnce(
+            &mut Scope<'scope>,
+            &surgeist_dom::DomSourceCompletion,
+        ) -> Result<Completion<'scope>, DocumentGuestEventError>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let attachment = owner
             .attachment
@@ -321,7 +324,7 @@ impl Capture {
                     return Err(DomError::Cancelled.into());
                 }
                 reactions?;
-                Ok(completion)
+                complete(scope, &done)
             }
             Ok(Some(Err(failure))) => self.finish_failed_tree_edit(scope, owner, events, failure),
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)))
@@ -374,6 +377,7 @@ fn tree_exception(error: &DomError) -> Option<DomExceptionName> {
         DomError::HierarchyRequest => Some(DomExceptionName::HierarchyRequestError),
         DomError::NotFound => Some(DomExceptionName::NotFoundError),
         DomError::NotSupported => Some(DomExceptionName::NotSupportedError),
+        DomError::InvalidCharacter => Some(DomExceptionName::InvalidCharacterError),
         _ => None,
     }
 }
@@ -445,7 +449,7 @@ impl DocumentScriptHost {
                 &events,
                 result,
                 (None, None),
-                Completion::Undefined,
+                |_, _| Ok(Completion::Undefined),
             );
             let Completion::Throw(exception) = tree_completion(scope, &events, result)? else {
                 panic!("the original compound edit must throw");
@@ -505,7 +509,7 @@ impl DocumentScriptHost {
                 &events,
                 result,
                 (None, None),
-                Completion::Undefined,
+                |_, _| Ok(Completion::Undefined),
             );
             assert!(matches!(
                 tree_completion(scope, &events, result)?,

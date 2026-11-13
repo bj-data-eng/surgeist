@@ -191,16 +191,106 @@ impl DomProcessingInstruction {
         self.attributes.iter().map(|(name, value)| (name, value))
     }
     pub fn attribute(&self, name: &DocumentString) -> Option<&DocumentString> {
-        self.attributes
-            .iter()
-            .find(|(key, _)| key == name)
+        self.attribute_with(name.code_units(), || Ok::<_, std::convert::Infallible>(()))
+            .unwrap_or_else(|never| match never {})
             .map(|(_, value)| value)
+    }
+    /// Find an exact pseudo-attribute, charging each inspected entry and
+    /// compared UTF-16 unit. The index is in the canonical map order.
+    pub fn attribute_with<E>(
+        &self,
+        name: &[u16],
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(usize, &DocumentString)>, E> {
+        for (index, (key, value)) in self.attributes().enumerate() {
+            step()?;
+            if key.len() != name.len() {
+                continue;
+            }
+            let mut equal = true;
+            for (left, right) in key.code_units().iter().zip(name) {
+                step()?;
+                if left != right {
+                    equal = false;
+                    break;
+                }
+            }
+            if equal {
+                return Ok(Some((index, value)));
+            }
+        }
+        Ok(None)
+    }
+    pub(crate) fn with_authored_attributes(
+        &self,
+        attributes: Vec<(DocumentString, DocumentString)>,
+        limit: usize,
+        budget: Option<&Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let mut length = attributes.len().saturating_sub(1);
+        for (name, value) in &attributes {
+            formation::step(budget, cancel)?;
+            length = length
+                .checked_add(name.len())
+                .and_then(|n| n.checked_add(3))
+                .ok_or(DomError::RepresentationExhausted)?;
+            for &unit in value.code_units() {
+                formation::step(budget, cancel)?;
+                length = length
+                    .checked_add(pi_escape(unit).map_or(1, |escape| escape.len()))
+                    .ok_or(DomError::RepresentationExhausted)?;
+            }
+        }
+        let mut data = formation::utf16_buffer(length, limit, budget, cancel)?;
+        for (name, value) in &attributes {
+            if !data.is_empty() {
+                formation::step(budget, cancel)?;
+                data.push(0x20);
+            }
+            for &unit in name.code_units() {
+                formation::step(budget, cancel)?;
+                data.push(unit);
+            }
+            formation::step(budget, cancel)?;
+            data.extend([0x3d, 0x22]);
+            for &unit in value.code_units() {
+                formation::step(budget, cancel)?;
+                if let Some(escape) = pi_escape(unit) {
+                    data.extend(escape.iter().copied().map(u16::from));
+                } else {
+                    data.push(unit);
+                }
+            }
+            formation::step(budget, cancel)?;
+            data.push(0x22);
+        }
+        if let Some(budget) = budget
+            && attributes.capacity() != 0
+        {
+            budget.retain_bytes(size_of::<Vec<(DocumentString, DocumentString)>>(), cancel)?;
+        }
+        Ok(Self {
+            target: formation::share(&self.target, budget, cancel)?,
+            data: DocumentString::from_utf16(data),
+            attributes: SharedVec::from(attributes),
+        })
     }
     pub(crate) fn units(&self) -> Option<usize> {
         self.attributes.iter().try_fold(
             self.target.len().checked_add(self.data.len())?,
             |total, (name, value)| total.checked_add(name.len())?.checked_add(value.len()),
         )
+    }
+}
+
+fn pi_escape(unit: u16) -> Option<&'static [u8]> {
+    match unit {
+        0x26 => Some(b"&amp;"),
+        0x3c => Some(b"&lt;"),
+        0x3e => Some(b"&gt;"),
+        0x22 => Some(b"&quot;"),
+        _ => None,
     }
 }
 

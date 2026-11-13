@@ -202,6 +202,21 @@ pub(super) fn pseudo_attributes_and_data_synchronize() {
                 if (pi.toggleAttribute('c') !== true || pi.toggleAttribute('c', true) !== true ||
                     pi.toggleAttribute('c', false) !== false || pi.hasAttribute('c') ||
                     pi.getAttributeNames().join(',') !== 'b') return 'toggle presence';
+                pi.data = "b='uncanonical'";
+                if (!pi.toggleAttribute('b', true) || pi.toggleAttribute('absent', false) ||
+                    pi.data !== "b='uncanonical'") return 'toggle no-op leaves raw data';
+                pi.removeAttribute('invalid name');
+                if (pi.data !== 'b="uncanonical"') return 'missing remove serializes';
+                if (pi.toggleAttribute('b', undefined) !== false || pi.data !== '')
+                    return 'undefined force is omitted';
+                const name = {toString() { pi.data = "q='side effect'"; return 'q'; }};
+                const value = {toString() {
+                    if (pi.getAttribute('q') !== 'side effect') throw marker;
+                    pi.setAttribute('r', 'nested');
+                    return 'outer';
+                }};
+                pi.setAttribute(name, value);
+                if (pi.data !== 'q="outer" r="nested"') return 'reentry before native mutation';
                 pi.data = "z='last' k='first'";
                 if (pi.getAttributeNames().join(',') !== 'z,k' ||
                     pi.getAttribute('z') !== 'last' || pi.hasAttribute('b')) return 'replace data';

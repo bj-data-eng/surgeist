@@ -2243,6 +2243,10 @@ impl DomSourceLease<'_> {
                         | Command::AttachShadow { .. }
                         | Command::CreateHtmlDocument { .. }
                         | Command::CreateXmlDocument { .. }
+                        | Command::ProcessingInstructionAttribute {
+                            edit: crate::DomProcessingInstructionAttributeEdit::Toggle { .. },
+                            ..
+                        }
                 ) {
                     ticket_count = ticket_count
                         .checked_add(1)
