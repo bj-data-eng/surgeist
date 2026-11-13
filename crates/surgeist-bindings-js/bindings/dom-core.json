@@ -5960,15 +5960,11 @@
     "Text.splitText:0/call": {
       "kind": "native",
       "adapter": "text.splittext.call",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The named splitText operation with its special live Range endpoint transfer and source hook order.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-text",
-          "issue": 2275
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "split_text"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_split_text_for_runtime"}
+      ],
+      "requirements": []
     },
     "Text.wholeText/get": {
       "kind": "derived",

@@ -3,6 +3,81 @@
 use super::*;
 use crate::{DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementWatch};
 
+/// Retirement admission for the exact Text returned by one live split.
+pub struct DomSplitTextOutputWatch<'a> {
+    inbox: &'a DomNodeRetirementInbox,
+    key: usize,
+    limits: DomNodeRetirementLimits,
+    operation: Option<DomSourceOperationId>,
+    watch: Option<(NodeId, DomNodeRetirementWatch)>,
+}
+
+impl<'a> DomSplitTextOutputWatch<'a> {
+    pub const fn new(
+        inbox: &'a DomNodeRetirementInbox,
+        key: usize,
+        limits: DomNodeRetirementLimits,
+    ) -> Self {
+        Self {
+            inbox,
+            key,
+            limits,
+            operation: None,
+            watch: None,
+        }
+    }
+
+    pub fn into_watch(self) -> Option<(NodeId, DomNodeRetirementWatch)> {
+        self.watch
+    }
+
+    pub(super) fn admission(
+        &mut self,
+        operation: DomSourceOperationId,
+    ) -> Result<SplitTextWatchAdmission<'_>, DomError> {
+        if self.watch.is_some() || self.operation.is_some_and(|owner| owner != operation) {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.operation = Some(operation);
+        Ok(SplitTextWatchAdmission {
+            inbox: self.inbox,
+            key: self.key,
+            limits: self.limits,
+            watch: &mut self.watch,
+        })
+    }
+}
+
+pub(super) struct SplitTextWatchAdmission<'a> {
+    inbox: &'a DomNodeRetirementInbox,
+    key: usize,
+    limits: DomNodeRetirementLimits,
+    watch: &'a mut Option<(NodeId, DomNodeRetirementWatch)>,
+}
+
+impl SplitTextWatchAdmission<'_> {
+    pub(super) fn arm(
+        &mut self,
+        dom: &mut Dom,
+        segment: &SegmentPublication,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let [Some(node)] = segment.historical.as_slice() else {
+            return Err(DomError::UnavailableCreation);
+        };
+        let watch = dom.watch_prepared_source_node(
+            &segment.prepared,
+            *node,
+            self.inbox,
+            self.key,
+            self.limits,
+            cancel,
+        )?;
+        *self.watch = Some((*node, watch));
+        Ok(())
+    }
+}
+
 pub(super) enum SynchronousNode<'a> {
     ReturnNode,
     Watch(NodeWatch<'a>),

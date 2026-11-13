@@ -2,6 +2,7 @@
 
 use super::*;
 mod mutations;
+mod split_text;
 use surgeist_bindings_js::{
     DomString, Root,
     conversion::{
@@ -203,6 +204,9 @@ impl CharacterBindings {
             },
             &callback,
         )?;
+        if matches!(kind, CharacterKind::Text) {
+            split_text::install(scope, &prototype, funding.capture)?;
+        }
         let (name, _) = kind.factory();
         let factory = (funding.capture)(size_of::<(Capture, CharacterKind)>())?;
         let function = scope.fixed_arity_function(

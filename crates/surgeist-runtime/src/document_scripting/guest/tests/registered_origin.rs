@@ -1453,6 +1453,65 @@ pub(in crate::document_scripting) fn scripted_shadow_uses_the_current_document_c
         .unwrap();
 }
 
+pub(in crate::document_scripting) fn split_text_uses_the_current_document_realm() {
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        ..
+    } = retired_origin_with_moved_element();
+    let (original, tail) = host
+        .in_document(&permit, |scope| {
+            let results = scope.evaluate(&units(
+                r#"(() => {
+            const destination = originChild.ownerDocument;
+            const original = document.createTextNode('firsttail');
+            destination.adoptNode(original);
+            const tail = Text.prototype.splitText.call(original, 5);
+            if (Object.getPrototypeOf(original) !== Text.prototype ||
+                Object.getPrototypeOf(tail) === Text.prototype ||
+                tail.ownerDocument !== destination || tail.parentNode !== null ||
+                original.data !== 'first' || tail.data !== 'tail')
+                throw new Error('split Text must use its current node document');
+            return {original, tail};
+        })()"#,
+            ))?;
+            let original = scope.get(&results, PropertyKey::String(&units("original")))?;
+            let tail = scope.get(&results, PropertyKey::String(&units("tail")))?;
+            let root = scope.retain(&tail);
+            Ok((
+                super::projected_node_id(scope, &original)?,
+                (super::projected_node_id(scope, &tail)?, root),
+            ))
+        })
+        .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    assert_ne!(
+        snapshot.relevant_global(original).unwrap(),
+        Some(origin.global())
+    );
+    assert_eq!(
+        snapshot.relevant_global(tail.0).unwrap(),
+        Some(origin.global())
+    );
+    let engine = host.engine.as_mut().unwrap();
+    let realm = engine
+        .creations
+        .find(origin.global(), || Ok::<(), Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(realm, |scope| {
+            let tail = scope.import(&tail.1)?;
+            let global = scope.global()?;
+            scope.set(&global, PropertyKey::String(&units("splitTail")), &tail)?;
+            assert_guest(scope, "Object.getPrototypeOf(splitTail) === Text.prototype")
+        })
+        .unwrap();
+}
+
 pub(in crate::document_scripting) fn native_document_constructor_refusal_releases_private_wrapper()
 {
     let mut host = public_node_host(1_000, 20_000);

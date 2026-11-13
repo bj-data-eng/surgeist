@@ -108,6 +108,68 @@ fn prefix(f: &Fixture, new: NodeId) {
 }
 
 #[test]
+fn watched_split_keeps_the_exact_continuation_after_output_admission_refuses() {
+    let mut f = fixture();
+    let cancel = cancel();
+    let inbox = f
+        .dom
+        .node_retirement_inbox(DomNodeRetirementLimits::new(2_000_000, 20_000), &cancel)
+        .unwrap();
+    let limits = policy(20_000_000);
+    let mut output =
+        DomSplitTextOutputWatch::new(&inbox, 19, DomNodeRetirementLimits::new(2_000_000, 0));
+    let (operation, new) = {
+        let mut lease = f
+            .dom
+            .begin_source_edit(DomSourceEdit::split_text(f.text, 2), limits, &cancel)
+            .unwrap();
+        let DomSourceAdvance::Progress(DomSourceProgress::Request(DomSourceRequest::Style(first))) =
+            lease
+                .advance_split_text_for_runtime(&mut output, &cancel)
+                .unwrap()
+        else {
+            panic!("expected insertion Style request");
+        };
+        let new = lease.snapshot().node(f.style).unwrap().children()[1];
+        lease
+            .accept_inline_csp(&first, &deny(&first), &cancel)
+            .unwrap();
+        let DomSourceAdvance::Progress(DomSourceProgress::Request(DomSourceRequest::Style(second))) =
+            lease
+                .advance_split_text_for_runtime(&mut output, &cancel)
+                .unwrap()
+        else {
+            panic!("expected deletion Style request");
+        };
+        assert_eq!(
+            (first.source().ordinal(), second.source().ordinal()),
+            (0, 1)
+        );
+        lease
+            .accept_inline_csp(&second, &deny(&second), &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance_split_text_for_runtime(&mut output, &cancel),
+            Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+        ));
+        (lease.operation(), new)
+    };
+    assert!(output.into_watch().is_none());
+    assert_eq!(f.dom.pending_source_edit().unwrap().operation(), operation);
+    prefix(&f, new);
+    let mut lease = f
+        .dom
+        .resume_source_edit(operation, limits, &cancel)
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("the acknowledged Style receipts must not replay");
+    };
+    assert_eq!(done.output(), Some(DomSourceOutput::Node(new)));
+    drop(lease);
+    prefix(&f, new);
+}
+
+#[test]
 fn unpublished_split_work_cuts_discard_only_private_creation_and_range_changes() {
     let ceiling = {
         let mut f = fixture();

@@ -8,6 +8,7 @@ mod nested_dispatch;
 mod node_relations;
 mod normalize;
 mod processing_instruction;
+mod split_text;
 mod trusted_attribute;
 
 use super::*;
@@ -241,6 +242,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::registered_origin::registered_origin_refusals_preserve_state();
     super::guest::tests::registered_origin::character_data_observation_admits_native_lookup();
     super::guest::tests::registered_origin::registered_origin_character_factories_use_receiver_realm();
+    super::guest::tests::registered_origin::split_text_uses_the_current_document_realm();
     super::guest::tests::registered_origin::document_element_factories_use_native_names_and_identity();
     super::guest::tests::registered_origin::borrowed_element_factory_keeps_dom_on_wrapper_refusal();
     super::guest::tests::registered_origin::element_factory_admits_exact_projection_work();
@@ -328,6 +330,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     node_relations::node_relations_project_native_processing_instructions();
     normalize::normalize_keeps_native_text_and_range_identity();
     normalize::normalize_preserves_typed_native_refusal();
+    split_text::split_text_keeps_native_identity_and_range_boundaries();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
