@@ -421,11 +421,7 @@ pub(super) fn install<'scope>(
         },
     )?;
     document::install_interface(scope, window, INTERFACE, &constructor, &prototype)?;
-    // Test the actual registration boundary while upgrade and promise
-    // publication are still being joined to the production interface.
-    if cfg!(test) {
-        install_definition_methods(scope, &prototype, capture)?;
-    }
+    install_definition_methods(scope, &prototype, capture)?;
     let (object, identity) = scope.project_custom_element_registry(
         ObjectPrototype::Object(&prototype),
         |payload, holder| Ok::<_, DocumentGuestEventError>((fund(payload)?, fund(holder)?)),

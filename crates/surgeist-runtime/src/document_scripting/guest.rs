@@ -825,9 +825,7 @@ impl PreparedDocumentScriptHost {
             &admission,
         )?);
         let engine = script.publish(&self.native, policy)?;
-        if cfg!(test) {
-            engine.registration.observe_custom_element_reactions()?;
-        }
+        engine.registration.observe_custom_element_reactions()?;
         Ok((engine, admission))
     }
 }
