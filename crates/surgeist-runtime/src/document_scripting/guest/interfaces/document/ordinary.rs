@@ -1719,7 +1719,7 @@ impl OrdinaryBindings {
             if let Slot::Retained(pin) = slot
                 && pin.live.node == node
             {
-                let value = scope.open_callback_object(&pin.holder)?;
+                let value = open_node_pin(scope, &pin.holder)?;
                 accept(&pin.live._watch)?;
                 return Ok(Some(value));
             }
