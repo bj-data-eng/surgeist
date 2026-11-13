@@ -1,6 +1,7 @@
 use super::*;
 use crate::document_scripting::guest::tests::{
-    attach_public_nodes, expose_public_node_for_source_test, projected_node_id,
+    attach_public_nodes, exhaust_guest_reaction_work, expose_public_node_for_source_test,
+    projected_node_id,
 };
 
 pub(super) fn template_content_is_the_live_owned_inert_fragment() {
@@ -215,12 +216,12 @@ pub(super) fn template_attributes_reflect_the_live_native_element() {
                 template.setAttributeNS('urn:foreign', 'for', 'foreign');
                 if (template.htmlFor !== '') return 'foreign namespace';
                 template.htmlFor = {toString() {
-                    template.setAttribute('for', 'nested');
+                    template.setAttributeNS(null, 'for', 'nested');
                     return 'exact\ud800';
                 }};
-                if (template.htmlFor !== 'exact\ud800' ||
-                    template.getAttributeNS(null, 'for') !== 'exact\ud800' ||
-                    template.getAttributeNS('urn:foreign', 'for') !== 'foreign') return 'reflection reentry';
+                if (template.htmlFor !== 'exact\ud800') return 'reflected reentry result';
+                if (template.getAttributeNS(null, 'for') !== 'exact\ud800') return 'null namespace reentry';
+                if (template.getAttributeNS('urn:foreign', 'for') !== 'foreign') return 'foreign namespace changed';
                 template.shadowRootMode = 'OPEN';
                 template.shadowRootSlotAssignment = 'MANUAL';
                 if (template.shadowRootMode !== 'open' || template.shadowRootSlotAssignment !== 'manual' ||
@@ -259,8 +260,18 @@ pub(super) fn template_attributes_reflect_the_live_native_element() {
     }).unwrap();
     host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
-        batch.set_attribute(node, "shadowrootmode", "CLOSED");
-        batch.set_attribute(node, "shadowrootclonable", "");
+        batch.set_attribute_ns(
+            node,
+            surgeist_dom::Namespace::none(),
+            "shadowrootmode",
+            "CLOSED",
+        );
+        batch.set_attribute_ns(
+            node,
+            surgeist_dom::Namespace::none(),
+            "shadowrootclonable",
+            "",
+        );
         dom.apply(batch, &cancel).unwrap();
     })
     .unwrap();
@@ -274,5 +285,17 @@ pub(super) fn template_attributes_reflect_the_live_native_element() {
         Ok(())
     })
     .unwrap();
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+    exhaust_guest_reaction_work(&host);
+    let result = host.in_document(&permit, |scope| {
+        evaluate(scope, "reflectedTemplate.shadowRootMode = 'open'").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("the reflection setter must respect the native work budget: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
     assert_eq!(host.snapshot().unwrap().stamp(), before);
 }
