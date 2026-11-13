@@ -1,3 +1,4 @@
+mod adjacent_element;
 mod adjacent_text;
 mod authored_toggle;
 mod declarative_shadow;
@@ -366,6 +367,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     element_attributes::element_attribute_methods_observe_and_remove_canonical_attributes();
     toggle_attribute::element_toggle_attribute_uses_one_canonical_edit();
     adjacent_text::adjacent_text_uses_the_original_compound_source_edit();
+    adjacent_element::adjacent_element_uses_the_current_native_branch_and_original_operand();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
