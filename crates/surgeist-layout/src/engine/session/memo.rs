@@ -22,6 +22,8 @@ pub(super) struct RequestKey<S: LayoutScalar> {
 pub(super) enum Effect<Node, S: LayoutScalar> {
     Store(LayoutCacheStoreEntryOf<Node, S>),
     Geometry(LayoutOutputEntryOf<Node, S>),
+    Clear { node: Node, index: usize },
+    ClearInline(Node),
 }
 
 #[derive(Clone, Copy)]
@@ -140,7 +142,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
                 Write::Completed(index) => table.effects[*index].iter().any(|write| {
                     matches!(write, Write::Effect(Effect::Geometry(entry)) if entry.node() == node)
                 }),
-                Write::Effect(Effect::Store(_)) => false,
+                Write::Effect(_) => false,
             }
             }) {
                 break;
@@ -177,6 +179,38 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut visited = HashSet::new();
+        let mut cleared = HashSet::new();
+        let mut first_writes = Vec::new();
+        let mut forward = Vec::new();
+        forward.try_reserve(1)?;
+        forward.push(table.effects[index].iter());
+        // Cache clears are deduplicated in first-encounter order.
+        while let Some(next) = forward.last_mut() {
+            match next.next() {
+                Some(Write::Effect(Effect::Clear { node, index })) => {
+                    cleared.try_reserve(1)?;
+                    if cleared.insert(*index) {
+                        first_writes.try_reserve(1)?;
+                        first_writes.push(Effect::Clear {
+                            node: *node,
+                            index: *index,
+                        });
+                    }
+                }
+                Some(Write::Completed(child)) => {
+                    visited.try_reserve(1)?;
+                    if visited.insert(*child) {
+                        forward.try_reserve(1)?;
+                        forward.push(table.effects[*child].iter());
+                    }
+                }
+                Some(Write::Effect(_)) => {}
+                None => {
+                    forward.pop();
+                }
+            }
+        }
+        visited.clear();
         let mut pending = Vec::new();
         let mut effects = Vec::new();
         pending.try_reserve(1)?;
@@ -186,6 +220,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
         // once, then restore the surviving sequence's forward order.
         while let Some(next) = pending.last_mut() {
             match next.next() {
+                Some(Write::Effect(Effect::Clear { .. })) => {}
                 Some(Write::Effect(effect)) => {
                     effects.try_reserve(1)?;
                     effects.push(*effect);
@@ -203,7 +238,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
             }
         }
         effects.reverse();
-        Ok(effects)
+        first_writes.try_reserve(effects.len())?;
+        first_writes.extend(effects);
+        Ok(first_writes)
     }
 
     fn complete(
@@ -268,13 +305,14 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         for &index in &graph.finish {
             let node = graph.nodes[index];
             let style = self.tree.node_input(node);
-            // Hidden placement reads an earlier source index and clears cache
-            // custody. Shape measurements have an additional provider, while
-            // non-box nodes can publish inline state.
+            // Hidden leaves have only ordinary staged geometry and clear effects.
+            // Other hidden subtrees, shape providers and inline participants
+            // retain their own placement paths.
             eligible[index] = matches!(
                 self.tree.layout_input(node),
                 crate::LayoutInputViewOf::Box(_)
-            ) && style.display != crate::Display::None
+            ) && (style.display != crate::Display::None
+                || graph.children[index].is_empty())
                 && style.float_exclusion != crate::FloatExclusion::Shape
                 && graph.children[index].iter().all(|&child| eligible[child]);
         }
@@ -386,6 +424,8 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
                     self.cache_store(entry.node(), entry.input(), entry.context(), entry.output())?;
                 }
                 Effect::Geometry(entry) => self.set_unrounded(entry),
+                Effect::Clear { node, .. } => self.cache_clear(node)?,
+                Effect::ClearInline(node) => self.set_unrounded_inline_fragment_state(node, None),
             }
         }
         Ok(())
@@ -448,4 +488,41 @@ fn memo_allocation<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, 
         LayoutOperation::ChildLayout,
         LayoutErrorKindOf::Allocation,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replay_keeps_first_clear_order_across_repeated_child_completions() {
+        let memo = Memo::<u32, f32>::new(Vec::new());
+        {
+            let mut table = memo.table.completions.lock().unwrap();
+            table.effects.push(vec![
+                Write::Effect(Effect::Clear { node: 4, index: 0 }),
+                Write::Effect(Effect::ClearInline(4)),
+                Write::Effect(Effect::Clear { node: 2, index: 1 }),
+            ]);
+            table.effects.push(vec![
+                Write::Completed(0),
+                Write::Effect(Effect::Clear { node: 7, index: 2 }),
+                Write::Effect(Effect::ClearInline(7)),
+                Write::Completed(0),
+                Write::Effect(Effect::Clear { node: 4, index: 0 }),
+            ]);
+        }
+
+        let replay = memo.replay(1).unwrap();
+        assert!(matches!(
+            replay.as_slice(),
+            [
+                Effect::Clear { node: 4, index: 0 },
+                Effect::Clear { node: 2, index: 1 },
+                Effect::Clear { node: 7, index: 2 },
+                Effect::ClearInline(7),
+                Effect::ClearInline(4),
+            ]
+        ));
+    }
 }

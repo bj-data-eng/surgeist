@@ -8,7 +8,7 @@ use crate::block::{
 };
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
-use crate::flex::{AbsoluteChild, FlexComputation, begin_flex_computation};
+use crate::flex::{FlexChild, FlexComputation, begin_flex_computation};
 use crate::grid::{GridContinuation, PositionedGridChild, begin_grid_computation};
 use crate::{
     Compute, ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
@@ -99,11 +99,11 @@ struct BlockRequest<'input, Node, S: LayoutScalar> {
     child: Option<PendingBlockChild<'input, Node, S>>,
 }
 
-struct FlexRequest<Node, S: LayoutScalar> {
-    computation: FlexComputation<Node, S>,
+struct FlexRequest<'input, Node, S: LayoutScalar> {
+    computation: FlexComputation<'input, Node, S>,
     completion: ChildCompletion<Node, S>,
     projection: OutputProjection,
-    child: Option<AbsoluteChild<Node, S>>,
+    child: Option<FlexChild<'input, Node, S>>,
 }
 
 struct GridRequest<'input, Node, S: LayoutScalar> {
@@ -118,7 +118,7 @@ struct PendingRequests<'input, Node, S: LayoutScalar> {
     hidden: Vec<(HiddenChildren<Node>, OutputProjection)>,
     block_axes: Vec<(BlockAxisDemand<Node, S>, InlineContentChild<Node, S>)>,
     blocks: Vec<BlockRequest<'input, Node, S>>,
-    flexes: Vec<FlexRequest<Node, S>>,
+    flexes: Vec<FlexRequest<'input, Node, S>>,
     grids: Vec<GridRequest<'input, Node, S>>,
 }
 
@@ -546,16 +546,15 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     }
 
     fn schedule_flex_child(
-        child: &AbsoluteChild<Tree::Node, Tree::Scalar>,
+        child: &FlexChild<'input, Tree::Node, Tree::Scalar>,
         order: &mut Vec<PendingRequest>,
     ) -> SessionResult<Tree, SessionRequest<Tree>> {
-        order
-            .try_reserve(1)
-            .map_err(|_| reserve_error(child.node))?;
+        let (node, input) = child.request();
+        order.try_reserve(1).map_err(|_| reserve_error(node))?;
         order.push(PendingRequest::Flex);
         Ok(Request::Child {
-            node: child.node,
-            input: child.input,
+            node,
+            input,
             projection: OutputProjection::Layout,
         })
     }
