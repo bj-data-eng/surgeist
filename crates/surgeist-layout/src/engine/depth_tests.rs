@@ -1643,7 +1643,7 @@ fn deep_ratio_flex_chain_preserves_content_height() {
     );
 }
 
-fn assert_scoped_container_chain<S: LayoutScalar>(display: Display, depth: u32) {
+fn assert_scoped_container_chain<S: LayoutScalar>(display: Display, depth: u32) -> usize {
     use crate::{
         AlignItems, BlockFragmentainerOf, FragmentationBreakKinds, FragmentationKind,
         LayoutBoundRequestOf, LayoutFlowInput, LayoutSourceBasis, MinSizeOf, PageProgression,
@@ -1732,6 +1732,7 @@ fn assert_scoped_container_chain<S: LayoutScalar>(display: Display, depth: u32) 
         Vec::new(),
     )
     .expect("bound numeric flow");
+    tree.reset_measurement_queries();
     let batch =
         compute_layout_with_flow(&flow, 0, request).expect("scoped container chain returns");
     assert_eq!(batch.target_basis(), Some(&target));
@@ -1752,6 +1753,7 @@ fn assert_scoped_container_chain<S: LayoutScalar>(display: Display, depth: u32) 
         counts.iter().all(|count| *count == 1),
         "one actual box per node"
     );
+    tree.measurement_queries()
 }
 
 #[test]
@@ -1818,4 +1820,42 @@ fn deep_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry() {
             assert_scoped_container_chain::<f64>(Display::GridLanes, 24);
         },
     );
+}
+
+fn assert_scoped_flex_work_is_bounded<S: LayoutScalar>() {
+    // A fixed-size single-child chain has a constant set of sizing requests per
+    // node. Allow headroom for admission and source qualification, but reject
+    // repeated performed work multiplying at every additional tree level.
+    let counts = [2, 4, 8].map(|depth| {
+        (
+            depth,
+            assert_scoped_container_chain::<S>(Display::Flex, depth),
+        )
+    });
+    assert!(
+        counts
+            .iter()
+            .all(|&(depth, queries)| queries <= 128 * (depth as usize + 3)),
+        "scoped fixed-size Flex work must remain bounded per node: {counts:?}"
+    );
+}
+
+#[test]
+fn scoped_flex_work_is_bounded_per_node_f32() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_scoped_flex_work_is_bounded::<f32>)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn scoped_flex_work_is_bounded_per_node_f64() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_scoped_flex_work_is_bounded::<f64>)
+        .unwrap()
+        .join()
+        .unwrap();
 }
