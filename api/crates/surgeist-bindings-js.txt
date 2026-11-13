@@ -109,6 +109,7 @@ pub fn surgeist_bindings_js::conversion::declarations::html_collection_item_0_in
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_named_item_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_inner_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_outer_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_title_element_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::import_node_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ImportNodeOptions>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_ns_0_local_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>

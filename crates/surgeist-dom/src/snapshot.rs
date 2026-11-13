@@ -645,6 +645,22 @@ impl<'a> DomNode<'a> {
             }
         }
     }
+
+    /// Visit direct Text children in ordinary tree order, admitting every
+    /// child lookup before inspecting its kind and returning the first refusal.
+    pub fn visit_child_text_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut visit: impl FnMut(&'a DocumentString) -> Result<(), E>,
+    ) -> Result<(), E> {
+        for &id in self.children() {
+            let child = self.snapshot.node_with(id, &mut step)?;
+            if let DomNodeKind::Text(value) = child.kind() {
+                visit(value)?;
+            }
+        }
+        Ok(())
+    }
     /// Visit matching custom-element definition candidates in shadow-including
     /// preorder, including closed roots. Each retained traversal allocation
     /// uses the caller's scratch admission and each visited node is metered.

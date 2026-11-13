@@ -7694,29 +7694,14 @@
     "HTMLTitleElement.text/get": {
       "kind": "native",
       "adapter": "htmltitleelement.text.get",
-      "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics.rs", "symbol": "TitleText"}
-      ],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "visit_child_text_with"}],
       "requirements": []
     },
     "HTMLTitleElement.text/set": {
       "kind": "native",
       "adapter": "htmltitleelement.text.set",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "The title.text setter original string-replace-all operation on the actual Title Element, preserving native hooks, UTF-16 and Range maintenance.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-title-text"
-        },
-        {
-          "owner": "surgeist-dom",
-          "contract": "The reached canonical string-replace-all continuation, without replaying individual detach/create edits.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-node-string-replace-all",
-          "issue": 2276
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "set_text_content"}],
+      "requirements": []
     },
     "HTMLTemplateElement.constructor:0/construct": {
       "kind": "native",

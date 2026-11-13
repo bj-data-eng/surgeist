@@ -1725,3 +1725,8 @@ pub fn html_element_inner_text_setter() -> Type<DomString> {
 pub fn html_element_outer_text_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
 }
+
+/// Selected setter conversion for `HTMLTitleElement.text`.
+pub fn html_title_element_text_setter() -> Type<DomString> {
+    types::DOM_STRING
+}
