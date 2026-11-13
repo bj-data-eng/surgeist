@@ -50,6 +50,26 @@ pub(super) struct PayloadStorage {
     pub(super) topology_changes: Option<u64>,
     /// The origin groups of the string fields of records.
     pub(super) detail_origins: DetailOrigins,
+    /// The facts of the parse and of its Documents that no registry row holds.
+    pub(super) facts: ParseFacts,
+}
+
+/// The facts of the parse and of its Documents, held in their own fields and tables.
+pub(super) struct ParseFacts {
+    /// The completion of the standalone parser Document at record 0; `None` until
+    /// [`ParserArenaSession::initialize_standalone_document`] sets it.
+    pub(super) completion: Option<completion::Completion>,
+    /// The facts of every Document the parse owns: the Document at record 0 and the inert
+    /// Document of its templates, keyed by the position of the Document record.
+    pub(super) documents: FamilyTable<template::DocumentFacts>,
+}
+impl ParseFacts {
+    pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
+        Ok(Self {
+            completion: None,
+            documents: FamilyTable::new(control)?,
+        })
+    }
 }
 
 pub(super) enum RetainedPayload {
@@ -101,10 +121,6 @@ pub(super) enum RetainedPayload {
         node: Option<usize>,
         cause: provenance::ConstructionCauseRef,
     },
-    StandaloneDocumentCompletion {
-        node: usize,
-        state: HtmlParseDocumentState,
-    },
     PiAttributes {
         node: Option<usize>,
         values: OwnedVec<pi::PseudoAttribute>,
@@ -118,13 +134,6 @@ pub(super) enum RetainedPayload {
     NodeDocument {
         node: Option<usize>,
         document: DocumentRef,
-    },
-    Document {
-        node: Option<usize>,
-        state: template::DocumentState,
-        class: crate::HtmlDocumentClass,
-        meta: meta::MetaHistory,
-        interaction: dialog::InteractionHistory,
     },
     MetaMissing {
         document: usize,
@@ -323,9 +332,6 @@ fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
         RetainedPayload::NodeDocument {
             node: Some(node), ..
         } => (Join::NodeDocument, *node),
-        RetainedPayload::Document {
-            node: Some(node), ..
-        } => (Join::Document, *node),
         RetainedPayload::Template {
             node: Some(node), ..
         } => (Join::Template, *node),
@@ -714,6 +720,7 @@ impl PayloadStorage {
             explicit_forms,
             prepared_entries,
             detail_origins,
+            facts,
             ..
         } = self;
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
@@ -723,6 +730,18 @@ impl PayloadStorage {
         // and cleanup continues so every other owner is still released; the first
         // refusal is returned once the walk is complete.
         let mut refused = detail_refused.take();
+        keep_first(
+            &mut refused,
+            facts
+                .documents
+                .release(control, owner, |control, document| {
+                    // The scheme a Document's Meta history selected owns its units.
+                    match document.meta.scheme.take() {
+                        Some(scheme) => scheme.release(control).map_err(SessionError::from),
+                        None => Ok(()),
+                    }
+                }),
+        );
         keep_first(
             &mut refused,
             release_vector(control, node_joins, node_joins_allocation),
@@ -802,12 +821,6 @@ impl PayloadStorage {
                 if let Some(value) = value {
                     csp_storage = value.account.live;
                     drop(value);
-                }
-                continue;
-            }
-            if let RetainedPayload::Document { mut meta, .. } = payload {
-                if let Some(scheme) = meta.scheme.take() {
-                    keep_first(&mut refused, scheme.release(control));
                 }
                 continue;
             }

@@ -942,7 +942,8 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             // Metadata, name and namespace are initialized;
             // the next actual record-ticket entry is the rejected slot.
             assert_eq!(session.active().unwrap().construction.len(), 3);
-            assert_eq!(session.active().unwrap().payloads.values.len(), 21);
+            // 20 registry rows, 21 with the Document's row that the Document table holds.
+            assert_eq!(session.active().unwrap().payloads.values.len(), 20);
             assert!(
                 session
                     .active()

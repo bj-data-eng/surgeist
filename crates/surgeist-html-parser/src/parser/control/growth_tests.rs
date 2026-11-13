@@ -344,9 +344,23 @@ fn long_attribute_value(units: usize) -> String {
 }
 
 #[test]
-#[ignore = "retained bytes of a wide parent grow faster than the document; the node table stage (S4) of #2228 satisfies it"]
 fn documents_of_wide_parents_grow_linearly() {
     assert_family("wide parent", &costs([1_000, 2_000, 4_000, 8_000], wide));
+}
+
+/// With every kind of detail recorded, the retained bytes are 19,141,144, 46,280,772, 92,559,812
+/// and 185,117,892 at the four sizes, so the first doubling is 2.418 against the 2.2 allowed. The
+/// banks that grow faster than the document are the evidence causes, the reverse spatial index,
+/// the cause projections and the token events; each grows by a capacity staircase.
+#[cfg(feature = "detail")]
+#[test]
+#[ignore = "with detail recorded, the evidence cause, reverse spatial index, cause projection and token event banks grow by capacity staircases: 2.418 for the first doubling against 2.2 allowed"]
+fn documents_of_wide_parents_grow_linearly_when_detail_is_recorded() {
+    let costs: Vec<Cost> = [1_000, 2_000, 4_000, 8_000]
+        .iter()
+        .map(|&items| cost_with_detail(wide(items), crate::DetailSet::ALL))
+        .collect();
+    assert_family("wide parent, detail recorded", &costs);
 }
 
 #[test]

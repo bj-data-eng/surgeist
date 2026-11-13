@@ -64,6 +64,8 @@ pub(crate) mod style;
 #[cfg(test)]
 use input_image::append_native_input_value;
 mod completion;
+mod family_table;
+use family_table::FamilyTable;
 pub(crate) mod context;
 mod details;
 mod effects;
@@ -177,8 +179,8 @@ pub(crate) use payload_registry::{
 };
 pub use payload_registry::{HtmlParseFormEvidence, HtmlParseOutputOverride};
 use payload_registry::{
-    KindList, KindSlots, PayloadStorage, PreparedSlot, RetainedPayload, element_attribute,
-    element_record, row_list,
+    KindList, KindSlots, ParseFacts, PayloadStorage, PreparedSlot, RetainedPayload,
+    element_attribute, element_record, row_list,
 };
 pub(crate) use session_error::{
     ElementInsertionIgnored, SessionClass, SessionError, session_class,

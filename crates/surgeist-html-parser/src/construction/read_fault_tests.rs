@@ -655,6 +655,15 @@ fn corrupt_row(report: &mut crate::HtmlParseReport, edit: impl Fn(&mut RetainedP
         "a row of this kind"
     );
 }
+/// Edits the Meta history of the first Document the report holds.
+fn corrupt_document_meta(
+    report: &mut crate::HtmlParseReport,
+    edit: impl Fn(&mut meta::MetaHistory),
+) {
+    let documents = &mut frozen(report).payloads.facts.documents;
+    let document = documents.row_mut(0).expect("a Document row");
+    edit(&mut document.meta);
+}
 fn missing_node() -> Option<usize> {
     Some(usize::MAX)
 }
@@ -810,38 +819,22 @@ fn a_dialog_naming_a_value_that_is_not_a_string_faults_the_cursor() {
 #[test]
 fn a_document_naming_a_policy_row_that_is_not_one_faults_the_cursor() {
     let mut report = parse("<p>A");
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::Document { meta, .. } => {
-            meta.csp = Some(usize::MAX);
-            true
-        }
-        _ => false,
-    });
+    corrupt_document_meta(&mut report, |meta| meta.csp = Some(usize::MAX));
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
 fn a_document_naming_a_language_row_that_is_not_a_string_faults_the_cursor() {
     let mut report = parse("<p>A");
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::Document { meta, .. } => {
-            meta.language = Some(usize::MAX);
-            true
-        }
-        _ => false,
-    });
+    corrupt_document_meta(&mut report, |meta| meta.language = Some(usize::MAX));
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
 fn a_document_naming_a_missing_gap_row_faults_the_cursor() {
     let mut report = parse("<p>A");
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::Document { meta, .. } => {
-            *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Refresh) = Some(usize::MAX);
-            true
-        }
-        _ => false,
+    corrupt_document_meta(&mut report, |meta| {
+        *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Refresh) = Some(usize::MAX);
     });
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
@@ -849,13 +842,9 @@ fn a_document_naming_a_missing_gap_row_faults_the_cursor() {
 #[test]
 fn a_document_whose_first_gap_has_no_row_faults_the_cursor() {
     let mut report = parse("<p>A");
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::Document { meta, .. } => {
-            meta.first = Some(meta::HtmlParseMetaDomain::Csp);
-            *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Csp) = None;
-            true
-        }
-        _ => false,
+    corrupt_document_meta(&mut report, |meta| {
+        meta.first = Some(meta::HtmlParseMetaDomain::Csp);
+        *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Csp) = None;
     });
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
@@ -968,11 +957,9 @@ fn a_diagnostic_past_the_last_is_absent() {
 }
 
 #[test]
-fn a_contextual_report_without_its_completion_row_is_reported_not_skipped() {
+fn a_contextual_report_without_its_completion_is_reported_not_skipped() {
     let mut report = super::fragment_document::tests::fragment_report("<p>a</p>");
-    let storage = frozen(&mut report);
-    let completion = storage.fragment.as_ref().unwrap().completion;
-    storage.payloads.values[completion] = RetainedPayload::Retired;
+    frozen(&mut report).payloads.facts.completion = None;
     assert_eq!(
         report.fragment_parser_document().err(),
         Some(fault(Kind::Fact))

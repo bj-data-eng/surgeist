@@ -484,8 +484,12 @@ fn textarea_text_appended_after_a_child_was_removed_extends_the_rebuilt_raw_valu
 
 #[test]
 fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded() {
-    // Registry slots: initial raw/textarea/form3, name/namespace2,
-    // actual native A1 and first children-change raw1 plus two retired static postconnection list slots plus four real document facts and the textarea empty backing/nonce facts =16, including the creation row.
+    // Registry rows after the text is inserted: initial raw (retired when the first
+    // children-change raw replaces it), textarea and form 3, name and namespace 2, native text A 1,
+    // first children-change raw 1, two retired static postconnection list slots 2, node-document
+    // rows of the root, the textarea and the text 3, lookup-registry and nonce rows 2 =14. The
+    // Document's facts are a row of the Document table; a registry that held its row had 15, and
+    // 20 after the five reset slots below.
     // The finite auxiliary cap admits the initial lexical/topology staging,
     // measured from an unconstrained run, then exactly five reset slots;
     // the next reset retains the current raw and latches the slot cap.
@@ -517,8 +521,8 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         .insert_text(&mut c, &node, None, &mut text, None)
         .unwrap();
     tokenizer.release(&mut c).unwrap();
-    // The text has no registry row: the registry holds 15 rows.
-    assert_eq!(session.active().unwrap().payloads.values.len(), 15);
+    // The registry holds the 14 rows listed above.
+    assert_eq!(session.active().unwrap().payloads.values.len(), 14);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -566,8 +570,8 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         }
     ));
     let storage = session.active().unwrap();
-    // The text has no registry row: the registry holds 20 rows.
-    assert_eq!(storage.payloads.values.len(), 20);
+    // The registry holds the 14 rows and the five reset slots, 19.
+    assert_eq!(storage.payloads.values.len(), 19);
     let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
         panic!("original current raw retained")
     };

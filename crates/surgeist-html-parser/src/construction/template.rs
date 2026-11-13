@@ -40,6 +40,14 @@ pub(super) struct PreparedDocuments {
     pub(super) registry: Option<usize>,
 }
 
+/// What the parse keeps of one Document it owns.
+pub(super) struct DocumentFacts {
+    pub(super) state: DocumentState,
+    pub(super) class: crate::HtmlDocumentClass,
+    pub(super) meta: meta::MetaHistory,
+    pub(super) interaction: dialog::InteractionHistory,
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum DocumentState {
     Ordinary { inert: Option<usize> },
@@ -78,6 +86,20 @@ pub(crate) struct TemplateState {
 impl SessionStorage {
     pub(super) fn validate_template_facts(&self, c: &mut ParseControl) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
+        for (node, facts) in self.payloads.facts.documents.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            self.document_slot(c, node)?;
+            if let DocumentState::Ordinary { inert: Some(inert) } = facts.state {
+                let slot = self.document_slot(c, inert)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if !matches!(
+                    self.payloads.facts.documents.row(slot).map(|row| row.state),
+                    Some(DocumentState::InertTemplate)
+                ) {
+                    return Err(SessionError::NodeDocumentUnavailable);
+                }
+            }
+        }
         for payload in &self.payloads.values {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             match payload {
@@ -98,23 +120,6 @@ impl SessionStorage {
                     ) && DocumentRef::Owned(node) != *document
                     {
                         return Err(SessionError::NodeDocumentUnavailable);
-                    }
-                }
-                RetainedPayload::Document { node, state, .. } => {
-                    let node = node.ok_or(SessionError::NodeDocumentUnavailable)?;
-                    self.document_slot(c, node)?;
-                    if let DocumentState::Ordinary { inert: Some(inert) } = state {
-                        let slot = self.document_slot(c, *inert)?;
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        if !matches!(
-                            self.payloads.values.get(slot),
-                            Some(RetainedPayload::Document {
-                                state: DocumentState::InertTemplate,
-                                ..
-                            })
-                        ) {
-                            return Err(SessionError::NodeDocumentUnavailable);
-                        }
                     }
                 }
                 RetainedPayload::Template { node, .. } => {
@@ -277,14 +282,11 @@ impl SessionStorage {
         ) {
             return Err(SessionError::NotDocument);
         }
-        if let Some(slot) = self.payloads.joined(c, document, Join::Document)? {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Document { node: Some(node), .. }) if *node == document)
-            {
-                return Ok(slot);
-            }
-        }
-        Err(SessionError::NodeDocumentUnavailable)
+        self.payloads
+            .facts
+            .documents
+            .find(c, document)?
+            .ok_or(SessionError::NodeDocumentUnavailable)
     }
     pub(super) fn node_document_ref(
         &self,
@@ -357,7 +359,7 @@ impl SessionStorage {
         let document = document.owned()?;
         let slot = self.document_slot(c, document)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(&RetainedPayload::Document { state, class, .. }) = self.payloads.values.get(slot)
+        let Some(&DocumentFacts { state, class, .. }) = self.payloads.facts.documents.row(slot)
         else {
             return Err(latch_registry_row(c));
         };
@@ -380,20 +382,7 @@ impl SessionStorage {
             HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
                 // Both finite facts are admitted before the native Document is
                 // installed. No fallible alias/binding gap follows allocation.
-                let prepared = self.prepare_payload_slot_owned(c)?;
-                let fact = self
-                    .payloads
-                    .push_row(
-                        prepared,
-                        RetainedPayload::Document {
-                            node: None,
-                            state: DocumentState::InertTemplate,
-                            class,
-                            meta: meta::MetaHistory::offline(),
-                            interaction: dialog::InteractionHistory::new(),
-                        },
-                    )
-                    .map_err(|_| latch_registry_row(c))?;
+                self.payloads.facts.documents.admit(c, 1)?;
                 let prepared = self.prepare_payload_slot_owned(c)?;
                 let binding = self
                     .payloads
@@ -414,14 +403,18 @@ impl SessionStorage {
                     0,
                     0,
                 )?;
-                let Some(RetainedPayload::Document { node: bound, .. }) =
-                    self.payloads.values.get_mut(fact)
-                else {
-                    return Err(latch_registry_row(c));
-                };
-                *bound = Some(node.index);
                 self.payloads
-                    .join_row(fact)
+                    .facts
+                    .documents
+                    .push(
+                        node.index,
+                        DocumentFacts {
+                            state: DocumentState::InertTemplate,
+                            class,
+                            meta: meta::MetaHistory::offline(),
+                            interaction: dialog::InteractionHistory::new(),
+                        },
+                    )
                     .map_err(|_| latch_registry_row(c))?;
                 let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
                     self.payloads.values.get_mut(binding)
@@ -432,12 +425,10 @@ impl SessionStorage {
                 self.payloads
                     .join_row(binding)
                     .map_err(|_| latch_registry_row(c))?;
-                let Some(RetainedPayload::Document { state, .. }) =
-                    self.payloads.values.get_mut(slot)
-                else {
+                let Some(outer) = self.payloads.facts.documents.row_mut(slot) else {
                     return Err(latch_registry_row(c));
                 };
-                *state = DocumentState::Ordinary {
+                outer.state = DocumentState::Ordinary {
                     inert: Some(node.index),
                 };
                 // HTML's new inert Document has its own constructor policy;
@@ -499,25 +490,24 @@ impl SessionStorage {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             template
                 && matches!(
-                    self.payloads.values.get(slot),
-                    Some(RetainedPayload::Document {
-                        state: DocumentState::Ordinary { inert: None },
-                        ..
-                    })
+                    self.payloads.facts.documents.row(slot).map(|row| row.state),
+                    Some(DocumentState::Ordinary { inert: None })
                 )
         } else {
             false
         };
         let native = count_set([true, template, inert_missing]);
-        let facts = count_set([true, template, template, inert_missing, inert_missing]);
+        let facts = count_set([true, template, template, inert_missing]);
         c.check_acquire_many(&[
             (HtmlParseResource::ManagedNodes, native as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
             (
                 HtmlParseResource::AuxiliaryEntries,
-                // At most 3 native records and 5 facts: one join cell per record, and each
-                // fact its own row.
-                native.saturating_add(facts) as u64,
+                // At most 3 native records and 4 registry facts plus the inert Document's
+                // facts: one join cell per record, and each fact its own row.
+                native
+                    .saturating_add(facts)
+                    .saturating_add(usize::from(inert_missing)) as u64,
             ),
         ])?;
         self.reserve_records(c, native)?;
@@ -1004,4 +994,48 @@ pub(super) fn template_slot_of(
         }
     }
     Err(SessionError::TemplateInsertionStateUnavailable)
+}
+
+/// Report preparation inspects one `DocumentFacts` per Document, so its row size is a work figure.
+#[cfg(all(test, target_pointer_width = "64"))]
+mod document_facts_size_tests {
+    use super::*;
+    use std::mem::{align_of, size_of};
+
+    #[test]
+    fn the_document_facts_row_is_its_fields_rounded_up_to_its_alignment() {
+        // `MetaHistory`: three `Option<usize>` slots 48, referrer 1, refresh 1, theme
+        // `Option<Color>` 72, scheme 32, the gap table of four `Option<usize>` 64, the first
+        // domain 1 and the selection table of four 8-byte indices 32 sum to 251, rounded up to 8.
+        assert_eq!(size_of::<Option<usize>>(), 16);
+        assert_eq!(size_of::<Option<surgeist_color::Color>>(), 72);
+        assert_eq!(
+            size_of::<Option<crate::parser::control::CssSchemeValue>>(),
+            32
+        );
+        assert_eq!(size_of::<meta::MetaDomainTable<Option<usize>>>(), 4 * 16);
+        assert_eq!(
+            size_of::<meta::MetaDomainTable<meta::SelectionIndex>>(),
+            4 * 8
+        );
+        let meta_fields: usize = 3 * 16 + 1 + 1 + 72 + 32 + 4 * 16 + 1 + 4 * 8;
+        assert_eq!(meta_fields, 251);
+        assert_eq!(
+            size_of::<meta::MetaHistory>(),
+            meta_fields.next_multiple_of(align_of::<meta::MetaHistory>())
+        );
+        assert_eq!(size_of::<meta::MetaHistory>(), 256);
+        // `DocumentFacts`: state 16, class 1, `MetaHistory` 256 and the interaction history 56
+        // sum to 329, rounded up to 8.
+        let fields = size_of::<DocumentState>()
+            + size_of::<crate::HtmlDocumentClass>()
+            + size_of::<meta::MetaHistory>()
+            + size_of::<dialog::InteractionHistory>();
+        assert_eq!(fields, 16 + 1 + 256 + 56);
+        assert_eq!(
+            size_of::<DocumentFacts>(),
+            fields.next_multiple_of(align_of::<DocumentFacts>())
+        );
+        assert_eq!(size_of::<DocumentFacts>(), 336);
+    }
 }

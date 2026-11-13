@@ -62,14 +62,7 @@ impl SessionStorage {
             };
             Ok(facts.parser_creation_image_support())
         } else {
-            let slot = self.completion_slot(c)?;
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
-                self.payloads.values.get(slot)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            let _ = state;
+            self.completion(c)?;
             // Only the admitted fresh offline prologue issues this fact; the
             // sealed ordinary capability explicitly carries Disabled too.
             Ok(crate::HtmlImageSupport::Disabled)

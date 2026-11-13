@@ -18,13 +18,14 @@ impl FrozenArena {
         let Some(storage) = self.storage.as_mut() else {
             return false;
         };
-        for row in &mut storage.payloads.values {
-            if let RetainedPayload::Document { meta, .. } = row {
-                meta.csp = Some(usize::MAX);
-                return true;
+        let documents = &mut storage.payloads.facts.documents;
+        match documents.row_mut(0) {
+            Some(document) => {
+                document.meta.csp = Some(usize::MAX);
+                true
             }
+            None => false,
         }
-        false
     }
 }
 
@@ -315,14 +316,15 @@ impl<'a> PreparedReportStorage<'a> {
                                 .as_ref()
                                 .is_some_and(|original| facts.same_owner(original))
                         {
-                            for candidate in &storage.payloads.values {
-                                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                                if matches!(candidate, RetainedPayload::Document { node: Some(bound), state: template::DocumentState::InertTemplate, .. } if bound == node)
-                                {
-                                    inert = true;
-                                    break;
-                                }
-                            }
+                            inert = matches!(
+                                storage
+                                    .payloads
+                                    .facts
+                                    .documents
+                                    .get(c, *node)?
+                                    .map(|document| document.state),
+                                Some(template::DocumentState::InertTemplate)
+                            );
                             break;
                         }
                     }
@@ -584,80 +586,6 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_document(storage, document, c)?;
                     }
                 }
-                RetainedPayload::Document {
-                    node,
-                    state,
-                    meta,
-                    interaction,
-                    ..
-                } => {
-                    let document = node.ok_or(SessionError::WrongToken)?;
-                    if let Some(missing) = &interaction.first {
-                        checked_dialog_missing(storage, missing, c)?;
-                        if missing.document != DocumentRef::Owned(document) {
-                            return Err(SessionError::WrongToken);
-                        }
-                    }
-                    if let template::DocumentState::Ordinary { inert: Some(inert) } = state {
-                        checked_node(arena, *inert, c)?;
-                    }
-                    if let Some(raw) = meta.language {
-                        checked_raw(storage, raw, c)?;
-                    }
-                    // `HtmlParseDocumentMeta` reads these rows without a controller.
-                    for slot in [meta.csp, meta.base_csp].into_iter().flatten() {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        if !matches!(
-                            storage.payloads.values.get(slot),
-                            Some(RetainedPayload::CspPolicy(_))
-                        ) {
-                            return Err(latch_registry_row(c));
-                        }
-                    }
-                    if let Some(scheme) = &meta.scheme {
-                        scheme.require(c)?;
-                        let Some(ConstructionNodeKind::Document(mode)) =
-                            arena.node_at(document).map(|node| node.kind())
-                        else {
-                            return Err(SessionError::WrongToken);
-                        };
-                        let expected = surgeist_css::CssParserContext::new(
-                            if mode == HtmlDocumentMode::Quirks {
-                                surgeist_css::CssParserMode::Quirks
-                            } else {
-                                surgeist_css::CssParserMode::Standards
-                            },
-                        );
-                        if scheme.report().result().is_err()
-                            || scheme.report().source().context() != expected
-                        {
-                            return Err(SessionError::WrongToken);
-                        }
-                    }
-                    let mut earliest = None;
-                    for domain in meta::HtmlParseMetaDomain::ALL {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        if let Some(gap) = meta.gaps.copy(domain) {
-                            let Some(RetainedPayload::MetaMissing {
-                                document: owner,
-                                kind,
-                                ..
-                            }) = storage.payloads.values.get(gap)
-                            else {
-                                return Err(SessionError::WrongToken);
-                            };
-                            if *owner != document || kind.domain() != domain {
-                                return Err(SessionError::WrongToken);
-                            }
-                            if earliest.is_none_or(|(index, _)| gap < index) {
-                                earliest = Some((gap, domain));
-                            }
-                        }
-                    }
-                    if earliest.map(|(_, domain)| domain) != meta.first {
-                        return Err(SessionError::WrongToken);
-                    }
-                }
                 RetainedPayload::MetaMissing {
                     document,
                     subject,
@@ -701,6 +629,79 @@ impl<'a> PreparedReportStorage<'a> {
             // none that is not. The metadata cursor lends a record only for a node.
             if node == MetadataNode::Unbound {
                 return Err(latch_registry_row(c));
+            }
+        }
+        for (document, facts) in storage.payloads.facts.documents.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                mem::size_of::<template::DocumentFacts>() as u64,
+            )?;
+            let (state, meta, interaction) = (&facts.state, &facts.meta, &facts.interaction);
+            checked_node(arena, document, c)?;
+            if let Some(missing) = &interaction.first {
+                checked_dialog_missing(storage, missing, c)?;
+                if missing.document != DocumentRef::Owned(document) {
+                    return Err(SessionError::WrongToken);
+                }
+            }
+            if let template::DocumentState::Ordinary { inert: Some(inert) } = state {
+                checked_node(arena, *inert, c)?;
+            }
+            if let Some(raw) = meta.language {
+                checked_raw(storage, raw, c)?;
+            }
+            // `HtmlParseDocumentMeta` reads these rows without a controller.
+            for slot in [meta.csp, meta.base_csp].into_iter().flatten() {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if !matches!(
+                    storage.payloads.values.get(slot),
+                    Some(RetainedPayload::CspPolicy(_))
+                ) {
+                    return Err(latch_registry_row(c));
+                }
+            }
+            if let Some(scheme) = &meta.scheme {
+                scheme.require(c)?;
+                let Some(ConstructionNodeKind::Document(mode)) =
+                    arena.node_at(document).map(|node| node.kind())
+                else {
+                    return Err(SessionError::WrongToken);
+                };
+                let expected =
+                    surgeist_css::CssParserContext::new(if mode == HtmlDocumentMode::Quirks {
+                        surgeist_css::CssParserMode::Quirks
+                    } else {
+                        surgeist_css::CssParserMode::Standards
+                    });
+                if scheme.report().result().is_err()
+                    || scheme.report().source().context() != expected
+                {
+                    return Err(SessionError::WrongToken);
+                }
+            }
+            let mut earliest = None;
+            for domain in meta::HtmlParseMetaDomain::ALL {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if let Some(gap) = meta.gaps.copy(domain) {
+                    let Some(RetainedPayload::MetaMissing {
+                        document: owner,
+                        kind,
+                        ..
+                    }) = storage.payloads.values.get(gap)
+                    else {
+                        return Err(SessionError::WrongToken);
+                    };
+                    if *owner != document || kind.domain() != domain {
+                        return Err(SessionError::WrongToken);
+                    }
+                    if earliest.is_none_or(|(index, _)| gap < index) {
+                        earliest = Some((gap, domain));
+                    }
+                }
+            }
+            if earliest.map(|(_, domain)| domain) != meta.first {
+                return Err(SessionError::WrongToken);
             }
         }
         pending_association::qualify(storage, c)?;
@@ -832,8 +833,8 @@ enum MetadataNode {
     /// a failure is the incomplete-creation stop. Script, LookupRegistry and
     /// Shadow rows are bound when their node is allocated, and a failure
     /// before that is a stop. Template, NodeDocument, PiAttributes,
-    /// SvgScript, Base, BaseDocument and Document rows are required bound at
-    /// freeze or by their own checks below. Every report the test corpus
+    /// SvgScript, Base and BaseDocument rows are required bound at freeze or
+    /// by their own checks below. Every report the test corpus
     /// publishes passes this rule.
     Unbound,
     /// A row of a kind that is not issued as a record.
@@ -846,8 +847,7 @@ fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
         // Details name/open remain canonical native attributes.
         RetainedPayload::Details { .. } => MetadataNode::None,
         RetainedPayload::Shadow { root, .. } => bound(*root),
-        RetainedPayload::StandaloneDocumentCompletion { node, .. }
-        | RetainedPayload::BaseDocument { node, .. }
+        RetainedPayload::BaseDocument { node, .. }
         | RetainedPayload::Hyperlink { node, .. }
         | RetainedPayload::Image { node, .. }
         | RetainedPayload::Style { node, .. }
@@ -857,7 +857,6 @@ fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
         | RetainedPayload::LookupRegistry { node, .. }
         | RetainedPayload::PiAttributes { node, .. }
         | RetainedPayload::NodeDocument { node, .. }
-        | RetainedPayload::Document { node, .. }
         | RetainedPayload::Template { node, .. }
         | RetainedPayload::SvgScript { node, .. }
         | RetainedPayload::Script { node, .. }
@@ -931,6 +930,7 @@ impl ReportStorage {
             storage,
             arena: arena(storage),
             next: 0,
+            document: 0,
             fault: None,
         }
     }
@@ -941,6 +941,8 @@ pub struct HtmlParseMetadataCursor<'a> {
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
     next: usize,
+    /// The next row of the Document table, read after the registry rows.
+    document: usize,
     fault: Option<read::HtmlParseUnresolvedReference>,
 }
 #[expect(
@@ -963,7 +965,7 @@ impl<'a> HtmlParseMetadataCursor<'a> {
             return HtmlParseMetadataStep::Fault(fault);
         }
         let Some(payload) = self.storage.payloads.values.get(self.next) else {
-            return HtmlParseMetadataStep::Complete;
+            return self.advance_document();
         };
         // `next` named a registry row, so it is below the address space.
         self.next = self.next.saturating_add(1);
@@ -983,6 +985,29 @@ impl<'a> HtmlParseMetadataCursor<'a> {
             arena: self.arena,
         };
         match HtmlParseMetadata::issue(resolver, self.closed_common, node, payload) {
+            Ok(record) => HtmlParseMetadataStep::Record(record),
+            Err(fault) => {
+                self.fault = Some(fault);
+                HtmlParseMetadataStep::Fault(fault)
+            }
+        }
+    }
+    /// The Documents the parse owns, each one actual row of the Document table.
+    fn advance_document(&mut self) -> HtmlParseMetadataStep<'a> {
+        let documents = &self.storage.payloads.facts.documents;
+        let (Some(node), Some(facts)) = (
+            documents.node_at(self.document),
+            documents.row(self.document),
+        ) else {
+            return HtmlParseMetadataStep::Complete;
+        };
+        self.document = self.document.saturating_add(1);
+        let resolver = Resolver {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+        };
+        match HtmlParseMetadata::issue_document(resolver, self.closed_common, node, facts) {
             Ok(record) => HtmlParseMetadataStep::Record(record),
             Err(fault) => {
                 self.fault = Some(fault);
@@ -1159,7 +1184,7 @@ impl<'a> Resolver<'a> {
 #[derive(Clone, Copy)]
 #[expect(
     clippy::large_enum_variant,
-    reason = "Only a Document row holds its Meta history; the record is lent by value so the read path allocates nothing, and boxing it would add an allocation where no controller exists to charge it"
+    reason = "Only the Document variant holds its Meta history, resolved from a Document table row; the record is lent by value so the read path allocates nothing, and boxing it would add an allocation where no controller exists to charge it"
 )]
 enum Refs<'a> {
     None,
@@ -1175,6 +1200,8 @@ enum Refs<'a> {
         interaction: HtmlParseDocumentInteraction<'a>,
         meta: HtmlParseDocumentMeta<'a>,
         inert: Option<HtmlNode<'a>>,
+        class: crate::HtmlDocumentClass,
+        inert_template: bool,
     },
     Style(HtmlParseStyle<'a>),
     Hyperlink(HtmlParseHyperlink<'a>),
@@ -1194,6 +1221,25 @@ enum Refs<'a> {
     Template(HtmlParseTemplate<'a>),
 }
 impl<'a> Refs<'a> {
+    fn resolve_document(
+        r: Resolver<'a>,
+        document: usize,
+        facts: &'a template::DocumentFacts,
+    ) -> Result<Self, Fault> {
+        Ok(Self::Document {
+            interaction: HtmlParseDocumentInteraction {
+                document: r.native(document)?,
+                disposition: r.disposition(facts.interaction.first.as_ref())?,
+            },
+            meta: r.document_meta(document, &facts.meta)?,
+            inert: match facts.state {
+                template::DocumentState::Ordinary { inert } => r.optional_native(inert)?,
+                template::DocumentState::InertTemplate => None,
+            },
+            class: facts.class,
+            inert_template: matches!(facts.state, template::DocumentState::InertTemplate),
+        })
+    }
     fn resolve(
         r: Resolver<'a>,
         payload: &'a RetainedPayload,
@@ -1227,23 +1273,6 @@ impl<'a> Refs<'a> {
                 value: r.raw(state.value)?,
                 disposition: r.disposition(state.first.as_ref())?,
             }),
-            RetainedPayload::Document {
-                node: Some(document),
-                state,
-                meta,
-                interaction,
-                ..
-            } => Self::Document {
-                interaction: HtmlParseDocumentInteraction {
-                    document: r.native(*document)?,
-                    disposition: r.disposition(interaction.first.as_ref())?,
-                },
-                meta: r.document_meta(*document, meta)?,
-                inert: match state {
-                    template::DocumentState::Ordinary { inert } => r.optional_native(*inert)?,
-                    template::DocumentState::InertTemplate => None,
-                },
-            },
             RetainedPayload::Style { state, .. } => Self::Style(HtmlParseStyle {
                 state: state.state,
                 parser_document: r.optional_document(state.parser_document.as_ref())?,
@@ -1339,7 +1368,9 @@ impl<'a> Refs<'a> {
 pub struct HtmlParseMetadata<'a> {
     node: HtmlNode<'a>,
     closed_common: bool,
-    payload: &'a RetainedPayload,
+    /// The registry row the record is issued for, or `None` for the record of a Document, whose
+    /// facts are held in the Document table and resolved into `refs`.
+    payload: Option<&'a RetainedPayload>,
     refs: Refs<'a>,
 }
 #[derive(Clone, Copy)]
@@ -1653,8 +1684,23 @@ impl<'a> HtmlParseMetadata<'a> {
         Ok(Self {
             node,
             closed_common,
-            payload,
+            payload: Some(payload),
             refs: Refs::resolve(resolver, payload, node)?,
+        })
+    }
+    /// The record of a Document the parse owns, issued from its table row.
+    fn issue_document(
+        resolver: Resolver<'a>,
+        closed_common: bool,
+        node: usize,
+        facts: &'a template::DocumentFacts,
+    ) -> Result<Self, Fault> {
+        let native = resolver.native(node)?;
+        Ok(Self {
+            node: native,
+            closed_common,
+            payload: None,
+            refs: Refs::resolve_document(resolver, node, facts)?,
         })
     }
     /// Exact creation subject in a completed ordinary offline or contextual
@@ -1672,7 +1718,7 @@ impl<'a> HtmlParseMetadata<'a> {
             registry: context::RegistryRef::Null,
             creation: Some(state),
             ..
-        } = self.payload
+        } = self.payload?
         else {
             return None;
         };
@@ -1731,7 +1777,7 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub fn document_base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::BaseDocument { facts, .. } => Some(facts),
             _ => None,
         }
@@ -1771,7 +1817,7 @@ impl<'a> HtmlParseMetadata<'a> {
         self.node
     }
     pub(super) fn nonce(&self) -> Option<&'a DocumentString> {
-        match (self.payload, self.refs) {
+        match (self.payload?, self.refs) {
             (RetainedPayload::Nonce { .. }, Refs::Raw(raw)) => Some(raw),
             _ => None,
         }
@@ -1805,7 +1851,7 @@ impl<'a> HtmlParseMetadata<'a> {
         surgeist_html::elements::native::HtmlCustomElementState,
         Option<&'a DocumentString>,
     )> {
-        match (self.payload, self.refs) {
+        match (self.payload?, self.refs) {
             (
                 RetainedPayload::LookupRegistry {
                     creation: Some(state),
@@ -1822,7 +1868,7 @@ impl<'a> HtmlParseMetadata<'a> {
         &'a crate::HtmlSourceRange,
         Option<&'a crate::HtmlSourceRange>,
     )> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::InputSource {
                 token,
                 value_attribute,
@@ -1834,13 +1880,13 @@ impl<'a> HtmlParseMetadata<'a> {
     /// The complete map is already owned and qualified. This returns exactly
     /// one original canonical pair, with no key lookup or copied map.
     pub fn pi_attribute_count(&self) -> Option<usize> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::PiAttributes { values, .. } => Some(values.len()),
             _ => None,
         }
     }
     pub fn pi_attribute(&self, index: usize) -> Option<(&'a DocumentString, &'a DocumentString)> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::PiAttributes { values, .. } => values
                 .as_slice()
                 .get(index)
@@ -1849,7 +1895,7 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub fn shadow(&self) -> Option<(bool, bool, bool)> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::Shadow { state, .. } => Some((
                 state.keep_registry_null,
                 state.declarative,
@@ -1859,28 +1905,18 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub fn document_facts(&self) -> Option<(crate::HtmlDocumentClass, bool, Option<HtmlNode<'a>>)> {
-        match (self.payload, self.refs) {
-            (
-                RetainedPayload::Document {
-                    state: template::DocumentState::Ordinary { .. },
-                    class,
-                    ..
-                },
-                Refs::Document { inert, .. },
-            ) => Some((*class, false, inert)),
-            (
-                RetainedPayload::Document {
-                    state: template::DocumentState::InertTemplate,
-                    class,
-                    ..
-                },
-                _,
-            ) => Some((*class, true, None)),
+        match self.refs {
+            Refs::Document {
+                class,
+                inert_template,
+                inert,
+                ..
+            } => Some((class, inert_template, inert)),
             _ => None,
         }
     }
     pub(crate) fn input(&self) -> Option<(&'a InputState, &'a DocumentString)> {
-        match (self.payload, self.refs) {
+        match (self.payload?, self.refs) {
             (RetainedPayload::Input { state, .. }, Refs::Input { raw, .. }) => Some((state, raw)),
             _ => None,
         }
@@ -1893,19 +1929,19 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub(crate) fn textarea(&self) -> Option<(&'a TextareaState, &'a DocumentString)> {
-        match (self.payload, self.refs) {
+        match (self.payload?, self.refs) {
             (RetainedPayload::Textarea { state, .. }, Refs::Raw(raw)) => Some((state, raw)),
             _ => None,
         }
     }
     pub(crate) fn output(&self) -> Option<&'a OutputState> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::Output { state, .. } => Some(state),
             _ => None,
         }
     }
     pub(crate) fn form(&self) -> Option<(&'a FormAssociationState, Option<HtmlNode<'a>>)> {
-        match (self.payload, self.refs) {
+        match (self.payload?, self.refs) {
             (RetainedPayload::FormAssociation { state, .. }, Refs::Owner(owner)) => {
                 Some((state, owner))
             }
@@ -1913,19 +1949,19 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub(crate) fn script(&self) -> Option<&'a ScriptMetadata> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::Script { metadata, .. } => Some(metadata),
             _ => None,
         }
     }
     pub(crate) fn svg_script(&self) -> Option<&'a SvgScriptState> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::SvgScript { state, .. } => Some(state),
             _ => None,
         }
     }
     pub(crate) fn select(&self) -> Option<&'a select::SelectState> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::SelectFamily {
                 state: SelectMetadata::Select(state),
                 ..
@@ -1934,7 +1970,7 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub(crate) fn option(&self) -> Option<&'a select::OptionState> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::SelectFamily {
                 state: SelectMetadata::Option(state),
                 ..
@@ -1951,7 +1987,7 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub(crate) fn selectedcontent(&self) -> Option<&'a select::SelectedcontentState> {
-        match self.payload {
+        match self.payload? {
             RetainedPayload::SelectFamily {
                 state: SelectMetadata::Selectedcontent(state),
                 ..

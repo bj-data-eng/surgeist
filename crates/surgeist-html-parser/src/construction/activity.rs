@@ -19,35 +19,25 @@ impl SessionStorage {
                 let slot = self.document_slot(c, document)?;
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if matches!(
-                    self.payloads.values.get(slot),
-                    Some(RetainedPayload::Document {
-                        state: template::DocumentState::InertTemplate,
-                        ..
-                    })
+                    self.payloads.facts.documents.row(slot).map(|row| row.state),
+                    Some(template::DocumentState::InertTemplate)
                 ) {
                     // The actual template-owner constructor creates this
                     // independent Document without a navigable or host ingress.
                     return Ok(Some(false));
                 }
-                let completion = match self.completion_slot_during_effects(c) {
-                    Ok(slot) => slot,
+                match self.completion_during_effects(c) {
+                    Ok(_) => {}
                     Err(SessionError::CompletionMetadataUnavailable) => {
                         return Ok(None);
                     }
                     Err(error) => return Err(error),
-                };
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                }
                 // This original closed constructor issues the fresh ordinary
                 // parser Document, including the distinct §13.4 auxiliary
-                // Document. Its completion record cannot qualify another owner.
-                Ok(match self.payloads.row(c, completion)? {
-                    RetainedPayload::StandaloneDocumentCompletion { node, .. }
-                        if *node == document =>
-                    {
-                        Some(false)
-                    }
-                    _ => None,
-                })
+                // Document. Its completion belongs to the Document at record 0
+                // and cannot qualify another owner.
+                Ok((document == 0).then_some(false))
             }
             DocumentRef::Captured(document) => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;

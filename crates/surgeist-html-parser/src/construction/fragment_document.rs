@@ -32,7 +32,7 @@ pub struct HtmlParseFragmentParserDocument<'a> {
 impl<'a> HtmlParseFragmentParserDocument<'a> {
     /// The Document, its mode and its completion are read once, here, so the
     /// readers cannot fail. The fault if the report holds no fragment context,
-    /// or no longer holds the Document or the completion row it was
+    /// or no longer holds the Document or the completion it was
     /// qualified against.
     pub(super) fn new(
         history: &'a FrozenHistory,
@@ -53,9 +53,7 @@ impl<'a> HtmlParseFragmentParserDocument<'a> {
         let HtmlNodeKind::Document(mode) = document.kind() else {
             return Err(fault(read::HtmlParseUnresolvedKind::Node));
         };
-        let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
-            storage.payloads.values.get(fragment.completion)
-        else {
+        let Some(completion) = storage.payloads.facts.completion else {
             return Err(fault(read::HtmlParseUnresolvedKind::Fact));
         };
         Ok(Self {
@@ -63,7 +61,7 @@ impl<'a> HtmlParseFragmentParserDocument<'a> {
             fragment,
             document,
             mode,
-            completion: *state,
+            completion: completion.state(),
         })
     }
     pub fn document(&self) -> HtmlNode<'a> {
@@ -94,17 +92,12 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
     c.charge(HtmlParseWorkCategory::RecordVisit, 4)?;
     c.charge(
         HtmlParseWorkCategory::InspectByte,
-        mem::size_of::<HtmlParseDocumentState>() as u64,
+        mem::size_of::<completion::Completion>() as u64,
     )?;
-    let Some(RetainedPayload::StandaloneDocumentCompletion { node: 0, state }) =
-        storage.payloads.values.get(fragment.completion)
-    else {
+    let Some(completion) = storage.payloads.facts.completion else {
         return Err(SessionError::CompletionMetadataUnavailable);
     };
-    if state.completion != HtmlParseCompletion::Complete
-        || state.readiness != HtmlParseReadiness::Complete
-        || !state.ready_for_post_load_tasks
-    {
+    if !completion.is_complete() {
         return Err(SessionError::CompletionIncomplete);
     }
     let records = &storage.view;
@@ -188,5 +181,30 @@ pub(super) mod tests {
         .unwrap()
         .parse()
         .unwrap()
+    }
+}
+
+#[cfg(test)]
+mod inspection_tests {
+    use super::*;
+
+    #[test]
+    fn qualifying_a_fragment_document_inspects_the_completion_and_the_root_name_it_reads() {
+        let mut report = tests::fragment_report("<p>a</p>");
+        let storage = report.storage_mut().history_mut().storage_mut();
+        let mut c = ParseControl::new(
+            super::super::tests::limits(),
+            crate::HtmlParseCancellation::new(),
+        );
+        let before = c.usage().clone();
+        qualify(storage, &mut c).unwrap();
+        let inspected = c.usage().work(HtmlParseWorkCategory::InspectByte)
+            - before.work(HtmlParseWorkCategory::InspectByte);
+        // The completion is read once, as the two bytes of a `Completion`, not as the three of
+        // the `HtmlParseDocumentState` it converts to. The root `html` element is compared with
+        // its namespace, 28 units, and its name, 4 units, each a 2-byte unit paired with a byte.
+        assert_eq!(mem::size_of::<completion::Completion>(), 2);
+        assert_eq!(mem::size_of::<HtmlParseDocumentState>(), 3);
+        assert_eq!(inspected, 2 + (28 + 4) * 3);
     }
 }

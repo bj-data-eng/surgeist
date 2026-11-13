@@ -123,12 +123,10 @@ impl SessionStorage {
             DocumentRef::Captured(_) => None,
         };
         let document_missing = if let Some(owner) = owned {
-            let Some(RetainedPayload::Document { interaction, .. }) =
-                self.payloads.values.get(owner)
-            else {
+            let Some(document) = self.payloads.facts.documents.row(owner) else {
                 return Err(latch_registry_row(c));
             };
-            interaction.first.is_none()
+            document.interaction.first.is_none()
         } else {
             false
         };
@@ -157,12 +155,12 @@ impl SessionStorage {
             cause,
         });
         if let Some(missing) = duplicate {
-            let Some(RetainedPayload::Document { interaction, .. }) =
-                owned.and_then(|owner| self.payloads.values.get_mut(owner))
+            let Some(document) =
+                owned.and_then(|owner| self.payloads.facts.documents.row_mut(owner))
             else {
                 return Err(SessionError::NodeDocumentUnavailable);
             };
-            interaction.first = Some(missing);
+            document.interaction.first = Some(missing);
         }
         Ok(())
     }

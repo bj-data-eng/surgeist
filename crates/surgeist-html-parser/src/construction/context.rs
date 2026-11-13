@@ -105,7 +105,6 @@ impl std::fmt::Debug for HtmlParseOpaqueOrigin {
 pub(super) struct FragmentContextStorage {
     pub(super) origin: HtmlParseOpaqueOrigin,
     origin_allocation: SharedAllocation<()>,
-    pub(super) completion: usize,
     pub(super) context: crate::HtmlFragmentContext,
     pub(super) mode: surgeist_html::parsing::HtmlParserScriptingMode,
     pub(super) allow_shadow: bool,
@@ -293,20 +292,7 @@ impl SessionStorage {
             },
         )?;
         fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
-        let prepared = self.prepare_payload_slot_owned(c)?;
-        let fact = self
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::Document {
-                    node: None,
-                    state: template::DocumentState::InertTemplate,
-                    class,
-                    meta: meta::MetaHistory::offline(),
-                    interaction: dialog::InteractionHistory::new(),
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
+        self.payloads.facts.documents.admit(c, 1)?;
         let prepared = self.prepare_payload_slot_owned(c)?;
         let binding = self
             .payloads
@@ -326,14 +312,18 @@ impl SessionStorage {
             0,
             0,
         )?;
-        let Some(RetainedPayload::Document { node: bound, .. }) =
-            self.payloads.values.get_mut(fact)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        *bound = Some(node.index);
         self.payloads
-            .join_row(fact)
+            .facts
+            .documents
+            .push(
+                node.index,
+                template::DocumentFacts {
+                    state: template::DocumentState::InertTemplate,
+                    class,
+                    meta: meta::MetaHistory::offline(),
+                    interaction: dialog::InteractionHistory::new(),
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
         let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
             self.payloads.values.get_mut(binding)
@@ -424,7 +414,7 @@ impl ParserArenaSession {
             .capture()
             .node(context.context_document().subject())
             .map_err(|_| SessionError::ContextUnavailable)?;
-        let completion = storage.completion_slot(c)?;
+        storage.completion(c)?;
         let mode = request.effective_scripting_mode();
         if !matches!(
             mode,
@@ -456,7 +446,6 @@ impl ParserArenaSession {
         storage.fragment = Some(FragmentContextStorage {
             origin: HtmlParseOpaqueOrigin(origin),
             origin_allocation,
-            completion,
             context: context.clone(),
             mode,
             allow_shadow: request.allow_declarative_shadow_roots(),
@@ -2235,21 +2224,12 @@ impl FrozenArena {
         ) {
             return Err(SessionError::NotDocument);
         }
-        for payload in &storage.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Document {
-                node: Some(bound),
-                class,
-                ..
-            } = payload
-                && *bound == index
-            {
-                c.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    mem::size_of::<crate::HtmlDocumentClass>() as u64,
-                )?;
-                return Ok(*class);
-            }
+        if let Some(document) = storage.payloads.facts.documents.get(c, index)? {
+            c.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<crate::HtmlDocumentClass>() as u64,
+            )?;
+            return Ok(document.class);
         }
         Err(SessionError::NodeDocumentUnavailable)
     }
@@ -3162,8 +3142,8 @@ mod tests {
                         let storage = session.active().unwrap();
                         let slot = storage.document_slot(&mut c, actual.index).unwrap();
                         assert!(
-                            matches!(storage.payloads.values[slot],RetainedPayload::Document {
-                            state:template::DocumentState::InertTemplate,class:actual,..} if actual==class)
+                            matches!(storage.payloads.facts.documents.row(slot),Some(template::DocumentFacts {
+                            state:template::DocumentState::InertTemplate,class:actual,..}) if *actual==class)
                         );
                         assert_ne!(actual.index, original.index);
                         assert_eq!(storage.fragment.as_ref().unwrap().effects.len(), 1);

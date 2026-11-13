@@ -416,20 +416,19 @@ fn after_commit(point: CancelPoint) {
 }
 impl SessionStorage {
     pub(super) fn meta_history(&self, slot: usize) -> Result<&MetaHistory, SessionError> {
-        let Some(RetainedPayload::Document { meta, .. }) = self.payloads.values.get(slot) else {
+        let Some(document) = self.payloads.facts.documents.row(slot) else {
             return Err(SessionError::registry_row());
         };
-        Ok(meta)
+        Ok(&document.meta)
     }
     pub(super) fn meta_history_mut(
         &mut self,
         slot: usize,
     ) -> Result<&mut MetaHistory, SessionError> {
-        let Some(RetainedPayload::Document { meta, .. }) = self.payloads.values.get_mut(slot)
-        else {
+        let Some(document) = self.payloads.facts.documents.row_mut(slot) else {
             return Err(SessionError::registry_row());
         };
-        Ok(meta)
+        Ok(&mut document.meta)
     }
     pub(super) fn meta_policy_missing(
         &self,
@@ -1671,12 +1670,10 @@ mod tests {
             let storage = session.active().unwrap();
             let slot = storage
                 .payloads
-                .values
+                .facts
+                .documents
                 .iter()
-                .find_map(|p| match p {
-                    RetainedPayload::Document { meta, .. } => meta.language,
-                    _ => None,
-                })
+                .find_map(|(_, document)| document.meta.language)
                 .unwrap();
             let RetainedPayload::String { value, .. } = &storage.payloads.values[slot] else {
                 panic!("actual current language backing")
@@ -1760,17 +1757,17 @@ mod tests {
         }
     }
     fn history(session: &ParserArenaSession) -> &MetaHistory {
-        session
+        &session
             .active()
             .unwrap()
             .payloads
-            .values
+            .facts
+            .documents
             .iter()
-            .find_map(|row| match row {
-                RetainedPayload::Document { meta, .. } => Some(meta),
-                _ => None,
-            })
+            .next()
             .unwrap()
+            .1
+            .meta
     }
     fn theme(session: &ParserArenaSession) -> Option<[u8; 3]> {
         history(session).theme.and_then(|color| color.srgb_bytes())
@@ -2114,18 +2111,15 @@ mod tests {
         }
         let selected = |session: &ParserArenaSession| {
             let storage = session.active().unwrap();
-            let meta = storage
+            let meta = &storage
                 .payloads
-                .values
+                .facts
+                .documents
                 .iter()
-                .find_map(|p| {
-                    if let RetainedPayload::Document { meta, .. } = p {
-                        Some(meta)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap();
+                .next()
+                .unwrap()
+                .1
+                .meta;
             meta.scheme
                 .as_ref()
                 .unwrap()

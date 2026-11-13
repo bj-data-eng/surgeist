@@ -784,11 +784,10 @@ impl SessionStorage {
                 };
                 context.mode = mode;
                 let slot = self.document_slot(c, *document)?;
-                let Some(RetainedPayload::Document { class, .. }) = self.payloads.values.get(slot)
-                else {
+                let Some(facts) = self.payloads.facts.documents.row(slot) else {
                     return Err(latch_registry_row(c));
                 };
-                context.class = *class;
+                context.class = facts.class;
                 // First document Element and only its direct body/frameset child.
                 let mut child = self
                     .construction
@@ -1231,15 +1230,23 @@ impl SessionStorage {
         if self.evidence.is_none() {
             return Ok(());
         }
+        // The registry rows present now; the rows the Document loop appends are not walked.
         let extent = self.payloads.values.len();
         #[cfg(test)]
         let extent = extent.saturating_add(c.take_registry_walk_overshoot());
+        for index in 0..self.payloads.facts.documents.len() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let node = self
+                .payloads
+                .facts
+                .documents
+                .node_at(index)
+                .ok_or_else(|| latch_registry_row(c))?;
+            self.association_document(c, &DocumentRef::Owned(node))?;
+        }
         for index in 0..extent {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let document = match self.payloads.row(c, index)? {
-                RetainedPayload::Document {
-                    node: Some(node), ..
-                } => Some(DocumentRef::Owned(*node)),
                 RetainedPayload::NodeDocument {
                     document: DocumentRef::Captured(id),
                     ..
@@ -2516,6 +2523,41 @@ mod tests {
             .prepare_association_documents(&mut c);
         assert_eq!(result, Err(SessionError::Stop(registry_row())));
         assert_eq!(c.stop(), Some(registry_row()));
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+    #[test]
+    fn the_association_document_walk_visits_the_rows_present_when_it_starts() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(""),
+            super::super::tests::limits(),
+        );
+        let visits = |c: &ParseControl| c.usage().work(HtmlParseWorkCategory::RecordVisit);
+        // The visits of capturing the root Document in a fresh session.
+        let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
+        let before = visits(&c);
+        session
+            .active_mut()
+            .unwrap()
+            .association_document(&mut c, &DocumentRef::Owned(0))
+            .unwrap();
+        let capture = visits(&c) - before;
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+        // The walk makes one visit for each Document the parse owns, which captures it, and then
+        // one for each registry row present when the walk began: the row the capture adds is not
+        // walked. The root's own document is owned, so no captured document is walked.
+        let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
+        let storage = session.active().unwrap();
+        let documents = storage.payloads.facts.documents.len() as u64;
+        let rows = storage.payloads.values.len() as u64;
+        let before = visits(&c);
+        session
+            .active_mut()
+            .unwrap()
+            .prepare_association_documents(&mut c)
+            .unwrap();
+        assert_eq!(visits(&c) - before, documents * (1 + capture) + rows);
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
     }

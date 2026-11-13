@@ -1,6 +1,7 @@
 //! Qualified fresh ordinary parser-Document readiness and completion facts.
 //! HTML 877d: initial no-browsing-context readiness, §13.2.7 and same-state guard.
-//! This registry fact does not grant public report or browser lifecycle support.
+//! This completion fact is held by the parse, not by the registry, and does not grant public
+//! report or browser lifecycle support.
 
 use super::*;
 use surgeist_html::construction::ConstructionNodeKind;
@@ -32,80 +33,94 @@ impl HtmlParseDocumentState {
         self.completion
     }
 }
-impl SessionStorage {
-    /// The completion row `completion_slot` found at `slot`. A row that is
-    /// gone or of another kind is an impossible registry state, latched as the
-    /// controller's first stop.
-    fn completion_state_mut(
-        &mut self,
-        c: &mut ParseControl,
-        slot: usize,
-    ) -> Result<&mut HtmlParseDocumentState, SessionError> {
-        match self.payloads.row_mut(c, slot)? {
-            RetainedPayload::StandaloneDocumentCompletion { state, .. } => Ok(state),
-            _ => Err(latch_registry_row(c)),
+/// The completion of the standalone parser Document. Every state it can hold is a legal one:
+/// a parse that is complete is interactive-complete with its post-load tasks ready, so the
+/// combinations the public [`HtmlParseDocumentState`] could spell but never reaches have no
+/// value here.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum Completion {
+    Parsing {
+        readiness: HtmlParseReadiness,
+        ready_for_post_load_tasks: bool,
+    },
+    Complete,
+}
+impl Completion {
+    /// The state of a fresh standalone parser Document.
+    pub(super) const fn fresh() -> Self {
+        Self::Parsing {
+            readiness: HtmlParseReadiness::Complete,
+            ready_for_post_load_tasks: false,
         }
     }
-    pub(super) fn completion_slot(&self, c: &mut ParseControl) -> Result<usize, SessionError> {
+    pub(super) const fn state(self) -> HtmlParseDocumentState {
+        match self {
+            Self::Parsing {
+                readiness,
+                ready_for_post_load_tasks,
+            } => HtmlParseDocumentState {
+                readiness,
+                ready_for_post_load_tasks,
+                completion: HtmlParseCompletion::Parsing,
+            },
+            Self::Complete => HtmlParseDocumentState {
+                readiness: HtmlParseReadiness::Complete,
+                ready_for_post_load_tasks: true,
+                completion: HtmlParseCompletion::Complete,
+            },
+        }
+    }
+    /// Whether the parse is complete.
+    pub(super) const fn is_complete(self) -> bool {
+        matches!(self, Self::Complete)
+    }
+}
+impl SessionStorage {
+    /// The completion of the standalone parser Document. A session that has not initialized
+    /// one has no completion metadata.
+    pub(super) fn completion(&self, c: &mut ParseControl) -> Result<Completion, SessionError> {
         self.require(c)?;
-        self.completion_slot_during_effects(c)
+        self.completion_during_effects(c)
     }
     /// The original nested source-effect owner has already admitted its frame;
     /// its activity observation must not require that same frame to be idle.
-    pub(super) fn completion_slot_during_effects(
+    pub(super) fn completion_during_effects(
         &self,
         c: &mut ParseControl,
-    ) -> Result<usize, SessionError> {
+    ) -> Result<Completion, SessionError> {
         c.require_identity(&self.control)?;
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::StandaloneDocumentCompletion { node, .. } = payload {
-                c.charge(
-                    HtmlParseWorkCategory::InspectByte,
-                    mem::size_of::<usize>() as u64,
-                )?;
-                if *node != 0 {
-                    return Err(SessionError::CompletionMetadataUnavailable);
-                }
-                return Ok(slot);
-            }
-        }
-        Err(SessionError::CompletionMetadataUnavailable)
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        self.payloads
+            .facts
+            .completion
+            .ok_or(SessionError::CompletionMetadataUnavailable)
     }
+    /// Checks that a completion, when there is one, belongs to the Document at record 0.
     pub(super) fn validate_completion_facts(
         &self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        let mut found = false;
-        for payload in &self.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::StandaloneDocumentCompletion { node, state } = payload {
-                c.charge(
-                    HtmlParseWorkCategory::InspectByte,
-                    mem::size_of::<HtmlParseDocumentState>() as u64,
-                )?;
-                if found
-                    || *node != 0
-                    || !matches!(
-                        self.construction
-                            .node_at(0)
-                            .ok_or_else(|| latch_registry_row(c))?
-                            .kind(),
-                        ConstructionNodeKind::Document(_)
-                    )
-                {
-                    return Err(SessionError::CompletionMetadataUnavailable);
-                }
-                found = true;
-                if state.completion == HtmlParseCompletion::Complete
-                    && (state.readiness != HtmlParseReadiness::Complete
-                        || !state.ready_for_post_load_tasks)
-                {
-                    return Err(SessionError::CompletionIncomplete);
-                }
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if self.payloads.facts.completion.is_some() {
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                mem::size_of::<Completion>() as u64,
+            )?;
+            if !matches!(
+                self.construction
+                    .node_at(0)
+                    .ok_or_else(|| latch_registry_row(c))?
+                    .kind(),
+                ConstructionNodeKind::Document(_)
+            ) {
+                return Err(SessionError::CompletionMetadataUnavailable);
             }
         }
         Ok(())
+    }
+    /// Writes the next completion, after the caller has charged the write.
+    fn write_completion(&mut self, next: Completion) {
+        self.payloads.facts.completion = Some(next);
     }
 }
 impl ParserArenaSession {
@@ -128,46 +143,24 @@ impl ParserArenaSession {
         ) {
             return Err(SessionError::NotDocument);
         }
-        for payload in &storage.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(
-                payload,
-                RetainedPayload::StandaloneDocumentCompletion { .. }
-            ) {
-                return Err(SessionError::CompletionMetadataUnavailable);
-            }
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if storage.payloads.facts.completion.is_some() {
+            return Err(SessionError::CompletionMetadataUnavailable);
         }
-        let prepared = storage.prepare_payload_slot_owned(c)?;
-        storage
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::StandaloneDocumentCompletion {
-                    node: 0,
-                    state: HtmlParseDocumentState {
-                        readiness: HtmlParseReadiness::Complete,
-                        ready_for_post_load_tasks: false,
-                        completion: HtmlParseCompletion::Parsing,
-                    },
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
+        payload_write::<Completion>(c, 1)?;
+        storage.write_completion(Completion::fresh());
         Ok(())
     }
     pub(crate) fn standalone_document_state(
         &self,
         c: &mut ParseControl,
     ) -> Result<HtmlParseDocumentState, SessionError> {
-        let storage = self.active()?;
-        let slot = storage.completion_slot(c)?;
+        let completion = self.active()?.completion(c)?;
         c.charge(
             HtmlParseWorkCategory::CopyByte,
             mem::size_of::<HtmlParseDocumentState>() as u64,
         )?;
-        match storage.payloads.row(c, slot)? {
-            RetainedPayload::StandaloneDocumentCompletion { state, .. } => Ok(*state),
-            _ => Err(latch_registry_row(c)),
-        }
+        Ok(completion.state())
     }
     pub(crate) fn update_standalone_readiness(
         &mut self,
@@ -175,24 +168,30 @@ impl ParserArenaSession {
         readiness: HtmlParseReadiness,
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
-        let slot = storage.completion_slot(c)?;
-        let state = storage.completion_state_mut(c, slot)?;
+        let current = storage.completion(c)?;
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            mem::size_of::<HtmlParseDocumentState>() as u64,
+            mem::size_of::<Completion>() as u64,
         )?;
-        if state.completion != HtmlParseCompletion::Parsing {
+        let Completion::Parsing {
+            readiness: held,
+            ready_for_post_load_tasks,
+        } = current
+        else {
             return Err(SessionError::CompletionIncomplete);
-        }
+        };
         // Normative same-state return owns a comparison but no field write.
-        if state.readiness == readiness {
+        if held == readiness {
             return Ok(());
         }
-        if readiness == HtmlParseReadiness::Complete && !state.ready_for_post_load_tasks {
+        if readiness == HtmlParseReadiness::Complete && !ready_for_post_load_tasks {
             return Err(SessionError::CompletionIncomplete);
         }
         payload_write::<HtmlParseReadiness>(c, 1)?;
-        state.readiness = readiness;
+        storage.write_completion(Completion::Parsing {
+            readiness,
+            ready_for_post_load_tasks,
+        });
         Ok(())
     }
     pub(crate) fn mark_standalone_post_load(
@@ -200,20 +199,23 @@ impl ParserArenaSession {
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
-        let slot = storage.completion_slot(c)?;
-        let state = storage.completion_state_mut(c, slot)?;
+        let current = storage.completion(c)?;
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            mem::size_of::<HtmlParseDocumentState>() as u64,
+            mem::size_of::<Completion>() as u64,
         )?;
-        if state.completion != HtmlParseCompletion::Parsing
-            || state.readiness != HtmlParseReadiness::Interactive
-            || state.ready_for_post_load_tasks
-        {
+        let Completion::Parsing {
+            readiness: HtmlParseReadiness::Interactive,
+            ready_for_post_load_tasks: false,
+        } = current
+        else {
             return Err(SessionError::CompletionIncomplete);
-        }
+        };
         payload_write::<bool>(c, 1)?;
-        state.ready_for_post_load_tasks = true;
+        storage.write_completion(Completion::Parsing {
+            readiness: HtmlParseReadiness::Interactive,
+            ready_for_post_load_tasks: true,
+        });
         Ok(())
     }
     /// Actual closed constructor/producers, source and owner proof; queued
@@ -228,16 +230,13 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(c)?;
         storage.validate_completion_facts(c)?;
-        let state = self.standalone_document_state(c)?;
+        let completion = storage.completion(c)?;
         if finished {
             storage.effects.require_freezable(c)?;
-            if state.completion != HtmlParseCompletion::Complete
-                || state.readiness != HtmlParseReadiness::Complete
-                || !state.ready_for_post_load_tasks
-            {
+            if !completion.is_complete() {
                 return Err(SessionError::CompletionIncomplete);
             }
-        } else if state.completion != HtmlParseCompletion::Parsing {
+        } else if completion.is_complete() {
             return Err(SessionError::CompletionIncomplete);
         }
         Ok(())
@@ -259,20 +258,20 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         self.require_standalone_effects_finished(c)?;
         let storage = self.active_mut()?;
-        let slot = storage.completion_slot(c)?;
-        let state = storage.completion_state_mut(c, slot)?;
+        let current = storage.completion(c)?;
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            mem::size_of::<HtmlParseDocumentState>() as u64,
+            mem::size_of::<Completion>() as u64,
         )?;
-        if state.completion != HtmlParseCompletion::Parsing
-            || state.readiness != HtmlParseReadiness::Complete
-            || !state.ready_for_post_load_tasks
-        {
+        let Completion::Parsing {
+            readiness: HtmlParseReadiness::Complete,
+            ready_for_post_load_tasks: true,
+        } = current
+        else {
             return Err(SessionError::CompletionIncomplete);
-        }
+        };
         payload_write::<HtmlParseCompletion>(c, 1)?;
-        state.completion = HtmlParseCompletion::Complete;
+        storage.write_completion(Completion::Complete);
         Ok(())
     }
 }
@@ -282,8 +281,11 @@ mod tests {
     use super::*;
     use surgeist_html::construction::HtmlDocumentMode;
 
+    /// The completion of the parser Document is one value of the session, held inline: starting
+    /// it admits no auxiliary entry and adds no registry row, so it cannot be refused for a
+    /// limit that its parse has already reached.
     #[test]
-    fn completion_metadata_consumes_one_actual_retained_slot_and_one_short_reclaims_capacity() {
+    fn completion_is_held_by_the_session_and_admits_no_auxiliary_entry() {
         let mut c = ParseControl::new(
             super::super::tests::limits(),
             crate::HtmlParseCancellation::new(),
@@ -297,50 +299,37 @@ mod tests {
             .current;
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
-        for allowance in [0, 1] {
-            let limits = super::super::tests::limits()
-                .into_builder()
-                .auxiliary_entries(initial + allowance)
-                .active_formatting_entries(initial + allowance)
-                .finish()
+        // A parse whose auxiliary entries are exactly those of the empty session can still
+        // start its completion.
+        let limits = super::super::tests::limits()
+            .into_builder()
+            .auxiliary_entries(initial)
+            .active_formatting_entries(initial)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-            let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
-            let mut session =
-                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
-                    .unwrap();
-            let before = session.active().unwrap().payloads.values.len();
-            let result = session.initialize_standalone_document(&mut c);
-            if allowance == 1 {
-                result.unwrap();
-                assert_eq!(session.active().unwrap().payloads.values.len(), before + 1);
-                assert_eq!(
-                    c.usage()
-                        .resource(HtmlParseResource::AuxiliaryEntries)
-                        .current,
-                    initial + 1
-                );
-                assert_eq!(
-                    session
-                        .standalone_document_state(&mut c)
-                        .unwrap()
-                        .completion,
-                    HtmlParseCompletion::Parsing
-                );
-            } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
-                        resource: HtmlParseResource::AuxiliaryEntries,
-                        ..
-                    }))
-                ));
-                assert_eq!(session.active().unwrap().payloads.values.len(), before);
-            }
-            let stop = c.stop();
-            session.release(&mut c).unwrap();
-            super::super::tests::storage_zero(&c);
-            assert_eq!(c.stop(), stop);
-        }
+        let before = session.active().unwrap().payloads.values.len();
+        session.initialize_standalone_document(&mut c).unwrap();
+        assert_eq!(session.active().unwrap().payloads.values.len(), before);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            initial
+        );
+        assert_eq!(
+            session
+                .standalone_document_state(&mut c)
+                .unwrap()
+                .completion,
+            HtmlParseCompletion::Parsing
+        );
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+        assert_eq!(c.stop(), None);
     }
 
     #[test]
@@ -428,26 +417,46 @@ mod tests {
     }
 
     #[test]
-    fn a_completion_slot_past_the_registry_or_naming_another_row_reports_the_registry_row() {
-        use crate::construction::effects::tests::{graph, request};
-        let request = request("<body><div id=a>");
-        let (mut c, mut session, _proof, _nodes) = graph(&request);
-        let storage = session.active_mut().unwrap();
-        let invariant = HtmlParseStop::InternalInvariant(
-            crate::parser::control::HtmlParseInvariant::RegistryRow,
+    fn a_session_without_a_started_completion_reports_the_missing_metadata() {
+        let mut c = ParseControl::new(
+            super::super::tests::limits(),
+            crate::HtmlParseCancellation::new(),
         );
-        for slot in [storage.payloads.values.len(), 0] {
-            assert!(!matches!(
-                storage.payloads.values.get(slot),
-                Some(RetainedPayload::StandaloneDocumentCompletion { .. })
-            ));
-            assert_eq!(
-                storage.completion_state_mut(&mut c, slot).err(),
-                Some(SessionError::Stop(invariant))
-            );
-        }
-        assert_eq!(c.stop(), Some(invariant));
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        assert_eq!(
+            session.standalone_document_state(&mut c),
+            Err(SessionError::CompletionMetadataUnavailable)
+        );
+        assert_eq!(
+            session.mark_standalone_complete(&mut c),
+            Err(SessionError::CompletionMetadataUnavailable)
+        );
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn every_completion_value_converts_to_a_state_of_the_public_vocabulary() {
+        for readiness in [
+            HtmlParseReadiness::Interactive,
+            HtmlParseReadiness::Complete,
+        ] {
+            for ready in [false, true] {
+                let state = Completion::Parsing {
+                    readiness,
+                    ready_for_post_load_tasks: ready,
+                }
+                .state();
+                assert_eq!(state.readiness(), readiness);
+                assert_eq!(state.ready_for_post_load_tasks(), ready);
+                assert_eq!(state.completion(), HtmlParseCompletion::Parsing);
+            }
+        }
+        let done = Completion::Complete.state();
+        assert_eq!(done.readiness(), HtmlParseReadiness::Complete);
+        assert!(done.ready_for_post_load_tasks());
+        assert_eq!(done.completion(), HtmlParseCompletion::Complete);
     }
 }
