@@ -1,6 +1,6 @@
 use super::FrameContext;
 use super::filter::foreground_filter_bounds;
-use crate::accounting::{Account, RenderWork};
+use crate::accounting::{Account, AccountedVec, RenderWork};
 use crate::{
     command::{
         NormalizedLayer, RenderClip, RenderCommand, RenderCommands, RenderLayerMask,
@@ -16,6 +16,8 @@ use crate::{geometry::Size, paint::Color, renderer::Antialiasing};
 
 #[cfg(test)]
 mod bounded_operation_tests;
+#[cfg(test)]
+mod contribution_stack_tests;
 
 impl FrameContext {
     #[cfg(test)]
@@ -271,6 +273,100 @@ pub(super) enum SemanticContributionDomain {
     LocalUnbounded,
 }
 
+/// One ordered image qualification. Only an existing command advances the
+/// cursor; its visit is admitted before cloning or inspecting that command.
+struct ContributionSequence {
+    commands: RenderCommands,
+    next_command: usize,
+    contributing_commands: AccountedVec<RenderCommand>,
+    source_bounds: SemanticSourceBounds,
+    affected_bounds: SemanticSourceBounds,
+    current_parent: SemanticSourceBounds,
+    domain: SemanticContributionDomain,
+    local_to_surface: Transform,
+}
+
+impl ContributionSequence {
+    fn try_new(
+        commands: RenderCommands,
+        initial_parent: SemanticSourceBounds,
+        domain: SemanticContributionDomain,
+        local_to_surface: Transform,
+        account: &Account,
+    ) -> Result<Self> {
+        let contributing_commands = account.retained(commands.len())?;
+        Ok(Self {
+            commands,
+            next_command: 0,
+            contributing_commands,
+            source_bounds: SemanticSourceBounds::exactly_empty(),
+            affected_bounds: SemanticSourceBounds::exactly_empty(),
+            current_parent: initial_parent,
+            domain,
+            local_to_surface,
+        })
+    }
+
+    fn next(&mut self, account: &Account) -> Result<Option<RenderCommand>> {
+        let Some(command) = self.commands.get(self.next_command) else {
+            return Ok(None);
+        };
+        account.work(RenderWork::CommandVisits, 1)?;
+        let command = command.clone();
+        // A real element exists at the old cursor, so advancing stays at most
+        // the sequence length and cannot overflow.
+        self.next_command += 1;
+        Ok(Some(command))
+    }
+
+    fn include(&mut self, contribution: SemanticCommandContribution) -> Result<()> {
+        let contribution = contribution.try_apply_domain(self.domain)?;
+        self.current_parent = contribution.current_parent;
+        if let Some(command) = contribution.command {
+            self.source_bounds = self.source_bounds.try_union(contribution.source_bounds)?;
+            self.affected_bounds = self
+                .affected_bounds
+                .try_union(contribution.affected_bounds)?;
+            self.contributing_commands.append_slot()?.write(command);
+        }
+        Ok(())
+    }
+
+    fn finish(self, account: &Account) -> Result<SemanticSourceContribution> {
+        Ok(SemanticSourceContribution {
+            commands: RenderCommands::new_in(self.contributing_commands, account)?,
+            source_bounds: self.source_bounds,
+            affected_bounds: self.affected_bounds,
+            current_parent: self.current_parent,
+        })
+    }
+}
+
+struct LayerQualification {
+    layer: NormalizedLayer,
+    layer_to_surface: Transform,
+    singular_source: bool,
+    has_bounded_children: bool,
+    transparent_wrapper: bool,
+}
+
+enum CommandQualification {
+    Complete(SemanticCommandContribution),
+    Children {
+        layer: LayerQualification,
+        commands: RenderCommands,
+        initial_parent: SemanticSourceBounds,
+        domain: SemanticContributionDomain,
+    },
+}
+
+/// Every entry is an actual layer awaiting its child's completed image. Its
+/// parent retains sibling order, surrounding contribution and spatial domain.
+struct SuspendedLayer {
+    parent: ContributionSequence,
+    layer: LayerQualification,
+}
+
 impl SemanticSourceContribution {
     pub(super) fn try_from_commands(
         commands: RenderCommands,
@@ -280,46 +376,76 @@ impl SemanticSourceContribution {
         local_to_surface: Transform,
         account: &Account,
     ) -> Result<Self> {
-        let mut contributing_commands = account.retained(commands.len())?;
-        let mut source_bounds = SemanticSourceBounds::exactly_empty();
-        let mut affected_bounds = SemanticSourceBounds::exactly_empty();
-        let mut current_parent = initial_parent;
-        for command in commands.iter() {
-            account.work(RenderWork::CommandVisits, 1)?;
-            let command = command.clone();
-            let prior_parent = current_parent;
-            let contribution = Self::try_from_command(
-                command,
-                prior_parent,
-                domain,
-                context,
-                local_to_surface,
-                account,
-            )?
-            .try_apply_domain(domain)?;
-            current_parent = contribution.current_parent;
-            if let Some(command) = contribution.command {
-                source_bounds = source_bounds.try_union(contribution.source_bounds)?;
-                affected_bounds = affected_bounds.try_union(contribution.affected_bounds)?;
-                contributing_commands.append_slot()?.write(command);
+        let mut current = ContributionSequence::try_new(
+            commands,
+            initial_parent,
+            domain,
+            local_to_surface,
+            account,
+        )?;
+        let mut pending = account.temporary::<SuspendedLayer>(0)?;
+        loop {
+            if let Some(command) = current.next(account)? {
+                match Self::try_qualify_command(
+                    command,
+                    current.current_parent,
+                    current.domain,
+                    current.local_to_surface,
+                    account,
+                )? {
+                    CommandQualification::Complete(contribution) => {
+                        current.include(contribution)?
+                    }
+                    CommandQualification::Children {
+                        layer,
+                        commands,
+                        initial_parent,
+                        domain,
+                    } => {
+                        let sequence = ContributionSequence::try_new(
+                            commands,
+                            initial_parent,
+                            domain,
+                            layer.layer_to_surface,
+                            account,
+                        )?;
+                        if pending.len() == pending.capacity() {
+                            pending.grow(pending.capacity().max(1))?;
+                        }
+                        pending.push(SuspendedLayer {
+                            parent: current,
+                            layer,
+                        })?;
+                        current = sequence;
+                    }
+                }
+            } else {
+                let children = current.finish(account)?;
+                let Some(SuspendedLayer { parent, layer }) = pending.pop() else {
+                    return Ok(children);
+                };
+                let contribution = Self::finish_layer(
+                    layer,
+                    children,
+                    parent.current_parent,
+                    parent.domain,
+                    context,
+                    parent.local_to_surface,
+                    account,
+                )?;
+                current = parent;
+                current.include(contribution)?;
             }
         }
-        Ok(Self {
-            commands: RenderCommands::new_in(contributing_commands, account)?,
-            source_bounds,
-            affected_bounds,
-            current_parent,
-        })
     }
 
-    fn try_from_command(
+    fn try_qualify_command(
         command: RenderCommand,
         current_parent: SemanticSourceBounds,
         domain: SemanticContributionDomain,
-        context: FrameContext,
         local_to_surface: Transform,
         account: &Account,
-    ) -> Result<SemanticCommandContribution> {
+    ) -> Result<CommandQualification> {
         match command {
             RenderCommand::PreparedGlyphRun {
                 run,
@@ -340,6 +466,7 @@ impl SemanticSourceContribution {
                     bounds,
                     current_parent,
                 )
+                .map(CommandQualification::Complete)
             }
             RenderCommand::TextRun {
                 font,
@@ -362,13 +489,13 @@ impl SemanticSourceContribution {
                     source_bounds,
                     current_parent,
                 )
+                .map(CommandQualification::Complete)
             }
-            RenderCommand::Layer { layer, children } => Self::try_from_layer(
+            RenderCommand::Layer { layer, children } => Self::try_prepare_layer(
                 layer,
                 children,
                 current_parent,
                 domain,
-                context,
                 local_to_surface,
                 account,
             ),
@@ -379,6 +506,7 @@ impl SemanticSourceContribution {
             | RenderCommand::ImageRegion { .. }) => {
                 let bounds = SemanticSourceBounds::try_for_command(&command, account)?;
                 SemanticCommandContribution::try_new(command, bounds, current_parent)
+                    .map(CommandQualification::Complete)
             }
         }
     }
@@ -406,26 +534,27 @@ impl SemanticSourceContribution {
         }
     }
 
-    fn try_from_layer(
-        mut layer: NormalizedLayer,
+    fn try_prepare_layer(
+        layer: NormalizedLayer,
         children: RenderCommands,
         current_parent: SemanticSourceBounds,
         domain: SemanticContributionDomain,
-        context: FrameContext,
         local_to_surface: Transform,
         account: &Account,
-    ) -> Result<SemanticCommandContribution> {
+    ) -> Result<CommandQualification> {
         let layer_to_surface = layer.transform.then_in(local_to_surface, account)?;
         let singular_source = linear_transform_is_rank_deficient(layer_to_surface)?;
         if singular_source && layer.clip.is_some() {
             // Own clip coverage collapses under the complete ancestor mapping.
             // Remove the operation before its source prerequisites or graph route.
-            return Ok(SemanticCommandContribution {
-                command: None,
-                source_bounds: SemanticSourceBounds::exactly_empty(),
-                affected_bounds: SemanticSourceBounds::exactly_empty(),
-                current_parent,
-            });
+            return Ok(CommandQualification::Complete(
+                SemanticCommandContribution {
+                    command: None,
+                    source_bounds: SemanticSourceBounds::exactly_empty(),
+                    affected_bounds: SemanticSourceBounds::exactly_empty(),
+                    current_parent,
+                },
+            ));
         }
         let has_bounded_children = commands_have_bounded_operation(&children, account)?;
         // Only an explicit isolated group starts against transparent black.
@@ -462,14 +591,36 @@ impl SemanticSourceContribution {
                 SemanticContributionDomain::LocalUnbounded
             }
         };
-        let mut children = Self::try_from_commands(
-            children,
-            child_parent,
-            child_domain,
-            context,
+        Ok(CommandQualification::Children {
+            layer: LayerQualification {
+                layer,
+                layer_to_surface,
+                singular_source,
+                has_bounded_children,
+                transparent_wrapper,
+            },
+            commands: children,
+            initial_parent: child_parent,
+            domain: child_domain,
+        })
+    }
+
+    fn finish_layer(
+        qualification: LayerQualification,
+        mut children: Self,
+        current_parent: SemanticSourceBounds,
+        domain: SemanticContributionDomain,
+        context: FrameContext,
+        local_to_surface: Transform,
+        account: &Account,
+    ) -> Result<SemanticCommandContribution> {
+        let LayerQualification {
+            mut layer,
             layer_to_surface,
-            account,
-        )?;
+            singular_source,
+            has_bounded_children,
+            transparent_wrapper,
+        } = qualification;
         let mut source_bounds = match layer.mask.as_ref().filter(|mask| mask.supplies_coverage()) {
             Some(mask) => {
                 SemanticSourceBounds::try_from_rect(mask.bounds())?.with_sampled_mask_coverage(true)

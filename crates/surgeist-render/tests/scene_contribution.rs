@@ -9,10 +9,9 @@ fn empty_layer_frame(depth: usize) {
         .stack_size(2 * 1024 * 1024)
         .spawn(move || {
             let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
-            let mut surface = pollster::block_on(
-                renderer.create_headless(Size::try_new(2.0, 2.0).unwrap(), 1.0),
-            )
-            .unwrap();
+            let mut surface =
+                pollster::block_on(renderer.create_headless(Size::try_new(2.0, 2.0).unwrap(), 1.0))
+                    .unwrap();
             let mut scene = Scene::new();
             for _ in 0..depth {
                 let child = scene;
