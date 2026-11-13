@@ -316,6 +316,9 @@ impl DomSourceScriptSettings {
 /// The value returned by a completed Source operation with an output.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceOutput {
+    /// The qualified toggle's selected presence branch. A removal returns
+    /// false even if another namespace has an attribute with the same spelling.
+    ElementAttributePresent(bool),
     /// Whether the named pseudo-attribute is present after a toggle.
     ProcessingInstructionAttributePresent(bool),
     Range(crate::DomRangeId),
@@ -1469,6 +1472,24 @@ impl DomSourceEdit {
                 namespace: None,
                 name: qualified_name.into(),
                 return_identity: false,
+            },
+        }
+    }
+    /// Validate and toggle the first matching qualified attribute as one edit.
+    /// An absent force appends if no match exists, or removes the first match.
+    /// An explicit force selects presence. A matching branch only returns its
+    /// Boolean output. Removing one of several same-spelled attributes returns
+    /// false while retaining the other occurrences.
+    pub fn toggle_attribute(
+        node: NodeId,
+        qualified_name: impl Into<DocumentString>,
+        force: Option<bool>,
+    ) -> Self {
+        Self {
+            command: Command::ToggleAttribute {
+                node: node.into(),
+                name: qualified_name.into(),
+                force,
             },
         }
     }

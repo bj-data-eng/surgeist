@@ -23,6 +23,118 @@ fn policy() -> DomSourceLimits {
 }
 
 #[test]
+fn qualified_toggle_admits_the_scalar_with_the_exact_ordered_mutation() {
+    use surgeist_dom::DomChange;
+
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let element = setup.create_element_ns(&document, Namespace::html(), "div");
+    let first = Namespace::from_uri("urn:first");
+    let second = Namespace::from_uri("urn:second");
+    setup.set_attribute_ns(&element, first.clone(), "p:Mixed", "original");
+    setup.set_attribute_ns(&element, second.clone(), "p:Mixed", "other");
+    let element = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&element)
+        .unwrap()
+        .unwrap();
+    let before = dom.snapshot();
+    let name = DocumentString::from("Mixed");
+    let attr_id = |snapshot: &surgeist_dom::DomSnapshot, namespace: &Namespace| {
+        snapshot
+            .node(element)
+            .unwrap()
+            .get_attribute_node_ns(namespace, &name)
+            .unwrap()
+            .id()
+    };
+    let removed = attr_id(&before, &first);
+    let retained = attr_id(&before, &second);
+    let budget =
+        |outputs| DomSourceLimits::new(64_000_000, 1_000_000, 20_000_000, 128, outputs, 0, 8);
+    let edit = |force| DomSourceEdit::toggle_attribute(element, "p:Mixed", Some(force));
+    let mut invalid = dom
+        .begin_source_edit(
+            DomSourceEdit::toggle_attribute(element, "bad name", Some(false)),
+            budget(1),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        invalid.advance(&cancel),
+        Err(DomError::InvalidCharacter)
+    ));
+    drop(invalid);
+    for (force, exact) in [(true, 1), (false, 3)] {
+        let mut short = dom
+            .begin_source_edit(edit(force), budget(exact - 1), &cancel)
+            .unwrap();
+        assert!(matches!(
+            short.advance(&cancel),
+            Err(DomError::SourceOutputLimit)
+        ));
+        drop(short);
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        let mut lease = dom
+            .begin_source_edit(edit(force), budget(exact), &cancel)
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("toggle must complete in one edit");
+        };
+        assert_eq!(
+            done.output(),
+            Some(DomSourceOutput::ElementAttributePresent(force))
+        );
+        assert_eq!(done.published_node(), None);
+        let changes = done.commit().changes().changes();
+        if force {
+            assert!(changes.is_empty());
+            assert_eq!(lease.snapshot().stamp(), before.stamp());
+        } else {
+            assert_eq!(
+                changes,
+                [
+                    DomChange::Attributes(element),
+                    DomChange::AttrOwner(removed)
+                ]
+            );
+        }
+    }
+    let after = dom.snapshot();
+    let removed = after.attr(removed.node()).unwrap();
+    assert_eq!(removed.owner_element(), None);
+    assert_eq!(removed.value(), &"original".into());
+    assert_eq!(attr_id(&after, &second), retained);
+
+    let mut append = dom
+        .begin_source_edit(
+            DomSourceEdit::toggle_attribute(element, "onclick", None),
+            policy(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(done) = append.advance(&cancel).unwrap() else {
+        panic!("toggle's empty append requires no sink verification");
+    };
+    assert_eq!(
+        done.output(),
+        Some(DomSourceOutput::ElementAttributePresent(true))
+    );
+    let after = append.snapshot();
+    let attr = after
+        .node(element)
+        .unwrap()
+        .get_attribute_node(&"onclick".into())
+        .unwrap();
+    assert!(attr.value().is_empty());
+    assert!(attr.name().namespace().is_none());
+    assert!(attr.name().prefix().is_none());
+}
+
+#[test]
 fn standard_attribute_sink_requires_the_node_documents_global() {
     let cancel = AtomicBool::new(false);
     let mut dom = owner();

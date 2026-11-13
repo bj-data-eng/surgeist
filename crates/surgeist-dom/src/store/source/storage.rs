@@ -521,6 +521,7 @@ pub(in crate::store) fn commands(
                 }
                 payload.string(name)?;
             }
+            Command::ToggleAttribute { name, .. } => payload.string(name)?,
             Command::ReplaceData { data, .. } => payload.string(data)?,
             Command::ProcessingInstructionAttribute { edit, .. } => {
                 use crate::DomProcessingInstructionAttributeEdit::*;

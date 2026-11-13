@@ -1601,7 +1601,7 @@ fn public_node_host_with_reports(pending_exception_reports: usize) -> DocumentSc
         target,
         cancellation,
         20_000,
-        200_000,
+        public_node_source_limits(200_000, 64),
         pending_exception_reports,
     )
 }
@@ -1613,7 +1613,34 @@ pub(in crate::document_scripting) fn attach_public_nodes(
     node_work: u64,
     source_work: u64,
 ) -> DocumentScriptHost {
-    attach_public_nodes_with_reports(session, target, cancellation, node_work, source_work, 4)
+    attach_public_nodes_with_reports(
+        session,
+        target,
+        cancellation,
+        node_work,
+        public_node_source_limits(source_work, 64),
+        4,
+    )
+}
+
+pub(in crate::document_scripting) fn attach_public_nodes_with_source_output_limit(
+    session: DomSession,
+    target: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    outputs: usize,
+) -> DocumentScriptHost {
+    attach_public_nodes_with_reports(
+        session,
+        target,
+        cancellation,
+        8_000,
+        public_node_source_limits(200_000, outputs),
+        4,
+    )
+}
+
+fn public_node_source_limits(work: u64, outputs: usize) -> DomSourceLimits {
+    DomSourceLimits::new(16_000_000, 200_000, work, 64, outputs, 64, 3)
 }
 
 fn attach_public_nodes_with_reports(
@@ -1621,7 +1648,7 @@ fn attach_public_nodes_with_reports(
     target: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
     node_work: u64,
-    source_work: u64,
+    source_edits: DomSourceLimits,
     pending_exception_reports: usize,
 ) -> DocumentScriptHost {
     let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
@@ -1634,14 +1661,11 @@ fn attach_public_nodes_with_reports(
     .unwrap();
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     let mut registry = Some(registry);
-    attach_public_nodes_with_registry_and_reports(
-        session,
+    enable_public_nodes(
+        PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation).unwrap(),
         target,
-        cancellation,
-        node_work,
-        source_work,
+        (node_work, source_edits, pending_exception_reports),
         &mut registry,
-        pending_exception_reports,
     )
 }
 
@@ -1676,7 +1700,11 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_repor
     enable_public_nodes(
         PreparedDocumentScriptHost::prepare(session, 2_000_000, cancellation).unwrap(),
         target,
-        (node_work, source_work, pending_exception_reports),
+        (
+            node_work,
+            public_node_source_limits(source_work, 64),
+            pending_exception_reports,
+        ),
         registry,
     )
 }
@@ -1684,7 +1712,7 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_repor
 fn enable_public_nodes(
     prepared: PreparedDocumentScriptHost,
     target: DomHostedTopLevel,
-    (node_work, source_work, pending_exception_reports): (u64, u64, usize),
+    (node_work, source_edits, pending_exception_reports): (u64, DomSourceLimits, usize),
     registry: &mut Option<DomEventDispatcher<()>>,
 ) -> DocumentScriptHost {
     prepared
@@ -1704,7 +1732,7 @@ fn enable_public_nodes(
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
-                source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 3),
+                source_edits,
                 dispatch: DomEventDispatchLimits {
                     path_items: 8,
                     snapshot_listeners: 8,

@@ -1196,6 +1196,7 @@ enum NodeOutputKind {
     Document,
     RemovedAttribute,
     AttributeAttachment(AttachmentKind),
+    ElementAttributePresent(bool),
     ProcessingInstructionAttributePresent(bool),
 }
 
@@ -1223,6 +1224,7 @@ enum NodeTicket {
     Node(Key),
     RemovedAttribute(Key),
     AttributeAttachment(Key, AttachmentKind),
+    ElementAttributePresent(Key, bool),
     ProcessingInstructionAttributePresent(Key, bool),
 }
 
@@ -1232,6 +1234,7 @@ impl NodeTicket {
             Self::Node(key)
             | Self::RemovedAttribute(key)
             | Self::AttributeAttachment(key, _)
+            | Self::ElementAttributePresent(key, _)
             | Self::ProcessingInstructionAttributePresent(key, _) => key,
         }
     }
@@ -1277,6 +1280,9 @@ impl DomCommit {
                 }
                 NodeOutputKind::AttributeAttachment(kind) => {
                     crate::DomSourceOutput::AttributeAttachment(kind.published(*node))
+                }
+                NodeOutputKind::ElementAttributePresent(present) => {
+                    crate::DomSourceOutput::ElementAttributePresent(*present)
                 }
                 NodeOutputKind::ProcessingInstructionAttributePresent(present) => {
                     crate::DomSourceOutput::ProcessingInstructionAttributePresent(*present)
@@ -3956,6 +3962,10 @@ impl Draft {
             Command::SetCustomValidity { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;
+            }
+            Command::ToggleAttribute { node, name, force } => {
+                let node = self.resolve(node.clone())?;
+                self.toggle_attribute(node, name, *force, limits, cancelled)?;
             }
             Command::SetAttributeValue { attribute, value } => {
                 let attr = self.resolve(attribute.node().into())?;

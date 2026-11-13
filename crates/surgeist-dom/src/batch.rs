@@ -283,6 +283,11 @@ pub(crate) enum Command {
         value: DocumentString,
         mode: AttributeSetterMode,
     },
+    ToggleAttribute {
+        node: NodeOperand,
+        name: DocumentString,
+        force: Option<bool>,
+    },
     SetAttributeValue {
         attribute: DomAttrId,
         value: DocumentString,
