@@ -70,6 +70,12 @@ pub(super) fn install<'scope>(
         },
         &illegal_constructor(),
     )?;
+    custom_elements::install_node_getter(
+        scope,
+        &prototype,
+        custom_elements::Receiver::DocumentOrShadowRoot,
+        capture,
+    )?;
     for (member, key, name) in [
         (Member::Mode, &ascii(b"mode")[..], &ascii(b"get mode")[..]),
         (

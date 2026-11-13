@@ -161,6 +161,12 @@ impl DocumentPrototypes {
             fragment_callback,
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
+        custom_elements::install_node_getter(
+            scope,
+            &document,
+            custom_elements::Receiver::DocumentOrShadowRoot,
+            funding.capture,
+        )?;
         fragment::install_factory(scope, &document, &funding.capture)?;
         attr_factory::install(scope, &document, &funding.capture)?;
         element_factory::install(scope, &document, &funding.capture)?;

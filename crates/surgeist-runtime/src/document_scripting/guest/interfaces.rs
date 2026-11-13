@@ -1,5 +1,6 @@
 //! Public native interfaces on the authenticated, unpublished Window.
 
+mod custom_elements;
 mod document;
 mod listener_methods;
 mod operations;
@@ -8,6 +9,7 @@ mod toggle_event;
 mod trusted_policy;
 
 use super::*;
+pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
 pub(super) use document::{GuestNodeProjection, NodeLifetime};
 use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
@@ -17,6 +19,7 @@ use surgeist_bindings_js::{
         declarations::{event_constructor_0_event_init_dict, event_constructor_0_type},
     },
 };
+use surgeist_dom::DocumentId;
 
 const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     let mut units = [0; N];
@@ -103,6 +106,7 @@ struct OriginBindings {
     target: RetainedCallbackObject,
     documents: document::DocumentPrototypes,
     elements: document::element::ElementBindings,
+    custom_elements: custom_elements::GlobalRegistry,
     next: Option<Box<Self>>,
     _backing: GuestBacking,
 }
@@ -146,6 +150,7 @@ pub(super) struct PublicEventBindings {
     trusted: RetainedCallbackObject,
     dispatch_in_attachment: RetainedCallbackObject,
     document: document::DocumentBindings,
+    custom_elements: custom_elements::GlobalRegistry,
     origins: RefCell<Option<Box<OriginBindings>>>,
     origin_cost: OriginCost,
 }
@@ -173,20 +178,29 @@ impl PublicEventBindings {
             realm: script.authority.identity(),
             document: script.target.document(),
         };
-        let inbox = owner
-            .session
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?
-            .dom()
-            .raw()
-            .node_retirement_inbox(admission.limits.node_retirement, &owner.cancellation)
-            .map_err(DocumentScriptNativeError::from)?;
+        let (inbox, registry) = {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let snapshot = session.snapshot();
+            let registry = custom_elements::document_registry(&snapshot, permit.document)?;
+            let inbox = session
+                .dom()
+                .raw()
+                .node_retirement_inbox(admission.limits.node_retirement, &owner.cancellation)?;
+            (inbox, registry)
+        };
         script
             .process
             .execution()
             .in_realm(&script.realm, |scope| {
                 Ok(Self::install_in_realm(
-                    scope, owner, permit, admission, inbox,
+                    scope,
+                    owner,
+                    permit,
+                    admission,
+                    (inbox, registry),
                 ))
             })?
     }
@@ -196,7 +210,10 @@ impl PublicEventBindings {
         owner: &Rc<NativeOwner>,
         permit: DocumentScriptPermit,
         admission: &GuestEventAdmission,
-        inbox: surgeist_dom::DomNodeRetirementInbox,
+        (inbox, registry): (
+            surgeist_dom::DomNodeRetirementInbox,
+            surgeist_dom::DomRegistryId,
+        ),
     ) -> Result<Self, DocumentGuestEventError> {
         let fund = |bytes| admission.budget.reserve(owner, admission.limits, bytes);
         let account_bytes = size_of::<Callbacks>()
@@ -357,6 +374,14 @@ impl PublicEventBindings {
         let observed = scope.callback_object(&trusted)?;
         let trusted = scope.retain_callback_object(observed, fund)?;
         let window = scope.global()?;
+        let custom_elements = custom_elements::install(
+            scope,
+            &window,
+            document_id,
+            registry,
+            &capture_origin,
+            &fund_origin,
+        )?;
         let trusted_types = trusted_policy::install(scope, &window, &capture, &fund)?;
         let window = scope.callback_object(&window)?;
         let window = scope.retain_callback_object(window, fund)?;
@@ -395,6 +420,7 @@ impl PublicEventBindings {
             trusted,
             dispatch_in_attachment,
             document,
+            custom_elements,
             origins: RefCell::new(None),
             origin_cost,
         })
@@ -409,7 +435,7 @@ impl PublicEventBindings {
         scope: &mut Scope<'_>,
         events: &GuestEvents,
         dom_exception_limits: DomExceptionLimits,
-        global: DomHostedGlobalId,
+        (global, document, registry): (DomHostedGlobalId, DocumentId, surgeist_dom::DomRegistryId),
         admission: OriginAdmission,
     ) -> Result<(), DocumentGuestEventError> {
         let fund = |bytes| admission.take(events, bytes);
@@ -451,6 +477,9 @@ impl PublicEventBindings {
             &capture,
             &fund,
         )?;
+        let window = scope.global()?;
+        let custom_elements =
+            custom_elements::install(scope, &window, document, registry, &capture, &fund)?;
         let target = scope.callback_object(&target)?;
         let target = scope.retain_callback_object(target, fund)?;
         admission.finish()?;
@@ -463,6 +492,7 @@ impl PublicEventBindings {
             target,
             documents,
             elements,
+            custom_elements,
             next: origins.take(),
             _backing: backing,
         });

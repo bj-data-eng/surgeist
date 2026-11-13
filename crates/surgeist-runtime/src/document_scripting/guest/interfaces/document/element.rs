@@ -187,6 +187,12 @@ impl ElementBindings {
             )?;
         }
         super::shadow::install_attachment(scope, &element, capture)?;
+        custom_elements::install_node_getter(
+            scope,
+            &element,
+            custom_elements::Receiver::Element,
+            capture,
+        )?;
         attribute::install(scope, &element, capture)?;
         super::parent_node::install(
             scope,

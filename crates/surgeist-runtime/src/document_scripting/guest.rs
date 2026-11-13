@@ -19,6 +19,7 @@ use crate::dom_event::{
 };
 pub use csp_task::DocumentCspViolationProgress;
 use interfaces::PublicEventBindings;
+pub(super) use interfaces::creation_document_registry;
 pub(crate) use reports::QueuedViolation;
 use reports::{DirectExceptions, ExceptionRoots};
 pub(super) use reports::{GuestExceptionReports, ViolationQueue};
@@ -646,14 +647,14 @@ impl GuestEvents {
         process: &mut Process,
         realm: &Realm,
         dom_exception_limits: DomExceptionLimits,
-        global: DomHostedGlobalId,
+        origin: (DomHostedGlobalId, DocumentId, surgeist_dom::DomRegistryId),
         admission: OriginAdmission,
     ) -> Result<(), DocumentScriptError> {
         let public = self.public.as_ref().ok_or(Error::RegistryConflict)?;
         process
             .execution()
             .in_realm(realm, |scope| {
-                Ok(public.install_origin(scope, self, dom_exception_limits, global, admission))
+                Ok(public.install_origin(scope, self, dom_exception_limits, origin, admission))
             })?
             .map_err(creation_realm_error)
     }

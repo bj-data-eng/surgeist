@@ -1113,7 +1113,7 @@ impl DocumentScriptHost {
             .retained_bytes_with(bytes)
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let cancel = &self.native.cancellation;
-        let backing = {
+        let (backing, registry) = {
             let mut session = self
                 .native
                 .session
@@ -1138,9 +1138,11 @@ impl DocumentScriptHost {
             if total > self.native.storage_limit {
                 return Err(DocumentScriptNativeError::StorageLimit.into());
             }
-            hosted
+            let backing = hosted
                 .retain_script_payload(&mut dom, bytes, cancel)
-                .map_err(DocumentScriptNativeError::from)?
+                .map_err(DocumentScriptNativeError::from)?;
+            let registry = guest::creation_document_registry(&dom.snapshot(), origin.document())?;
+            (backing, registry)
         };
         let admission = match &engine.guest_events {
             Some(events) => events.prepare_origin(&self.native)?,
@@ -1152,7 +1154,7 @@ impl DocumentScriptHost {
                 &mut engine.process,
                 &realm,
                 self.native.dom_exception_limits.get(),
-                origin.global(),
+                (origin.global(), origin.document(), registry),
                 admission,
             )?;
         }
