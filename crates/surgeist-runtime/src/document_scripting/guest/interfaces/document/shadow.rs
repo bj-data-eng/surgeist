@@ -173,6 +173,7 @@ impl Capture {
                     node.reusable_shadow_root_with(native.properties().mode(), || events.step())?;
                 Ok((document, root))
             })?;
+            let enclosing_operation = owner.active_synchronous_reactions.get();
             let mut callback_failure = None;
             let mut has_callback = |definition| {
                 public
@@ -181,6 +182,17 @@ impl Capture {
                         callback_failure = Some(error);
                         DomError::InvalidSourceOperation
                     })
+            };
+            let settle_reaction_route = |scope: &mut Scope<'scope>, reactions: bool| {
+                if !reactions {
+                    return Ok(());
+                }
+                if enclosing_operation.is_some() {
+                    owner.synchronous_shadow_reactions.set(true);
+                    Ok(())
+                } else {
+                    public.schedule_backup_reactions(scope)
+                }
             };
             if let Some(root) = existing
                 && let Some(projected) = public
@@ -196,6 +208,7 @@ impl Capture {
                             events.limits.source_edits,
                             Some(surgeist_dom::DomShadowReactionRoute::new(
                                 &registration,
+                                enclosing_operation,
                                 &mut has_callback,
                             )),
                             &owner.cancellation,
@@ -206,9 +219,7 @@ impl Capture {
                     Ok(reactions)
                 });
                 let reactions = callback_failure.map_or(reactions, Err)?;
-                if reactions {
-                    public.schedule_backup_reactions(scope)?;
-                }
+                settle_reaction_route(scope, reactions)?;
                 return Ok(projected);
             }
             let origin = if let Some(root) = existing {
@@ -245,6 +256,7 @@ impl Capture {
                                     (events.limits.source_edits, events.limits.node_retirement),
                                     Some(surgeist_dom::DomShadowReactionRoute::new(
                                         &registration,
+                                        enclosing_operation,
                                         &mut has_callback,
                                     )),
                                     &owner.cancellation,
@@ -262,9 +274,7 @@ impl Capture {
                 publish(&public.document.prototypes)
             };
             let value = callback_failure.map_or(value, Err)?;
-            if reactions {
-                public.schedule_backup_reactions(scope)?;
-            }
+            settle_reaction_route(scope, reactions)?;
             Ok(value)
         })();
         match result {

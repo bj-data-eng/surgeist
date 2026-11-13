@@ -1,7 +1,7 @@
 //! Retained custody indexed by exact native node retirement.
 
 use super::super::PublicEventBindings;
-use super::super::custom_elements::ActiveReactionQueue;
+use super::super::custom_elements::{ActiveReactionQueue, SynchronousReactionScope};
 use super::*;
 use surgeist_bindings_js::NativeProjectionPrototype;
 use surgeist_dom::{
@@ -527,7 +527,7 @@ impl OrdinaryBindings {
         events: &GuestEvents,
         public: &PublicEventBindings,
         request: DomSourceCustomElementRequest,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+    ) -> Result<(Value<'scope>, bool), DocumentGuestEventError> {
         let cancel = &owner.cancellation;
         let (
             constructor,
@@ -641,7 +641,10 @@ impl OrdinaryBindings {
             pending.returned = Some(scope.retain(&receiver));
             let _ = entry.frame.receiver.set(scope.retain(&receiver));
         }
+        let reaction_scope = SynchronousReactionScope::enter(owner, request.operation());
         let result = scope.construct_without_arguments(&constructor);
+        let has_reactions = reaction_scope.has_reactions();
+        drop(reaction_scope);
         drop(callback_scope);
         drop(entry);
         let result = match result {
@@ -691,7 +694,7 @@ impl OrdinaryBindings {
             self.finish_constructor(scope, (owner, events), public, &mut pending)
         };
         match result {
-            Ok(value) => Ok(value),
+            Ok(value) => Ok((value, has_reactions)),
             Err(error) => {
                 owner.keep_constructor_result(pending);
                 Err(error)
@@ -1145,7 +1148,12 @@ impl OrdinaryBindings {
         match result {
             ElementFactoryResult::Created(value) => Ok(value),
             ElementFactoryResult::Constructor(request) => {
-                self.run_constructor(scope, owner, events, public, request)
+                let (value, has_reactions) =
+                    self.run_constructor(scope, owner, events, public, request)?;
+                if has_reactions {
+                    capture.drain_native_reactions(scope, owner, events, request.operation())?;
+                }
+                Ok(value)
             }
         }
     }

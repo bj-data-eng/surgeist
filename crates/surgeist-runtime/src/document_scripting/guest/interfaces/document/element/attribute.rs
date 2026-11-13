@@ -462,9 +462,14 @@ impl Capture {
             slot: &owner.active_attribute,
             previous: owner.active_attribute.replace(Some(request)),
         };
+        let reactions = super::super::super::custom_elements::SynchronousReactionScope::enter(
+            owner,
+            request.operation(),
+        );
         let result = self.callbacks.conversion.run(scope, |conversion| {
             conversion.invoke_default_policy(callback, kind, input.code_units(), &sink)
         });
+        drop(reactions);
         drop(active);
         drop(callback_scope);
         retained.reply = match result {

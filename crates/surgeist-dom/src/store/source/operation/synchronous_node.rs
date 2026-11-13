@@ -15,22 +15,26 @@ pub(super) enum SynchronousNode<'a> {
 /// The lookup must use the original definition identity and cannot enter guest code.
 pub struct DomShadowReactionRoute<'a> {
     registration: &'a crate::DomDocumentScriptRegistration,
+    enclosing_operation: Option<crate::DomSourceOperationId>,
     has_callback: &'a mut dyn FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
 }
 
 impl<'a> DomShadowReactionRoute<'a> {
     pub fn new(
         registration: &'a crate::DomDocumentScriptRegistration,
+        enclosing_operation: Option<crate::DomSourceOperationId>,
         has_callback: &'a mut dyn FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
     ) -> Self {
         Self {
             registration,
+            enclosing_operation,
             has_callback,
         }
     }
     fn reborrow(&mut self) -> DomShadowReactionRoute<'_> {
         DomShadowReactionRoute {
             registration: self.registration,
+            enclosing_operation: self.enclosing_operation,
             has_callback: &mut *self.has_callback,
         }
     }
@@ -45,11 +49,26 @@ impl ShadowReactionRoute<'_> {
     pub(super) fn prepare(
         &mut self,
         reactions: &mut super::super::reactions::Publication,
+        dom: &Dom,
         formation: &formation::Formation,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
-        let present = reactions.route_to_backup(
+        if let Some(operation) = self.route.enclosing_operation {
+            let mut qualified = false;
+            for parent in dom.source_parents.iter().rev() {
+                formation.step(cancel)?;
+                if parent.id() == operation && parent.permits_reentry() {
+                    qualified = true;
+                    break;
+                }
+            }
+            if !qualified {
+                return Err(DomError::InvalidSourceOperation);
+            }
+        }
+        let present = reactions.route_shadow_removal(
             self.route.registration,
+            self.route.enclosing_operation,
             &mut self.route.has_callback,
             formation,
             cancel,
@@ -256,7 +275,7 @@ impl Dom {
     /// Attach or reuse a ShadowRoot and arm its exact retirement watch in the
     /// same Source publication. Refusal leaves the original host relation and
     /// retirement index intact. A reaction-producing reuse requires the
-    /// original active script registration and reports a queued backup segment.
+    /// original active script registration and reports whether it received reactions.
     pub fn attach_shadow_with_node_retirement_watch(
         &mut self,
         host: NodeId,

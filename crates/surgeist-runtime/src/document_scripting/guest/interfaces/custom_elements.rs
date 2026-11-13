@@ -1772,6 +1772,38 @@ impl QueuedReaction {
     }
 }
 
+pub(super) struct SynchronousReactionScope<'a> {
+    operation: &'a Cell<Option<surgeist_dom::DomSourceOperationId>>,
+    previous: Option<surgeist_dom::DomSourceOperationId>,
+    published: &'a Cell<bool>,
+    previous_published: bool,
+}
+
+impl<'a> SynchronousReactionScope<'a> {
+    pub(super) fn enter(
+        owner: &'a NativeOwner,
+        operation: surgeist_dom::DomSourceOperationId,
+    ) -> Self {
+        Self {
+            operation: &owner.active_synchronous_reactions,
+            previous: owner.active_synchronous_reactions.replace(Some(operation)),
+            published: &owner.synchronous_shadow_reactions,
+            previous_published: owner.synchronous_shadow_reactions.replace(false),
+        }
+    }
+
+    pub(super) fn has_reactions(&self) -> bool {
+        self.published.get()
+    }
+}
+
+impl Drop for SynchronousReactionScope<'_> {
+    fn drop(&mut self) {
+        self.operation.set(self.previous);
+        self.published.set(self.previous_published);
+    }
+}
+
 fn reaction_registration(
     owner: &NativeOwner,
 ) -> Result<Rc<DomDocumentScriptRegistration>, DocumentScriptNativeError> {

@@ -420,9 +420,10 @@ pub(in crate::store) struct Publication {
 }
 
 impl Publication {
-    pub(in crate::store) fn route_to_backup(
+    pub(in crate::store) fn route_shadow_removal(
         &mut self,
         registration: &crate::DomDocumentScriptRegistration,
+        enclosing_operation: Option<crate::DomSourceOperationId>,
         mut has_callback: impl FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
         formation: &formation::Formation,
         cancel: &AtomicBool,
@@ -463,9 +464,13 @@ impl Publication {
         if let Some(error) = failure {
             return Err(error);
         }
-        slot.backup = true;
-        batch.backup_pending = batch.facts.len();
-        Ok(batch.backup_pending != 0)
+        if let Some(operation) = enclosing_operation {
+            slot.operation = operation;
+        } else {
+            slot.backup = true;
+            batch.backup_pending = batch.facts.len();
+        }
+        Ok(!batch.facts.is_empty())
     }
 
     pub(in crate::store) fn publish(mut self) {
