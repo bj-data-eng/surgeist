@@ -217,6 +217,8 @@ pub enum GlyphNumericPhase {
     Placement,
     /// Positive local-x synthesis displacement was absorbed by point conversion.
     Synthesis,
+    /// Selected bitmap source-color calibration or channel arithmetic.
+    BitmapColor,
 }
 
 /// Variation metadata whose malformed presence cannot mean static/default font.
@@ -452,9 +454,9 @@ impl FontData {
     /// All glyphs succeed before an immutable result is published. COLRv0 and
     /// COLRv1 PaintGlyph→PaintSolid with one optional translation and static
     /// root clip are supported at default coordinates without synthesis.
-    /// sbix noninterlaced 8-bit RGBA PNG with only IHDR, contiguous IDAT and
-    /// IEND chunks uses retained strike/bearing metadata
-    /// and decoded pixels under that same instance restriction. Other selected
+    /// sbix noninterlaced 8-bit RGBA PNG with IHDR, contiguous IDAT, IEND and
+    /// supported sRGB/gAMA/cHRM color chunks uses retained strike/bearing
+    /// metadata and decoded pixels under that same instance restriction. Other selected
     /// operations/formats refuse explicitly, without representation fallback.
     /// Palette0 is the default; CurrentColor uses the caller's paint.
     /// Consecutive ordinary outlines share one NonZero fill. Intrinsic paints

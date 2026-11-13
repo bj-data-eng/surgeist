@@ -47,7 +47,9 @@ describes the separate preparation contract.
 `surgeist-font`. `FontData::prepare_glyph_run` admits immutable glyph resources
 without a GPU.
 It retains qualified outline paths, COLR paint operations or decoded sbix PNG
-pixels, with representation-derived `Ink` or proven `Empty` bounds. Direct and
+pixels, with representation-derived `Ink` or proven `Empty` bounds. The PNG
+path interprets supported `sRGB`/`gAMA`/`cHRM` source colors into straight-alpha
+sRGB, with explicit native defaults, white adaptation and terminal clipping. Direct and
 graph drawing consume those same resources. The [glyph admission
 reference](docs/reference.md#glyph-admission) defines the supported formats,
 effective instances, numeric rules and explicit resource limits.

@@ -1,6 +1,6 @@
 //! Owned narrow PNG decoding, authored from W3C PNG Third Edition,
 //! 24 June 2025, sections 5, 9–11: <https://www.w3.org/TR/2025/REC-png-3-20250624/>.
-//! Only IHDR, contiguous IDAT and IEND, noninterlaced RGBA8 are admitted.
+//! Noninterlaced RGBA8 admits sRGB/gAMA/cHRM source descriptions.
 //! Other valid profiles/ancillary semantics refuse rather than being ignored.
 //! miniz_oxide 0.8.9's safe low-level core owns fixed inline state, not an
 //! allocating stream decoder. Its state and source-declared Huffman temporary
@@ -8,6 +8,8 @@
 //! scalar call-stack/compiler temporaries are not an allocator-storage promise.
 
 use super::*;
+
+mod color;
 use miniz_oxide::inflate::{
     TINFLStatus,
     core::{DecompressorOxide, decompress, inflate_flags},
@@ -22,6 +24,7 @@ pub(super) struct Decoded {
 struct Header {
     layout: ScanlineLayout,
     idat: usize,
+    color: color::Interpretation,
 }
 
 struct ScanlineLayout {
@@ -132,6 +135,7 @@ fn header(data: &[u8], account: &Account) -> Result<Header> {
     let packed_len = row.checked_mul(rows).ok_or_else(overflow)?;
     let stride = row.checked_add(1).ok_or_else(overflow)?;
     let filtered_len = stride.checked_mul(rows).ok_or_else(overflow)?;
+    let mut metadata = color::Metadata::default();
     let mut idat = 0usize;
     let mut seen = false;
     loop {
@@ -143,6 +147,7 @@ fn header(data: &[u8], account: &Account) -> Result<Header> {
             }
             b"IEND" if seen && next.data.is_empty() && at == data.len() => break,
             b"IEND" | b"IHDR" => return Err(invalid()),
+            b"sRGB" | b"gAMA" | b"cHRM" => metadata.read(&next, seen, account)?,
             // Requiring this closed chunk grammar also rules out noncontiguous
             // IDAT, APNG, palette/transparency and unexecuted color profiles.
             _ => return Err(GlyphPreparationError::UnsupportedPng.into()),
@@ -159,11 +164,18 @@ fn header(data: &[u8], account: &Account) -> Result<Header> {
             filtered_len,
         },
         idat,
+        color: account.phase(RenderPhase::PngColorPrepare, || {
+            color::Interpretation::compile(metadata, &account.at(RenderPhase::PngColorPrepare))
+        })?,
     })
 }
 
 pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
-    let Header { layout, idat } = header(data, account)?;
+    let Header {
+        layout,
+        idat,
+        mut color,
+    } = header(data, account)?;
     // core.rs init_tree's only temporary arrays: total_symbols and next_code.
     let fixed = sum(&[
         size_of::<DecompressorOxide>(),
@@ -213,7 +225,9 @@ pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
         }
     };
     drop(compressed);
-    scanlines.reconstruct(account)
+    let mut decoded = scanlines.reconstruct(account)?;
+    color.convert(&mut decoded.pixels, account)?;
+    Ok(decoded)
 }
 
 enum ScanlineFilter {
@@ -299,6 +313,7 @@ fn paeth(a: u8, b: u8, c: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    mod source_color;
 
     const PIXELS: [u8; 16] = [
         10, 20, 30, 255, 40, 50, 60, 255, 50, 60, 70, 255, 80, 90, 100, 255,
