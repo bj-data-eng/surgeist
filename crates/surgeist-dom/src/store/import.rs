@@ -358,7 +358,6 @@ impl Draft {
                 .expect("fresh contents");
             let document = self.node(parent)?.document();
             let creation_global = frame.creation_global;
-            let fallback_registry = frame.fallback_registry;
             self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             self.begin_clone(
                 source,
@@ -366,7 +365,7 @@ impl Draft {
                 CloneRequest {
                     document,
                     creation_global,
-                    fallback_registry,
+                    fallback_registry: crate::DomRegistryBinding::Null,
                     placement: Placement::BeforeChildren(parent),
                     subtree: true,
                     scoped,
