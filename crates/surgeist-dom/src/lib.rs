@@ -364,6 +364,7 @@ pub use store::source::operation::{
 };
 pub use store::source::reactions::{
     DomCustomElementReaction, DomCustomElementReactionKind, DomCustomElementReactions,
+    DomSynchronousReactionQueue,
 };
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCspRetention,

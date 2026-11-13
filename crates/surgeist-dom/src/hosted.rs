@@ -2122,25 +2122,49 @@ impl DomDocumentScriptRegistration {
             .map_or(Ok(None), |inbox| inbox.take(operation, inspections))
     }
 
-    /// Dequeue one position from this attachment's backup element queue.
-    /// Reaction receipts for the receiver remain pending until acknowledged.
-    pub fn next_backup_custom_element_receiver(
+    /// Mint the identity of one synchronous element queue for this registration.
+    pub fn synchronous_custom_element_queue(
         &self,
-        work_remaining: &mut u64,
-    ) -> Result<Option<crate::NodeId>, crate::DomError> {
+    ) -> Result<crate::DomSynchronousReactionQueue, crate::DomError> {
+        use std::sync::atomic::Ordering;
         if !self.is_active() {
             return Err(crate::DomError::HostedSourceUnavailable);
         }
+        let serial = self
+            .0
+            .next_reaction_queue
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |serial| {
+                serial.checked_add(1)
+            })
+            .map_err(|_| crate::DomError::RepresentationExhausted)?;
+        Ok(crate::DomSynchronousReactionQueue {
+            owner: self.0.key,
+            serial,
+        })
+    }
+
+    /// Dequeue one element position from the selected synchronous or backup queue.
+    /// Reaction receipts remain pending until acknowledged by the consumer.
+    pub fn next_custom_element_receiver(
+        &self,
+        queue: Option<crate::DomSynchronousReactionQueue>,
+        work_remaining: &mut u64,
+    ) -> Result<Option<crate::NodeId>, crate::DomError> {
+        use crate::store::source::reactions::ReactionRoute;
+        if !self.is_active() || queue.is_some_and(|queue| queue.owner != self.0.key) {
+            return Err(crate::DomError::HostedSourceUnavailable);
+        }
+        let route = queue.map_or(ReactionRoute::Backup, ReactionRoute::Synchronous);
         self.0
             .custom_element_reactions
             .get()
-            .map_or(Ok(None), |inbox| inbox.next_backup_receiver(work_remaining))
+            .map_or(Ok(None), |inbox| inbox.next_receiver(route, work_remaining))
     }
 
-    /// Loan the oldest pending backup reaction for the receiver. Taking or
-    /// acknowledging it leaves the element's backup queue positions intact.
+    /// Loan the oldest pending routed reaction for the receiver. Taking or
+    /// acknowledging it leaves the element's queue positions intact.
     /// The supplied work allowance is reduced for inspected entries.
-    pub fn take_backup_custom_element_reaction_for(
+    pub fn take_routed_custom_element_reaction_for(
         &self,
         receiver: crate::NodeId,
         work_remaining: &mut u64,
@@ -2152,7 +2176,7 @@ impl DomDocumentScriptRegistration {
             .custom_element_reactions
             .get()
             .map_or(Ok(None), |inbox| {
-                inbox.take_backup_for_receiver(receiver, work_remaining)
+                inbox.take_routed_for_receiver(receiver, work_remaining)
             })
     }
 
@@ -2203,6 +2227,7 @@ pub(crate) struct ScriptRegistration {
     pub(crate) navigable: DomHostedNavigableId,
     pub(crate) end: std::sync::OnceLock<ScriptRegistrationEnd>,
     pub(crate) engine_disposed: std::sync::atomic::AtomicBool,
+    pub(crate) next_reaction_queue: std::sync::atomic::AtomicU64,
     pub(crate) custom_element_reactions:
         std::sync::OnceLock<crate::store::source::reactions::Inbox>,
     pub(crate) _backing: DomHostedRuntimeRetention,

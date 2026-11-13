@@ -15,26 +15,26 @@ pub(super) enum SynchronousNode<'a> {
 /// The lookup must use the original definition identity and cannot enter guest code.
 pub struct DomShadowReactionRoute<'a> {
     registration: &'a crate::DomDocumentScriptRegistration,
-    enclosing_operation: Option<crate::DomSourceOperationId>,
+    queue: Option<crate::DomSynchronousReactionQueue>,
     has_callback: &'a mut dyn FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
 }
 
 impl<'a> DomShadowReactionRoute<'a> {
     pub fn new(
         registration: &'a crate::DomDocumentScriptRegistration,
-        enclosing_operation: Option<crate::DomSourceOperationId>,
+        queue: Option<crate::DomSynchronousReactionQueue>,
         has_callback: &'a mut dyn FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
     ) -> Self {
         Self {
             registration,
-            enclosing_operation,
+            queue,
             has_callback,
         }
     }
     fn reborrow(&mut self) -> DomShadowReactionRoute<'_> {
         DomShadowReactionRoute {
             registration: self.registration,
-            enclosing_operation: self.enclosing_operation,
+            queue: self.queue,
             has_callback: &mut *self.has_callback,
         }
     }
@@ -49,26 +49,12 @@ impl ShadowReactionRoute<'_> {
     pub(super) fn prepare(
         &mut self,
         reactions: &mut super::super::reactions::Publication,
-        dom: &Dom,
         formation: &formation::Formation,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
-        if let Some(operation) = self.route.enclosing_operation {
-            let mut qualified = false;
-            for parent in dom.source_parents.iter().rev() {
-                formation.step(cancel)?;
-                if parent.id() == operation && parent.permits_reentry() {
-                    qualified = true;
-                    break;
-                }
-            }
-            if !qualified {
-                return Err(DomError::InvalidSourceOperation);
-            }
-        }
         let present = reactions.route_shadow_removal(
             self.route.registration,
-            self.route.enclosing_operation,
+            self.route.queue,
             &mut self.route.has_callback,
             formation,
             cancel,

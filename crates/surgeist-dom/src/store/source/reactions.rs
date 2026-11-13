@@ -90,6 +90,20 @@ impl Reaction {
     }
 }
 
+/// A synchronous element queue minted by its original script registration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSynchronousReactionQueue {
+    pub(crate) owner: crate::hosted::ScriptRegistrationKey,
+    pub(crate) serial: u64,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ReactionRoute {
+    Operation(crate::DomSourceOperationId),
+    Backup,
+    Synchronous(DomSynchronousReactionQueue),
+}
+
 /// One published segment's reaction facts and their retained backing.
 pub struct DomCustomElementReactions {
     slot: Arc<Slot>,
@@ -101,7 +115,7 @@ pub struct DomCustomElementReactions {
 struct Batch {
     facts: Vec<Reaction>,
     cursor: usize,
-    backup_pending: usize,
+    routed_pending: usize,
     _backing: Option<custody::Debit>,
     _strings: Vec<custody::SharedDebit>,
 }
@@ -114,7 +128,7 @@ enum SlotState {
 
 struct Slot {
     operation: crate::DomSourceOperationId,
-    backup: bool,
+    route: ReactionRoute,
     state: Mutex<SlotState>,
     _backing: Option<custody::Debit>,
 }
@@ -154,7 +168,7 @@ impl DomCustomElementReactions {
         match self.selected {
             Some(index) if !self.batch.facts[index].delivered => {
                 self.batch.facts[index].delivered = true;
-                self.batch.backup_pending -= 1;
+                self.batch.routed_pending -= 1;
             }
             Some(_) => {}
             None if self.batch.cursor < self.batch.facts.len() => self.batch.cursor += 1,
@@ -175,7 +189,7 @@ impl std::fmt::Debug for DomCustomElementReactions {
 impl Drop for DomCustomElementReactions {
     fn drop(&mut self) {
         let mut slot = self.slot.lock();
-        *slot = if self.batch.cursor == self.batch.facts.len() && self.batch.backup_pending == 0 {
+        *slot = if self.batch.cursor == self.batch.facts.len() && self.batch.routed_pending == 0 {
             SlotState::Settled
         } else {
             SlotState::Ready(std::mem::take(&mut self.batch))
@@ -216,7 +230,7 @@ impl Inbox {
             if let Some(slot) = head.front()
                 && !matches!(*slot.lock(), SlotState::Settled)
             {
-                if selected.is_none() && !slot.backup && slot.operation == operation {
+                if selected.is_none() && slot.route == ReactionRoute::Operation(operation) {
                     selected = Some(slot.clone());
                 }
                 retained.append(&mut head);
@@ -244,8 +258,9 @@ impl Inbox {
         self.lock().len()
     }
 
-    pub(crate) fn next_backup_receiver(
+    pub(crate) fn next_receiver(
         &self,
+        route: ReactionRoute,
         work_remaining: &mut u64,
     ) -> Result<Option<NodeId>, DomError> {
         let mut queue = self.lock();
@@ -264,17 +279,17 @@ impl Inbox {
             };
             let mut state = slot.lock();
             let result = match &mut *state {
-                SlotState::Ready(batch) if slot.backup => {
+                SlotState::Ready(batch) if slot.route == route => {
                     let receiver = batch.facts.get(batch.cursor).map(|fact| fact.element);
                     if receiver.is_some() {
                         batch.cursor += 1;
                     }
-                    if batch.cursor == batch.facts.len() && batch.backup_pending == 0 {
+                    if batch.cursor == batch.facts.len() && batch.routed_pending == 0 {
                         *state = SlotState::Settled;
                     }
                     Ok(receiver)
                 }
-                SlotState::Loaned if slot.backup => Err(DomError::InvalidSourceOperation),
+                SlotState::Loaned if slot.route == route => Err(DomError::InvalidSourceOperation),
                 _ => Ok(None),
             };
             let settled = matches!(*state, SlotState::Settled);
@@ -291,7 +306,7 @@ impl Inbox {
         result
     }
 
-    pub(crate) fn take_backup_for_receiver(
+    pub(crate) fn take_routed_for_receiver(
         &self,
         receiver: NodeId,
         work_remaining: &mut u64,
@@ -299,12 +314,12 @@ impl Inbox {
         let queue = self.lock();
         for slot in queue.iter() {
             charge_inspection(work_remaining)?;
-            if !slot.backup {
+            if matches!(slot.route, ReactionRoute::Operation(_)) {
                 continue;
             }
             let mut state = slot.lock();
             let batch = match &mut *state {
-                SlotState::Ready(batch) if batch.backup_pending != 0 => batch,
+                SlotState::Ready(batch) if batch.routed_pending != 0 => batch,
                 SlotState::Ready(_) | SlotState::Settled => continue,
                 SlotState::Loaned => return Err(DomError::InvalidSourceOperation),
             };
@@ -329,7 +344,9 @@ impl Inbox {
 
     pub(crate) fn has_pending(&self) -> bool {
         self.lock().iter().any(|slot| match &*slot.lock() {
-            SlotState::Ready(batch) if slot.backup => batch.backup_pending != 0,
+            SlotState::Ready(batch) if !matches!(slot.route, ReactionRoute::Operation(_)) => {
+                batch.routed_pending != 0
+            }
             SlotState::Ready(_) | SlotState::Loaned => true,
             SlotState::Settled => false,
         })
@@ -343,8 +360,8 @@ impl Inbox {
                 SlotState::Loaned => Err(DomError::InvalidSourceOperation),
                 SlotState::Settled => Ok(count),
                 SlotState::Ready(batch) => count
-                    .checked_add(if slot.backup {
-                        batch.backup_pending
+                    .checked_add(if !matches!(slot.route, ReactionRoute::Operation(_)) {
+                        batch.routed_pending
                     } else {
                         batch.facts.len() - batch.cursor
                     })
@@ -423,7 +440,7 @@ impl Publication {
     pub(in crate::store) fn route_shadow_removal(
         &mut self,
         registration: &crate::DomDocumentScriptRegistration,
-        enclosing_operation: Option<crate::DomSourceOperationId>,
+        scope: Option<DomSynchronousReactionQueue>,
         mut has_callback: impl FnMut(crate::DomRegistryDefinitionId) -> Result<bool, DomError>,
         formation: &formation::Formation,
         cancel: &AtomicBool,
@@ -464,12 +481,15 @@ impl Publication {
         if let Some(error) = failure {
             return Err(error);
         }
-        if let Some(operation) = enclosing_operation {
-            slot.operation = operation;
+        if let Some(scope) = scope {
+            if scope.owner != registration.0.key {
+                return Err(DomError::HostedSourceUnavailable);
+            }
+            slot.route = ReactionRoute::Synchronous(scope);
         } else {
-            slot.backup = true;
-            batch.backup_pending = batch.facts.len();
+            slot.route = ReactionRoute::Backup;
         }
+        batch.routed_pending = batch.facts.len();
         Ok(!batch.facts.is_empty())
     }
 
@@ -773,11 +793,11 @@ impl Draft {
         let mut batches = LinkedList::new();
         batches.push_back(formation::allocated_arc(Slot {
             operation,
-            backup: false,
+            route: ReactionRoute::Operation(operation),
             state: Mutex::new(SlotState::Ready(Batch {
                 facts,
                 cursor: 0,
-                backup_pending: 0,
+                routed_pending: 0,
                 _backing: budget.into_debit(),
                 _strings: strings,
             })),

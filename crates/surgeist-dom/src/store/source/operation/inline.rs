@@ -281,7 +281,7 @@ impl Operation {
                     ._formation
                     .as_ref()
                     .ok_or(DomError::InvalidSourceOperation)?;
-                if !route.prepare(reactions, dom, formation, cancel)? {
+                if !route.prepare(reactions, formation, cancel)? {
                     segment.prepared.custom_element_reactions = None;
                 }
             }

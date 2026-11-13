@@ -690,6 +690,8 @@ impl Capture {
             return registry_type_error(scope);
         }
         let (owner, events) = self.active(scope)?;
+        let mut definition_scope = None;
+        let mut definition_invocation = None;
         let result = (|| -> Result<Completion<'scope>, DocumentGuestEventError> {
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let registry = self.callbacks.with_read(&owner, &events, |read, _| {
@@ -727,6 +729,7 @@ impl Capture {
                 ))) => return Ok(registry_type_error(scope)?),
                 result => result?,
             };
+            definition_scope = Some(SynchronousReactionScope::enter(&owner)?);
             if !scope.is_constructor(constructor)? {
                 return Ok(registry_type_error(scope)?);
             }
@@ -826,8 +829,12 @@ impl Capture {
                 Ok(candidates)
             })?;
             let mut reactions = ReactionInvocation::new(&owner)?;
+            let registration = reaction_registration(&owner)?;
             for node in candidates.values.iter().copied() {
-                reactions.stage_definition_candidate(&events, node)?;
+                let queue = reactions.stage_definition_candidate(&events, node)?;
+                if routed_reactions_pending(&owner, &events) {
+                    self.take_routed_reactions(scope, &owner, &events, &registration, &queue)?;
+                }
             }
             drop(candidates);
             let mut rows = registry
@@ -884,12 +891,31 @@ impl Capture {
             drop(rows);
             drop(waiting);
             reactions.publish_definition_candidates(id);
+            let before_waiter = pop_reaction_scope(definition_scope.take());
+            definition_scope = Some(SynchronousReactionScope::enter(&owner)?);
+            definition_invocation = Some((before_waiter, reactions));
             if let Some((resolver, constructor)) = resolver.zip(definition_value) {
                 scope.resolve_promise(resolver, &constructor)?;
             }
-            reactions.drain(self, scope, &events)?;
             Ok(Completion::Return(undefined))
         })();
+        let queue = pop_reaction_scope(definition_scope);
+        let delivery = (|| {
+            if let Some((before_waiter, mut invocation)) = definition_invocation {
+                if let Some(queue) = before_waiter {
+                    self.drain_routed_reactions(scope, &owner, &events, Some(queue))?;
+                }
+                invocation.drain(self, scope, &events)?;
+            }
+            if let Some(queue) = queue {
+                self.drain_routed_reactions(scope, &owner, &events, Some(queue))?;
+            }
+            Ok::<_, DocumentGuestEventError>(())
+        })();
+        let result = match result {
+            Ok(completion) => delivery.map(|()| completion),
+            Err(error) => Err(error),
+        };
         match result {
             Ok(result) => Ok(result),
             Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
@@ -915,17 +941,7 @@ impl Capture {
     ) -> Result<Completion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        let result = (|| {
-            let registration = reaction_registration(&owner)?;
-            while let Some(receiver) = use_backup_work(&events, |remaining| {
-                registration.next_backup_custom_element_receiver(remaining)
-            })? {
-                let mut invocation = ReactionInvocation::new(&owner)?;
-                invocation.queue(&events, receiver)?;
-                invocation.drain(self, scope, &events)?;
-            }
-            Ok(())
-        })();
+        let result = self.drain_routed_reactions(scope, &owner, &events, None);
         public.backup_reactions_scheduled.set(false);
         match result {
             Ok(()) => Ok(Completion::Undefined),
@@ -934,6 +950,29 @@ impl Capture {
             }
             Err(error) => refuse(scope, &events.refusal, error),
         }
+    }
+
+    pub(super) fn drain_routed_reactions<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        queue: Option<surgeist_dom::DomSynchronousReactionQueue>,
+    ) -> Result<(), DocumentGuestEventError> {
+        let registration = reaction_registration(owner)?;
+        while let Some(receiver) = use_reaction_work(events, |remaining| {
+            registration.next_custom_element_receiver(queue, remaining)
+        })? {
+            let mut invocation = ReactionInvocation::new(owner)?;
+            invocation.queue(events, receiver)?;
+            invocation.drain(self, scope, events)?;
+        }
+        if queue.is_some() {
+            owner
+                .scoped_shadow_queues
+                .set(owner.scoped_shadow_queues.get() - 1);
+        }
+        Ok(())
     }
 
     fn drain_reactions<'scope>(
@@ -971,12 +1010,8 @@ impl Capture {
                     };
                     if let Some(reaction) = reaction {
                         let queue = invocation.queue(events, fact.element)?;
-                        if events
-                            .public
-                            .as_ref()
-                            .is_some_and(|public| public.backup_reactions_scheduled.get())
-                        {
-                            self.take_older_backup_reactions(
+                        if routed_reactions_pending(owner, events) {
+                            self.take_routed_reactions(
                                 scope,
                                 owner,
                                 events,
@@ -1000,7 +1035,7 @@ impl Capture {
         result
     }
 
-    fn take_older_backup_reactions<'scope>(
+    fn take_routed_reactions<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
@@ -1009,8 +1044,8 @@ impl Capture {
         queue: &ActiveReactionQueue,
     ) -> Result<(), DocumentGuestEventError> {
         loop {
-            let Some(mut backup) = use_backup_work(events, |remaining| {
-                registration.take_backup_custom_element_reaction_for(queue.receiver, remaining)
+            let Some(mut backup) = use_reaction_work(events, |remaining| {
+                registration.take_routed_custom_element_reaction_for(queue.receiver, remaining)
             })?
             else {
                 return Ok(());
@@ -1773,23 +1808,35 @@ impl QueuedReaction {
 }
 
 pub(super) struct SynchronousReactionScope<'a> {
-    operation: &'a Cell<Option<surgeist_dom::DomSourceOperationId>>,
-    previous: Option<surgeist_dom::DomSourceOperationId>,
+    operation: &'a Cell<Option<surgeist_dom::DomSynchronousReactionQueue>>,
+    previous: Option<surgeist_dom::DomSynchronousReactionQueue>,
+    queue: surgeist_dom::DomSynchronousReactionQueue,
     published: &'a Cell<bool>,
     previous_published: bool,
+    owner: &'a NativeOwner,
 }
 
 impl<'a> SynchronousReactionScope<'a> {
-    pub(super) fn enter(
-        owner: &'a NativeOwner,
-        operation: surgeist_dom::DomSourceOperationId,
-    ) -> Self {
-        Self {
+    pub(super) fn enter(owner: &'a NativeOwner) -> Result<Self, DocumentGuestEventError> {
+        let queue = reaction_registration(owner)?.synchronous_custom_element_queue()?;
+        let count = owner
+            .scoped_shadow_queues
+            .get()
+            .checked_add(1)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        owner.scoped_shadow_queues.set(count);
+        Ok(Self {
+            owner,
             operation: &owner.active_synchronous_reactions,
-            previous: owner.active_synchronous_reactions.replace(Some(operation)),
+            previous: owner.active_synchronous_reactions.replace(Some(queue)),
+            queue,
             published: &owner.synchronous_shadow_reactions,
             previous_published: owner.synchronous_shadow_reactions.replace(false),
-        }
+        })
+    }
+
+    pub(super) fn queue(&self) -> surgeist_dom::DomSynchronousReactionQueue {
+        self.queue
     }
 
     pub(super) fn has_reactions(&self) -> bool {
@@ -1800,8 +1847,18 @@ impl<'a> SynchronousReactionScope<'a> {
 impl Drop for SynchronousReactionScope<'_> {
     fn drop(&mut self) {
         self.operation.set(self.previous);
-        self.published.set(self.previous_published);
+        if !self.published.replace(self.previous_published) {
+            self.owner
+                .scoped_shadow_queues
+                .set(self.owner.scoped_shadow_queues.get() - 1);
+        }
     }
+}
+
+fn pop_reaction_scope(
+    scope: Option<SynchronousReactionScope<'_>>,
+) -> Option<surgeist_dom::DomSynchronousReactionQueue> {
+    scope.and_then(|scope| scope.has_reactions().then(|| scope.queue()))
 }
 
 fn reaction_registration(
@@ -1814,7 +1871,15 @@ fn reaction_registration(
         .ok_or(DocumentScriptNativeError::Revoked)
 }
 
-fn use_backup_work<T>(
+fn routed_reactions_pending(owner: &NativeOwner, events: &GuestEvents) -> bool {
+    owner.scoped_shadow_queues.get() != 0
+        || events
+            .public
+            .as_ref()
+            .is_some_and(|public| public.backup_reactions_scheduled.get())
+}
+
+fn use_reaction_work<T>(
     events: &GuestEvents,
     action: impl FnOnce(&mut u64) -> Result<T, surgeist_dom::DomError>,
 ) -> Result<T, DocumentGuestEventError> {
@@ -1932,7 +1997,7 @@ impl<'a> ReactionInvocation<'a> {
         &mut self,
         events: &GuestEvents,
         receiver: NodeId,
-    ) -> Result<(), DocumentGuestEventError> {
+    ) -> Result<Rc<ActiveReactionQueue>, DocumentGuestEventError> {
         let backing = events.reserve(self.owner, QueuedReaction::storage_bytes())?;
         let entry = self.add_receiver(events, receiver, true)?;
         entry
@@ -1942,7 +2007,7 @@ impl<'a> ReactionInvocation<'a> {
                 from_definition: true,
                 _backing: backing,
             });
-        Ok(())
+        Ok(entry.queue.clone())
     }
 
     fn publish_definition_candidates(&mut self, id: DomRegistryDefinitionId) {
@@ -2086,16 +2151,11 @@ impl ActiveReactionQueue {
                 .try_borrow()
                 .map_err(|_| DocumentScriptNativeError::Busy)?
                 .is_empty();
-            if empty
-                && events
-                    .public
-                    .as_ref()
-                    .is_some_and(|public| public.backup_reactions_scheduled.get())
-            {
+            if empty && routed_reactions_pending(owner, events) {
                 // A callback can append another backup occurrence for this
                 // receiver. Finish its FIFO before advancing the element queue.
                 let registration = reaction_registration(owner)?;
-                capture.take_older_backup_reactions(scope, owner, events, &registration, self)?;
+                capture.take_routed_reactions(scope, owner, events, &registration, self)?;
             }
             let upgrade = {
                 let reactions = self

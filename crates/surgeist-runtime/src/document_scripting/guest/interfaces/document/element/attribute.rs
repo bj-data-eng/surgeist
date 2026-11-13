@@ -182,6 +182,7 @@ impl Capture {
             .read_dom()
             .pending_source_edit();
         let mut abrupt = None;
+        let mut shadow_reactions = None;
         let mut output = None;
         if let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeVerification(request),
@@ -217,6 +218,7 @@ impl Capture {
                     return Err(error);
                 }
             };
+            shadow_reactions = retained.shadow_reactions;
             ((result, pending), abrupt) = continue_attribute(owner, retained, limits, true)?;
         }
         if let Ok(DomSourceDriveProgress::Pending {
@@ -243,6 +245,11 @@ impl Capture {
                     discard_attachment_output(owner, request);
                 }
             }
+        }
+        if let Some(queue) = shadow_reactions
+            && matches!(&result, Ok(progress) if guest_terminal_result(progress).is_some())
+        {
+            self.drain_routed_reactions(scope, owner, events, Some(queue))?;
         }
         match result.map(guest_source_terminal) {
             Ok(Some(Ok(done))) => {
@@ -431,6 +438,7 @@ impl Capture {
             realm: scope.realm_authority()?.identity(),
             reply: AttributeReply::Abandon,
             parent: owner.active_attribute.get(),
+            shadow_reactions: None,
             interrupted_parent: None,
             _header: header,
         });
@@ -462,16 +470,16 @@ impl Capture {
             slot: &owner.active_attribute,
             previous: owner.active_attribute.replace(Some(request)),
         };
-        let reactions = super::super::super::custom_elements::SynchronousReactionScope::enter(
-            owner,
-            request.operation(),
-        );
+        let reactions =
+            super::super::super::custom_elements::SynchronousReactionScope::enter(owner)?;
         let result = self.callbacks.conversion.run(scope, |conversion| {
             conversion.invoke_default_policy(callback, kind, input.code_units(), &sink)
         });
+        let reaction_queue = reactions.has_reactions().then(|| reactions.queue());
         drop(reactions);
         drop(active);
         drop(callback_scope);
+        retained.shadow_reactions = reaction_queue;
         retained.reply = match result {
             Ok(result) if result.get().is_some() => AttributeReply::Converted {
                 result,

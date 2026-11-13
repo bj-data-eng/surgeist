@@ -2275,6 +2275,7 @@ impl DomHostedSource {
             navigable,
             end: std::sync::OnceLock::new(),
             engine_disposed: AtomicBool::new(false),
+            next_reaction_queue: std::sync::atomic::AtomicU64::new(0),
             custom_element_reactions: std::sync::OnceLock::new(),
             _backing: backing,
         });

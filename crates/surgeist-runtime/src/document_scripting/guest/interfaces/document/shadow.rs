@@ -173,7 +173,7 @@ impl Capture {
                     node.reusable_shadow_root_with(native.properties().mode(), || events.step())?;
                 Ok((document, root))
             })?;
-            let enclosing_operation = owner.active_synchronous_reactions.get();
+            let enclosing_queue = owner.active_synchronous_reactions.get();
             let mut callback_failure = None;
             let mut has_callback = |definition| {
                 public
@@ -187,7 +187,7 @@ impl Capture {
                 if !reactions {
                     return Ok(());
                 }
-                if enclosing_operation.is_some() {
+                if enclosing_queue.is_some() {
                     owner.synchronous_shadow_reactions.set(true);
                     Ok(())
                 } else {
@@ -208,7 +208,7 @@ impl Capture {
                             events.limits.source_edits,
                             Some(surgeist_dom::DomShadowReactionRoute::new(
                                 &registration,
-                                enclosing_operation,
+                                enclosing_queue,
                                 &mut has_callback,
                             )),
                             &owner.cancellation,
@@ -256,7 +256,7 @@ impl Capture {
                                     (events.limits.source_edits, events.limits.node_retirement),
                                     Some(surgeist_dom::DomShadowReactionRoute::new(
                                         &registration,
-                                        enclosing_operation,
+                                        enclosing_queue,
                                         &mut has_callback,
                                     )),
                                     &owner.cancellation,
