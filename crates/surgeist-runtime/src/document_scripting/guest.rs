@@ -314,19 +314,21 @@ pub struct DocumentGuestConstructorException {
     pub exception: Exception,
 }
 
-/// The initial lifecycle callback that threw while upgrading an element.
+/// The custom-element lifecycle callback that threw.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DocumentGuestUpgradeCallback {
-    /// An initial observed attribute reaction.
+    /// An observed attribute reaction.
     AttributeChanged,
-    /// The initial connection reaction.
+    /// A connection reaction.
     Connected,
+    /// A disconnection reaction.
+    Disconnected,
 }
 
-/// The original exception from an initial upgrade callback.
+/// The original exception from a custom-element lifecycle callback.
 #[derive(Debug)]
 pub struct DocumentGuestUpgradeException {
-    /// Exact definition whose upgrade scheduled the callback.
+    /// Exact definition associated with the callback.
     pub definition: surgeist_dom::DomRegistryDefinitionId,
     /// Original element receiver.
     pub receiver: surgeist_dom::NodeId,

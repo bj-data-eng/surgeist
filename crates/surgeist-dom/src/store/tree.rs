@@ -1078,7 +1078,7 @@ impl Draft {
                             }
                         }
                     }
-                    if stage < 9 {
+                    if stage < 9 || (stage == 9 && self.captures_custom_element_reactions()) {
                         self.push_effect(
                             select::Effect::Tree(Frame::Node {
                                 key,
@@ -1106,6 +1106,7 @@ impl Draft {
                         6 => self.hyperlink_tree_change(key, Some(parent), cancel)?,
                         7 => self.style_tree_change(key, Some(parent), limits, cancel)?,
                         9 => self.dialog_removal(key, limits, cancel)?,
+                        10 => self.record_custom_element_removal(key, parent, cancel)?,
                         8 => match self.node(key)?.kind() {
                             KindRead::Element(element) if element.is_meta() => {
                                 let old_document =

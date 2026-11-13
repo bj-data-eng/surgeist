@@ -15,6 +15,8 @@ pub struct DomCustomElementReaction<'a> {
 #[non_exhaustive]
 pub enum DomCustomElementReactionKind<'a> {
     Upgrade,
+    Connected,
+    Disconnected,
     AttributeChanged {
         local_name: &'a [u16],
         old_value: Option<&'a [u16]>,
@@ -26,6 +28,8 @@ pub enum DomCustomElementReactionKind<'a> {
 #[derive(Clone, Debug)]
 enum ReactionKind {
     Upgrade,
+    Connected,
+    Disconnected,
     AttributeChanged {
         local_name: DocumentString,
         old_value: Option<DocumentString>,
@@ -45,6 +49,8 @@ impl Reaction {
     fn view(&self) -> DomCustomElementReaction<'_> {
         let kind = match &self.kind {
             ReactionKind::Upgrade => DomCustomElementReactionKind::Upgrade,
+            ReactionKind::Connected => DomCustomElementReactionKind::Connected,
+            ReactionKind::Disconnected => DomCustomElementReactionKind::Disconnected,
             ReactionKind::AttributeChanged {
                 local_name,
                 old_value,
@@ -323,9 +329,23 @@ impl Draft {
             return Ok(());
         };
         let element = element.language();
+        if !self.shadow_connected(key, cancel)? {
+            return Ok(());
+        }
+        if element.custom_element_state()
+            == surgeist_html::elements::native::HtmlCustomElementState::Custom
+            && let crate::DomElementDefinition::Definition(definition) =
+                element.custom_element_definition()
+        {
+            return self.record_custom_element_reaction(
+                key,
+                definition,
+                ReactionKind::Connected,
+                cancel,
+            );
+        }
         if element.custom_element_state()
             != surgeist_html::elements::native::HtmlCustomElementState::Undefined
-            || !self.shadow_connected(key, cancel)?
         {
             return Ok(());
         }
@@ -335,6 +355,35 @@ impl Draft {
             return Ok(());
         };
         self.record_custom_element_reaction(key, definition, ReactionKind::Upgrade, cancel)
+    }
+
+    pub(in crate::store) fn record_custom_element_removal(
+        &mut self,
+        key: Key,
+        old_parent: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !self.captures_custom_element_reactions() {
+            return Ok(());
+        }
+        self.source_step(cancel)?;
+        let Some(element) = self.node(key)?.element().map(|element| element.language()) else {
+            return Ok(());
+        };
+        if element.custom_element_state()
+            == surgeist_html::elements::native::HtmlCustomElementState::Custom
+            && let crate::DomElementDefinition::Definition(definition) =
+                element.custom_element_definition()
+            && self.shadow_connected(old_parent, cancel)?
+        {
+            self.record_custom_element_reaction(
+                key,
+                definition,
+                ReactionKind::Disconnected,
+                cancel,
+            )?;
+        }
+        Ok(())
     }
 
     pub(in crate::store) fn record_custom_element_attribute(

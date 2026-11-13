@@ -946,11 +946,11 @@ impl Capture {
                 break;
             };
             while let Some(fact) = batch.front() {
-                if matches!(
+                if !matches!(
                     fact.kind,
-                    surgeist_dom::DomCustomElementReactionKind::AttributeChanged { .. }
+                    surgeist_dom::DomCustomElementReactionKind::Upgrade
                 ) {
-                    let queue = self.enqueue_attribute_callback(scope, owner, events, fact)?;
+                    let queue = self.enqueue_native_callback(scope, owner, events, fact)?;
                     batch.acknowledge_front();
                     if let Some((queue, active)) = queue {
                         if active {
@@ -960,12 +960,6 @@ impl Capture {
                         }
                     }
                     continue;
-                }
-                if !matches!(
-                    fact.kind,
-                    surgeist_dom::DomCustomElementReactionKind::Upgrade
-                ) {
-                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
                 }
                 let (global, constructor, interface, initial_attribute, connected, observed) =
                     self.callbacks.with_read(owner, events, |read, _| {
@@ -1201,21 +1195,28 @@ impl Capture {
         result
     }
 
-    fn enqueue_attribute_callback<'scope>(
+    fn enqueue_native_callback<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
         fact: surgeist_dom::DomCustomElementReaction<'_>,
     ) -> Result<Option<(Rc<ActiveReactionQueue>, bool)>, DocumentGuestEventError> {
-        let surgeist_dom::DomCustomElementReactionKind::AttributeChanged {
-            local_name,
-            old_value,
-            new_value,
-            namespace,
-        } = fact.kind
-        else {
-            return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        use surgeist_dom::DomCustomElementReactionKind as Kind;
+        let (kind, arguments, callback_index) = match fact.kind {
+            Kind::AttributeChanged {
+                local_name,
+                old_value,
+                new_value,
+                namespace,
+            } => (
+                DocumentGuestUpgradeCallback::AttributeChanged,
+                Some([Some(local_name), old_value, new_value, namespace]),
+                4,
+            ),
+            Kind::Connected => (DocumentGuestUpgradeCallback::Connected, None, 0),
+            Kind::Disconnected => (DocumentGuestUpgradeCallback::Disconnected, None, 1),
+            _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
         };
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
         let callback = self.callbacks.with_read(owner, events, |read, _| {
@@ -1233,8 +1234,13 @@ impl Capture {
                         .get(fact.definition.ordinal())
                         .filter(|row| row.id == fact.definition)
                         .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                    let (Some(observed), Some(callback)) = (&row.observed, &row.callbacks[4])
-                    else {
+                    let Some(callback) = &row.callbacks[callback_index] else {
+                        return Ok(None);
+                    };
+                    let Some([Some(local_name), ..]) = arguments else {
+                        return Ok(Some(callback.clone()));
+                    };
+                    let Some(observed) = &row.observed else {
                         return Ok(None);
                     };
                     for (expected, _) in &observed.values {
@@ -1274,20 +1280,23 @@ impl Capture {
             )?;
             Ok::<_, DocumentGuestEventError>(value)
         };
-        let arguments = [
-            convert(Some(local_name))?,
-            convert(old_value)?,
-            convert(new_value)?,
-            convert(namespace)?,
-        ];
+        let arguments = match arguments {
+            Some([name, old, new, namespace]) => Some([
+                convert(name)?,
+                convert(old)?,
+                convert(new)?,
+                convert(namespace)?,
+            ]),
+            None => None,
+        };
         let reaction = CallbackReaction::prepare(
             scope,
             (owner, events),
             fact.definition,
-            DocumentGuestUpgradeCallback::AttributeChanged,
+            kind,
             &callback,
             &receiver,
-            Some(&arguments),
+            arguments.as_ref(),
         )?;
         let mut current = owner
             .active_reaction_queue
