@@ -622,6 +622,72 @@ fn prepare_failed_tree_edit(
     (permit, edit)
 }
 
+pub(in crate::document_scripting) fn custom_element_reacts_to_an_inline_joined_failure() {
+    use crate::dom_source::inline_tests::{bind, inline_parser, requests};
+    use surgeist_dom::{DomInlineStyleProfile, DomInlineStyleSourceContext};
+
+    let mut host = public_node_host(20_000, 200_000);
+    let (permit, _) = prepare_failed_tree_edit(&mut host);
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("globalThis.inlineDestination = new Document()"))
+            .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let source = permit.document;
+    let destination = snapshot
+        .nodes()
+        .filter_map(|id| snapshot.node(id).unwrap().as_document())
+        .map(|document| document.id())
+        .find(|document| *document != source)
+        .unwrap();
+    let root = snapshot
+        .document(source)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let receiver = *snapshot.node(root).unwrap().children().last().unwrap();
+    let context = {
+        let mut session = host.native.session.borrow_mut();
+        let _ = bind(&mut session, receiver, source);
+        let version = surgeist_cssom::CssomInputVersion {
+            role: surgeist_cssom::CssomInputRole::Support,
+            identity: "runtime-source".into(),
+            revision: 1,
+        };
+        let profiles = [source, destination]
+            .into_iter()
+            .map(|document| {
+                DomInlineStyleProfile::new(
+                    receiver,
+                    document,
+                    inline_parser(&session.snapshot(), document),
+                    version.clone(),
+                    surgeist_cssom::CssomDeclarationSupport::default(),
+                )
+                .unwrap()
+            })
+            .collect();
+        DomInlineStyleSourceContext::new(session.snapshot().stamp(), profiles).unwrap()
+    };
+    let edit = surgeist_dom::DomSourceEdit::append(
+        destination.node(),
+        vec![
+            receiver.into(),
+            surgeist_dom::DocumentString::from("text").into(),
+        ],
+    );
+    host.run_guest_joined_tree_edit_fixture(
+        &permit,
+        crate::DomSourceInlineStyleEdit::new(edit, context, requests()),
+    )
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "disconnectCalls.length === 1 && disconnectCalls[0] === prefixReceiver && prefixReceiver.ownerDocument === inlineDestination")
+    }).unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);

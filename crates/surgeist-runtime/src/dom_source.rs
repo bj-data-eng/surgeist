@@ -1389,4 +1389,4 @@ mod tests {
 }
 
 #[cfg(test)]
-mod inline_tests;
+pub(crate) mod inline_tests;

@@ -202,10 +202,6 @@ impl Capture {
         edit: DomSourceEdit,
         completion: Completion<'scope>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
-        let attachment = owner
-            .attachment
-            .get()
-            .ok_or(DocumentScriptNativeError::Revoked)?;
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
         let event = owner.active_event_request();
@@ -235,6 +231,25 @@ impl Capture {
             .map_err(|_| DocumentScriptNativeError::Busy)?
             .read_dom()
             .pending_source_edit();
+        self.finish_guest_tree_edit(scope, owner, events, result, (parent, pending), completion)
+    }
+
+    fn finish_guest_tree_edit<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        result: Result<DomSourceDriveProgress, DomSourceDriveError>,
+        (parent, pending): (
+            Option<surgeist_dom::DomSourceOperationId>,
+            Option<DomSourceStatus>,
+        ),
+        completion: Completion<'scope>,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DomError::Cancelled.into())
@@ -314,6 +329,57 @@ impl DocumentScriptHost {
         self.in_document(permit, |scope| {
             let result =
                 capture.apply_tree_edit(scope, &owner, &events, edit, Completion::Undefined);
+            let Completion::Throw(exception) = tree_completion(scope, &events, result)? else {
+                panic!("the original compound edit must throw");
+            };
+            let name = scope.get(&exception, PropertyKey::String(&ascii(b"name")))?;
+            assert_eq!(scope.to_utf16(&name)?, ascii(b"HierarchyRequestError"));
+            Ok(())
+        })
+    }
+
+    pub(in crate::document_scripting) fn run_guest_joined_tree_edit_fixture(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        edit: crate::DomSourceInlineStyleEdit,
+    ) -> Result<(), DocumentScriptError> {
+        let owner = self.native.clone();
+        let events = self.guest_events().unwrap();
+        let public = events.public.as_ref().unwrap();
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>()).unwrap(),
+        };
+        self.in_document(permit, |scope| {
+            let mut session = owner.session.borrow_mut();
+            let result = session.source_execution().apply_with_inline_styles(
+                &mut session.dom(),
+                edit,
+                events.limits.source_edits,
+                &mut guest_source_services(&mut |_| None),
+                |_, _| panic!("empty inline declarations require no parser decision"),
+                &owner.cancellation,
+            );
+            drop(session);
+            assert!(
+                matches!(
+                    result,
+                    Ok(DomSourceDriveProgress::InlineSource {
+                        source: surgeist_dom::DomSourceProgress::Failed(_),
+                        ..
+                    })
+                ),
+                "{result:?}"
+            );
+            let result = capture.finish_guest_tree_edit(
+                scope,
+                &owner,
+                &events,
+                result,
+                (None, None),
+                Completion::Undefined,
+            );
             let Completion::Throw(exception) = tree_completion(scope, &events, result)? else {
                 panic!("the original compound edit must throw");
             };
