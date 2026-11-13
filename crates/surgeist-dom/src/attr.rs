@@ -104,8 +104,8 @@ impl<'a> DomNamedNodeMap<'a> {
         mut step: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<DomAttr<'a>>, E> {
         let fold = self.element.html_element_in_html_document_with(&mut step)?;
-        self.find_with(step, |name, step| {
-            crate::names::qualified_equals_with(name, qualified_name, fold, step)
+        self.find_with(step, |attribute, step| {
+            crate::names::qualified_equals_with(attribute.name(), qualified_name, fold, step)
         })
     }
 
@@ -117,15 +117,15 @@ impl<'a> DomNamedNodeMap<'a> {
         local_name: &DocumentString,
         step: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<DomAttr<'a>>, E> {
-        self.find_with(step, |name, step| {
-            crate::names::expanded_equals_with(name, namespace.uri(), local_name, step)
+        self.find_with(step, |attribute, step| {
+            crate::names::expanded_equals_with(attribute.name(), namespace.uri(), local_name, step)
         })
     }
 
-    fn find_with<E: From<DomError>, Step: FnMut() -> Result<(), E>>(
+    pub(crate) fn find_with<E: From<DomError>, Step: FnMut() -> Result<(), E>>(
         self,
         mut step: Step,
-        mut matches: impl FnMut(&DomQualifiedName, &mut Step) -> Result<bool, E>,
+        mut matches: impl FnMut(DomAttr<'a>, &mut Step) -> Result<bool, E>,
     ) -> Result<Option<DomAttr<'a>>, E> {
         for &id in self.ids() {
             let attribute = self
@@ -134,7 +134,7 @@ impl<'a> DomNamedNodeMap<'a> {
                 .node_with(id, &mut step)?
                 .as_attr()
                 .ok_or(DomError::WrongNodeKind)?;
-            if matches(attribute.name(), &mut step)? {
+            if matches(attribute, &mut step)? {
                 return Ok(Some(attribute));
             }
         }
