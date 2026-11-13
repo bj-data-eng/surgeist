@@ -41,10 +41,10 @@ mod scroll;
 pub(crate) use absolute::AbsoluteChild;
 use absolute::{AbsoluteChildren, layout_hidden_children};
 use alignment::{
-    align_items_on_cross_axis, align_lines_on_cross_axis, alignment_fallback_from_sign,
-    first_final_vertical_baseline, last_final_vertical_baseline, line_cross_size, line_free_space,
-    main_alignment_offset, resolve_main_axis_auto_margins, resolved_vertical_baselines,
-    stretch_lines_on_cross_axis,
+    BaselineChild, BaselineExport, align_items_on_cross_axis, align_lines_on_cross_axis,
+    alignment_fallback_from_sign, first_final_vertical_baseline, last_final_vertical_baseline,
+    line_cross_size, line_free_space, main_alignment_offset, resolve_main_axis_auto_margins,
+    resolved_vertical_baselines, stretch_lines_on_cross_axis,
 };
 use cross_size::{CrossSizeChild, LineResolution};
 use distribution_number::DistributionNumber;
@@ -56,7 +56,7 @@ use intrinsic::{
 };
 use items::{
     CollectedFlexItem, FinalFlexItem, FinalItems, FlexItemRequest, ItemCollection,
-    PendingFinalItem, ResolvedFlexItem, collect_items, compute_sized_item, has_eligible_items,
+    PendingFinalItem, ResolvedFlexItem, collect_items, has_eligible_items,
 };
 use lines::{
     CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines,
@@ -177,6 +177,7 @@ pub(crate) struct FlexChild<'input, Node, S: LayoutScalar> {
 enum FlexChildPhase<'input, Node, S: LayoutScalar> {
     Collect(FlexItemRequest<Node, S>),
     Resolve(FlexRoundChild<Node, S>),
+    Baseline(BaselineChild<Node, S>),
     Place(PendingFinalItem<'input, Node, S>),
     Absolute(AbsoluteChild<Node, S>),
 }
@@ -186,6 +187,7 @@ impl<Node: Copy, S: LayoutScalar> FlexChild<'_, Node, S> {
         match &self.phase {
             FlexChildPhase::Collect(child) => (child.node, child.input),
             FlexChildPhase::Resolve(child) => child.request(),
+            FlexChildPhase::Baseline(child) => (child.request.node, child.request.input),
             FlexChildPhase::Place(child) => (child.request.node, child.request.input),
             FlexChildPhase::Absolute(child) => (child.node, child.input),
         }
@@ -195,6 +197,7 @@ impl<Node: Copy, S: LayoutScalar> FlexChild<'_, Node, S> {
 enum FlexPhase<'input, Node, S: LayoutScalar> {
     Collect(Box<FlexCollection<'input, Node, S>>),
     Resolve(Box<FlexResolution<'input, Node, S>>),
+    Baseline(FlexBaselineExport<Node, S>),
     Place(FlexPlacement<Node, S>),
     Absolute(FlexPass<Node, S>),
 }
@@ -229,6 +232,14 @@ struct CollectedFlexItems<Node, S: LayoutScalar> {
 struct FlexResolution<'input, Node, S: LayoutScalar> {
     collection: CollectedFlexItems<Node, S>,
     rounds: FlexRounds<'input, Node, S>,
+}
+
+struct FlexBaselineExport<Node, S: LayoutScalar> {
+    baselines: BaselineExport<Node, S>,
+    constants: Constants<S>,
+    sizes: FlexContainerSizes<S>,
+    used_overflow: crate::scroll::UsedOverflow,
+    no_eligible_items: bool,
 }
 
 struct FlexPlacement<Node, S: LayoutScalar> {
@@ -347,6 +358,26 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
                         }
                     }
                 }
+                Some(FlexPhase::Baseline(export)) => {
+                    let baselines = match export.baselines.advance(tree, &export.constants)? {
+                        ControlFlow::Continue(child) => {
+                            return Ok(ControlFlow::Continue(FlexChild {
+                                phase: FlexChildPhase::Baseline(child),
+                            }));
+                        }
+                        ControlFlow::Break(baselines) => baselines,
+                    };
+                    let output = finish_flex_size(
+                        self.node,
+                        &export.constants,
+                        export.sizes,
+                        baselines,
+                        export.used_overflow,
+                        export.no_eligible_items,
+                    )?;
+                    self.pass = None;
+                    output
+                }
                 Some(FlexPhase::Place(placement)) => {
                     if let Some(child) = placement.items.next(tree, &placement.constants)? {
                         return Ok(ControlFlow::Continue(FlexChild {
@@ -420,6 +451,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
             (Some(FlexPhase::Resolve(resolution)), FlexChildPhase::Resolve(child)) => resolution
                 .rounds
                 .accept(tree, self.node, &resolution.collection.items, child, output),
+            (Some(FlexPhase::Baseline(export)), FlexChildPhase::Baseline(child)) => {
+                export.baselines.accept(&export.constants, child, output)
+            }
             (Some(FlexPhase::Place(placement)), FlexChildPhase::Place(child)) => placement
                 .items
                 .accept(tree, &placement.constants, child, output),
@@ -693,17 +727,37 @@ where
             },
         ))));
     }
-    let baselines =
-        resolved_vertical_baselines(&resolved_items, &lines, &layout_constants, |item| {
-            if input.physical_baseline_demand() {
-                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
-                    compute_sized_item(tree, item, &style, &layout_constants, RunMode::ComputeSize)
-                        .map(Some)
-                })
-            } else {
-                Ok(None)
-            }
-        })?;
+    if input.physical_baseline_demand() {
+        return Ok(ControlFlow::Continue(Box::new(FlexPhase::Baseline(
+            FlexBaselineExport {
+                baselines: BaselineExport::new(resolved_items, lines),
+                constants: layout_constants,
+                sizes,
+                used_overflow,
+                no_eligible_items,
+            },
+        ))));
+    }
+    let baselines = resolved_vertical_baselines(&resolved_items, &lines, &layout_constants)?;
+    finish_flex_size(
+        node,
+        &layout_constants,
+        sizes,
+        baselines,
+        used_overflow,
+        no_eligible_items,
+    )
+    .map(ControlFlow::Break)
+}
+
+fn finish_flex_size<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    layout_constants: &Constants<S>,
+    sizes: FlexContainerSizes<S>,
+    baselines: BaselinesOf<S>,
+    used_overflow: crate::scroll::UsedOverflow,
+    no_eligible_items: bool,
+) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
     DistributionNumber::finite(layout_constants.axes.main_size(sizes.intrinsic_content)).map_err(
         |value| {
             crate::error::sizing_resolution_error(
@@ -720,7 +774,6 @@ where
         used_overflow.is_scroll_container(),
         no_eligible_items,
     )
-    .map(ControlFlow::Break)
 }
 
 impl<Node: Copy, S: LayoutScalar> FlexPass<Node, S> {
