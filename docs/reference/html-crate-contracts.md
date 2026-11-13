@@ -127,6 +127,7 @@ Each retention of an attribute value or of the saved `is` value either lists or 
 | Retention | Rule |
 | --- | --- |
 | DOM attribute banks and attribute payloads, nonce, saved `is` (when an element forms it and when a registry binding re-forms it), form control name, details group name, slot name, slottable slot name | List through the transaction's block adoptions. |
+| The value a DOM clone of a Text or Comment leaf shares with its original | List: the clone counts the value by length, and the block is charged once however many leaves borrow it. |
 | DOM transient reports of the focus, image, iframe loading and `closedby` hooks, and the details name the source exclusivity step reads | List. |
 | Embedder policy inputs, the URL basis and the host observation of it for a hosted iframe, and the style value an inline style recording keeps in its event log | List through the draft of the operation or the transaction. A published listing keeps the block while any holder remains. |
 | Default-style content a Meta atomic recording admits | Count each occurrence by length. The envelope charges each block once, at its capacity, in the payload of the first occurrence that holds it, and a rollback releases it with that occurrence. |

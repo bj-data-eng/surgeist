@@ -1431,3 +1431,144 @@ fn the_attribute_values_of_a_parse_charge_their_lengths_and_the_one_block_of_the
     // The store lists the block of the parse once.
     assert_eq!((small_listed, large_listed), (1, 1));
 }
+
+/// Clones a leaf node of the store that holds `value`, from a draft whose source limits admit
+/// `room` retained units beyond the units the store holds, and returns the outcome and the number
+/// of blocks listed.
+fn clone_under_unit_limit(
+    value: DocumentString,
+    leaf: fn(&mut crate::DomBatch, crate::DocumentId, DocumentString) -> crate::CreatedNode,
+    room: usize,
+) -> (Result<(), crate::DomError>, usize) {
+    let mut dom = dom();
+    let document = document(&mut dom);
+    let mut batch = crate::DomBatch::new();
+    let original = leaf(&mut batch, document, value);
+    let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let original = done.created(&original).unwrap().unwrap();
+    let cancel = AtomicBool::new(false);
+    let batch = crate::DomBatch::new();
+    let unit_limit = total(&dom).units() + room;
+    let limits = crate::DomSourceLimits::new(16_000_000, unit_limit, 1_000_000, 32, 4096, 4096, 1);
+    let (mut draft, _) =
+        Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
+    let outcome = draft
+        .clone_node(Key::Existing(original), false, dom.limits, &cancel)
+        .map(|_| ());
+    (outcome, dom.custody_registry.listed_blocks())
+}
+
+/// Whether `outcome` is the refusal of a source draft by its retained-unit limit.
+fn refused_by_retained_units(outcome: &Result<(), crate::DomError>) -> bool {
+    matches!(
+        outcome,
+        Err(crate::DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedUnits,
+            ..
+        })
+    )
+}
+
+/// A source draft whose limit leaves room for the length of a four-unit leaf takes the clone of
+/// the leaf whether it borrows a block of 512 units or owns an exact string, and refuses it with
+/// one unit less: the clone's occurrence is its length, and the block is the store's charge once.
+fn assert_a_cloned_leaf_is_charged_its_length(
+    leaf: fn(&mut crate::DomBatch, crate::DocumentId, DocumentString) -> crate::CreatedNode,
+) {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let borrower = block.string(0..4).unwrap();
+    let length = borrower.len();
+    assert_eq!(exact_owner().len(), length);
+    assert_eq!(
+        clone_under_unit_limit(exact_owner(), leaf, length),
+        (Ok(()), 0)
+    );
+    assert_eq!(
+        clone_under_unit_limit(borrower.clone(), leaf, length),
+        (Ok(()), 1)
+    );
+    let (refused, _) = clone_under_unit_limit(exact_owner(), leaf, length - 1);
+    assert!(refused_by_retained_units(&refused), "{refused:?}");
+    let (refused, _) = clone_under_unit_limit(borrower, leaf, length - 1);
+    assert!(refused_by_retained_units(&refused), "{refused:?}");
+}
+
+#[test]
+fn a_cloned_text_that_borrows_a_block_is_charged_its_length() {
+    assert_a_cloned_leaf_is_charged_its_length(|batch, document, value| {
+        batch.create_text(document, value)
+    });
+}
+
+#[test]
+fn a_cloned_comment_that_borrows_a_block_is_charged_its_length() {
+    assert_a_cloned_leaf_is_charged_its_length(|batch, document, value| {
+        batch.create_comment(document, value)
+    });
+}
+
+/// Creates two text leaves that borrow one block, in a store that does not list it, and clones
+/// the first `clones` of them in the same source operation, which admits `room` retained units
+/// beyond the store. Gives the outcome, the units the store gains and the number of blocks it
+/// lists.
+fn create_and_clone_leaves_of_one_block(
+    block: &TextBlock,
+    clones: usize,
+    room: usize,
+) -> (Result<(), crate::DomError>, usize, usize) {
+    let mut dom = dom();
+    let document = document(&mut dom);
+    assert_eq!(dom.custody_registry.listed_blocks(), 0);
+    let before = total(&dom).units();
+    let mut batch = crate::DomBatch::new();
+    let leaves = [
+        batch.create_text(document, block.string(0..4).unwrap()),
+        batch.create_text(document, block.string(4..8).unwrap()),
+    ];
+    for leaf in leaves.iter().take(clones) {
+        batch.clone_node(leaf, false);
+    }
+    let cancel = AtomicBool::new(false);
+    let limits =
+        crate::DomSourceLimits::new(16_000_000, before + room, 1_000_000, 32, 4096, 4096, 1);
+    let outcome = dom
+        .begin_source_commands(batch, limits, &cancel)
+        .and_then(|mut lease| lease.advance(&cancel))
+        .map(|_| ());
+    (
+        outcome,
+        total(&dom).units() - before,
+        dom.custody_registry.listed_blocks(),
+    )
+}
+
+/// The least room of units beyond the store in which the operation completes.
+fn least_room_to_clone(block: &TextBlock, clones: usize) -> usize {
+    (0..4096)
+        .find(|room| {
+            create_and_clone_leaves_of_one_block(block, clones, *room)
+                .0
+                .is_ok()
+        })
+        .expect("the operation completes within the limit of the scan")
+}
+
+/// Cloning the two leaves of a block that the operation lists adds their lengths of four units to
+/// what the operation needs and to what the store holds, and the block stays charged once.
+#[test]
+fn two_cloned_leaves_of_a_block_the_store_did_not_list_charge_the_block_once() {
+    let block = spare_block();
+    assert!(block.capacity() >= 512);
+    let without = least_room_to_clone(&block, 0);
+    let with = least_room_to_clone(&block, 2);
+    assert_eq!(with, without + 4 + 4);
+    let (outcome, gained, listed) = create_and_clone_leaves_of_one_block(&block, 0, without);
+    assert_eq!((outcome, listed), (Ok(()), 1));
+    assert_eq!(
+        create_and_clone_leaves_of_one_block(&block, 2, with),
+        (Ok(()), gained + 4 + 4, 1)
+    );
+    let (refused, ..) = create_and_clone_leaves_of_one_block(&block, 2, with - 1);
+    assert!(refused_by_retained_units(&refused), "{refused:?}");
+}
