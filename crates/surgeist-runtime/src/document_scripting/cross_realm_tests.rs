@@ -7,6 +7,7 @@ mod element_tasks;
 mod inline_style;
 mod nested_dispatch;
 mod node_clone;
+mod node_equality;
 mod node_identity;
 mod node_namespace;
 mod node_relations;
@@ -342,6 +343,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     node_identity::node_comparisons_use_live_ordinary_ancestry_and_exact_identity();
     node_identity::node_comparisons_refuse_retired_operands();
     node_namespace::namespace_lookups_follow_live_native_names_and_declarations();
+    node_equality::structural_node_equality_reads_the_live_ordinary_tree();
+    node_equality::structural_node_equality_observes_template_boundaries_and_native_refusal();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();

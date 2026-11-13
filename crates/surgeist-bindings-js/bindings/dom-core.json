@@ -4755,11 +4755,7 @@
       "owner": "surgeist-dom",
       "contract": "Compare the source node-kind, name, value, attribute and ordered-child equality fields from current native observations; identity equality is a different operation.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
-      ],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/equality.rs", "symbol": "is_equal_node_with"}],
       "requirements": []
     },
     "Node.isSameNode:0/call": {

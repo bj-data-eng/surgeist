@@ -5,6 +5,7 @@ use crate::{DocumentId, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
 use crate::{DomDocumentMetadata, DomDocumentType, DomElement, DomProcessingInstruction};
 use surgeist_html::values::DocumentString;
 
+mod equality;
 mod namespace;
 pub use namespace::DomNamespaceUri;
 
