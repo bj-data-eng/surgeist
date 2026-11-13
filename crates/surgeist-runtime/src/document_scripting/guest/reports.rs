@@ -60,6 +60,29 @@ pub(in crate::document_scripting) struct ViolationQueue {
     _header: ViolationBacking,
 }
 
+type ViolationBank = (VecDeque<Rc<QueuedViolation>>, ViolationBacking);
+
+pub(super) enum PreparedViolationQueue<'a> {
+    Existing(&'a mut ViolationQueue, Option<ViolationBank>),
+    New(&'a mut Option<Box<ViolationQueue>>, Box<ViolationQueue>),
+}
+
+impl<'a> PreparedViolationQueue<'a> {
+    pub(super) fn install(self) -> &'a mut ViolationQueue {
+        match self {
+            Self::Existing(queue, replacement) => {
+                if let Some((mut reports, backing)) = replacement {
+                    reports.append(&mut queue.reports);
+                    queue.reports = reports;
+                    queue.backing = Some(backing);
+                }
+                queue
+            }
+            Self::New(slot, new) => slot.insert(new),
+        }
+    }
+}
+
 impl ViolationQueue {
     pub(super) fn admit_report(
         queue: &mut Option<Box<Self>>,
@@ -68,7 +91,7 @@ impl ViolationQueue {
         mut reserve: impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
         charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
     ) -> Result<ViolationBacking, DocumentGuestEventError> {
-        Self::admit_batch(queue, origin, 1, &mut reserve, charge_copy)?;
+        Self::prepare_batch(queue, origin, 1, &mut reserve, charge_copy)?.install();
         reserve(Self::record_bytes(bytes)?, bytes / size_of::<u16>())
     }
 
@@ -78,44 +101,49 @@ impl ViolationQueue {
             .ok_or(DocumentScriptNativeError::StorageLimit)
     }
 
-    pub(super) fn admit_batch(
-        queue: &mut Option<Box<Self>>,
+    pub(super) fn prepare_batch<'a>(
+        queue: &'a mut Option<Box<Self>>,
         origin: ViolationOrigin,
         count: usize,
         reserve: &mut impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
         charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
-    ) -> Result<(), DocumentGuestEventError> {
-        if queue.is_none() {
-            let header = reserve(size_of::<Self>(), 0)?;
-            *queue = Some(Box::new(Self {
-                origin,
-                reports: VecDeque::new(),
-                active: None,
-                next_task: 0,
-                backing: None,
-                _header: header,
-            }));
+    ) -> Result<PreparedViolationQueue<'a>, DocumentGuestEventError> {
+        if let Some(current) = queue {
+            if current.origin != origin {
+                return Err(DocumentScriptNativeError::ForeignPermit.into());
+            }
+            let replacement = current.prepare_bank(count, reserve, charge_copy)?;
+            return Ok(PreparedViolationQueue::Existing(current, replacement));
         }
-        let queue = queue.as_mut().ok_or(DocumentScriptNativeError::Busy)?;
-        if queue.origin != origin {
-            return Err(DocumentScriptNativeError::ForeignPermit.into());
+        let header = reserve(size_of::<Self>(), 0)?;
+        let mut new = Box::new(Self {
+            origin,
+            reports: VecDeque::new(),
+            active: None,
+            next_task: 0,
+            backing: None,
+            _header: header,
+        });
+        if let Some((reports, backing)) = new.prepare_bank(count, reserve, charge_copy)? {
+            new.reports = reports;
+            new.backing = Some(backing);
         }
-        queue.reserve(count, reserve, charge_copy)
+        Ok(PreparedViolationQueue::New(queue, new))
     }
 
-    fn reserve(
-        &mut self,
+    fn prepare_bank(
+        &self,
         count: usize,
         reserve: &mut impl FnMut(usize, usize) -> Result<ViolationBacking, DocumentGuestEventError>,
         charge_copy: impl FnOnce(u64) -> Result<(), DocumentGuestEventError>,
-    ) -> Result<(), DocumentGuestEventError> {
+    ) -> Result<Option<ViolationBank>, DocumentGuestEventError> {
         let needed = self
             .reports
             .len()
             .checked_add(count)
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if needed <= self.reports.capacity() {
-            return Ok(());
+            return Ok(None);
         }
         let capacity = self
             .reports
@@ -138,10 +166,7 @@ impl ViolationQueue {
             u64::try_from(self.reports.len())
                 .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?,
         )?;
-        reports.append(&mut self.reports);
-        self.reports = reports;
-        self.backing = Some(backing);
-        Ok(())
+        Ok(Some((reports, backing)))
     }
 
     pub(super) fn push(&mut self, report: ViolationReport<ViolationBacking>) {

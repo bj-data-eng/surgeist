@@ -91,7 +91,9 @@ impl Policy {
                         {
                             return Ok(Some((true, false)));
                         }
-                        surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable => {
+                        surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable(nonce)
+                            if matching_nonce(value, nonce.code_units(), step)? =>
+                        {
                             unavailable = true;
                         }
                         _ => {}

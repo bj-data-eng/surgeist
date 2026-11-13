@@ -257,24 +257,24 @@ impl Capture {
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let (data, _backing) = copy_native_data(owner, events, units)?;
-        let (result, pending) = self.with_native(owner, |session, _| {
+        let mut result = self.with_native(owner, |session, _| {
             let mut source = session.source_execution();
             let mut dom = session.dom();
-            let mut result = source.apply(
+            Ok(source.apply(
                 &mut dom,
                 DomSourceEdit::replace_data(node.node(), offset, count, data),
                 events.limits.source_edits,
                 &mut guest_source_services(&mut initial_inline_style_policy),
                 &owner.cancellation,
-            );
-            session.finish_guest_style(
-                &mut result,
-                owner,
-                events.limits.source_edits,
-                &owner.cancellation,
-            );
-            Ok((result, session.dom().pending_source_edit()))
+            ))
         })?;
+        owner.finish_guest_style(&mut result, events.limits.source_edits);
+        let pending = owner
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .read_dom()
+            .pending_source_edit();
         match result {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DocumentScriptNativeError::from(DomError::Cancelled).into())

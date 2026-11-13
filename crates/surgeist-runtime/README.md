@@ -367,6 +367,9 @@ CSP. A blocked sheet stays out of CSSOM and queues a violation. At dispatch,
 the event targets the original Style element if it is still connected to the
 reporting Document, or that Document otherwise. An unavailable policy or
 required tokenizer fact leaves the original native request pending.
+After a resource refusal, use `resume_pending_style_edit` with the original
+operation and higher Source limits. The host uses the same Session processor
+and report queue.
 
 Full NamedNodeMap collection behavior and live HTTP response CSP have separate
 integration work.

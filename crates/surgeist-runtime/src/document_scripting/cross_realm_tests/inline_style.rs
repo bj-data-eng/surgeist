@@ -2,6 +2,7 @@ use super::*;
 use crate::document_scripting::guest::tests::{
     attach_public_nodes, expose_public_node_for_source_test,
 };
+use crate::{DomSourceDriveError, DomStyleRuntimeError};
 use surgeist_cssom::CssomStore;
 use surgeist_dom::DomStyleCssomRoot;
 use surgeist_html::values::DocumentString;
@@ -32,16 +33,37 @@ pub(super) fn guest_style_update_matches_the_exact_nonce() {
 }
 
 pub(super) fn guest_style_violations_retarget_at_dispatch() {
-    for detached in [false, true] {
+    for report in [
+        StyleReport::Connected,
+        StyleReport::Detached,
+        StyleReport::Stop,
+        StyleReport::Retry,
+    ] {
+        let policy = if matches!(report, StyleReport::Retry) {
+            format!(
+                "default-src 'none' 'report-sample'; extension {}",
+                "x".repeat(6_000)
+            )
+        } else {
+            "default-src 'none' 'report-sample'".to_owned()
+        };
         guest_style(
-            Some("default-src 'none' 'report-sample'"),
+            Some(&policy),
             None,
             "p { color: red }".into(),
             false,
             false,
-            Some(detached),
+            Some(report),
         );
     }
+}
+
+#[derive(Clone, Copy)]
+enum StyleReport {
+    Connected,
+    Detached,
+    Stop,
+    Retry,
 }
 
 fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_sheet: bool) {
@@ -91,7 +113,7 @@ fn guest_style(
     text: DocumentString,
     expected_sheet: bool,
     edit_after_match: bool,
-    detach_before_report: Option<bool>,
+    report: Option<StyleReport>,
 ) {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
@@ -122,6 +144,16 @@ fn guest_style(
     let style = batch.create_element_ns(document, Namespace::html(), "style");
     let text = batch.create_text(document, text);
     batch.insert_before(&text, &style, None);
+    let retry = matches!(report, Some(StyleReport::Retry));
+    let retry_tail = retry.then(|| {
+        let fragment = batch.create_fragment(document);
+        let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+        batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+        batch.set_attribute(&meta, "content", "trusted-types follow-up");
+        batch.insert_before(&style, &fragment, None);
+        batch.insert_before(&meta, &fragment, None);
+        (fragment, meta)
+    });
     let meta = policy.map(|policy| {
         let meta = batch.create_element_ns(document, Namespace::html(), "meta");
         batch.set_attribute(&meta, "http-equiv", "content-security-policy");
@@ -132,19 +164,36 @@ fn guest_style(
     let style = committed.created(&style).unwrap().unwrap();
     let text = committed.created(&text).unwrap().unwrap();
     let meta = meta.map(|meta| committed.created(&meta).unwrap().unwrap());
+    let retry_tail = retry_tail.map(|(fragment, meta)| {
+        (
+            committed.created(&fragment).unwrap().unwrap(),
+            committed.created(&meta).unwrap().unwrap(),
+        )
+    });
     if meta.is_some() {
         session.enable_trusted_types_csp(&cancel).unwrap();
     }
+    let meta = if let Some(meta) = meta.filter(|_| retry) {
+        install_policy_before_style_retry(&mut session, meta, head, &cancel);
+        None
+    } else {
+        meta
+    };
     if let Some((value, true)) = nonce {
         let mut slot = DomBatch::new();
         slot.set_nonce(style, value);
         session.dom().apply(slot, &cancel).unwrap();
     }
-    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let source_work = if retry { 30_000 } else { 60_000 };
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, source_work);
     let permit = host.permit().unwrap();
     expose_public_node_for_source_test(&mut host, &permit, body, "styleParent");
     expose_public_node_for_source_test(&mut host, &permit, style, "inlineStyle");
-    if detach_before_report.is_some() {
+    if let Some((fragment, _)) = retry_tail {
+        expose_public_node_for_source_test(&mut host, &permit, head, "styleHead");
+        expose_public_node_for_source_test(&mut host, &permit, fragment, "styleFragment");
+    }
+    if report.is_some() {
         host.in_document(&permit, |scope| {
             evaluate(scope, r#"
                 globalThis.styleViolations = [];
@@ -174,6 +223,8 @@ fn guest_style(
     let inserted = host.in_document(&permit, |scope| {
         let script = if nonce.is_some() {
             "inlineStyle.textContent = 'p { color: blue }'; inlineStyle.textContent === 'p { color: blue }'"
+        } else if retry {
+            "styleHead.appendChild(styleFragment) === styleFragment"
         } else {
             "styleParent.appendChild(inlineStyle) === inlineStyle"
         };
@@ -182,7 +233,58 @@ fn guest_style(
         assert!(scope.strict_equals(&result, &expected)?);
         Ok(())
     });
-    if inserted.is_err() {
+    if retry {
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = inserted else {
+            panic!("expected a metered Style refusal, got {inserted:?}");
+        };
+        let cause = failure.cause::<DomSourceDriveError>();
+        assert!(
+            matches!(
+                cause,
+                Some(DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+                    DomStyleRuntimeError::Dom(DomError::SourceWorkLimit { limit })
+                ))) if *limit == source_work
+            ),
+            "{cause:?}"
+        );
+        let original = host
+            .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+            .unwrap();
+        assert!(original.has_published());
+        assert_eq!(original.spent_work(), source_work);
+        crate::document_scripting::guest::tests::assert_queued_trusted_types_violations(&host, &[]);
+        assert!(matches!(
+            host.resume_pending_style_edit(&permit, original.operation(), SOURCE).unwrap().unwrap(),
+            DomSourceDriveProgress::Complete(done) if done.operation() == original.operation()
+        ));
+        assert_queued_style_violation(&host);
+        let (fragment, tail) = retry_tail.unwrap();
+        let snapshot = host.snapshot().unwrap();
+        assert!(snapshot.node(fragment).unwrap().children().is_empty());
+        assert_eq!(snapshot.node(head).unwrap().children()[1..], [style, tail]);
+        let session = host.native.session.borrow();
+        let processor = session
+            .trusted_types_csp
+            .as_ref()
+            .unwrap()
+            .processor
+            .borrow();
+        let document = snapshot.document(document).unwrap();
+        let policies = processor
+            .document_policies_with(document.metadata().policy_container().csp(), &mut |_| {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(policies.len(), 2);
+        assert_eq!(policies[1].serialized(), &"trusted-types follow-up".into());
+        drop(processor);
+        drop(session);
+        assert!(matches!(
+            host.resume_pending_style_edit(&permit, original.operation(), SOURCE),
+            Err(DocumentScriptNativeError::SourceAccess)
+        ));
+    } else if inserted.is_err() {
         let pending = host
             .with_native(|dom, _, mut source| {
                 dom.pending_source_edit().map(|status| {
@@ -209,7 +311,7 @@ fn guest_style(
     }
     let snapshot = host.snapshot().unwrap();
     let node = snapshot.node(style).unwrap();
-    assert_eq!(node.parent(), Some(body));
+    assert_eq!(node.parent(), Some(if retry { head } else { body }));
     let sheet = node.as_style().unwrap().sheet().unwrap();
     let cssom = styles.snapshot(document.node()).unwrap().unwrap();
     assert_eq!(sheet.is_some(), expected_sheet);
@@ -245,7 +347,11 @@ fn guest_style(
                 .is_empty()
         );
     }
-    if let Some(detached) = detach_before_report {
+    if let Some(report) = report {
+        if matches!(report, StyleReport::Retry) {
+            return;
+        }
+        let detached = matches!(report, StyleReport::Detached);
         host.in_document(&permit, |scope| {
             let count = evaluate(scope, "styleViolations.length")?;
             let zero = scope.primitive(Primitive::Number(0.0))?;
@@ -256,6 +362,13 @@ fn guest_style(
             Ok(())
         })
         .unwrap();
+        if matches!(report, StyleReport::Stop) {
+            assert_queued_style_violation(&host);
+            let mut session = host.stop().into_session().unwrap();
+            assert!(session.dom().pending_source_edit().is_none());
+            assert_eq!(session.snapshot().node(style).unwrap().parent(), Some(body));
+            return;
+        }
         assert!(matches!(
             host.run_attached_csp_violation_task(&permit, EVENT.dispatch)
                 .unwrap(),
@@ -291,4 +404,56 @@ fn guest_style(
             DocumentCspViolationProgress::Empty
         ));
     }
+}
+
+fn install_policy_before_style_retry(
+    session: &mut DomSession,
+    meta: NodeId,
+    head: NodeId,
+    cancel: &AtomicBool,
+) {
+    let mut source = session.source_execution();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::MetaCsp(request),
+        ..
+    } = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::insert_before(meta, head, None),
+            SOURCE,
+            &mut services,
+            cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the Meta fixture must reach its native processor");
+    };
+    session
+        .service_trusted_types_meta_csp(request, SOURCE, cancel)
+        .unwrap();
+    assert!(matches!(
+        source
+            .resume(
+                &mut session.dom(),
+                request.operation(),
+                SOURCE,
+                &mut services,
+                cancel,
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+}
+
+fn assert_queued_style_violation(host: &DocumentScriptHost) {
+    crate::document_scripting::guest::tests::assert_queued_trusted_types_violations(
+        host,
+        &[(0, "inline", "p { color: red }")],
+    );
 }

@@ -9,6 +9,27 @@ fn parse(serialized: &str, delivery: PolicyDelivery) -> Policy {
     Policy::parse(serialized.into(), delivery, &mut step).unwrap()
 }
 
+#[cfg(feature = "document-scripting")]
+#[test]
+fn only_an_exact_nonce_match_needs_imported_tokenizer_history() {
+    use surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable;
+    let policy = parse(
+        "style-src 'nonce-AbC' 'report-sample'",
+        PolicyDelivery::Meta,
+    );
+    let decision = |nonce: &str| {
+        policy
+            .inline_style(
+                &TokenizerHistoryUnavailable(nonce.into()),
+                &mut style_hash::StyleHashes::new(&[]),
+                &mut || Ok::<(), surgeist_dom::DomError>(()),
+            )
+            .unwrap()
+    };
+    assert_eq!(decision("abc"), Some((false, true)));
+    assert_eq!(decision("AbC"), None);
+}
+
 #[test]
 fn script_requirements_use_first_valid_ascii_directive_and_keep_disposition() {
     use PolicyDelivery::{EnforcingHeader, Meta, ReportOnlyHeader};

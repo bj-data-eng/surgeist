@@ -174,7 +174,7 @@ pub enum DomStyleNonceContent {
     /// Exact content value on a Style with no original tokenizer history.
     Present(surgeist_html::values::DocumentString),
     /// The imported Style's tokenizer nonceability has not been established.
-    TokenizerHistoryUnavailable,
+    TokenizerHistoryUnavailable(surgeist_html::values::DocumentString),
 }
 
 /// Admitted storage from a live Style CSP request. It can outlive the request
@@ -192,8 +192,9 @@ impl DomStyleSource {
             self.blocking.as_ref(),
             Some(&self.nonce),
             match &self.nonce_content {
-                DomStyleNonceContent::Present(value) => Some(value),
-                _ => None,
+                DomStyleNonceContent::Present(value)
+                | DomStyleNonceContent::TokenizerHistoryUnavailable(value) => Some(value),
+                DomStyleNonceContent::Absent => None,
             },
         ]
         .into_iter()

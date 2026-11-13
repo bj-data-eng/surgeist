@@ -2021,6 +2021,10 @@ impl DomSession {
     pub fn dom(&mut self) -> DomEventDom<'_> {
         DomEventDom::borrow(&mut self.dom)
     }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn read_dom(&self) -> &Dom {
+        &self.dom
+    }
     /// An immutable historical capture which does not retain mutable custody.
     pub fn snapshot(&self) -> DomSnapshot {
         self.dom.snapshot()

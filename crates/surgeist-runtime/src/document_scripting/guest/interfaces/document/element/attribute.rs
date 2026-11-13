@@ -160,16 +160,22 @@ impl Capture {
         let mut policy = initial_inline_style_policy;
         let mut services = guest_source_services(&mut policy);
         let event = owner.active_event_request();
-        let (mut result, mut pending, parent) =
+        let (mut result, parent) =
             self.callbacks
                 .with_qualified_session(owner, event.as_ref(), |session, _| {
                     let mut source = session.source_execution();
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
-                    let mut result = source.apply(&mut dom, edit, limits, &mut services, cancel);
-                    session.finish_guest_style(&mut result, owner, limits, cancel);
-                    Ok((result, session.dom().pending_source_edit(), parent))
+                    let result = source.apply(&mut dom, edit, limits, &mut services, cancel);
+                    Ok((result, parent))
                 })?;
+        owner.finish_guest_style(&mut result, limits);
+        let mut pending = owner
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .read_dom()
+            .pending_source_edit();
         let mut abrupt = None;
         let mut output = None;
         if let Ok(DomSourceDriveProgress::Pending {
@@ -706,21 +712,25 @@ fn resume_attribute_source(
     operation: surgeist_dom::DomSourceOperationId,
     limits: DomSourceLimits,
 ) -> Result<NativeAttributeProgress, DocumentGuestEventError> {
-    let mut session = owner
+    let mut result = {
+        let mut session = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        session.source_execution().resume(
+            &mut session.dom(),
+            operation,
+            limits,
+            &mut guest_source_services(&mut initial_inline_style_policy),
+            &owner.cancellation,
+        )
+    };
+    owner.finish_guest_style(&mut result, limits);
+    let session = owner
         .session
-        .try_borrow_mut()
+        .try_borrow()
         .map_err(|_| DocumentScriptNativeError::Busy)?;
-    let mut source = session.source_execution();
-    let mut dom = session.dom();
-    let mut result = source.resume(
-        &mut dom,
-        operation,
-        limits,
-        &mut guest_source_services(&mut initial_inline_style_policy),
-        &owner.cancellation,
-    );
-    session.finish_guest_style(&mut result, owner, limits, &owner.cancellation);
-    Ok((result, session.dom().pending_source_edit()))
+    Ok((result, session.read_dom().pending_source_edit()))
 }
 
 fn accept_mismatch(

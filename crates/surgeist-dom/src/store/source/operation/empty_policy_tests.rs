@@ -185,6 +185,59 @@ fn source_complete_empty_policy_receipt_has_no_policy_bank_extent() {
 }
 
 #[test]
+fn inline_policy_qualification_refuses_foreign_duplicate_and_cancelled_requests() {
+    let cancel = AtomicBool::new(false);
+    let (mut first, document, style) = style_fixture();
+    let (mut second, other_document, other_style) = style_fixture();
+    let (mut lease, request) = begin_style(&mut first, document, style);
+    let (_, foreign) = begin_style(&mut second, other_document, other_style);
+    assert!(matches!(
+        lease.inline_csp_budget(&foreign),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    lease
+        .inline_csp_budget(&request)
+        .unwrap()
+        .step(&cancel)
+        .unwrap();
+    let observation = DomStyleInlineCspObservation::complete_empty(request.source(), 0);
+    lease
+        .accept_inline_csp(&request, &observation, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.inline_csp_budget(&request),
+        Err(DomError::StyleFactsMismatch)
+    ));
+
+    let (mut dom, document, style) = style_fixture();
+    let (mut lease, request) = begin_style(&mut dom, document, style);
+    assert!(lease.status().has_published());
+    lease.request_cancel();
+    let stopped = AtomicBool::new(true);
+    assert_eq!(
+        lease.inline_csp_budget(&request).unwrap().step(&stopped),
+        Err(DomError::Cancelled)
+    );
+    let rejected = DomStyleInlineCspObservation::evaluated(
+        request.source(),
+        Arc::new(vec!["style-src 'none'".into()]),
+        0,
+        false,
+    );
+    lease
+        .accept_inline_csp(&request, &rejected, &cancel)
+        .unwrap();
+    assert!(
+        matches!(lease.advance(&cancel).unwrap(), DomSourceProgress::Complete(done)
+        if done.cancellation_requested())
+    );
+    assert_eq!(
+        lease.snapshot().node(style).unwrap().parent(),
+        Some(document.node())
+    );
+}
+
+#[test]
 fn source_evaluated_policy_receipts_price_the_actual_supplied_banks() {
     for case in 0..3 {
         let (mut dom, document, style) = style_fixture();
