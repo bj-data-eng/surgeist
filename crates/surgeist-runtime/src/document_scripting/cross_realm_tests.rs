@@ -320,6 +320,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     processing_instruction::native_processing_instruction_uses_its_canonical_wrapper();
     super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
     node_relations::node_relations_follow_the_live_ordinary_tree();
+    node_relations::node_relations_project_native_processing_instructions();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();

@@ -59,3 +59,41 @@ pub(super) fn node_relations_follow_the_live_ordinary_tree() {
         Ok(())
     }).unwrap();
 }
+
+pub(super) fn node_relations_project_native_processing_instructions() {
+    use crate::document_scripting::guest::tests::{attach_public_nodes, projected_node_id};
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let root = session
+        .snapshot()
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let instruction = batch.create_processing_instruction(document, "example", "data");
+    batch.insert_before(&instruction, document, Some(root.into()));
+    let commit = session.dom().apply(batch, &cancel).unwrap();
+    let instruction = commit.created(&instruction).unwrap().unwrap();
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    let projected = host
+        .in_document(&permit, |scope| {
+            let first = evaluate(scope, "globalThis.instruction = document.firstChild")?;
+            let result = evaluate(
+                scope,
+                r#"
+            document.firstChild === instruction &&
+            document.documentElement.previousSibling === instruction &&
+            instruction.nextSibling === document.documentElement &&
+            instruction.previousSibling === null && instruction.parentElement === null
+        "#,
+            )?;
+            assert!(scope.boolean(&result)?);
+            projected_node_id(scope, &first)
+        })
+        .unwrap();
+    assert_eq!(projected, instruction);
+}
