@@ -278,7 +278,7 @@ impl Dom {
 }
 
 impl DomSourceLease<'_> {
-    /// Finish the original factory. Only a distinct fallback requires a new
+    /// Finish the original autonomous factory. Only a distinct fallback requires a new
     /// wrapper and watch. Any preparation refusal leaves the accepted result
     /// in the original operation.
     pub fn finish_custom_element_with_watch<T, E: From<DomError>>(
@@ -295,7 +295,7 @@ impl DomSourceLease<'_> {
             .as_deref()
             .filter(|operation| operation.id == self.id)
             .and_then(|operation| operation.custom_element.as_ref())
-            .is_some_and(|pending| pending.accepted(request));
+            .is_some_and(|pending| pending.accepted_autonomous(request));
         if !accepted {
             return Err(DomError::InvalidSourceOperation.into());
         }

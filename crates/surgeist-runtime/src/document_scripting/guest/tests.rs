@@ -294,6 +294,19 @@ pub(in crate::document_scripting) fn document_factories_upgrade_the_reached_cust
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
         assert_guest(scope, r#"(() => {
+            const destination = new Document();
+            class Adopting extends HTMLButtonElement {
+                constructor() {
+                    super();
+                    destination.adoptNode(this);
+                }
+            }
+            customElements.define('x-adopting-button', Adopting, { extends: 'button' });
+            const result = document.createElement('button', { is: 'x-adopting-button' });
+            return result instanceof Adopting && result.ownerDocument === destination
+                && result.customElementRegistry === destination.customElementRegistry;
+        })()"#)?;
+        assert_guest(scope, r#"(() => {
             const receivers = [];
             let nested;
             class Customized extends HTMLButtonElement {
@@ -353,14 +366,19 @@ pub(in crate::document_scripting) fn document_factories_upgrade_the_reached_cust
                 constructor() {
                     super();
                     try { Reflect.construct(HTMLButtonElement, [], new.target); }
-                    catch (error) { sawMarker = error.name === 'InvalidStateError'; }
+                    catch (error) { sawMarker = error instanceof TypeError; }
                 }
             }
             customElements.define('x-double-button', DoubleSuper, { extends: 'button' });
             const result = document.createElement('button', { is: 'x-double-button' });
             return result instanceof DoubleSuper && sawMarker;
         })()"#)
-    }).unwrap();
+    }).unwrap_or_else(|error| {
+        if let DocumentScriptError::Script(Error::HostFailure(failure)) = &error {
+            panic!("customized factory host refusal: {:?}", failure.cause::<DocumentGuestEventError>());
+        }
+        panic!("customized factory: {error:?}");
+    });
     let original = host
         .take_guest_constructor_exception(&permit)
         .unwrap()
@@ -494,7 +512,7 @@ pub(in crate::document_scripting) fn attach_public_nodes_with_registry_and_repor
             },
             registry,
             DocumentGuestEventLimits {
-                storage_bytes: 96 * 1024,
+                storage_bytes: 192 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),

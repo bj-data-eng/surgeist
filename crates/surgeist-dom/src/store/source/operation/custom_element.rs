@@ -20,6 +20,7 @@ pub(super) struct Pending {
     registration: Option<Arc<ScriptRegistration>>,
     outcome: Option<DomSourceCustomElementOutcome>,
     disposition: Option<DomSourceCustomElementDisposition>,
+    receiver: Option<NodeId>,
 }
 
 impl Pending {
@@ -52,6 +53,7 @@ impl Pending {
             registration: None,
             outcome: None,
             disposition: None,
+            receiver: None,
         })
     }
 
@@ -72,6 +74,54 @@ impl Pending {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let outcome = self.outcome.ok_or(DomError::InvalidSourceOperation)?;
+        if let Some(receiver) = self.receiver {
+            use surgeist_html::elements::native::HtmlCustomElementState;
+
+            let successful = outcome == DomSourceCustomElementOutcome::Returned(receiver);
+            let key = match draft.resolve(receiver.into()) {
+                Ok(key) => key,
+                // Native reentry can retire the original receiver. Retain its
+                // historical ticket and close without editing a later generation.
+                Err(DomError::StaleNode) => Key::Existing(receiver),
+                Err(error) => return Err(error),
+            };
+            match draft.node(key) {
+                Ok(node) => {
+                    let element = node.element().ok_or(DomError::WrongNodeKind)?;
+                    let registry = element.custom_element_registry();
+                    let saved_is = element.saved_is().cloned();
+                    draft.replace_element_custom_context(
+                        key,
+                        if successful {
+                            HtmlCustomElementState::Custom
+                        } else {
+                            HtmlCustomElementState::Failed
+                        },
+                        crate::element::CustomAssociation {
+                            registry,
+                            definition: if successful {
+                                crate::DomElementDefinition::Definition(self.request.definition)
+                            } else {
+                                crate::DomElementDefinition::Null
+                            },
+                            saved_is,
+                        },
+                        cancel,
+                    )?;
+                }
+                Err(DomError::StaleNode) => (),
+                Err(error) => return Err(error),
+            }
+            draft.register_ticket(key, cancel)?;
+            self.disposition = Some(if successful {
+                DomSourceCustomElementDisposition::Constructed
+            } else if outcome == DomSourceCustomElementOutcome::Failed {
+                DomSourceCustomElementDisposition::FailedReceiverAbrupt
+            } else {
+                DomSourceCustomElementDisposition::FailedReceiverMismatch
+            });
+            return Ok(());
+        }
         let document = draft.resolve(self.request.document.into())?;
         let registry = crate::DomRegistryBinding::Registry(self.request.definition.registry());
         let returned = match outcome {
@@ -123,8 +173,8 @@ impl Pending {
         self.disposition
     }
 
-    pub(super) fn accepted(&self, request: DomSourceCustomElementRequest) -> bool {
-        self.request == request && self.outcome.is_some()
+    pub(super) fn accepted_autonomous(&self, request: DomSourceCustomElementRequest) -> bool {
+        self.request == request && self.receiver.is_none() && self.outcome.is_some()
     }
 
     fn qualify_returned(
@@ -178,7 +228,7 @@ pub enum DomSourceCustomElementOutcome {
     InvalidInterface,
 }
 
-/// Disposition of an autonomous factory's completed native publication.
+/// Disposition of a custom element factory's completed native publication.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceCustomElementDisposition {
     Constructed,
@@ -188,6 +238,10 @@ pub enum DomSourceCustomElementDisposition {
     InvalidInterface,
     /// The returned HTMLElement requires a NotSupportedError and a distinct fallback.
     InvalidElement,
+    /// The customized receiver is preserved after an abrupt completion.
+    FailedReceiverAbrupt,
+    /// The customized receiver is preserved and a TypeError is reported.
+    FailedReceiverMismatch,
 }
 
 /// Admitted UTF-16 scratch retained during an original constructor callback.
@@ -195,7 +249,7 @@ pub struct DomSourceCustomElementRetention {
     _debit: custody::Debit,
 }
 
-/// The exact native reentry authority of a running autonomous constructor.
+/// The exact native reentry authority of a running constructor.
 #[must_use = "keep the scope live during the constructor invocation"]
 pub struct DomSourceCustomElementCallbackScope<'registration> {
     _scope: Arc<DispatchScope>,
@@ -331,6 +385,50 @@ impl DomSourceLease<'_> {
         })
     }
 
+    /// Publish the native receiver and retirement watch before invoking a
+    /// customized built-in constructor. The wrapper preparation runs before
+    /// the publication fence and must not execute guest code. A refusal
+    /// leaves the original factory unstarted.
+    pub fn open_customized_element_callback_with_watch<'registration, T, E: From<DomError>>(
+        &mut self,
+        request: DomSourceCustomElementRequest,
+        registration: &'registration DomDocumentScriptRegistration,
+        (inbox, key): (&crate::DomNodeRetirementInbox, usize),
+        watch_limits: crate::DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+        prepare: impl FnOnce(&crate::DomQualifiedName) -> Result<T, E>,
+    ) -> Result<
+        (
+            DomSourceCustomElementCallbackScope<'registration>,
+            crate::DomWatchedNode,
+            T,
+        ),
+        E,
+    > {
+        let mut operation = self
+            .dom
+            .source_operation
+            .take()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            operation.open_customized_element(
+                self.dom,
+                (self.id, request),
+                registration,
+                (inbox, key, watch_limits),
+                cancel,
+                prepare,
+            )
+        }));
+        self.dom.source_operation = Some(operation);
+        #[cfg(test)]
+        self.dom.observe_source_lifecycle();
+        match result {
+            Ok(result) => result,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
     /// Borrow the normalized name from the original factory while the
     /// constructor request is pending.
     pub fn custom_element_creation_name(
@@ -355,6 +453,170 @@ impl DomSourceLease<'_> {
 }
 
 impl Operation {
+    fn open_customized_element<'registration, T, E: From<DomError>>(
+        &mut self,
+        dom: &mut Dom,
+        (id, request): (DomSourceOperationId, DomSourceCustomElementRequest),
+        registration: &'registration DomDocumentScriptRegistration,
+        (inbox, key, watch_limits): (
+            &crate::DomNodeRetirementInbox,
+            usize,
+            crate::DomNodeRetirementLimits,
+        ),
+        cancel: &AtomicBool,
+        prepare: impl FnOnce(&crate::DomQualifiedName) -> Result<T, E>,
+    ) -> Result<
+        (
+            DomSourceCustomElementCallbackScope<'registration>,
+            crate::DomWatchedNode,
+            T,
+        ),
+        E,
+    > {
+        use surgeist_html::elements::native::HtmlCustomElementState;
+
+        if self.id != id
+            || !matches!(self.draft, OperationDraft::Segment(_))
+            || self.waiting_custom_element() != Some(request)
+        {
+            return Err(DomError::InvalidSourceOperation.into());
+        }
+        self.qualify_custom_element_registration(dom, &registration.0, cancel)?;
+        let definition = request.definition;
+        let facts = self
+            .draft
+            .creation_registry(definition.registry(), cancel)?
+            .definition(definition.ordinal())
+            .map_err(DomError::SelectCapture)?;
+        if crate::names::same_code_units(
+            facts.name().code_units(),
+            facts.local_name().code_units(),
+            || self.draft.source_step(cancel),
+        )? {
+            return Err(DomError::InvalidSourceOperation.into());
+        }
+        let saved_is = facts.name().clone();
+        let pending = self
+            .custom_element
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let name = pending.name.value.value.value.clone();
+        let input_bytes = self.input_bytes()?;
+        let checkpoint = self.draft.source_checkpoint(input_bytes, 0, cancel)?;
+        let prior = self.headroom.replace(headroom::Reservation {
+            remaining_phases: 1 + headroom::FINAL_PUBLICATION,
+        });
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let document = self.draft.resolve(request.document.into())?;
+            let budget = formation::Formation::new(&self.draft, cancel)?;
+            let bound_name = self
+                .draft
+                .bind_canonical_name(&name, budget.as_ref(), cancel)?;
+            let formed = self.draft.form_native_element(
+                bound_name,
+                Some(&saved_is),
+                self.draft
+                    .document_metadata(document)?
+                    .document_environment(),
+                budget.as_ref(),
+                cancel,
+            )?;
+            let receiver = self
+                .draft
+                .allocate_element_formed(formed, document, dom.limits, cancel, budget)?;
+            self.draft.replace_element_custom_context(
+                receiver,
+                HtmlCustomElementState::Precustomized,
+                crate::element::CustomAssociation {
+                    registry: crate::DomRegistryBinding::Registry(definition.registry()),
+                    definition: crate::DomElementDefinition::Definition(definition),
+                    saved_is: Some(saved_is),
+                },
+                cancel,
+            )?;
+            self.draft
+                .initialize_native_element_features(receiver, dom.limits, cancel)?;
+            let Key::Created(index) = receiver else {
+                return Err(DomError::InvalidSourceOperation.into());
+            };
+            let observed = self.prepare_callback_observation(cancel)?;
+            let scope = observed.open_scope()?;
+            let segment = self
+                .prepare_segment(dom, true, PublicationTarget::None, None, cancel)
+                .map_err(|error| match error {
+                    DomHostedError::Dom(error) => error,
+                    _ => DomError::HostedSourceUnavailable,
+                })?;
+            if segment
+                .prepared
+                .inline_recording
+                .as_ref()
+                .is_some_and(|recording| recording.has_inputs())
+            {
+                return Err(DomError::IncompleteSourceOperation.into());
+            }
+            // Closing changes the receiver state and clears this Source's
+            // incomplete marker. Both mandatory outputs fit before guest entry.
+            if segment
+                .outputs
+                .checked_add(2)
+                .is_none_or(|outputs| outputs > self.limits.outputs)
+            {
+                return Err(DomError::SourceOutputLimit.into());
+            }
+            let receiver = segment
+                .prepared
+                .allocation_ids
+                .get(index)
+                .ok_or(DomError::UnavailableCreation)?;
+            let projection = prepare(&name)?;
+            let watch = dom.watch_prepared_source_node(
+                &segment.prepared,
+                receiver,
+                inbox,
+                key,
+                watch_limits,
+                cancel,
+            )?;
+            Ok((scope, segment, observed, receiver, watch, projection))
+        }));
+        let (scope, segment, observed, receiver, watch, projection) = match result {
+            Ok(Ok(prepared)) => prepared,
+            Ok(Err(error)) => {
+                checkpoint.restore(&mut self.draft);
+                self.headroom = prior;
+                return Err(error);
+            }
+            Err(panic) => {
+                checkpoint.restore(&mut self.draft);
+                self.headroom = prior;
+                std::panic::resume_unwind(panic);
+            }
+        };
+        drop(checkpoint);
+        let pending = self
+            .custom_element
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        pending.receiver = Some(receiver);
+        pending.registration = Some(registration.0.clone());
+        let publication = segment.publish(self, dom);
+        // The remaining command settles this published receiver using its
+        // reserved closing phase. Replaying the original Create would perform
+        // a fresh registry lookup and incorrectly plan a second element.
+        self.command_admitted = true;
+        self.draft =
+            OperationDraft::CustomElementObserved(self.begin_callback_observation(observed));
+        Ok((
+            DomSourceCustomElementCallbackScope {
+                _scope: scope,
+                _registration: registration,
+            },
+            crate::DomWatchedNode::new(publication.commit, receiver, watch),
+            projection,
+        ))
+    }
+
     pub(super) fn waiting_custom_element(&self) -> Option<DomSourceCustomElementRequest> {
         self.custom_element
             .as_ref()

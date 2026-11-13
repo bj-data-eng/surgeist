@@ -695,6 +695,269 @@ fn document_factory_reaches_the_selected_definition_before_allocating_an_element
 }
 
 #[test]
+fn customized_factory_publishes_one_receiver_and_retries_its_closing_phase() {
+    use surgeist_html::{
+        elements::native::HtmlCustomElementState,
+        scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},
+    };
+    use surgeist_html_semantics::HtmlCustomElementDefinition;
+
+    let mut dom = Dom::new(bounds(1024, 1_000_000)).unwrap();
+    let mut issuer = issuer(&mut dom);
+    let owner = hosted(&mut dom, &mut issuer);
+    let document = owner.document();
+    let before = dom.snapshot();
+    let DomRegistryBinding::Registry(registry) = before
+        .document(document)
+        .unwrap()
+        .metadata()
+        .custom_element_registry()
+    else {
+        panic!("hosted registry");
+    };
+    let definition = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            owner.global(),
+            registry,
+            &HtmlCustomElementDefinition::new("x-button".into(), "button".into(), false, false),
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit()
+        .1;
+    let backing = issuer
+        .retain_runtime_payload(
+            &mut dom,
+            DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    let (_, registration) = issuer
+        .attach_document_script_host(
+            &mut dom,
+            owner.global(),
+            document,
+            DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap();
+    let bounds = source_limits(4096);
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1000);
+    let inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_with_options(
+                document.node(),
+                DomElementCreationName::Local("button".into()),
+                DomElementCreationOptions {
+                    is: Some("x-button".into()),
+                    registry: None,
+                },
+            ),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("customized constructor request");
+    };
+    assert_eq!(request.definition(), definition);
+    let original = lease.snapshot().stamp();
+    drop(lease);
+    let mut lease = dom
+        .resume_source_edit(
+            request.operation(),
+            DomSourceLimits {
+                outputs: 3,
+                ..bounds
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |_| -> Result<(), DomError> {
+                panic!("closing capacity must be admitted before wrapper formation")
+            }
+        ),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert_eq!(lease.snapshot().stamp(), original);
+    drop(lease);
+    let mut lease = dom
+        .resume_source_edit(
+            request.operation(),
+            DomSourceLimits {
+                outputs: 4,
+                ..bounds
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |_| Err::<(), _>(DomError::AllocationFailed)
+        ),
+        Err(DomError::AllocationFailed)
+    ));
+    assert_eq!(lease.snapshot().stamp(), original);
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        lease.open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |_| -> Result<(), DomError> { panic!("wrapper preparation unwind") },
+        )
+    }));
+    assert!(unwind.is_err());
+    assert_eq!(lease.snapshot().stamp(), original);
+    let (scope, watched, name) = lease
+        .open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 0),
+            watch_limits,
+            &cancel(),
+            |name| Ok::<_, DomError>(name.local_name().clone()),
+        )
+        .unwrap();
+    assert_eq!(name, "button".into());
+    let receiver = watched.node();
+    assert!(lease.status().has_published());
+    let published = lease.snapshot();
+    let element = published.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        HtmlCustomElementState::Precustomized
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Definition(definition)
+    );
+    assert_eq!(element.saved_is(), Some(&"x-button".into()));
+    drop(scope);
+    let mut outcome = Some(DomSourceCustomElementOutcome::Failed);
+    lease
+        .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
+        .unwrap();
+    assert_eq!(outcome, None);
+    assert!(matches!(
+        lease.finish_custom_element_with_watch(
+            request,
+            (&inbox, 1),
+            watch_limits,
+            &cancel(),
+            |_| -> Result<(), DomError> { panic!("existing watch must be reused") }
+        ),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    let interrupted = AtomicBool::new(true);
+    assert!(matches!(
+        lease.advance(&interrupted),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(lease.snapshot().stamp(), published.stamp());
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+        panic!("original receiver must settle");
+    };
+    assert_eq!(done.output(), Some(DomSourceOutput::Node(receiver)));
+    assert_eq!(
+        done.custom_element_disposition(),
+        Some(DomSourceCustomElementDisposition::FailedReceiverAbrupt)
+    );
+    let settled = lease.snapshot();
+    let element = settled.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        HtmlCustomElementState::Failed
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        DomElementDefinition::Null
+    );
+    assert_eq!(element.saved_is(), Some(&"x-button".into()));
+    assert!(!element.has_failed_construction_interface());
+    drop(lease);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::create_element_with_options(
+                document.node(),
+                DomElementCreationName::Local("button".into()),
+                DomElementCreationOptions {
+                    is: Some("x-button".into()),
+                    registry: None,
+                },
+            ),
+            bounds,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+        lease.advance(&cancel()).unwrap()
+    else {
+        panic!("customized constructor request");
+    };
+    let (scope, watched, ()) = lease
+        .open_customized_element_callback_with_watch(
+            request,
+            &registration,
+            (&inbox, 2),
+            watch_limits,
+            &cancel(),
+            |_| Ok::<_, DomError>(()),
+        )
+        .unwrap();
+    let retired = watched.node();
+    drop(lease);
+    let mut nested = dom
+        .begin_source_edit(DomSourceEdit::destroy(retired), bounds, &cancel())
+        .unwrap();
+    assert!(matches!(
+        nested.advance(&cancel()).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(nested);
+    drop(scope);
+    let mut lease = dom
+        .resume_source_edit(request.operation(), bounds, &cancel())
+        .unwrap();
+    let mut outcome = Some(DomSourceCustomElementOutcome::Returned(retired));
+    lease
+        .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel()).unwrap() else {
+        panic!("retired receiver must not strand the Source");
+    };
+    assert_eq!(done.published_node(), Some(retired));
+    assert_eq!(done.output(), None);
+    drop(lease);
+    assert!(dom.pending_source_edit().is_none());
+}
+
+#[test]
 fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refusal() {
     use surgeist_html::{
         scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},

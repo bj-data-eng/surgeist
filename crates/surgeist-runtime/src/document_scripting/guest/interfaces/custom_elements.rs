@@ -16,6 +16,9 @@ pub(in crate::document_scripting) struct ActiveConstructor {
     pub(in crate::document_scripting) request: DomSourceCustomElementRequest,
     pub(in crate::document_scripting) registration: Rc<DomDocumentScriptRegistration>,
     constructor: surgeist_bindings_js::Root,
+    pub(super) interface: &'static str,
+    pub(super) receiver: std::cell::OnceCell<surgeist_bindings_js::Root>,
+    pub(super) constructed: Cell<bool>,
     previous: Option<Rc<Self>>,
     _backing: GuestBacking,
 }
@@ -23,6 +26,7 @@ pub(in crate::document_scripting) struct ActiveConstructor {
 pub(super) struct ConstructorEntry<'a> {
     slot: &'a RefCell<Option<Rc<ActiveConstructor>>>,
     previous: Option<Rc<ActiveConstructor>>,
+    pub(super) frame: Rc<ActiveConstructor>,
 }
 
 impl Drop for ConstructorEntry<'_> {
@@ -60,7 +64,7 @@ impl PublicEventBindings {
         events: &GuestEvents,
         scope: &mut Scope<'scope>,
         request: DomSourceCustomElementRequest,
-        constructor: &Value<'scope>,
+        (constructor, interface): (&Value<'scope>, &'static str),
         registration: Rc<DomDocumentScriptRegistration>,
     ) -> Result<ConstructorEntry<'a>, DocumentGuestEventError> {
         let backing = events.reserve(
@@ -76,13 +80,17 @@ impl PublicEventBindings {
             request,
             registration,
             constructor: scope.retain(constructor),
+            interface,
+            receiver: std::cell::OnceCell::new(),
+            constructed: Cell::new(false),
             previous: previous.clone(),
             _backing: backing,
         });
-        owner.active_constructor.replace(Some(frame));
+        owner.active_constructor.replace(Some(frame.clone()));
         Ok(ConstructorEntry {
             slot: &owner.active_constructor,
             previous,
+            frame,
         })
     }
 
@@ -91,7 +99,7 @@ impl PublicEventBindings {
         scope: &mut Scope<'scope>,
         events: &GuestEvents,
         request: DomSourceCustomElementRequest,
-    ) -> Result<(Value<'scope>, RealmId), DocumentGuestEventError> {
+    ) -> Result<(Value<'scope>, RealmId, &'static str, bool), DocumentGuestEventError> {
         let id = request.definition();
         let open = |scope: &mut Scope<'scope>, registry: &GlobalRegistry| {
             events.step()?;
@@ -110,6 +118,8 @@ impl PublicEventBindings {
             Ok((
                 scope.open_callback_object(&row.constructor)?,
                 row.constructor.associated_realm().identity(),
+                row.interface,
+                row.customized,
             ))
         };
         if self.custom_elements.global == request.global() {
@@ -151,6 +161,8 @@ const FORM: [&[u16]; 4] = [
 const CALLBACK_COUNT: usize = LIFECYCLE.len() + FORM.len();
 
 struct Definition {
+    interface: &'static str,
+    customized: bool,
     id: DomRegistryDefinitionId,
     name: DocumentString,
     constructor: RetainedCallbackObject,
@@ -533,6 +545,10 @@ impl Capture {
             let constructor =
                 scope.retain_callback_object(observed, |bytes| events.reserve(&owner, bytes))?;
             let local_name = local.as_ref().map_or(&name, |(value, _)| value);
+            let interface = match &local {
+                Some((name, _)) => document::element::html_interface(name, || events.step())?,
+                None => "HTMLElement",
+            };
             let facts = HtmlCustomElementDefinition::new(
                 name.clone(),
                 local_name.clone(),
@@ -562,6 +578,8 @@ impl Capture {
             rows.publish(
                 growth,
                 Definition {
+                    interface,
+                    customized: local.is_some(),
                     id,
                     name,
                     constructor,

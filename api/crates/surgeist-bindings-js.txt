@@ -667,6 +667,7 @@ pub struct surgeist_bindings_js::NativeObjectToken<T>
 pub struct surgeist_bindings_js::PreparedNativeProjection<'borrow, 'scope, T>
 impl<'scope, T> surgeist_bindings_js::PreparedNativeProjection<'_, 'scope, T>
 pub fn surgeist_bindings_js::PreparedNativeProjection<'_, 'scope, T>::publish<R>(self, bind: impl core::ops::function::FnOnce(&T) -> R) -> (surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::RetainedCallbackObject, R)
+pub fn surgeist_bindings_js::PreparedNativeProjection<'_, 'scope, T>::retain_root_backing(&mut self, backing: alloc::boxed::Box<dyn core::any::Any>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub struct surgeist_bindings_js::Process
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::bootstrap(kind: surgeist_bindings_js::EngineKind) -> core::result::Result<Self, surgeist_bindings_js::Error>

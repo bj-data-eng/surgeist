@@ -12,8 +12,6 @@ pub(super) use attribute::AttributeResult;
 mod svg;
 
 const ELEMENT: &[u16] = &ascii(b"Element");
-const HTML_ELEMENT: &[u16] = &ascii(b"HTMLElement");
-const HTML_MEDIA_ELEMENT: &[u16] = &ascii(b"HTMLMediaElement");
 const MATHML_ELEMENT: &[u16] = &ascii(b"MathMLElement");
 const HTML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1999/xhtml");
 const MATHML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1998/Math/MathML");
@@ -53,7 +51,6 @@ pub(in crate::document_scripting::guest::interfaces) struct ElementBindings {
     element: RetainedCallbackObject,
     mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
-    html_constructor: RetainedCallbackObject,
     svg: svg::SvgBindings,
     _html_backing: GuestBacking,
 }
@@ -61,6 +58,7 @@ pub(in crate::document_scripting::guest::interfaces) struct ElementBindings {
 struct HtmlPrototype {
     interface: &'static str,
     prototype: RetainedCallbackObject,
+    constructor: RetainedCallbackObject,
 }
 
 enum ElementInterface {
@@ -106,23 +104,22 @@ impl ElementBindings {
         let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
         let (_, mathml) = install(scope, &global, MATHML_ELEMENT, &constructor, &element)?;
         let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, fund)?;
-        let fallback = capture(size_of::<Capture>())?;
-        let construct = capture(size_of::<Capture>())?;
-        let html_callback = ConstructorCallback::bounded(
-            0,
-            move |scope| fallback.html_element_prototype(scope),
-            move |scope, arguments| construct.construct_html_element(scope, arguments),
-        );
-        let (html_constructor, html) = install_constructor(
+        let (html_constructor, html) = install_html_constructor(
             scope,
             &global,
-            HTML_ELEMENT,
+            "HTMLElement",
             &constructor,
             &element,
-            &html_callback,
+            capture,
         )?;
-        let (media_constructor, media) =
-            install(scope, &global, HTML_MEDIA_ELEMENT, &html_constructor, &html)?;
+        let (media_constructor, media) = install_html_constructor(
+            scope,
+            &global,
+            "HTMLMediaElement",
+            &html_constructor,
+            &html,
+            capture,
+        )?;
         let capacity = KnownHtmlElement::ALL.len() + OBSOLETE_SPECIAL.len() + 2;
         let bytes = capacity
             .checked_mul(size_of::<HtmlPrototype>())
@@ -135,11 +132,18 @@ impl ElementBindings {
         if classes.capacity() != capacity {
             return Err(DocumentScriptNativeError::RepresentationExhausted.into());
         }
-        let observed = scope.callback_object(&html)?;
-        classes.push(HtmlPrototype {
-            interface: "HTMLElement",
-            prototype: scope.retain_callback_object(observed, fund)?,
-        });
+        for (interface, constructor, prototype) in [
+            ("HTMLElement", &html_constructor, &html),
+            ("HTMLMediaElement", &media_constructor, &media),
+        ] {
+            let prototype = scope.callback_object(prototype)?;
+            let constructor = scope.callback_object(constructor)?;
+            classes.push(HtmlPrototype {
+                interface,
+                prototype: scope.retain_callback_object(prototype, fund)?,
+                constructor: scope.retain_callback_object(constructor, fund)?,
+            });
+        }
         for interface in KnownHtmlElement::ALL
             .iter()
             .map(|element| element.inventory_row().interface())
@@ -153,12 +157,20 @@ impl ElementBindings {
                 "HTMLAudioElement" | "HTMLVideoElement" => (&media_constructor, &media),
                 _ => (&html_constructor, &html),
             };
-            let (_, prototype) =
-                install_named(scope, &global, interface, parent_constructor, parent)?;
-            let observed = scope.callback_object(&prototype)?;
+            let (constructor, prototype) = install_html_constructor(
+                scope,
+                &global,
+                interface,
+                parent_constructor,
+                parent,
+                capture,
+            )?;
+            let prototype = scope.callback_object(&prototype)?;
+            let constructor = scope.callback_object(&constructor)?;
             classes.push(HtmlPrototype {
                 interface,
-                prototype: scope.retain_callback_object(observed, fund)?,
+                prototype: scope.retain_callback_object(prototype, fund)?,
+                constructor: scope.retain_callback_object(constructor, fund)?,
             });
         }
         for (member, key, name) in [
@@ -216,12 +228,10 @@ impl ElementBindings {
         )?;
         let base = scope.callback_object(&element)?;
         let mathml = scope.callback_object(&mathml)?;
-        let html_constructor = scope.callback_object(&html_constructor)?;
         Ok(Self {
             element: scope.retain_callback_object(base, fund)?,
             mathml: scope.retain_callback_object(mathml, fund)?,
             html: classes,
-            html_constructor: scope.retain_callback_object(html_constructor, fund)?,
             svg,
             _html_backing: html_backing,
         })
@@ -247,10 +257,18 @@ impl ElementBindings {
             ElementInterface::Html(interface) => interface,
             ElementInterface::Svg(interface) => return self.svg.prototype(interface),
         };
+        Ok(&self.html_interface(interface, &mut step)?.prototype)
+    }
+
+    fn html_interface(
+        &self,
+        interface: &'static str,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+    ) -> Result<&HtmlPrototype, DocumentGuestEventError> {
         for entry in &self.html {
             step()?;
             if entry.interface == interface {
-                return Ok(&entry.prototype);
+                return Ok(entry);
             }
         }
         Err(DocumentScriptNativeError::ProjectionCustody.into())
@@ -403,11 +421,12 @@ impl PublicEventBindings {
         scope: &mut Scope<'scope>,
         events: &GuestEvents,
         primary_realm: RealmId,
+        interface: &'static str,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let realm = scope.realm_authority()?.identity();
         let open = |scope: &mut Scope<'scope>, bindings: &ElementBindings| {
             let prototype =
-                bindings.prototype(ElementInterface::Html("HTMLElement"), || events.step())?;
+                bindings.prototype(ElementInterface::Html(interface), || events.step())?;
             Ok(scope.open_callback_object(prototype)?)
         };
         if realm == primary_realm {
@@ -433,6 +452,7 @@ impl Capture {
     fn html_element_prototype<'scope>(
         &self,
         scope: &mut Scope<'scope>,
+        interface: &'static str,
     ) -> Result<Value<'scope>, Error> {
         let events = self
             .callbacks
@@ -441,7 +461,8 @@ impl Capture {
             .and_then(|access| access.events.upgrade())
             .ok_or(Error::ExpiredIdentity)?;
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        match public.html_element_prototype(scope, &events, self.callbacks.permit.realm) {
+        match public.html_element_prototype(scope, &events, self.callbacks.permit.realm, interface)
+        {
             Ok(prototype) => Ok(prototype),
             Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
                 Err(error)
@@ -454,6 +475,7 @@ impl Capture {
         &self,
         scope: &mut Scope<'scope>,
         arguments: ConstructorArguments<'scope>,
+        interface: &'static str,
     ) -> Result<ConstructorCompletion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
         let result = (|| {
@@ -470,10 +492,17 @@ impl Capture {
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let own = if self.origin.is_some() {
                 public.with_origin(&events, global, |origin| {
-                    Ok(scope.open_callback_object(&origin.elements.html_constructor)?)
+                    let own = origin
+                        .elements
+                        .html_interface(interface, || events.step())?;
+                    Ok(scope.open_callback_object(&own.constructor)?)
                 })?
             } else {
-                scope.open_callback_object(&public.document.element.html_constructor)?
+                let own = public
+                    .document
+                    .element
+                    .html_interface(interface, || events.step())?;
+                scope.open_callback_object(&own.constructor)?
             };
             if scope.strict_equals(&own, arguments.new_target())? {
                 return Ok(ConstructorCompletion::Throw(
@@ -491,7 +520,31 @@ impl Capture {
                     scope.type_error(&ascii(b"Illegal constructor"))?,
                 ));
             };
+            if frame.interface != interface {
+                return Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&ascii(b"Illegal constructor"))?,
+                ));
+            }
             let selected = arguments.select_prototype(scope)?;
+            if let Some(receiver) = frame.receiver.get() {
+                if frame.constructed.get() {
+                    return Ok(ConstructorCompletion::Throw(
+                        scope.type_error(&ascii(b"Element already constructed"))?,
+                    ));
+                }
+                let receiver = scope.import(receiver)?;
+                match scope.set_prototype(&receiver, ObjectPrototype::Object(selected.prototype()))
+                {
+                    Err(Error::PropertyRejected) => {
+                        return Ok(ConstructorCompletion::Throw(
+                            scope.type_error(&ascii(b"Cannot set element prototype"))?,
+                        ));
+                    }
+                    result => result?,
+                }
+                frame.constructed.set(true);
+                return Ok(ConstructorCompletion::Return(receiver));
+            }
             let element = public.document.ordinary.construct_autonomous(
                 scope,
                 (&owner, &events),
@@ -526,6 +579,38 @@ fn install_named<'scope>(
         *unit = u16::from(byte);
     }
     Ok(install(scope, global, units, parent_constructor, parent)?)
+}
+
+fn install_html_constructor<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &Value<'scope>,
+    interface: &'static str,
+    parent_constructor: &Value<'scope>,
+    parent: &Value<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
+    let mut buffer = [0; 48];
+    let units = buffer
+        .get_mut(..interface.len())
+        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+    for (unit, byte) in units.iter_mut().zip(interface.bytes()) {
+        *unit = u16::from(byte);
+    }
+    let fallback = capture(size_of::<Capture>())?;
+    let construct = capture(size_of::<Capture>())?;
+    let callback = ConstructorCallback::bounded(
+        0,
+        move |scope| fallback.html_element_prototype(scope, interface),
+        move |scope, arguments| construct.construct_html_element(scope, arguments, interface),
+    );
+    Ok(install_constructor(
+        scope,
+        global,
+        units,
+        parent_constructor,
+        parent,
+        &callback,
+    )?)
 }
 
 impl PublicEventBindings {

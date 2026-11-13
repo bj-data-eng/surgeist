@@ -52,6 +52,7 @@ pub(in crate::document_scripting) struct PendingConstructor {
     registration: Rc<DomDocumentScriptRegistration>,
     outcome: Option<DomSourceCustomElementOutcome>,
     returned: Option<surgeist_bindings_js::Root>,
+    receiver: Option<NodeId>,
     realm: RealmId,
     report: super::super::super::reports::ConstructorReportReservation,
     exception: Option<surgeist_bindings_js::Exception>,
@@ -493,8 +494,18 @@ impl OrdinaryBindings {
         request: DomSourceCustomElementRequest,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let cancel = &owner.cancellation;
-        let (constructor, registration, entry, backing, realm, report, returned_backing) = (|| {
-            let (constructor, realm) = public.factory_constructor(scope, events, request)?;
+        let (
+            constructor,
+            registration,
+            entry,
+            backing,
+            realm,
+            report,
+            returned_backing,
+            customized,
+        ) = (|| {
+            let (constructor, realm, interface, customized) =
+                public.factory_constructor(scope, events, request)?;
             let registration = owner
                 .attachment
                 .get()
@@ -512,7 +523,7 @@ impl OrdinaryBindings {
                 events,
                 scope,
                 request,
-                &constructor,
+                (&constructor, interface),
                 registration.clone(),
             )?;
             Ok::<_, DocumentGuestEventError>((
@@ -523,9 +534,9 @@ impl OrdinaryBindings {
                 realm,
                 report,
                 Box::new(returned_backing),
+                customized,
             ))
-        })(
-        )
+        })()
         .inspect_err(|_| {
             if let Ok(mut session) = owner.session.try_borrow_mut() {
                 let _ = session
@@ -539,28 +550,42 @@ impl OrdinaryBindings {
             registration,
             outcome: None,
             returned: None,
+            receiver: None,
             realm,
             report,
             exception: None,
             next: None,
             _backing: backing,
         });
-        let callback_scope = (|| {
-            let mut session = owner
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            let mut dom = session.dom();
-            let mut lease = dom.raw_mut().resume_source_edit(
-                request.operation(),
-                events.limits.source_edits,
-                cancel,
-            )?;
-            lease
-                .open_custom_element_callback(request, &pending.registration, cancel)
-                .map_err(DocumentGuestEventError::from)
-        })();
-        let callback_scope = match callback_scope {
+        let mut returned_backing = Some(returned_backing);
+        let callback_scope = if customized {
+            self.open_customized_callback(
+                scope,
+                (owner, events),
+                public,
+                request,
+                (&pending.registration, &mut returned_backing),
+            )
+            .map(|(callback, receiver)| (callback, Some(receiver)))
+        } else {
+            (|| {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let mut dom = session.dom();
+                let mut lease = dom.raw_mut().resume_source_edit(
+                    request.operation(),
+                    events.limits.source_edits,
+                    cancel,
+                )?;
+                lease
+                    .open_custom_element_callback(request, &pending.registration, cancel)
+                    .map(|callback| (callback, None))
+                    .map_err(DocumentGuestEventError::from)
+            })()
+        };
+        let (callback_scope, receiver) = match callback_scope {
             Ok(callback_scope) => callback_scope,
             Err(error) => {
                 drop(entry);
@@ -575,21 +600,39 @@ impl OrdinaryBindings {
                 return Err(error);
             }
         };
+        if let Some((node, receiver)) = receiver {
+            pending.receiver = Some(node);
+            pending.returned = Some(scope.retain(&receiver));
+            let _ = entry.frame.receiver.set(scope.retain(&receiver));
+        }
         let result = scope.construct_without_arguments(&constructor);
         drop(callback_scope);
         drop(entry);
         let result = match result {
             Ok(value) => {
-                if let Err(error) = scope.retain_invocation_result_backing(&value, returned_backing)
+                if let Some(backing) = returned_backing
+                    && let Err(error) = scope.retain_invocation_result_backing(&value, backing)
                 {
                     pending.outcome = Some(DomSourceCustomElementOutcome::Failed);
                     owner.keep_constructor_result(pending);
                     return Err(error.into());
                 }
-                pending.returned = Some(scope.retain(&value));
-                scope
-                    .native_object::<GuestNodeProjection>(&value)
-                    .map(|projection| projection.and_then(|native| native.payload().id()))
+                if pending.receiver.is_none() {
+                    pending.returned = Some(scope.retain(&value));
+                }
+                if let Some(receiver) = pending.receiver {
+                    let exact = pending
+                        .returned
+                        .as_ref()
+                        .ok_or(Error::ExpiredIdentity)
+                        .and_then(|root| scope.import(root))
+                        .and_then(|original| scope.strict_equals(&original, &value));
+                    exact.map(|same| same.then_some(GuestNode::Element(receiver)))
+                } else {
+                    scope
+                        .native_object::<GuestNodeProjection>(&value)
+                        .map(|projection| projection.and_then(|native| native.payload().id()))
+                }
             }
             Err(error) => Err(error),
         };
@@ -606,13 +649,160 @@ impl OrdinaryBindings {
                 return Err(error.into());
             }
         });
-        match self.finish_constructor(scope, (owner, events), public, &mut pending) {
+        let result = if pending.receiver.is_some() {
+            self.finish_customized_constructor(scope, owner, events, &mut pending)
+        } else {
+            self.finish_constructor(scope, (owner, events), public, &mut pending)
+        };
+        match result {
             Ok(value) => Ok(value),
             Err(error) => {
                 owner.keep_constructor_result(pending);
                 Err(error)
             }
         }
+    }
+
+    fn open_customized_callback<'scope, 'registration>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        public: &PublicEventBindings,
+        request: DomSourceCustomElementRequest,
+        (registration, root_backing): (
+            &'registration DomDocumentScriptRegistration,
+            &mut Option<Box<GuestBacking>>,
+        ),
+    ) -> Result<
+        (
+            surgeist_dom::DomSourceCustomElementCallbackScope<'registration>,
+            (NodeId, Value<'scope>),
+        ),
+        DocumentGuestEventError,
+    > {
+        let admission = Admission::ordinary(owner, events);
+        let mut pins = self
+            .pins
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let (key, reserved) = pins.reserve(admission)?;
+        let inbox = self
+            .inbox
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let pin = PreparedPin::new(admission)?;
+        let (payload, holder) =
+            scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
+        let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
+        let open = |elements: &element::ElementBindings| {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut dom = session.dom();
+            let mut lease = dom.raw_mut().resume_source_edit(
+                request.operation(),
+                events.limits.source_edits,
+                &owner.cancellation,
+            )?;
+            lease.open_customized_element_callback_with_watch(
+                request,
+                registration,
+                (&inbox, key),
+                events.limits.node_retirement,
+                &owner.cancellation,
+                |name| {
+                    let prototype = elements.prototype_for_name(name, || events.step())?;
+                    let mut projection = scope.prepare_retained_native_object(
+                        NodePrototype::Creation(prototype).projection(),
+                        pin.projection(),
+                        |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                    )?;
+                    projection.retain_root_backing(
+                        root_backing
+                            .take()
+                            .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
+                    )?;
+                    Ok(projection)
+                },
+            )
+        };
+        let (callback, watched, projection) = if public.custom_elements.is_global(request.global())
+        {
+            open(&public.document.element)
+        } else {
+            public.with_origin(events, request.global(), |origin| open(&origin.elements))
+        }?;
+        let (_, node, watch) = watched.into_parts();
+        let (value, holder, live) = projection
+            .publish(|payload| Self::bind_projection(payload, GuestNode::Element(node), watch));
+        pin.publish(reserved, holder, live);
+        Ok((callback, (node, value)))
+    }
+
+    fn finish_customized_constructor<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        pending: &mut PendingConstructor,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let receiver = pending
+            .receiver
+            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+        let value = scope.import(
+            pending
+                .returned
+                .as_ref()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
+        )?;
+        if pending.exception.is_none()
+            && pending.outcome.is_some_and(|outcome| {
+                outcome != DomSourceCustomElementOutcome::Returned(receiver)
+                    && outcome != DomSourceCustomElementOutcome::Failed
+            })
+        {
+            let error = scope.type_error(&ascii(b"Constructor did not return its receiver"))?;
+            pending.exception = Some(scope.invocation_exception(&error));
+        }
+        if let Some(exception) = &pending.exception
+            && pending.report.needs_backing()
+        {
+            pending.report.prepare(scope, exception)?;
+        }
+        {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut dom = session.dom();
+            let cancel = &owner.cancellation;
+            let mut lease = dom.raw_mut().resume_source_edit(
+                pending.request.operation(),
+                events.limits.source_edits,
+                cancel,
+            )?;
+            lease.accept_custom_element_callback(
+                pending.request,
+                &pending.registration,
+                &mut pending.outcome,
+                cancel,
+            )?;
+            if !matches!(
+                lease.advance(cancel)?,
+                surgeist_dom::DomSourceProgress::Complete(_)
+            ) {
+                return Err(DocumentScriptNativeError::SourceAccess.into());
+            }
+        }
+        if let Some(exception) = pending.exception.take() {
+            pending.report.publish(DocumentGuestConstructorException {
+                definition: pending.request.definition(),
+                realm: pending.realm,
+                exception,
+            });
+        }
+        Ok(value)
     }
 
     fn finish_constructor<'scope>(
