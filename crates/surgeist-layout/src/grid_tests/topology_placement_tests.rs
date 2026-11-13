@@ -6659,7 +6659,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         constants: &constants,
         column_tracks: &tracks,
         row_tracks: &tracks,
-        context: container_context.clone(),
+        context: std::borrow::Cow::Borrowed(&container_context),
         subgrid_report: &subgrid_report,
         sizing_flow_axes: crate::geometry::FlowAxes::new(
             crate::WritingMode::HorizontalTb,

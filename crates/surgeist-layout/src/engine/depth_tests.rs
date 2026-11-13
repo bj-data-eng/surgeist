@@ -853,6 +853,17 @@ fn deep_captured_detached_float_chain_returns_on_bounded_stack() {
 }
 
 fn assert_layout_chain<S: LayoutScalar>(display: Display, position: crate::Position, depth: u32) {
+    assert_layout_chain_with_height::<S>(display, position, depth, |_, _| {
+        crate::PreferredSizeOf::px(S::from_f64(40.0))
+    });
+}
+
+fn assert_layout_chain_with_height<S: LayoutScalar>(
+    display: Display,
+    position: crate::Position,
+    depth: u32,
+    height: impl Fn(u32, u32) -> crate::PreferredSizeOf<S>,
+) {
     let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
     let inset = |value| {
         crate::LengthAutoOf::value(crate::LengthPercentageOf::px(S::from_f64(value)).unwrap())
@@ -861,7 +872,7 @@ fn assert_layout_chain<S: LayoutScalar>(display: Display, position: crate::Posit
     for node in 0..=depth {
         let mut style = NodeInputOf {
             display,
-            size: Size::new(px(60.0), px(40.0)),
+            size: Size::new(px(60.0), height(node, depth)),
             ..NodeInputOf::default()
         };
         if node != 0 && position == crate::Position::Absolute {
@@ -1061,6 +1072,65 @@ fn deep_in_flow_grid_chain_returns_on_bounded_stack() {
         || {
             assert_layout_chain::<f32>(Display::Grid, crate::Position::Relative, 24);
             assert_layout_chain::<f64>(Display::Grid, crate::Position::Relative, 24);
+        },
+    );
+}
+
+fn assert_intrinsic_grid_chain<S: LayoutScalar>(display: Display, depth: u32) {
+    assert_layout_chain_with_height::<S>(
+        display,
+        crate::Position::Relative,
+        depth,
+        |node, leaf| {
+            if node == leaf {
+                crate::PreferredSizeOf::px(S::from_f64(40.0))
+            } else {
+                crate::PreferredSizeOf::MAX_CONTENT
+            }
+        },
+    );
+}
+
+#[test]
+fn shallow_intrinsic_grid_chain_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_intrinsic_grid_chain_uses_leaf_height",
+        || {
+            assert_intrinsic_grid_chain::<f32>(Display::Grid, 2);
+            assert_intrinsic_grid_chain::<f64>(Display::Grid, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_intrinsic_grid_chain_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_intrinsic_grid_chain_uses_leaf_height",
+        || {
+            assert_intrinsic_grid_chain::<f32>(Display::Grid, 24);
+            assert_intrinsic_grid_chain::<f64>(Display::Grid, 24);
+        },
+    );
+}
+
+#[test]
+fn shallow_intrinsic_grid_lanes_chain_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_intrinsic_grid_lanes_chain_uses_leaf_height",
+        || {
+            assert_intrinsic_grid_chain::<f32>(Display::GridLanes, 2);
+            assert_intrinsic_grid_chain::<f64>(Display::GridLanes, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_intrinsic_grid_lanes_chain_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_intrinsic_grid_lanes_chain_uses_leaf_height",
+        || {
+            assert_intrinsic_grid_chain::<f32>(Display::GridLanes, 24);
+            assert_intrinsic_grid_chain::<f64>(Display::GridLanes, 24);
         },
     );
 }

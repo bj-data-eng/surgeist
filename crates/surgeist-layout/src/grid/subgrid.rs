@@ -2698,7 +2698,7 @@ where
     // allocation. A later prefix obtains its own standalone opposite through
     // the same canonical stage owner used by ordinary Grid.
     let resolved = if !opposite_inherited && stage.has_resolved_axis(opposite) {
-        Some(resolve_grid_track_sizes(
+        Some(intrinsic_stage::resolve_tracks(
             tree,
             node,
             GridTrackResolutionInput {
@@ -2712,13 +2712,14 @@ where
                     initialized.context.percent_basis,
                     parent_context,
                 ),
-                context: initialized.context.clone(),
+                context: std::borrow::Cow::Borrowed(&initialized.context),
                 subgrid_report: &initialized.subgrid_report,
                 sizing_flow_axes: constants.flow_axes,
                 available: initialized.track_available,
                 placements: &initialized.placements,
                 stage,
             },
+            intrinsic_stage::GridTrackRun::Intrinsic,
         )?)
     } else {
         None
