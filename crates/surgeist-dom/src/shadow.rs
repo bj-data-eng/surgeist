@@ -72,6 +72,11 @@ impl DomShadowRootState {
         self.declarative = false;
     }
 
+    pub(crate) fn retain_clone_flags(&mut self, original: Self) {
+        self.declarative = original.declarative;
+        self.keep_custom_element_registry_null = original.keep_custom_element_registry_null;
+    }
+
     pub(crate) fn select_global_registry(&mut self, registry: DomRegistryBinding) {
         if !self.keep_custom_element_registry_null {
             self.registry = registry;

@@ -327,6 +327,9 @@ impl Draft {
                     init = init.with_null_registry();
                 }
                 let root = self.attach_shadow(frame.copy, init, limits, cancel)?;
+                let mut cloned = self.shadow_state_mut(root, cancel)?;
+                cloned.retain_clone_flags(state);
+                cloned.commit(cancel)?;
                 let document = frame.document;
                 self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
                 self.push_effect_retained(
