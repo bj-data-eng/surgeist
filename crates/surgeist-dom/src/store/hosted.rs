@@ -2271,7 +2271,7 @@ impl DomHostedSource {
             navigable,
             end: std::sync::OnceLock::new(),
             engine_disposed: AtomicBool::new(false),
-            custom_element_insertions: std::sync::OnceLock::new(),
+            custom_element_reactions: std::sync::OnceLock::new(),
             _backing: backing,
         });
         let canonical = CanonicalScriptRegistration(registration.clone());
@@ -2383,20 +2383,17 @@ impl DomHostedSource {
 }
 
 impl Dom {
-    /// Whether this exact script attachment retains undelivered insertion facts.
-    pub fn has_pending_custom_element_insertions(
-        &self,
-        binding: &DomDocumentScriptBinding,
-    ) -> bool {
+    /// Whether this exact script attachment retains undelivered custom-element reaction facts.
+    pub fn has_pending_custom_element_reactions(&self, binding: &DomDocumentScriptBinding) -> bool {
         self.script_registration
             .as_ref()
             .filter(|slot| slot.0.key == binding.key())
-            .and_then(|slot| slot.0.custom_element_insertions.get())
+            .and_then(|slot| slot.0.custom_element_reactions.get())
             .is_some_and(super::source::reactions::Inbox::has_pending)
     }
 
-    /// Discard insertion facts after this exact script attachment has closed.
-    pub fn discard_stopped_custom_element_insertions(
+    /// Discard reaction facts after this exact script attachment has closed.
+    pub fn discard_stopped_custom_element_reactions(
         &mut self,
         binding: &DomDocumentScriptBinding,
     ) -> Result<usize, DomError> {
@@ -2411,7 +2408,7 @@ impl Dom {
             return Err(DomError::InvalidSourceOperation);
         }
         slot.0
-            .custom_element_insertions
+            .custom_element_reactions
             .get()
             .map_or(Ok(0), super::source::reactions::Inbox::discard)
     }

@@ -1494,7 +1494,7 @@ impl Operation {
         let outputs = self
             .outputs
             .checked_add(prepared.changes.len())
-            .and_then(|count| count.checked_add(self.draft.custom_element_insertion_count()))
+            .and_then(|count| count.checked_add(self.draft.custom_element_reaction_count()))
             .ok_or(DomError::RepresentationExhausted)?;
         if outputs
             .checked_add(self.meta_policy.as_ref().map_or(0, |p| p.outputs()))
@@ -1791,13 +1791,13 @@ impl Operation {
             return Err(DomError::StyleProtocol.into());
         }
         let owner_custody = dom.source_owner_custody_bytes()?;
-        let insertions = self.draft.prepare_custom_element_insertions(
+        let insertions = self.draft.prepare_custom_element_reactions(
             self.id,
             &prepared.allocation_ids,
             cancel,
         )?;
         let mut prepared = dom.prepare_publication(prepared, cancel)?;
-        prepared.custom_element_insertions = insertions;
+        prepared.custom_element_reactions = insertions;
         let rebase = self.draft.prepare_rebase(&mut prepared, cancel)?;
         Ok(SegmentPublication {
             prepared,

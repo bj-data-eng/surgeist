@@ -248,35 +248,40 @@ impl Capture {
             Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
                 Err(DomError::Cancelled.into())
             }
-            Ok(DomSourceDriveProgress::Complete(done)) => match (result_kind, done.output()) {
-                (AttributeResult::Value, None) => Ok(Completion::Undefined),
-                (
-                    AttributeResult::Attached(incoming, _),
-                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Appended(
-                        id,
-                    ))),
-                ) if id == incoming => Ok(Completion::Return(scope.primitive(Primitive::Null)?)),
-                (
-                    AttributeResult::Attached(incoming, value),
-                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Unchanged(
-                        id,
-                    ))),
-                )
-                | (
-                    AttributeResult::Removed(incoming, value),
-                    Some(DomSourceOutput::RemovedAttribute(id)),
-                ) if id == incoming => Ok(Completion::Return(value)),
-                (
-                    AttributeResult::Attached(incoming, _),
-                    Some(DomSourceOutput::AttributeAttachment(DomAttributeAttachment::Replaced(
-                        id,
-                    ))),
-                ) if id != incoming => match output {
-                    Some((staged, value)) if staged == id => Ok(Completion::Return(value)),
+            Ok(DomSourceDriveProgress::Complete(done)) => {
+                self.drain_native_reactions(scope, owner, events, done.operation())?;
+                match (result_kind, done.output()) {
+                    (AttributeResult::Value, None) => Ok(Completion::Undefined),
+                    (
+                        AttributeResult::Attached(incoming, _),
+                        Some(DomSourceOutput::AttributeAttachment(
+                            DomAttributeAttachment::Appended(id),
+                        )),
+                    ) if id == incoming => {
+                        Ok(Completion::Return(scope.primitive(Primitive::Null)?))
+                    }
+                    (
+                        AttributeResult::Attached(incoming, value),
+                        Some(DomSourceOutput::AttributeAttachment(
+                            DomAttributeAttachment::Unchanged(id),
+                        )),
+                    )
+                    | (
+                        AttributeResult::Removed(incoming, value),
+                        Some(DomSourceOutput::RemovedAttribute(id)),
+                    ) if id == incoming => Ok(Completion::Return(value)),
+                    (
+                        AttributeResult::Attached(incoming, _),
+                        Some(DomSourceOutput::AttributeAttachment(
+                            DomAttributeAttachment::Replaced(id),
+                        )),
+                    ) if id != incoming => match output {
+                        Some((staged, value)) if staged == id => Ok(Completion::Return(value)),
+                        _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
+                    },
                     _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
-                },
-                _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
-            },
+                }
+            }
             Ok(DomSourceDriveProgress::Failed(failure)) => {
                 let error = failure.into_parts().1;
                 if let (DomError::SourceAttributeVerificationAbrupt, Some(original)) =

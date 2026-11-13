@@ -99,7 +99,7 @@ pub(super) fn stopped_upgrade_can_settle_its_published_style_child() {
         DomSourceDriveProgress::Complete(done) if done.operation() == child.operation()
     ));
     stopped.settle_pending_custom_element(SOURCE).unwrap();
-    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 1);
+    assert_eq!(stopped.discard_pending_definition_reactions().unwrap(), 0);
     assert!(stopped.into_session().is_ok());
 }
 

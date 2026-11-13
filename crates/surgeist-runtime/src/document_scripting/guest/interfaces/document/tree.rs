@@ -240,7 +240,7 @@ impl Capture {
                 Err(DomError::Cancelled.into())
             }
             Ok(DomSourceDriveProgress::Complete(done)) => {
-                self.drain_insertion_upgrades(scope, owner, events, done.operation())?;
+                self.drain_native_reactions(scope, owner, events, done.operation())?;
                 Ok(completion)
             }
             Ok(DomSourceDriveProgress::Failed(failure)) => {

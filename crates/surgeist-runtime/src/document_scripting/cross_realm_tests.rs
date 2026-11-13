@@ -250,6 +250,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::reentrant_attribute_write_drains_the_receivers_fifo();
     super::guest::tests::registry_upgrade_preserves_nested_definition_and_shadow_refusal();
     super::guest::tests::registry_upgrade_retains_unfinished_candidates_on_refusal();
+    super::guest::tests::insertion_upgrade_keeps_only_unentered_callbacks_on_refusal();
     super::guest::tests::registry_upgrade_attempts_adopted_candidate_and_reports_callback();
     super::guest::tests::document_factories_execute_the_reached_custom_constructor();
     super::guest::tests::direct_registered_constructors_create_canonical_elements();

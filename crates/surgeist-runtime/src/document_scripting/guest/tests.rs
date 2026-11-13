@@ -527,6 +527,66 @@ pub(in crate::document_scripting) fn registry_upgrade_retains_unfinished_candida
     assert!(stopped.into_session().is_ok());
 }
 
+pub(in crate::document_scripting) fn insertion_upgrade_keeps_only_unentered_callbacks_on_refusal() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
+        registrations: 64,
+        pending_events: 8,
+        nested_dispatches: 4,
+        storage_bytes: 32_000,
+        work: 100_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut host = attach_public_nodes_with_registry_and_reports(
+        session,
+        target,
+        cancellation,
+        20_000,
+        200_000,
+        &mut Some(registry),
+        1,
+    );
+    let permit = host.permit().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                r#"
+            const candidate = document.createElement('x-pending-callback');
+            candidate.setAttribute('data-first', '1');
+            candidate.setAttribute('data-second', '2');
+            customElements.define('x-pending-callback', class extends HTMLElement {
+                static observedAttributes = ['data-first', 'data-second'];
+                attributeChangedCallback() { throw {}; }
+            });
+            document.documentElement.appendChild(candidate);
+        "#,
+            ))
+            .map(drop)
+    });
+    assert!(matches!(
+        result,
+        Err(DocumentScriptError::Script(Error::HostFailure(_)))
+    ));
+    let mut stopped = host.stop();
+    assert_eq!(
+        stopped
+            .discard_pending_native_custom_element_reactions()
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        stopped.discard_pending_custom_element_callbacks().unwrap(),
+        1
+    );
+    assert_eq!(
+        stopped.discard_pending_custom_element_callbacks().unwrap(),
+        0
+    );
+    assert!(stopped.into_session().is_ok());
+}
+
 pub(in crate::document_scripting) fn registry_when_defined_retains_original_promise_and_constructor()
  {
     let mut host = public_node_host(20_000, 200_000);

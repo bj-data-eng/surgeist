@@ -1171,6 +1171,12 @@ impl Draft {
     ) -> Result<(), DomError> {
         let node = hook.subject;
         let changed = &hook.changed;
+        self.record_custom_element_attribute(
+            node,
+            changed,
+            (hook.old_value.as_ref(), hook.new_value.as_ref()),
+            cancelled,
+        )?;
         self.inline_attribute(node, changed, hook.new_value.as_ref(), cancelled)?;
         let old_value = hook.old_value.as_ref();
         let new_value = hook.new_value.as_ref();

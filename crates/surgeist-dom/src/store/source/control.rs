@@ -387,7 +387,7 @@ impl Draft {
 /// Fixed interpreter headers at a rollback boundary. Record/sequence values
 /// belong to the inverse journal; numerical work/peaks are deliberately absent.
 pub(in crate::store) struct Snapshot {
-    insertion_facts: Option<usize>,
+    reaction_facts: Option<usize>,
     fullscreen_exit: Option<fullscreen::exit::Frame>,
     hosted_pending: Option<operation::hosted::ChildHook>,
     notification_queued: bool,
@@ -405,10 +405,10 @@ pub(in crate::store) struct Snapshot {
 impl Snapshot {
     pub(in crate::store) fn capture(draft: &Draft) -> Self {
         Self {
-            insertion_facts: draft
-                .custom_element_insertions
+            reaction_facts: draft
+                .custom_element_reactions
                 .as_ref()
-                .map(|facts| facts.entries.len()),
+                .map(super::reactions::ReactionFacts::len),
             fullscreen_exit: draft.fullscreen_exit,
             hosted_pending: draft.hosted_pending,
             notification_queued: draft.notification_queued,
@@ -422,13 +422,13 @@ impl Snapshot {
         }
     }
     pub(in crate::store) fn restore(mut self, draft: &mut Draft) {
-        match self.insertion_facts {
+        match self.reaction_facts {
             Some(len) => {
-                if let Some(facts) = &mut draft.custom_element_insertions {
-                    facts.entries.truncate(len);
+                if let Some(facts) = &mut draft.custom_element_reactions {
+                    facts.truncate(len);
                 }
             }
-            None => draft.custom_element_insertions = None,
+            None => draft.custom_element_reactions = None,
         }
         self.input.preserve_spent(&draft.input_processing);
         draft.input_processing = self.input;

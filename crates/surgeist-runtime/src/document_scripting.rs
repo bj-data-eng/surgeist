@@ -178,6 +178,8 @@ struct NativeOwner {
     active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
     active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
     active_constructor: RefCell<Option<Rc<guest::ActiveConstructor>>>,
+    active_reaction_queue: RefCell<Option<Rc<guest::ActiveReactionQueue>>>,
+    stopped_reaction_queues: RefCell<Option<Rc<guest::ActiveReactionQueue>>>,
     pending_constructor: RefCell<Option<Box<guest::PendingConstructor>>>,
     pending_definition_reactions: RefCell<Option<Box<guest::PendingDefinitionReactions>>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
@@ -410,13 +412,14 @@ impl NativeOwner {
         if native.pending_attribute.get_mut().is_some()
             || native.pending_constructor.get_mut().is_some()
             || native.pending_definition_reactions.get_mut().is_some()
+            || native.stopped_reaction_queues.get_mut().is_some()
             || native.attachment.get().is_some_and(|attachment| {
                 native
                     .session
                     .get_mut()
                     .dom()
                     .raw()
-                    .has_pending_custom_element_insertions(&attachment.canonical)
+                    .has_pending_custom_element_reactions(&attachment.canonical)
             })
             || pending_source.is_some_and(|status| {
                 native
@@ -553,6 +556,8 @@ impl PreparedDocumentScriptHost {
                 active_attached_event: RefCell::new(None),
                 active_attribute: Cell::new(None),
                 active_constructor: RefCell::new(None),
+                active_reaction_queue: RefCell::new(None),
+                stopped_reaction_queues: RefCell::new(None),
                 pending_constructor: RefCell::new(None),
                 pending_definition_reactions: RefCell::new(None),
                 pending_attribute: RefCell::new(None),
@@ -1432,8 +1437,15 @@ impl fmt::Debug for NativeOwner {
 }
 
 impl StoppedDocumentScriptHost {
-    /// Discard insertion upgrades retained by the original stopped attachment.
-    pub fn discard_pending_insertion_upgrades(
+    /// Discard callbacks that never entered the original stopped heap.
+    pub fn discard_pending_custom_element_callbacks(
+        &mut self,
+    ) -> Result<usize, DocumentScriptNativeError> {
+        self.native.discard_stopped_callback_reactions()
+    }
+
+    /// Discard native reaction facts retained by the original stopped attachment.
+    pub fn discard_pending_native_custom_element_reactions(
         &mut self,
     ) -> Result<usize, DocumentScriptNativeError> {
         let attachment = self
@@ -1449,7 +1461,7 @@ impl StoppedDocumentScriptHost {
         Ok(session
             .dom()
             .raw_mut()
-            .discard_stopped_custom_element_insertions(&attachment.canonical)?)
+            .discard_stopped_custom_element_reactions(&attachment.canonical)?)
     }
 
     /// Raise closed custom-element constructor ancestors so a pending nested

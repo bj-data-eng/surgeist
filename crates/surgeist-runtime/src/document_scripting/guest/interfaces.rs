@@ -13,7 +13,7 @@ pub(in crate::document_scripting) use custom_elements::document_registry as crea
 #[cfg(test)]
 pub(in crate::document_scripting) use custom_elements::document_registry_identity;
 pub(in crate::document_scripting) use custom_elements::{
-    ActiveConstructor, PendingDefinitionReactions,
+    ActiveConstructor, ActiveReactionQueue, PendingDefinitionReactions,
 };
 pub(in crate::document_scripting) use document::PendingConstructor;
 pub(super) use document::{GuestNodeProjection, NodeLifetime};

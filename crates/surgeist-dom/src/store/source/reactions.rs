@@ -1,25 +1,82 @@
-//! Ordered custom-element upgrade facts from committed native insertion steps.
+//! Ordered custom-element reactions from committed native mutation steps.
 use super::*;
 use std::{collections::LinkedList, sync::Mutex};
 
-/// One upgrade selected by an actual connected insertion step.
+/// One native reaction occurrence, in the order reached by the original edit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomCustomElementInsertion {
+pub struct DomCustomElementReaction<'a> {
     pub element: NodeId,
     pub definition: crate::DomRegistryDefinitionId,
+    pub kind: DomCustomElementReactionKind<'a>,
 }
 
-/// One published segment's insertion facts and their retained backing.
-pub struct DomCustomElementInsertions {
+/// Payload captured by the native mutation algorithm.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum DomCustomElementReactionKind<'a> {
+    Upgrade,
+    AttributeChanged {
+        local_name: &'a [u16],
+        old_value: Option<&'a [u16]>,
+        new_value: Option<&'a [u16]>,
+        namespace: Option<&'a [u16]>,
+    },
+}
+
+#[derive(Clone, Debug)]
+enum ReactionKind {
+    Upgrade,
+    AttributeChanged {
+        local_name: DocumentString,
+        old_value: Option<DocumentString>,
+        new_value: Option<DocumentString>,
+        namespace: Option<DocumentString>,
+    },
+}
+
+#[derive(Debug)]
+struct Reaction {
+    element: NodeId,
+    definition: crate::DomRegistryDefinitionId,
+    kind: ReactionKind,
+}
+
+impl Reaction {
+    fn view(&self) -> DomCustomElementReaction<'_> {
+        let kind = match &self.kind {
+            ReactionKind::Upgrade => DomCustomElementReactionKind::Upgrade,
+            ReactionKind::AttributeChanged {
+                local_name,
+                old_value,
+                new_value,
+                namespace,
+            } => DomCustomElementReactionKind::AttributeChanged {
+                local_name: local_name.code_units(),
+                old_value: old_value.as_ref().map(DocumentString::code_units),
+                new_value: new_value.as_ref().map(DocumentString::code_units),
+                namespace: namespace.as_ref().map(DocumentString::code_units),
+            },
+        };
+        DomCustomElementReaction {
+            element: self.element,
+            definition: self.definition,
+            kind,
+        }
+    }
+}
+
+/// One published segment's reaction facts and their retained backing.
+pub struct DomCustomElementReactions {
     slot: Arc<Slot>,
     batch: Batch,
 }
 
 #[derive(Default)]
 struct Batch {
-    facts: Vec<DomCustomElementInsertion>,
+    facts: Vec<Reaction>,
     cursor: usize,
     _backing: Option<custody::Debit>,
+    _strings: Vec<custody::SharedDebit>,
 }
 
 enum SlotState {
@@ -42,12 +99,21 @@ impl Slot {
     }
 }
 
-impl DomCustomElementInsertions {
+impl DomCustomElementReactions {
     pub fn operation(&self) -> crate::DomSourceOperationId {
         self.slot.operation
     }
 
-    pub fn facts(&self) -> &[DomCustomElementInsertion] {
+    pub fn facts(&self) -> impl ExactSizeIterator<Item = DomCustomElementReaction<'_>> {
+        self.remaining().iter().map(Reaction::view)
+    }
+
+    /// Borrow the next occurrence without advancing the receipt.
+    pub fn front(&self) -> Option<DomCustomElementReaction<'_>> {
+        self.remaining().first().map(Reaction::view)
+    }
+
+    fn remaining(&self) -> &[Reaction] {
         &self.batch.facts[self.batch.cursor..]
     }
 
@@ -59,19 +125,19 @@ impl DomCustomElementInsertions {
     }
 }
 
-impl std::fmt::Debug for DomCustomElementInsertions {
+impl std::fmt::Debug for DomCustomElementReactions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DomCustomElementInsertions")
+        f.debug_struct("DomCustomElementReactions")
             .field("operation", &self.operation())
-            .field("facts", &self.facts())
+            .field("facts", &self.remaining())
             .finish_non_exhaustive()
     }
 }
 
-impl Drop for DomCustomElementInsertions {
+impl Drop for DomCustomElementReactions {
     fn drop(&mut self) {
         let mut slot = self.slot.lock();
-        *slot = if self.facts().is_empty() {
+        *slot = if self.remaining().is_empty() {
             SlotState::Settled
         } else {
             SlotState::Ready(std::mem::take(&mut self.batch))
@@ -99,7 +165,7 @@ impl Inbox {
         &self,
         operation: crate::DomSourceOperationId,
         inspections: usize,
-    ) -> Result<Option<DomCustomElementInsertions>, DomError> {
+    ) -> Result<Option<DomCustomElementReactions>, DomError> {
         let mut queue = self.lock();
         if queue.len() > inspections {
             return Err(DomError::SourceOutputLimit);
@@ -129,7 +195,7 @@ impl Inbox {
         let SlotState::Ready(batch) = std::mem::replace(&mut *state, SlotState::Loaned) else {
             return Err(DomError::InvalidSourceOperation);
         };
-        Ok(Some(DomCustomElementInsertions {
+        Ok(Some(DomCustomElementReactions {
             slot: slot.clone(),
             batch,
         }))
@@ -161,9 +227,56 @@ impl Inbox {
     }
 }
 
-pub(in crate::store) struct InsertionFacts {
-    pub(in crate::store) entries: scratch::ScratchVec<(Key, crate::DomRegistryDefinitionId)>,
+pub(in crate::store) struct ReactionFacts {
+    entries: scratch::ScratchVec<StagedReaction>,
     pub(in crate::store) registration: Arc<crate::hosted::ScriptRegistration>,
+}
+
+struct StagedReaction {
+    element: Key,
+    definition: crate::DomRegistryDefinitionId,
+    kind: ReactionKind,
+    strings: Option<custody::SharedDebit>,
+}
+
+impl ReactionFacts {
+    pub(in crate::store) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(in crate::store) fn truncate(&mut self, len: usize) {
+        self.entries.truncate(len);
+    }
+}
+
+fn retain_reaction_strings(
+    kind: &ReactionKind,
+    budget: &formation::Formation,
+    cancel: &AtomicBool,
+) -> Result<(), DomError> {
+    let ReactionKind::AttributeChanged {
+        local_name,
+        old_value,
+        new_value,
+        namespace,
+    } = kind
+    else {
+        return Ok(());
+    };
+    let mut payload = storage::Payload::default();
+    for value in [
+        Some(local_name),
+        old_value.as_ref(),
+        new_value.as_ref(),
+        namespace.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        budget.step(cancel)?;
+        payload.string(value)?;
+    }
+    budget.retain_payload(payload, cancel)
 }
 
 pub(in crate::store) struct Publication {
@@ -173,27 +286,27 @@ pub(in crate::store) struct Publication {
 
 impl Publication {
     pub(in crate::store) fn publish(mut self) {
-        if let Some(inbox) = self.registration.custom_element_insertions.get() {
+        if let Some(inbox) = self.registration.custom_element_reactions.get() {
             inbox.lock().append(&mut self.batches);
         }
     }
 }
 
 impl Draft {
-    pub(in crate::store) fn custom_element_insertion_count(&self) -> usize {
-        self.custom_element_insertions
+    pub(in crate::store) fn custom_element_reaction_count(&self) -> usize {
+        self.custom_element_reactions
             .as_ref()
             .map_or(0, |facts| facts.entries.len())
     }
 
-    pub(in crate::store) fn captures_custom_element_insertions(&self) -> bool {
+    pub(in crate::store) fn captures_custom_element_reactions(&self) -> bool {
         self.source_limits.is_some()
             && self
                 .script_registration
                 .as_ref()
                 .is_some_and(|registration| {
                     registration.is_active()
-                        && registration.custom_element_insertions.get().is_some()
+                        && registration.custom_element_reactions.get().is_some()
                 })
     }
 
@@ -202,12 +315,7 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let Some(registration) = self.script_registration.as_ref().filter(|registration| {
-            registration.is_active() && registration.custom_element_insertions.get().is_some()
-        }) else {
-            return Ok(());
-        };
-        if self.source_limits.is_none() {
+        if !self.captures_custom_element_reactions() {
             return Ok(());
         }
         self.source_step(cancel)?;
@@ -226,30 +334,93 @@ impl Draft {
         else {
             return Ok(());
         };
-        let registration = registration.clone();
+        self.record_custom_element_reaction(key, definition, ReactionKind::Upgrade, cancel)
+    }
+
+    pub(in crate::store) fn record_custom_element_attribute(
+        &mut self,
+        key: Key,
+        name: &crate::DomQualifiedName,
+        (old_value, new_value): (Option<&DocumentString>, Option<&DocumentString>),
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !self.captures_custom_element_reactions() {
+            return Ok(());
+        }
+        self.source_step(cancel)?;
+        let Some(element) = self.node(key)?.element().map(|element| element.language()) else {
+            return Ok(());
+        };
+        if element.custom_element_state()
+            != surgeist_html::elements::native::HtmlCustomElementState::Custom
+        {
+            return Ok(());
+        }
+        let crate::DomElementDefinition::Definition(definition) =
+            element.custom_element_definition()
+        else {
+            return Ok(());
+        };
+        self.record_custom_element_reaction(
+            key,
+            definition,
+            ReactionKind::AttributeChanged {
+                local_name: name.local_name().clone(),
+                old_value: old_value.cloned(),
+                new_value: new_value.cloned(),
+                namespace: name.namespace_uri().cloned(),
+            },
+            cancel,
+        )
+    }
+
+    fn record_custom_element_reaction(
+        &mut self,
+        key: Key,
+        definition: crate::DomRegistryDefinitionId,
+        kind: ReactionKind,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let registration = self
+            .script_registration
+            .clone()
+            .ok_or(DomError::HostedSourceUnavailable)?;
+        let budget =
+            formation::Formation::new(self, cancel)?.ok_or(DomError::InvalidSourceOperation)?;
+        retain_reaction_strings(&kind, &budget, cancel)?;
+        let strings = budget.fork();
+        let retained = budget
+            .into_debit()
+            .map(|mut debit| debit.share(|next| strings.admit_custody_usage(next, cancel)))
+            .transpose()?;
         let mut facts = self
-            .custom_element_insertions
+            .custom_element_reactions
             .take()
-            .unwrap_or_else(|| InsertionFacts {
+            .unwrap_or_else(|| ReactionFacts {
                 entries: self.effect_vec(),
                 registration,
             });
         let reserve = self.select_reserve(&mut facts.entries, 1, cancel);
         if reserve.is_ok() {
-            facts.entries.push((key, definition));
+            facts.entries.push(StagedReaction {
+                element: key,
+                definition,
+                kind,
+                strings: retained,
+            });
         }
-        self.custom_element_insertions = Some(facts);
+        self.custom_element_reactions = Some(facts);
         reserve
     }
 
-    pub(in crate::store) fn prepare_custom_element_insertions(
+    pub(in crate::store) fn prepare_custom_element_reactions(
         &self,
         operation: crate::DomSourceOperationId,
         ids: &AllocationIds,
         cancel: &AtomicBool,
     ) -> Result<Option<Publication>, DomError> {
         let Some(pending) = self
-            .custom_element_insertions
+            .custom_element_reactions
             .as_ref()
             .filter(|facts| !facts.entries.is_empty())
         else {
@@ -258,16 +429,22 @@ impl Draft {
         let budget =
             formation::Formation::new(self, cancel)?.ok_or(DomError::InvalidSourceOperation)?;
         let mut facts = Vec::new();
+        let mut strings = Vec::new();
         formation::reserve(&mut facts, pending.entries.len(), Some(&budget), cancel)?;
-        for &(key, definition) in pending.entries.iter() {
+        for entry in pending.entries.iter() {
             budget.step(cancel)?;
-            let element = match key {
+            let element = match entry.element {
                 Key::Existing(id) => id,
                 Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
-            facts.push(DomCustomElementInsertion {
+            if let Some(debit) = &entry.strings {
+                formation::reserve(&mut strings, 1, Some(&budget), cancel)?;
+                strings.push(debit.clone());
+            }
+            facts.push(Reaction {
                 element,
-                definition,
+                definition: entry.definition,
+                kind: entry.kind.clone(),
             });
         }
         let slot_backing = budget.fork();
@@ -279,6 +456,7 @@ impl Draft {
                 facts,
                 cursor: 0,
                 _backing: budget.into_debit(),
+                _strings: strings,
             })),
             _backing: slot_backing.into_debit(),
         }));

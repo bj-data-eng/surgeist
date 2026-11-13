@@ -3,7 +3,9 @@
 mod csp_task;
 mod element_task;
 mod interfaces;
-pub(super) use interfaces::{ActiveConstructor, PendingConstructor, PendingDefinitionReactions};
+pub(super) use interfaces::{
+    ActiveConstructor, ActiveReactionQueue, PendingConstructor, PendingDefinitionReactions,
+};
 mod listeners;
 mod reports;
 mod source_event;
@@ -818,7 +820,7 @@ impl PreparedDocumentScriptHost {
         )?);
         let engine = script.publish(&self.native, policy)?;
         if cfg!(test) {
-            engine.registration.observe_custom_element_insertions()?;
+            engine.registration.observe_custom_element_reactions()?;
         }
         Ok((engine, admission))
     }

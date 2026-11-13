@@ -1130,7 +1130,7 @@ impl Draft {
                         _ => (),
                     }
                 } else {
-                    if stage < 10 || (stage == 10 && self.captures_custom_element_insertions()) {
+                    if stage < 10 || (stage == 10 && self.captures_custom_element_reactions()) {
                         self.push_effect(
                             select::Effect::Tree(Frame::Node {
                                 key,

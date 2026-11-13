@@ -1,6 +1,7 @@
 //! Retained custody indexed by exact native node retirement.
 
 use super::super::PublicEventBindings;
+use super::super::custom_elements::ActiveReactionQueue;
 use super::*;
 use surgeist_bindings_js::NativeProjectionPrototype;
 use surgeist_dom::{
@@ -56,6 +57,7 @@ pub(in crate::document_scripting) struct PendingConstructor {
     realm: RealmId,
     report: super::super::super::reports::ConstructorReportReservation,
     exception: Option<surgeist_bindings_js::Exception>,
+    upgrade_callbacks: Option<Rc<ActiveReactionQueue>>,
     next: Option<Box<Self>>,
     _backing: GuestBacking,
 }
@@ -94,6 +96,9 @@ impl NativeOwner {
                     .ok_or(DocumentScriptNativeError::SourceAccess)?
                     .next;
             } else {
+                if let Some(queue) = frame.upgrade_callbacks.take() {
+                    self.keep_stopped_callback_queue(queue);
+                }
                 *link = frame.next.take();
             }
         }
@@ -178,6 +183,9 @@ impl NativeOwner {
             surgeist_dom::DomSourceProgress::Complete(_)
         ) {
             return Err(DocumentScriptNativeError::SourceAccess.into());
+        }
+        if let Some(queue) = pending.upgrade_callbacks.take() {
+            self.keep_stopped_callback_queue(queue);
         }
         *link = pending.next.take();
         Ok(())
@@ -581,6 +589,7 @@ impl OrdinaryBindings {
             realm,
             report,
             exception: None,
+            upgrade_callbacks: None,
             next: None,
             _backing: backing,
         });
@@ -700,8 +709,12 @@ impl OrdinaryBindings {
             DomHostedGlobalId,
         ),
         (constructor, interface, realm): (&Value<'scope>, &'static str, RealmId),
-        receiver: &Value<'scope>,
-    ) -> Result<bool, DocumentGuestEventError> {
+        (receiver, callbacks, accepted): (
+            &Value<'scope>,
+            Option<Rc<ActiveReactionQueue>>,
+            &mut bool,
+        ),
+    ) -> Result<Option<Rc<ActiveReactionQueue>>, DocumentGuestEventError> {
         let registration = owner
             .attachment
             .get()
@@ -732,13 +745,14 @@ impl OrdinaryBindings {
             )?
         };
         let (request, callback, receiver_registry_matches) = match callback {
-            None => return Ok(false),
+            None => return Ok(None),
             Some(surgeist_dom::DomSourceCustomElementUpgrade::Callback {
                 request,
                 scope,
                 receiver_registry_matches,
             }) => (request, scope, receiver_registry_matches),
             Some(surgeist_dom::DomSourceCustomElementUpgrade::ShadowForbidden) => {
+                *accepted = true;
                 let value = scope.dom_exception(
                     surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError,
                     &[],
@@ -750,7 +764,7 @@ impl OrdinaryBindings {
                     realm,
                     exception,
                 });
-                return Ok(false);
+                return Ok(None);
             }
         };
         let mut pending = Box::new(PendingConstructor {
@@ -762,9 +776,11 @@ impl OrdinaryBindings {
             realm,
             report,
             exception: None,
+            upgrade_callbacks: None,
             next: None,
             _backing: backing,
         });
+        *accepted = true;
         let run = (|| {
             let entry = PublicEventBindings::enter_constructor(
                 owner,
@@ -798,9 +814,11 @@ impl OrdinaryBindings {
                 }
                 Err(error) => return Err(error.into()),
             });
-            let successful = pending.outcome == Some(DomSourceCustomElementOutcome::Returned(node));
+            if pending.outcome == Some(DomSourceCustomElementOutcome::Returned(node)) {
+                pending.upgrade_callbacks = callbacks;
+            }
             self.finish_customized_constructor(scope, owner, events, &mut pending)?;
-            Ok(successful)
+            Ok(pending.upgrade_callbacks.take())
         })();
         if result.is_err() {
             owner.keep_constructor_result(pending);

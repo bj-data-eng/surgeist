@@ -892,7 +892,7 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
             &cancel(),
         )
         .unwrap();
-    registration.observe_custom_element_insertions().unwrap();
+    registration.observe_custom_element_reactions().unwrap();
     let stamp = dom.snapshot().stamp();
     let mut lease = dom
         .begin_source_edit(
@@ -907,48 +907,51 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
     ));
     drop(lease);
     assert_eq!(dom.snapshot().stamp(), stamp);
-    assert_eq!(registration.custom_element_insertion_segments(), 0);
+    assert_eq!(registration.custom_element_reaction_segments(), 0);
     let done = source(&mut dom, DomSourceEdit::insert_before(host, root, None));
     let id = done.operation();
     assert!(matches!(
-        registration.take_custom_element_insertions(id, 0),
+        registration.take_custom_element_reactions(id, 0),
         Err(DomError::SourceOutputLimit)
     ));
     let mut loan = registration
-        .take_custom_element_insertions(id, 1)
+        .take_custom_element_reactions(id, 1)
         .unwrap()
         .unwrap();
     assert_eq!(
-        loan.facts(),
+        loan.facts().collect::<Vec<_>>(),
         [
-            crate::DomCustomElementInsertion {
+            crate::DomCustomElementReaction {
                 element: inside,
-                definition
+                definition,
+                kind: crate::DomCustomElementReactionKind::Upgrade,
             },
-            crate::DomCustomElementInsertion {
+            crate::DomCustomElementReaction {
                 element: outside,
-                definition
+                definition,
+                kind: crate::DomCustomElementReactionKind::Upgrade,
             },
         ]
     );
     assert!(
         registration
-            .take_custom_element_insertions(id, 1)
+            .take_custom_element_reactions(id, 1)
             .unwrap()
             .is_none()
     );
-    assert!(dom.has_pending_custom_element_insertions(&binding));
+    assert!(dom.has_pending_custom_element_reactions(&binding));
     let later_operation =
         source(&mut dom, DomSourceEdit::insert_before(later, root, None)).operation();
     let mut later_loan = registration
-        .take_custom_element_insertions(later_operation, 2)
+        .take_custom_element_reactions(later_operation, 2)
         .unwrap()
         .unwrap();
     assert_eq!(
-        later_loan.facts(),
-        [crate::DomCustomElementInsertion {
+        later_loan.facts().collect::<Vec<_>>(),
+        [crate::DomCustomElementReaction {
             element: later,
-            definition
+            definition,
+            kind: crate::DomCustomElementReactionKind::Upgrade,
         }]
     );
     later_loan.acknowledge_front();
@@ -956,28 +959,29 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
     loan.acknowledge_front();
     drop(loan);
     let loan = registration
-        .take_custom_element_insertions(id, 2)
+        .take_custom_element_reactions(id, 2)
         .unwrap()
         .unwrap();
     assert_eq!(
-        loan.facts(),
-        [crate::DomCustomElementInsertion {
+        loan.facts().collect::<Vec<_>>(),
+        [crate::DomCustomElementReaction {
             element: outside,
-            definition
+            definition,
+            kind: crate::DomCustomElementReactionKind::Upgrade,
         }]
     );
     registration.revoke();
     assert!(
-        dom.discard_stopped_custom_element_insertions(&binding)
+        dom.discard_stopped_custom_element_reactions(&binding)
             .is_err()
     );
     drop(loan);
     assert_eq!(
-        dom.discard_stopped_custom_element_insertions(&binding)
+        dom.discard_stopped_custom_element_reactions(&binding)
             .unwrap(),
         1
     );
-    assert!(!dom.has_pending_custom_element_insertions(&binding));
+    assert!(!dom.has_pending_custom_element_reactions(&binding));
 }
 
 #[test]
