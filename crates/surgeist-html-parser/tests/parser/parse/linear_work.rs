@@ -349,8 +349,8 @@ fn work_added_by_each_doubling_of_sibling_formatting_elements_is_near_double() {
 fn work_added_by_each_doubling_of_repeated_foster_parented_text_is_near_double() {
     // Each text inside a table is foster parented: it is inserted before the
     // table, which sits last under the growing body, so inserting before a
-    // sibling must cost what shifting the entries behind it costs, never the
-    // body's whole child order.
+    // sibling must cost the same links as inserting last, never a search along
+    // the body's children.
     assert_doublings_add_near_double(
         [200, 400, 800, 1600],
         |repeats| {
@@ -592,9 +592,8 @@ fn work_the_adoption_agency_adds_by_moving_children_at_most_doubles_with_their_n
     // Moving n children is n moves of constant work each, so the work added is
     // a*n + b with b the fixed cost of the algorithm and no negative term:
     // E(2n) = 2*a*n + b <= 2*E(n). A tenth more is left for the geometric
-    // capacity steps of the new parent's child order. Taking each child from
-    // the front of an order that shifts every later entry, after finding it by
-    // a walk from the end, adds a term quadratic in n: E(2n) approaches
+    // capacity steps of the row banks. Finding each child by a search along
+    // the parent's children adds a term quadratic in n: E(2n) approaches
     // 4*E(n).
     const BOUND_TENTHS: u64 = 22;
     let sizes = [100usize, 200, 400, 800];

@@ -385,7 +385,7 @@ impl SessionStorage {
                 .construction
                 .node_at(node)
                 .ok_or(SessionError::ForeignNode)?
-                .child_at(0)
+                .first_child()
                 .map(|n| n.position());
             while let Some(child) = next {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -602,11 +602,11 @@ impl SessionStorage {
             .node_at(style)
             .ok_or_else(|| latch_registry_row(c))?;
         let mut elements = false;
-        for position in 0..record.child_count() {
+        let mut child = record.first_child();
+        while let Some(candidate) = child {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            elements |= record
-                .child_at(position)
-                .is_some_and(|child| matches!(child.kind(), ConstructionNodeKind::Element(_)));
+            elements |= matches!(candidate.kind(), ConstructionNodeKind::Element(_));
+            child = candidate.next_sibling();
         }
         if elements {
             self.drop_style_order(tree);
@@ -794,7 +794,7 @@ impl SessionStorage {
                     .construction
                     .node_at(*document)
                     .ok_or(SessionError::WrongToken)?
-                    .child_at(0)
+                    .first_child()
                     .map(|n| n.position());
                 while let Some(index) = child {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -812,7 +812,7 @@ impl SessionStorage {
                             |_| c.charge(HtmlParseWorkCategory::RecordVisit, 1),
                         )? == surgeist_html::elements::style::HtmlDocumentBodyRole::Html
                         {
-                            let mut body = node.child_at(0).map(|n| n.position());
+                            let mut body = node.first_child().map(|n| n.position());
                             while let Some(index) = body {
                                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                                 let node = self

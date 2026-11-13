@@ -64,6 +64,14 @@ impl PackedShadow {
     const CLONABLE: u8 = 8;
     const SERIALIZABLE: u8 = 16;
 
+    /// The packed bits.
+    pub(super) fn bits(self) -> u8 {
+        self.0
+    }
+    /// The properties a row holds as the bits `bits`.
+    pub(super) fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
     pub(super) fn pack(properties: HtmlShadowRootProperties) -> Self {
         let mut bits = 0;
         if properties.mode == HtmlShadowRootMode::Closed {

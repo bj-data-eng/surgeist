@@ -479,8 +479,8 @@ impl ParserArenaSession {
                 .construction
                 .node_at(source)
                 .ok_or_else(|| latch_registry_row(control))?
-                .child_count()
-                == 0
+                .first_child()
+                .is_none()
             {
                 return Ok(());
             }
@@ -493,7 +493,7 @@ impl ParserArenaSession {
                 .construction
                 .node_at(source)
                 .ok_or_else(|| latch_registry_row(control))?
-                .child_at(0)
+                .first_child()
                 .ok_or_else(|| latch_registry_row(control))?
                 .position();
             let child = storage.node(control, index)?;

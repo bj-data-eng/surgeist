@@ -143,10 +143,10 @@ impl ParserArenaSession {
             _ => None,
         };
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let shallow = record.child_count() == 0
+        let shallow = record.first_child().is_none()
             && record.shadow_root().is_none()
             && contents.is_none_or(|contents| {
-                contents.child_count() == 0 && contents.shadow_root().is_none()
+                contents.first_child().is_none() && contents.shadow_root().is_none()
             });
         if shallow {
             if target == element || contents.is_some_and(|contents| contents.position() == target) {
@@ -195,21 +195,21 @@ impl ParserArenaSession {
                 .kind(),
             ConstructionNodeKind::Document(_)
         ) {
-            for position in 0..storage
+            let mut next = storage
                 .construction
                 .node_at(target)
                 .ok_or_else(|| latch_registry_row(control))?
-                .child_count()
-            {
+                .first_child()
+                .map(|child| child.position());
+            while let Some(child) = next {
                 // One actual child-index read and one referenced kind read.
                 control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                let child = storage
+                next = storage
                     .construction
-                    .node_at(target)
+                    .node_at(child)
                     .ok_or_else(|| latch_registry_row(control))?
-                    .child_at(position)
-                    .ok_or_else(|| latch_registry_row(control))?
-                    .position();
+                    .next_sibling()
+                    .map(|sibling| sibling.position());
                 let record = storage
                     .construction
                     .node_at(child)
@@ -488,8 +488,8 @@ impl ParserArenaSession {
                 fragment,
             }),
         };
-        // The record bank and the child orders are freed with the move of the records into the
-        // tree of the result. They stay in the high-water marks of the bytes held and leave what
+        // The banks of the build rows are freed with the move of the records into the tree of
+        // the result. They stay in the high-water marks of the bytes held and leave what
         // is held. The frozen arena owns every hold, so a refused release credits all of them and
         // strands none.
         let released = match frozen.storage.as_mut() {

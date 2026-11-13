@@ -249,7 +249,7 @@ pub mod cause {
 
 /// The admission of the direct record operations that grants every request and records what it
 /// was asked: the growth of each bank before it is chosen, and the records of each growth. It
-/// chooses the least capacity, or double the bank's capacity for a record or child bank when
+/// chooses the least capacity, or double the bank's capacity for a row, depth, association or leaf bank when
 /// `doubling` is set.
 #[derive(Debug, Default)]
 pub struct Direct {
@@ -289,7 +289,12 @@ impl HtmlRecordAdmission for Direct {
             return Ok(growth.minimum_capacity().max(capacity));
         }
         Ok(match growth.bank() {
-            HtmlConstructionBank::Records | HtmlConstructionBank::Children { .. }
+            HtmlConstructionBank::NodeRows
+            | HtmlConstructionBank::Depths
+            | HtmlConstructionBank::DepthIndex
+            | HtmlConstructionBank::DepthScratch
+            | HtmlConstructionBank::Associations
+            | HtmlConstructionBank::Leaves
                 if self.doubling =>
             {
                 growth

@@ -27,12 +27,12 @@
 //! usage as they were. The residues are the capacities of the banks: a bank that grew keeps the
 //! room it reserved, and when a later step of the same operation refuses, the consumer holds the
 //! capacity it last recorded for that bank. A string that a leaf creation had reserved and then
-//! dropped is such a bank; the consumer holds the capacity it recorded for it. Walk scratch
-//! (cursors and level counts) is not state and may be left written. A publication takes back
-//! what it recorded when it refuses, so it leaves no residue. The one allocation that follows
-//! the last refusable step is the handle of the shared arena of a publication, for which stable
-//! Rust has no fallible constructor: an allocator failure there aborts, as any infallible
-//! allocation does.
+//! dropped is such a bank; the consumer holds the capacity it recorded for it. The only scratch
+//! is `DepthIndex::moved`, the counts a planning walk writes for the records of a moved subtree;
+//! it is not state and may be left written. A publication takes back what it recorded when it
+//! refuses, so it leaves no residue. The one allocation that follows the last refusable step is
+//! the handle of the shared arena of a publication, for which stable Rust has no fallible
+//! constructor: an allocator failure there aborts, as any infallible allocation does.
 //!
 //! The work of these operations is counted in the records they write, the bytes of rows and units
 //! they copy, one provider call for every request to the allocator, and the records they visit. A
@@ -44,6 +44,10 @@ use super::*;
 use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
 use crate::internal::construction::attribute_table::{AttrRow, AttrRun, RowAppend};
 use crate::internal::construction::names::NameKey;
+use crate::internal::construction::rows::{
+    BuildAssoc, BuildAssocKind, NodeFlags, NodeRow, RowKind,
+};
+use crate::internal::construction::tree::Leaf;
 use crate::internal::values::{DocumentString, OrderedAttributes, QualifiedName};
 use surgeist_ledger::{Change, Charge};
 
@@ -70,19 +74,29 @@ pub type HtmlConstructionRecordError<S> = HtmlChargedError<S, HtmlConstructionEr
 /// A bank of the storage that a record operation grows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionBank {
-    /// The vector of retained records.
-    Records,
+    /// The vector of the rows of the records, 32 bytes each.
+    NodeRows,
+    /// The depth of each record, one 32-bit entry for each row, which a storage keeps while it
+    /// builds.
+    Depths,
+    /// The counts of the records at each depth, one 32-bit entry for each level, which the storage
+    /// makes when it needs them to keep the usage depth exact and keeps after.
+    DepthIndex,
+    /// The scratch beside the depth index, one 32-bit entry for each level: the counts of the
+    /// records of a moved subtree that a planning walk writes. It has the length of the depth
+    /// index, is allocated apart from it and grows after it.
+    DepthScratch,
+    /// The template and shadow associations of the records, one entry for each template contents
+    /// and each shadow root.
+    Associations,
+    /// The processing instructions and doctypes of the records.
+    Leaves,
     /// The rows of the attribute table, which hold the attributes of every element of the
     /// storage. It grows with an attribute that finds its element's run full, and with a run
     /// that an element reserves.
     AttributeRows,
     /// The runs of the attribute table, one for each element that has attributes.
     AttributeRuns,
-    /// The child order of the record at `position`.
-    Children {
-        /// The ordinal of the record whose child order grows.
-        position: usize,
-    },
     /// The units of one string of a processing-instruction or doctype record that a creation
     /// makes. It has no capacity before the creation, and the consumer also holds the wrapper
     /// that shares the string.
@@ -349,7 +363,11 @@ impl HtmlConstructionStorage {
         let serial = issue_storage_serial(&NEXT_STORAGE_SERIAL).map_err(fault)?;
         Ok(Self {
             arena: BuildArena {
-                records: Vec::new(),
+                rows: Vec::new(),
+                depths: Vec::new(),
+                index: None,
+                associations: Vec::new(),
+                leaves: Vec::new(),
                 names: NameTable::new(),
                 usage: HtmlConstructionUsage::default(),
                 serial,
@@ -360,41 +378,140 @@ impl HtmlConstructionStorage {
         })
     }
 
-    /// The growth the record bank needs to hold `required` records, or `None` when it holds them.
-    fn records_growth(&self, required: usize) -> Option<HtmlConstructionBankGrowth> {
-        let records = &self.arena.records;
-        (required > records.capacity()).then_some(HtmlConstructionBankGrowth {
-            bank: HtmlConstructionBank::Records,
+    /// The growth of a bank of `len` entries and `capacity` that must hold `required`, or `None`
+    /// when it holds them.
+    fn bank_growth(
+        bank: HtmlConstructionBank,
+        len: usize,
+        capacity: usize,
+        required: usize,
+        element_size: usize,
+    ) -> Option<HtmlConstructionBankGrowth> {
+        (required > capacity).then_some(HtmlConstructionBankGrowth {
+            bank,
             before: HtmlConstructionBankCapacity {
-                initialized_len: records.len(),
-                capacity: records.capacity(),
+                initialized_len: len,
+                capacity,
             },
             minimum_capacity: required,
-            element_size: size_of::<Record>(),
+            element_size,
             wrapper_bytes: 0,
         })
     }
 
-    /// The growth the child order of `parent` needs to hold `required` entries, or `None` when it
+    /// The growth the row bank needs to hold `required` records, or `None` when it holds them.
+    fn rows_growth(&self, required: usize) -> Option<HtmlConstructionBankGrowth> {
+        let rows = &self.arena.rows;
+        Self::bank_growth(
+            HtmlConstructionBank::NodeRows,
+            rows.len(),
+            rows.capacity(),
+            required,
+            size_of::<NodeRow>(),
+        )
+    }
+
+    /// The growth the depth column needs to hold `required` entries, or `None` when it holds them.
+    fn depths_growth(&self, required: usize) -> Option<HtmlConstructionBankGrowth> {
+        let depths = &self.arena.depths;
+        Self::bank_growth(
+            HtmlConstructionBank::Depths,
+            depths.len(),
+            depths.capacity(),
+            required,
+            size_of::<u32>(),
+        )
+    }
+
+    /// The growths the two vectors of the depth index need to hold `levels` levels, the counts and
+    /// then the scratch beside them; a vector that holds them, and both when the storage has no
+    /// index, need none. The vectors have one length. Their capacities differ after a growth that
+    /// the allocator refused for the second.
+    fn index_growth(&self, levels: usize) -> [Option<HtmlConstructionBankGrowth>; 2] {
+        let Some(index) = self.arena.index.as_ref() else {
+            return [None, None];
+        };
+        [
+            Self::bank_growth(
+                HtmlConstructionBank::DepthIndex,
+                index.counts.len(),
+                index.counts.capacity(),
+                levels,
+                size_of::<u32>(),
+            ),
+            Self::bank_growth(
+                HtmlConstructionBank::DepthScratch,
+                index.moved.len(),
+                index.moved.capacity(),
+                levels,
+                size_of::<u32>(),
+            ),
+        ]
+    }
+
+    /// Admits the growths of the depth index in turn, which the consumer chooses a capacity for
+    /// each of.
+    pub(super) fn admit_index<A: HtmlRecordAdmission>(
+        growths: [Option<HtmlConstructionBankGrowth>; 2],
+        admission: &mut A,
+    ) -> Result<[Option<usize>; 2], HtmlConstructionRecordError<A::Stop>> {
+        let [counts, scratch] = growths;
+        let counts = counts
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let scratch = scratch
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        Ok([counts, scratch])
+    }
+
+    /// Grows the vectors of the depth index, the counts and then the scratch, to the capacities
+    /// the consumer chose. Each is recorded as its own bank, so a refusal of the second leaves the
+    /// counts grown and recorded and the scratch as it was.
+    pub(super) fn grow_index<A: HtmlRecordAdmission>(
+        &mut self,
+        growths: [Option<HtmlConstructionBankGrowth>; 2],
+        chosen: [Option<usize>; 2],
+        admission: &mut A,
+    ) -> Result<(), HtmlConstructionRecordError<A::Stop>> {
+        let [growth_counts, growth_scratch] = growths;
+        let [chosen_counts, chosen_scratch] = chosen;
+        if let (Some(growth), Some(chosen)) = (growth_counts, chosen_counts) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_counts_bank(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (growth_scratch, chosen_scratch) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_scratch_bank(additional)
+            })?;
+        }
+        Ok(())
+    }
+
+    /// The growth the association table needs to hold `required` entries, or `None` when it
     /// holds them.
-    fn children_growth(
-        &self,
-        parent: NodeIx,
-        required: usize,
-    ) -> Option<HtmlConstructionBankGrowth> {
-        let children = &self.arena.records.get(parent.position())?.children;
-        (required > children.capacity()).then_some(HtmlConstructionBankGrowth {
-            bank: HtmlConstructionBank::Children {
-                position: parent.position(),
-            },
-            before: HtmlConstructionBankCapacity {
-                initialized_len: children.len(),
-                capacity: children.capacity(),
-            },
-            minimum_capacity: required,
-            element_size: size_of::<NodeIx>(),
-            wrapper_bytes: 0,
-        })
+    fn associations_growth(&self, required: usize) -> Option<HtmlConstructionBankGrowth> {
+        let table = &self.arena.associations;
+        Self::bank_growth(
+            HtmlConstructionBank::Associations,
+            table.len(),
+            table.capacity(),
+            required,
+            size_of::<BuildAssoc>(),
+        )
+    }
+
+    /// The growth the leaves need to hold `required` entries, or `None` when they hold them.
+    fn leaves_growth(&self, required: usize) -> Option<HtmlConstructionBankGrowth> {
+        let leaves = &self.arena.leaves;
+        Self::bank_growth(
+            HtmlConstructionBank::Leaves,
+            leaves.len(),
+            leaves.capacity(),
+            required,
+            size_of::<Leaf>(),
+        )
     }
 
     /// Admits `growth`: the layout it chooses must be representable and at least the minimum.
@@ -461,13 +578,21 @@ impl HtmlConstructionStorage {
             && chosen > growth.minimum_capacity;
         #[cfg(not(test))]
         let spare_refused = false;
-        // A test can also refuse every reservation of a child order, the retry included.
+        // A test can also refuse every reservation of the association table or of the scratch of
+        // the depth index, the retry included.
         #[cfg(test)]
-        let children_refused = matches!(growth.bank, HtmlConstructionBank::Children { .. })
-            && crate::internal::amortized::fault::refuses_children();
+        let bank_refused = match growth.bank {
+            HtmlConstructionBank::Associations => {
+                crate::internal::amortized::fault::refuses_associations()
+            }
+            HtmlConstructionBank::DepthScratch => {
+                crate::internal::amortized::fault::refuses_depth_scratch()
+            }
+            _ => false,
+        };
         #[cfg(not(test))]
-        let children_refused = false;
-        let refused = spare_refused || children_refused;
+        let bank_refused = false;
+        let refused = spare_refused || bank_refused;
         let mut outcome = if refused {
             Reserved {
                 ok: false,
@@ -476,7 +601,7 @@ impl HtmlConstructionStorage {
         } else {
             reserve(self, spare)
         };
-        if !outcome.ok && chosen > growth.minimum_capacity && !children_refused {
+        if !outcome.ok && chosen > growth.minimum_capacity && !bank_refused {
             // The retry is a second request to the allocator.
             Work {
                 provider_calls: 1,
@@ -503,60 +628,116 @@ impl HtmlConstructionStorage {
         }
     }
 
-    fn reserve_record_bank(&mut self, additional: usize) -> Reserved {
-        let records = &mut self.arena.records;
-        let ok = records.try_reserve_exact(additional).is_ok();
-        Reserved {
-            ok,
-            reached: HtmlConstructionBankCapacity {
-                initialized_len: records.len(),
-                capacity: records.capacity(),
-            },
+    /// The dimensions of a vector bank.
+    fn dimensions<T>(bank: &Vec<T>) -> HtmlConstructionBankCapacity {
+        HtmlConstructionBankCapacity {
+            initialized_len: bank.len(),
+            capacity: bank.capacity(),
         }
     }
 
-    fn reserve_child_bank(&mut self, parent: NodeIx, additional: usize) -> Reserved {
-        let Some(record) = self.arena.records.get_mut(parent.position()) else {
+    fn reserve_record_bank(&mut self, additional: usize) -> Reserved {
+        let ok = self.arena.rows.try_reserve_exact(additional).is_ok();
+        Reserved {
+            ok,
+            reached: Self::dimensions(&self.arena.rows),
+        }
+    }
+
+    fn reserve_depth_bank(&mut self, additional: usize) -> Reserved {
+        let ok = self.arena.depths.try_reserve_exact(additional).is_ok();
+        Reserved {
+            ok,
+            reached: Self::dimensions(&self.arena.depths),
+        }
+    }
+
+    /// Reserves the levels of the counts of the depth index.
+    fn reserve_counts_bank(&mut self, additional: usize) -> Reserved {
+        let Some(index) = self.arena.index.as_mut() else {
             return Reserved {
                 ok: false,
                 reached: HtmlConstructionBankCapacity::default(),
             };
         };
-        let ok = record.children.try_reserve_exact(additional).is_ok();
+        let ok = index.counts.try_reserve_exact(additional).is_ok();
         Reserved {
             ok,
-            reached: HtmlConstructionBankCapacity {
-                initialized_len: record.children.len(),
-                capacity: record.children.capacity(),
-            },
+            reached: Self::dimensions(&index.counts),
+        }
+    }
+
+    /// Reserves the levels of the scratch beside the depth index.
+    fn reserve_scratch_bank(&mut self, additional: usize) -> Reserved {
+        let Some(index) = self.arena.index.as_mut() else {
+            return Reserved {
+                ok: false,
+                reached: HtmlConstructionBankCapacity::default(),
+            };
+        };
+        let ok = index.moved.try_reserve_exact(additional).is_ok();
+        Reserved {
+            ok,
+            reached: Self::dimensions(&index.moved),
+        }
+    }
+
+    fn reserve_association_bank(&mut self, additional: usize) -> Reserved {
+        let ok = self
+            .arena
+            .associations
+            .try_reserve_exact(additional)
+            .is_ok();
+        Reserved {
+            ok,
+            reached: Self::dimensions(&self.arena.associations),
+        }
+    }
+
+    fn reserve_leaf_bank(&mut self, additional: usize) -> Reserved {
+        let ok = self.arena.leaves.try_reserve_exact(additional).is_ok();
+        Reserved {
+            ok,
+            reached: Self::dimensions(&self.arena.leaves),
         }
     }
 
     /// Reserves room for `additional` more records, so that creations that follow need not
     /// allocate. The record count and usage are unchanged. A bank that already holds them is not
-    /// grown and nothing is admitted.
+    /// grown and nothing is admitted. The row bank and the depth column are grown in turn.
     pub fn reserve_records<A: HtmlRecordAdmission>(
         &mut self,
         additional: usize,
         admission: &mut A,
     ) -> Result<(), HtmlConstructionRecordError<A::Stop>> {
-        let required = plus(self.arena.records.len(), additional).map_err(faulted)?;
+        let required = plus(self.arena.rows.len(), additional).map_err(faulted)?;
         u32::try_from(required)
             .map_err(|_| fault(HtmlConstructionCause::RepresentationExhausted))?;
-        let growth = self.records_growth(required);
+        let rows = self.rows_growth(required);
+        let depths = self.depths_growth(required);
         Work {
             record_visits: 1,
-            provider_calls: usize::from(growth.is_some()),
+            provider_calls: usize::from(rows.is_some()) + usize::from(depths.is_some()),
             ..Work::default()
         }
         .charge(admission)?;
-        let Some(growth) = growth else {
-            return Ok(());
-        };
-        let chosen = Self::admit_bank(growth, admission)?;
-        self.grow(growth, chosen, admission, |storage, additional| {
-            storage.reserve_record_bank(additional)
-        })
+        let chosen_rows = rows
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let chosen_depths = depths
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        if let (Some(growth), Some(chosen)) = (rows, chosen_rows) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_record_bank(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (depths, chosen_depths) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_depth_bank(additional)
+            })?;
+        }
+        Ok(())
     }
 
     /// The position of `node` after the visit that reads it.
@@ -569,15 +750,9 @@ impl HtmlConstructionStorage {
         self.arena.index(node).map_err(faulted)
     }
 
-    /// The record at `index` for a write, or the unknown-node error.
-    pub(super) fn record_mut(
-        &mut self,
-        index: NodeIx,
-    ) -> Result<&mut Record, HtmlConstructionError> {
-        self.arena
-            .records
-            .get_mut(index.position())
-            .ok_or(HtmlConstructionCause::UnknownNode.error())
+    /// The row at `index` for a write, or the unknown-node error.
+    pub(super) fn row_mut(&mut self, index: NodeIx) -> Result<&mut NodeRow, HtmlConstructionError> {
+        self.arena.row_mut(index)
     }
 
     /// Sets the compatibility mode of the Document record `document`.
@@ -588,18 +763,18 @@ impl HtmlConstructionStorage {
         charge: &mut C,
     ) -> Result<(), HtmlConstructionRecordError<C::Stop>> {
         let position = self.operand(document, charge)?;
-        let record = self.record_mut(position).map_err(faulted)?;
-        if !matches!(record.kind, NodeContent::Document(_)) {
+        let row = self.row_mut(position).map_err(faulted)?;
+        if !matches!(row.kind, RowKind::Document(_)) {
             return Err(fault(HtmlConstructionCause::WrongNodeKind));
         }
         Work {
-            copied_bytes: size_of::<NodeContent>(),
+            copied_bytes: size_of::<RowKind>(),
             record_writes: 1,
             ..Work::default()
         }
         .charge(charge)?;
-        // The record was read above and nothing has changed since.
-        self.record_mut(position).map_err(faulted)?.kind = NodeContent::Document(mode);
+        // The row was read above and nothing has changed since.
+        self.row_mut(position).map_err(faulted)?.kind = RowKind::Document(mode);
         Ok(())
     }
 
@@ -612,26 +787,31 @@ impl HtmlConstructionStorage {
         charge: &mut C,
     ) -> Result<(), HtmlConstructionRecordError<C::Stop>> {
         let position = self.operand(element, charge)?;
-        let is_link = match &self.record(position).map_err(faulted)?.kind {
-            NodeContent::Element(element) => {
-                element.key().html() == Some(crate::vocabulary::KnownHtmlElement::Link)
-            }
-            _ => return Err(fault(HtmlConstructionCause::WrongNodeKind)),
-        };
+        let row = self.arena.row(position).map_err(faulted)?;
+        if row.kind != RowKind::Element {
+            return Err(fault(HtmlConstructionCause::WrongNodeKind));
+        }
+        let is_link = usize::try_from(row.a)
+            .ok()
+            .and_then(|number| self.arena.names.get(number))
+            .ok_or_else(|| fault(HtmlConstructionCause::InvalidNameReference))?
+            .key()
+            .html()
+            == Some(crate::vocabulary::KnownHtmlElement::Link);
         if !is_link {
             return Err(fault(HtmlConstructionCause::WrongNodeKind));
         }
         Work {
-            copied_bytes: size_of::<Option<crate::internal::elements::rel::HtmlLinkFlags>>(),
+            copied_bytes: size_of::<NodeFlags>(),
             record_writes: 1,
             ..Work::default()
         }
         .charge(charge)?;
-        // The record is the element read above and nothing has changed since.
-        match &mut self.record_mut(position).map_err(faulted)?.kind {
-            NodeContent::Element(element) => element.link_flags = Some(flags),
-            _ => return Err(fault(HtmlConstructionCause::WrongNodeKind)),
-        }
+        // The row is the element read above and nothing has changed since.
+        let row = self.row_mut(position).map_err(faulted)?;
+        row.flags.set(NodeFlags::LINK_PRESENT, true);
+        row.flags
+            .set(NodeFlags::LINK_ENABLED, flags.explicitly_enabled());
         Ok(())
     }
 }
@@ -929,7 +1109,7 @@ impl HtmlConstructionStorage {
         let before = self.arena.usage;
         let template = created.template();
         let count = 1 + usize::from(template);
-        let len = self.arena.records.len();
+        let len = self.arena.rows.len();
         let required = plus(len, count).map_err(faulted)?;
         u32::try_from(required)
             .map_err(|_| fault(HtmlConstructionCause::RepresentationExhausted))?;
@@ -947,6 +1127,10 @@ impl HtmlConstructionStorage {
         // The values the record counts.
         let strings = created.strings();
         let leaf = created.leaf().copied();
+        let is_leaf = matches!(
+            created,
+            Created::ProcessingInstruction(..) | Created::Doctype(..)
+        );
         let units = match &created {
             Created::Element { name, .. } => name_units(name.name()).map_err(faulted)?,
             _ => {
@@ -991,9 +1175,21 @@ impl HtmlConstructionStorage {
         after.utf16_units = plus(after.utf16_units, units).map_err(faulted)?;
         after.depth = after.depth.max(usize::from(template));
         let change = HtmlConstructionChange { before, after };
-        let records_growth = self.records_growth(required);
+        let rows_growth = self.rows_growth(required);
+        let depths_growth = self.depths_growth(required);
+        let index_growth = self.index_growth(plus(after.depth, 1).map_err(faulted)?);
+        let associations_growth = if template {
+            self.associations_growth(plus(self.arena.associations.len(), 1).map_err(faulted)?)
+        } else {
+            None
+        };
+        let leaves_growth = if is_leaf {
+            self.leaves_growth(plus(self.arena.leaves.len(), 1).map_err(faulted)?)
+        } else {
+            None
+        };
         let text_growth = self.text_growth(text_units).map_err(faulted)?;
-        let (runs_growth, rows_growth) = match attribute_plan {
+        let (runs_growth, attribute_rows_growth) = match attribute_plan {
             Some(plan) => self.attribute_row_growths(plan).map_err(faulted)?,
             None => (None, None),
         };
@@ -1003,30 +1199,27 @@ impl HtmlConstructionStorage {
             .flatten()
             .filter(|string| matches!(string, Units::Copied(_)))
             .count();
-        let growths = plus(
-            plus(
-                plus(
-                    usize::from(records_growth.is_some()),
-                    usize::from(text_growth.is_some()),
-                )
-                .map_err(faulted)?,
-                plus(
-                    usize::from(runs_growth.is_some()),
-                    usize::from(rows_growth.is_some()),
-                )
-                .map_err(faulted)?,
-            )
-            .map_err(faulted)?,
-            string_count,
-        )
-        .map_err(faulted)?;
+        let mut growths = string_count;
+        for present in [
+            rows_growth.is_some(),
+            depths_growth.is_some(),
+            index_growth[0].is_some(),
+            index_growth[1].is_some(),
+            associations_growth.is_some(),
+            leaves_growth.is_some(),
+            text_growth.is_some(),
+            runs_growth.is_some(),
+            attribute_rows_growth.is_some(),
+        ] {
+            growths = plus(growths, usize::from(present)).map_err(faulted)?;
+        }
         admission
             .record_largest(
                 HtmlResource::AtomicLayoutBytes,
-                wide(times(count, size_of::<Record>()).map_err(faulted)?),
+                wide(times(count, size_of::<NodeRow>()).map_err(faulted)?),
             )
             .map_err(stopped)?;
-        for growth in [runs_growth, rows_growth].into_iter().flatten() {
+        for growth in [runs_growth, attribute_rows_growth].into_iter().flatten() {
             admission
                 .record_largest(
                     HtmlResource::AtomicLayoutBytes,
@@ -1038,16 +1231,41 @@ impl HtmlConstructionStorage {
             .record_largest(HtmlResource::TreeDepth, wide(after.depth))
             .map_err(stopped)?;
         admission.admit_change(self, change).map_err(stopped)?;
-        // Every write and copy is charged before any change is made: the rows, the usage and the
-        // depth counts, then each run of leaf units.
-        Work {
-            provider_calls: growths,
-            copied_bytes: plus(
-                times(count, size_of::<Record>() + size_of::<usize>()).map_err(faulted)?,
-                size_of::<HtmlConstructionUsage>(),
+        // Every write and copy is charged before any change is made: the rows, their depths, the
+        // counts of the depth index when the storage has one, the association and the leaf, the
+        // usage, then each run of leaf units.
+        let indexed = usize::from(self.arena.index.is_some());
+        let row_writes = plus(
+            plus(
+                times(count, plus(2, indexed).map_err(faulted)?).map_err(faulted)?,
+                usize::from(template),
             )
             .map_err(faulted)?,
-            record_writes: plus(times(count, 2).map_err(faulted)?, 1).map_err(faulted)?,
+            usize::from(is_leaf),
+        )
+        .map_err(faulted)?;
+        let row_bytes = plus(
+            plus(
+                times(
+                    count,
+                    plus(
+                        size_of::<NodeRow>(),
+                        times(plus(1, indexed).map_err(faulted)?, size_of::<u32>())
+                            .map_err(faulted)?,
+                    )
+                    .map_err(faulted)?,
+                )
+                .map_err(faulted)?,
+                times(usize::from(template), size_of::<BuildAssoc>()).map_err(faulted)?,
+            )
+            .map_err(faulted)?,
+            times(usize::from(is_leaf), size_of::<Leaf>()).map_err(faulted)?,
+        )
+        .map_err(faulted)?;
+        Work {
+            provider_calls: growths,
+            copied_bytes: plus(row_bytes, size_of::<HtmlConstructionUsage>()).map_err(faulted)?,
+            record_writes: plus(row_writes, 1).map_err(faulted)?,
             ..Work::default()
         }
         .charge(admission)?;
@@ -1091,7 +1309,17 @@ impl HtmlConstructionStorage {
             }
         }
         // Every growth is admitted before the first is recorded.
-        let records_chosen = records_growth
+        let rows_chosen = rows_growth
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let depths_chosen = depths_growth
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let index_chosen = Self::admit_index(index_growth, admission)?;
+        let associations_chosen = associations_growth
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let leaves_chosen = leaves_growth
             .map(|growth| Self::admit_bank(growth, admission))
             .transpose()?;
         let text_chosen = text_growth
@@ -1100,7 +1328,7 @@ impl HtmlConstructionStorage {
         let runs_chosen = runs_growth
             .map(|growth| Self::admit_bank(growth, admission))
             .transpose()?;
-        let rows_chosen = rows_growth
+        let attribute_rows_chosen = attribute_rows_growth
             .map(|growth| Self::admit_bank(growth, admission))
             .transpose()?;
         let admitted = created.try_map(|units| match units {
@@ -1122,9 +1350,25 @@ impl HtmlConstructionStorage {
                 ))
             }
         })?;
-        if let (Some(growth), Some(chosen)) = (records_growth, records_chosen) {
+        if let (Some(growth), Some(chosen)) = (rows_growth, rows_chosen) {
             self.grow(growth, chosen, admission, |storage, additional| {
                 storage.reserve_record_bank(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (depths_growth, depths_chosen) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_depth_bank(additional)
+            })?;
+        }
+        self.grow_index(index_growth, index_chosen, admission)?;
+        if let (Some(growth), Some(chosen)) = (associations_growth, associations_chosen) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_association_bank(additional)
+            })?;
+        }
+        if let (Some(growth), Some(chosen)) = (leaves_growth, leaves_chosen) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_leaf_bank(additional)
             })?;
         }
         if let (Some(growth), Some(chosen)) = (text_growth, text_chosen) {
@@ -1137,7 +1381,7 @@ impl HtmlConstructionStorage {
                 storage.reserve_attribute_runs(additional)
             })?;
         }
-        if let (Some(growth), Some(chosen)) = (rows_growth, rows_chosen) {
+        if let (Some(growth), Some(chosen)) = (attribute_rows_growth, attribute_rows_chosen) {
             self.grow(growth, chosen, admission, |storage, additional| {
                 storage.reserve_attribute_rows(additional)
             })?;
@@ -1168,67 +1412,53 @@ impl HtmlConstructionStorage {
             reserved.extend_from_slice(units);
             Ok(DocumentString::from_utf16(reserved))
         })?;
-        let fragment = contents_ix.map(|_| {
-            let mut fragment = Record::new(NodeContent::Fragment, None, 1);
-            fragment.owner = Some(HtmlFragmentOwner::Template(self.arena.id(first)));
-            fragment
-        });
         admission.record_change(self, change).map_err(stopped)?;
-        // The records exist and the banks have room for them: the writes below allocate nothing.
-        // The units of a text or a comment are written to the arena now, so that a refusal above
-        // leaves the arena as it was.
-        let (content, properties, document) = match built {
-            Created::Document(mode) => (NodeContent::Document(mode), None, true),
-            Created::Fragment => (NodeContent::Fragment, None, false),
-            Created::ShadowContents(properties) => (NodeContent::Fragment, Some(properties), false),
+        // The banks have room for every row, depth, count, association and leaf: the writes below
+        // allocate nothing. The units of a text or a comment are written to the arena now, so that
+        // a refusal above leaves the arena as it was.
+        let mut row = match built {
+            Created::Document(mode) => NodeRow::document(mode),
+            Created::Fragment => NodeRow::fragment(None),
+            Created::ShadowContents(properties) => NodeRow::fragment(Some(properties)),
             Created::Element {
                 name, link_flags, ..
-            } => (
-                NodeContent::Element(ElementContent {
-                    link_flags,
-                    name,
-                    attrs: None,
-                }),
-                None,
-                false,
-            ),
-            Created::Text(units) => (
-                NodeContent::Text(self.text.push(units).map_err(faulted)?),
-                None,
-                false,
-            ),
-            Created::Comment(units) => (
-                NodeContent::Comment(self.text.push(units).map_err(faulted)?),
-                None,
-                false,
-            ),
-            Created::ProcessingInstruction(target, data) => (
-                NodeContent::ProcessingInstruction(HtmlProcessingInstruction::new(target, data)),
-                None,
-                false,
-            ),
-            Created::Doctype(name, public, system) => (
-                NodeContent::Doctype(HtmlDoctype::new(name, public, system)),
-                None,
-                false,
-            ),
+            } => NodeRow::element(name.number(), link_flags),
+            Created::Text(units) => {
+                NodeRow::text(RowKind::Text, self.text.push(units).map_err(faulted)?)
+            }
+            Created::Comment(units) => {
+                NodeRow::text(RowKind::Comment, self.text.push(units).map_err(faulted)?)
+            }
+            Created::ProcessingInstruction(target, data) => {
+                let at = self.push_leaf(Leaf::ProcessingInstruction(
+                    HtmlProcessingInstruction::new(target, data),
+                ))?;
+                NodeRow::leaf(RowKind::ProcessingInstruction, at)
+            }
+            Created::Doctype(name, public, system) => {
+                let at = self.push_leaf(Leaf::Doctype(HtmlDoctype::new(name, public, system)))?;
+                NodeRow::leaf(RowKind::Doctype, at)
+            }
         };
-        let mut record = Record::new(content, None, 0);
-        if document {
-            // This actual admitted constructor issues original state; generic raw kinds and later
-            // mode edits cannot issue it.
-            record.document_focused_area_designation = Some(HtmlFocusedAreaDesignation::KnownNull);
-        }
-        record.shadow_properties = properties;
-        if let Some(contents) = contents_ix {
-            record.template_contents = Some(TemplateContents::Owned(contents));
+        if template {
+            row.flags.set(NodeFlags::HAS_ASSOC, true);
         }
         let serial = self.arena.serial;
-        self.arena.records.push(record);
-        self.arena.populate(0).map_err(faulted)?;
-        if let Some(fragment) = fragment {
-            self.arena.records.push(fragment);
-            self.arena.populate(1).map_err(faulted)?;
+        self.arena.rows.push(row);
+        self.arena.depths.push(0);
+        self.arena.count(0, 1).map_err(faulted)?;
+        if let Some(contents) = contents_ix {
+            let mut fragment = NodeRow::fragment(None);
+            fragment.set_owner(Some(first));
+            self.arena.rows.push(fragment);
+            self.arena.depths.push(1);
+            self.arena.count(1, 1).map_err(faulted)?;
+            // The owner is the newest row, so the entry sorts after every other.
+            self.arena.associations.push(BuildAssoc {
+                owner: first,
+                contents,
+                kind: BuildAssocKind::Owned,
+            });
         }
         if let Some(plan) = attribute_plan {
             // The banks have room for every row and every value: the writes allocate nothing.
@@ -1247,6 +1477,18 @@ impl HtmlConstructionStorage {
             tree: serial,
             index: first,
         })
+    }
+
+    /// Appends `leaf` to the leaves, which have room for it, and returns its position.
+    fn push_leaf<S>(&mut self, leaf: Leaf) -> Result<u32, HtmlConstructionRecordError<S>> {
+        let leaves = &mut self.arena.leaves;
+        if leaves.len() >= leaves.capacity() {
+            return Err(fault(HtmlConstructionCause::CapacityMismatch));
+        }
+        let at = u32::try_from(leaves.len())
+            .map_err(|_| fault(HtmlConstructionCause::RepresentationExhausted))?;
+        leaves.push(leaf);
+        Ok(at)
     }
 
     /// Creates a detached Document record in `mode`.

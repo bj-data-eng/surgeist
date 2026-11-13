@@ -435,7 +435,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         panic!("real img token")
     };
     // This actual detached allocation fills the last five retained slots.
-    // Attaching it would require an unrelated temporary child-order entry;
+    // Attaching it would require unrelated temporary link writes;
     // the image's actual intended parent is the attached HTML container.
     let _body = session.allocate_implicit_body(&mut c, None).unwrap();
     // Root/html/body own three node-join cells, four field payload slots, four document facts, and four nonce slots.

@@ -107,8 +107,8 @@ pub(super) fn inject_walk_refusal(
     }
 }
 
-/// The size in bytes of one record of the storage's record bank, as the storage reports it when it
-/// asks for the growth of the bank.
+/// The size in bytes of one record of the storage's banks of rows, as the storage reports it when
+/// it asks for their growth: the sizes of the row and of its entry of the depth column.
 pub(super) fn record_element_size() -> usize {
     use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
     use surgeist_html::bounded::construction::{
@@ -136,7 +136,7 @@ pub(super) fn record_element_size() -> usize {
             Ok(())
         }
         fn admit_growth(&mut self, growth: HtmlConstructionBankGrowth) -> Result<usize, ()> {
-            self.0 = growth.element_size();
+            self.0 += growth.element_size();
             Ok(growth.minimum_capacity())
         }
         fn record_growth(&mut self, _: HtmlConstructionGrowthRecord) -> Result<(), ()> {
@@ -152,14 +152,14 @@ pub(super) fn record_element_size() -> usize {
     }
     let mut recorder = Recorder::default();
     if let Ok(mut storage) = HtmlConstructionStorage::new(&mut recorder) {
-        // A reservation asks for the growth of the record bank.
+        // A reservation asks for the growth of the row bank and of the depth column.
         let _ = storage.reserve_records(1, &mut recorder);
     }
     recorder.0
 }
 
-/// The capacity of the record bank and the size of one record, for a session that has no record
-/// with children: the parse holds the bytes of that bank alone.
+/// The capacity of the banks of rows and the size of one record in them, for a session that has
+/// no association: the parse holds the bytes of those banks alone.
 pub(super) fn record_bank(storage: &SessionStorage) -> (usize, usize) {
     let size = record_element_size();
     ((storage.holds.bank_bytes as usize) / size, size)
@@ -265,11 +265,7 @@ impl SessionStorage {
             if self.uncharged_html_local(node, "style") {
                 found.push(node);
             }
-            stack.extend(
-                (0..record.child_count())
-                    .rev()
-                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
-            );
+            stack.extend(record.children().rev().map(|child| child.position()));
         }
         found
     }
@@ -363,11 +359,7 @@ impl SessionStorage {
             {
                 return true;
             }
-            stack.extend(
-                (0..record.child_count())
-                    .rev()
-                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
-            );
+            stack.extend(record.children().rev().map(|child| child.position()));
         }
         false
     }

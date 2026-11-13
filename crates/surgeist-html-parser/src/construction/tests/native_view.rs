@@ -132,7 +132,7 @@ impl<'a> NativeView<'a> {
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
             HtmlParseWorkCategory::InspectByte,
-            HtmlConstructionNode::CONTENT_BYTES as u64,
+            HtmlConstructionNode::ROW_BYTES as u64,
         )?;
         self.control.charge(
             HtmlParseWorkCategory::CopyByte,
@@ -193,7 +193,7 @@ impl<'a> NativeView<'a> {
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
             HtmlParseWorkCategory::InspectByte,
-            HtmlConstructionNode::CONTENT_BYTES as u64,
+            HtmlConstructionNode::ROW_BYTES as u64,
         )?;
         match &self
             .storage
@@ -253,7 +253,8 @@ impl<'a> NativeView<'a> {
             .construction
             .node_at(index)
             .ok_or_else(SessionError::registry_row)?
-            .child_count())
+            .children()
+            .count())
     }
     #[cfg(test)]
     pub(crate) fn child_at(
@@ -269,7 +270,8 @@ impl<'a> NativeView<'a> {
                 .construction
                 .node_at(index)
                 .ok_or_else(SessionError::registry_row)?
-                .child_count()
+                .children()
+                .count()
         {
             return Ok(None);
         }
@@ -279,7 +281,8 @@ impl<'a> NativeView<'a> {
             .construction
             .node_at(index)
             .ok_or_else(SessionError::registry_row)?
-            .child_at(position)
+            .children()
+            .nth(position)
             .ok_or_else(SessionError::registry_row)?
             .position();
         self.storage.node(self.control, child).map(Some)

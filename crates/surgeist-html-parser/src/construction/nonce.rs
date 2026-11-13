@@ -453,9 +453,8 @@ impl SessionStorage {
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
-            .child_at(0)
+            .first_child()
         {
-            c.note_sibling(node, 0);
             return Ok(Some(child.position()));
         }
         let mut cursor = node;
@@ -464,65 +463,14 @@ impl SessionStorage {
             if cursor == root {
                 return Ok(None);
             }
-            if let Some(parent) = self
+            let record = self
                 .construction
                 .node_at(cursor)
-                .ok_or_else(|| latch_registry_row(c))?
-                .parent()
-                .map(|node| node.position())
-            {
-                let count = self
-                    .construction
-                    .node_at(parent)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .child_count();
-                // The step that reached `cursor` left its ordinal behind, so the
-                // search for it starts there and costs the siblings after it.
-                let mut ordinal = None;
-                if let Some(hinted) = c.sibling_hint(parent)
-                    && hinted < count
-                {
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    if self
-                        .construction
-                        .node_at(parent)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .child_at(hinted)
-                        .map(|child| child.position())
-                        == Some(cursor)
-                    {
-                        ordinal = Some(hinted);
-                    }
-                }
-                if ordinal.is_none() {
-                    for index in 0..count {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        let child = self
-                            .construction
-                            .node_at(parent)
-                            .ok_or_else(|| latch_registry_row(c))?
-                            .child_at(index)
-                            .ok_or_else(|| latch_registry_row(c))?
-                            .position();
-                        if child == cursor {
-                            ordinal = Some(index);
-                            break;
-                        }
-                    }
-                }
-                let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
-                let following = ordinal.saturating_add(1);
-                if following < count {
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let child = self
-                        .construction
-                        .node_at(parent)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .child_at(following)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .position();
-                    c.note_sibling(parent, following);
-                    return Ok(Some(child));
+                .ok_or_else(|| latch_registry_row(c))?;
+            if let Some(parent) = record.parent().map(|node| node.position()) {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if let Some(sibling) = record.next_sibling() {
+                    return Ok(Some(sibling.position()));
                 }
                 cursor = parent;
             } else if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
@@ -543,7 +491,7 @@ impl SessionStorage {
                     .construction
                     .node_at(cursor)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_at(0)
+                    .first_child()
                 {
                     return Ok(Some(child.position()));
                 }

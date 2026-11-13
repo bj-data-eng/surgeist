@@ -3,64 +3,64 @@
 //! publishes therefore holds only references that resolve, which is why a row that does not
 //! resolve reads as an unreadable node only in a tree that no storage built.
 //!
-//! Each test corrupts one record of [`rich_tree`] through the arena, which the operations of the
-//! storage never do, and publishes the tree.
+//! Each test corrupts one row or one entry of the association table of [`rich_tree`] through the
+//! arena, which the operations of the storage never do, and publishes the tree. A row holds the
+//! shadow properties of a fragment and the owner of a fragment in words that no other kind
+//! reads, and it names an association by an index, so a record of another storage, a host that
+//! the owner of its entry does not name and shadow properties on a record that is not a fragment
+//! are not states a row can hold.
 
 use super::*;
-use crate::internal::construction::{HtmlFragmentOwner, HtmlNodeId};
+use crate::internal::construction::rows::{
+    BuildAssoc, BuildAssocKind, NodeFlags, NodeRow, RowKind,
+};
 use HtmlConstructionCause as Cause;
 
-/// The position of the first record of `storage` that `which` accepts.
-fn first(storage: &HtmlConstructionStorage, which: impl Fn(&Record) -> bool) -> usize {
-    storage.arena.records.iter().position(which).unwrap()
+/// The position of the first row of `storage` that `which` accepts.
+fn first(storage: &HtmlConstructionStorage, which: impl Fn(&NodeRow) -> bool) -> usize {
+    storage.arena.rows.iter().position(which).unwrap()
 }
-/// The identity of the record at `position`.
-fn id(storage: &HtmlConstructionStorage, position: usize) -> HtmlNodeId {
-    HtmlNodeId {
-        tree: storage.arena.serial,
-        index: NodeIx::at(position),
-    }
+/// The position of the owner of the first entry of the association table that `which` accepts.
+fn owner_of(storage: &HtmlConstructionStorage, which: impl Fn(&BuildAssoc) -> bool) -> usize {
+    storage
+        .arena
+        .associations
+        .iter()
+        .find(|entry| which(entry))
+        .unwrap()
+        .owner
+        .position()
 }
-/// The record of the first element that has children and no contents.
+/// The position of the entry of the association table that `which` accepts.
+fn entry_of(storage: &HtmlConstructionStorage, which: impl Fn(&BuildAssoc) -> bool) -> usize {
+    storage.arena.associations.iter().position(which).unwrap()
+}
+/// The row of the first element that has children and no contents.
 fn parent_element(storage: &HtmlConstructionStorage) -> usize {
-    first(storage, |record| {
-        matches!(record.kind, NodeContent::Element(_))
-            && !record.children.is_empty()
-            && record.template_contents.is_none()
-    })
-}
-/// The template that owns its contents.
-fn owning_template(storage: &HtmlConstructionStorage) -> usize {
-    first(storage, |record| {
-        matches!(record.template_contents, Some(TemplateContents::Owned(_)))
+    first(storage, |row| {
+        row.kind == RowKind::Element
+            && row.first().is_some()
+            && !row.flags.has(NodeFlags::HAS_ASSOC)
     })
 }
 /// The template that refers to shadow contents.
 fn referring_template(storage: &HtmlConstructionStorage) -> usize {
-    first(storage, |record| {
-        matches!(
-            record.template_contents,
-            Some(TemplateContents::ShadowReference(_))
-        )
+    owner_of(storage, |entry| {
+        entry.kind == BuildAssocKind::ShadowReference
     })
 }
 /// The shadow host that has a shadow association.
 fn shadow_host(storage: &HtmlConstructionStorage) -> usize {
-    first(storage, |record| record.shadow.is_some())
+    owner_of(storage, |entry| entry.kind == BuildAssocKind::Shadow)
 }
-/// The first text record, which has no children.
+/// The first text row, which has no children.
 fn text_record(storage: &HtmlConstructionStorage) -> usize {
-    first(storage, |record| {
-        matches!(record.kind, NodeContent::Text(_))
-    })
+    first(storage, |row| row.kind == RowKind::Text)
 }
 /// The element that nothing holds and that has no association.
 fn loose_element(storage: &HtmlConstructionStorage) -> usize {
-    first(storage, |record| {
-        matches!(record.kind, NodeContent::Element(_))
-            && record.parent.is_none()
-            && record.template_contents.is_none()
-            && record.shadow.is_none()
+    first(storage, |row| {
+        row.kind == RowKind::Element && row.parent.is_none() && !row.flags.has(NodeFlags::HAS_ASSOC)
     })
 }
 
@@ -99,22 +99,28 @@ fn the_unmodified_rich_tree_publishes() {
 }
 
 #[test]
-fn a_child_entry_naming_a_record_past_the_records_is_refused_as_an_unknown_node() {
+fn a_link_naming_a_record_past_the_records_is_refused_as_an_unknown_node() {
+    let past = Some(NodeIx::at(1000));
+    // The first child of a parent.
     assert_refused(
         |storage, _| {
             let parent = parent_element(storage);
-            storage.arena.records[parent]
-                .children
-                .push_back(NodeIx::at(1000));
+            storage.arena.rows[parent].first_child = past;
         },
         Cause::UnknownNode,
     );
     assert_refused(
         |storage, root| {
             let root = position(storage, root);
-            storage.arena.records[root]
-                .children
-                .push_front(NodeIx::at(1000));
+            storage.arena.rows[root].first_child = past;
+        },
+        Cause::UnknownNode,
+    );
+    // The next sibling of a child.
+    assert_refused(
+        |storage, _| {
+            let text = text_record(storage);
+            storage.arena.rows[text].next = past;
         },
         Cause::UnknownNode,
     );
@@ -126,7 +132,7 @@ fn a_parent_naming_a_record_past_the_records_is_refused() {
     assert_refused(
         |storage, _| {
             let loose = loose_element(storage);
-            storage.arena.records[loose].parent = Some(NodeIx::at(1000));
+            storage.arena.rows[loose].parent = Some(NodeIx::at(1000));
         },
         Cause::UnknownNode,
     );
@@ -136,7 +142,7 @@ fn a_parent_naming_a_record_past_the_records_is_refused() {
     assert_refused(
         |storage, _| {
             let text = text_record(storage);
-            storage.arena.records[text].parent = Some(NodeIx::at(1000));
+            storage.arena.rows[text].parent = Some(NodeIx::at(1000));
         },
         Cause::ParentChildConflict,
     );
@@ -147,9 +153,8 @@ fn a_template_contents_that_the_template_and_the_fragment_disagree_about_is_refu
     // Contents past the records.
     assert_refused(
         |storage, _| {
-            let template = owning_template(storage);
-            storage.arena.records[template].template_contents =
-                Some(TemplateContents::Owned(NodeIx::at(1000)));
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Owned);
+            storage.arena.associations[entry].contents = NodeIx::at(1000);
         },
         Cause::UnknownNode,
     );
@@ -157,51 +162,36 @@ fn a_template_contents_that_the_template_and_the_fragment_disagree_about_is_refu
     assert_refused(
         |storage, _| {
             let text = text_record(storage);
-            let contents = owning_template(storage);
-            let Some(TemplateContents::Owned(owned)) =
-                storage.arena.records[contents].template_contents
-            else {
-                panic!("an owning template");
-            };
-            storage.arena.records[text].template_contents = Some(TemplateContents::Owned(owned));
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Owned);
+            storage.arena.associations[entry].owner = NodeIx::at(text);
         },
         Cause::InvalidTemplateAssociation,
     );
     // Contents that are an element, not a fragment.
     assert_refused(
         |storage, _| {
-            let template = owning_template(storage);
             let loose = loose_element(storage);
-            storage.arena.records[template].template_contents =
-                Some(TemplateContents::Owned(NodeIx::at(loose)));
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Owned);
+            storage.arena.associations[entry].contents = NodeIx::at(loose);
         },
         Cause::InvalidTemplateAssociation,
     );
     // Contents that carry shadow properties.
     assert_refused(
         |storage, _| {
-            let template = owning_template(storage);
-            let Some(TemplateContents::Owned(owned)) =
-                storage.arena.records[template].template_contents
-            else {
-                panic!("an owning template");
-            };
-            storage.arena.records[owned.position()].shadow_properties = Some(shadow_properties());
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Owned);
+            let owned = storage.arena.associations[entry].contents.position();
+            storage.arena.rows[owned].a = NodeRow::fragment(Some(shadow_properties())).a;
         },
         Cause::InvalidTemplateAssociation,
     );
     // Contents that another template owns.
     assert_refused(
         |storage, _| {
-            let template = owning_template(storage);
-            let Some(TemplateContents::Owned(owned)) =
-                storage.arena.records[template].template_contents
-            else {
-                panic!("an owning template");
-            };
-            let other = id(storage, referring_template(storage));
-            storage.arena.records[owned.position()].owner =
-                Some(HtmlFragmentOwner::Template(other));
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Owned);
+            let owned = storage.arena.associations[entry].contents.position();
+            let other = NodeIx::at(referring_template(storage));
+            storage.arena.rows[owned].set_owner(Some(other));
         },
         Cause::InvalidTemplateAssociation,
     );
@@ -213,28 +203,23 @@ fn a_template_that_refers_to_contents_without_shadow_properties_is_refused_as_an
     // The referring template names the contents of the first template, which are ordinary.
     assert_refused(
         |storage, _| {
-            let referring = referring_template(storage);
-            let template = owning_template(storage);
-            let Some(TemplateContents::Owned(owned)) =
-                storage.arena.records[template].template_contents
-            else {
-                panic!("an owning template");
-            };
-            storage.arena.records[referring].template_contents =
-                Some(TemplateContents::ShadowReference(owned));
+            let owned = entry_of(storage, |entry| entry.kind == BuildAssocKind::Owned);
+            let owned = storage.arena.associations[owned].contents;
+            let referring = entry_of(storage, |entry| {
+                entry.kind == BuildAssocKind::ShadowReference
+            });
+            storage.arena.associations[referring].contents = owned;
         },
         Cause::InvalidContentsReference,
     );
     // The shadow contents lose their properties.
     assert_refused(
         |storage, _| {
-            let referring = referring_template(storage);
-            let Some(TemplateContents::ShadowReference(shadow)) =
-                storage.arena.records[referring].template_contents
-            else {
-                panic!("a referring template");
-            };
-            storage.arena.records[shadow.position()].shadow_properties = None;
+            let referring = entry_of(storage, |entry| {
+                entry.kind == BuildAssocKind::ShadowReference
+            });
+            let shadow = storage.arena.associations[referring].contents.position();
+            storage.arena.rows[shadow].a = 0;
         },
         Cause::InvalidContentsReference,
     );
@@ -242,71 +227,47 @@ fn a_template_that_refers_to_contents_without_shadow_properties_is_refused_as_an
 
 #[test]
 fn a_shadow_association_that_the_host_and_the_contents_disagree_about_is_refused() {
-    // The association names another record as its host.
+    // The entry names another record as its host.
     assert_refused(
         |storage, _| {
-            let host = shadow_host(storage);
-            let other = id(storage, parent_element(storage));
-            if let Some(shadow) = storage.arena.records[host].shadow.as_mut() {
-                shadow.host = other;
-            }
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Shadow);
+            storage.arena.associations[entry].owner = NodeIx::at(parent_element(storage));
         },
         Cause::InvalidShadowAssociation,
     );
-    // The host and then the contents are of another storage.
-    for host_side in [true, false] {
-        assert_refused(
-            move |storage, _| {
-                let host = shadow_host(storage);
-                if let Some(shadow) = storage.arena.records[host].shadow.as_mut() {
-                    if host_side {
-                        shadow.host.tree += 1;
-                    } else {
-                        shadow.contents.tree += 1;
-                    }
-                }
-            },
-            Cause::InvalidShadowAssociation,
-        );
-    }
     // The association is on a record that is not an element.
     assert_refused(
         |storage, _| {
-            let host = shadow_host(storage);
-            let text = text_record(storage);
-            storage.arena.records[text].shadow = storage.arena.records[host].shadow;
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Shadow);
+            storage.arena.associations[entry].owner = NodeIx::at(text_record(storage));
         },
         Cause::InvalidShadowAssociation,
     );
     // The contents are not shadow contents.
     assert_refused(
         |storage, _| {
-            let host = shadow_host(storage);
-            let element = id(storage, parent_element(storage));
-            if let Some(shadow) = storage.arena.records[host].shadow.as_mut() {
-                shadow.contents = element;
-            }
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Shadow);
+            storage.arena.associations[entry].contents = NodeIx::at(parent_element(storage));
         },
         Cause::InvalidShadowAssociation,
     );
     // The contents belong to another host.
     assert_refused(
         |storage, _| {
-            let host = shadow_host(storage);
-            let Some(shadow) = storage.arena.records[host].shadow else {
-                panic!("a shadow host");
-            };
-            let other = id(storage, parent_element(storage));
-            storage.arena.records[shadow.contents.index.position()].owner =
-                Some(HtmlFragmentOwner::ShadowHost(other));
+            let entry = entry_of(storage, |entry| entry.kind == BuildAssocKind::Shadow);
+            let shadow = storage.arena.associations[entry].contents.position();
+            let other = NodeIx::at(parent_element(storage));
+            storage.arena.rows[shadow].set_owner(Some(other));
         },
         Cause::InvalidShadowAssociation,
     );
-    // A record that is not a fragment carries shadow properties.
+    // A host row that lost its flag, so that a lookup by owner is never made.
     assert_refused(
         |storage, _| {
-            let element = parent_element(storage);
-            storage.arena.records[element].shadow_properties = Some(shadow_properties());
+            let host = shadow_host(storage);
+            storage.arena.rows[host]
+                .flags
+                .set(NodeFlags::HAS_ASSOC, false);
         },
         Cause::InvalidShadowAssociation,
     );
@@ -324,37 +285,38 @@ fn a_contents_fragment_whose_owner_does_not_name_it_is_refused() {
     assert_refused(
         |storage, _| {
             let fragment = loose_fragment(storage);
-            let loose = id(storage, loose_element(storage));
-            storage.arena.records[fragment].owner = Some(HtmlFragmentOwner::Template(loose));
+            let loose = NodeIx::at(loose_element(storage));
+            storage.arena.rows[fragment].set_owner(Some(loose));
         },
         Cause::InvalidTemplateAssociation,
     );
-    // The owner is a record whose shadow association is not this fragment.
+    // The owner is a record whose shadow association is not this fragment, which carries shadow
+    // properties and so names a host.
     assert_refused(
         |storage, _| {
-            let fragment = loose_fragment(storage);
-            let loose = id(storage, loose_element(storage));
-            storage.arena.records[fragment].owner = Some(HtmlFragmentOwner::ShadowHost(loose));
+            let fragment =
+                ok(storage.create_shadow_contents(shadow_properties(), &mut Meter::default()));
+            let fragment = position(storage, &fragment);
+            let loose = NodeIx::at(loose_element(storage));
+            storage.arena.rows[fragment].set_owner(Some(loose));
         },
         Cause::InvalidShadowAssociation,
-    );
-    // The owner is a record of another storage.
-    assert_refused(
-        |storage, _| {
-            let fragment = loose_fragment(storage);
-            let mut foreign = id(storage, loose_element(storage));
-            foreign.tree += 1;
-            storage.arena.records[fragment].owner = Some(HtmlFragmentOwner::Template(foreign));
-        },
-        Cause::ForeignBuilder,
     );
     // The owner is a record past the records.
     assert_refused(
         |storage, _| {
             let fragment = loose_fragment(storage);
-            let mut past = id(storage, 0);
-            past.index = NodeIx::at(1000);
-            storage.arena.records[fragment].owner = Some(HtmlFragmentOwner::Template(past));
+            storage.arena.rows[fragment].set_owner(Some(NodeIx::at(1000)));
+        },
+        Cause::UnknownNode,
+    );
+    // The fragment is marked owned and names no owner.
+    assert_refused(
+        |storage, _| {
+            let fragment = loose_fragment(storage);
+            storage.arena.rows[fragment]
+                .flags
+                .set(NodeFlags::OWNED, true);
         },
         Cause::UnknownNode,
     );
@@ -376,8 +338,7 @@ fn an_owner_on_a_detached_record_that_is_not_a_fragment_is_refused_as_already_ow
         assert_refused(
             move |storage, _| {
                 let record = which(storage);
-                let owner = id(storage, owning_template(storage));
-                storage.arena.records[record].owner = Some(HtmlFragmentOwner::Template(owner));
+                storage.arena.rows[record].flags.set(NodeFlags::OWNED, true);
             },
             Cause::AssociationAlreadyOwned,
         );
@@ -392,8 +353,7 @@ fn an_owner_on_a_record_that_a_list_holds_is_refused_as_a_parent_child_conflict(
         assert_refused(
             move |storage, _| {
                 let record = which(storage);
-                let owner = id(storage, owning_template(storage));
-                storage.arena.records[record].owner = Some(HtmlFragmentOwner::Template(owner));
+                storage.arena.rows[record].flags.set(NodeFlags::OWNED, true);
             },
             Cause::ParentChildConflict,
         );

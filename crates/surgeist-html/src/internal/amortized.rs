@@ -80,7 +80,8 @@ pub(crate) mod fault {
     thread_local! {
         static REFUSE_FROM: Cell<Option<usize>> = const { Cell::new(None) };
         static REQUESTS: Cell<usize> = const { Cell::new(0) };
-        static REFUSE_CHILDREN: Cell<bool> = const { Cell::new(false) };
+        static REFUSE_ASSOCIATIONS: Cell<bool> = const { Cell::new(false) };
+        static REFUSE_DEPTH_SCRATCH: Cell<bool> = const { Cell::new(false) };
         static REFUSE_TEXT_SHARE: Cell<bool> = const { Cell::new(false) };
     }
 
@@ -105,24 +106,44 @@ pub(crate) mod fault {
         REFUSE_TEXT_SHARE.with(Cell::get)
     }
 
-    /// Makes the allocator refuse every reservation of a child order, the room needed as well as
-    /// spare room, until the guard drops, even if the test panics.
-    pub(crate) struct ChildrenRefused;
-    impl Drop for ChildrenRefused {
+    /// Makes the allocator refuse every reservation of the association table, the room needed as
+    /// well as spare room, until the guard drops, even if the test panics.
+    pub(crate) struct AssociationsRefused;
+    impl Drop for AssociationsRefused {
         fn drop(&mut self) {
-            REFUSE_CHILDREN.with(|cell| cell.set(false));
+            REFUSE_ASSOCIATIONS.with(|cell| cell.set(false));
         }
     }
 
-    /// Refuses every reservation of a child order while the returned guard lives.
-    pub(crate) fn refuse_children() -> ChildrenRefused {
-        REFUSE_CHILDREN.with(|cell| cell.set(true));
-        ChildrenRefused
+    /// Refuses every reservation of the association table while the returned guard lives.
+    pub(crate) fn refuse_associations() -> AssociationsRefused {
+        REFUSE_ASSOCIATIONS.with(|cell| cell.set(true));
+        AssociationsRefused
     }
 
-    /// Whether child-order reservations are refused.
-    pub(crate) fn refuses_children() -> bool {
-        REFUSE_CHILDREN.with(Cell::get)
+    /// Whether reservations of the association table are refused.
+    pub(crate) fn refuses_associations() -> bool {
+        REFUSE_ASSOCIATIONS.with(Cell::get)
+    }
+
+    /// Makes the allocator refuse every reservation of the scratch beside the depth index, the room
+    /// needed as well as spare room, until the guard drops, even if the test panics.
+    pub(crate) struct DepthScratchRefused;
+    impl Drop for DepthScratchRefused {
+        fn drop(&mut self) {
+            REFUSE_DEPTH_SCRATCH.with(|cell| cell.set(false));
+        }
+    }
+
+    /// Refuses every reservation of the depth scratch while the returned guard lives.
+    pub(crate) fn refuse_depth_scratch() -> DepthScratchRefused {
+        REFUSE_DEPTH_SCRATCH.with(|cell| cell.set(true));
+        DepthScratchRefused
+    }
+
+    /// Whether reservations of the depth scratch are refused.
+    pub(crate) fn refuses_depth_scratch() -> bool {
+        REFUSE_DEPTH_SCRATCH.with(Cell::get)
     }
 
     /// Disarms the counter when dropped, even if the test panics.

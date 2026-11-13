@@ -987,8 +987,8 @@ impl SessionStorage {
                 .construction
                 .node_at(node)
                 .ok_or(SessionError::ForeignNode)?
-                .child_count()
-                == 0;
+                .first_child()
+                .is_none();
         if !alone {
             return self.meta_walk_subtree(c, document, detached, effects, theme, scheme);
         }
@@ -1234,18 +1234,17 @@ impl SessionStorage {
         // order reaches first.
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let siblings = storage.node_at(above).ok_or(SessionError::ForeignNode)?;
-        for ordinal in (0..siblings.child_count()).rev() {
+        let mut cursor = siblings.last_child();
+        while let Some(candidate) = cursor {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let sibling = siblings
-                .child_at(ordinal)
-                .ok_or_else(|| latch_registry_row(c))?
-                .position();
+            let sibling = candidate.position();
             if sibling == right {
                 return Ok(true);
             }
             if sibling == left {
                 return Ok(false);
             }
+            cursor = candidate.previous_sibling();
         }
         Err(SessionError::WrongSibling)
     }

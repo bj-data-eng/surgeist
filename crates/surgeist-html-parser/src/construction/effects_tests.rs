@@ -129,7 +129,7 @@ pub(in crate::construction) fn graph<'a>(
         .construction
         .node_at(0)
         .expect("retained construction position")
-        .child_at(0)
+        .first_child()
         .expect("retained child ordinal")
         .position();
     let html = session.active().unwrap().node(&mut c, html_index).unwrap();
@@ -1523,7 +1523,8 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
                 .construction
                 .node_at(parent)
                 .expect("retained construction position")
-                .child_count()
+                .children()
+                .count()
                 == cursor
         {
             boundaries.push(

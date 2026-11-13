@@ -420,8 +420,8 @@ fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retai
             .construction
             .node_at(output_slot.0)
             .expect("retained construction position")
-            .child_count()
-            == 0
+            .first_child()
+            .is_none()
     );
     assert!(
         storage
@@ -453,7 +453,7 @@ fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retai
 
 #[test]
 fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanup() {
-    for remaining in [24, 25] {
+    for remaining in [23, 24] {
         let source = crate::HtmlSource::utf8("<output>A");
         let (mut c, mut session, output, mut lexer) = output_owner(&source, limits());
         let mut text = next_text(&mut lexer, &mut c);
@@ -465,7 +465,8 @@ fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanu
         destination.push_unit(81, &mut c).unwrap();
         destination.clear(&mut c).unwrap(); // capacity for1 exists before measured copying.
         // Getter visits: readiness1 + idle7 + index2; root Document/self-binding2 + Output node-binding1 + Output slot1,
-        // root+child2, Text1, leaf/parent/child-list/sibling4, and the creation row1 =22.
+        // root+child2, Text1, leaf/parent/child-list3 (the leaf has no next sibling to read),
+        // and the creation row1 =21.
         // Copies are one finite state byte plus one UTF16 unit =3.
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         let maximum = limits().work_credits();
@@ -474,12 +475,12 @@ fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanu
         let before = c.usage().clone();
         let result = session.append_output_value(&mut c, &output, &mut destination);
         assert_eq!(destination.units(), [65]);
-        if remaining == 25 {
+        if remaining == 24 {
             result.unwrap();
             assert_eq!(
                 c.usage().work(HtmlParseWorkCategory::RecordVisit)
                     - before.work(HtmlParseWorkCategory::RecordVisit),
-                22
+                21
             );
             assert_eq!(
                 c.usage().work(HtmlParseWorkCategory::CopyByte)

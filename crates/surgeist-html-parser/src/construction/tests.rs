@@ -180,7 +180,7 @@ pub(super) fn input_owner<'a>(
                 .construction
                 .node_at(0)
                 .expect("retained construction position")
-                .child_at(0)
+                .first_child()
                 .expect("retained child ordinal")
                 .position(),
         )
@@ -254,7 +254,7 @@ fn fresh_script<'a>(
             .construction
             .node_at(0)
             .expect("retained construction position")
-            .child_at(0)
+            .first_child()
             .expect("retained child ordinal")
             .position();
         let html = session.active().unwrap().node(&mut c, html_index).unwrap();

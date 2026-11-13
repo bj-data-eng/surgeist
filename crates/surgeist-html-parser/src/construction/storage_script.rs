@@ -47,24 +47,19 @@ impl SessionStorage {
                 Action::ReadChildTextEmpty => {
                     let mut empty = true;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let children = self
+                    let mut next = self
                         .construction
                         .node_at(index)
                         .ok_or_else(|| latch_registry_row(control))?
-                        .child_count();
-                    for position in 0..children {
+                        .first_child()
+                        .map(|child| child.position());
+                    while let Some(child) = next {
                         control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
-                        let child = self
-                            .construction
-                            .node_at(index)
-                            .ok_or_else(|| latch_registry_row(control))?
-                            .child_at(position)
-                            .ok_or_else(|| latch_registry_row(control))?
-                            .position();
                         let record = self
                             .construction
                             .node_at(child)
                             .ok_or(SessionError::ForeignNode)?;
+                        next = record.next_sibling().map(|sibling| sibling.position());
                         if Some(child) != detached
                             && let ConstructionNodeKind::Text(text) = record.kind()
                             && !text

@@ -412,7 +412,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             panic!("tag")
         };
         // Lexical pending events precede the final retained allocation.
-        // Body stays detached: no insertion, so no child-order growth is admitted.
+        // Body stays detached: no insertion, so no link is written.
         let _body = session.allocate_implicit_body(&mut c, None).unwrap();
         let mut input = Some(tag);
         let original = input

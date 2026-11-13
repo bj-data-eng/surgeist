@@ -275,7 +275,8 @@ fn parser_insertion_keeps_depth_and_edge_preflight_before_scratch_capacity() {
                 .construction
                 .node_at(root.index)
                 .unwrap()
-                .child_count(),
+                .children()
+                .count(),
             0
         );
         assert!(

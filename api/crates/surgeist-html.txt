@@ -2469,20 +2469,23 @@ pub fn surgeist_html::bounded::attributes::th_scope_state(raw: core::option::Opt
 pub fn surgeist_html::bounded::attributes::th_scope_work_bound(input_units: usize) -> core::option::Option<usize>
 pub mod surgeist_html::bounded::construction
 pub enum surgeist_html::bounded::construction::HtmlConstructionBank
+pub surgeist_html::bounded::construction::HtmlConstructionBank::Associations
 pub surgeist_html::bounded::construction::HtmlConstructionBank::AttributeRows
 pub surgeist_html::bounded::construction::HtmlConstructionBank::AttributeRuns
-pub surgeist_html::bounded::construction::HtmlConstructionBank::Children
-pub surgeist_html::bounded::construction::HtmlConstructionBank::Children::position: usize
+pub surgeist_html::bounded::construction::HtmlConstructionBank::DepthIndex
+pub surgeist_html::bounded::construction::HtmlConstructionBank::DepthScratch
+pub surgeist_html::bounded::construction::HtmlConstructionBank::Depths
+pub surgeist_html::bounded::construction::HtmlConstructionBank::Leaves
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameEntry
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameSlots
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Names
+pub surgeist_html::bounded::construction::HtmlConstructionBank::NodeRows
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedAssociations
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedAttributes
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedChildren
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedLeaves
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedRows
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedRuns
-pub surgeist_html::bounded::construction::HtmlConstructionBank::Records
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Text
 pub surgeist_html::bounded::construction::HtmlConstructionBank::TextArena
 pub surgeist_html::bounded::construction::HtmlConstructionBank::TextBlock
@@ -2516,20 +2519,22 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionGrowthRecord::reach
 pub fn surgeist_html::bounded::construction::HtmlConstructionGrowthRecord::recorded(self) -> surgeist_html::bounded::construction::HtmlConstructionBankCapacity
 pub struct surgeist_html::bounded::construction::HtmlConstructionNode<'a>
 impl<'a> surgeist_html::bounded::construction::HtmlConstructionNode<'a>
-pub const surgeist_html::bounded::construction::HtmlConstructionNode<'a>::CONTENT_BYTES: usize
+pub const surgeist_html::bounded::construction::HtmlConstructionNode<'a>::ROW_BYTES: usize
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::as_node(self) -> core::result::Result<surgeist_html::construction::HtmlNode<'a>, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::check_container(self) -> core::result::Result<(), surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::check_detachment(self) -> core::result::Result<(), surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::check_reference_child_of(self, parent: Self) -> core::result::Result<(), surgeist_html::construction::HtmlConstructionError>
-pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::child_at(self, ordinal: usize) -> core::option::Option<Self>
-pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::child_count(self) -> usize
-pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = Self> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::children(self) -> impl core::iter::traits::double_ended::DoubleEndedIterator<Item = Self> + 'a
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::first_child(self) -> core::option::Option<Self>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::fragment_owner(self) -> core::option::Option<surgeist_html::construction::HtmlFragmentOwner>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::handle(self) -> surgeist_html::construction::HtmlBuilderNode
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::is_shadow_contents(self) -> bool
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::kind(self) -> surgeist_html::construction::ConstructionNodeKind<'a>
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::last_child(self) -> core::option::Option<Self>
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::next_sibling(self) -> core::option::Option<Self>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::parent(self) -> core::option::Option<Self>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::position(self) -> usize
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::previous_sibling(self) -> core::option::Option<Self>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::shadow_properties(self) -> core::option::Option<surgeist_html::construction::HtmlShadowRootProperties>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::shadow_root(self) -> core::option::Option<surgeist_html::construction::HtmlDeclarativeShadowRoot>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::template_contents(self) -> core::option::Option<Self>

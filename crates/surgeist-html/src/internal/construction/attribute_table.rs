@@ -56,6 +56,14 @@ impl RunIx {
         // A `u32` fits `usize` on every supported target; the stored value is never zero.
         self.0.get().saturating_sub(1) as usize
     }
+    /// The stored value, the position plus one, which a row holds in one word.
+    pub(crate) fn stored(self) -> u32 {
+        self.0.get()
+    }
+    /// The run whose stored value is `stored`, or `None` for zero, which names no run.
+    pub(crate) fn from_stored(stored: u32) -> Option<Self> {
+        NonZeroU32::new(stored).map(Self)
+    }
     /// A run that no table of a few runs holds, for the tests of the refusals that name such a
     /// run.
     #[cfg(test)]

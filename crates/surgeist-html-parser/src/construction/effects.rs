@@ -81,13 +81,17 @@ pub(super) enum EffectFrame {
     CloneChildren {
         source: usize,
         copy: usize,
-        cursor: usize,
+        /// The next child of `source` to clone, which each step reads from the links of the
+        /// child it clones; `None` once every child was cloned.
+        next: Option<usize>,
         document: DocumentRef,
     },
     CloneOptionChildren {
         option: usize,
         fragment: usize,
-        cursor: usize,
+        /// The next child of `option` to clone, which each step reads from the links of the child
+        /// it clones; `None` once every child was cloned.
+        next: Option<usize>,
     },
     AppendClone {
         parent: usize,
@@ -539,39 +543,33 @@ impl SessionStorage {
             EffectFrame::CloneChildren {
                 source,
                 copy,
-                cursor,
+                next,
                 document,
             } => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if cursor
-                    == self
-                        .construction
-                        .node_at(source)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .child_count()
-                {
+                let Some(child) = next else {
                     self.write_current_effect(c, None)?;
                     if let Some((source, copy)) = self.clone_shadow(c, source, copy, &document)? {
+                        let next = self.first_child_position(c, source)?;
                         self.start_effect(
                             c,
                             EffectFrame::CloneChildren {
                                 source,
                                 copy,
-                                cursor: 0,
+                                next,
                                 document,
                             },
                         )?;
                     }
                     return Ok(());
-                }
+                };
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let child = self
+                let following = self
                     .construction
-                    .node_at(source)
+                    .node_at(child)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_at(cursor)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .position();
+                    .next_sibling()
+                    .map(|sibling| sibling.position());
                 let child_document = document.try_clone(c)?;
                 let copied = self.clone_node(c, child, child_document)?;
                 let retained_document = document.try_clone(c)?;
@@ -580,19 +578,20 @@ impl SessionStorage {
                     Some(EffectFrame::CloneChildren {
                         source,
                         copy,
-                        cursor: next_cursor(cursor),
+                        next: following,
                         document: retained_document,
                     }),
                 )?;
                 // The source shallow clone is appended before its subtree,
                 // exactly as DOM clone specifies. Insert's intrinsic effects
                 // precede the retained child traversal.
+                let next = self.first_child_position(c, child)?;
                 self.start_effect(
                     c,
                     EffectFrame::CloneChildren {
                         source: child,
                         copy: copied,
-                        cursor: 0,
+                        next,
                         document,
                     },
                 )?;

@@ -19,11 +19,11 @@ pub(super) struct StorageHolds {
     /// the ticket of its slots. It stays as long as the lists it describes may be edited again.
     pub(super) name_index: Option<HtmlAttributeNameIndex>,
     pub(super) name_index_slots: Option<VectorCapacity<HtmlNameIndexSlot>>,
-    /// The bytes held for the record bank, the child order of every record and the shared arena
-    /// of a publication: the capacity each reserved.
+    /// The bytes held for the banks of the build rows and the shared arena of a publication: the
+    /// capacity each reserved.
     pub(super) bank_bytes: u64,
-    /// The part of `bank_bytes` held for the record bank and the child order of every record,
-    /// which a publication frees.
+    /// The part of `bank_bytes` held for the banks of the build rows, which a publication
+    /// frees.
     pub(super) build_bytes: u64,
     /// The logical attribute slots held for the attributes of the storage.
     pub(super) attribute_entries: u64,

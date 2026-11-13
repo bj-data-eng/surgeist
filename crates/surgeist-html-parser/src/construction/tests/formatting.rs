@@ -1043,7 +1043,8 @@ fn formatting_child_transfer_stops_with_an_ordered_coherent_prefix_and_reclaims_
             .construction
             .node_at(to.index)
             .expect("retained construction position")
-            .child_count();
+            .children()
+            .count();
         let ordered = [one.index, two.index];
         assert_eq!(
             storage

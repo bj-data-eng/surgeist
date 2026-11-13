@@ -417,7 +417,34 @@ fn visits_added_by_selected_option_after(unit: &str, count: usize) -> i64 {
             "<option selected>x</option>".repeat(options)
         )
     };
-    record_visits(page(2)) as i64 - record_visits(page(1)) as i64
+    // The second option is the first to take the cloned text out of the `selectedcontent` it
+    // filled for the first. That text is the deepest record of the document, so taking it out
+    // needs the count of records at each depth, which the storage makes once with one pass over
+    // its records: the work of that pass belongs to the second option and is linear in the
+    // records, not in the select. The third option removes the clone of the second with the count
+    // made, so its work is the work of the option alone.
+    record_visits(page(3)) as i64 - record_visits(page(2)) as i64
+}
+
+#[test]
+fn the_first_removal_of_the_deepest_record_adds_one_pass_linear_in_the_records() {
+    // Doubling the unrelated elements, from 200 to 400 to 800, at most doubles (with the
+    // constant of the select itself) the visits the second option adds over the first.
+    let added = |count: usize| {
+        let page = |options: usize| {
+            format!(
+                "<!doctype html><body><div>{}</div><select><selectedcontent></selectedcontent>{}</select>",
+                SPAN.repeat(count),
+                "<option selected>x</option>".repeat(options)
+            )
+        };
+        (record_visits(page(2)) - record_visits(page(1))) as f64
+    };
+    let (small, large) = (added(200), added(800));
+    assert!(
+        large <= 4.2 * small,
+        "the second option added {small} visits after 200 unrelated spans and {large} after 800"
+    );
 }
 
 #[test]

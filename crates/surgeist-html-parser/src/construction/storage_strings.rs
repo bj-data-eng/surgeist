@@ -546,46 +546,19 @@ impl SessionStorage {
                 .construction
                 .node_at(parent_index)
                 .ok_or_else(|| latch_registry_row(control))?;
-            if let Some(last) = parent.child_count().checked_sub(1) {
-                preceding = Some(
-                    parent
-                        .child_at(last)
-                        .ok_or_else(|| latch_registry_row(control))?
-                        .position(),
-                );
-            }
-        } else {
-            // Walk back from the last child to the reference sibling, so the
-            // work is the children behind it and not the ones in front of it;
-            // the entry just before it is the preceding sibling.
-            let parent = self
+            preceding = parent.last_child().map(|last| last.position());
+        } else if let Some(before) = before_index {
+            // The reference sibling holds the link to the entry just before it, which is the
+            // preceding sibling, so the work does not depend on the other children.
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let reference = self
                 .construction
-                .node_at(parent_index)
+                .node_at(before)
                 .ok_or_else(|| latch_registry_row(control))?;
-            let mut position = parent.child_count();
-            loop {
-                let Some(found) = position.checked_sub(1) else {
-                    return Err(latch_registry_row(control));
-                };
-                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let child = parent
-                    .child_at(found)
-                    .ok_or_else(|| latch_registry_row(control))?
-                    .position();
-                position = found;
-                if Some(child) == before_index {
-                    break;
-                }
+            if reference.parent().map(|parent| parent.position()) != Some(parent_index) {
+                return Err(latch_registry_row(control));
             }
-            if let Some(previous) = position.checked_sub(1) {
-                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                preceding = Some(
-                    parent
-                        .child_at(previous)
-                        .ok_or_else(|| latch_registry_row(control))?
-                        .position(),
-                );
-            }
+            preceding = reference.previous_sibling().map(|node| node.position());
         }
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let preceding = match preceding {

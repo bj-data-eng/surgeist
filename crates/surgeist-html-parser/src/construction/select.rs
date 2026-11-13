@@ -180,12 +180,13 @@ impl SessionStorage {
                     }),
                 )?;
                 if let (Some(option), Some(fragment)) = (option, fragment) {
+                    let next = self.first_child_position(c, option)?;
                     self.start_effect(
                         c,
                         EffectFrame::CloneOptionChildren {
                             option,
                             fragment,
-                            cursor: 0,
+                            next,
                         },
                     )?;
                 }
@@ -198,13 +199,13 @@ impl SessionStorage {
                 stage: TargetStage::Replace,
             } => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if self
+                let first = self
                     .construction
                     .node_at(target)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_count()
-                    == 0
-                {
+                    .first_child()
+                    .map(|child| child.position());
+                let Some(first) = first else {
                     if fragment.is_none() {
                         return self.write_current_effect(c, None);
                     }
@@ -217,16 +218,9 @@ impl SessionStorage {
                             stage: TargetStage::Insert,
                         }),
                     );
-                }
+                };
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let child = self
-                    .construction
-                    .node_at(target)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .child_at(0)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .position();
-                self.remove_index(c, child)
+                self.remove_index(c, first)
             }
             EffectFrame::UpdateTarget {
                 target,
@@ -252,26 +246,19 @@ impl SessionStorage {
             EffectFrame::CloneOptionChildren {
                 option,
                 fragment,
-                cursor,
+                next,
             } => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if cursor
-                    == self
-                        .construction
-                        .node_at(option)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .child_count()
-                {
+                let Some(child) = next else {
                     return self.write_current_effect(c, None);
-                }
+                };
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let child = self
+                let following = self
                     .construction
-                    .node_at(option)
+                    .node_at(child)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_at(cursor)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .position();
+                    .next_sibling()
+                    .map(|sibling| sibling.position());
                 let document = self.node_document_ref(c, child)?;
                 let child_document = document.try_clone(c)?;
                 let copy = self.clone_node(c, child, child_document)?;
@@ -280,7 +267,7 @@ impl SessionStorage {
                     Some(EffectFrame::CloneOptionChildren {
                         option,
                         fragment,
-                        cursor: next_cursor(cursor),
+                        next: following,
                     }),
                 )?;
                 self.start_effect(
@@ -290,12 +277,13 @@ impl SessionStorage {
                         copy,
                     },
                 )?;
+                let next = self.first_child_position(c, child)?;
                 self.start_effect(
                     c,
                     EffectFrame::CloneChildren {
                         source: child,
                         copy,
-                        cursor: 0,
+                        next,
                         document,
                     },
                 )?;
@@ -558,8 +546,8 @@ impl SessionStorage {
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
-            .child_count()
-            != 0
+            .first_child()
+            .is_some()
         {
             return Err(SessionError::WrongToken);
         }
@@ -1039,11 +1027,7 @@ impl SessionStorage {
             if node != select && self.uncharged_html_local(node, "selectedcontent") {
                 found.push(node);
             }
-            stack.extend(
-                (0..record.child_count())
-                    .rev()
-                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
-            );
+            stack.extend(record.children().rev().map(|child| child.position()));
         }
         found
     }
@@ -1089,13 +1073,8 @@ impl SessionStorage {
             }
             roots = false;
             if descend {
-                for position in (0..record.child_count()).rev() {
-                    stack.push(
-                        record
-                            .child_at(position)
-                            .ok_or(SessionError::ForeignNode)?
-                            .position(),
-                    );
+                for child in record.children().rev() {
+                    stack.push(child.position());
                 }
             }
         }

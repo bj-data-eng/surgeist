@@ -175,11 +175,7 @@ impl SessionStorage {
                 .construction
                 .node_at(parent)
                 .ok_or_else(|| latch_registry_row(c))?;
-            let last = record
-                .child_count()
-                .checked_sub(1)
-                .and_then(|last| record.child_at(last))
-                .map(|child| child.position());
+            let last = record.last_child().map(|child| child.position());
             if last != Some(node) {
                 return Ok(false);
             }

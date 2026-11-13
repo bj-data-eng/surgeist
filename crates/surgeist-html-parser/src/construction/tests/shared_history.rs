@@ -364,7 +364,7 @@ fn foreign_history_cursor_lender_disposal_keeps_cleanup_owned() {
                 .construction
                 .node_at(root.index)
                 .expect("retained construction position")
-                .child_at(0)
+                .first_child()
                 .expect("retained child ordinal")
                 .position(),
         )
@@ -843,8 +843,8 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                     .construction
                     .node_at(0)
                     .expect("retained construction position")
-                    .child_count()
-                    == 0
+                    .first_child()
+                    .is_none()
             );
         }
         // Metadata is one leaf per ingress, one Concat per merge and

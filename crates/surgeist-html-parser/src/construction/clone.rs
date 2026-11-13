@@ -35,20 +35,20 @@ impl SessionStorage {
         let mut pending = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = (|| {
             self.node_document_ref(c, root)?;
-            for ordinal in 0..self
+            let mut next = self
                 .construction
                 .node_at(root)
                 .ok_or_else(|| latch_registry_row(c))?
-                .child_count()
-            {
+                .first_child()
+                .map(|child| child.position());
+            while let Some(child) = next {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let child = self
+                next = self
                     .construction
-                    .node_at(root)
+                    .node_at(child)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_at(ordinal)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .position();
+                    .next_sibling()
+                    .map(|sibling| sibling.position());
                 pending.try_push_geometric(c, child)?;
             }
             while let Some(node) = pending.try_pop(c)? {
@@ -83,20 +83,20 @@ impl SessionStorage {
                     {
                         self.node_document_ref(c, shadow_contents)?;
                         self.lookup_registry_ref(c, shadow_contents)?;
-                        for ordinal in 0..self
+                        let mut next = self
                             .construction
                             .node_at(shadow_contents)
                             .ok_or_else(|| latch_registry_row(c))?
-                            .child_count()
-                        {
+                            .first_child()
+                            .map(|child| child.position());
+                        while let Some(child) = next {
                             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                            let child = self
+                            next = self
                                 .construction
-                                .node_at(shadow_contents)
+                                .node_at(child)
                                 .ok_or_else(|| latch_registry_row(c))?
-                                .child_at(ordinal)
-                                .ok_or_else(|| latch_registry_row(c))?
-                                .position();
+                                .next_sibling()
+                                .map(|sibling| sibling.position());
                             pending.try_push_geometric(c, child)?;
                         }
                     }
@@ -162,37 +162,37 @@ impl SessionStorage {
                 {
                     self.template_slot(c, node)?;
                     self.node_document_ref(c, contents)?;
-                    for ordinal in 0..self
+                    let mut next = self
                         .construction
                         .node_at(contents)
                         .ok_or_else(|| latch_registry_row(c))?
-                        .child_count()
-                    {
+                        .first_child()
+                        .map(|child| child.position());
+                    while let Some(child) = next {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        let child = self
+                        next = self
                             .construction
-                            .node_at(contents)
+                            .node_at(child)
                             .ok_or_else(|| latch_registry_row(c))?
-                            .child_at(ordinal)
-                            .ok_or_else(|| latch_registry_row(c))?
-                            .position();
+                            .next_sibling()
+                            .map(|sibling| sibling.position());
                         pending.try_push_geometric(c, child)?;
                     }
                 }
-                for ordinal in 0..self
+                let mut next = self
                     .construction
                     .node_at(node)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_count()
-                {
+                    .first_child()
+                    .map(|child| child.position());
+                while let Some(child) = next {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let child = self
+                    next = self
                         .construction
-                        .node_at(node)
+                        .node_at(child)
                         .ok_or_else(|| latch_registry_row(c))?
-                        .child_at(ordinal)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .position();
+                        .next_sibling()
+                        .map(|sibling| sibling.position());
                     pending.try_push_geometric(c, child)?;
                 }
             }
@@ -201,6 +201,20 @@ impl SessionStorage {
         let cleanup = pending.release(c);
         result.and_then(|()| cleanup.map_err(SessionError::from))?;
         Ok(())
+    }
+
+    /// The position of the first ordinary child of `node`, or `None` for a node without any.
+    pub(super) fn first_child_position(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<Option<usize>, SessionError> {
+        Ok(self
+            .construction
+            .node_at(node)
+            .ok_or_else(|| latch_registry_row(c))?
+            .first_child()
+            .map(|child| child.position()))
     }
 
     pub(super) fn start_template_clone(
@@ -220,12 +234,13 @@ impl SessionStorage {
             let (_, source) = self.template_slot(c, source)?;
             let (_, copy) = self.template_slot(c, copy)?;
             let document = self.node_document_ref(c, copy.contents)?;
+            let next = self.first_child_position(c, source.contents)?;
             self.start_effect(
                 c,
                 effects::EffectFrame::CloneChildren {
                     source: source.contents,
                     copy: copy.contents,
-                    cursor: 0,
+                    next,
                     document,
                 },
             )?;

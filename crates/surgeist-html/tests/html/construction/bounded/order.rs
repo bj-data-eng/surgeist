@@ -15,6 +15,40 @@ fn children_of(
         .collect()
 }
 
+/// The links of a storage agree with the list `expected` of the children of `parent`: its first
+/// and last child, and for each child the previous and the next sibling.
+fn assert_links(
+    owner: &HtmlConstructionStorage,
+    parent: &HtmlBuilderNode,
+    expected: &[HtmlBuilderNode],
+    step: usize,
+) {
+    let view = owner.node(parent).unwrap();
+    assert_eq!(
+        view.first_child().map(HtmlConstructionNode::handle),
+        expected.first().copied(),
+        "step {step}: first child"
+    );
+    assert_eq!(
+        view.last_child().map(HtmlConstructionNode::handle),
+        expected.last().copied(),
+        "step {step}: last child"
+    );
+    for (place, child) in expected.iter().enumerate() {
+        let child = owner.node(child).unwrap();
+        assert_eq!(
+            child.previous_sibling().map(HtmlConstructionNode::handle),
+            place.checked_sub(1).map(|before| expected[before]),
+            "step {step}: previous sibling at {place}"
+        );
+        assert_eq!(
+            child.next_sibling().map(HtmlConstructionNode::handle),
+            expected.get(place + 1).copied(),
+            "step {step}: next sibling at {place}"
+        );
+    }
+}
+
 /// A reference model of the DOM's insert and remove steps over child lists.
 struct Model {
     parents: Vec<Vec<usize>>,
@@ -117,6 +151,7 @@ fn run_child_order_model(steps: usize) {
                 .map(|&child| nodes[child])
                 .collect();
             assert_eq!(children_of(&owner, parent), expected, "step {step}");
+            assert_links(&owner, parent, &expected, step);
         }
         for (index, node) in nodes.iter().enumerate() {
             let actual = owner
@@ -300,6 +335,7 @@ fn run_template_model(steps: usize) -> [usize; 4] {
                 .map(|&child| nodes[child])
                 .collect();
             assert_eq!(children_of(&owner, container), expected, "step {step}");
+            assert_links(&owner, container, &expected, step);
         }
         for (index, node) in nodes.iter().enumerate() {
             let actual = owner.node(node).unwrap().parent().map(|parent| {

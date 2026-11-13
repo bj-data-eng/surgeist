@@ -873,20 +873,20 @@ impl SessionStorage {
                     }
                     .ok_or(SessionError::WrongToken)?;
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let count = self
+                let mut next = self
                     .construction
                     .node_at(picture)
                     .ok_or(SessionError::ForeignNode)?
-                    .child_count();
-                for ordinal in 0..count {
+                    .first_child()
+                    .map(|child| child.position());
+                while let Some(child) = next {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let child = self
+                    next = self
                         .construction
-                        .node_at(picture)
+                        .node_at(child)
                         .ok_or(SessionError::ForeignNode)?
-                        .child_at(ordinal)
-                        .ok_or(SessionError::WrongToken)?
-                        .position();
+                        .next_sibling()
+                        .map(|sibling| sibling.position());
                     if self.associated_tag(c, child)? == Some(KnownHtmlElement::Img) {
                         self.start_img_update(c, child, HtmlImageUpdateFlags::new(false, false))?;
                     }
