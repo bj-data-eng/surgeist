@@ -4077,7 +4077,7 @@ pub fn surgeist_dom::DomSourceLease<'_>::accept_cssom_publication(&mut self, req
 pub fn surgeist_dom::DomSourceLease<'_>::accept_inline_csp(&mut self, request: &surgeist_dom::DomStyleRequest, observation: &surgeist_dom::DomStyleInlineCspObservation, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::DomSourceLease<'_>::advance(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomSourceProgress, surgeist_dom::DomError>
 pub fn surgeist_dom::DomSourceLease<'_>::advance_for_runtime(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomSourceAdvance<surgeist_dom::DomSourceProgress>, surgeist_dom::DomError>
-pub fn surgeist_dom::DomSourceLease<'_>::advance_split_text_for_runtime(&mut self, output: &mut surgeist_dom::DomSplitTextOutputWatch<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomSourceAdvance<surgeist_dom::DomSourceProgress>, surgeist_dom::DomError>
+pub fn surgeist_dom::DomSourceLease<'_>::advance_watching_node_for_runtime(&mut self, output: &mut surgeist_dom::DomSourceNodeOutputWatch<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomSourceAdvance<surgeist_dom::DomSourceProgress>, surgeist_dom::DomError>
 pub fn surgeist_dom::DomSourceLease<'_>::bind_cssom_owner(&mut self, request: &surgeist_dom::DomStyleRequest, binding: surgeist_dom::DomStyleCssomOwnerBinding, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::DomSourceLease<'_>::bind_cssom_root(&mut self, request: &surgeist_dom::DomStyleRequest, root: &surgeist_dom::DomStyleCssomRoot, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::DomSourceLease<'_>::cssom_root(&self, request: &surgeist_dom::DomStyleRequest) -> core::result::Result<surgeist_dom::DomStyleCssomRoot, surgeist_dom::DomError>
@@ -4181,6 +4181,10 @@ impl surgeist_dom::DomSourceNativeHtmlInstallLimits
 pub const fn surgeist_dom::DomSourceNativeHtmlInstallLimits::native(self) -> surgeist_dom::DomNativeHtmlInstallLimits
 pub const fn surgeist_dom::DomSourceNativeHtmlInstallLimits::new(native: surgeist_dom::DomNativeHtmlInstallLimits, source: surgeist_dom::DomSourceLimits) -> Self
 pub const fn surgeist_dom::DomSourceNativeHtmlInstallLimits::source(self) -> surgeist_dom::DomSourceLimits
+pub struct surgeist_dom::DomSourceNodeOutputWatch<'a>
+impl<'a> surgeist_dom::DomSourceNodeOutputWatch<'a>
+pub fn surgeist_dom::DomSourceNodeOutputWatch<'a>::into_watch(self) -> core::option::Option<(surgeist_dom::NodeId, surgeist_dom::DomNodeRetirementWatch)>
+pub const fn surgeist_dom::DomSourceNodeOutputWatch<'a>::new(inbox: &'a surgeist_dom::DomNodeRetirementInbox, key: usize, limits: surgeist_dom::DomNodeRetirementLimits) -> Self
 pub struct surgeist_dom::DomSourceOperationId
 pub struct surgeist_dom::DomSourceScriptRequest
 impl surgeist_dom::DomSourceScriptRequest
@@ -4227,10 +4231,6 @@ pub fn surgeist_dom::DomSourceUrlRequest::raw(&self) -> &surgeist_html::internal
 pub fn surgeist_dom::DomSourceUrlRequest::revision(&self) -> &surgeist_html_semantics::base::HtmlBaseFactsRevision
 pub fn surgeist_dom::DomSourceUrlRequest::stage(&self) -> surgeist_dom::DomSourceUrlStage
 pub fn surgeist_dom::DomSourceUrlRequest::target_origin(&self) -> core::option::Option<&surgeist_dom::DomOpaqueOrigin>
-pub struct surgeist_dom::DomSplitTextOutputWatch<'a>
-impl<'a> surgeist_dom::DomSplitTextOutputWatch<'a>
-pub fn surgeist_dom::DomSplitTextOutputWatch<'a>::into_watch(self) -> core::option::Option<(surgeist_dom::NodeId, surgeist_dom::DomNodeRetirementWatch)>
-pub const fn surgeist_dom::DomSplitTextOutputWatch<'a>::new(inbox: &'a surgeist_dom::DomNodeRetirementInbox, key: usize, limits: surgeist_dom::DomNodeRetirementLimits) -> Self
 pub struct surgeist_dom::DomStamp
 impl surgeist_dom::DomStamp
 pub fn surgeist_dom::DomStamp::owner(self) -> surgeist_dom::DomOwnerId

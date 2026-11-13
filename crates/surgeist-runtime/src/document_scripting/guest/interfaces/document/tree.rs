@@ -5,6 +5,8 @@ use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
 use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
 use surgeist_dom::{DomSourceEdit, DomSourceStatus};
 
+mod clone;
+
 #[derive(Clone, Copy)]
 enum Method {
     Append,
@@ -19,11 +21,21 @@ pub(super) struct GuestTreeDrive {
     pub(super) pending: Option<DomSourceStatus>,
 }
 
+impl GuestTreeDrive {
+    pub(super) fn terminal_output(&self) -> Option<surgeist_dom::DomSourceOutput> {
+        match &self.progress {
+            Ok(DomSourceDriveProgress::Complete(done)) => done.output(),
+            _ => None,
+        }
+    }
+}
+
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    clone::install(scope, prototype, capture)?;
     for (key, method, length) in [
         (&ascii(b"appendChild")[..], Method::Append, 1),
         (&ascii(b"insertBefore")[..], Method::Insert, 2),
@@ -96,6 +108,41 @@ pub(super) fn install_adoption<'scope>(
 }
 
 impl Capture {
+    pub(super) fn drive_guest_watched_node(
+        &self,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        realm: RealmId,
+        edit: DomSourceEdit,
+        output: &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
+    ) -> Result<GuestTreeDrive, DocumentGuestEventError> {
+        let limits = events.limits.source_edits;
+        let event = owner.active_event_request();
+        let (mut progress, parent) =
+            self.callbacks
+                .with_qualified_session(owner, event.as_ref(), |session, _| {
+                    let source = session.source_execution();
+                    Ok(source.drive_watched_node(
+                        &mut session.dom(),
+                        Ok(edit),
+                        limits,
+                        output,
+                        &owner.cancellation,
+                    ))
+                })?;
+        owner.finish_watched_node_style(&mut progress, limits, realm, output);
+        let pending = owner
+            .session
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .read_dom()
+            .pending_source_edit();
+        Ok(GuestTreeDrive {
+            progress,
+            parent,
+            pending,
+        })
+    }
+
     fn normalize_node<'scope>(
         &self,
         scope: &mut Scope<'scope>,

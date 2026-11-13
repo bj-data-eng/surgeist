@@ -117,26 +117,26 @@ fn split_text_retirement_watch_refusal_leaves_the_split_private() {
         .unwrap();
     let before = dom.snapshot();
     let mut refused =
-        DomSplitTextOutputWatch::new(&inbox, 42, DomNodeRetirementLimits::new(2_000_000, 0));
+        DomSourceNodeOutputWatch::new(&inbox, 42, DomNodeRetirementLimits::new(2_000_000, 0));
     {
         let mut lease = dom
             .begin_source_edit(DomSourceEdit::split_text(text, 2), policy(4096), &cancel)
             .unwrap();
         assert!(matches!(
-            lease.advance_split_text_for_runtime(&mut refused, &cancel),
+            lease.advance_watching_node_for_runtime(&mut refused, &cancel),
             Err(DomError::NodeRetirementWorkLimit { limit: 0 })
         ));
     }
     assert!(refused.into_watch().is_none());
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert!(dom.pending_source_edit().is_none());
-    let mut output = DomSplitTextOutputWatch::new(&inbox, 42, retirement_limits);
+    let mut output = DomSourceNodeOutputWatch::new(&inbox, 42, retirement_limits);
     let tail = {
         let mut lease = dom
             .begin_source_edit(DomSourceEdit::split_text(text, 2), policy(4096), &cancel)
             .unwrap();
         let DomSourceAdvance::Progress(DomSourceProgress::Complete(done)) = lease
-            .advance_split_text_for_runtime(&mut output, &cancel)
+            .advance_watching_node_for_runtime(&mut output, &cancel)
             .unwrap()
         else {
             panic!("expected the exact split completion");

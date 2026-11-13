@@ -36,7 +36,7 @@ pub(super) struct Execution<'a> {
     pub(super) native: Option<meta::Execution>,
     pub(super) hosted_events: bool,
     pub(super) synchronous_node: Option<synchronous_node::SynchronousNode<'a>>,
-    pub(super) split_text_output: Option<synchronous_node::SplitTextWatchAdmission<'a>>,
+    pub(super) node_output_watch: Option<synchronous_node::NodeOutputWatchAdmission<'a>>,
     pub(super) shadow_reactions: Option<synchronous_node::ShadowReactionRoute<'a>>,
 }
 impl Execution<'_> {
@@ -47,7 +47,7 @@ impl Execution<'_> {
             native: None,
             hosted_events: false,
             synchronous_node: None,
-            split_text_output: None,
+            node_output_watch: None,
             shadow_reactions: None,
         }
     }
@@ -158,7 +158,7 @@ impl DomSourceLease<'_> {
             native: None,
             hosted_events,
             synchronous_node: None,
-            split_text_output: None,
+            node_output_watch: None,
             shadow_reactions: None,
         };
         match self.advance_execution(&mut execution, None, cancel) {
@@ -348,7 +348,7 @@ impl Operation {
         } else {
             None
         };
-        if let Some(output) = execution.split_text_output.as_mut()
+        if let Some(output) = execution.node_output_watch.as_mut()
             && !incomplete
             && !self.cancelled
             && self.draft.compound_failure().is_none()

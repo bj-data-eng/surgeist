@@ -522,7 +522,36 @@ impl Draft {
             };
             self.allocate_formed(kind, document, limits, cancel, formation)?
         };
-        self.initialize_native_element(copy, None, limits, cancel)?;
+        if matches!(source, Source::Staged(_))
+            && let transaction::KindRead::Element(element) = original.kind()
+        {
+            let registry = match element.custom_element_registry() {
+                crate::DomRegistryBinding::Null => crate::DomRegistryBinding::Null,
+                crate::DomRegistryBinding::Registry(registry) => {
+                    let record = self.creation_registry(registry, cancel)?;
+                    match record
+                        .capture
+                        .registry_scope(&record.local)
+                        .map_err(DomError::SelectCapture)?
+                    {
+                        surgeist_html_semantics::HtmlRegistryScope::Global => {
+                            self.document_metadata(document)?.custom_element_registry()
+                        }
+                        surgeist_html_semantics::HtmlRegistryScope::Scoped => {
+                            crate::DomRegistryBinding::Registry(registry)
+                        }
+                        surgeist_html_semantics::HtmlRegistryScope::Unavailable => {
+                            return Err(DomError::NotSupported);
+                        }
+                    }
+                }
+            };
+            self.establish_element_registry(copy, registry, cancel)?;
+            self.record_custom_element_clone_upgrade(copy, registry, cancel)?;
+            self.initialize_native_element_features(copy, limits, cancel)?;
+        } else {
+            self.initialize_native_element(copy, None, limits, cancel)?;
+        }
         if let transaction::KindRead::Element(element) = original.kind() {
             let cause = if element
                 .input_state()

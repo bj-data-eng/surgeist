@@ -4743,15 +4743,11 @@
     "Node.cloneNode:0/call": {
       "kind": "native",
       "adapter": "node.clonenode.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "import_node"}],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Document clone and source-correct native clone dispatch; captured non-Document import alone is not general cloneNode.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-          "issue": 2277
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "clone_node"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
+      ],
+      "requirements": []
     },
     "Node.isEqualNode:0/call": {
       "kind": "derived",
@@ -5962,7 +5958,7 @@
       "adapter": "text.splittext.call",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "split_text"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_split_text_for_runtime"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
       ],
       "requirements": []
     },

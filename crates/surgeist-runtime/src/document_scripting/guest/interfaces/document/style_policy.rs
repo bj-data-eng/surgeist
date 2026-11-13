@@ -34,12 +34,12 @@ impl NativeOwner {
         self.finish_tree_policies(result, limits, StyleReportDelivery::Live(realm))
     }
 
-    pub(super) fn finish_split_text_style(
+    pub(super) fn finish_watched_node_style(
         &self,
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
         limits: DomSourceLimits,
         realm: RealmId,
-        output: &mut surgeist_dom::DomSplitTextOutputWatch<'_>,
+        output: &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
     ) {
         self.finish_style_with(
             result,
@@ -50,7 +50,7 @@ impl NativeOwner {
                     .session
                     .try_borrow_mut()
                     .map_err(|_| DomStyleRuntimeError::Binding)?;
-                let (progress, _) = session.source_execution().drive_split_text(
+                let (progress, _) = session.source_execution().drive_watched_node(
                     &mut session.dom(),
                     Err(operation),
                     limits,

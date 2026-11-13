@@ -3,8 +3,8 @@
 use super::*;
 use crate::{DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementWatch};
 
-/// Retirement admission for the exact Text returned by one live split.
-pub struct DomSplitTextOutputWatch<'a> {
+/// Retirement admission bound to the exact node output of one live operation.
+pub struct DomSourceNodeOutputWatch<'a> {
     inbox: &'a DomNodeRetirementInbox,
     key: usize,
     limits: DomNodeRetirementLimits,
@@ -12,7 +12,7 @@ pub struct DomSplitTextOutputWatch<'a> {
     watch: Option<(NodeId, DomNodeRetirementWatch)>,
 }
 
-impl<'a> DomSplitTextOutputWatch<'a> {
+impl<'a> DomSourceNodeOutputWatch<'a> {
     pub const fn new(
         inbox: &'a DomNodeRetirementInbox,
         key: usize,
@@ -34,12 +34,12 @@ impl<'a> DomSplitTextOutputWatch<'a> {
     pub(super) fn admission(
         &mut self,
         operation: DomSourceOperationId,
-    ) -> Result<SplitTextWatchAdmission<'_>, DomError> {
+    ) -> Result<NodeOutputWatchAdmission<'_>, DomError> {
         if self.watch.is_some() || self.operation.is_some_and(|owner| owner != operation) {
             return Err(DomError::InvalidSourceOperation);
         }
         self.operation = Some(operation);
-        Ok(SplitTextWatchAdmission {
+        Ok(NodeOutputWatchAdmission {
             inbox: self.inbox,
             key: self.key,
             limits: self.limits,
@@ -48,14 +48,14 @@ impl<'a> DomSplitTextOutputWatch<'a> {
     }
 }
 
-pub(super) struct SplitTextWatchAdmission<'a> {
+pub(super) struct NodeOutputWatchAdmission<'a> {
     inbox: &'a DomNodeRetirementInbox,
     key: usize,
     limits: DomNodeRetirementLimits,
     watch: &'a mut Option<(NodeId, DomNodeRetirementWatch)>,
 }
 
-impl SplitTextWatchAdmission<'_> {
+impl NodeOutputWatchAdmission<'_> {
     pub(super) fn arm(
         &mut self,
         dom: &mut Dom,

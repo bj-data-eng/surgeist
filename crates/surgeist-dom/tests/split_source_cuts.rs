@@ -117,7 +117,7 @@ fn watched_split_keeps_the_exact_continuation_after_output_admission_refuses() {
         .unwrap();
     let limits = policy(20_000_000);
     let mut output =
-        DomSplitTextOutputWatch::new(&inbox, 19, DomNodeRetirementLimits::new(2_000_000, 0));
+        DomSourceNodeOutputWatch::new(&inbox, 19, DomNodeRetirementLimits::new(2_000_000, 0));
     let (operation, new) = {
         let mut lease = f
             .dom
@@ -125,7 +125,7 @@ fn watched_split_keeps_the_exact_continuation_after_output_admission_refuses() {
             .unwrap();
         let DomSourceAdvance::Progress(DomSourceProgress::Request(DomSourceRequest::Style(first))) =
             lease
-                .advance_split_text_for_runtime(&mut output, &cancel)
+                .advance_watching_node_for_runtime(&mut output, &cancel)
                 .unwrap()
         else {
             panic!("expected insertion Style request");
@@ -136,7 +136,7 @@ fn watched_split_keeps_the_exact_continuation_after_output_admission_refuses() {
             .unwrap();
         let DomSourceAdvance::Progress(DomSourceProgress::Request(DomSourceRequest::Style(second))) =
             lease
-                .advance_split_text_for_runtime(&mut output, &cancel)
+                .advance_watching_node_for_runtime(&mut output, &cancel)
                 .unwrap()
         else {
             panic!("expected deletion Style request");
@@ -149,7 +149,7 @@ fn watched_split_keeps_the_exact_continuation_after_output_admission_refuses() {
             .accept_inline_csp(&second, &deny(&second), &cancel)
             .unwrap();
         assert!(matches!(
-            lease.advance_split_text_for_runtime(&mut output, &cancel),
+            lease.advance_watching_node_for_runtime(&mut output, &cancel),
             Err(DomError::NodeRetirementWorkLimit { limit: 0 })
         ));
         (lease.operation(), new)

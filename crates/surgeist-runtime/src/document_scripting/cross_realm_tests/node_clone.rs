@@ -1,5 +1,7 @@
 use super::*;
-use crate::document_scripting::guest::tests::{attach_public_nodes, projected_node_id};
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, projected_node_id, refuse_next_source_node_validation,
+};
 
 pub(super) fn clone_node_returns_fresh_canonical_subtrees() {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -43,6 +45,28 @@ pub(super) fn clone_node_returns_fresh_canonical_subtrees() {
                         xmlCopy.documentElement === xml.documentElement ||
                         xmlCopy.documentElement.ownerDocument !== xmlCopy)
                         return 'Document clone';
+                    const attr = document.createAttribute('exact');
+                    attr.value = '\ud800';
+                    const attrCopy = attr.cloneNode({valueOf() { throw new Error('boolean'); }});
+                    if (!(attrCopy instanceof Attr) || attrCopy === attr ||
+                        attrCopy.ownerElement !== null || attrCopy.name !== 'exact' ||
+                        attrCopy.value !== '\ud800') return 'Attr clone';
+                    const clonable = document.createElement('div');
+                    clonable.attachShadow({mode: 'open', clonable: true}).appendChild(new Text('copied'));
+                    const shadowCopy = clonable.cloneNode(false);
+                    if (shadowCopy.shadowRoot === clonable.shadowRoot ||
+                        shadowCopy.shadowRoot?.firstChild?.data !== 'copied')
+                        return 'clonable shadow';
+                    let constructed = 0;
+                    class ClonedElement extends HTMLElement {
+                        constructor() { super(); ++constructed; }
+                    }
+                    customElements.define('clone-element', ClonedElement);
+                    const custom = document.createElement('clone-element');
+                    const customCopy = custom.cloneNode();
+                    if (customCopy === custom || !(customCopy instanceof ClonedElement) ||
+                        constructed !== 2 || customCopy.parentNode !== null)
+                        return 'custom element upgrade';
                     Object.assign(globalThis, {cloneSource: source, cloneCopy: copied});
                     return 'ok';
                 })()
@@ -74,4 +98,16 @@ pub(super) fn clone_node_returns_fresh_canonical_subtrees() {
             .code_units(),
         &[0x41, 0xd800, 0]
     );
+    refuse_next_source_node_validation(&host);
+    let refused = host.in_document(&permit, |scope| {
+        evaluate(scope, "cloneSource.cloneNode(true)").map(drop)
+    });
+    assert!(
+        matches!(
+            refused,
+            Err(DocumentScriptError::Script(Error::BackendUnavailable))
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(host.snapshot().unwrap().stamp(), snapshot.stamp());
 }
