@@ -476,10 +476,7 @@ impl<'input, Node, S: LayoutScalar> GridOverflowProbe<'input, '_, Node, S> {
     {
         let children = match self.layout {
             GridOverflowLayout::Ordinary(input) => {
-                match layout_grid_container_children(tree, node, input)? {
-                    ControlFlow::Break(layout) => layout,
-                    ControlFlow::Continue(placement) => placement.compute(tree)?,
-                }
+                layout_grid_container_children(tree, node, input)?.compute(tree)?
             }
             GridOverflowLayout::Lanes(input, context) => {
                 match layout_grid_lanes_children(tree, node, input, context)? {
@@ -523,33 +520,11 @@ impl<'input, Node, S: LayoutScalar> GridOverflowProbe<'input, '_, Node, S> {
     }
 }
 
-fn begin_grid_child_layout<'input, 'a, Tree, M, Input>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    run_mode: RunMode,
-    input: Input,
-    perform: impl FnOnce(
-        &mut Tree,
-        Tree::Node,
-        Input,
-    ) -> GridChildPlacementStart<'input, Tree::Node, Tree::Scalar, M>,
-    probe: impl FnOnce(Input) -> GridOverflowLayout<'input, 'a, Tree::Node, Tree::Scalar>,
-) -> GridChildPlacementStart<'input, Tree::Node, Tree::Scalar, M>
-where
-    'input: 'a,
-    Tree: Compute<'input, M>,
-{
-    if run_mode.is_perform_layout() {
-        return perform(tree, node, input);
-    }
-    observe_grid_child_layout(tree, node, probe(input))
-}
-
 fn observe_grid_child_layout<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     layout: GridOverflowLayout<'input, '_, Tree::Node, Tree::Scalar>,
-) -> GridChildPlacementStart<'input, Tree::Node, Tree::Scalar, M>
+) -> GridChildrenLayoutResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -558,7 +533,7 @@ where
     else {
         unreachable!("a child-layout probe returns its child observation");
     };
-    Ok(ControlFlow::Break(GridChildrenLayout {
+    Ok(GridChildrenLayout {
         visible_content_size: observation.visible_content_size,
         contributions: observation.contributions,
         baselines: observation.baselines,
@@ -567,7 +542,7 @@ where
             columns: Vec::new(),
         },
         executed_baselines: None,
-    }))
+    })
 }
 
 fn needs_intrinsic_auto_observation<S: LayoutScalar>(
@@ -869,7 +844,49 @@ struct GridPass<'input, Node, S: LayoutScalar> {
 
 enum GridPassChildren<'input, Node, S: LayoutScalar> {
     InFlowLanes(Box<GridLanesInFlow<'input, Node, S>>),
+    InFlowOrdinary(Box<OrdinaryGridInFlow<'input, Node, S>>),
     Positioned(GridChildPlacement<'input, Node, S>),
+}
+
+struct OrdinaryGridInFlow<'input, Node, S: LayoutScalar> {
+    placement: OrdinaryGridPlacement<Node, S>,
+    source: OrdinaryGridSource<'input, Node, S>,
+    collection: GridItemCollection<'input, Node, S>,
+}
+
+struct OrdinaryGridSource<'input, Node, S: LayoutScalar> {
+    tracks: OrdinaryGridTracks<S>,
+    column_tracks: Vec<TrackSizingOf<S>>,
+    row_tracks: Vec<TrackSizingOf<S>>,
+    parent_context: GridParentContext<S, Node>,
+    subgrid_report: GridSubgridReport<Node>,
+    placements: GridPlacementContext<'input, Node, S>,
+    sizing_stage: GridSizingStage,
+}
+
+impl<'input, Node, S: LayoutScalar> OrdinaryGridSource<'input, Node, S> {
+    fn context<'a>(
+        &'a self,
+        pass: &'a GridPassOutput<'input, Node, S>,
+        scroll_box: CanonicalScrollBoxOf<S>,
+    ) -> GridLayoutContext<'input, 'a, Node, S> {
+        self.tracks.placement_context(OrdinaryGridPlacementContext {
+            execution_input: pass.input,
+            scroll_box,
+            style: &pass.style,
+            row_tracks: &self.row_tracks,
+            minimum_functions: minimum_parent_functions(
+                &self.column_tracks,
+                &self.row_tracks,
+                self.tracks.track_basis,
+                &self.parent_context,
+            ),
+            subgrid_report: &self.subgrid_report,
+            parent_context: &self.parent_context,
+            placements: &self.placements,
+            sizing_stage: self.sizing_stage,
+        })
+    }
 }
 
 struct GridLanesInFlow<'input, Node, S: LayoutScalar> {
@@ -979,6 +996,37 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
             let children = geometry.finish(tree, self.output.node, &input, collection.finish())?;
             self.children = Some(GridPassChildren::Positioned(children));
         }
+        if let Some(GridPassChildren::InFlowOrdinary(grid)) = &mut self.children {
+            let context = grid.source.context(&self.output, self.scroll_box);
+            let placement = &grid.placement;
+            if let Some(child) = grid.collection.next(
+                tree,
+                self.output.node,
+                &placement.item_input(&context),
+                |source_index, _| placement.item_disposition(&context, source_index),
+            )? {
+                return Ok(Some(GridChild {
+                    phase: GridChildPhase::InFlow(child),
+                }));
+            }
+            let Some(GridPassChildren::InFlowOrdinary(grid)) = self.children.take() else {
+                unreachable!()
+            };
+            let OrdinaryGridInFlow {
+                placement,
+                source,
+                collection,
+            } = *grid;
+            let context = source.context(&self.output, self.scroll_box);
+            let children = source.tracks.finish(
+                tree,
+                self.output.node,
+                placement,
+                &context,
+                collection.finish(),
+            )?;
+            self.children = Some(GridPassChildren::Positioned(children));
+        }
         let Some(GridPassChildren::Positioned(children)) = &mut self.children else {
             unreachable!("Grid placement has one active child phase");
         };
@@ -1003,6 +1051,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
                     tree,
                     self.output.node,
                     &lanes.geometry.item_input(&input, &lanes.source.children),
+                    child,
+                    output,
+                )
+            }
+            (Some(GridPassChildren::InFlowOrdinary(grid)), GridChildPhase::InFlow(child)) => {
+                let context = grid.source.context(&self.output, self.scroll_box);
+                grid.collection.accept(
+                    tree,
+                    self.output.node,
+                    &grid.placement.item_input(&context),
                     child,
                     output,
                 )
@@ -1343,7 +1401,6 @@ where
         subgrid_report: &subgrid_report,
         parent_context: &parent_context,
         placements: &placements,
-        containing_auto_scrollbar_pass: input.settled_auto_scrollbars(),
     };
     let (child_layout, constants) = if let Some((_, stacking_operation)) = stacking {
         let layout_content_box_size =
@@ -1452,16 +1509,52 @@ where
             observe_grid_child_layout(tree, node, GridOverflowLayout::Lanes(lanes_input, context))?,
             constants,
         )
+    } else if input.run_mode().is_perform_layout() {
+        let (tracks, minimum_functions) = prepare_ordinary_grid_tracks(tree, node, child_input)?;
+        let placement_context = tracks.placement_context(OrdinaryGridPlacementContext {
+            execution_input: input,
+            scroll_box,
+            style: &style,
+            row_tracks: &row_tracks,
+            minimum_functions,
+            subgrid_report: &subgrid_report,
+            parent_context: &parent_context,
+            placements: &placements,
+            sizing_stage: sizing_phases.limit,
+        });
+        let placement = OrdinaryGridPlacement::prepare(tree, node, &placement_context);
+        let collection = GridItemCollection::new(&placement.item_input(&placement_context));
+        return Ok(ControlFlow::Continue(Box::new(GridPass {
+            children: Some(GridPassChildren::InFlowOrdinary(Box::new(
+                OrdinaryGridInFlow {
+                    placement,
+                    collection,
+                    source: OrdinaryGridSource {
+                        tracks,
+                        column_tracks,
+                        row_tracks,
+                        parent_context,
+                        subgrid_report,
+                        placements,
+                        sizing_stage: sizing_phases.limit,
+                    },
+                },
+            ))),
+            output: GridPassOutput {
+                node,
+                input,
+                style,
+                constants,
+                output_size,
+                content_size,
+                report,
+                observes_contained_baseline,
+            },
+            scroll_box,
+        })));
     } else {
         (
-            begin_grid_child_layout(
-                tree,
-                node,
-                input.run_mode(),
-                child_input,
-                layout_grid_container_children,
-                GridOverflowLayout::Ordinary,
-            )?,
+            observe_grid_child_layout(tree, node, GridOverflowLayout::Ordinary(child_input))?,
             constants,
         )
     };
@@ -1475,16 +1568,9 @@ where
         report,
         observes_contained_baseline,
     };
-    match child_layout {
-        ControlFlow::Break(layout) => output
-            .finish(Some((scroll_box, layout)))
-            .map(ControlFlow::Break),
-        ControlFlow::Continue(children) => Ok(ControlFlow::Continue(Box::new(GridPass {
-            children: Some(GridPassChildren::Positioned(children)),
-            output,
-            scroll_box,
-        }))),
-    }
+    output
+        .finish(Some((scroll_box, child_layout)))
+        .map(ControlFlow::Break)
 }
 
 struct GridPassOutput<'input, Node, S: LayoutScalar> {
@@ -2742,14 +2828,37 @@ struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     subgrid_report: &'a GridSubgridReport<Node>,
     parent_context: &'a GridParentContext<S, Node>,
     placements: &'a GridPlacementContext<'input, Node, S>,
-    containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
 }
 
-fn layout_grid_container_children<'input, Tree, M>(
+struct OrdinaryGridTracks<S: LayoutScalar> {
+    constants: Constants<S>,
+    content_box_size: Size<S>,
+    columns: Vec<S>,
+    rows: Vec<S>,
+    collapsed_columns: Vec<bool>,
+    collapsed_rows: Vec<bool>,
+    column_gutters: OrdinaryGridAxisGuttersOf<S>,
+    row_gutters: OrdinaryGridAxisGuttersOf<S>,
+    track_basis: LogicalSizeOf<Option<S>>,
+    gap: LogicalSizeOf<S>,
+    lines: GridLines,
+    named_columns: NamedGridLines,
+    named_rows: NamedGridLines,
+    area_facts: Option<GridAreaNameFacts>,
+    template_area_expanded_axes: TemplateAreaExpandedAxes,
+    inherited_column_offset: Option<S>,
+    inherited_row_offset: Option<S>,
+    contained_track_size: Option<Size<S>>,
+}
+
+type OrdinaryGridPreparation<'a, Node, S, M> =
+    LayoutResultOf<Node, (OrdinaryGridTracks<S>, GridMinimumParentFunctions<'a, S>), S, M>;
+
+fn prepare_ordinary_grid_tracks<'input, 'a, Tree, M>(
     tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    input: GridChildLayoutInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-) -> GridChildPlacementStart<'input, Tree::Node, Tree::Scalar, M>
+    node: Tree::Node,
+    input: GridChildLayoutInput<'input, 'a, Tree::Node, Tree::Scalar>,
+) -> OrdinaryGridPreparation<'a, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -2763,18 +2872,10 @@ where
         percent_basis: track_basis,
     } = final_grid_layout_tracks(tree, node, &input)?;
     let GridChildLayoutInput {
-        execution_input,
-        scroll_box,
-        sizing_phases,
-        style,
         constants,
-        row_tracks,
         context,
         output_size,
-        subgrid_report,
         parent_context,
-        placements,
-        containing_auto_scrollbar_pass,
         ..
     } = input;
     let GridContainerContext {
@@ -2821,25 +2922,28 @@ where
     let constants =
         constants.for_contained_placement(containment, output_size, layout_content_box_size);
 
-    let mut layout = layout_grid_children(
-        tree,
-        node,
-        GridLayoutContext {
-            execution_input,
-            scroll_box,
-            style,
-            constants: &constants,
-            container_content_size: layout_content_box_size,
-            columns: &layout_columns,
-            rows: &layout_rows,
-            collapsed_columns: &collapsed_columns,
-            collapsed_rows: &collapsed_rows,
-            row_tracks,
-            minimum_functions,
+    let contained_track_size = (containment != crate::SizeContainment::None).then(|| {
+        constants.flow_axes.physical_size(LogicalSizeOf::new(
+            track_sum_with_gutters(
+                &layout_columns,
+                layout_gap.inline,
+                Some(&layout_column_gutters),
+            ),
+            track_sum_with_gutters(&layout_rows, layout_gap.block, Some(&layout_row_gutters)),
+        ))
+    });
+    Ok((
+        OrdinaryGridTracks {
+            constants,
+            content_box_size: layout_content_box_size,
+            columns: layout_columns,
+            rows: layout_rows,
+            collapsed_columns,
+            collapsed_rows,
+            column_gutters: layout_column_gutters,
+            row_gutters: layout_row_gutters,
             track_basis,
             gap: layout_gap,
-            column_gutters: &layout_column_gutters,
-            row_gutters: &layout_row_gutters,
             lines,
             named_columns,
             named_rows,
@@ -2847,25 +2951,111 @@ where
             template_area_expanded_axes,
             inherited_column_offset,
             inherited_row_offset,
-            subgrid_report,
-            parent_context,
-            placements,
-            containing_auto_scrollbar_pass,
-            sizing_stage: sizing_phases.limit,
+            contained_track_size,
         },
-    )?;
-    if containment != crate::SizeContainment::None {
-        let track_size = constants.flow_axes.physical_size(LogicalSizeOf::new(
-            track_sum_with_gutters(
-                &layout_columns,
-                layout_gap.inline,
-                Some(&layout_column_gutters),
-            ),
-            track_sum_with_gutters(&layout_rows, layout_gap.block, Some(&layout_row_gutters)),
-        ));
-        layout = layout.with_contained_track_size(track_size);
+        minimum_functions,
+    ))
+}
+
+impl<S: LayoutScalar> OrdinaryGridTracks<S> {
+    fn placement_context<'input, 'a, Node>(
+        &'a self,
+        source: OrdinaryGridPlacementContext<'input, 'a, Node, S>,
+    ) -> GridLayoutContext<'input, 'a, Node, S> {
+        GridLayoutContext {
+            execution_input: source.execution_input,
+            scroll_box: source.scroll_box,
+            style: source.style,
+            constants: &self.constants,
+            container_content_size: self.content_box_size,
+            columns: &self.columns,
+            rows: &self.rows,
+            collapsed_columns: &self.collapsed_columns,
+            collapsed_rows: &self.collapsed_rows,
+            row_tracks: source.row_tracks,
+            minimum_functions: source.minimum_functions,
+            track_basis: self.track_basis,
+            gap: self.gap,
+            column_gutters: &self.column_gutters,
+            row_gutters: &self.row_gutters,
+            lines: self.lines,
+            named_columns: &self.named_columns,
+            named_rows: &self.named_rows,
+            area_facts: self.area_facts.as_ref(),
+            template_area_expanded_axes: self.template_area_expanded_axes,
+            inherited_column_offset: self.inherited_column_offset,
+            inherited_row_offset: self.inherited_row_offset,
+            subgrid_report: source.subgrid_report,
+            parent_context: source.parent_context,
+            placements: source.placements,
+            containing_auto_scrollbar_pass: source.execution_input.settled_auto_scrollbars(),
+            sizing_stage: source.sizing_stage,
+        }
     }
-    Ok(ControlFlow::Continue(layout))
+
+    fn finish<'input, Tree, M>(
+        &self,
+        tree: &mut Tree,
+        node: Tree::Node,
+        placement: OrdinaryGridPlacement<Tree::Node, S>,
+        context: &GridLayoutContext<'input, '_, Tree::Node, S>,
+        pending: PendingGridItems<'input, Tree::Node, S>,
+    ) -> GridChildPlacementResult<'input, Tree::Node, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let mut layout = placement.finish(tree, node, context, pending)?;
+        if let Some(size) = self.contained_track_size {
+            layout = layout.with_contained_track_size(size);
+        }
+        Ok(layout)
+    }
+}
+
+struct OrdinaryGridPlacementContext<'input, 'a, Node, S: LayoutScalar> {
+    execution_input: ComputeInputOf<S>,
+    scroll_box: CanonicalScrollBoxOf<S>,
+    style: &'a GridContainerProjection<'input, S>,
+    row_tracks: &'a [TrackSizingOf<S>],
+    minimum_functions: GridMinimumParentFunctions<'a, S>,
+    subgrid_report: &'a GridSubgridReport<Node>,
+    parent_context: &'a GridParentContext<S, Node>,
+    placements: &'a GridPlacementContext<'input, Node, S>,
+    sizing_stage: GridSizingStage,
+}
+
+fn layout_grid_container_children<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: GridChildLayoutInput<'input, '_, Tree::Node, Tree::Scalar>,
+) -> GridChildPlacementResult<'input, Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let source = OrdinaryGridPlacementContext {
+        execution_input: input.execution_input,
+        scroll_box: input.scroll_box,
+        style: input.style,
+        row_tracks: input.row_tracks,
+        minimum_functions: input.minimum_functions,
+        subgrid_report: input.subgrid_report,
+        parent_context: input.parent_context,
+        placements: input.placements,
+        sizing_stage: input.sizing_phases.limit,
+    };
+    let (tracks, minimum_functions) = prepare_ordinary_grid_tracks(tree, node, input)?;
+    let context = tracks.placement_context(OrdinaryGridPlacementContext {
+        minimum_functions,
+        ..source
+    });
+    let placement = OrdinaryGridPlacement::prepare(tree, node, &context);
+    let pending = layout_grid_child_items(
+        tree,
+        node,
+        placement.item_input(&context),
+        |source_index, _| placement.item_disposition(&context, source_index),
+    )?;
+    tracks.finish(tree, node, placement, &context, pending)
 }
 
 struct FinalGridLayoutTracks<'a, S: LayoutScalar> {
@@ -3046,9 +3236,9 @@ struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = Scalar> {
     column_gutters: &'a OrdinaryGridAxisGuttersOf<S>,
     row_gutters: &'a OrdinaryGridAxisGuttersOf<S>,
     lines: GridLines,
-    named_columns: NamedGridLines,
-    named_rows: NamedGridLines,
-    area_facts: Option<GridAreaNameFacts>,
+    named_columns: &'a NamedGridLines,
+    named_rows: &'a NamedGridLines,
+    area_facts: Option<&'a GridAreaNameFacts>,
     template_area_expanded_axes: TemplateAreaExpandedAxes,
     inherited_column_offset: Option<S>,
     inherited_row_offset: Option<S>,
