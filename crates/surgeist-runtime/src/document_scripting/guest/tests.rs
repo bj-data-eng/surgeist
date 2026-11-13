@@ -853,6 +853,7 @@ pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate
             const destination = new Document();
             const first = document.createElement('x-adopt-during-upgrade');
             const second = document.createElement('x-adopt-during-upgrade');
+            globalThis.adoptedUpgradeReceiver = second;
             root.appendChild(first);
             root.appendChild(second);
             const marker = globalThis.upgradeCallbackMarker = {};
@@ -882,6 +883,28 @@ pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate
         )
     })
     .unwrap();
+    let receiver = host
+        .in_document(&permit, |scope| {
+            let receiver = scope.evaluate(&units("adoptedUpgradeReceiver"))?;
+            Ok(scope
+                .native_object::<interfaces::GuestNodeProjection>(&receiver)?
+                .unwrap()
+                .payload()
+                .id()
+                .unwrap()
+                .node())
+        })
+        .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let element = snapshot.node(receiver).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.custom_element_state(),
+        surgeist_dom::HtmlCustomElementState::Precustomized
+    );
+    assert_eq!(
+        element.custom_element_definition(),
+        surgeist_dom::DomElementDefinition::Null
+    );
     let constructor = host
         .take_guest_constructor_exception(&permit)
         .unwrap()
