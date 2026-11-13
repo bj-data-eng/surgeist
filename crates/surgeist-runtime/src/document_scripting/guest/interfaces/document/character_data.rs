@@ -146,6 +146,7 @@ impl CharacterBindings {
             &constructor,
         )?;
         processing_instruction::install_factory(scope, document, funding.capture)?;
+        processing_instruction::install_pseudo_attributes(scope, &instruction, funding.capture)?;
         let capture = (funding.capture)(size_of::<Capture>())?;
         install_getter(
             scope,

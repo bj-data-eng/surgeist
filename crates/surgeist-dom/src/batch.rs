@@ -317,6 +317,10 @@ pub(crate) enum Command {
         output_registration: Option<std::sync::Arc<crate::hosted::ScriptRegistration>>,
     },
     Destroy(NodeOperand),
+    ProcessingInstructionAttribute {
+        node: NodeId,
+        edit: crate::DomProcessingInstructionAttributeEdit,
+    },
     ReplaceData {
         node: NodeOperand,
         offset: usize,

@@ -170,3 +170,67 @@ pub(super) fn authored_instruction_wrapper_refusal_is_atomic() {
     assert_eq!(after.stamp(), before.stamp());
     assert_eq!(after.nodes().count(), before.nodes().count());
 }
+
+pub(super) fn pseudo_attributes_and_data_synchronize() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            (() => {
+                const pi = new ProcessingInstruction('target', "b='two' a='&amp;'");
+                if (typeof pi.hasAttributes !== 'function') return 'missing PI pseudo-attributes';
+                if (!pi.hasAttributes() || pi.getAttributeNames().join(',') !== 'b,a' ||
+                    pi.getAttribute('a') !== '&' || pi.getAttribute('missing') !== null ||
+                    !pi.hasAttribute('b') || pi.hasAttribute('B')) return 'initial ordered map';
+                const marker = {};
+                const abrupt = {toString() { throw marker; }};
+                try { pi.getAttribute(abrupt); return 'missing abrupt'; }
+                catch (error) { if (error !== marker) return 'wrong abrupt'; }
+                let coerced = false;
+                try {
+                    pi.setAttribute.call({}, {toString() { coerced = true; }}, 'value');
+                    return 'wrong brand';
+                } catch (error) { if (!(error instanceof TypeError) || coerced) return 'brand order'; }
+                try { pi.setAttribute('bad name', ''); return 'missing invalid name'; }
+                catch (error) { if (error.name !== 'InvalidCharacterError') return 'invalid name error'; }
+                if (pi.setAttribute('b', '&<>"\ud800') !== undefined ||
+                    pi.data !== 'b="&amp;&lt;&gt;&quot;\ud800" a="&amp;"' ||
+                    pi.getAttribute('b') !== '&<>"\ud800') return 'native map serialization';
+                pi.removeAttribute('a');
+                if (pi.toggleAttribute('c') !== true || pi.toggleAttribute('c', true) !== true ||
+                    pi.toggleAttribute('c', false) !== false || pi.hasAttribute('c') ||
+                    pi.getAttributeNames().join(',') !== 'b') return 'toggle presence';
+                pi.data = "b='uncanonical'";
+                if (!pi.toggleAttribute('b', true) || pi.toggleAttribute('absent', false) ||
+                    pi.data !== "b='uncanonical'") return 'toggle no-op leaves raw data';
+                pi.removeAttribute('invalid name');
+                if (pi.data !== 'b="uncanonical"') return 'missing remove serializes';
+                if (pi.toggleAttribute('b', undefined) !== false || pi.data !== '')
+                    return 'undefined force is omitted';
+                const name = {toString() { pi.data = "q='side effect'"; return 'q'; }};
+                const value = {toString() {
+                    if (pi.getAttribute('q') !== 'side effect') throw marker;
+                    pi.setAttribute('r', 'nested');
+                    return 'outer';
+                }};
+                pi.setAttribute(name, value);
+                if (pi.data !== 'q="outer" r="nested"') return 'reentry before native mutation';
+                pi.data = "z='last' k='first'";
+                if (pi.getAttributeNames().join(',') !== 'z,k' ||
+                    pi.getAttribute('z') !== 'last' || pi.hasAttribute('b')) return 'replace data';
+                pi.data = 'malformed';
+                if (pi.hasAttributes() || pi.getAttributeNames().length !== 0) return 'invalid data';
+                pi.setAttribute('9name', 'value');
+                if (pi.getAttribute('9name') !== 'value' || pi.data !== '9name="value"')
+                    return 'authored map preserved independently of XML parsing';
+                pi.data = pi.data;
+                if (pi.hasAttributes()) return 'ordinary replacement reparses exact data';
+                return 'ok';
+            })()
+        "#)?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    }).unwrap();
+}

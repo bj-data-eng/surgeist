@@ -455,6 +455,123 @@ impl Draft {
             }
             _ => return Err(DomError::WrongNodeKind),
         };
+        self.publish_character_data(
+            node,
+            (kind, previous_units),
+            (offset, removed, data.len()),
+            formation,
+            limits,
+            cancelled,
+        )
+    }
+
+    pub(super) fn edit_processing_instruction_attribute(
+        &mut self,
+        node: Key,
+        edit: &crate::DomProcessingInstructionAttributeEdit,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        use crate::DomProcessingInstructionAttributeEdit as Edit;
+        let current = self.node(node)?;
+        let transaction::KindRead::ProcessingInstruction(instruction) = current.kind() else {
+            return Err(DomError::WrongNodeKind);
+        };
+        let (name, validate) = match edit {
+            Edit::Set { name, .. } | Edit::Toggle { name, .. } => (name, true),
+            Edit::Remove { name } => (name, false),
+        };
+        if validate
+            && !crate::names::valid_attribute_local_name(name, &mut || self.source_step(cancel))?
+        {
+            return Err(DomError::InvalidCharacter);
+        }
+        let existing = instruction
+            .attribute_with(name.code_units(), || self.source_step(cancel))?
+            .map(|(index, _)| index);
+        let toggle = match edit {
+            Edit::Toggle { force, .. } => Some(force.unwrap_or(existing.is_none())),
+            _ => None,
+        };
+        if let Some(present) = toggle
+            && present == existing.is_some()
+        {
+            return self.register_node_ticket(
+                NodeTicket::ProcessingInstructionAttributePresent(node, present),
+                cancel,
+            );
+        }
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let replacement = match edit {
+            Edit::Set { value, .. } => Some(value),
+            _ => None,
+        };
+        let mut attributes = Vec::new();
+        let count = instruction.attributes().len();
+        let adds = replacement.is_some() || toggle == Some(true);
+        let count = match (existing, adds) {
+            (None, true) => count
+                .checked_add(1)
+                .ok_or(DomError::RepresentationExhausted)?,
+            (Some(_), false) => count - 1,
+            _ => count,
+        };
+        source::formation::reserve(&mut attributes, count, formation.as_ref(), cancel)?;
+        let share =
+            |value: &DocumentString| source::formation::share(value, formation.as_ref(), cancel);
+        for (index, (key, value)) in instruction.attributes().enumerate() {
+            self.source_step(cancel)?;
+            let value = if existing == Some(index) {
+                replacement
+            } else {
+                Some(value)
+            };
+            if let Some(value) = value {
+                attributes.push((share(key)?, share(value)?));
+            }
+        }
+        if existing.is_none() && adds {
+            let name = share(name)?;
+            let value = match replacement {
+                Some(value) => share(value)?,
+                None => source::formation::string("", formation.as_ref(), cancel)?,
+            };
+            attributes.push((name, value));
+        }
+        let old_length = instruction.data().len();
+        let previous_units = current.logical_units()?;
+        let updated = instruction.with_authored_attributes(
+            attributes,
+            limits.units,
+            formation.as_ref(),
+            cancel,
+        )?;
+        let new_length = updated.data().len();
+        if let Some(present) = toggle {
+            self.register_node_ticket(
+                NodeTicket::ProcessingInstructionAttributePresent(node, present),
+                cancel,
+            )?;
+        }
+        self.publish_character_data(
+            node,
+            (NewNode::ProcessingInstruction(updated), previous_units),
+            (0, old_length, new_length),
+            formation,
+            limits,
+            cancel,
+        )
+    }
+
+    fn publish_character_data(
+        &mut self,
+        node: Key,
+        (kind, previous_units): (NewNode, usize),
+        (offset, removed, inserted): (usize, usize, usize),
+        formation: Option<source::formation::Formation>,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
         let retained_occurrence = formation.is_some();
         let credit = match formation.and_then(source::formation::Formation::into_debit) {
             Some(credit) => credit,
@@ -476,7 +593,7 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         self.replace_character_data_retained(node, held, retained_occurrence, cancelled)?;
         self.units = units;
-        self.range_replace_data(node, offset, removed, data.len(), cancelled)?;
+        self.range_replace_data(node, offset, removed, inserted, cancelled)?;
         if let Some(parent) = self.node(node)?.parent() {
             self.children_changed(parent, limits, cancelled)?;
         }

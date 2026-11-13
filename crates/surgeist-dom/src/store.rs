@@ -1195,6 +1195,7 @@ enum NodeOutputKind {
     Document,
     RemovedAttribute,
     AttributeAttachment(AttachmentKind),
+    ProcessingInstructionAttributePresent(bool),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1221,14 +1222,16 @@ enum NodeTicket {
     Node(Key),
     RemovedAttribute(Key),
     AttributeAttachment(Key, AttachmentKind),
+    ProcessingInstructionAttributePresent(Key, bool),
 }
 
 impl NodeTicket {
     fn key(self) -> Key {
         match self {
-            Self::Node(key) | Self::RemovedAttribute(key) | Self::AttributeAttachment(key, _) => {
-                key
-            }
+            Self::Node(key)
+            | Self::RemovedAttribute(key)
+            | Self::AttributeAttachment(key, _)
+            | Self::ProcessingInstructionAttributePresent(key, _) => key,
         }
     }
 }
@@ -1273,6 +1276,9 @@ impl DomCommit {
                 }
                 NodeOutputKind::AttributeAttachment(kind) => {
                     crate::DomSourceOutput::AttributeAttachment(kind.published(*node))
+                }
+                NodeOutputKind::ProcessingInstructionAttributePresent(present) => {
+                    crate::DomSourceOutput::ProcessingInstructionAttributePresent(*present)
                 }
             });
         }
@@ -4021,6 +4027,10 @@ impl Draft {
             } => {
                 let node = self.resolve(node.clone())?;
                 self.replace_data(node, *offset, *count, data.code_units(), limits, cancelled)?;
+            }
+            Command::ProcessingInstructionAttribute { node, edit } => {
+                let node = self.resolve((*node).into())?;
+                self.edit_processing_instruction_attribute(node, edit, limits, cancelled)?;
             }
             Command::Insert {
                 node,

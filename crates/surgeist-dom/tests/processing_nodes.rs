@@ -25,6 +25,158 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
 }
 
 #[test]
+fn authored_pi_attributes_preserve_map_order_and_move_live_ranges() {
+    use surgeist_dom::{
+        DomProcessingInstructionAttributeEdit as Edit, DomSourceEdit, DomSourceLimits,
+        DomSourceOutput, DomSourceProgress,
+    };
+    let cancel = AtomicBool::new(false);
+    let source_limits = DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, 64, 64, 3);
+    let mut dom = Dom::new(limits().with_ranges(4).unwrap()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let pi = batch.create_processing_instruction(&document, "target", "a='1' b='2'");
+    let range = batch.create_range(&document);
+    batch.set_range_start(&range, &pi, 1);
+    batch.set_range_end(&range, &pi, 4);
+    let commit = apply(&mut dom, batch);
+    let pi = commit.created(&pi).unwrap().unwrap();
+    let range = commit.created_range(&range).unwrap().unwrap();
+    let before = dom.snapshot();
+    let mut run = |edit| {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::edit_processing_instruction_attribute(pi, edit),
+                source_limits,
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("expected terminal PI edit");
+        };
+        assert_eq!(done.published_node(), None);
+        done.output()
+    };
+    assert_eq!(
+        run(Edit::Set {
+            name: "a".into(),
+            value: "&<>\"".into()
+        }),
+        None
+    );
+    assert_eq!(
+        run(Edit::Toggle {
+            name: "9key".into(),
+            force: None
+        }),
+        Some(DomSourceOutput::ProcessingInstructionAttributePresent(true))
+    );
+    assert_eq!(
+        run(Edit::Toggle {
+            name: "a".into(),
+            force: Some(false)
+        }),
+        Some(DomSourceOutput::ProcessingInstructionAttributePresent(
+            false
+        ))
+    );
+    let after = dom.snapshot();
+    let DomNodeKind::ProcessingInstruction(value) = after.node(pi).unwrap().kind() else {
+        panic!("processing instruction");
+    };
+    assert_eq!(value.data(), &DocumentString::from("b=\"2\" 9key=\"\""));
+    assert_eq!(
+        value
+            .attributes()
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>(),
+        [DocumentString::from("b"), DocumentString::from("9key")]
+    );
+    assert_eq!(before.range(range).unwrap().end().offset(), 4);
+    assert_eq!(after.range(range).unwrap().start().offset(), 0);
+    assert_eq!(after.range(range).unwrap().end().offset(), 0);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::edit_processing_instruction_attribute(
+                pi,
+                Edit::Set {
+                    name: "a".into(),
+                    value: DocumentString::from("x".repeat(2048)),
+                },
+            ),
+            source_limits,
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::StringCodeUnits,
+            ..
+        })
+    ));
+    drop(lease);
+    assert_eq!(dom.snapshot().stamp(), after.stamp());
+}
+
+#[test]
+fn pi_toggle_reserves_scalar_output_before_publication() {
+    use surgeist_dom::{
+        DomProcessingInstructionAttributeEdit as Edit, DomSourceEdit, DomSourceLimits,
+        DomSourceOutput, DomSourceProgress,
+    };
+    let cancel = AtomicBool::new(false);
+    let limits = |outputs| DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, outputs, 0, 3);
+    let mut dom = Dom::new(self::limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let instruction = batch.create_processing_instruction(&document, "target", "a='1'");
+    let instruction = apply(&mut dom, batch)
+        .created(&instruction)
+        .unwrap()
+        .unwrap();
+    let edit = |name: &str| {
+        DomSourceEdit::edit_processing_instruction_attribute(
+            instruction,
+            Edit::Toggle {
+                name: name.into(),
+                force: Some(true),
+            },
+        )
+    };
+    let before = dom.snapshot();
+    for (name, output_limit) in [("a", 0), ("b", 1)] {
+        let mut lease = dom
+            .begin_source_edit(edit(name), limits(output_limit), &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::SourceOutputLimit)
+        ));
+        drop(lease);
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+    }
+    for (name, output_limit) in [("a", 1), ("b", 2)] {
+        let mut lease = dom
+            .begin_source_edit(edit(name), limits(output_limit), &cancel)
+            .unwrap();
+        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+            panic!("expected terminal PI toggle");
+        };
+        assert_eq!(
+            done.output(),
+            Some(DomSourceOutput::ProcessingInstructionAttributePresent(true))
+        );
+        assert_eq!(done.published_node(), None);
+    }
+    let after = dom.snapshot();
+    assert_eq!(
+        after.node(instruction).unwrap().data(),
+        Some(&DocumentString::from("a=\"1\" b=\"\""))
+    );
+}
+
+#[test]
 fn node_names_follow_each_exposed_node_kind_without_reinterpreting_authored_names() {
     let mut dom = Dom::new(limits()).unwrap();
     let mut batch = DomBatch::new();

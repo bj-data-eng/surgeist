@@ -152,6 +152,7 @@ impl OperationRoot {
             | Command::SetNonce { node, .. }
             | Command::SetMarqueeRunning { node, .. }
             | Command::ReplaceData { node, .. } => existing(node),
+            Command::ProcessingInstructionAttribute { node, .. } => Some(*node),
         }
     }
 }
