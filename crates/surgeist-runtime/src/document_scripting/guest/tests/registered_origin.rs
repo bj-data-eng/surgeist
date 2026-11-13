@@ -3,6 +3,41 @@
 use super::*;
 use surgeist_dom::{DomBatch, NodeId};
 
+pub(in crate::document_scripting) fn document_element_factories_use_native_names_and_identity() {
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (session, target) =
+        crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
+    let mut host = attach_public_nodes(session, target, cancellation, 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "typeof document.createElement === 'function' && typeof document.createElementNS === 'function'")?;
+        assert_guest(
+            scope,
+            r#"(() => {
+                const throws = (action, name) => {
+                    try { action(); } catch (error) { return error.name === name; }
+                    return false;
+                };
+                const first = document.createElement("DIV");
+                const second = document.createElement("div");
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "s:circle");
+                const generic = document.createElementNS("", "DIV");
+                return first !== second && first instanceof HTMLDivElement
+                    && first.localName === "div" && first.ownerDocument === document
+                    && first.parentNode === null
+                    && circle instanceof SVGCircleElement && circle.prefix === "s"
+                    && circle.localName === "circle" && circle.ownerDocument === document
+                    && generic instanceof Element && !(generic instanceof HTMLElement)
+                    && generic.namespaceURI === null && generic.localName === "DIV"
+                    && throws(() => document.createElement("bad name"), "InvalidCharacterError")
+                    && throws(() => document.createElementNS(null, "p:div"), "NamespaceError")
+                    && throws(() => Document.prototype.createElement.call({}, "div"), "TypeError");
+            })()"#,
+        )
+    })
+    .unwrap();
+}
+
 struct RegisteredOrigin {
     host: DocumentScriptHost,
     permit: DocumentScriptPermit,
