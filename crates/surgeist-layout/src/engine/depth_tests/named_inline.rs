@@ -142,3 +142,117 @@ fn deep_named_receiver_returns_typed_refusal_f64() {
         || assert_named_refusal::<f64>(24),
     );
 }
+
+fn assert_named_receiver_geometry<S: LayoutScalar>() {
+    let depth = 3;
+    let first_sibling = 3 * depth;
+    let first_control = first_sibling + depth;
+    let named = InlineBaselineContext::Named(BaselineName::Alphabetic);
+    let mut tree = named_receiver_chain::<S>(depth);
+    for layer in 0..depth - 1 {
+        let child = 3 * layer + 1;
+        let control = first_control + layer;
+        tree =
+            tree.children(child, [child + 1, control]).input(
+                control,
+                crate::LayoutInputOf::line_break(crate::LineBreakInputOf::new().with_metrics(
+                    crate::InlineMetricsOf::try_new(named, S::ZERO, S::ZERO).unwrap(),
+                )),
+            );
+    }
+    let batch =
+        compute_layout(&tree, 0, standalone()).expect("actual named line supplies the baseline");
+    assert_eq!(batch.node_layouts().len(), (5 * depth - 2) as usize);
+    for node in (0..first_sibling - 1).chain(first_sibling..first_control) {
+        let output = batch
+            .node_layout(node)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output();
+        let sibling = node >= first_sibling;
+        assert_eq!(
+            output.size,
+            Size::new(
+                S::from_f64(13.0),
+                S::from_f64(if node == 0 { 80.0 } else { 7.0 })
+            )
+        );
+        assert_eq!(
+            output.location,
+            crate::Point::new(S::ZERO, S::from_f64(if sibling { 7.0 } else { 0.0 }))
+        );
+        assert_eq!(
+            output.source_index,
+            crate::SourceIndex::new(usize::from(sibling))
+        );
+    }
+    for node in core::iter::once(0).chain((0..depth - 1).map(|layer| 3 * layer + 3)) {
+        let output = batch
+            .node_layout(node)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output();
+        let pair = output.named_baselines.get(BaselineName::Alphabetic);
+        assert_eq!(pair.first(), crate::BaselineFactOf::Unknown);
+        // Two 7-unit lines put the receiving line's Alphabetic baseline at14.
+        assert_eq!(
+            pair.last(),
+            crate::BaselineFactOf::Available(
+                crate::BaselineCoordinateOf::try_new(
+                    crate::PhysicalAxis::Vertical,
+                    S::from_f64(14.0)
+                )
+                .unwrap()
+            )
+        );
+    }
+    let terminal = batch
+        .node_layout(3 * (depth - 1) + 1)
+        .unwrap()
+        .single_box()
+        .unwrap()
+        .final_output();
+    let pair = terminal.named_baselines.get(BaselineName::Alphabetic);
+    assert_eq!(pair.first(), crate::BaselineFactOf::Absent);
+    assert_eq!(pair.last(), crate::BaselineFactOf::Absent);
+    for layer in 0..depth - 1 {
+        let child = 3 * layer + 1;
+        let output = batch
+            .node_layout(child)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output();
+        // The Grid is 7 high. Its following zero-height Forced line establishes
+        // the atom's last Alphabetic baseline at 7, without adding box height.
+        assert_eq!(
+            output.named_baselines.get(BaselineName::Alphabetic).last(),
+            crate::BaselineFactOf::Available(
+                crate::BaselineCoordinateOf::try_new(
+                    crate::PhysicalAxis::Vertical,
+                    S::from_f64(7.0)
+                )
+                .unwrap()
+            )
+        );
+        let control = batch
+            .node_layout(first_control + layer)
+            .unwrap()
+            .non_box()
+            .unwrap();
+        assert_eq!(control.source_index(), crate::SourceIndex::new(1));
+    }
+}
+
+#[test]
+fn shallow_named_receiver_publishes_actual_named_lines() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::shallow_named_receiver_publishes_actual_named_lines",
+        || {
+            assert_named_receiver_geometry::<f32>();
+            assert_named_receiver_geometry::<f64>();
+        },
+    );
+}
