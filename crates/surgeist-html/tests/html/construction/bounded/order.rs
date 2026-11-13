@@ -54,8 +54,9 @@ impl Model {
     }
 }
 
-#[test]
-fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
+/// Runs the first `steps` changes of the sequence against the reference model, checking the
+/// storage after each, then publishes and compares the result with the model.
+fn run_child_order_model(steps: usize) {
     const PARENTS: usize = 3;
     const NODES: usize = 9;
     let mut owner = storage();
@@ -81,7 +82,7 @@ fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
         seed ^= seed << 17;
         (seed % bound as u64) as usize
     };
-    for step in 0..600 {
+    for step in 0..steps {
         let node = next(NODES);
         let operation = next(5);
         if operation == 0 {
@@ -125,6 +126,33 @@ fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
                 .map(|parent| parents.iter().position(|p| *p == parent.handle()).unwrap());
             assert_eq!(actual, model.parent_of(index), "step {step}");
         }
+    }
+    // The published result lists the children and names the parents as the model does, and the
+    // nodes no parent holds keep their rows.
+    let mut expected: Vec<Expected> = parents
+        .iter()
+        .enumerate()
+        .map(|(index, parent)| Expected {
+            node: *parent,
+            children: model.parents[index]
+                .iter()
+                .map(|&child| nodes[child])
+                .collect(),
+            parent: None,
+        })
+        .collect();
+    expected.extend(nodes.iter().enumerate().map(|(index, node)| Expected {
+        node: *node,
+        children: Vec::new(),
+        parent: model.parent_of(index).map(|parent| parents[parent]),
+    }));
+    publish_and_compare(owner, parents[0], &expected);
+}
+
+#[test]
+fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
+    for steps in [0, 1, 8, 60, 250, 600] {
+        run_child_order_model(steps);
     }
 }
 
@@ -179,8 +207,10 @@ impl TreeModel {
     }
 }
 
-#[test]
-fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
+/// Runs the first `steps` changes of the sequence against the reference model, checking the
+/// storage after each, then publishes and compares the result with the model. Returns how many
+/// cycles, template refusals, stranger-sibling refusals and reparenting moves the run made.
+fn run_template_model(steps: usize) -> [usize; 4] {
     let mut owner = storage();
     let (next, root) = fragment(owner);
     owner = next;
@@ -216,7 +246,7 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
         (seed % bound as u64) as usize
     };
     let (mut cycles, mut templates, mut strangers, mut moves) = (0, 0, 0, 0);
-    for step in 0..1500 {
+    for step in 0..steps {
         let node = next(nodes.len());
         if next(6) == 0 {
             owner = change(owner, Op::Detach { node: nodes[node] }).0;
@@ -281,6 +311,39 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
             assert_eq!(actual, model.parent_of(index), "step {step}");
         }
     }
-    // The sequence reached every refusal and many reparenting moves.
+    // The published result lists the children and names the parents as the model does. The
+    // containers are the root, the elements and the contents of the templates; an element is its
+    // own container, and the contents have no ordinary parent.
+    let record_of = |container: usize| containers[container];
+    let mut expected: Vec<Expected> = (0..containers.len())
+        .map(|container| Expected {
+            node: record_of(container),
+            children: model.containers[container]
+                .iter()
+                .map(|&child| nodes[child])
+                .collect(),
+            parent: match container {
+                1 | 2 => model.parent_of(container - 1).map(record_of),
+                _ => None,
+            },
+        })
+        .collect();
+    // The nodes that are not containers: the two templates (2, 3) and the leaves.
+    expected.extend((2..nodes.len()).map(|node| Expected {
+        node: nodes[node],
+        children: Vec::new(),
+        parent: model.parent_of(node).map(record_of),
+    }));
+    publish_and_compare(owner, root, &expected);
+    [cycles, templates, strangers, moves]
+}
+
+#[test]
+fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
+    for steps in [0, 1, 12, 100, 400] {
+        run_template_model(steps);
+    }
+    // The full sequence reached every refusal and many reparenting moves.
+    let [cycles, templates, strangers, moves] = run_template_model(1500);
     assert!(cycles > 20 && templates > 20 && strangers > 20 && moves > 100);
 }

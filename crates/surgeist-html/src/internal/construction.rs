@@ -4,6 +4,7 @@ mod attribute_table;
 pub(crate) mod bounded;
 pub(crate) mod names;
 mod text;
+mod tree;
 mod views;
 
 pub use views::{
@@ -22,13 +23,14 @@ use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
     internal::values::QualifiedName, internal::values::TextBlock,
 };
-use attribute_table::{AttributeTable, RowSlice, RunIx};
+use attribute_table::{AttributeTable, RunIx};
 use names::{NameEntry, NameTable};
 use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
     Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
 };
 use text::{TextArena, TextRun};
+use tree::{PublishedRow, RowContent, Tree};
 
 /// The HTML document's selected compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -223,6 +225,14 @@ pub enum HtmlConstructionCause {
     /// table or text arena does not hold, or a published element names rows its result does not
     /// hold.
     InvalidAttributeReference,
+    /// An element record names an entry that its storage's name table does not hold, or a
+    /// published element row names one that its result's name table does not hold.
+    InvalidNameReference,
+    /// A published processing-instruction or doctype row names a leaf that its result does not
+    /// hold. No storage holds such a reference: the publication walk assigns the position of a
+    /// leaf as it pushes the leaf, so a row it writes names a leaf that exists, and the cause is
+    /// reachable only from a tree that no storage built.
+    InvalidLeafReference,
     /// A record was read through a view of a storage that has not published it, where the
     /// operation needs the published result.
     NotPublished,
@@ -341,6 +351,12 @@ impl fmt::Display for HtmlConstructionError {
             Cause::InvalidAttributeReference => f.write_str(
                 "an element or attribute row names a run, row or value its storage does not hold",
             ),
+            Cause::InvalidNameReference => {
+                f.write_str("an element names an entry its name table does not hold")
+            }
+            Cause::InvalidLeafReference => {
+                f.write_str("a leaf row names a value its result does not hold")
+            }
             Cause::NotPublished => {
                 f.write_str("the record is read through a storage that has not published it")
             }
@@ -632,32 +648,14 @@ impl fmt::Display for HtmlProcessingInstructionError {
 }
 impl Error for HtmlProcessingInstructionError {}
 
-/// How a record holds what it keeps in the arenas of its storage: `Self` is the cell that holds
-/// the units of a text or comment, and [`Self::Attrs`] the cell that holds the attributes of an
-/// element.
-///
-/// A [`TextRun`] and an optional run of the attribute table while the storage builds; a
-/// [`DocumentString`] of the published block and an optional slice of the published table once
-/// it is published. A record of one form cannot hold the other.
-trait Cell {
-    /// The attributes of an element in this form.
-    type Attrs: Clone + fmt::Debug + Eq;
-}
-impl Cell for TextRun {
-    type Attrs = Option<RunIx>;
-}
-impl Cell for DocumentString {
-    type Attrs = Option<RowSlice>;
-}
-
 /// The stored name, attributes and link history of an element record.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ElementContent<T: Cell> {
+struct ElementContent {
     link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
     name: Arc<NameEntry>,
-    attrs: T::Attrs,
+    attrs: Option<RunIx>,
 }
-impl<T: Cell> ElementContent<T> {
+impl ElementContent {
     fn name(&self) -> &QualifiedName {
         self.name.name()
     }
@@ -666,34 +664,27 @@ impl<T: Cell> ElementContent<T> {
     }
 }
 
-/// The stored content of a node record. Readers see it only through [`HtmlNodeKind`] and
-/// [`ConstructionNodeKind`].
+/// The stored content of a node record of a storage that builds. Readers see it only through
+/// [`ConstructionNodeKind`]; a published result holds its content in rows.
 ///
-/// `T` is how the content holds the units of a text or comment: a [`TextRun`] of the storage's
-/// text arena while the storage builds, and a [`DocumentString`] of the published block once it
-/// is published. A record of one form cannot hold the other.
+/// A text or comment holds a [`TextRun`] of the storage's text arena.
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum NodeContent<T: Cell> {
+enum NodeContent {
     /// The Document node, carrying the compatibility mode selected when it was built.
     Document(HtmlDocumentMode),
     /// A document-fragment root.
     Fragment,
     /// An element with its exact qualified name and ordered raw attributes.
-    Element(ElementContent<T>),
+    Element(ElementContent),
     /// A text node; the payload preserves the exact UTF-16 code units.
-    Text(T),
+    Text(TextRun),
     /// A comment node; the payload preserves the exact UTF-16 code units.
-    Comment(T),
+    Comment(TextRun),
     /// A processing instruction recorded with its exact target and data.
     ProcessingInstruction(HtmlProcessingInstruction),
     /// A document type declaration.
     Doctype(HtmlDoctype),
 }
-
-/// The content of a record while its storage builds.
-type BuildContent = NodeContent<TextRun>;
-/// The content of a record of a published result.
-type PublishedContent = NodeContent<DocumentString>;
 
 /// Declarative shadow-root visibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -759,14 +750,14 @@ impl HtmlShadowRootProperties {
         self.serializable
     }
 }
-/// A borrowed local shadow association with properties owned by its fragment.
+/// A local shadow association with the properties its fragment holds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlDeclarativeShadowRoot<'a> {
+pub struct HtmlDeclarativeShadowRoot {
     host: HtmlNodeId,
     contents: HtmlNodeId,
-    properties: &'a HtmlShadowRootProperties,
+    properties: HtmlShadowRootProperties,
 }
-impl<'a> HtmlDeclarativeShadowRoot<'a> {
+impl HtmlDeclarativeShadowRoot {
     /// Host element identity.
     pub fn host(&self) -> HtmlNodeId {
         self.host
@@ -777,7 +768,7 @@ impl<'a> HtmlDeclarativeShadowRoot<'a> {
     }
     /// Actual properties retained once with the shadow contents.
     pub fn properties(&self) -> HtmlShadowRootProperties {
-        *self.properties
+        self.properties
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -835,8 +826,8 @@ pub enum HtmlFocusedAreaDesignation {
 }
 
 #[derive(Debug)]
-struct Record<T: Cell> {
-    kind: NodeContent<T>,
+struct Record {
+    kind: NodeContent,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<NodeIx>,
     /// The ordinary children in order. A deque, so that taking or placing an entry near either
@@ -866,44 +857,8 @@ struct Record<T: Cell> {
     /// counted, then read, so a stale value is never trusted.
     publish_found: u8,
 }
-impl Record<TextRun> {
-    /// This record as a record of a published result, with `kind` for its content, which was made
-    /// from this record's content. Every other field moves unchanged.
-    fn published(self, kind: PublishedContent) -> Record<DocumentString> {
-        let Self {
-            kind: _,
-            document_focused_area_designation,
-            parent,
-            children,
-            depth,
-            population,
-            walk_cursor,
-            level_count,
-            template_contents,
-            shadow,
-            shadow_properties,
-            owner,
-            publish_found,
-        } = self;
-        Record {
-            kind,
-            document_focused_area_designation,
-            parent,
-            children,
-            depth,
-            population,
-            walk_cursor,
-            level_count,
-            template_contents,
-            shadow,
-            shadow_properties,
-            owner,
-            publish_found,
-        }
-    }
-}
-impl<T: Cell> Record<T> {
-    fn new(kind: NodeContent<T>, parent: Option<NodeIx>, depth: usize) -> Self {
+impl Record {
+    fn new(kind: NodeContent, parent: Option<NodeIx>, depth: usize) -> Self {
         let document_focused_area_designation = matches!(kind, NodeContent::Document(_))
             .then_some(HtmlFocusedAreaDesignation::Unavailable);
         Self {
@@ -923,9 +878,10 @@ impl<T: Cell> Record<T> {
         }
     }
 }
+/// The records of a storage that builds, with the names of its elements and attributes.
 #[derive(Debug)]
-struct Arena<T: Cell> {
-    records: Vec<Record<T>>,
+struct BuildArena {
+    records: Vec<Record>,
     /// The names of the elements and attributes of the records.
     names: NameTable,
     usage: HtmlConstructionUsage,
@@ -938,22 +894,8 @@ struct Arena<T: Cell> {
     // describes from those that have changed since.
     attribute_revision: u64,
 }
-/// A publication replaces the vector of records of a storage with a vector of published records
-/// and the consumer records the capacity of the one it replaces as the bank the other grows from,
-/// which holds only while the two records have one size.
-const _: () = assert!(size_of::<Record<TextRun>>() == size_of::<Record<DocumentString>>());
-/// The contents vector of a publication holds one published content for each record, and the
-/// build view of a record charges the size of its content to the inspections that read it, so the
-/// content of a record is one size in both forms.
-const _: () =
-    assert!(size_of::<NodeContent<TextRun>>() == size_of::<NodeContent<DocumentString>>());
 
-/// The arena of a storage that builds, whose text is in its storage's text arena.
-type BuildArena = Arena<TextRun>;
-/// The arena of a published result.
-type PublishedArena = Arena<DocumentString>;
-
-impl<T: Cell> Arena<T> {
+impl BuildArena {
     /// How many records have exactly this depth.
     fn population(&self, depth: usize) -> usize {
         self.records
@@ -983,14 +925,13 @@ impl<T: Cell> Arena<T> {
     }
     /// The declarative shadow root of the host element at `index`: the association whose contents
     /// carry shadow properties.
-    fn declarative_shadow_root(&self, index: NodeIx) -> Option<HtmlDeclarativeShadowRoot<'_>> {
-        let relation = self.records[index.position()].shadow.as_ref()?;
+    fn declarative_shadow_root(&self, index: NodeIx) -> Option<HtmlDeclarativeShadowRoot> {
+        let relation = self.records.get(index.position())?.shadow.as_ref()?;
         // A declarative shadow root is an association whose contents carry shadow properties.
         let properties = self
             .records
             .get(relation.contents.index.position())?
-            .shadow_properties
-            .as_ref()?;
+            .shadow_properties?;
         Some(HtmlDeclarativeShadowRoot {
             host: relation.host,
             contents: relation.contents,
@@ -1006,78 +947,106 @@ impl<T: Cell> Arena<T> {
         Ok(id.index)
     }
 }
-impl PublishedArena {
-    fn lookup(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
-        Ok(HtmlNode {
-            arena: self,
-            index: self.lookup_index(id)?,
-        })
-    }
-}
 
 /// A borrowed immutable node view, with ordinary and association edges distinct.
+///
+/// The view holds the row it reads and the run of its children, which one checked lookup of the
+/// result's tree found when the view was made. A result a storage published resolves both; a view
+/// that does not hold its row reads as [`HtmlNodeKind::Unreadable`].
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlNode<'a> {
-    arena: &'a PublishedArena,
+    tree: &'a Tree,
     index: NodeIx,
+    row: Option<&'a PublishedRow>,
+    children: &'a [NodeIx],
 }
 impl<'a> HtmlNode<'a> {
     /// Result-qualified node identity.
     pub fn id(self) -> HtmlNodeId {
-        self.arena.id(self.index)
+        self.tree.id(self.index)
     }
     /// The node's content, by value.
+    ///
+    /// A text, comment, processing-instruction or doctype payload shares the result's block or
+    /// stored value, and an element borrows its name and attributes from the result. A reference
+    /// of the node's row that the result does not resolve is [`HtmlNodeKind::Unreadable`]: publication
+    /// checks every reference, so no result a storage published has one.
     pub fn kind(self) -> HtmlNodeKind<'a> {
-        self.content().published()
+        match self.row {
+            Some(row) => self.tree.kind(row),
+            None => HtmlNodeKind::Unreadable(HtmlConstructionCause::UnknownNode),
+        }
     }
-    fn content(self) -> &'a PublishedContent {
-        &self.arena.records[self.index.position()].kind
+    fn content(self) -> Option<&'a RowContent> {
+        self.row.map(|row| &row.content)
     }
     /// Original design-mode state of this owned Document, or `None` for a
     /// non-Document. Controlled construction initializes Documents with design
     /// mode disabled and admits no operation that changes it. Captured external
     /// Documents are not owned construction nodes and receive no such grant.
     pub fn document_design_mode_enabled(self) -> Option<bool> {
-        matches!(self.content(), NodeContent::Document(_)).then_some(false)
+        matches!(self.content(), Some(RowContent::Document { .. })).then_some(false)
     }
     /// Stored original designation of this owned Document, or `None` for a
     /// non-Document. Only the controlled CreateDocument transition issues known
     /// null. Its closed operation domain preserves that state through recovery
     /// and publication; captured external Documents receive no such grant.
     pub fn document_focused_area_designation(self) -> Option<HtmlFocusedAreaDesignation> {
-        self.arena.records[self.index.position()].document_focused_area_designation
+        match self.content()? {
+            RowContent::Document {
+                known_null_focus, ..
+            } => Some(if *known_null_focus {
+                HtmlFocusedAreaDesignation::KnownNull
+            } else {
+                HtmlFocusedAreaDesignation::Unavailable
+            }),
+            _ => None,
+        }
     }
     /// Ordinary parent; association fragment roots have no ordinary parent.
     pub fn parent(self) -> Option<HtmlNodeId> {
-        self.arena.records[self.index.position()]
-            .parent
-            .map(|index| self.arena.id(index))
+        self.row?.parent.map(|index| self.tree.id(index))
     }
-    /// Ordinary children in exact append order; associations are excluded.
+    /// Ordinary children in exact append order; associations are excluded. A child is reached by
+    /// its index in constant time from either end.
     pub fn children(self) -> impl ExactSizeIterator<Item = HtmlNodeId> + DoubleEndedIterator + 'a {
-        self.arena.records[self.index.position()]
-            .children
-            .iter()
-            .map(|index| self.arena.id(*index))
+        tree::ChildIds::new(self.tree.serial, self.children)
+    }
+    fn contents_entry(self) -> Option<&'a tree::Assoc> {
+        self.tree.associations_of(self.index).find(|entry| {
+            matches!(
+                entry.kind,
+                tree::AssocKind::Owned | tree::AssocKind::ShadowReference
+            )
+        })
     }
     /// Separate contents of an HTML template element.
     pub fn template_contents(self) -> Option<HtmlNodeId> {
-        self.arena.records[self.index.position()]
-            .template_contents
-            .map(|contents| self.arena.id(contents.position()))
+        self.contents_entry()
+            .map(|entry| self.tree.id(entry.contents))
     }
     /// Native declarative shadow association, if supplied. A declarative shadow root is the
     /// association whose contents carry shadow properties, and publication refuses any `shadow`
     /// relation whose contents lack them (`validate_record`, `InvalidShadowAssociation`), so a
     /// published tree has no association that this answers with `None`.
-    pub fn declarative_shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
-        self.arena.declarative_shadow_root(self.index)
+    pub fn declarative_shadow_root(self) -> Option<HtmlDeclarativeShadowRoot> {
+        self.tree
+            .associations_of(self.index)
+            .find_map(|entry| match entry.kind {
+                tree::AssocKind::Shadow(properties) => Some(HtmlDeclarativeShadowRoot {
+                    host: self.id(),
+                    contents: self.tree.id(entry.contents),
+                    properties: properties.unpack(),
+                }),
+                _ => None,
+            })
     }
     /// Distinguishes an owning template association from a shadow reference.
     pub fn template_contents_kind(self) -> Option<HtmlTemplateContentsKind> {
-        self.arena.records[self.index.position()]
-            .template_contents
-            .map(TemplateContents::kind)
+        self.contents_entry().map(|entry| match entry.kind {
+            tree::AssocKind::ShadowReference => HtmlTemplateContentsKind::ShadowReference,
+            _ => HtmlTemplateContentsKind::Owned,
+        })
     }
     /// Whether this fragment was explicitly constructed as shadow contents.
     pub fn is_shadow_contents(self) -> bool {
@@ -1085,11 +1054,26 @@ impl<'a> HtmlNode<'a> {
     }
     /// Actual shadow properties, including when no local host exists.
     pub fn shadow_properties(self) -> Option<HtmlShadowRootProperties> {
-        self.arena.records[self.index.position()].shadow_properties
+        match self.content()? {
+            RowContent::Fragment { shadow, .. } => shadow.map(tree::PackedShadow::unpack),
+            _ => None,
+        }
     }
     /// Template or shadow association owning this fragment root.
     pub fn fragment_owner(self) -> Option<HtmlFragmentOwner> {
-        self.arena.records[self.index.position()].owner
+        match self.content()? {
+            RowContent::Fragment {
+                owner: Some(owner), ..
+            } => {
+                let id = self.tree.id(owner.node);
+                Some(if owner.shadow_host {
+                    HtmlFragmentOwner::ShadowHost(id)
+                } else {
+                    HtmlFragmentOwner::Template(id)
+                })
+            }
+            _ => None,
+        }
     }
 }
 
@@ -1097,9 +1081,9 @@ impl<'a> HtmlNode<'a> {
 /// It makes no claim about parsing, source provenance, or conformance checking.
 #[derive(Clone, Debug)]
 pub struct HtmlDocument {
-    arena: Arc<PublishedArena>,
+    tree: Arc<Tree>,
     root: NodeIx,
-    /// The mode the published root Document had, which an immutable arena cannot change.
+    /// The mode the published root Document had, which an immutable tree cannot change.
     mode: HtmlDocumentMode,
 }
 impl HtmlDocument {
@@ -1130,10 +1114,7 @@ impl HtmlDocument {
     }
     /// Document root.
     pub fn root(&self) -> HtmlNode<'_> {
-        HtmlNode {
-            arena: &self.arena,
-            index: self.root,
-        }
+        self.tree.node(self.root)
     }
     /// Explicit document mode, unaffected by authored doctype text.
     pub fn mode(&self) -> HtmlDocumentMode {
@@ -1141,21 +1122,21 @@ impl HtmlDocument {
     }
     /// Looks up a node, explicitly rejecting foreign-result identities.
     pub fn node(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
-        self.arena.lookup(id)
+        self.tree.lookup(id)
     }
     /// Admitted construction usage.
     pub fn usage(&self) -> HtmlConstructionUsage {
-        self.arena.usage
+        self.tree.usage
     }
-    /// Obtains a separate immutable fragment view from the same flat arena.
+    /// Obtains a separate immutable fragment view from the same flat tree.
     pub fn fragment(&self, id: &HtmlNodeId) -> Result<Option<HtmlFragment>, ForeignHtmlResult> {
-        fragment_view(&self.arena, id)
+        fragment_view(&self.tree, id)
     }
 }
 /// A concrete immutable HTML fragment, including associated template/shadow views.
 #[derive(Clone, Debug)]
 pub struct HtmlFragment {
-    arena: Arc<PublishedArena>,
+    tree: Arc<Tree>,
     root: NodeIx,
 }
 impl HtmlFragment {
@@ -1179,34 +1160,34 @@ impl HtmlFragment {
     }
     /// Fragment root, whose children are the fragment's ordinary output.
     pub fn root(&self) -> HtmlNode<'_> {
-        HtmlNode {
-            arena: &self.arena,
-            index: self.root,
-        }
+        self.tree.node(self.root)
     }
-    /// Looks up an identity from this arena, including its associated fragments.
+    /// Looks up an identity from this tree, including its associated fragments.
     pub fn node(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
-        self.arena.lookup(id)
+        self.tree.lookup(id)
     }
-    /// Usage for the whole shared construction arena, not just this fragment view.
+    /// Usage for the whole shared construction tree, not just this fragment view.
     pub fn usage(&self) -> HtmlConstructionUsage {
-        self.arena.usage
+        self.tree.usage
     }
     /// Obtains another fragment view belonging to the same construction result.
     pub fn fragment(&self, id: &HtmlNodeId) -> Result<Option<HtmlFragment>, ForeignHtmlResult> {
-        fragment_view(&self.arena, id)
+        fragment_view(&self.tree, id)
     }
 }
 fn fragment_view(
-    arena: &Arc<PublishedArena>,
+    tree: &Arc<Tree>,
     id: &HtmlNodeId,
 ) -> Result<Option<HtmlFragment>, ForeignHtmlResult> {
-    Ok(
-        matches!(arena.lookup(id)?.content(), NodeContent::Fragment).then(|| HtmlFragment {
-            arena: arena.clone(),
-            root: id.index,
-        }),
+    let index = tree.lookup_index(id)?;
+    Ok(matches!(
+        tree.node(index).content(),
+        Some(RowContent::Fragment { .. })
     )
+    .then(|| HtmlFragment {
+        tree: tree.clone(),
+        root: index,
+    }))
 }
 
 /// The root a native builder creates: the closed set of kinds that can be published.
@@ -2042,24 +2023,22 @@ mod tests {
 
     #[test]
     fn unqualified_document_record_readback_is_not_a_node_kind_constant() {
-        let arena = Arena {
-            records: vec![Record::new(
-                NodeContent::Document(HtmlDocumentMode::NoQuirks),
-                None,
-                0,
-            )],
-            names: NameTable::new(),
-            usage: HtmlConstructionUsage::default(),
-            serial: 0,
-            attribute_revision: 0,
+        let document = |known_null_focus| PublishedRow {
+            parent: None,
+            child_end: 0,
+            content: RowContent::Document {
+                mode: HtmlDocumentMode::NoQuirks,
+                known_null_focus,
+            },
         };
-        let node = HtmlNode {
-            arena: &arena,
-            index: NodeIx::FIRST,
-        };
+        let tree = Tree::forged(vec![document(false), document(true)]);
         assert_eq!(
-            node.document_focused_area_designation(),
+            tree.node(NodeIx::FIRST).document_focused_area_designation(),
             Some(HtmlFocusedAreaDesignation::Unavailable)
+        );
+        assert_eq!(
+            tree.node(NodeIx::at(1)).document_focused_area_designation(),
+            Some(HtmlFocusedAreaDesignation::KnownNull)
         );
     }
 
@@ -2072,7 +2051,7 @@ mod tests {
             data: DocumentString::from("a?"),
         };
         let record = Record::new(
-            NodeContent::<DocumentString>::ProcessingInstruction(recovered.clone()),
+            NodeContent::ProcessingInstruction(recovered.clone()),
             None,
             0,
         );
@@ -2540,6 +2519,14 @@ mod cause_tests {
             (
                 HtmlConstructionCause::InvalidAttributeReference,
                 "an element or attribute row names a run, row or value its storage does not hold",
+            ),
+            (
+                HtmlConstructionCause::InvalidNameReference,
+                "an element names an entry its name table does not hold",
+            ),
+            (
+                HtmlConstructionCause::InvalidLeafReference,
+                "a leaf row names a value its result does not hold",
             ),
             (
                 HtmlConstructionCause::ReleaseUnderflow,

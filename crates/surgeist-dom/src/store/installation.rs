@@ -593,6 +593,15 @@ impl Dom {
                         HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => {
                             return Err(source_error(&visit.source, DomError::HierarchyRequest));
                         }
+                        // A reference of the source node that its result does not resolve is a
+                        // defect in the source result, which publication rules out; the
+                        // installation fails on it with the cause and never skips the node.
+                        HtmlNodeKind::Unreadable(cause) => {
+                            return Err(Error::UnreadableSource {
+                                subject: visit.source,
+                                cause,
+                            });
+                        }
                     };
                     draft
                         .allocate_formed(kind, document, self.limits, cancelled, formation)

@@ -6,6 +6,7 @@ use crate::internal::construction::{HtmlShadowRootMode, HtmlSlotAssignment};
 use crate::internal::values::{Attribute, Namespace};
 
 mod names_tests;
+mod publication_refusals;
 
 /// The refusal of a [`Meter`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -207,30 +208,16 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Vec<String> {
     rows.push(format!("attributes {:?}", storage.attrs));
     rows
 }
-/// The units of a text or comment of either form of record, as the length they have.
-trait Leaf: Cell + std::fmt::Debug {
-    fn units(&self) -> usize;
-}
-impl Leaf for TextRun {
-    fn units(&self) -> usize {
-        self.len()
-    }
-}
-impl Leaf for DocumentString {
-    fn units(&self) -> usize {
-        self.len()
-    }
-}
-/// The content of a record without the way it holds its text, which differs between the forms.
-fn kind_shape<T: Leaf>(kind: &NodeContent<T>) -> String {
+/// The content of a record without the way it holds its text.
+fn kind_shape(kind: &NodeContent) -> String {
     match kind {
-        NodeContent::Text(text) => format!("Text of {} units", text.units()),
-        NodeContent::Comment(text) => format!("Comment of {} units", text.units()),
+        NodeContent::Text(text) => format!("Text of {} units", text.len()),
+        NodeContent::Comment(text) => format!("Comment of {} units", text.len()),
         other => format!("{other:?}"),
     }
 }
 /// The logical state of an arena.
-fn arena_snapshot<T: Leaf>(arena: &Arena<T>) -> Vec<String> {
+fn arena_snapshot(arena: &BuildArena) -> Vec<String> {
     let mut rows = vec![format!("{:?}", arena.usage)];
     for (index, record) in arena.records.iter().enumerate() {
         rows.push(format!(
@@ -248,6 +235,57 @@ fn arena_snapshot<T: Leaf>(arena: &Arena<T>) -> Vec<String> {
         ));
     }
     rows
+}
+
+/// The content of a record as a reader sees it, without the form of the storage it came from.
+fn view_kind(kind: crate::internal::construction::ConstructionNodeKind<'_>) -> String {
+    use crate::internal::construction::ConstructionNodeKind as Kind;
+    match kind {
+        Kind::Element(element) => {
+            let attributes: Vec<_> = element
+                .attributes()
+                .iter()
+                .expect("the attributes of an element")
+                .map(|attribute| (attribute.name().clone(), attribute.value()))
+                .collect();
+            format!(
+                "Element {:?} {:?} {attributes:?}",
+                element.name(),
+                element.link_flags()
+            )
+        }
+        other => format!("{other:?}"),
+    }
+}
+
+/// What a reader sees of the records of a storage that builds or of a published result: the
+/// content, the place in the tree and the associations of every record, through the one view both
+/// forms share.
+fn view_snapshot<'a>(
+    len: usize,
+    node_at: impl Fn(usize) -> Option<HtmlConstructionNode<'a>>,
+) -> Vec<String> {
+    (0..len)
+        .map(|index| {
+            let node = node_at(index).expect("a record of the view");
+            let positions = |nodes: Vec<HtmlConstructionNode<'_>>| {
+                nodes.into_iter().map(|node| node.position()).collect::<Vec<_>>()
+            };
+            let shadow = node
+                .shadow_root()
+                .map(|root| (root.host(), root.contents(), root.properties()));
+            format!(
+                "{index} {} parent {:?} children {:?} contents {:?} {:?} shadow {shadow:?} properties {:?} owner {:?}",
+                view_kind(node.kind()),
+                node.parent().map(HtmlConstructionNode::position),
+                positions(node.children().collect()),
+                node.template_contents().map(HtmlConstructionNode::position),
+                node.template_contents_kind(),
+                node.shadow_properties(),
+                node.fragment_owner(),
+            )
+        })
+        .collect()
 }
 
 #[test]
@@ -349,7 +387,7 @@ fn a_template_creates_its_owned_contents_and_one_edge() {
     );
     assert!(matches!(
         contents.fragment_owner(),
-        Some(HtmlFragmentOwner::Template(owner)) if *owner == storage.result_id(&template).unwrap()
+        Some(HtmlFragmentOwner::Template(owner)) if owner == storage.result_id(&template).unwrap()
     ));
     assert_eq!(storage.usage().nodes(), 2);
     assert_eq!(storage.usage().edges(), 1);
@@ -383,10 +421,7 @@ fn a_creation_charges_its_rows_its_units_and_its_growth() {
     assert_eq!(meter.growths.len(), 2);
     assert_eq!(meter.growths[0].bank(), HtmlConstructionBank::Records);
     assert_eq!(meter.growths[0].minimum_capacity(), 1);
-    assert_eq!(
-        meter.growths[0].element_size(),
-        size_of::<Record<TextRun>>()
-    );
+    assert_eq!(meter.growths[0].element_size(), size_of::<Record>());
     assert_eq!(meter.growths[1].bank(), HtmlConstructionBank::TextArena);
     assert_eq!(meter.growths[1].minimum_capacity(), 3);
     assert_eq!(meter.growths[1].element_size(), 2);
@@ -394,16 +429,13 @@ fn a_creation_charges_its_rows_its_units_and_its_growth() {
     // The rows and the usage, then 3 units = 6 bytes in one run.
     assert_eq!(
         meter.work[COPY] as usize,
-        size_of::<Record<TextRun>>() + size_of::<usize>() + size_of::<HtmlConstructionUsage>() + 6
+        size_of::<Record>() + size_of::<usize>() + size_of::<HtmlConstructionUsage>() + 6
     );
     // Two writes per record, one for the usage, one for the run of units.
     assert_eq!(meter.work[WRITE], 2 + 1 + 1);
     assert_eq!(meter.work[VISIT], 0);
     let largest = meter.largest.clone();
-    assert!(largest.contains(&(
-        HtmlResource::AtomicLayoutBytes,
-        size_of::<Record<TextRun>>() as u64
-    )));
+    assert!(largest.contains(&(HtmlResource::AtomicLayoutBytes, size_of::<Record>() as u64)));
     assert!(largest.contains(&(HtmlResource::TreeDepth, 0)));
     // The first record of each growth is the capacity chosen; the second is absent when the
     // reservation reached what was chosen.
@@ -591,7 +623,7 @@ fn shadow_and_template_associations_set_owners_edges_and_depths() {
     );
     assert!(matches!(
         storage.node(&contents).unwrap().fragment_owner(),
-        Some(HtmlFragmentOwner::ShadowHost(owner)) if *owner == host_id
+        Some(HtmlFragmentOwner::ShadowHost(owner)) if owner == host_id
     ));
     // The shadow contents sit one below the host, and their child one more.
     assert_eq!(
@@ -760,7 +792,7 @@ fn a_publication_validates_the_tree_and_hands_the_storage_back_when_refused() {
             Ok(_) => panic!("published a bad root"),
         }
     }
-    let before = arena_snapshot(&storage.arena);
+    let before = view_snapshot(storage.len(), |at| storage.node_at(at));
     let mut meter = Meter::default();
     let Ok(result) = storage.publish(&root, &mut meter) else {
         panic!("publication refused");
@@ -777,13 +809,13 @@ fn a_publication_validates_the_tree_and_hands_the_storage_back_when_refused() {
             .collect::<Vec<_>>(),
         [
             HtmlConstructionBank::Wrapper,
-            HtmlConstructionBank::PublishedContents,
-            HtmlConstructionBank::PublishedRecords,
+            HtmlConstructionBank::PublishedRows,
+            HtmlConstructionBank::PublishedChildren,
         ]
     );
     assert!(meter.changes.is_empty());
     // The result holds the records exactly as the storage did.
-    assert_eq!(arena_snapshot(result.arena()), before);
+    assert_eq!(view_snapshot(result.len(), |at| result.node_at(at)), before);
 }
 
 /// Runs `operation` with a consumer that refuses at each admission point in turn, and checks that
@@ -1724,29 +1756,28 @@ fn a_publication_packs_an_arena_with_more_than_a_quarter_of_its_units_spare() {
         banks,
         [
             HtmlConstructionBank::Wrapper,
-            HtmlConstructionBank::PublishedContents,
             HtmlConstructionBank::TextBlock,
-            HtmlConstructionBank::PublishedRecords,
+            HtmlConstructionBank::PublishedRows,
+            HtmlConstructionBank::PublishedChildren,
         ]
     );
     // The block is exactly the units the texts hold, and its growth names the arena it replaces.
-    let block = meter.growths[2];
+    let block = meter.growths[1];
     assert_eq!(block.before().capacity(), spare);
     assert_eq!(block.minimum_capacity(), 1);
     assert_eq!(block.element_size(), 2);
     let text = published_text(&result);
     assert_eq!(text.code_units(), utf16("t"));
     assert_eq!(text.block().capacity(), 1);
-    // The published records replace the vector of the storage, of the same record size.
-    let records = meter.growths[3];
-    assert!(records.before().capacity() >= result.len());
-    assert_eq!(records.before().initialized_len(), 0);
-    assert_eq!(records.minimum_capacity(), result.len());
-    assert_eq!(records.element_size(), size_of::<Record<TextRun>>());
-    assert_eq!(
-        meter.growths[1].element_size(),
-        size_of::<NodeContent<DocumentString>>()
-    );
+    // The rows are a bank of their own, exact and of the row size, and every child but the
+    // detached one is listed once.
+    let rows = meter.growths[2];
+    assert_eq!(rows.before(), HtmlConstructionBankCapacity::default());
+    assert_eq!(rows.minimum_capacity(), result.len());
+    assert_eq!(rows.element_size(), 20);
+    let children = meter.growths[3];
+    assert_eq!(children.minimum_capacity(), 3);
+    assert_eq!(children.element_size(), 4);
 }
 
 #[test]
@@ -1813,9 +1844,9 @@ fn a_publication_refused_at_any_step_leaves_the_consumer_holding_nothing_of_it()
         (spare_tree as Make, Some(HtmlConstructionBank::TextBlock)),
         (
             spare_tree as Make,
-            Some(HtmlConstructionBank::PublishedRecords),
+            Some(HtmlConstructionBank::PublishedRows),
         ),
-        (tree as Make, Some(HtmlConstructionBank::PublishedContents)),
+        (tree as Make, Some(HtmlConstructionBank::PublishedChildren)),
     ] {
         let mut refusals_after_a_record = 0;
         for index in 0..10_000 {
@@ -1883,8 +1914,8 @@ fn a_publication_that_packs_is_refused_at_every_admission_point_with_the_storage
 fn an_allocator_that_refuses_the_spare_room_of_a_publication_bank_is_asked_for_the_room_needed() {
     for (bank, needed) in [
         (HtmlConstructionBank::TextBlock, 1),
-        (HtmlConstructionBank::PublishedRecords, 5),
-        (HtmlConstructionBank::PublishedContents, 5),
+        (HtmlConstructionBank::PublishedRows, 5),
+        (HtmlConstructionBank::PublishedChildren, 3),
     ] {
         let (storage, [root, ..]) = spare_tree();
         let mut meter = Meter {
@@ -2093,8 +2124,8 @@ fn the_published_attributes_read_back_exactly_in_the_one_block_with_the_text() {
             banks[..3],
             [
                 HtmlConstructionBank::Wrapper,
-                HtmlConstructionBank::PublishedContents,
                 HtmlConstructionBank::PublishedAttributes,
+                HtmlConstructionBank::PublishedRuns,
             ]
         );
         assert_eq!(
@@ -2103,9 +2134,9 @@ fn the_published_attributes_read_back_exactly_in_the_one_block_with_the_text() {
             "the arena is packed when more than a quarter is spare"
         );
         // The table of the result is exact: three rows of 24 bytes, whatever the storage held.
-        assert_eq!(meter.growths[2].minimum_capacity(), 3);
+        assert_eq!(meter.growths[1].minimum_capacity(), 3);
         assert_eq!(
-            meter.growths[2].element_size(),
+            meter.growths[1].element_size(),
             size_of::<crate::internal::construction::attribute_table::PublishedAttr>()
         );
         let at = result.position(&parent).unwrap();
@@ -2587,7 +2618,7 @@ fn a_publication_with_attributes_is_refused_at_every_admission_point_and_takes_e
             }
         });
         let growths = calls.iter().filter(|call| **call == "admit_growth").count();
-        assert_eq!(growths, 4 + usize::from(spare), "spare: {spare}");
+        assert_eq!(growths, 5 + usize::from(spare), "spare: {spare}");
     }
     // The consumer's own ledger: a refusal after every bank was recorded leaves it holding
     // what it held before the publication, the published attribute table included.
@@ -2680,12 +2711,12 @@ fn a_value_the_arena_lacks_and_a_run_the_table_lacks_refuse_the_publication_and_
     assert_eq!(snapshot(&storage), before);
 }
 
-/// The names of the banks a publication recorded with its consumer, in order.
-fn recorded_bank_names(meter: &Meter) -> Vec<String> {
+/// The banks a publication recorded with its consumer, in the order it recorded them.
+fn recorded_banks(meter: &Meter) -> Vec<HtmlConstructionBank> {
     meter
         .records
         .iter()
-        .map(|record| format!("{:?}", record.growth().bank()))
+        .map(|record| record.growth().bank())
         .collect()
 }
 
@@ -2696,36 +2727,344 @@ fn a_published_tree_retains_twenty_bytes_a_node_four_a_child_entry_and_eight_an_
     let Ok(result) = publish_tree(storage, &root, &mut meter) else {
         panic!("publication refused");
     };
-    // The tree has five nodes under one root, four of them listed as children, and one element
-    // with attributes. The banks that describe the shape of the tree are the published banks
-    // other than the text block, the attribute rows and the wrapper of the result.
-    let (nodes, roots, children, runs) = (5usize, 1usize, 4usize, 1usize);
-    assert_eq!(result.len(), nodes);
-    let shape: usize = meter
-        .records
-        .iter()
-        .filter(|record| {
-            let name = format!("{:?}", record.growth().bank());
-            name.starts_with("Published")
-                && !name.contains("Attributes")
-                && !name.contains("Contents")
-        })
-        .map(|record| record.reached().capacity() * record.growth().element_size())
-        .sum();
-    assert_eq!(nodes - roots, children);
-    assert_eq!(shape, 20 * nodes + 4 * children + 8 * runs);
+    // The nodes, the child entries and the runs are read from the published tree: the entries are
+    // the children its rows list, and a run is held by each element that has attributes.
+    let nodes = result.len();
+    let mut children = 0usize;
+    let mut runs = 0usize;
+    for position in 0..nodes {
+        let node = result.node_at(position).unwrap().as_node().unwrap();
+        children += node.children().len();
+        if let crate::internal::construction::HtmlNodeKind::Element(element) = node.kind() {
+            runs += usize::from(!element.attributes().is_empty());
+        }
+    }
+    // The fixture is one fragment root with two elements, a text and a comment below it, and one
+    // element with attributes. Every node but the one root is listed once.
+    assert_eq!((nodes, children, runs), (5, 4, 1));
+    assert_eq!(children, nodes - 1);
+    // The banks that describe the shape of the tree are the rows, the child entries and the
+    // runs; the tree has no associations or leaves, so no bank is made for them. The text block
+    // is not packed, and the published attribute rows and the wrapper of the result are not part
+    // of the shape.
+    assert_eq!(
+        recorded_banks(&meter),
+        [
+            HtmlConstructionBank::Wrapper,
+            HtmlConstructionBank::PublishedAttributes,
+            HtmlConstructionBank::PublishedRuns,
+            HtmlConstructionBank::PublishedRows,
+            HtmlConstructionBank::PublishedChildren,
+        ]
+    );
+    let held = |bank| -> usize {
+        meter
+            .records
+            .iter()
+            .filter(|record| record.growth().bank() == bank)
+            .map(|record| record.reached().capacity() * record.growth().element_size())
+            .sum()
+    };
+    assert_eq!(held(HtmlConstructionBank::PublishedRows), 20 * nodes);
+    assert_eq!(held(HtmlConstructionBank::PublishedChildren), 4 * children);
+    assert_eq!(held(HtmlConstructionBank::PublishedRuns), 8 * runs);
 }
 
 #[test]
 fn a_publication_makes_no_bank_of_contents_for_its_records() {
-    let (storage, [root, ..]) = attributed_tree(false);
-    let mut meter = Meter::default();
-    let Ok(_) = publish_tree(storage, &root, &mut meter) else {
+    // Neither tree has an association or a leaf, and the banks recorded are those of the shared
+    // tree, the attributes, the rows and the children: no bank holds a content for each record.
+    for (storage, [root, ..]) in [attributed_tree(false), attributed_tree(true)] {
+        let mut meter = Meter::default();
+        let Ok(_) = publish_tree(storage, &root, &mut meter) else {
+            panic!("publication refused");
+        };
+        let banks = recorded_banks(&meter);
+        let allowed = [
+            HtmlConstructionBank::Wrapper,
+            HtmlConstructionBank::PublishedAttributes,
+            HtmlConstructionBank::PublishedRuns,
+            HtmlConstructionBank::PublishedRows,
+            HtmlConstructionBank::PublishedChildren,
+            HtmlConstructionBank::TextBlock,
+        ];
+        assert!(banks.iter().all(|bank| allowed.contains(bank)), "{banks:?}");
+    }
+}
+
+/// A document with a doctype, a processing instruction, two templates (one owning its contents,
+/// one referring to shadow contents), a shadow host, text, a comment, attributes and an element
+/// that nothing holds; the builder handle of the document is the second value.
+fn rich_tree() -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    let m = Meter::default;
+    let mut storage = storage();
+    let document = ok(storage.create_document(HtmlDocumentMode::Quirks, &mut m()));
+    let doctype = ok(storage.create_doctype(&utf16("html"), Some(&utf16("p")), None, &mut m()));
+    let instruction = ok(storage.create_processing_instruction(&utf16("t"), &utf16("d"), &mut m()));
+    let html = element(&mut storage, "html");
+    for node in [&doctype, &instruction, &html] {
+        insert(&mut storage, node, &document);
+    }
+    // A template that owns its contents, which hold a text.
+    let template = element(&mut storage, "template");
+    insert(&mut storage, &template, &html);
+    let contents = storage
+        .node(&template)
+        .unwrap()
+        .template_contents()
+        .unwrap()
+        .handle();
+    let inside = ok(storage.create_text(&utf16("in"), &mut m()));
+    insert(&mut storage, &inside, &contents);
+    // A host with a shadow root.
+    let host = element(&mut storage, "div");
+    insert(&mut storage, &host, &html);
+    let shadow = ok(storage.create_shadow_contents(shadow_properties(), &mut m()));
+    let slot = element(&mut storage, "slot");
+    insert(&mut storage, &slot, &shadow);
+    ok(storage.attach_shadow(&host, &shadow, &mut m()));
+    // A template that refers to the shadow contents of another host.
+    let referring = element(&mut storage, "template");
+    let other_host = element(&mut storage, "section");
+    let other_shadow = ok(storage.create_shadow_contents(shadow_properties(), &mut m()));
+    insert(&mut storage, &referring, &html);
+    insert(&mut storage, &other_host, &html);
+    ok(storage.attach_template_shadow(&referring, &other_host, &other_shadow, &mut m()));
+    // Attributes, text and a comment on the element of the first host, and a detached element.
+    ok(storage.append_attribute(
+        &host,
+        &Attribute::new(QualifiedName::new(Namespace::none(), None, "id"), "h"),
+        None,
+        &mut m(),
+    ));
+    let text = ok(storage.create_text(&utf16("t"), &mut m()));
+    let comment = ok(storage.create_comment(&utf16("c"), &mut m()));
+    insert(&mut storage, &text, &host);
+    insert(&mut storage, &comment, &host);
+    let loose = element(&mut storage, "em");
+    ok(storage.append_attribute(
+        &loose,
+        &Attribute::new(QualifiedName::new(Namespace::none(), None, "k"), "v"),
+        None,
+        &mut m(),
+    ));
+    (storage, document)
+}
+
+#[test]
+fn a_published_tree_reads_every_node_as_the_storage_does_and_has_no_unreadable_node() {
+    for (storage, root) in [rich_tree(), {
+        let (storage, [root, ..]) = attributed_tree(true);
+        (storage, root)
+    }] {
+        let before = view_snapshot(storage.len(), |at| storage.node_at(at));
+        let Ok(result) = publish_tree(storage, &root, &mut Meter::default()) else {
+            panic!("publication refused");
+        };
+        assert_eq!(view_snapshot(result.len(), |at| result.node_at(at)), before);
+        for at in 0..result.len() {
+            let node = result.node_at(at).unwrap();
+            assert!(!matches!(
+                node.kind(),
+                crate::internal::construction::ConstructionNodeKind::Unreadable(_)
+            ));
+            assert!(!matches!(
+                node.as_node().unwrap().kind(),
+                HtmlNodeKind::Unreadable(_)
+            ));
+        }
+    }
+}
+
+#[test]
+fn a_published_tree_lists_every_node_with_a_parent_once_and_keeps_rows_for_detached_nodes() {
+    let (storage, root) = rich_tree();
+    let nodes = storage.len();
+    let Ok(result) = publish_tree(storage, &root, &mut Meter::default()) else {
         panic!("publication refused");
     };
-    let names = recorded_bank_names(&meter);
-    assert!(
-        names.iter().all(|name| !name.contains("Contents")),
-        "{names:?}"
+    let mut listed = vec![0usize; result.len()];
+    for at in 0..result.len() {
+        let node = result.node_at(at).unwrap();
+        for child in node.children() {
+            listed[child.position()] += 1;
+            assert_eq!(child.parent().map(HtmlConstructionNode::position), Some(at));
+        }
+    }
+    for (at, times) in listed.iter().enumerate() {
+        let node = result.node_at(at).unwrap();
+        assert_eq!(
+            *times,
+            usize::from(node.parent().is_some()),
+            "node {at} is listed once when it has a parent and never otherwise"
+        );
+    }
+    // The document, the contents of the first template, the contents the second template
+    // released, both shadow contents and the detached element have no parent and keep a row.
+    let parentless = (0..result.len())
+        .filter(|at| result.node_at(*at).unwrap().parent().is_none())
+        .count();
+    assert_eq!(parentless, 6);
+    assert_eq!(result.len(), nodes);
+}
+
+#[test]
+fn a_publication_refuses_an_element_that_names_an_entry_its_names_do_not_hold() {
+    // An entry of another table at the position of an entry of this one, and an entry at a
+    // position this table does not have.
+    for number in [0u32, 99] {
+        let (mut storage, [root, ..]) = attributed_tree(false);
+        if let NodeContent::Element(element) = &mut storage.arena.records[1].kind {
+            element.name = Arc::new(crate::internal::construction::names::NameEntry::new(
+                name("other"),
+                0,
+                number,
+            ));
+        }
+        let before = snapshot(&storage);
+        let mut meter = Meter::default();
+        let (storage, error) = match publish_tree(storage, &root, &mut meter) {
+            Err(refusal) => *refusal,
+            Ok(_) => panic!("published an element with a foreign name"),
+        };
+        let HtmlChargedError::Faulted(error) = error else {
+            panic!("the consumer refused");
+        };
+        assert_eq!(error.cause(), HtmlConstructionCause::InvalidNameReference);
+        assert_eq!(snapshot(&storage), before);
+        assert!(
+            meter.growths.is_empty(),
+            "the references are checked before a bank is admitted"
+        );
+    }
+}
+
+#[test]
+fn a_row_that_names_a_reference_its_tree_does_not_hold_reads_as_the_typed_defect() {
+    use crate::internal::construction::tree::{Leaf, PublishedRow, RowContent, Span, Tree};
+    let row = |content| PublishedRow {
+        parent: None,
+        child_end: 0,
+        content,
+    };
+    let mut tree = Tree::forged(vec![
+        row(RowContent::Element {
+            link_flags: None,
+            name: 9,
+            run: None,
+        }),
+        row(RowContent::Element {
+            link_flags: None,
+            name: 0,
+            run: std::num::NonZeroU32::new(4),
+        }),
+        row(RowContent::Text(Span::new(0..3).unwrap())),
+        row(RowContent::Comment(Span::new(0..3).unwrap())),
+        row(RowContent::ProcessingInstruction(0)),
+        row(RowContent::Doctype(1)),
+        PublishedRow {
+            parent: None,
+            child_end: 7,
+            content: RowContent::Fragment {
+                shadow: None,
+                owner: None,
+            },
+        },
+    ]);
+    tree.names.entries.push(Arc::new(
+        crate::internal::construction::names::NameEntry::new(name("a"), 0, 0),
+    ));
+    tree.leaves.push(Leaf::Doctype(
+        crate::internal::construction::HtmlDoctype::new("d", None, None),
+    ));
+    let cause = |at: usize| match tree.node(NodeIx::at(at)).kind() {
+        HtmlNodeKind::Unreadable(cause) => Some(cause),
+        _ => None,
+    };
+    assert_eq!(cause(0), Some(HtmlConstructionCause::InvalidNameReference));
+    assert_eq!(
+        cause(1),
+        Some(HtmlConstructionCause::InvalidAttributeReference)
     );
+    assert_eq!(cause(2), Some(HtmlConstructionCause::InvalidTextReference));
+    assert_eq!(cause(3), Some(HtmlConstructionCause::InvalidTextReference));
+    // A processing instruction row at a doctype leaf, and a doctype row past the leaves.
+    assert_eq!(cause(4), Some(HtmlConstructionCause::InvalidLeafReference));
+    assert_eq!(cause(5), Some(HtmlConstructionCause::InvalidLeafReference));
+    // A fragment whose children end past the child array, and a row past the rows, are the
+    // unknown node.
+    assert_eq!(cause(6), Some(HtmlConstructionCause::UnknownNode));
+    assert_eq!(cause(40), Some(HtmlConstructionCause::UnknownNode));
+    assert_eq!(tree.node(NodeIx::at(6)).children().len(), 0);
+}
+
+#[test]
+fn a_child_of_a_published_node_is_reached_by_its_index_with_one_step_from_either_end() {
+    // Characterization of the readers, not of a defect: the child at an index is made without a
+    // step over the children before it, whatever the fanout and the index.
+    for fanout in [1000usize, 2000, 4000, 8000] {
+        let mut storage = storage();
+        let root = ok(storage.create_fragment(&mut Meter::default()));
+        for _ in 0..fanout {
+            let comment = ok(storage.create_comment(&utf16("c"), &mut Meter::default()));
+            insert(&mut storage, &comment, &root);
+        }
+        let Ok(result) = publish_tree(storage, &root, &mut Meter::default()) else {
+            panic!("publication refused");
+        };
+        let node = result.node_at(0).unwrap().as_node().unwrap();
+        for index in [0, fanout / 2, fanout - 1] {
+            let made = crate::internal::construction::tree::mapped::made;
+            let before = made();
+            let front = node.children().nth(index).unwrap();
+            let back = node.children().nth_back(fanout - 1 - index).unwrap();
+            assert_eq!(made() - before, 2, "fanout {fanout}, index {index}");
+            assert_eq!(front, back);
+        }
+        assert_eq!(node.children().len(), fanout);
+    }
+}
+
+#[test]
+fn a_publication_with_associations_and_leaves_is_refused_at_every_admission_point_and_takes_every_bank_back()
+ {
+    let setup = || {
+        let (storage, root) = rich_tree();
+        (storage, [root; 4])
+    };
+    let calls = sweep(setup, |storage, [root, ..], meter| {
+        let taken = std::mem::replace(
+            storage,
+            ok(HtmlConstructionStorage::new(&mut Meter::default())),
+        );
+        match publish_tree(taken, root, meter) {
+            Ok(_) => Ok(()),
+            Err(refusal) => {
+                let (back, error) = *refusal;
+                *storage = back;
+                Err(error)
+            }
+        }
+    });
+    // The shared tree, the attribute rows and runs, the rows, the children, the associations and
+    // the leaves; the text is not packed.
+    assert_eq!(
+        calls.iter().filter(|call| **call == "admit_growth").count(),
+        7
+    );
+    // The consumer holds nothing of a publication refused after each record.
+    for index in 0..calls.len() {
+        let (storage, root) = rich_tree();
+        let mut meter = Meter::refusing_at(index);
+        let Err(refusal) = publish_tree(storage, &root, &mut meter) else {
+            continue;
+        };
+        let (_, error) = *refusal;
+        assert!(matches!(error, HtmlChargedError::Stopped(Refused)));
+        assert!(
+            holds_nothing_of_the_publication(&meter),
+            "refused at the call {index}: the consumer holds {:?}",
+            consumer_holdings(&meter)
+        );
+    }
 }

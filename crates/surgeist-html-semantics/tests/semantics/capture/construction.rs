@@ -1,9 +1,10 @@
 use surgeist_html::{
     construction::HtmlConstructionResult,
     construction::{
-        HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment,
-        HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind, HtmlShadowRootMode,
-        HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+        HtmlBuilderNode, HtmlConstructionCause, HtmlConstructionLimits, HtmlDocument,
+        HtmlDocumentMode, HtmlFragment, HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNodeId,
+        HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+        HtmlTemplateContentsKind,
     },
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -1635,4 +1636,15 @@ fn reported_usage_of_a_wide_import_is_its_least_admitting_allowance() {
         );
         assert_eq!(failure.builder().usage().subjects(), 1);
     }
+}
+
+#[test]
+fn an_unreadable_source_error_names_its_cause_and_states_the_defect() {
+    let error =
+        HtmlConstructionCaptureError::UnreadableSource(HtmlConstructionCause::InvalidNameReference);
+    assert_eq!(error.accounting_fault(), None);
+    let shown = error.to_string();
+    assert!(shown.contains("does not resolve"), "{shown}");
+    assert!(shown.contains("InvalidNameReference"), "{shown}");
+    assert_ne!(error, HtmlConstructionCaptureError::ForeignResult);
 }

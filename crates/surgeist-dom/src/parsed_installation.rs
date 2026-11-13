@@ -192,6 +192,14 @@ pub enum DomParsedHtmlInstallError {
         subject: HtmlNodeId,
         error: surgeist_html::construction::ForeignHtmlResult,
     },
+    /// A node of the source result holds a reference that its result does not resolve: the cause
+    /// names the kind of reference. Publication checks every reference, so a result that a
+    /// construction storage published never raises this; it reports a defect in the source result,
+    /// and the installation never skips the node.
+    UnreadableSource {
+        subject: HtmlNodeId,
+        cause: surgeist_html::construction::HtmlConstructionCause,
+    },
     ResourceLimit {
         resource: DomParsedHtmlInstallResource,
         limit: u64,
@@ -202,7 +210,13 @@ pub enum DomParsedHtmlInstallError {
 }
 impl std::fmt::Display for DomParsedHtmlInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "completed HTML installation rejected: {self:?}")
+        match self {
+            Self::UnreadableSource { subject, cause } => write!(
+                f,
+                "completed HTML installation rejected: source node {subject:?} holds a reference its result does not resolve: {cause:?}"
+            ),
+            _ => write!(f, "completed HTML installation rejected: {self:?}"),
+        }
     }
 }
 impl std::error::Error for DomParsedHtmlInstallError {

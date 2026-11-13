@@ -94,16 +94,22 @@ pub enum HtmlConstructionBank {
     /// arena's units are spare. Its growth names the capacity of the arena, which the block
     /// replaces, as the bank it grows from.
     TextBlock,
-    /// The vector of records that publication makes, which replaces the vector of the storage.
-    /// Its growth names the capacity of the vector it replaces as the bank it grows from.
-    PublishedRecords,
-    /// The vector of contents that publication makes for the published records, which it frees
-    /// when the records are moved.
-    PublishedContents,
+    /// The vector of rows that publication makes, one for each record of the storage.
+    PublishedRows,
+    /// The array that holds the children of every published row, one entry for each record that
+    /// has a parent.
+    PublishedChildren,
     /// The table of the attributes of the published elements, which publication makes from the
-    /// live rows of the storage's attribute table and which the elements of the result share.
+    /// live rows of the storage's attribute table.
     PublishedAttributes,
-    /// The shared arena that publication creates, with the wrapper that shares the block of the
+    /// The runs of the published attribute table, one for each element that has attributes.
+    PublishedRuns,
+    /// The table of the template and shadow associations of the result, one entry for each
+    /// template contents and each shadow root.
+    PublishedAssociations,
+    /// The processing instructions and doctypes of the result.
+    PublishedLeaves,
+    /// The shared tree that publication creates, with the wrapper that shares the block of the
     /// result.
     Wrapper,
     /// The vector of the entries of the names the storage has interned.
@@ -364,7 +370,7 @@ impl HtmlConstructionStorage {
                 capacity: records.capacity(),
             },
             minimum_capacity: required,
-            element_size: size_of::<Record<TextRun>>(),
+            element_size: size_of::<Record>(),
             wrapper_bytes: 0,
         })
     }
@@ -567,7 +573,7 @@ impl HtmlConstructionStorage {
     pub(super) fn record_mut(
         &mut self,
         index: NodeIx,
-    ) -> Result<&mut Record<TextRun>, HtmlConstructionError> {
+    ) -> Result<&mut Record, HtmlConstructionError> {
         self.arena
             .records
             .get_mut(index.position())
@@ -587,7 +593,7 @@ impl HtmlConstructionStorage {
             return Err(fault(HtmlConstructionCause::WrongNodeKind));
         }
         Work {
-            copied_bytes: size_of::<BuildContent>(),
+            copied_bytes: size_of::<NodeContent>(),
             record_writes: 1,
             ..Work::default()
         }
@@ -1017,7 +1023,7 @@ impl HtmlConstructionStorage {
         admission
             .record_largest(
                 HtmlResource::AtomicLayoutBytes,
-                wide(times(count, size_of::<Record<TextRun>>()).map_err(faulted)?),
+                wide(times(count, size_of::<Record>()).map_err(faulted)?),
             )
             .map_err(stopped)?;
         for growth in [runs_growth, rows_growth].into_iter().flatten() {
@@ -1037,7 +1043,7 @@ impl HtmlConstructionStorage {
         Work {
             provider_calls: growths,
             copied_bytes: plus(
-                times(count, size_of::<Record<TextRun>>() + size_of::<usize>()).map_err(faulted)?,
+                times(count, size_of::<Record>() + size_of::<usize>()).map_err(faulted)?,
                 size_of::<HtmlConstructionUsage>(),
             )
             .map_err(faulted)?,

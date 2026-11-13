@@ -364,6 +364,9 @@ fn render<T: Tree>(tree: &T) -> String {
                 }
             }
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => "(nested root)".to_owned(),
+            HtmlNodeKind::Unreadable(cause) => {
+                panic!("a published node reads as unreadable: {cause:?}")
+            }
         };
         out.push_str(&format!("| {indent}{line}\n"));
         let mut children: Vec<(HtmlNodeId, usize)> =

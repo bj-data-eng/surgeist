@@ -78,9 +78,6 @@ pub(super) struct RecordAdmission<'a> {
     /// The units the operation adds that the parse already counted when it made their strings.
     pub(super) counted: u64,
     insertion: Option<Insertion<'a>>,
-    /// The bytes the parse holds for the contents vector of a publication, which that
-    /// publication frees when its records move.
-    contents: u64,
 }
 
 impl Charge<HtmlWork, HtmlResource> for RecordAdmission<'_> {
@@ -148,17 +145,35 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
         if !takes_back {
             self.layout = expected;
         }
+        let before = self.holds.bank_bytes;
         let held = match growth.bank() {
             HtmlConstructionBank::Text
             | HtmlConstructionBank::TextArena
             | HtmlConstructionBank::TextBlock => &mut self.holds.string_bytes,
             _ => &mut self.holds.bank_bytes,
         };
-        self.control
-            .record_bank_growth(old, actual, expected, held)?;
-        if growth.bank() == HtmlConstructionBank::PublishedContents {
-            self.contents = actual;
+        let outcome = self.control.record_bank_growth(old, actual, expected, held);
+        // The record bank and the child orders are the banks a publication frees, so the bytes
+        // held for them are kept apart for the release that follows the publication.
+        if matches!(
+            growth.bank(),
+            HtmlConstructionBank::Records | HtmlConstructionBank::Children { .. }
+        ) {
+            let after = self.holds.bank_bytes;
+            let Some(build) = self
+                .holds
+                .build_bytes
+                .checked_add(after)
+                .and_then(|bytes| bytes.checked_sub(before))
+            else {
+                return Err(SessionError::Stop(
+                    self.control
+                        .fail_invariant(crate::HtmlParseInvariant::CapacityMismatch),
+                ));
+            };
+            self.holds.build_bytes = build;
         }
+        outcome?;
         Ok(())
     }
 
@@ -241,7 +256,6 @@ impl<'a> RecordAdmission<'a> {
             attributes: false,
             counted: 0,
             insertion: None,
-            contents: 0,
         }
     }
 
@@ -531,8 +545,8 @@ impl Charge<HtmlWork, HtmlResource> for SessionCharge<'_> {
     }
 }
 
-/// Publishes the records and returns the result with the bytes the parse held for the contents
-/// vector of the publication, which the publication has freed. A refusal hands the storage back
+/// Publishes the records and returns the result with the bytes the parse held for the record bank
+/// and the child orders, which the publication has freed. A refusal hands the storage back
 /// with the session error, so the session keeps its records and releases them as it would after
 /// any refused step.
 #[expect(clippy::result_large_err)] // Refusal hands the complete storage back without allocating after failure.
@@ -545,7 +559,7 @@ pub(super) fn publish_records(
 ) -> Result<(HtmlConstructionResult, u64), (HtmlConstructionStorage, SessionError)> {
     let mut admission = RecordAdmission::new(control, identity, holds, &[]);
     match storage.publish(root, &mut admission) {
-        Ok(published) => Ok((published, admission.contents)),
+        Ok(published) => Ok((published, std::mem::take(&mut admission.holds.build_bytes))),
         Err(refusal) => {
             let (storage, error) = refusal.into_parts();
             Err((storage, admission.error(error)))
@@ -585,7 +599,7 @@ pub(super) fn associated_root_of(
         Some(HtmlFragmentOwner::Template(template)) => {
             control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let template_position = storage
-                .node_by_result_id(template)
+                .node_by_result_id(&template)
                 .map_err(|_| SessionError::ForeignNode)?
                 .position();
             let (_, state) =

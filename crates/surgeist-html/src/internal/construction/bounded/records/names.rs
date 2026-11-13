@@ -369,7 +369,12 @@ impl HtmlConstructionStorage {
         // Nothing below reserves. A placement is charged before it runs and may be refused, which
         // drops the staged slots and leaves the table as it was; the writes after the last
         // placement cannot refuse.
-        let entry = Arc::new(NameEntry::new(name, hash));
+        let entry = Arc::new(NameEntry::new(
+            name,
+            hash,
+            u32::try_from(number)
+                .map_err(|_| fault(HtmlConstructionCause::RepresentationExhausted))?,
+        ));
         if let Some(mut slots) = staged.take() {
             let geometry =
                 geometry.ok_or_else(|| fault(HtmlConstructionCause::CapacityMismatch))?;

@@ -760,6 +760,15 @@ pub(super) fn allocate(
                 pairs,
             ))
         }
+        // A reference of the source node that its result does not resolve is a defect in the
+        // source result, which publication rules out; the installation fails on it with the
+        // cause and never skips the node.
+        HtmlNodeKind::Unreadable(cause) => {
+            return Err(Error::UnreadableSource {
+                subject: node.id(),
+                cause,
+            });
+        }
         HtmlNodeKind::Element(element) => {
             c.name(element.name())?;
             for attribute in element.attributes().iter() {

@@ -363,6 +363,8 @@ fn disposition(cause: HtmlConstructionCause) -> Disposition {
         | Cause::OperandMissing
         | Cause::InvalidTextReference
         | Cause::InvalidAttributeReference
+        | Cause::InvalidNameReference
+        | Cause::InvalidLeafReference
         | Cause::NotPublished
         | Cause::IndexUnavailable => Class(SessionClass::Fault(
             HtmlParseInvariant::ConstructionOwnerRefusal,

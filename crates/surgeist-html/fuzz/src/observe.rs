@@ -212,6 +212,9 @@ pub(crate) enum NativeKind {
     Comment(DocumentString),
     ProcessingInstruction(surgeist_html::construction::HtmlProcessingInstruction),
     Doctype(surgeist_html::construction::HtmlDoctype),
+    /// A node whose row names a reference its result does not resolve. Publication rules it out,
+    /// so a snapshot that holds one differs from every expectation and is reported as a defect.
+    Unreadable(surgeist_html::construction::HtmlConstructionCause),
 }
 impl From<HtmlNodeKind<'_>> for NativeKind {
     fn from(kind: HtmlNodeKind<'_>) -> Self {
@@ -227,6 +230,7 @@ impl From<HtmlNodeKind<'_>> for NativeKind {
             HtmlNodeKind::Comment(value) => Self::Comment(value),
             HtmlNodeKind::ProcessingInstruction(value) => Self::ProcessingInstruction(value),
             HtmlNodeKind::Doctype(value) => Self::Doctype(value),
+            HtmlNodeKind::Unreadable(cause) => Self::Unreadable(cause),
         }
     }
 }

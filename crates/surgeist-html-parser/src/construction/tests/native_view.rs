@@ -166,6 +166,7 @@ impl<'a> NativeView<'a> {
                 public_id: value.public_id().map(|s| self.string(s.code_units())),
                 system_id: value.system_id().map(|s| self.string(s.code_units())),
             },
+            ConstructionNodeKind::Unreadable(_) => return Err(SessionError::registry_row()),
         })
     }
     #[cfg(test)]

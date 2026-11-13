@@ -36,12 +36,24 @@ use crate::internal::values::{
 pub(crate) const PROBE_ALLOWANCE: usize = 8;
 
 /// One interned name.
-#[derive(Eq, PartialEq)]
+///
+/// Two entries are equal when their names are equal. The key and the hash are functions of the
+/// name within a process, and the number is the position in the table that made the entry, so none
+/// of them takes part in equality: the entries of one name in two tables compare equal.
 pub(crate) struct NameEntry {
     name: QualifiedName,
     key: ElementKey,
     hash: u64,
+    /// The position of this entry in the table that made it, which an element record names it by
+    /// when a result is published.
+    number: u32,
 }
+impl PartialEq for NameEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+impl Eq for NameEntry {}
 /// An entry debugs as its name: the key is a function of the name, and the hash depends on the
 /// process.
 impl fmt::Debug for NameEntry {
@@ -50,10 +62,20 @@ impl fmt::Debug for NameEntry {
     }
 }
 impl NameEntry {
-    /// The entry of `name`, whose local name hashes to `hash`. The key is computed here.
-    pub(crate) fn new(name: QualifiedName, hash: u64) -> Self {
+    /// The entry of `name`, whose local name hashes to `hash`, at position `number` of its table.
+    /// The key is computed here.
+    pub(crate) fn new(name: QualifiedName, hash: u64, number: u32) -> Self {
         let key = ElementKey::from_name(&name);
-        Self { name, key, hash }
+        Self {
+            name,
+            key,
+            hash,
+            number,
+        }
+    }
+    /// The position of the entry in the table that made it.
+    pub(crate) fn number(&self) -> u32 {
+        self.number
     }
     /// The exact name.
     pub(crate) fn name(&self) -> &QualifiedName {
@@ -70,6 +92,12 @@ impl NameEntry {
     /// The bytes of an entry's allocation: the entry and the counts of its shared handle.
     pub(crate) const ALLOCATION_BYTES: usize = size_of::<Self>() + 2 * size_of::<usize>();
 }
+/// The number of an entry takes the padding after its key. On a 64-bit target the name is 48
+/// bytes, the key 4, the hash 8 and the number 4, which fill 64 bytes, and without the number the
+/// entry would also be 64. A larger field or a further one changes the bytes a table charges for
+/// each name.
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<NameEntry>() == 64);
 
 /// The components that identify a name when it is looked up.
 #[derive(Clone, Copy, Debug)]

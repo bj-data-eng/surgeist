@@ -2476,9 +2476,12 @@ pub surgeist_html::bounded::construction::HtmlConstructionBank::Children::positi
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameEntry
 pub surgeist_html::bounded::construction::HtmlConstructionBank::NameSlots
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Names
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedAssociations
 pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedAttributes
-pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedContents
-pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedRecords
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedChildren
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedLeaves
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedRows
+pub surgeist_html::bounded::construction::HtmlConstructionBank::PublishedRuns
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Records
 pub surgeist_html::bounded::construction::HtmlConstructionBank::Text
 pub surgeist_html::bounded::construction::HtmlConstructionBank::TextArena
@@ -2521,14 +2524,14 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::check_ref
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::child_at(self, ordinal: usize) -> core::option::Option<Self>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::child_count(self) -> usize
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = Self> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
-pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::fragment_owner(self) -> core::option::Option<&'a surgeist_html::construction::HtmlFragmentOwner>
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::fragment_owner(self) -> core::option::Option<surgeist_html::construction::HtmlFragmentOwner>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::handle(self) -> surgeist_html::construction::HtmlBuilderNode
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::is_shadow_contents(self) -> bool
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::kind(self) -> surgeist_html::construction::ConstructionNodeKind<'a>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::parent(self) -> core::option::Option<Self>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::position(self) -> usize
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::shadow_properties(self) -> core::option::Option<surgeist_html::construction::HtmlShadowRootProperties>
-pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::shadow_root(self) -> core::option::Option<surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::shadow_root(self) -> core::option::Option<surgeist_html::construction::HtmlDeclarativeShadowRoot>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::template_contents(self) -> core::option::Option<Self>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::template_contents_kind(self) -> core::option::Option<surgeist_html::construction::HtmlTemplateContentsKind>
 pub struct surgeist_html::bounded::construction::HtmlConstructionPublishRefusal<S>
@@ -3697,6 +3700,7 @@ pub surgeist_html::construction::ConstructionNodeKind::Element(surgeist_html::co
 pub surgeist_html::construction::ConstructionNodeKind::Fragment
 pub surgeist_html::construction::ConstructionNodeKind::ProcessingInstruction(surgeist_html::construction::ConstructionProcessingInstruction<'a>)
 pub surgeist_html::construction::ConstructionNodeKind::Text(surgeist_html::construction::BuildText<'a>)
+pub surgeist_html::construction::ConstructionNodeKind::Unreadable(surgeist_html::construction::HtmlConstructionCause)
 pub enum surgeist_html::construction::HtmlConstructionCause
 pub surgeist_html::construction::HtmlConstructionCause::Accounting(surgeist_html::accounting::HtmlAccountingFault)
 pub surgeist_html::construction::HtmlConstructionCause::AllocationFailed
@@ -3711,6 +3715,8 @@ pub surgeist_html::construction::HtmlConstructionCause::ForeignBuilder
 pub surgeist_html::construction::HtmlConstructionCause::IndexUnavailable
 pub surgeist_html::construction::HtmlConstructionCause::InvalidAttributeReference
 pub surgeist_html::construction::HtmlConstructionCause::InvalidContentsReference
+pub surgeist_html::construction::HtmlConstructionCause::InvalidLeafReference
+pub surgeist_html::construction::HtmlConstructionCause::InvalidNameReference
 pub surgeist_html::construction::HtmlConstructionCause::InvalidOutputRoot
 pub surgeist_html::construction::HtmlConstructionCause::InvalidShadowAssociation
 pub surgeist_html::construction::HtmlConstructionCause::InvalidTemplateAssociation
@@ -3775,6 +3781,7 @@ pub surgeist_html::construction::HtmlNodeKind::Element(surgeist_html::constructi
 pub surgeist_html::construction::HtmlNodeKind::Fragment
 pub surgeist_html::construction::HtmlNodeKind::ProcessingInstruction(surgeist_html::construction::HtmlProcessingInstruction)
 pub surgeist_html::construction::HtmlNodeKind::Text(surgeist_html::values::DocumentString)
+pub surgeist_html::construction::HtmlNodeKind::Unreadable(surgeist_html::construction::HtmlConstructionCause)
 #[non_exhaustive] pub enum surgeist_html::construction::HtmlProcessingInstructionError
 pub surgeist_html::construction::HtmlProcessingInstructionError::DataContainsGreaterThan
 pub surgeist_html::construction::HtmlProcessingInstructionError::DataEndsWithQuestionMark
@@ -3899,11 +3906,11 @@ pub fn surgeist_html::construction::HtmlConstructionUsage::depth(self) -> usize
 pub fn surgeist_html::construction::HtmlConstructionUsage::edges(self) -> usize
 pub fn surgeist_html::construction::HtmlConstructionUsage::nodes(self) -> usize
 pub fn surgeist_html::construction::HtmlConstructionUsage::utf16_units(self) -> usize
-pub struct surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>
-impl<'a> surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>
-pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::contents(&self) -> surgeist_html::construction::HtmlNodeId
-pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::host(&self) -> surgeist_html::construction::HtmlNodeId
-pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::properties(&self) -> surgeist_html::construction::HtmlShadowRootProperties
+pub struct surgeist_html::construction::HtmlDeclarativeShadowRoot
+impl surgeist_html::construction::HtmlDeclarativeShadowRoot
+pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot::contents(&self) -> surgeist_html::construction::HtmlNodeId
+pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot::host(&self) -> surgeist_html::construction::HtmlNodeId
+pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot::properties(&self) -> surgeist_html::construction::HtmlShadowRootProperties
 pub struct surgeist_html::construction::HtmlDoctype
 impl surgeist_html::construction::HtmlDoctype
 pub fn surgeist_html::construction::HtmlDoctype::name(&self) -> &surgeist_html::values::DocumentString
@@ -3936,6 +3943,9 @@ impl<'a> surgeist_html::construction::HtmlElementView<'a>
 pub fn surgeist_html::construction::HtmlElementView<'a>::attributes(self) -> surgeist_html::construction::HtmlAttributes<'a>
 pub fn surgeist_html::construction::HtmlElementView<'a>::link_flags(self) -> core::option::Option<surgeist_html::elements::link::HtmlLinkFlags>
 pub fn surgeist_html::construction::HtmlElementView<'a>::name(self) -> &'a surgeist_html::values::QualifiedName
+impl core::cmp::Eq for surgeist_html::construction::HtmlElementView<'_>
+impl core::cmp::PartialEq for surgeist_html::construction::HtmlElementView<'_>
+pub fn surgeist_html::construction::HtmlElementView<'_>::eq(&self, other: &Self) -> bool
 pub struct surgeist_html::construction::HtmlFragment
 impl surgeist_html::construction::HtmlFragment
 pub fn surgeist_html::construction::HtmlFragment::builder(limits: surgeist_html::construction::HtmlConstructionLimits) -> core::result::Result<surgeist_html::construction::HtmlFragmentBuilder, surgeist_html::construction::HtmlConstructionError>
@@ -3959,7 +3969,7 @@ pub fn surgeist_html::construction::HtmlFragmentBuilder::usage(&self) -> surgeis
 pub struct surgeist_html::construction::HtmlNode<'a>
 impl<'a> surgeist_html::construction::HtmlNode<'a>
 pub fn surgeist_html::construction::HtmlNode<'a>::children(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_html::construction::HtmlNodeId> + core::iter::traits::double_ended::DoubleEndedIterator + 'a
-pub fn surgeist_html::construction::HtmlNode<'a>::declarative_shadow_root(self) -> core::option::Option<surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>>
+pub fn surgeist_html::construction::HtmlNode<'a>::declarative_shadow_root(self) -> core::option::Option<surgeist_html::construction::HtmlDeclarativeShadowRoot>
 pub fn surgeist_html::construction::HtmlNode<'a>::document_design_mode_enabled(self) -> core::option::Option<bool>
 pub fn surgeist_html::construction::HtmlNode<'a>::document_focused_area_designation(self) -> core::option::Option<surgeist_html::construction::HtmlFocusedAreaDesignation>
 pub fn surgeist_html::construction::HtmlNode<'a>::fragment_owner(self) -> core::option::Option<surgeist_html::construction::HtmlFragmentOwner>
