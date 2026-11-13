@@ -242,6 +242,116 @@ fn complete_sheet(
 }
 
 #[test]
+fn toggle_admits_its_boolean_before_exposing_a_style_owner_update() {
+    use crate::DomSourceOutput;
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
+    use surgeist_cssom::{CssomEditGuard, CssomOwnerMediaInput, CssomSheetOwnerAttributes};
+
+    let cancel = AtomicBool::new(false);
+    let Fixture {
+        mut dom,
+        document,
+        style,
+        ..
+    } = fixture(0, false);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(style, document.node(), None),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let request = creation_request(&mut lease, &cancel);
+    let owner = cssom_root(document.node());
+    lease.bind_cssom_root(&request, &owner, &cancel).unwrap();
+    complete_sheet(&mut lease, &request, &owner, &cancel);
+    drop(lease);
+
+    let before = dom.snapshot();
+    let css = owner.snapshot().unwrap();
+    let sheet = css.sheets()[0].clone();
+    let mut limits = source_limits();
+    // The first segment records the Element, new Attr and Source marker.
+    // The final segment records closing Source and the Boolean result.
+    limits.outputs = 4;
+    let edit = || DomSourceEdit::toggle_attribute(style, "media", Some(true));
+    let mut lease = dom.begin_source_edit(edit(), limits, &cancel).unwrap();
+    assert!(matches!(
+        lease.advance(&cancel),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert!(!lease.status().has_published());
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert_eq!(owner.snapshot().unwrap().revision(), css.revision());
+    drop(lease);
+
+    limits.outputs = 5;
+    let mut lease = dom.begin_source_edit(edit(), limits, &cancel).unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("actual style owner attribute update");
+    };
+    assert_eq!(request.action(), DomStyleAction::OwnerAttributes);
+    assert_eq!(request.source().media(), Some(&DocumentString::from("")));
+    let request = lease.qualify_cssom(&request, owner.root(), &css).unwrap();
+    let previous = css.sheet(&sheet).unwrap().inputs();
+    let mut version = previous.version.clone();
+    version.revision += 1;
+    let identifier = previous.owner.as_deref().unwrap();
+    lease
+        .bind_cssom_owner(
+            &request,
+            crate::DomStyleCssomOwnerBinding::new(&request, version.clone(), identifier.into())
+                .unwrap(),
+            &cancel,
+        )
+        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(CssParserContext::default(), Default::default()),
+        Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
+    let mut batch = owner.batch(CssomEditGuard::from_snapshot(&css)).unwrap();
+    batch
+        .update_sheet_owner_attributes(
+            &sheet,
+            CssomSheetOwnerAttributes {
+                owner: identifier,
+                version,
+                title: None,
+                media: CssomOwnerMediaInput::Parsed(media),
+            },
+        )
+        .unwrap();
+    let publication = owner.commit(&mut Some(batch)).unwrap();
+    lease
+        .accept_cssom_publication(&request, publication, owner.snapshot().unwrap(), None)
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("toggle must close with its preadmitted output");
+    };
+    assert_eq!(
+        done.output(),
+        Some(DomSourceOutput::ElementAttributePresent(true))
+    );
+    assert_eq!(done.published_node(), None);
+    assert!(
+        lease
+            .snapshot()
+            .node(style)
+            .unwrap()
+            .attribute(&"media".into())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn local_attribute_publication_does_not_visit_unrelated_style_owners() {
     let cancel = AtomicBool::new(false);
     let mut samples = Vec::new();
