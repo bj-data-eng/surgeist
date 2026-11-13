@@ -77,8 +77,13 @@ pub(super) fn template_content_is_the_live_owned_inert_fragment() {
                 const receiving = templateDocumentProbe.ownerDocument;
                 const template = receiving.createElementNS('http://www.w3.org/1999/xhtml', 'template');
                 const fragment = template.content;
+                const clone = template.cloneNode(true);
+                const created = fragment.ownerDocument.createTextNode('inert');
+                fragment.appendChild(created);
                 return fragment instanceof DocumentFragment && fragment === template.content &&
-                    fragment.ownerDocument !== receiving && fragment.ownerDocument !== document;
+                    fragment.ownerDocument !== receiving && fragment.ownerDocument !== document &&
+                    clone.content.ownerDocument === fragment.ownerDocument &&
+                    clone.content !== fragment && fragment.firstChild === created;
             })()
         "#)?;
         assert!(scope.boolean(&result)?);

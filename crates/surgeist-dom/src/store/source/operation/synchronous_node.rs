@@ -252,16 +252,17 @@ impl Dom {
     pub fn create_detached_element_with_node_retirement_watch<T, E: From<DomError>>(
         &mut self,
         document: crate::DocumentId,
-        (name, options): (
+        (name, options, fallback): (
             crate::DomElementCreationName,
             crate::DomElementCreationOptions,
+            Option<crate::DomCreationRealmFallback>,
         ),
         (inbox, custody_key): (&DomNodeRetirementInbox, usize),
         limits: (DomSourceLimits, DomNodeRetirementLimits),
         cancel: &AtomicBool,
         prepare: impl FnOnce(DomPreparedElementName<'_>) -> Result<T, E>,
     ) -> Result<DomWatchedElementCreation<T>, E> {
-        let edit = DomSourceEdit::create_element_with_options(document.node(), name, options);
+        let edit = DomSourceEdit::create_element_in_realm(document.node(), name, options, fallback);
         let mut prepare = Some(prepare);
         let mut output = None;
         let mut prepare_element = |name: DomPreparedElementName<'_>| {

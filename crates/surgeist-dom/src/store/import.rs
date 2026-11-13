@@ -294,9 +294,14 @@ impl Draft {
             root_ticket,
         } = request;
         let start = self.created.len();
-        let copy = self.clone_single(&source, document, fallback_registry, limits, cancel)?;
-        if creation_global.is_some() && self.node(copy)?.relevant_global().is_none() {
-            self.establish_creation_global(copy, creation_global, cancel)?;
+        let (copy, qualified) = self.clone_single(
+            &source,
+            document,
+            (fallback_registry, creation_global),
+            limits,
+            cancel,
+        )?;
+        if let Some(global) = qualified {
             let count = self.node(copy)?.attribute_ids().len();
             for index in 0..count {
                 self.source_step(cancel)?;
@@ -305,14 +310,8 @@ impl Draft {
                     .attribute_ids()
                     .get(index)
                     .ok_or(DomError::StaleNode)?;
-                self.establish_creation_global(attribute, creation_global, cancel)?;
+                self.establish_creation_global(attribute, Some(global), cancel)?;
             }
-        }
-        if creation_global.is_some()
-            && let Some(contents) = self.node(copy)?.template_contents()
-            && self.node(contents)?.relevant_global().is_none()
-        {
-            self.establish_creation_global(contents, creation_global, cancel)?;
         }
         let document = if matches!(self.node(copy)?.kind(), transaction::KindRead::Document(_)) {
             copy
@@ -475,10 +474,13 @@ impl Draft {
         &mut self,
         source: &Source,
         document: Key,
-        fallback_registry: crate::DomRegistryBinding,
+        (fallback_registry, creation_global): (
+            crate::DomRegistryBinding,
+            Option<crate::DomHostedGlobalId>,
+        ),
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<Key, DomError> {
+    ) -> Result<(Key, Option<crate::DomHostedGlobalId>), DomError> {
         check_cancel(cancel)?;
         let original = match source {
             Source::Published(snapshot, id, _) => {
@@ -635,6 +637,11 @@ impl Draft {
             };
             self.allocate_formed(kind, document, limits, cancel, formation)?
         };
+        let qualified = match creation_global {
+            Some(global) if self.node(copy)?.relevant_global().is_none() => Some(global),
+            _ => None,
+        };
+        self.establish_creation_global(copy, qualified, cancel)?;
         if matches!(source, Source::Staged(_))
             && let transaction::KindRead::Element(element) = original.kind()
         {
@@ -732,6 +739,6 @@ impl Draft {
                 .clone_already_started_from(flags);
             script.commit(cancel)?;
         }
-        Ok(copy)
+        Ok((copy, qualified))
     }
 }

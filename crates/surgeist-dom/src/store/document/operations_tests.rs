@@ -888,6 +888,7 @@ fn document_factory_reaches_the_selected_definition_before_allocating_an_element
             (
                 DomElementCreationName::Local("x-widget".into()),
                 DomElementCreationOptions::default(),
+                None,
             ),
             (&inbox, 0),
             (source_limits(4096), watch_limits),

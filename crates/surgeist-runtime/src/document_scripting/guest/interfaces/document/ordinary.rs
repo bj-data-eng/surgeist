@@ -1288,7 +1288,7 @@ impl OrdinaryBindings {
                 let dom = dom.raw_mut();
                 dom.create_detached_element_with_node_retirement_watch(
                     document,
-                    (name, options),
+                    (name, options, Some(creation_realm_fallback(owner)?)),
                     (&inbox, key),
                     (events.limits.source_edits, events.limits.node_retirement),
                     &owner.cancellation,
