@@ -38,6 +38,28 @@ fn guest_source_services(
     }
 }
 
+/// The guest receives the original DOM result. A completed composition's
+/// producer receipts have already published and carry no further authority.
+fn guest_source_terminal(
+    result: crate::DomSourceDriveProgress,
+) -> Option<Result<surgeist_dom::DomSourceCompletion, surgeist_dom::DomSourceFailure>> {
+    use crate::DomSourceDriveProgress as Drive;
+    use surgeist_dom::DomSourceProgress as Source;
+
+    let source = match result {
+        Drive::Complete(done) => return Some(Ok(done)),
+        Drive::Failed(failure) => return Some(Err(failure)),
+        Drive::InlineSource { source, .. } => source,
+        Drive::MetaSource(outcome) => outcome.into_parts().0,
+        Drive::InlineFullscreenHandoff { .. } | Drive::Pending { .. } => return None,
+    };
+    match source {
+        Source::Complete(done) => Some(Ok(done)),
+        Source::Failed(failure) => Some(Err(failure)),
+        Source::Request(_) => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(in crate::document_scripting::guest) enum GuestNode {
     Document(DocumentId),

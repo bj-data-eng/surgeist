@@ -250,17 +250,16 @@ impl Capture {
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        match result {
-            Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
-                Err(DomError::Cancelled.into())
-            }
-            Ok(DomSourceDriveProgress::Complete(done)) => {
-                self.drain_native_reactions(scope, owner, events, done.operation())?;
+        match result.map(guest_source_terminal) {
+            Ok(Some(Ok(done))) => {
+                let reactions = self.drain_native_reactions(scope, owner, events, done.operation());
+                if done.cancellation_requested() {
+                    return Err(DomError::Cancelled.into());
+                }
+                reactions?;
                 Ok(completion)
             }
-            Ok(DomSourceDriveProgress::Failed(failure)) => {
-                self.finish_failed_tree_edit(scope, owner, events, failure)
-            }
+            Ok(Some(Err(failure))) => self.finish_failed_tree_edit(scope, owner, events, failure),
             Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error)))
                 if pending.map(DomSourceStatus::operation) == parent
                     && tree_exception(&error).is_some() =>
@@ -270,11 +269,10 @@ impl Capture {
                 Ok(Completion::Throw(scope.dom_exception(name, &[])?))
             }
             Err(error) => refuse(scope, &attachment.source_failures, error).map_err(Into::into),
-            Ok(_) => Err(
-                pending.map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
+            Ok(None) => Err(pending
+                .map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
                     DocumentGuestEventError::SourcePending(status.operation())
-                }),
-            ),
+                })),
         }
     }
 

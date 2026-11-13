@@ -244,12 +244,13 @@ impl Capture {
                 }
             }
         }
-        match result {
-            Ok(DomSourceDriveProgress::Complete(done)) if done.cancellation_requested() => {
-                Err(DomError::Cancelled.into())
-            }
-            Ok(DomSourceDriveProgress::Complete(done)) => {
-                self.drain_native_reactions(scope, owner, events, done.operation())?;
+        match result.map(guest_source_terminal) {
+            Ok(Some(Ok(done))) => {
+                let reactions = self.drain_native_reactions(scope, owner, events, done.operation());
+                if done.cancellation_requested() {
+                    return Err(DomError::Cancelled.into());
+                }
+                reactions?;
                 match (result_kind, done.output()) {
                     (AttributeResult::Value, None) => Ok(Completion::Undefined),
                     (
@@ -282,12 +283,16 @@ impl Capture {
                     _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
                 }
             }
-            Ok(DomSourceDriveProgress::Failed(failure)) => {
-                let error = failure.into_parts().1;
+            Ok(Some(Err(failure))) => {
+                let (operation, error, _) = failure.into_parts();
+                let reactions = self.drain_native_reactions(scope, owner, events, operation);
                 if let (DomError::SourceAttributeVerificationAbrupt, Some(original)) =
                     (&error, abrupt)
                 {
                     return Err(original.into());
+                }
+                if reactions.is_err() {
+                    return Err(error.into());
                 }
                 attribute_failure(scope, error)
             }
@@ -298,11 +303,10 @@ impl Capture {
                 attribute_failure(scope, error)
             }
             Err(error) => refuse(scope, &attachment.source_failures, error).map_err(Into::into),
-            Ok(_) => Err(
-                pending.map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
+            Ok(None) => Err(pending
+                .map_or(DocumentGuestEventError::HostRouteUnavailable, |status| {
                     DocumentGuestEventError::SourcePending(status.operation())
-                }),
-            ),
+                })),
         }
     }
 
