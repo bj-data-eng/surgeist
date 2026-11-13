@@ -101,6 +101,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         Checkpoint,
         Reconnect,
         Nested,
+        MissingCallback,
         Stop,
         Refuse,
     }
@@ -108,12 +109,14 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Open, Delivery::Checkpoint),
         (HtmlShadowRootMode::Open, Delivery::Reconnect),
         (HtmlShadowRootMode::Open, Delivery::Nested),
+        (HtmlShadowRootMode::Open, Delivery::MissingCallback),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
     ] {
         let reenter = matches!(delivery, Delivery::Reconnect);
         let nested = matches!(delivery, Delivery::Nested);
+        let missing_callback = matches!(delivery, Delivery::MissingCallback);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
                 "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
@@ -155,7 +158,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 &cancel,
             )
             .unwrap();
-        let second = if nested {
+        let second = if nested || missing_callback {
             let mut batch = DomBatch::new();
             let second = batch.create_element_ns(document, Namespace::html(), "div");
             batch.insert_before(&second, element, None);
@@ -208,7 +211,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                     disconnectedCallback() {
                         calls.push(this);
                         if (this === globalThis.shadowReuseReceiver &&
-                            globalThis.secondShadowHost && !globalThis.reusedSecondShadow) {
+                            globalThis.nestedShadowReuse && !globalThis.reusedSecondShadow) {
                             globalThis.reusedSecondShadow = true;
                             secondShadowHost.shadowRoot.appendChild(this);
                             secondShadowHost.attachShadow({mode: 'open'});
@@ -257,7 +260,14 @@ pub(super) fn verify_declarative_shadow_reuse() {
                             return false;
                     }}
                     if (original !== null) original.appendChild(shadowReuseReceiver);
+                    if ({missing_callback}) {{
+                        customElements.define('x-without-disconnection', class extends HTMLElement {{}});
+                        secondShadowHost.shadowRoot.appendChild(
+                            document.createElement('x-without-disconnection'));
+                        secondShadowHost.attachShadow({{mode: 'open'}});
+                    }}
                     if ({nested}) {{
+                        globalThis.nestedShadowReuse = true;
                         globalThis.secondShadowReceiver = document.createElement('x-shadow-reuse-reaction');
                         original.appendChild(secondShadowReceiver);
                     }}
