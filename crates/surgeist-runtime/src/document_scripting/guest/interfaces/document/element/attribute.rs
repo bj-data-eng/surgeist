@@ -300,7 +300,7 @@ impl Capture {
                 if let (DomError::SourceAttributeVerificationAbrupt, Some(original)) =
                     (&error, abrupt)
                 {
-                    return Err(original.into());
+                    return super::super::settle_guest_abrupt(scope, events, original, reactions);
                 }
                 if reactions.is_err() {
                     return Err(error.into());
@@ -580,11 +580,9 @@ impl DocumentScriptHost {
                 permit,
                 terminal,
                 shadow_reactions,
-                abrupt.is_some(),
+                abrupt.as_ref(),
             );
-            if abrupt.is_none() {
-                delivery?;
-            }
+            delivery?;
         }
         if let Some(error) = abrupt {
             return Err(error.into());

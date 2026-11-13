@@ -67,7 +67,7 @@ impl DocumentScriptHost {
         permit: &DocumentScriptPermit,
         terminal: GuestTerminalSource<'_>,
         shadow_reactions: Option<surgeist_dom::DomSynchronousReactionQueue>,
-        original_guest_exception: bool,
+        original_guest_exception: Option<&Error>,
     ) -> Result<(), DocumentGuestEventError> {
         if self.attachment()?.realm.check_owner_active().is_err()
             || self
@@ -115,7 +115,14 @@ impl DocumentScriptHost {
                     shadow_reactions,
                 )
             };
-            if let Some(cause) = terminal.error.filter(|_| !original_guest_exception) {
+            if let Some(original) = original_guest_exception {
+                let delivery = drain(scope);
+                return match delivery {
+                    Ok(()) => Ok(()),
+                    Err(_) => refuse(scope, &events.refusal, original.clone().into()),
+                };
+            }
+            if let Some(cause) = terminal.error {
                 type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
                 let backing = match events.reserve(
                     &owner,
@@ -1043,6 +1050,18 @@ impl Capture {
             Err(error) => refuse(scope, &events.refusal, error),
         }
     }
+}
+
+pub(super) fn settle_guest_abrupt<T>(
+    scope: &mut Scope<'_>,
+    events: &GuestEvents,
+    original: Error,
+    delivery: Result<(), DocumentGuestEventError>,
+) -> Result<T, DocumentGuestEventError> {
+    if delivery.is_err() {
+        return refuse(scope, &events.refusal, original.into()).map_err(Into::into);
+    }
+    Err(original.into())
 }
 
 pub(super) fn complete<'scope>(

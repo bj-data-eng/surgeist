@@ -914,6 +914,9 @@ impl Capture {
         })();
         let result = match result {
             Ok(completion) => delivery.map(|()| completion),
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Script(
+                original @ Error::Exception(_),
+            ))) => document::settle_guest_abrupt(scope, &events, original, delivery),
             Err(error) => Err(error),
         };
         match result {
