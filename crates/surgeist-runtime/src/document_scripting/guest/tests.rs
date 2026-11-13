@@ -392,6 +392,51 @@ pub(in crate::document_scripting) fn custom_element_subtree_reacts_to_connection
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn custom_element_move_uses_the_registered_move_reaction() {
+    let mut host = public_node_host(20_000, 200_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            const calls = [];
+            const marker = {};
+            class Lifecycle extends HTMLElement {
+                connectedCallback() { calls.push(['connected', this]); }
+                disconnectedCallback() {
+                    calls.push(['disconnected', this]);
+                    if (this.hasAttribute('data-throw')) throw marker;
+                }
+            }
+            class Moving extends Lifecycle {
+                connectedMoveCallback() { calls.push(['moved', this]); }
+            }
+            customElements.define('x-move-lifecycle', Moving);
+            customElements.define('x-move-fallback', class extends Lifecycle {});
+            const root = document.documentElement;
+            const source = document.createElement('div');
+            const destination = document.createElement('div');
+            root.appendChild(source);
+            root.appendChild(destination);
+            const moving = source.appendChild(document.createElement('x-move-lifecycle'));
+            const fallback = source.appendChild(document.createElement('x-move-fallback'));
+            calls.length = 0;
+            destination.moveBefore(moving, null);
+            destination.moveBefore(fallback, null);
+            fallback.setAttribute('data-throw', '');
+            source.moveBefore(fallback, null);
+            const expected = [
+                ['moved', moving], ['disconnected', fallback], ['connected', fallback],
+                ['disconnected', fallback],
+            ];
+            return calls.length === expected.length && calls.every(([kind, target], index) =>
+                kind === expected[index][0] && target === expected[index][1]);
+        })()"#,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn registry_upgrade_preserves_nested_definition_and_shadow_refusal()
  {
     let mut host = public_node_host(20_000, 200_000);
