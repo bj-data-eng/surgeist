@@ -501,19 +501,19 @@ impl Draft {
                 cancel,
             );
         }
+        let formation = source::formation::Formation::new(self, cancel)?;
         let replacement = match edit {
-            Edit::Set { value, .. } => Some(value.clone()),
-            Edit::Toggle { .. } if toggle == Some(true) => Some(DocumentString::default()),
+            Edit::Set { value, .. } => Some(value),
             _ => None,
         };
-        let formation = source::formation::Formation::new(self, cancel)?;
         let mut attributes = Vec::new();
         let count = instruction.attributes().len();
-        let count = match (existing, replacement.as_ref()) {
-            (None, Some(_)) => count
+        let adds = replacement.is_some() || toggle == Some(true);
+        let count = match (existing, adds) {
+            (None, true) => count
                 .checked_add(1)
                 .ok_or(DomError::RepresentationExhausted)?,
-            (Some(_), None) => count - 1,
+            (Some(_), false) => count - 1,
             _ => count,
         };
         source::formation::reserve(&mut attributes, count, formation.as_ref(), cancel)?;
@@ -522,7 +522,7 @@ impl Draft {
         for (index, (key, value)) in instruction.attributes().enumerate() {
             self.source_step(cancel)?;
             let value = if existing == Some(index) {
-                replacement.as_ref()
+                replacement
             } else {
                 Some(value)
             };
@@ -530,8 +530,13 @@ impl Draft {
                 attributes.push((share(key)?, share(value)?));
             }
         }
-        if let (None, Some(value)) = (existing, replacement) {
-            attributes.push((share(name)?, share(&value)?));
+        if existing.is_none() && adds {
+            let name = share(name)?;
+            let value = match replacement {
+                Some(value) => share(value)?,
+                None => source::formation::string("", formation.as_ref(), cancel)?,
+            };
+            attributes.push((name, value));
         }
         let old_length = instruction.data().len();
         let previous_units = current.logical_units()?;
