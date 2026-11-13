@@ -342,6 +342,32 @@ impl Inbox {
         Ok(None)
     }
 
+    fn requires_live_receiver(
+        &self,
+        receiver: NodeId,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
+        for slot in self.lock().iter() {
+            step()?;
+            if matches!(slot.route, ReactionRoute::Operation(_)) {
+                continue;
+            }
+            match &*slot.lock() {
+                SlotState::Ready(batch) if batch.routed_pending != 0 => {
+                    for fact in &batch.facts {
+                        step()?;
+                        if !fact.delivered && fact.element == receiver {
+                            return Ok(true);
+                        }
+                    }
+                }
+                SlotState::Loaned => return Err(DomError::InvalidSourceOperation),
+                SlotState::Ready(_) | SlotState::Settled => {}
+            }
+        }
+        Ok(false)
+    }
+
     pub(crate) fn has_pending(&self) -> bool {
         self.lock().iter().any(|slot| match &*slot.lock() {
             SlotState::Ready(batch) if !matches!(slot.route, ReactionRoute::Operation(_)) => {
@@ -501,6 +527,34 @@ impl Publication {
 }
 
 impl Draft {
+    pub(in crate::store) fn require_reaction_receiver_retirement(
+        &self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let Some(receiver) = self.published_id(key) else {
+            return Ok(());
+        };
+        let Some(registration) = self
+            .script_registration
+            .as_ref()
+            .filter(|registration| registration.is_active())
+        else {
+            return Ok(());
+        };
+        let Some(inbox) = registration.custom_element_reactions.get() else {
+            return Ok(());
+        };
+        if self.node(key)?.element().is_some_and(|element| {
+            element.language().custom_element_state()
+                == surgeist_html::elements::native::HtmlCustomElementState::Custom
+        }) && inbox.requires_live_receiver(receiver, || self.source_step(cancel))?
+        {
+            return Err(DomError::CustomElementReactionPending(receiver));
+        }
+        Ok(())
+    }
+
     pub(in crate::store) fn custom_element_reaction_count(&self) -> usize {
         self.custom_element_reactions
             .as_ref()

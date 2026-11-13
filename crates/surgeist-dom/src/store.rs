@@ -473,6 +473,9 @@ pub enum DomError {
     NotFound,
     InUseAttribute,
     InvalidDestruction,
+    /// The original live script attachment must settle a routed reaction
+    /// before its native receiver can be retired.
+    CustomElementReactionPending(NodeId),
     IndexSize,
     Cancelled,
     ResourceLimit {

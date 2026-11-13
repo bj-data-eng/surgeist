@@ -503,10 +503,10 @@ pub(super) fn verify_declarative_shadow_reuse() {
                     dom.apply(batch, &cancel)
                 })
                 .unwrap();
-            assert!(
-                retirement.is_err(),
-                "retirement must preserve the original pending receiver"
-            );
+            assert!(matches!(
+                retirement,
+                Err(DomError::CustomElementReactionPending(receiver)) if receiver == custom
+            ));
             assert_eq!(host.snapshot().unwrap().stamp(), before);
         }
         if matches!(
