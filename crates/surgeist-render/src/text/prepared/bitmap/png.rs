@@ -734,12 +734,111 @@ mod tests {
         assert_eq!(test_decode(&valid, 1 << 20).unwrap().pixels, PIXELS);
     }
 
+    fn color_image(filtered: &[u8], chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+        let original = image_with_height(&zlib(filtered), false, 1);
+        let mut bytes = original[..33].to_vec();
+        for (kind, payload) in chunks {
+            append(&mut bytes, kind, payload);
+        }
+        bytes.extend_from_slice(&original[33..]);
+        bytes
+    }
+
+    fn assert_authored_color_image(bytes: &[u8], pixels: &[u8; 8]) {
+        // A separate PNG implementation proves the authored framing, CRC and
+        // compressed scanline fixture; raw samples are not a calibration oracle.
+        let mut provider = ::png::Decoder::new(std::io::Cursor::new(bytes))
+            .read_info()
+            .unwrap();
+        let mut actual = [0; 8];
+        provider.next_frame(&mut actual).unwrap();
+        provider.finish().unwrap();
+        assert_eq!(&actual, pixels);
+    }
+
+    #[test]
+    fn png_supported_color_linear_gamma_encodes_midgray_without_changing_alpha() {
+        let source = [128, 128, 128, 128, 128, 128, 128, 64];
+        let mut filtered = vec![0];
+        filtered.extend(source);
+        let bytes = color_image(&filtered, &[(b"gAMA", &100_000_u32.to_be_bytes())]);
+        assert_authored_color_image(&bytes, &source);
+        // PNG 2025 section 11.3.2.2: 100000 denotes gamma 1, hence linear
+        // L=128/255. The sRGB encoding 255*(1.055*L^(1/2.4)-0.055)
+        // is 187.84497..., rounding to 188. PNG section 4.3 leaves alpha linear.
+        assert_eq!(
+            test_decode(&bytes, 1 << 20).unwrap().pixels,
+            [188, 188, 188, 128, 188, 188, 188, 64],
+        );
+    }
+
+    #[test]
+    fn png_supported_color_explicit_srgb_preserves_samples_for_every_defined_intent() {
+        let source = [12, 128, 240, 128, 255, 0, 1, 64];
+        let mut filtered = vec![0];
+        filtered.extend(source);
+        let results: Vec<_> = (0..=3)
+            .map(|intent| {
+                let bytes = color_image(&filtered, &[(b"sRGB", &[intent])]);
+                assert_authored_color_image(&bytes, &source);
+                (
+                    intent,
+                    test_decode(&bytes, 1 << 20).map(|decoded| decoded.pixels),
+                )
+            })
+            .collect();
+        // PNG 2025 section 11.3.2.5 defines precisely intents 0..3. The
+        // source and this numeric SDR receiver are already the same sRGB space.
+        assert!(
+            results.iter().all(|(_, result)| result.is_ok()),
+            "{results:?}"
+        );
+        for (intent, result) in results {
+            assert_eq!(result.unwrap(), source, "sRGB intent {intent}");
+        }
+    }
+
+    #[test]
+    fn png_supported_color_chromaticities_execute_a_red_blue_primary_permutation() {
+        let source = [255, 0, 0, 128, 255, 0, 0, 64];
+        let mut filtered = vec![0];
+        filtered.extend(source);
+        // PNG 2025 sections 11.3.2.1/11.3.2.5 give 100000-scaled xy.
+        // Keep D65 and green; exchange the standard red/blue primary pairs.
+        let chromaticities: Vec<_> = [
+            31_270_u32, 32_900, 15_000, 6_000, 30_000, 60_000, 64_000, 33_000,
+        ]
+        .into_iter()
+        .flat_map(u32::to_be_bytes)
+        .collect();
+        let bytes = color_image(
+            &filtered,
+            &[
+                (b"cHRM", &chromaticities),
+                (b"gAMA", &100_000_u32.to_be_bytes()),
+            ],
+        );
+        assert_authored_color_image(&bytes, &source);
+        // The calibrated source RGB->XYZ columns are the target's blue,
+        // green, red columns. Equal whitepoints need no adaptation, so a
+        // source red basis vector is exactly target blue; alpha stays unchanged.
+        assert_eq!(
+            test_decode(&bytes, 1 << 20).unwrap().pixels,
+            [0, 0, 255, 128, 0, 0, 255, 64],
+        );
+    }
+
     #[test]
     fn png_unexecuted_chunk_semantics_refuse_without_ignoring_color_or_animation() {
         let valid = image(&zlib(&FILTERED[0]), false);
-        for kind in [*b"gAMA", *b"iCCP", *b"acTL", *b"tEXt"] {
+        for kind in [*b"cICP", *b"iCCP", *b"acTL", *b"tEXt"] {
             let mut bytes = valid[..33].to_vec();
-            append(&mut bytes, &kind, &[0, 0, 0, 1]);
+            let payload = if kind == *b"cICP" {
+                [1, 13, 0, 1]
+            } else {
+                [0, 0, 0, 1]
+            };
+            append(&mut bytes, &kind, &payload);
             bytes.extend(&valid[33..]);
             assert_eq!(
                 test_decode(&bytes, 1 << 20)
