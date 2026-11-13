@@ -99,6 +99,37 @@ fn install(
     Ok(observation)
 }
 
+/// General value materialization owns a record, while importing or retaining
+/// an existing identity shares that record without another admission.
+pub(super) fn general_roots_keep_admission_until_reaping() -> Result<(), Error> {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = process.execution().create_realm()?;
+    let bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
+    let account = Account::new(1, u64::try_from(bytes).unwrap(), ProfileMode::Off);
+    install(&mut process, account.clone())?;
+    let root = process.execution().in_realm(&realm, |scope| {
+        let value = scope.primitive(Primitive::Number(42.0))?;
+        assert_eq!(account.requests.borrow().len(), 1);
+        assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+        Ok(scope.retain(&value))
+    })?;
+    let clone = root.clone();
+    process.execution().in_realm(&realm, |scope| {
+        let imported = scope.import(&clone)?;
+        assert_eq!(scope.kind(&imported)?, ValueKind::Number);
+        assert_eq!(account.requests.borrow().len(), 1);
+        Ok(())
+    })?;
+    drop(root);
+    process.execution().memory_pressure();
+    assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+    drop(clone);
+    process.execution().memory_pressure();
+    assert_eq!(account.live(), 0);
+    assert_eq!(account.work(), 1);
+    Ok(())
+}
+
 fn callable_case(
     work: u64,
     bytes: u64,

@@ -2606,6 +2606,7 @@ fn main() -> Result<(), Error> {
     host::rejected_failure_drop_stays_in_callback_guard()?;
     callback_object::terminal_cleanup()?;
     callback_object::native_projection_refuses_foreign_prototype_before_admission()?;
+    capture::general_roots_keep_admission_until_reaping()?;
     capture::boundaries_and_retained_roots()?;
     capture::constructors_and_nested_callbacks_share_admission()?;
     capture::failed_release_keeps_the_original_guest_exception()?;
