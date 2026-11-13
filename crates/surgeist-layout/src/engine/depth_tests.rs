@@ -1172,3 +1172,41 @@ fn deep_intrinsic_grid_lanes_auto_repeat_uses_leaf_height() {
         },
     );
 }
+
+fn assert_auto_height_grid_lanes_chain<S: LayoutScalar>(depth: u32) {
+    assert_layout_chain_with_style::<S>(
+        Display::GridLanes,
+        crate::Position::Relative,
+        depth,
+        |node, leaf, style| {
+            if node != leaf {
+                style.size.height = crate::PreferredSizeOf::AUTO;
+                style.grid_template_columns = vec![crate::TrackComponentOf::from(
+                    crate::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                )];
+            }
+        },
+    );
+}
+
+#[test]
+fn shallow_auto_height_grid_lanes_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_auto_height_grid_lanes_uses_leaf_height",
+        || {
+            assert_auto_height_grid_lanes_chain::<f32>(2);
+            assert_auto_height_grid_lanes_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_auto_height_grid_lanes_uses_leaf_height() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_auto_height_grid_lanes_uses_leaf_height",
+        || {
+            assert_auto_height_grid_lanes_chain::<f32>(24);
+            assert_auto_height_grid_lanes_chain::<f64>(24);
+        },
+    );
+}
