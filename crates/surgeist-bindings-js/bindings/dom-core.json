@@ -5058,14 +5058,11 @@
     "Document.importNode:0/call": {
       "kind": "native",
       "adapter": "document.importnode.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "import_node"}],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Exact nondefault options/registry and reached family initialization contract for importNode; preserve existing admitted default native profiles.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "import_live_node"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
+      ],
+      "requirements": []
     },
     "Document.adoptNode:0/call": {
       "kind": "native",

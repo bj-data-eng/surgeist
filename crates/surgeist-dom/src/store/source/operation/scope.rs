@@ -105,6 +105,7 @@ impl OperationRoot {
             | Command::ReplaceChild { parent, .. } => existing(parent),
             Command::ConstructDocument(context) => Some(context.document.node()),
             Command::CloneNode { source, .. } => existing(source),
+            Command::ImportLiveNode { document, .. } => Some(document.node()),
             Command::SplitText { node, .. } => existing(node),
             Command::Normalize(node) => existing(node),
             Command::Import { document, .. } | Command::Adopt { document, .. } => {

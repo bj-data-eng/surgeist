@@ -138,6 +138,15 @@ pub struct ElementCreationOptions {
     pub is: Option<DomString>,
 }
 
+/// Complete `ImportNodeOptions` dictionary value for the admitted registry profile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImportNodeOptions {
+    /// The declared `customElementRegistry` member.
+    pub custom_element_registry: Option<CustomElementRegistryIdentity>,
+    /// The declared `selfOnly` member.
+    pub self_only: bool,
+}
+
 /// Complete `ShadowRootInit` dictionary value for the admitted registry profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShadowRootInit {
@@ -180,4 +189,13 @@ pub enum ElementCreationArgument {
     String(DomString),
     /// The dictionary alternative in the admitted registry profile.
     Options(ElementCreationOptions),
+}
+
+/// The declared Boolean or dictionary input to Document.importNode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImportNodeArgument {
+    /// The Boolean subtree flag.
+    Subtree(bool),
+    /// The converted options dictionary.
+    Options(ImportNodeOptions),
 }

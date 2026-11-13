@@ -2054,7 +2054,11 @@ impl DomSourceLease<'_> {
             .ok_or(DomError::InvalidSourceOperation)?;
         if !matches!(
             operation.commands.first(),
-            Some(Command::SplitText { .. } | Command::CloneNode { .. })
+            Some(
+                Command::SplitText { .. }
+                    | Command::CloneNode { .. }
+                    | Command::ImportLiveNode { .. }
+            )
         ) {
             return Err(DomError::InvalidSourceOperation);
         }
@@ -2279,6 +2283,7 @@ impl DomSourceLease<'_> {
                         | Command::CreateRange { .. }
                         | Command::Import { .. }
                         | Command::CloneNode { .. }
+                        | Command::ImportLiveNode { .. }
                         | Command::SplitText { .. }
                         | Command::ConstructDocument(_)
                         | Command::AttachShadow { .. }

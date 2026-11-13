@@ -699,6 +699,11 @@ def null_registry_member(member):
 def branded_registry_member(member):
     return null_registry_member(member) and member.get("id") == "ElementCreationOptions.customElementRegistry"
 
+def required_registry_brand_member(member):
+    return (member.get("id") == "ImportNodeOptions.customElementRegistry"
+            and member["type"] == {"kind": "named", "name": "CustomElementRegistry"}
+            and not member["required"] and "default" not in member)
+
 
 def string_member(member):
     return (member.get("id") == "ElementCreationOptions.is"
@@ -736,7 +741,7 @@ def lower_values(data):
         result = list(inherited)
         for m in sorted(d["members"], key=lambda m: m["name"]):
             ty = m["type"]
-            if not null_registry_member(m):
+            if not (null_registry_member(m) or required_registry_brand_member(m)):
                 if ty["kind"] != "named" or ty.get("attributes"):
                     return None
                 target = definitions.get(ty["name"])
@@ -770,6 +775,8 @@ def units_literal(value):
 
 
 def member_type(member):
+    if required_registry_brand_member(member):
+        return "Option<CustomElementRegistryIdentity>"
     if branded_registry_member(member):
         return "Option<Option<CustomElementRegistryIdentity>>"
     if null_registry_member(member):
@@ -780,6 +787,8 @@ def member_type(member):
 
 
 def member_default(member, enumerations):
+    if required_registry_brand_member(member):
+        return "None"
     if branded_registry_member(member):
         return "None"
     if null_registry_member(member):
@@ -802,7 +811,8 @@ def emit_values(model):
               "// Source-adapted WHATWG declarations: licenses/whatwg/LICENSE and NOTICE.md.",
               "//! Typed IDL values from the retained binding description.",
               "//!", "//! These values do not install interfaces or convert guest inputs.", ""]
-    imports = [name for name, accepts in [("CustomElementRegistryIdentity", branded_registry_member),
+    imports = [name for name, accepts in [("CustomElementRegistryIdentity", lambda member:
+                                           branded_registry_member(member) or required_registry_brand_member(member)),
                                            ("DomString", string_member)]
                if any(accepts(m) for d in model["dictionaries"] for m in d["members"])]
     if len(imports) == 1:
@@ -832,7 +842,7 @@ def emit_values(model):
         copy = "" if any(string_member(m) for m in d["members"]) else "Clone, Copy, "
         derives = copy + "Debug, " + ("Default, " if derive_default else "") + "PartialEq, Eq"
         doc = ("Complete `" + d["name"] + "` dictionary value for the admitted registry profile."
-               if any(null_registry_member(m) for m in d["members"])
+               if any(null_registry_member(m) or required_registry_brand_member(m) for m in d["members"])
                else "Complete brand-free `" + d["name"] + "` dictionary value.")
         result += ["/// " + doc,
                    "#[derive(" + derives + ")]", "pub struct " + d["name"] + " {"]
@@ -856,11 +866,22 @@ def emit_values(model):
                    "    String(DomString),",
                    "    /// The dictionary alternative in the admitted registry profile.",
                    "    Options(ElementCreationOptions),", "}", ""]
+    if import_node_dictionary(model):
+        result += ["/// The declared Boolean or dictionary input to Document.importNode.",
+                   "#[derive(Clone, Copy, Debug, PartialEq, Eq)]",
+                   "pub enum ImportNodeArgument {",
+                   "    /// The Boolean subtree flag.",
+                   "    Subtree(bool),",
+                   "    /// The converted options dictionary.",
+                   "    Options(ImportNodeOptions),", "}", ""]
     return "\n".join(result)
 
 
 def element_creation_dictionary(model):
     return any(d["name"] == "ElementCreationOptions" for d in model["dictionaries"])
+
+def import_node_dictionary(model):
+    return any(d["name"] == "ImportNodeOptions" for d in model["dictionaries"])
 
 
 def conversion_type(ty, model, aliases=frozenset()):
@@ -888,6 +909,11 @@ def conversion_type(ty, model, aliases=frozenset()):
     ] and element_creation_dictionary(model):
         return ("ElementCreationArgument", "Type<ElementCreationArgument>",
                 "Type::scalar(super::composition::element_creation_argument)")
+    if ty["kind"] == "union" and ty["members"] == [
+        {"kind": "named", "name": "boolean"}, {"kind": "named", "name": "ImportNodeOptions"}
+    ] and import_node_dictionary(model):
+        return ("ImportNodeArgument", "Type<ImportNodeArgument>",
+                "Type::scalar(super::composition::import_node_argument)")
     if ty["kind"] != "named":
         return None
     name = ty["name"]
@@ -958,6 +984,8 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
     imports = [d["name"] for d in model["enumerations"] + model["dictionaries"]]
     if any(a["info"][0] == "ElementCreationArgument" for a in arguments):
         imports.append("ElementCreationArgument")
+    if any(a["info"][0] == "ImportNodeArgument" for a in arguments):
+        imports.append("ImportNodeArgument")
     for name in sorted(imports):
         result.append("use crate::declarations::" + name + ";")
     result += ["use crate::{DomString, IntegerKind, IntegerMode, IntegerValue, UsvString, Value};", ""]
@@ -998,7 +1026,9 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
                     result += ["            " + line for line in textwrap.wrap(member_units[1:-1] + ",", width=88)]
                     result += ["        ],"]
                 result += ["    )? {"]
-            if branded_registry_member(member):
+            if required_registry_brand_member(member):
+                result += ["        Some(value) => Some(cx.required_custom_element_registry_member(&value)?),"]
+            elif branded_registry_member(member):
                 result += ["        Some(value) => Some(cx.custom_element_registry_member(&value)?),"]
             elif null_registry_member(member):
                 result += ["        Some(value) => cx.null_interface_member(\"CustomElementRegistry\", &value)?,"]
@@ -1056,6 +1086,8 @@ def emit_conversions(model, arguments=(), annotated_setters=()):
                     expression = "ElementCreationArgument::Options(\n        ElementCreationOptions::default(),\n    )"
             elif kind == "boolean":
                 expression = str(default["value"]).lower()
+                if output == "ImportNodeArgument":
+                    expression = "ImportNodeArgument::Subtree(" + expression + ")"
             elif kind == "integer":
                 expression = "IntegerValue::" + {"unsigned long": "UnsignedLong"}[arg["type"]["name"]] + "(" + str(default["value"]) + ")"
             elif kind == "string":

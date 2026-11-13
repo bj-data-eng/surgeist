@@ -6,6 +6,7 @@ use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
 use surgeist_dom::{DomSourceEdit, DomSourceStatus};
 
 mod clone;
+pub(super) use clone::install_import;
 
 #[derive(Clone, Copy)]
 enum Method {

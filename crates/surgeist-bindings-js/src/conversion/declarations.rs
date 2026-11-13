@@ -13,6 +13,8 @@ use crate::declarations::ElementCreationOptions;
 use crate::declarations::EventInit;
 use crate::declarations::EventListenerOptions;
 use crate::declarations::GetRootNodeOptions;
+use crate::declarations::ImportNodeArgument;
+use crate::declarations::ImportNodeOptions;
 use crate::declarations::ShadowRootInit;
 use crate::declarations::ShadowRootMode;
 use crate::declarations::SlotAssignmentMode;
@@ -97,6 +99,37 @@ fn convert_element_creation_options<'s>(
         },
         storage,
     })
+}
+
+/// Complete dictionary conversion for `ImportNodeOptions`.
+pub fn import_node_options() -> Type<ImportNodeOptions> {
+    Type::scalar(convert_import_node_options)
+}
+
+fn convert_import_node_options<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<ImportNodeOptions>, Failure> {
+    let object = cx.dictionary("ImportNodeOptions", input)?;
+    let custom_element_registry = match cx.member(
+        input,
+        object,
+        &[
+            99, 117, 115, 116, 111, 109, 69, 108, 101, 109, 101, 110, 116, 82, 101, 103, 105, 115,
+            116, 114, 121,
+        ],
+    )? {
+        Some(value) => Some(cx.required_custom_element_registry_member(&value)?),
+        None => None,
+    };
+    let self_only = match cx.member(input, object, &[115, 101, 108, 102, 79, 110, 108, 121])? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    Ok(cx.plain(ImportNodeOptions {
+        custom_element_registry,
+        self_only,
+    }))
 }
 
 /// Complete dictionary conversion for `ShadowRootInit`.
@@ -559,6 +592,23 @@ pub fn document_create_processing_instruction_0_data() -> Argument<Type<DomStrin
         false,
         types::DOM_STRING,
         None,
+    )
+}
+
+fn default_document_import_node_0_options(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<ImportNodeArgument>, Failure> {
+    Ok(cx.plain(ImportNodeArgument::Subtree(false)))
+}
+
+/// Selected argument `Document.importNode:0/options` (not overload selection).
+pub fn document_import_node_0_options() -> Argument<Type<ImportNodeArgument>> {
+    Argument::new(
+        "Document.importNode:0/options",
+        1,
+        true,
+        Type::scalar(super::composition::import_node_argument),
+        Some(default_document_import_node_0_options),
     )
 }
 

@@ -906,6 +906,25 @@ impl DomSourceEdit {
             },
         }
     }
+    /// Import the live node into the exact destination with the selected
+    /// registry and authenticated attachment fallback.
+    pub fn import_live_node(
+        source: NodeId,
+        document: crate::DocumentId,
+        subtree: bool,
+        registry: Option<crate::DomRegistryId>,
+        fallback: crate::DomCreationRealmFallback,
+    ) -> Self {
+        Self {
+            command: Command::ImportLiveNode {
+                source,
+                document,
+                subtree,
+                registry,
+                fallback,
+            },
+        }
+    }
     /// Normalize descendant Text through one retained source invocation, including
     /// each real append/removal hook and the special live Range transfers.
     pub fn normalize(node: NodeId) -> Self {
