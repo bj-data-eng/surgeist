@@ -1199,7 +1199,8 @@ impl DomBatch {
         removed
     }
     /// Destroys a detached non-Document, non-ShadowRoot subtree, including owned
-    /// shadow trees, retiring published identities.
+    /// shadow trees, retiring published identities. A live script attachment
+    /// can retain a receiver until its original custom-element reaction settles.
     pub fn destroy(&mut self, node: impl Into<NodeOperand>) {
         self.commands.push(Command::Destroy(node.into()));
     }

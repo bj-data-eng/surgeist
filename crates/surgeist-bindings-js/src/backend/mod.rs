@@ -108,6 +108,7 @@ pub(crate) trait Operations {
     fn check_active(&self) -> Result<(), Error>;
     fn validate_root(&self, root: &Root) -> Result<(), Error>;
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
+    fn enqueue_microtask(&mut self, function: &Root) -> Result<(), Error>;
     fn validate_string_length(&self, units: usize) -> Result<(), Error>;
     fn string(&mut self, units: &[u16]) -> Result<Root, Error>;
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error>;

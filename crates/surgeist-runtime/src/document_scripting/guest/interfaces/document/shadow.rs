@@ -158,6 +158,11 @@ impl Capture {
                 native = native.with_null_registry();
             }
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let registration = owner
+                .attachment
+                .get()
+                .and_then(|attachment| attachment.registration.upgrade())
+                .ok_or(DocumentScriptNativeError::Revoked)?;
             let (document, existing) = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
                 let node = snapshot.node_with(host, || events.step())?;
@@ -168,24 +173,53 @@ impl Capture {
                     node.reusable_shadow_root_with(native.properties().mode(), || events.step())?;
                 Ok((document, root))
             })?;
+            let enclosing_queue = owner.active_synchronous_reactions.get();
+            let mut callback_failure = None;
+            let mut has_callback = |definition| {
+                public
+                    .has_disconnected_callback(&events, definition)
+                    .map_err(|error| {
+                        callback_failure = Some(error);
+                        DomError::InvalidSourceOperation
+                    })
+            };
+            let settle_reaction_route = |scope: &mut Scope<'scope>, reactions: bool| {
+                if !reactions {
+                    return Ok(());
+                }
+                if enclosing_queue.is_some() {
+                    owner.synchronous_shadow_reactions.set(true);
+                    Ok(())
+                } else {
+                    public.schedule_backup_reactions(scope)
+                }
+            };
             if let Some(root) = existing
                 && let Some(projected) = public
                     .document
                     .ordinary
                     .open_with(scope, root, || events.step())?
             {
-                self.with_native(&owner, |session, _| {
-                    let (_, attached) = session.dom().raw_mut().attach_shadow_synchronously(
-                        host,
-                        native,
-                        events.limits.source_edits,
-                        &owner.cancellation,
-                    )?;
+                let reactions = self.with_native(&owner, |session, _| {
+                    let (_, attached, reactions) =
+                        session.dom().raw_mut().attach_shadow_synchronously(
+                            host,
+                            native,
+                            events.limits.source_edits,
+                            Some(surgeist_dom::DomShadowReactionRoute::new(
+                                &registration,
+                                enclosing_queue,
+                                &mut has_callback,
+                            )),
+                            &owner.cancellation,
+                        )?;
                     if root != attached {
                         return Err(DocumentScriptNativeError::ProjectionCustody.into());
                     }
-                    Ok(())
-                })?;
+                    Ok(reactions)
+                });
+                let reactions = callback_failure.map_or(reactions, Err)?;
+                settle_reaction_route(scope, reactions)?;
                 return Ok(projected);
             }
             let origin = if let Some(root) = existing {
@@ -203,6 +237,7 @@ impl Capture {
             } else {
                 public.other_document_origin(&owner, &events, document)?
             };
+            let mut reactions = false;
             let mut publish = |prototypes: &DocumentPrototypes| {
                 public.document.ordinary.create(
                     scope,
@@ -211,28 +246,36 @@ impl Capture {
                     ordinary::NodePrototype::Creation(&prototypes.shadow),
                     |inbox, key| {
                         self.with_native(&owner, |session, _| {
-                            let (_, root, watch) = session
+                            let (watched, published_reactions) = session
                                 .dom()
                                 .raw_mut()
                                 .attach_shadow_with_node_retirement_watch(
                                     host,
                                     native,
-                                    inbox,
-                                    key,
+                                    (inbox, key),
                                     (events.limits.source_edits, events.limits.node_retirement),
+                                    Some(surgeist_dom::DomShadowReactionRoute::new(
+                                        &registration,
+                                        enclosing_queue,
+                                        &mut has_callback,
+                                    )),
                                     &owner.cancellation,
-                                )?
-                                .into_parts();
+                                )?;
+                            reactions = published_reactions;
+                            let (_, root, watch) = watched.into_parts();
                             Ok((GuestNode::ShadowRoot(root), watch))
                         })
                     },
                 )
             };
-            if let Some(origin) = origin {
+            let value = if let Some(origin) = origin {
                 public.with_origin(&events, origin, |origin| publish(&origin.documents))
             } else {
                 publish(&public.document.prototypes)
-            }
+            };
+            let value = callback_failure.map_or(value, Err)?;
+            settle_reaction_route(scope, reactions)?;
+            Ok(value)
         })();
         match result {
             Err(DocumentGuestEventError::Document(DocumentScriptError::Native(

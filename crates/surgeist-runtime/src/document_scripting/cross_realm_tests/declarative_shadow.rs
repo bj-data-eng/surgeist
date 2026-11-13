@@ -96,20 +96,83 @@ fn attach_window(
 }
 
 pub(super) fn verify_declarative_shadow_reuse() {
-    for (mode, markup, assertion) in [
+    #[derive(Clone, Copy, Debug)]
+    enum Delivery {
+        Checkpoint,
+        Reconnect,
+        Nested,
+        MissingCallback,
+        ReceiverPosition,
+        FactoryScope,
+        FactoryReconnect,
+        DefinitionScope,
+        AttributeScope,
+        AttributeAbruptRefusal,
+        AttributeAbruptCallbackRefusal,
+        AttributeRejectedCallbackRefusal,
+        Stop,
+        Refuse,
+        RefuseAfterFirst,
+    }
+    for (mode, delivery) in [
+        (HtmlShadowRootMode::Open, Delivery::Checkpoint),
+        (HtmlShadowRootMode::Open, Delivery::Reconnect),
+        (HtmlShadowRootMode::Open, Delivery::Nested),
+        (HtmlShadowRootMode::Open, Delivery::MissingCallback),
+        (HtmlShadowRootMode::Open, Delivery::ReceiverPosition),
+        (HtmlShadowRootMode::Open, Delivery::FactoryScope),
+        (HtmlShadowRootMode::Open, Delivery::FactoryReconnect),
+        (HtmlShadowRootMode::Open, Delivery::DefinitionScope),
+        (HtmlShadowRootMode::Open, Delivery::AttributeScope),
+        (HtmlShadowRootMode::Open, Delivery::AttributeAbruptRefusal),
         (
             HtmlShadowRootMode::Open,
-            "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
-            "observed === original && observed === shadowHost.shadowRoot",
+            Delivery::AttributeAbruptCallbackRefusal,
         ),
         (
-            HtmlShadowRootMode::Closed,
-            "<template shadowrootmode=closed shadowrootdelegatesfocus><p>child</p></template>",
-            "original === null && shadowHost.shadowRoot === null && observed.mode === 'closed'",
+            HtmlShadowRootMode::Open,
+            Delivery::AttributeRejectedCallbackRefusal,
         ),
+        (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
+        (HtmlShadowRootMode::Closed, Delivery::Stop),
+        (HtmlShadowRootMode::Closed, Delivery::Refuse),
+        (HtmlShadowRootMode::Open, Delivery::RefuseAfterFirst),
     ] {
+        let reenter = matches!(delivery, Delivery::Reconnect);
+        let nested = matches!(delivery, Delivery::Nested);
+        let missing_callback = matches!(delivery, Delivery::MissingCallback);
+        let receiver_position = matches!(delivery, Delivery::ReceiverPosition);
+        let factory_reconnect = matches!(delivery, Delivery::FactoryReconnect);
+        let factory_scope = matches!(delivery, Delivery::FactoryScope) || factory_reconnect;
+        let definition_scope = matches!(delivery, Delivery::DefinitionScope);
+        let native_rejection = matches!(delivery, Delivery::AttributeRejectedCallbackRefusal);
+        let callback_refusal =
+            matches!(delivery, Delivery::AttributeAbruptCallbackRefusal) || native_rejection;
+        let attribute_abrupt_refusal =
+            matches!(delivery, Delivery::AttributeAbruptRefusal) || callback_refusal;
+        let attribute_scope =
+            matches!(delivery, Delivery::AttributeScope) || attribute_abrupt_refusal;
+        let refuse_after_first = matches!(delivery, Delivery::RefuseAfterFirst);
+        let (markup, assertion) = match mode {
+            HtmlShadowRootMode::Open => (
+                "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
+                "observed === original && observed === shadowHost.shadowRoot",
+            ),
+            HtmlShadowRootMode::Closed => (
+                "<template shadowrootmode=closed shadowrootdelegatesfocus><p>child</p></template>",
+                "original === null && shadowHost.shadowRoot === null && observed.mode === 'closed'",
+            ),
+        };
         let cancel = Arc::new(AtomicBool::new(false));
-        let (mut session, target) = hosted_session(&cancel, 0);
+        let (mut session, target) = if attribute_scope {
+            let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+                limits.with_meta_processing_work(1_000_000)
+            });
+            session.enable_trusted_types_csp(&cancel).unwrap();
+            (session, target)
+        } else {
+            hosted_session(&cancel, 0)
+        };
         let (document, element) = {
             let hosted = session.hosted_execution();
             let mut dom = session.dom();
@@ -139,6 +202,26 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 &cancel,
             )
             .unwrap();
+        let second = if nested || missing_callback || receiver_position {
+            let mut batch = DomBatch::new();
+            let second = batch.create_element_ns(document, Namespace::html(), "div");
+            batch.insert_before(&second, element, None);
+            let commit = session.dom().apply(batch, &cancel).unwrap();
+            let second = commit.created(&second).unwrap().unwrap();
+            let (capture, report) =
+                fragment(&session.snapshot(), document, second, markup, &cancel);
+            session
+                .install_parsed_html_fragment(
+                    report,
+                    &capture,
+                    DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
+                    &cancel,
+                )
+                .unwrap();
+            Some(second)
+        } else {
+            None
+        };
         let snapshot = installed.snapshot();
         let root = snapshot
             .node(element)
@@ -146,12 +229,105 @@ pub(super) fn verify_declarative_shadow_reuse() {
             .hosted_shadow_root()
             .unwrap();
         let child = snapshot.node(root).unwrap().children()[0];
+        let policy = if attribute_scope {
+            let snapshot = session.snapshot();
+            let document = target.document();
+            let html = snapshot
+                .document(document)
+                .unwrap()
+                .document_element()
+                .unwrap();
+            let head = snapshot.node(html).unwrap().children()[0];
+            let mut batch = DomBatch::new();
+            let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+            batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+            batch.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
+            let commit = session.dom().apply(batch, &cancel).unwrap();
+            Some((head, commit.created(&meta).unwrap().unwrap()))
+        } else {
+            None
+        };
         let mut host = attach_window(session, target, cancel.clone());
         let permit = host.permit().unwrap();
         for (node, name) in [(element, "shadowHost"), (child, "shadowChild")] {
             super::super::guest::tests::expose_public_node_for_source_test(
                 &mut host, &permit, node, name,
             );
+        }
+        if let Some(second) = second {
+            super::super::guest::tests::expose_public_node_for_source_test(
+                &mut host,
+                &permit,
+                second,
+                "secondShadowHost",
+            );
+        }
+        if let Some((head, meta)) = policy {
+            for (node, name) in [(head, "policyHead"), (meta, "shadowPolicy")] {
+                super::super::guest::tests::expose_public_node_for_source_test(
+                    &mut host, &permit, node, name,
+                );
+            }
+        }
+        let first_entered = Rc::new(Cell::new(false));
+        if refuse_after_first || attribute_abrupt_refusal {
+            super::super::guest::tests::expose_reaction_work_exhaustion(
+                &mut host,
+                &permit,
+                Rc::clone(&first_entered),
+            );
+        }
+        let before_custom = host.snapshot().unwrap();
+        host.in_document(&permit, |scope| {
+            evaluate(
+                scope,
+                r#"
+                const calls = globalThis.shadowReuseCalls = [];
+                const marker = globalThis.shadowReuseException = {};
+                customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {
+                    static observedAttributes = ['onclick', 'data-next'];
+                    attributeChangedCallback(name) { calls.push(name); }
+                    disconnectedCallback() {
+                        calls.push(this);
+                        if (globalThis.attributeShadowReuse) this.setAttribute('data-next', '1');
+                        if (globalThis.exhaustReactionWork) {
+                            exhaustReactionWork();
+                            if (globalThis.refuseDuringDisconnection)
+                                this.setAttribute('data-next', 'later');
+                            return;
+                        }
+                        if (this === globalThis.shadowReuseReceiver &&
+                            globalThis.nestedShadowReuse && !globalThis.reusedSecondShadow) {
+                            globalThis.reusedSecondShadow = true;
+                            secondShadowHost.shadowRoot.appendChild(this);
+                            secondShadowHost.attachShadow({mode: 'open'});
+                            Promise.resolve().then(() => calls.push('nested'));
+                        }
+                        throw marker;
+                    }
+                    connectedCallback() { calls.push('connected'); }
+                });
+                globalThis.shadowReuseReceiver = document.createElement('x-shadow-reuse-reaction');
+            "#,
+            )
+            .map(drop)
+        })
+        .unwrap();
+        let with_custom = host.snapshot().unwrap();
+        let mut new_nodes = with_custom
+            .nodes()
+            .filter(|node| before_custom.node(*node).is_err());
+        let custom = new_nodes.next().unwrap();
+        assert!(new_nodes.next().is_none());
+        if mode == HtmlShadowRootMode::Closed {
+            // Leave the closed root unprojected until the watched attachment route
+            // returns its first wrapper. Insert the defined element from Rust.
+            host.with_native(|dom, _, _| {
+                let mut batch = DomBatch::new();
+                batch.insert_before(custom, root, None);
+                dom.apply(batch, &cancel).unwrap();
+            })
+            .unwrap();
         }
         let (matching, mismatch) = match mode {
             HtmlShadowRootMode::Open => ("open", "closed"),
@@ -169,22 +345,90 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         if (error.name !== "NotSupportedError" || shadowChild.parentNode === null)
                             return false;
                     }}
-                    if (original !== null) {{
-                        const calls = [];
-                        customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {{
-                            disconnectedCallback() {{ calls.push(this); }}
-                        }});
-                        const custom = document.createElement('x-shadow-reuse-reaction');
-                        original.appendChild(custom);
-                        try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
-                        catch (error) {{
-                            if (error.name !== "NotSupportedError" || custom.parentNode !== original ||
-                                shadowChild.parentNode !== original || calls.length !== 0) return false;
-                        }}
-                        original.removeChild(custom);
-                        if (calls.length !== 1 || calls[0] !== custom) return false;
+                    if (original !== null) original.appendChild(shadowReuseReceiver);
+                    if ({missing_callback}) {{
+                        customElements.define('x-without-disconnection', class extends HTMLElement {{}});
+                        secondShadowHost.shadowRoot.appendChild(
+                            document.createElement('x-without-disconnection'));
+                        secondShadowHost.attachShadow({{mode: 'open'}});
                     }}
-                    const observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                    if ({nested} || {receiver_position} || {refuse_after_first}) {{
+                        globalThis.nestedShadowReuse = {nested};
+                        globalThis.secondShadowReceiver = document.createElement('x-shadow-reuse-reaction');
+                        original.appendChild(secondShadowReceiver);
+                    }}
+                    shadowReuseCalls.length = 0;
+                    Promise.resolve().then(() => shadowReuseCalls.push('before'));
+                    let observed;
+                    if ({factory_scope}) {{
+                        customElements.define('x-shadow-trigger', class extends HTMLElement {{
+                            constructor() {{
+                                super();
+                                observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                                if ({factory_reconnect}) shadowHost.appendChild(shadowReuseReceiver);
+                                shadowReuseCalls.push('constructor');
+                            }}
+                        }});
+                        document.createElement('x-shadow-trigger');
+                        if ({factory_reconnect}) {{
+                            if (shadowReuseCalls.length !== 3 ||
+                                shadowReuseCalls[0] !== shadowReuseReceiver ||
+                                shadowReuseCalls.slice(1).join(',') !== 'connected,constructor')
+                                return false;
+                        }} else if (shadowReuseCalls.length !== 2 ||
+                            shadowReuseCalls[0] !== 'constructor' ||
+                            shadowReuseCalls[1] !== shadowReuseReceiver) return false;
+                    }} else if ({definition_scope}) {{
+                        const sentinel = {{}};
+                        class Trigger extends HTMLElement {{
+                            get connectedCallback() {{
+                                observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                                shadowReuseCalls.push('getter');
+                                throw sentinel;
+                            }}
+                        }}
+                        try {{ customElements.define('x-shadow-getter', Trigger); return false; }}
+                        catch (error) {{
+                            if (error !== sentinel || shadowReuseCalls.length !== 2 ||
+                                shadowReuseCalls[0] !== 'getter' ||
+                                shadowReuseCalls[1] !== shadowReuseReceiver) return false;
+                        }}
+                    }} else if ({attribute_scope}) {{
+                        globalThis.attributeShadowReuse = true;
+                        globalThis.refuseDuringDisconnection = {callback_refusal};
+                        policyHead.appendChild(shadowPolicy);
+                        trustedTypes.createPolicy('default', {{ createScript(value) {{
+                            observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                            if ({native_rejection}) return null;
+                            if ({attribute_abrupt_refusal}) {{
+                                if (!{callback_refusal}) exhaustReactionWork();
+                                throw shadowReuseException;
+                            }}
+                            return value;
+                        }} }});
+                        shadowReuseReceiver.setAttribute('onclick', 'handler');
+                        if (shadowReuseCalls.length !== 3 ||
+                            shadowReuseCalls[0] !== shadowReuseReceiver ||
+                            shadowReuseCalls.slice(1).join(',') !== 'onclick,data-next') return false;
+                    }} else {{
+                        observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                        if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
+                            return false;
+                    }}
+                    if ({reenter}) {{
+                        shadowHost.appendChild(shadowReuseReceiver);
+                        if (shadowReuseCalls.length !== 2 ||
+                            shadowReuseCalls[0] !== shadowReuseReceiver ||
+                            shadowReuseCalls[1] !== 'connected') return false;
+                    }}
+                    if ({receiver_position}) {{
+                        secondShadowHost.shadowRoot.appendChild(shadowReuseReceiver);
+                        if (shadowReuseCalls.length !== 2 ||
+                            shadowReuseCalls[0] !== shadowReuseReceiver ||
+                            shadowReuseCalls[1] !== 'connected') return false;
+                        secondShadowHost.attachShadow({{mode: 'open'}});
+                    }}
+                    Promise.resolve().then(() => shadowReuseCalls.push('after'));
                     try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
                     catch (error) {{
                         if (error.name !== "NotSupportedError") return false;
@@ -198,10 +442,50 @@ pub(super) fn verify_declarative_shadow_reuse() {
             let yes = scope.primitive(Primitive::Boolean(true))?;
             assert!(
                 scope.strict_equals(&value, &yes)?,
-                "{matching} root must preserve its canonical projection"
+                "{matching} root must preserve its canonical projection and reaction order for {delivery:?}"
             );
             Ok(())
         });
+        if attribute_abrupt_refusal {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("abrupt attribute delivery must stop the original heap: {result:?}");
+            };
+            let cause = failure.cause::<DocumentGuestEventError>();
+            if native_rejection {
+                assert!(
+                    matches!(
+                        cause,
+                        Some(DocumentGuestEventError::Document(
+                            DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                                DomError::SourceAttributeVerificationRejected
+                            ))
+                        ))
+                    ),
+                    "native verification must precede later callback refusal: {cause:?}"
+                );
+            } else {
+                assert!(matches!(
+                    cause,
+                    Some(DocumentGuestEventError::Document(
+                        DocumentScriptError::Script(Error::Exception(_))
+                    ))
+                ));
+            }
+            assert!(first_entered.get());
+            assert!(matches!(
+                host.in_document(&permit, |_| Ok(())),
+                Err(DocumentScriptError::Script(Error::HostFailure(_)))
+            ));
+            let mut stopped = host.stop();
+            assert_eq!(
+                stopped
+                    .discard_pending_native_custom_element_reactions()
+                    .unwrap(),
+                usize::from(!callback_refusal)
+            );
+            assert!(stopped.into_session().is_ok());
+            continue;
+        }
         match result {
             Ok(()) => (),
             Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
@@ -209,6 +493,129 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 failure.cause::<DocumentGuestEventError>()
             ),
             Err(error) => panic!("{matching} attachment failed: {error:?}"),
+        }
+        if matches!(delivery, Delivery::Checkpoint | Delivery::Stop) {
+            let before = host.snapshot().unwrap().stamp();
+            let retirement = host
+                .with_native(|dom, _, _| {
+                    let mut batch = DomBatch::new();
+                    batch.destroy(custom);
+                    dom.apply(batch, &cancel)
+                })
+                .unwrap();
+            assert!(matches!(
+                retirement,
+                Err(DomError::CustomElementReactionPending(receiver)) if receiver == custom
+            ));
+            assert_eq!(host.snapshot().unwrap().stamp(), before);
+        }
+        if matches!(
+            delivery,
+            Delivery::Stop | Delivery::Refuse | Delivery::RefuseAfterFirst
+        ) {
+            if !matches!(delivery, Delivery::Stop) {
+                if !refuse_after_first {
+                    super::super::guest::tests::exhaust_guest_reaction_work(&host);
+                }
+                let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+                    host.checkpoint()
+                else {
+                    panic!("checkpoint must refuse the pending reaction");
+                };
+                assert!(matches!(
+                    failure.cause::<DocumentGuestEventError>(),
+                    Some(DocumentGuestEventError::WorkLimit)
+                ));
+                assert!(matches!(
+                    host.in_document(&permit, |_| Ok(())),
+                    Err(DocumentScriptError::Script(Error::HostFailure(_)))
+                ));
+            }
+            assert_eq!(first_entered.get(), refuse_after_first);
+            let mut stopped = host.stop();
+            assert_eq!(
+                stopped
+                    .discard_pending_native_custom_element_reactions()
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                stopped
+                    .discard_pending_native_custom_element_reactions()
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                stopped
+                    .discard_pending_queued_custom_element_reactions()
+                    .unwrap(),
+                0
+            );
+            let session = stopped.into_session().unwrap();
+            let snapshot = session.snapshot();
+            assert!(snapshot.node(root).unwrap().children().is_empty());
+            assert_eq!(snapshot.node(custom).unwrap().parent(), None);
+            continue;
+        }
+        {
+            host.checkpoint().unwrap();
+            let report = host
+                .take_guest_custom_element_callback_exception(&permit)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                report.callback,
+                DocumentGuestCustomElementCallback::Disconnected
+            );
+            host.in_document(&permit, |scope| {
+                let correct = evaluate(scope, if reenter {
+                    "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls.slice(1).join(',') === 'connected,before,after'"
+                } else if factory_reconnect {
+                    "shadowReuseCalls.length === 5 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls.slice(1).join(',') === 'connected,constructor,before,after'"
+                } else if attribute_scope {
+                    "shadowReuseCalls.length === 5 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls.slice(1).join(',') === 'onclick,data-next,before,after'"
+                } else if definition_scope {
+                    "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === 'getter' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls.slice(2).join(',') === 'before,after'"
+                } else if factory_scope {
+                    "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === 'constructor' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls.slice(2).join(',') === 'before,after'"
+                } else if receiver_position {
+                    "shadowReuseCalls.length === 6 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls[1] === 'connected' && shadowReuseCalls[2] === 'before' && \
+                     shadowReuseCalls[3] === shadowReuseReceiver && shadowReuseCalls[4] === secondShadowReceiver && \
+                     shadowReuseCalls[5] === 'after'"
+                } else if nested {
+                    "shadowReuseCalls.length === 7 && shadowReuseCalls[0] === 'before' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'connected' && \
+                     shadowReuseCalls[3] === shadowReuseReceiver && shadowReuseCalls[4] === secondShadowReceiver && \
+                     shadowReuseCalls.slice(5).join(',') === 'after,nested'"
+                } else {
+                    "shadowReuseCalls.length === 3 && shadowReuseCalls[0] === 'before' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'after'"
+                })?;
+                assert!(scope.boolean(&correct)?, "incorrect shadow reaction order");
+                let marker = evaluate(scope, "shadowReuseException")?;
+                let thrown = scope.import(report.exception.value())?;
+                assert!(scope.strict_equals(&marker, &thrown)?);
+                Ok(())
+            })
+            .unwrap();
+        }
+        if matches!(delivery, Delivery::Checkpoint) {
+            host.with_native(|dom, _, _| {
+                let mut batch = DomBatch::new();
+                batch.destroy(custom);
+                dom.apply(batch, &cancel).unwrap();
+            })
+            .unwrap();
+            assert!(matches!(
+                host.snapshot().unwrap().node(custom),
+                Err(DomError::StaleNode)
+            ));
         }
         let after = host.snapshot().unwrap();
         assert_eq!(

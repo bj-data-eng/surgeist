@@ -137,7 +137,7 @@ fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
     let before = dom.snapshot();
     assert_eq!(before.node(root).unwrap().children(), &[first, style, last]);
     assert!(matches!(
-        dom.attach_shadow_synchronously(host, init, limits, &cancel),
+        dom.attach_shadow_synchronously(host, init, limits, None, &cancel),
         Err(crate::DomError::IncompleteSourceOperation)
     ));
     assert_eq!(dom.snapshot().stamp(), before.stamp());
@@ -148,9 +148,9 @@ fn declarative_shadow_reuse_resumes_after_actual_sheet_removal_refusal() {
         dom.attach_shadow_with_node_retirement_watch(
             host,
             init,
-            &inbox,
-            1,
+            (&inbox, 1),
             (limits, watch_limits),
+            None,
             &cancel
         ),
         Err(crate::DomError::IncompleteSourceOperation)
@@ -273,14 +273,14 @@ fn synchronous_reuse_never_exposes_an_unserviceable_fullscreen_handoff() {
             dom.attach_shadow_with_node_retirement_watch(
                 host,
                 init,
-                &inbox,
-                1,
+                (&inbox, 1),
                 (limits, watch_limits),
+                None,
                 &cancel,
             )
             .map(drop)
         } else {
-            dom.attach_shadow_synchronously(host, init, limits, &cancel)
+            dom.attach_shadow_synchronously(host, init, limits, None, &cancel)
                 .map(drop)
         };
         assert_eq!(

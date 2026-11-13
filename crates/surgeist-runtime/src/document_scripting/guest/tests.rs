@@ -11,6 +11,29 @@ pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &Document
     events.budget.work.set(events.limits.work);
 }
 
+pub(in crate::document_scripting) fn expose_reaction_work_exhaustion(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+    entered: Rc<Cell<bool>>,
+) {
+    let events = Rc::downgrade(&host.guest_events().unwrap());
+    host.in_document(permit, |scope| {
+        let global = scope.global()?;
+        let callback = scope.function(&Callback::new(move |_, _| {
+            let events = events.upgrade().ok_or(Error::ExpiredIdentity)?;
+            entered.set(true);
+            events.budget.work.set(events.limits.work);
+            Ok(Completion::Undefined)
+        }))?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("exhaustReactionWork")),
+            &callback,
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn form_associated_definition_refuses_before_publication() {
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();

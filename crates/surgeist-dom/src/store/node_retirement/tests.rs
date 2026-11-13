@@ -250,9 +250,9 @@ fn source_shadow_creation_admits_the_watch_before_publication() {
     let result = dom.attach_shadow_with_node_retirement_watch(
         host,
         init,
-        &inbox,
-        19,
+        (&inbox, 19),
         (source, DomNodeRetirementLimits::new(16_000_000, 0)),
+        None,
         &cancel,
     );
     assert!(matches!(
@@ -274,12 +274,13 @@ fn source_shadow_creation_admits_the_watch_before_publication() {
         .attach_shadow_with_node_retirement_watch(
             host,
             init,
-            &inbox,
-            19,
+            (&inbox, 19),
             (source, GENEROUS),
+            None,
             &cancel,
         )
         .unwrap()
+        .0
         .into_parts();
     assert_eq!(commit.changes().from(), before.stamp());
     let after = dom.snapshot();
@@ -321,9 +322,9 @@ fn source_shadow_host_validation_charges_the_complete_native_name_scan() {
         dom.attach_shadow_with_node_retirement_watch(
             short,
             init,
-            &inbox,
-            8,
+            (&inbox, 8),
             (source, GENEROUS),
+            None,
             &cancel
         ),
         Err(DomError::NotSupported)
@@ -331,9 +332,9 @@ fn source_shadow_host_validation_charges_the_complete_native_name_scan() {
     let long = dom.attach_shadow_with_node_retirement_watch(
         long,
         init,
-        &inbox,
-        9,
+        (&inbox, 9),
         (source, GENEROUS),
+        None,
         &cancel,
     );
     assert!(

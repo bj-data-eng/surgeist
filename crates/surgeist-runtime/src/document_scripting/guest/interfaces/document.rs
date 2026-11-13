@@ -66,6 +66,9 @@ impl DocumentScriptHost {
         &mut self,
         permit: &DocumentScriptPermit,
         terminal: GuestTerminalSource<'_>,
+        shadow_reactions: Option<surgeist_dom::DomSynchronousReactionQueue>,
+        original_guest_exception: Option<&Error>,
+        reaction_failure: Option<&ReactionFailureSlot>,
     ) -> Result<(), DocumentGuestEventError> {
         if self.attachment()?.realm.check_owner_active().is_err()
             || self
@@ -105,18 +108,33 @@ impl DocumentScriptHost {
                     origin: None,
                     _backing: events.reserve(&owner, size_of::<Capture>())?,
                 };
-                capture.drain_native_reactions(scope, &owner, &events, terminal.operation)
-            };
-            if let Some(cause) = terminal.error {
-                type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
-                let backing = match events.reserve(
+                capture.drain_source_and_routed_reactions(
+                    scope,
                     &owner,
-                    PriorFailure::storage_bytes() + 2 * size_of::<usize>(),
-                ) {
-                    Ok(backing) => backing,
+                    &events,
+                    terminal.operation,
+                    shadow_reactions,
+                )
+            };
+            if let Some(original) = original_guest_exception {
+                if shadow_reactions.is_some() {
+                    let prior = reaction_failure.ok_or(Error::ExpiredIdentity)?;
+                    return scope.complete_after_host_failure(
+                        prior,
+                        original.clone().into(),
+                        drain,
+                    );
+                }
+                return Ok(());
+            }
+            if let Some(cause) = terminal.error {
+                if let Some(prior) = reaction_failure {
+                    return scope.complete_after_host_failure(prior, cause.clone().into(), drain);
+                }
+                let prior = match prepare_reaction_failure(scope, &owner, &events) {
+                    Ok(prior) => prior,
                     Err(_) => return refuse(scope, &events.refusal, cause.clone().into()),
                 };
-                let prior = PriorFailure::new(&scope.realm_authority()?, backing)?;
                 return scope.complete_after_host_failure(&prior, cause.clone().into(), drain);
             }
             match drain(scope) {
@@ -1035,6 +1053,23 @@ impl Capture {
             Err(error) => refuse(scope, &events.refusal, error),
         }
     }
+}
+
+pub(super) type ReactionFailureSlot = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
+
+pub(super) fn prepare_reaction_failure(
+    scope: &mut Scope<'_>,
+    owner: &NativeOwner,
+    events: &GuestEvents,
+) -> Result<ReactionFailureSlot, DocumentGuestEventError> {
+    let backing = events.reserve(
+        owner,
+        ReactionFailureSlot::storage_bytes() + 2 * size_of::<usize>(),
+    )?;
+    Ok(ReactionFailureSlot::new(
+        &scope.realm_authority()?,
+        backing,
+    )?)
 }
 
 pub(super) fn complete<'scope>(

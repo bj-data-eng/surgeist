@@ -182,6 +182,8 @@ impl Capture {
             .read_dom()
             .pending_source_edit();
         let mut abrupt = None;
+        let mut reaction_failure = None;
+        let mut shadow_reactions = None;
         let mut output = None;
         if let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeVerification(request),
@@ -217,7 +219,9 @@ impl Capture {
                     return Err(error);
                 }
             };
-            ((result, pending), abrupt) = continue_attribute(owner, retained, limits, true)?;
+            shadow_reactions = retained.shadow_reactions;
+            ((result, pending), abrupt, reaction_failure) =
+                continue_attribute(owner, retained, limits, true)?;
         }
         if let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeAttachmentOutput(request),
@@ -235,7 +239,8 @@ impl Capture {
                 .map_err(|_| DocumentScriptNativeError::Busy)?
                 .take();
             if let Some(retained) = retained {
-                ((result, pending), abrupt) = continue_attribute(owner, retained, limits, true)?;
+                ((result, pending), abrupt, reaction_failure) =
+                    continue_attribute(owner, retained, limits, true)?;
             } else {
                 (result, pending) =
                     resume_attribute_source(owner, request.operation(), limits, Some(realm))?;
@@ -244,13 +249,30 @@ impl Capture {
                 }
             }
         }
+        let drain = |scope: &mut Scope<'scope>, operation| {
+            self.drain_source_and_routed_reactions(
+                scope,
+                owner,
+                events,
+                operation,
+                shadow_reactions,
+            )
+        };
         match result.map(guest_source_terminal) {
             Ok(Some(Ok(done))) => {
-                let reactions = self.drain_native_reactions(scope, owner, events, done.operation());
                 if done.cancellation_requested() {
+                    if let Some(prior) = &reaction_failure {
+                        scope.complete_after_host_failure(
+                            prior,
+                            DomError::Cancelled.into(),
+                            |scope| drain(scope, done.operation()),
+                        )?;
+                    } else {
+                        let _ = drain(scope, done.operation());
+                    }
                     return Err(DomError::Cancelled.into());
                 }
-                reactions?;
+                drain(scope, done.operation())?;
                 match (result_kind, done.output()) {
                     (AttributeResult::Value, None) => Ok(Completion::Undefined),
                     (
@@ -285,13 +307,24 @@ impl Capture {
             }
             Ok(Some(Err(failure))) => {
                 let (operation, error, _) = failure.into_parts();
-                let reactions = self.drain_native_reactions(scope, owner, events, operation);
                 if let (DomError::SourceAttributeVerificationAbrupt, Some(original)) =
                     (&error, abrupt)
                 {
+                    if shadow_reactions.is_some() {
+                        let prior = reaction_failure.as_ref().ok_or(Error::ExpiredIdentity)?;
+                        scope.complete_after_host_failure(
+                            prior,
+                            original.clone().into(),
+                            |scope| drain(scope, operation),
+                        )?;
+                    }
                     return Err(original.into());
                 }
-                if reactions.is_err() {
+                if let Some(prior) = &reaction_failure {
+                    scope.complete_after_host_failure(prior, error.clone().into(), |scope| {
+                        drain(scope, operation)
+                    })?;
+                } else if drain(scope, operation).is_err() {
                     return Err(error.into());
                 }
                 attribute_failure(scope, error)
@@ -431,6 +464,8 @@ impl Capture {
             realm: scope.realm_authority()?.identity(),
             reply: AttributeReply::Abandon,
             parent: owner.active_attribute.get(),
+            shadow_reactions: None,
+            reaction_failure: None,
             interrupted_parent: None,
             _header: header,
         });
@@ -443,6 +478,7 @@ impl Capture {
             retained.reply = AttributeReply::Mismatch(AttributeMismatchProgress::default());
             return Ok(retained);
         };
+        let reaction_failure = super::super::prepare_reaction_failure(scope, owner, events)?;
         let (sink, _sink_backing) = callback_sink(owner, events, request.sink())?;
         let (input, callback_scope) = with_attribute_lease(
             owner,
@@ -462,11 +498,17 @@ impl Capture {
             slot: &owner.active_attribute,
             previous: owner.active_attribute.replace(Some(request)),
         };
+        let reactions =
+            super::super::super::custom_elements::SynchronousReactionScope::enter(owner)?;
         let result = self.callbacks.conversion.run(scope, |conversion| {
             conversion.invoke_default_policy(callback, kind, input.code_units(), &sink)
         });
+        let reaction_queue = reactions.has_reactions().then(|| reactions.queue());
+        drop(reactions);
         drop(active);
         drop(callback_scope);
+        retained.shadow_reactions = reaction_queue;
+        retained.reaction_failure = reaction_queue.map(|_| reaction_failure);
         retained.reply = match result {
             Ok(result) if result.get().is_some() => AttributeReply::Converted {
                 result,
@@ -554,11 +596,22 @@ impl DocumentScriptHost {
         self.check_permit(permit)?;
         // A native retry remains possible after a terminal bindings refusal.
         // The permit still authenticates the original native registration.
-        let progress = resume_retained_attribute(&self.native, limits, false)?;
+        let (progress, shadow_reactions, abrupt, reaction_failure) =
+            resume_retained_attribute(&self.native, limits, false)?;
         if let Ok(result) = &progress
             && let Some(terminal) = guest_terminal_result(result)
         {
-            self.deliver_resumed_source_reactions(permit, terminal)?;
+            let delivery = self.deliver_resumed_source_reactions(
+                permit,
+                terminal,
+                shadow_reactions,
+                abrupt.as_ref(),
+                reaction_failure.as_ref(),
+            );
+            delivery?;
+        }
+        if let Some(error) = abrupt {
+            return Err(error.into());
         }
         Ok(progress)
     }
@@ -575,15 +628,26 @@ impl StoppedDocumentScriptHost {
         &mut self,
         limits: DomSourceLimits,
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentGuestEventError> {
-        resume_retained_attribute(&self.native, limits, true)
+        let (progress, _, abrupt, _) = resume_retained_attribute(&self.native, limits, true)?;
+        if let Some(error) = abrupt {
+            return Err(error.into());
+        }
+        Ok(progress)
     }
 }
+
+type ResumedAttribute = (
+    Result<DomSourceDriveProgress, DomSourceDriveError>,
+    Option<surgeist_dom::DomSynchronousReactionQueue>,
+    Option<Error>,
+    Option<super::super::ReactionFailureSlot>,
+);
 
 fn resume_retained_attribute(
     owner: &NativeOwner,
     limits: DomSourceLimits,
     abandon: bool,
-) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentGuestEventError> {
+) -> Result<ResumedAttribute, DocumentGuestEventError> {
     owner.reconcile_pending_attribute()?;
     let mut pending = owner
         .pending_attribute
@@ -617,7 +681,9 @@ fn resume_retained_attribute(
     if abandon && !matches!(retained.reply, AttributeReply::Accepted { .. }) {
         retained.reply = AttributeReply::Abandon;
     }
-    let ((progress, _), abrupt) = continue_attribute(owner, retained, limits, !abandon)?;
+    let shadow_reactions = retained.shadow_reactions;
+    let ((progress, _), abrupt, reaction_failure) =
+        continue_attribute(owner, retained, limits, !abandon)?;
     if abandon
         && let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::AttributeAttachmentOutput(request),
@@ -648,23 +714,28 @@ fn resume_retained_attribute(
             .map_err(|_| DocumentScriptNativeError::Busy)?
             .take()
             .ok_or(DocumentScriptNativeError::SourceAccess)?;
-        let ((progress, _), _) = continue_attribute(owner, retained, limits, !abandon)?;
-        return Ok(progress);
+        let ((progress, _), _, _) = continue_attribute(owner, retained, limits, !abandon)?;
+        return Ok((progress, shadow_reactions, None, None));
     }
-    if let (Ok(DomSourceDriveProgress::Failed(failure)), Some(error)) = (&progress, abrupt)
-        && failure.error() == &DomError::SourceAttributeVerificationAbrupt
-    {
-        return Err(error.into());
-    }
-    Ok(progress)
+    let abrupt = abrupt.filter(|_| {
+        matches!(&progress, Ok(DomSourceDriveProgress::Failed(failure))
+            if failure.error() == &DomError::SourceAttributeVerificationAbrupt)
+    });
+    Ok((progress, shadow_reactions, abrupt, reaction_failure))
 }
+
+type AttributeContinuation = (
+    NativeAttributeProgress,
+    Option<Error>,
+    Option<super::super::ReactionFailureSlot>,
+);
 
 fn continue_attribute(
     owner: &NativeOwner,
     mut retained: Box<PendingAttribute>,
     limits: DomSourceLimits,
     live: bool,
-) -> Result<(NativeAttributeProgress, Option<Error>), DocumentGuestEventError> {
+) -> Result<AttributeContinuation, DocumentGuestEventError> {
     let request = retained.request;
     let realm = live.then_some(retained.realm);
     let attempted = retained
@@ -685,6 +756,7 @@ fn continue_attribute(
     } else {
         None
     };
+    let reaction_failure = terminal.then(|| retained.reaction_failure.take()).flatten();
     let mut pending = owner
         .pending_attribute
         .try_borrow_mut()
@@ -699,7 +771,7 @@ fn continue_attribute(
     };
     drop(pending);
     owner.reconcile_pending_attribute()?;
-    Ok((attempted?, abrupt))
+    Ok((attempted?, abrupt, reaction_failure))
 }
 
 impl PendingAttribute {

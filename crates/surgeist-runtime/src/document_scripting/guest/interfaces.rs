@@ -153,6 +153,8 @@ pub(super) struct PublicEventBindings {
     target: RetainedCallbackObject,
     trusted: RetainedCallbackObject,
     dispatch_in_attachment: RetainedCallbackObject,
+    backup_reaction_job: RetainedCallbackObject,
+    backup_reactions_scheduled: Cell<bool>,
     document: document::DocumentBindings,
     custom_elements: Rc<custom_elements::GlobalRegistry>,
     origins: RefCell<Option<Box<OriginBindings>>>,
@@ -403,6 +405,16 @@ impl PublicEventBindings {
         )?;
         let dispatch_in_attachment = scope.callback_object(&dispatch_in_attachment)?;
         let dispatch_in_attachment = scope.retain_callback_object(dispatch_in_attachment, fund)?;
+        let backup = capture(size_of::<Capture>())?;
+        let backup_reaction_job = scope.fixed_arity_function(
+            &Callback::new(move |scope, _| backup.run_backup_reactions(scope)),
+            FunctionMetadata {
+                name: &[],
+                length: 0,
+            },
+        )?;
+        let backup_reaction_job = scope.callback_object(&backup_reaction_job)?;
+        let backup_reaction_job = scope.retain_callback_object(backup_reaction_job, fund)?;
         let origin_cost = origin_cost
             .get()
             .include(size_of::<OriginBindings>())?
@@ -418,6 +430,8 @@ impl PublicEventBindings {
             target,
             trusted,
             dispatch_in_attachment,
+            backup_reaction_job,
+            backup_reactions_scheduled: Cell::new(false),
             document,
             custom_elements,
             origins: RefCell::new(None),
