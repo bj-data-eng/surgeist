@@ -106,6 +106,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         FactoryScope,
         Stop,
         Refuse,
+        RefuseAfterFirst,
     }
     for (mode, delivery) in [
         (HtmlShadowRootMode::Open, Delivery::Checkpoint),
@@ -117,12 +118,14 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
+        (HtmlShadowRootMode::Open, Delivery::RefuseAfterFirst),
     ] {
         let reenter = matches!(delivery, Delivery::Reconnect);
         let nested = matches!(delivery, Delivery::Nested);
         let missing_callback = matches!(delivery, Delivery::MissingCallback);
         let receiver_position = matches!(delivery, Delivery::ReceiverPosition);
         let factory_scope = matches!(delivery, Delivery::FactoryScope);
+        let refuse_after_first = matches!(delivery, Delivery::RefuseAfterFirst);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
                 "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
@@ -206,6 +209,14 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 "secondShadowHost",
             );
         }
+        let first_entered = Rc::new(Cell::new(false));
+        if refuse_after_first {
+            super::super::guest::tests::expose_reaction_work_exhaustion(
+                &mut host,
+                &permit,
+                Rc::clone(&first_entered),
+            );
+        }
         let before_custom = host.snapshot().unwrap();
         host.in_document(&permit, |scope| {
             evaluate(
@@ -216,6 +227,10 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {
                     disconnectedCallback() {
                         calls.push(this);
+                        if (globalThis.exhaustReactionWork) {
+                            exhaustReactionWork();
+                            return;
+                        }
                         if (this === globalThis.shadowReuseReceiver &&
                             globalThis.nestedShadowReuse && !globalThis.reusedSecondShadow) {
                             globalThis.reusedSecondShadow = true;
@@ -272,7 +287,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                             document.createElement('x-without-disconnection'));
                         secondShadowHost.attachShadow({{mode: 'open'}});
                     }}
-                    if ({nested} || {receiver_position}) {{
+                    if ({nested} || {receiver_position} || {refuse_after_first}) {{
                         globalThis.nestedShadowReuse = {nested};
                         globalThis.secondShadowReceiver = document.createElement('x-shadow-reuse-reaction');
                         original.appendChild(secondShadowReceiver);
@@ -336,9 +351,14 @@ pub(super) fn verify_declarative_shadow_reuse() {
             ),
             Err(error) => panic!("{matching} attachment failed: {error:?}"),
         }
-        if matches!(delivery, Delivery::Stop | Delivery::Refuse) {
-            if matches!(delivery, Delivery::Refuse) {
-                super::super::guest::tests::exhaust_guest_reaction_work(&host);
+        if matches!(
+            delivery,
+            Delivery::Stop | Delivery::Refuse | Delivery::RefuseAfterFirst
+        ) {
+            if !matches!(delivery, Delivery::Stop) {
+                if !refuse_after_first {
+                    super::super::guest::tests::exhaust_guest_reaction_work(&host);
+                }
                 let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
                     host.checkpoint()
                 else {
@@ -353,6 +373,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                     Err(DocumentScriptError::Script(Error::HostFailure(_)))
                 ));
             }
+            assert_eq!(first_entered.get(), refuse_after_first);
             let mut stopped = host.stop();
             assert_eq!(
                 stopped
