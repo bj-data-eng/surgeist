@@ -169,6 +169,8 @@ type FlexStep<'input, Node, S, M> =
     LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, FlexChild<'input, Node, S>>, S, M>;
 type FlexPassStart<'input, Node, S, M> =
     LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, Box<FlexPhase<'input, Node, S>>>, S, M>;
+type FlexPhaseResult<'input, Node, S, M> =
+    LayoutResultOf<Node, Box<FlexPhase<'input, Node, S>>, S, M>;
 
 pub(crate) struct FlexChild<'input, Node, S: LayoutScalar> {
     phase: FlexChildPhase<'input, Node, S>,
@@ -952,7 +954,7 @@ impl<S: LayoutScalar> AcceptedFlexContents<S> {
         input: ComputeInputOf<S>,
         used_overflow: crate::scroll::UsedOverflow,
         ratio_cross: Option<S>,
-    ) -> LayoutResultOf<Tree::Node, Box<FlexPhase<'input, Tree::Node, S>>, S, M>
+    ) -> FlexPhaseResult<'input, Tree::Node, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
     {

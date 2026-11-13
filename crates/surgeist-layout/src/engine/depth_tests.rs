@@ -1608,7 +1608,7 @@ fn assert_ratio_flex_chain<S: LayoutScalar>(depth: u32) {
             let hidden = view.non_box().expect("hidden subtree");
             assert_eq!(hidden.kind(), crate::NonBoxKind::Hidden);
             assert_eq!(hidden.final_geometry().size, Size::ZERO);
-            let source_index = usize::from((node - depth - 1) % 2 == 0);
+            let source_index = usize::from((node - depth - 1).is_multiple_of(2));
             assert_eq!(hidden.source_index(), crate::SourceIndex::new(source_index));
         } else {
             let output = view.single_box().expect("visible box").final_output();
