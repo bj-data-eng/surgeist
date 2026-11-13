@@ -183,16 +183,16 @@ pub(crate) struct OwnedBox<T> {
 }
 impl<T> OwnedBox<T> {
     pub(crate) fn new(value: T, account: &StorageAccount) -> Result<Self> {
-        account.phase(|| {
-            let hold =
-                account.acquire(RenderResource::RetainedCpuBytes, std::mem::size_of::<T>())?;
-            Ok(Self {
-                value: Box::new(value),
-                allocation: AllocationCleanup {
-                    hold,
-                    completion: None,
-                },
-            })
+        // On refusal, close the forward observation before disposing of the
+        // incoming value and any backing that it already owns.
+        let _phase = account.begin_phase()?;
+        let hold = account.acquire(RenderResource::RetainedCpuBytes, std::mem::size_of::<T>())?;
+        Ok(Self {
+            value: Box::new(value),
+            allocation: AllocationCleanup {
+                hold,
+                completion: None,
+            },
         })
     }
     pub(crate) fn begin_disposal(&mut self) {
@@ -322,6 +322,15 @@ impl<T> SharedValue<T> {
         self.0
     }
 }
+impl<T> SharedValue<Option<OwnedBox<T>>> {
+    /// Move the final payload out of its shared owner. The shared allocation
+    /// and its admission end here, while T keeps its own independent custody.
+    pub(crate) fn take_last_box(self) -> Option<OwnedBox<T>> {
+        let mut data = std::sync::Arc::into_inner(self.0)?;
+        data.value.take()
+    }
+}
+
 impl<T> Drop for SharedValueData<T> {
     fn drop(&mut self) {
         // Start before Rust destroys the actual T and its backing. Preparation
@@ -1056,11 +1065,8 @@ pub(crate) struct AccountedIntoIter<T> {
     hold: Option<Hold>,
 }
 impl<T> AccountedIntoIter<T> {
-    pub(crate) fn empty() -> Self {
-        Self {
-            values: std::vec::IntoIter::default(),
-            hold: None,
-        }
+    pub(crate) fn as_slice(&self) -> &[T] {
+        self.values.as_slice()
     }
 }
 impl<T> Iterator for AccountedIntoIter<T> {

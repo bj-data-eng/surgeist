@@ -14,10 +14,9 @@ use super::{
 };
 use crate::accounting::{
     Account, AccountedIntoIter, AccountedVec, CpuImport, DisposalCompletion, Hold, OwnedBox,
-    RenderPhase, RenderResource, RenderWork, SharedValue,
+    RenderPhase, RenderWork, SharedValue,
 };
 use kurbo::Shape as KurboShape;
-use std::{mem::size_of, sync::Arc};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RenderCommands {
@@ -27,53 +26,42 @@ pub(crate) struct RenderCommands {
 /// The final shared owner walks existing sequence allocations to dispose of
 /// descendants. Teardown requires neither new backing nor a forward budget.
 #[derive(Clone)]
-pub(crate) struct SharedCommandSequence(Option<Arc<CommandSequenceOwner>>);
+pub(crate) struct SharedCommandSequence(Option<SharedValue<Option<OwnedBox<CommandSequence>>>>);
 
-struct CommandSequenceOwner {
-    node: OwnedBox<CommandSequence>,
-    _backing: Hold,
-}
-
-enum CommandSequence {
-    Ready(AccountedVec<RenderCommand>),
-    Disposing {
-        commands: AccountedIntoIter<RenderCommand>,
-        parent: Option<CommandSequenceOwner>,
-    },
+struct CommandSequence {
+    commands: AccountedIntoIter<RenderCommand>,
+    parent: Option<OwnedBox<Self>>,
 }
 
 impl SharedCommandSequence {
     fn new(commands: AccountedVec<RenderCommand>, account: &Account) -> Result<Self> {
         let storage = account.storage();
-        let node = OwnedBox::new(CommandSequence::Ready(commands), &storage)?;
-        storage.phase(|| {
-            let backing = storage.acquire(
-                RenderResource::RetainedCpuBytes,
-                size_of::<CommandSequenceOwner>(),
-            )?;
-            Ok(Self(Some(Arc::new(CommandSequenceOwner {
-                node,
-                _backing: backing,
-            }))))
-        })
+        let node = OwnedBox::new(
+            CommandSequence {
+                commands: commands.into_iter(),
+                parent: None,
+            },
+            &storage,
+        )?;
+        Ok(Self(Some(SharedValue::new(Some(node), &storage)?)))
     }
 
     pub(crate) fn as_slice(&self) -> &[RenderCommand] {
-        match self.0.as_deref().map(|owner| &*owner.node) {
-            Some(CommandSequence::Ready(commands)) => commands.as_slice(),
-            _ => &[],
-        }
+        self.0
+            .as_deref()
+            .and_then(Option::as_ref)
+            .map_or(&[], |node| node.commands.as_slice())
     }
 
     pub(crate) fn same_allocation(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
-            (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+            (Some(left), Some(right)) => left.same_allocation(right),
             _ => false,
         }
     }
 
-    fn take_last_owner(&mut self) -> Option<CommandSequenceOwner> {
-        self.0.take().and_then(Arc::into_inner)
+    fn take_last_owner(&mut self) -> Option<OwnedBox<CommandSequence>> {
+        self.0.take()?.take_last_box()
     }
 }
 
@@ -97,48 +85,28 @@ impl PartialEq for SharedCommandSequence {
     }
 }
 
-impl CommandSequenceOwner {
-    fn begin_disposal(&mut self, parent: Option<Self>) {
-        self.node.begin_disposal();
-        // Only a published Ready sequence reaches this point. Use a default
-        // iterator as the inert value while moving its exact backing.
-        let sequence = std::mem::replace(
-            &mut *self.node,
-            CommandSequence::Disposing {
-                commands: AccountedIntoIter::empty(),
-                parent: None,
-            },
-        );
-        if let CommandSequence::Ready(commands) = sequence {
-            *self.node = CommandSequence::Disposing {
-                commands: commands.into_iter(),
-                parent,
-            };
-        }
-    }
-}
-
 impl Drop for SharedCommandSequence {
     fn drop(&mut self) {
         let Some(mut owner) = self.take_last_owner() else {
             return;
         };
-        owner.begin_disposal(None);
-        while let CommandSequence::Disposing { commands, parent } = &mut *owner.node {
-            match commands.next() {
+        owner.begin_disposal();
+        loop {
+            match owner.commands.next() {
                 Some(RenderCommand::Layer {
                     layer,
                     mut children,
                 }) => {
                     drop(layer);
                     if let Some(mut child) = children.commands.take_last_owner() {
-                        child.begin_disposal(Some(owner));
+                        child.begin_disposal();
+                        child.parent = Some(owner);
                         owner = child;
                     }
                 }
                 Some(_) => {}
                 None => {
-                    let Some(next) = parent.take() else {
+                    let Some(next) = owner.parent.take() else {
                         break;
                     };
                     owner = next;
@@ -1743,6 +1711,44 @@ mod deep_normalization_tests {
                 ] {
                     assert!(usage.peak(resource) > 0);
                     assert_eq!(usage.live(resource), 0);
+                }
+                assert_eq!(report.cleanup_fault(), None);
+
+                // The final sibling refuses after the root layer already
+                // owns its complete normalized subtree.
+                let cap = (2 * DEPTH) as u64;
+                let limits = RenderLimits::new()
+                    .with_work_limit(RenderWork::CommandsEmitted, cap)
+                    .unwrap();
+                context.set_options(RenderAccountingOptions::new().with_limits(limits));
+                let error = context
+                    .run(
+                        RenderAttemptKind::Frame,
+                        RenderPhase::Normalize,
+                        |account| scene.normalize(Capabilities::CURRENT, account).map(drop),
+                    )
+                    .unwrap_err();
+                let report = context.last_attempt().unwrap();
+                assert_eq!(report.status(), RenderAttemptStatus::Refused);
+                let attempt = report.attempt().unwrap();
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+                assert_eq!(
+                    refusal.quantity,
+                    RenderQuantity::Work(RenderWork::CommandsEmitted)
+                );
+                assert_eq!(refusal.current, cap);
+                assert_eq!(refusal.amount, 1);
+                assert_eq!(attempt.usage().work(RenderWork::CommandsEmitted), cap);
+                for resource in [
+                    RenderResource::RetainedCpuBytes,
+                    RenderResource::ScratchCpuBytes,
+                ] {
+                    assert!(attempt.usage().peak(resource) > 0);
+                    assert_eq!(attempt.usage().live(resource), 0);
                 }
                 assert_eq!(report.cleanup_fault(), None);
             })
