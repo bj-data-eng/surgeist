@@ -13,14 +13,139 @@ use super::{
     *,
 };
 use crate::accounting::{
-    Account, AccountedVec, CpuImport, DisposalCompletion, Hold, RenderPhase, RenderWork,
-    SharedValue,
+    Account, AccountedIntoIter, AccountedVec, CpuImport, DisposalCompletion, Hold, OwnedBox,
+    RenderPhase, RenderResource, RenderWork, SharedValue,
 };
 use kurbo::Shape as KurboShape;
+use std::{mem::size_of, sync::Arc};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RenderCommands {
-    pub(crate) commands: SharedValue<Vec<RenderCommand>>,
+    pub(crate) commands: SharedCommandSequence,
+}
+
+/// The final shared owner walks existing sequence allocations to dispose of
+/// descendants. Teardown requires neither new backing nor a forward budget.
+#[derive(Clone)]
+pub(crate) struct SharedCommandSequence(Option<Arc<CommandSequenceOwner>>);
+
+struct CommandSequenceOwner {
+    node: OwnedBox<CommandSequence>,
+    _backing: Hold,
+}
+
+enum CommandSequence {
+    Ready(AccountedVec<RenderCommand>),
+    Disposing {
+        commands: AccountedIntoIter<RenderCommand>,
+        parent: Option<CommandSequenceOwner>,
+    },
+}
+
+impl SharedCommandSequence {
+    fn new(commands: AccountedVec<RenderCommand>, account: &Account) -> Result<Self> {
+        let storage = account.storage();
+        let node = OwnedBox::new(CommandSequence::Ready(commands), &storage)?;
+        storage.phase(|| {
+            let backing = storage.acquire(
+                RenderResource::RetainedCpuBytes,
+                size_of::<CommandSequenceOwner>(),
+            )?;
+            Ok(Self(Some(Arc::new(CommandSequenceOwner {
+                node,
+                _backing: backing,
+            }))))
+        })
+    }
+
+    pub(crate) fn as_slice(&self) -> &[RenderCommand] {
+        match self.0.as_deref().map(|owner| &*owner.node) {
+            Some(CommandSequence::Ready(commands)) => commands.as_slice(),
+            _ => &[],
+        }
+    }
+
+    pub(crate) fn same_allocation(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+
+    fn take_last_owner(&mut self) -> Option<CommandSequenceOwner> {
+        self.0.take().and_then(Arc::into_inner)
+    }
+}
+
+impl std::ops::Deref for SharedCommandSequence {
+    type Target = [RenderCommand];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl std::fmt::Debug for SharedCommandSequence {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_slice().fmt(formatter)
+    }
+}
+
+impl PartialEq for SharedCommandSequence {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl CommandSequenceOwner {
+    fn begin_disposal(&mut self, parent: Option<Self>) {
+        self.node.begin_disposal();
+        // Only a published Ready sequence reaches this point. Use a default
+        // iterator as the inert value while moving its exact backing.
+        let sequence = std::mem::replace(
+            &mut *self.node,
+            CommandSequence::Disposing {
+                commands: AccountedIntoIter::empty(),
+                parent: None,
+            },
+        );
+        if let CommandSequence::Ready(commands) = sequence {
+            *self.node = CommandSequence::Disposing {
+                commands: commands.into_iter(),
+                parent,
+            };
+        }
+    }
+}
+
+impl Drop for SharedCommandSequence {
+    fn drop(&mut self) {
+        let Some(mut owner) = self.take_last_owner() else {
+            return;
+        };
+        owner.begin_disposal(None);
+        while let CommandSequence::Disposing { commands, parent } = &mut *owner.node {
+            match commands.next() {
+                Some(RenderCommand::Layer {
+                    layer,
+                    mut children,
+                }) => {
+                    drop(layer);
+                    if let Some(mut child) = children.commands.take_last_owner() {
+                        child.begin_disposal(Some(owner));
+                        owner = child;
+                    }
+                }
+                Some(_) => {}
+                None => {
+                    let Some(next) = parent.take() else {
+                        break;
+                    };
+                    owner = next;
+                }
+            }
+        }
+    }
 }
 
 impl std::ops::Deref for RenderCommands {
@@ -38,9 +163,8 @@ impl<'a> IntoIterator for &'a RenderCommands {
 }
 impl RenderCommands {
     pub(crate) fn new_in(commands: AccountedVec<RenderCommand>, account: &Account) -> Result<Self> {
-        let (commands, hold) = commands.into_parts()?;
         Ok(Self {
-            commands: shared(commands, Some(hold), None, account)?,
+            commands: SharedCommandSequence::new(commands, account)?,
         })
     }
     pub(crate) fn plan_for(self, context: FrameContext, account: &Account) -> Result<FramePlan> {

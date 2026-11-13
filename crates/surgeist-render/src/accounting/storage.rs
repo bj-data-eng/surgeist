@@ -195,10 +195,15 @@ impl<T> OwnedBox<T> {
             })
         })
     }
+    pub(crate) fn begin_disposal(&mut self) {
+        if self.allocation.completion.is_none() {
+            self.allocation.begin_cleanup();
+        }
+    }
 }
 impl<T> Drop for OwnedBox<T> {
     fn drop(&mut self) {
-        self.allocation.begin_cleanup();
+        self.begin_disposal();
     }
 }
 impl<T> Deref for OwnedBox<T> {
@@ -1049,6 +1054,14 @@ impl<T: Eq> Eq for AccountedVec<T> {}
 pub(crate) struct AccountedIntoIter<T> {
     values: std::vec::IntoIter<T>,
     hold: Option<Hold>,
+}
+impl<T> AccountedIntoIter<T> {
+    pub(crate) fn empty() -> Self {
+        Self {
+            values: std::vec::IntoIter::default(),
+            hold: None,
+        }
+    }
 }
 impl<T> Iterator for AccountedIntoIter<T> {
     type Item = T;
