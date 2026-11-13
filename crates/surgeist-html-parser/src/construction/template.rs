@@ -1004,21 +1004,35 @@ mod document_facts_size_tests {
 
     #[test]
     fn the_document_facts_row_is_its_fields_rounded_up_to_its_alignment() {
-        // `MetaHistory`: three `Option<usize>` slots 48, referrer 1, refresh 1, theme
-        // `Option<Color>` 72, scheme 32, the gap table of four `Option<usize>` 64, the first
-        // domain 1 and the selection table of four 8-byte indices 32 sum to 251, rounded up to 8.
+        // `MetaHistory`: the language slot `Option<usize>` 16, the two policy ids
+        // `Option<csp::PolicyId>` 32, referrer 1, refresh 1, theme `Option<Color>` 72, scheme 32,
+        // the gap table `MetaDomainTable<Option<MissingId>>` of four ids 64, the first domain 1 and
+        // the selection table of four 8-byte indices 32 sum to 251, rounded up to 8.
         assert_eq!(size_of::<Option<usize>>(), 16);
+        assert_eq!(size_of::<Option<csp::PolicyId>>(), 16);
+        assert_eq!(size_of::<Option<meta::MissingId>>(), 16);
         assert_eq!(size_of::<Option<surgeist_color::Color>>(), 72);
         assert_eq!(
             size_of::<Option<crate::parser::control::CssSchemeValue>>(),
             32
         );
-        assert_eq!(size_of::<meta::MetaDomainTable<Option<usize>>>(), 4 * 16);
+        assert_eq!(
+            size_of::<meta::MetaDomainTable<Option<meta::MissingId>>>(),
+            4 * 16
+        );
         assert_eq!(
             size_of::<meta::MetaDomainTable<meta::SelectionIndex>>(),
             4 * 8
         );
-        let meta_fields: usize = 3 * 16 + 1 + 1 + 72 + 32 + 4 * 16 + 1 + 4 * 8;
+        let meta_fields: usize = size_of::<Option<usize>>()
+            + 2 * size_of::<Option<csp::PolicyId>>()
+            + 1
+            + 1
+            + 72
+            + 32
+            + size_of::<meta::MetaDomainTable<Option<meta::MissingId>>>()
+            + 1
+            + 4 * 8;
         assert_eq!(meta_fields, 251);
         assert_eq!(
             size_of::<meta::MetaHistory>(),

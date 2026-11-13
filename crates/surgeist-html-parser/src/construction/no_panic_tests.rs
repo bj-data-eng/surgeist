@@ -195,40 +195,13 @@ fn pi_node(storage: &SessionStorage) -> usize {
 }
 
 #[test]
-fn a_meta_csp_state_slot_past_the_registry_reports_the_registry_row_for_the_base_query() {
-    let request = request("<body><div id=a>");
-    let (mut c, mut session, _proof, _nodes) = graph(&request);
-    let storage = session.active_mut().unwrap();
-    storage.csp_slot = Some(storage.payloads.values.len());
-    assert_registry_row(storage.csp_base_current(&mut c, 0), &c);
-    storage.csp_slot = None;
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
-fn a_meta_csp_state_slot_naming_another_row_kind_reports_the_registry_row() {
-    let request = request("<body><div id=a>");
-    let (mut c, mut session, _proof, _nodes) = graph(&request);
-    let storage = session.active_mut().unwrap();
-    assert!(!matches!(
-        storage.payloads.values.first(),
-        Some(RetainedPayload::CspState(_))
-    ));
-    storage.csp_slot = Some(0);
-    assert_registry_row(storage.ensure_csp_policy(&mut c, 0), &c);
-    storage.csp_slot = None;
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
-fn a_document_naming_another_row_kind_as_its_meta_csp_policy_reports_the_registry_row() {
+fn a_document_naming_a_policy_the_log_does_not_hold_reports_the_registry_row() {
     let request = request("<body><div id=a>");
     let (mut c, mut session, _proof, _nodes) = graph(&request);
     let storage = session.active_mut().unwrap();
     let document = storage.document_slot(&mut c, 0).unwrap();
-    storage.meta_history_mut(document).unwrap().csp = Some(document);
+    // No policy log exists, and a log would hold no policy at this position.
+    storage.meta_history_mut(document).unwrap().csp = Some(csp::PolicyId::at_for_test(document));
     assert_registry_row(storage.csp_policy(&mut c, 0), &c);
     storage.meta_history_mut(document).unwrap().csp = None;
     session.release(&mut c).unwrap();

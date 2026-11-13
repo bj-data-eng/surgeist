@@ -33,7 +33,7 @@ pub(super) enum BaseValue {
     Unfrozen,
     Frozen(FrozenBase),
     Unavailable {
-        missing: usize,
+        missing: meta::MissingId,
         previous: Option<FrozenBase>,
     },
 }
@@ -523,8 +523,8 @@ impl SessionStorage {
             {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if !matches!(
-                    self.payloads.values.get(*missing),
-                    Some(RetainedPayload::MetaMissing {
+                    self.payloads.facts.missing.row(missing.position()),
+                    Some(meta::MetaMissingFact {
                         kind: meta::HtmlParseMetaMissingKind::Csp,
                         ..
                     })
@@ -1078,12 +1078,12 @@ pub(super) mod tests {
         super::super::tests::storage_zero(&c);
     }
 
-    /// An unavailable base names the missing-policy row that made it so. A row
-    /// of another kind, or one that is not a missing-policy row at all, is a
-    /// retained row that is not what the base says it is.
+    /// An unavailable base names the missing-policy fact that made it so. A fact
+    /// of another kind, or a position the log does not hold, is a retained fact
+    /// that is not what the base says it is.
     #[test]
-    fn validating_an_unavailable_base_whose_missing_row_is_not_a_csp_row_reports_the_registry_row()
-    {
+    fn validating_an_unavailable_base_whose_missing_fact_is_not_a_csp_fact_reports_the_registry_row()
+     {
         use crate::parser::control::HtmlParseInvariant;
         let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
         for case in 0..2 {
@@ -1138,20 +1138,21 @@ pub(super) mod tests {
             };
             let named = *missing;
             if case == 0 {
-                // The named row is a missing-policy row of another kind.
-                let RetainedPayload::MetaMissing { kind, .. } = &mut storage.payloads.values[named]
+                // The named fact is a missing-policy fact of another kind.
+                let Some(meta::MetaMissingFact { kind, .. }) =
+                    storage.payloads.facts.missing.row_mut(named.position())
                 else {
-                    panic!("the base names its missing-policy row")
+                    panic!("the base names its missing-policy fact")
                 };
                 *kind = meta::HtmlParseMetaMissingKind::ThemeColor;
             } else {
-                // The named row is not a missing-policy row at all.
-                *missing = base_slot;
+                // The named position is past the log.
+                *missing = meta::MissingId::at_for_test(storage.payloads.facts.missing.len());
             }
             let result = session.active().unwrap().validate_base_facts(&mut c);
             assert_eq!(result, Err(SessionError::Stop(registry_row)), "case {case}");
             assert_eq!(c.stop(), Some(registry_row), "case {case}");
-            // The registry's own join check runs at release, so restore the rows.
+            // Restore the facts the base and the log name.
             let storage = session.active_mut().unwrap();
             if let RetainedPayload::Base {
                 frozen: BaseValue::Unavailable { missing, .. },
@@ -1160,7 +1161,9 @@ pub(super) mod tests {
             {
                 *missing = named;
             }
-            if let RetainedPayload::MetaMissing { kind, .. } = &mut storage.payloads.values[named] {
+            if let Some(meta::MetaMissingFact { kind, .. }) =
+                storage.payloads.facts.missing.row_mut(named.position())
+            {
                 *kind = meta::HtmlParseMetaMissingKind::Csp;
             }
             lexer.release(&mut c).unwrap();
@@ -1636,11 +1639,11 @@ pub(super) mod tests {
         );
         assert!(value.response == Response::Finished);
         assert!(matches!(
-            storage.payloads.values[*missing],
-            RetainedPayload::MetaMissing {
+            storage.payloads.facts.missing.row(missing.position()),
+            Some(meta::MetaMissingFact {
                 kind: meta::HtmlParseMetaMissingKind::Csp,
                 ..
-            }
+            })
         ));
         assert_eq!(first(&session), Some(base.index));
         lexer.release(&mut c).unwrap();

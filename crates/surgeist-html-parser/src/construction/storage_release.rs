@@ -49,7 +49,6 @@ impl SessionStorage {
     /// consumes actual storage; exact private tickets prove the release invariant.
     pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
         let Self {
-            csp_slot: _,
             control: owner,
             effects,
             evidence,

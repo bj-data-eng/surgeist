@@ -10,6 +10,7 @@
 //! [`admit`]: FamilyTable::admit
 //! [`push`]: FamilyTable::push
 
+use super::row_bank::RowBank;
 use super::session_error::latch_registry_row;
 use super::*;
 use crate::parser::control::VectorCapacity;
@@ -17,28 +18,23 @@ use crate::parser::control::VectorCapacity;
 pub(super) struct FamilyTable<T> {
     nodes: Vec<u32>,
     nodes_allocation: VectorCapacity<u32>,
-    rows: Vec<T>,
-    rows_allocation: VectorCapacity<T>,
-    /// The rows [`Self::admit`] has acquired entries for and [`Self::push`] has not written.
-    admitted: usize,
+    bank: RowBank<T>,
 }
 
 impl<T> FamilyTable<T> {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
         let (nodes, nodes_allocation) = control.new_vector()?;
-        let (rows, rows_allocation) = match control.new_vector() {
-            Ok(value) => value,
+        let bank = match RowBank::new(control) {
+            Ok(bank) => bank,
             Err(stop) => {
                 release_vector(control, nodes, nodes_allocation)?;
-                return Err(stop.into());
+                return Err(stop);
             }
         };
         Ok(Self {
             nodes,
             nodes_allocation,
-            rows,
-            rows_allocation,
-            admitted: 0,
+            bank,
         })
     }
     /// Admits `additional` rows: both vectors have room for them and for every row admitted and not
@@ -50,22 +46,15 @@ impl<T> FamilyTable<T> {
         control: &mut ParseControl,
         additional: usize,
     ) -> Result<(), SessionError> {
-        let admitted = self
-            .admitted
-            .checked_add(additional)
-            .ok_or_else(|| latch_registry_row(control))?;
-        // Rows admitted and not yet written take room beyond the written length too.
-        control.reserve_vector_geometric(&mut self.nodes, &mut self.nodes_allocation, admitted)?;
-        control.reserve_vector_geometric(&mut self.rows, &mut self.rows_allocation, admitted)?;
-        control.admit_atomic_layout(mem::size_of::<T>())?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            (mem::size_of::<T>() as u64).saturating_mul(additional as u64),
-        )?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, additional as u64)?;
-        control.acquire(HtmlParseResource::AuxiliaryEntries, additional as u64)?;
-        self.admitted = admitted;
-        Ok(())
+        let Self {
+            nodes,
+            nodes_allocation,
+            bank,
+        } = self;
+        bank.admit_beside(control, additional, |control, admitted| {
+            control.reserve_vector_geometric(nodes, nodes_allocation, admitted)?;
+            Ok(())
+        })
     }
     /// Writes the row of `node`, which must be above every key already in the table, into
     /// admitted room. A node that is not above the last key, a row that was not admitted and a
@@ -73,18 +62,13 @@ impl<T> FamilyTable<T> {
     pub(super) fn push(&mut self, node: usize, row: T) -> Result<(), SessionError> {
         let key = u32::try_from(node).map_err(|_| SessionError::registry_row())?;
         if self.nodes.last().is_some_and(|&last| last >= key)
-            || self.admitted == 0
             || self.nodes.len() >= self.nodes.capacity()
-            || self.rows.len() >= self.rows.capacity()
         {
             return Err(SessionError::registry_row());
         }
-        self.admitted = self
-            .admitted
-            .checked_sub(1)
-            .ok_or_else(SessionError::registry_row)?;
+        // The bank checks its own room and admission, and writes nothing when it refuses.
+        self.bank.push(row)?;
         self.nodes.push(key);
-        self.rows.push(row);
         Ok(())
     }
     /// The index of the row of `node`, if it has one. The search is a binary search, and one
@@ -125,8 +109,8 @@ impl<T> FamilyTable<T> {
         let Some(index) = self.find(control, node)? else {
             return Ok(None);
         };
-        self.rows
-            .get(index)
+        self.bank
+            .row(index)
             .map(Some)
             .ok_or_else(|| latch_registry_row(control))
     }
@@ -136,20 +120,20 @@ impl<T> FamilyTable<T> {
     }
     /// The row at `index`, an index [`Self::find`] returned.
     pub(super) fn row(&self, index: usize) -> Option<&T> {
-        self.rows.get(index)
+        self.bank.row(index)
     }
     pub(super) fn row_mut(&mut self, index: usize) -> Option<&mut T> {
-        self.rows.get_mut(index)
+        self.bank.row_mut(index)
     }
     /// The rows with the nodes that own them, in ascending order of node.
     pub(super) fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
         self.nodes
             .iter()
-            .zip(&self.rows)
+            .zip(self.bank.rows())
             .filter_map(|(&node, row)| Some((usize::try_from(node).ok()?, row)))
     }
     pub(super) fn len(&self) -> usize {
-        self.rows.len()
+        self.bank.len()
     }
     /// Releases both banks and every entry of the table, rows admitted and not written included.
     /// `dispose` is called with each row before it is dropped, for a row that owns a ticket.
@@ -157,30 +141,16 @@ impl<T> FamilyTable<T> {
         self,
         control: &mut ParseControl,
         owner: &ControlIdentity,
-        mut dispose: impl FnMut(&mut ParseControl, &mut T) -> Result<(), SessionError>,
+        dispose: impl FnMut(&mut ParseControl, &mut T) -> Result<(), SessionError>,
     ) -> Result<(), SessionError> {
         let Self {
             nodes,
             nodes_allocation,
-            mut rows,
-            rows_allocation,
-            admitted,
+            bank,
         } = self;
-        let entries = (rows.len() as u64).saturating_add(admitted as u64);
-        let mut refused = None;
-        for row in &mut rows {
-            keep_first(&mut refused, dispose(control, row));
-        }
-        keep_first(
-            &mut refused,
-            release_vector(control, nodes, nodes_allocation),
-        );
-        keep_first(&mut refused, release_vector(control, rows, rows_allocation));
-        keep_first(
-            &mut refused,
-            release_logical(control, owner, HtmlParseResource::AuxiliaryEntries, entries),
-        );
-        refused.map_or(Ok(()), Err)
+        bank.release(control, owner, dispose, |control| {
+            release_vector(control, nodes, nodes_allocation)
+        })
     }
 }
 
@@ -209,7 +179,7 @@ mod tests {
         table.push(4, 40).unwrap();
         table.push(9, 90).unwrap();
         // A key whose row is missing is a state `push` cannot make.
-        table.rows.truncate(1);
+        table.bank.drop_rows_from_for_test(1);
         let stop = HtmlParseStop::InternalInvariant(
             crate::parser::control::HtmlParseInvariant::RegistryRow,
         );
@@ -328,6 +298,40 @@ mod tests {
         super::super::tests::storage_zero(&c);
     }
 
+    /// A parse that stops between an admission and its write must leave nothing retained, so a
+    /// test build counts each admission as a prepared slot, at the caller that asked for it, and
+    /// arms the stop at the first checkpoint after it. A refused admission prepared nothing.
+    #[test]
+    fn an_admission_is_a_prepared_slot_at_its_caller() {
+        use crate::parser::control::{
+            PreparedSlotStopScope, prepared_slot_sites, prepared_slots, stop_after_prepared_slot,
+        };
+        let _scope = PreparedSlotStopScope::begin();
+        let mut c = control();
+        let owner = c.identity();
+        let mut table: FamilyTable<u8> = FamilyTable::new(&mut c).unwrap();
+        stop_after_prepared_slot(Some(1));
+        table.admit(&mut c, 1).unwrap();
+        let asked_at = line!() + 1;
+        table.admit(&mut c, 2).unwrap();
+        assert_eq!(prepared_slots(), 2);
+        let sites = prepared_slot_sites();
+        assert!(
+            sites
+                .iter()
+                .all(|site| site.file().ends_with("family_table.rs"))
+        );
+        assert_eq!(sites.last().map(|site| site.line()), Some(asked_at));
+        // The stop armed for the second admission fires at the next checkpoint, with both rows
+        // admitted and none written.
+        assert!(matches!(
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1),
+            Err(HtmlParseStop::Cancelled)
+        ));
+        table.release(&mut c, &owner, |_, _| Ok(())).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+
     #[test]
     fn a_refused_bank_reservation_keeps_the_reserved_vector_accounted_and_admits_nothing() {
         // The key bank takes 4 bytes for one row; the row bank takes 64 and is refused.
@@ -354,7 +358,7 @@ mod tests {
             }))
         ));
         assert_eq!(capacity(&c), 4);
-        assert_eq!(table.admitted, 0);
+        assert_eq!(table.bank.admitted(), 0);
         assert_eq!(entries(&c), base);
         assert_eq!(table.push(1, [0; 64]), Err(SessionError::registry_row()));
         assert_eq!(table.len(), 0);
@@ -432,7 +436,7 @@ mod tests {
             let storage = session.active().unwrap();
             for key in 0..keys {
                 let before = visits(&c);
-                storage.csp_policy_slot(&mut c, key).unwrap();
+                storage.csp_policy_id(&mut c, key).unwrap();
                 let probes = visits(&c) - before;
                 total += probes;
                 most = most.max(probes);
@@ -440,7 +444,7 @@ mod tests {
             assert_eq!(total, u64::from(m - 1) * (1_u64 << m) + 1, "{keys} keys");
             assert_eq!(most, u64::from(m), "{keys} keys");
             let before = visits(&c);
-            storage.csp_policy_slot(&mut c, keys + 5).unwrap();
+            storage.csp_policy_id(&mut c, keys + 5).unwrap();
             assert_eq!(visits(&c) - before, u64::from(m), "{keys} keys, absent");
             session.release(&mut c).unwrap();
             super::super::tests::storage_zero(&c);

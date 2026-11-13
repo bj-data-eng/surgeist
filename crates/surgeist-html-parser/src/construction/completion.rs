@@ -245,7 +245,7 @@ impl ParserArenaSession {
         &self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        if self.active()?.csp_pending(c)? {
+        if self.active()?.csp_pending() {
             return Err(SessionError::PendingIntrinsicWork);
         }
         let storage = self.active()?;

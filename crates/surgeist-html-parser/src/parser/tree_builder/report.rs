@@ -446,11 +446,26 @@ mod tests {
         prepare: bool,
         limits: crate::HtmlParseLimits,
     ) -> SealedOrdinaryConstruction {
+        sealed_ordinary(literal, prepare, limits, false)
+    }
+    /// An ordinary seal of `literal` whose Meta CSP service is enabled, so its policy log exists.
+    fn ordinary_with_policy_log(literal: &str) -> SealedOrdinaryConstruction {
+        sealed_ordinary(literal, true, super::super::tests::limits(100), true)
+    }
+    fn sealed_ordinary(
+        literal: &str,
+        prepare: bool,
+        limits: crate::HtmlParseLimits,
+        meta_csp: bool,
+    ) -> SealedOrdinaryConstruction {
         let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits);
         let mut owner = OrdinaryInitializationOwner::new(request);
         let parts = {
             let mut attempt = owner.begin().unwrap();
             let mut driver = Some(attempt.take_driver().unwrap());
+            if meta_csp {
+                driver.as_mut().unwrap().enable_meta_csp(false).unwrap();
+            }
             loop {
                 match driver.as_mut().unwrap().step().unwrap() {
                     HeadStep::Consumed => {}
@@ -829,10 +844,16 @@ mod tests {
         literal: &str,
         corrupt: impl FnOnce(&mut crate::construction::FrozenArena) -> bool,
     ) {
+        assert_unpublishable_seal(ordinary(literal, true), corrupt);
+    }
+    fn assert_unpublishable_seal(
+        seal: SealedOrdinaryConstruction,
+        corrupt: impl FnOnce(&mut crate::construction::FrozenArena) -> bool,
+    ) {
         let registry_row = crate::parser::control::HtmlParseStop::InternalInvariant(
             crate::parser::control::HtmlParseInvariant::RegistryRow,
         );
-        let mut input = Some(ordinary(literal, true));
+        let mut input = Some(seal);
         assert!(corrupt(
             input.as_mut().unwrap().parts.arena.as_mut().unwrap()
         ));
@@ -907,6 +928,60 @@ mod tests {
             "<!doctype html><p>a",
             crate::construction::FrozenArena::corrupt_meta_policy_for_test,
         );
+    }
+
+    /// The refusal for a policy at the end of a log that exists is the one for a policy of no log.
+    #[test]
+    fn a_document_naming_the_position_after_the_last_policy_of_the_log_is_not_published() {
+        // The same seal, uncorrupted, publishes.
+        let mut input = Some(ordinary_with_policy_log("<!doctype html><p>a"));
+        assert!(HtmlParseReport::take_document(&mut input).is_ok());
+        assert_unpublishable_seal(
+            ordinary_with_policy_log("<!doctype html><p>a"),
+            crate::construction::FrozenArena::corrupt_meta_policy_at_log_end_for_test,
+        );
+    }
+
+    /// The record visits and inspected bytes that report preparation and publication charge for
+    /// a seal of `literal`, with its missing facts dropped when `drop_facts` is set.
+    fn publication_work(literal: &str, drop_facts: bool) -> (u64, u64, (usize, usize)) {
+        use crate::parser::control::HtmlParseWorkCategory::{InspectByte, RecordVisit};
+        let mut input = Some(ordinary(literal, true));
+        let dropped = if drop_facts {
+            let arena = input.as_mut().unwrap().parts.arena.as_mut().unwrap();
+            arena.drop_missing_facts_for_test()
+        } else {
+            (0, 0)
+        };
+        let usage = input.as_ref().unwrap().parts.control.usage();
+        let report = HtmlParseReport::take_document(&mut input).unwrap();
+        (
+            report.usage().work(RecordVisit) - usage.work(RecordVisit),
+            report.usage().work(InspectByte) - usage.work(InspectByte),
+            dropped,
+        )
+    }
+
+    /// A Meta CSP element parsed without a service leaves one missing fact. The same seal with
+    /// that fact dropped is the same parse without it, with every other row unchanged. Report
+    /// preparation walks the log of facts: for the one fact it inspects
+    /// `size_of::<MetaMissingFact>()` = 72 bytes and makes one visit for the row and one for each
+    /// of its three references: its Document, its subject and the cause it keeps.
+    #[test]
+    fn report_preparation_inspects_one_missing_fact_at_its_size_and_visits_its_row_and_references()
+    {
+        let literal = "<!doctype html><meta http-equiv=content-security-policy content=x>";
+        let with = publication_work(literal, false);
+        let without = publication_work(literal, true);
+        let (facts, caused) = without.2;
+        assert_eq!(facts, 1, "the parse left one missing fact");
+        assert_eq!(caused, 1, "the fact keeps the cause the parse was in");
+        assert_eq!(crate::construction::meta::MISSING_FACT_BYTES, 72);
+        assert_eq!(
+            with.1 - without.1,
+            crate::construction::meta::MISSING_FACT_BYTES as u64
+        );
+        assert_eq!(with.0 - without.0, 1 + 3);
     }
 
     #[test]
