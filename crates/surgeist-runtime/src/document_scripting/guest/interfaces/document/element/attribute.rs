@@ -537,11 +537,12 @@ impl DocumentScriptHost {
         .unwrap()
     }
 
-    /// Resume the original attribute write after policy callback selection
-    /// and any guest invocation have finished. The outer error carries
-    /// admission or the original guest exception. The inner result is the
-    /// original native Source progress.
-    /// This entry never invokes a guest callback or a microtask checkpoint.
+    /// Resume the original attribute write using its retained policy reply.
+    /// The outer error carries admission, the original guest exception, or a
+    /// reaction delivery failure. The inner result is the original native
+    /// Source progress. A settled write delivers committed reactions when
+    /// the original heap is live and the native Source is idle. Microtasks
+    /// still run at an explicit checkpoint.
     /// Nested recovery applies the supplied limits monotonically to interrupted
     /// attribute ancestors. Each successful raise survives a later refusal.
     /// Resume again to settle each restored ancestor.
@@ -553,7 +554,13 @@ impl DocumentScriptHost {
         self.check_permit(permit)?;
         // A native retry remains possible after a terminal bindings refusal.
         // The permit still authenticates the original native registration.
-        resume_retained_attribute(&self.native, limits, false)
+        let progress = resume_retained_attribute(&self.native, limits, false)?;
+        if let Ok(result) = &progress
+            && let Some(operation) = guest_terminal_operation(result)
+        {
+            self.deliver_resumed_source_reactions(permit, operation)?;
+        }
+        Ok(progress)
     }
 }
 

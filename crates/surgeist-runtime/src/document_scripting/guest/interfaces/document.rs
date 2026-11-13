@@ -1,6 +1,7 @@
 //! Document and Node bindings for the real attached Window.
 
 use super::*;
+use crate::DomSourceDriveProgress;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
 use surgeist_dom::{
     DomBatch, DomNodeKind, DomNodeRetirementInbox, DomQualifiedName, DomTagName, NodeId,
@@ -56,6 +57,80 @@ fn guest_source_terminal(
     match source {
         Source::Complete(done) => Some(Ok(done)),
         Source::Failed(failure) => Some(Err(failure)),
+        Source::Request(_) => None,
+    }
+}
+
+impl DocumentScriptHost {
+    fn deliver_resumed_source_reactions(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        operation: surgeist_dom::DomSourceOperationId,
+    ) -> Result<(), DocumentGuestEventError> {
+        if self.attachment()?.realm.check_owner_active().is_err()
+            || self
+                .native
+                .session
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?
+                .read_dom()
+                .pending_source_edit()
+                .is_some()
+        {
+            return Ok(());
+        }
+        let owner = self.native.clone();
+        let Some(events) = self
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.guest_events.clone())
+        else {
+            return Ok(());
+        };
+        let Some(public) = &events.public else {
+            return Ok(());
+        };
+        let registration = owner
+            .attachment
+            .get()
+            .and_then(|attachment| attachment.registration.upgrade())
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        if registration.custom_element_reaction_segments() == 0 {
+            return Ok(());
+        }
+        let capture = Capture {
+            callbacks: public.callbacks.clone(),
+            origin: None,
+            _backing: events.reserve(&owner, size_of::<Capture>())?,
+        };
+        self.in_document(permit, |scope| {
+            match capture.drain_native_reactions(scope, &owner, &events, operation) {
+                Ok(()) => Ok(()),
+                Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                    Err(error)
+                }
+                Err(error) => refuse(scope, &events.refusal, error),
+            }
+        })?;
+        Ok(())
+    }
+}
+
+fn guest_terminal_operation(
+    result: &DomSourceDriveProgress,
+) -> Option<surgeist_dom::DomSourceOperationId> {
+    use surgeist_dom::DomSourceProgress as Source;
+    let source = match result {
+        DomSourceDriveProgress::Complete(done) => return Some(done.operation()),
+        DomSourceDriveProgress::Failed(failure) => return Some(failure.operation()),
+        DomSourceDriveProgress::InlineSource { source, .. } => source,
+        DomSourceDriveProgress::MetaSource(outcome) => outcome.source(),
+        DomSourceDriveProgress::InlineFullscreenHandoff { .. }
+        | DomSourceDriveProgress::Pending { .. } => return None,
+    };
+    match source {
+        Source::Complete(done) => Some(done.operation()),
+        Source::Failed(failure) => Some(failure.operation()),
         Source::Request(_) => None,
     }
 }
