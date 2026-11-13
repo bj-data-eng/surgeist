@@ -799,6 +799,10 @@ impl OrdinaryBindings {
                 .receiver
                 .set(retained_receiver)
                 .map_err(|_| DocumentScriptNativeError::ProjectionCustody)?;
+            let _reactions = callbacks
+                .as_ref()
+                .map(|queue| queue.enter(owner))
+                .transpose()?;
             Ok::<_, DocumentGuestEventError>(scope.construct_without_arguments(constructor))
         })();
         drop(callback);

@@ -362,9 +362,14 @@ impl Draft {
                 cancel,
             );
         }
-        if element.custom_element_state()
-            != surgeist_html::elements::native::HtmlCustomElementState::Undefined
-        {
+        use surgeist_html::elements::native::HtmlCustomElementState;
+        // Inserting a receiver during its upgrade can put it on a nested
+        // reaction queue. The upgrade itself is then a no-op, but its
+        // already queued callbacks can run before the constructor returns.
+        if !matches!(
+            element.custom_element_state(),
+            HtmlCustomElementState::Undefined | HtmlCustomElementState::Precustomized
+        ) {
             return Ok(());
         }
         let Some(definition) =

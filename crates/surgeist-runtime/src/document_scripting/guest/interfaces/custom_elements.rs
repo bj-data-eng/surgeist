@@ -1192,16 +1192,7 @@ impl Capture {
         queue: Option<Rc<ActiveReactionQueue>>,
     ) -> Result<(), DocumentGuestEventError> {
         let Some(queue) = queue else { return Ok(()) };
-        let mut active = owner
-            .active_reaction_queue
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        queue.previous.replace(active.replace(queue.clone()));
-        drop(active);
-        let entry = ReactionQueueEntry {
-            active: &owner.active_reaction_queue,
-            queue: queue.clone(),
-        };
+        let entry = queue.enter(owner)?;
         let result = queue.drain(self, scope, owner, events);
         drop(entry);
         if result.is_err() {
@@ -1890,7 +1881,7 @@ impl Drop for ActiveReactionQueue {
     }
 }
 
-struct ReactionQueueEntry<'a> {
+pub(in crate::document_scripting::guest::interfaces) struct ReactionQueueEntry<'a> {
     active: &'a RefCell<Option<Rc<ActiveReactionQueue>>>,
     queue: Rc<ActiveReactionQueue>,
 }
@@ -1918,6 +1909,21 @@ impl Drop for ReactionEntry<'_> {
 }
 
 impl ActiveReactionQueue {
+    pub(super) fn enter<'a>(
+        self: &Rc<Self>,
+        owner: &'a NativeOwner,
+    ) -> Result<ReactionQueueEntry<'a>, DocumentScriptNativeError> {
+        let mut active = owner
+            .active_reaction_queue
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        self.previous.replace(active.replace(self.clone()));
+        Ok(ReactionQueueEntry {
+            active: &owner.active_reaction_queue,
+            queue: self.clone(),
+        })
+    }
+
     fn new(
         owner: &NativeOwner,
         events: &GuestEvents,
