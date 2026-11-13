@@ -1870,11 +1870,35 @@ impl HtmlCaptureBuilder {
         state: HtmlCapturedCustomElementState,
         definition: HtmlCaptureDefinitionInput,
     ) -> Result<(), HtmlCaptureError> {
+        match self.establish_custom_element_context_with::<std::convert::Infallible>(
+            subject,
+            state,
+            definition,
+            || Ok(()),
+        ) {
+            Ok(()) => Ok(()),
+            Err(HtmlCaptureEdgeError::Capture(error)) => Err(error),
+            Err(HtmlCaptureEdgeError::Interrupted(never)) => match never {},
+        }
+    }
+
+    /// Establishes the actual custom-element slots after admitting each reached
+    /// namespace, local-name, and saved-name comparison. A refusal leaves both
+    /// the slots and the relationship charge uncommitted.
+    pub fn establish_custom_element_context_with<E>(
+        &mut self,
+        subject: &HtmlCaptureBuilderSubject,
+        state: HtmlCapturedCustomElementState,
+        definition: HtmlCaptureDefinitionInput,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<(), HtmlCaptureEdgeError<E>> {
+        let mut step = || step().map_err(HtmlCaptureEdgeError::Interrupted);
+        step()?;
         let index = self.index(subject)?;
         self.require(index, HtmlCaptureSubjectKind::Element)?;
         let element = self.data.records[index].kind.element()?;
         if element.custom_context.is_some() {
-            return Err(HtmlCaptureError::CustomElementContextAlreadyEstablished);
+            return Err(HtmlCaptureError::CustomElementContextAlreadyEstablished.into());
         }
         let definition = match definition {
             HtmlCaptureDefinitionInput::Null => HtmlCapturedCustomElementDefinition::Null,
@@ -1882,8 +1906,9 @@ impl HtmlCaptureBuilder {
                 HtmlCapturedCustomElementDefinition::Unavailable
             }
             HtmlCaptureDefinitionInput::Definition(handle) => {
+                step()?;
                 if handle.capture != self.data.identity {
-                    return Err(HtmlCaptureError::ForeignBuilder);
+                    return Err(HtmlCaptureError::ForeignBuilder.into());
                 }
                 let d = self
                     .data
@@ -1892,17 +1917,42 @@ impl HtmlCaptureBuilder {
                     .and_then(|r| r.definitions.get(handle.record_index))
                     .ok_or(HtmlCaptureError::UnknownDefinition)?;
                 if state == HtmlCapturedCustomElementState::Known(HtmlCustomElementState::Custom) {
-                    if !namespace(element.name.namespace(), "http://www.w3.org/1999/xhtml") {
-                        return Err(HtmlCaptureError::CustomElementDefinitionNamespaceMismatch);
+                    let html = b"http://www.w3.org/1999/xhtml";
+                    step()?;
+                    let matches = match element.name.namespace().uri() {
+                        Some(uri) => same_units(
+                            uri.code_units(),
+                            html.iter().copied().map(u16::from),
+                            &mut step,
+                        )?,
+                        None => false,
+                    };
+                    if !matches {
+                        return Err(
+                            HtmlCaptureError::CustomElementDefinitionNamespaceMismatch.into()
+                        );
                     }
-                    if element.name.local_name() != &d.local_name {
-                        return Err(HtmlCaptureError::CustomElementDefinitionNameMismatch);
+                    if !same_units(
+                        element.name.local_name().code_units(),
+                        d.local_name.code_units().iter().copied(),
+                        &mut step,
+                    )? {
+                        return Err(HtmlCaptureError::CustomElementDefinitionNameMismatch.into());
                     }
-                    if d.name != d.local_name {
+                    if !same_units(
+                        d.name.code_units(),
+                        d.local_name.code_units().iter().copied(),
+                        &mut step,
+                    )? {
                         match &element.is_value {
                             HtmlCapturedIsValue::Unavailable => {}
-                            HtmlCapturedIsValue::Value(value) if value == &d.name => {}
-                            _ => return Err(HtmlCaptureError::CustomElementSavedIsMismatch),
+                            HtmlCapturedIsValue::Value(value)
+                                if same_units(
+                                    value.code_units(),
+                                    d.name.code_units().iter().copied(),
+                                    &mut step,
+                                )? => {}
+                            _ => return Err(HtmlCaptureError::CustomElementSavedIsMismatch.into()),
                         }
                     }
                 }
@@ -1918,8 +1968,9 @@ impl HtmlCaptureBuilder {
         if state == HtmlCapturedCustomElementState::Known(HtmlCustomElementState::Custom)
             && definition == HtmlCapturedCustomElementDefinition::Null
         {
-            return Err(HtmlCaptureError::CustomElementDefinitionRequired);
+            return Err(HtmlCaptureError::CustomElementDefinitionRequired.into());
         }
+        step()?;
         let charges = self.admit(
             0,
             usize::from(matches!(
@@ -2603,6 +2654,24 @@ impl HtmlCaptureBuilder {
         preflight::references(self, admit)?;
         preflight::depths(self, scratch, admit)
     }
+}
+
+fn same_units<E>(
+    left: &[u16],
+    mut right: impl ExactSizeIterator<Item = u16>,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    step()?;
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for left in left {
+        step()?;
+        if Some(*left) != right.next() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// Borrowed captured record. Its IDs are issued by the owning immutable capture.

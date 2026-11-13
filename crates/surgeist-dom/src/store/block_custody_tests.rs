@@ -1094,7 +1094,7 @@ fn total_after_binding_a_registry_without(
         .unwrap()
         .language()
         .clone();
-    saved.set_custom_payload(Some(custom));
+    saved.set_custom_context(saved.custom_element_state(), Some(custom));
     let formed = formation.finish(saved);
     draft
         .replace_element_formed(key, formed, None, &cancel)

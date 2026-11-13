@@ -734,7 +734,65 @@ impl Draft {
             definition: element.custom_element_definition(),
             saved_is: element.saved_is().cloned(),
         };
-        let mut element = element.clone();
+        self.replace_element_custom_context(
+            key,
+            element.custom_element_state(),
+            association,
+            cancel,
+        )
+    }
+
+    #[cfg(test)]
+    pub(in crate::store) fn complete_element_upgrade(
+        &mut self,
+        key: Key,
+        definition: crate::DomRegistryDefinitionId,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        use surgeist_html::elements::native::HtmlCustomElementState;
+
+        self.source_step(cancel)?;
+        let element = self
+            .node(key)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language();
+        if element.custom_element_state() != HtmlCustomElementState::Undefined
+            || element.custom_element_definition() != crate::DomElementDefinition::Null
+        {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let registry = element.custom_element_registry();
+        if self.lookup_element_definition(key, registry, cancel)? != Some(definition) {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        let association = crate::element::CustomAssociation {
+            registry,
+            definition: crate::DomElementDefinition::Definition(definition),
+            saved_is: element.saved_is().cloned(),
+        };
+        self.replace_element_custom_context(
+            key,
+            HtmlCustomElementState::Custom,
+            association,
+            cancel,
+        )
+    }
+
+    fn replace_element_custom_context(
+        &mut self,
+        key: Key,
+        state: surgeist_html::elements::native::HtmlCustomElementState,
+        association: crate::element::CustomAssociation,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let mut element = self
+            .node(key)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language()
+            .clone();
         let registry = self.custody_registry().clone();
         let mut admit = |usage| self.admit_custody_usage(usage, cancel);
         let mut formation = crate::element::ElementFormation::new(
@@ -745,7 +803,7 @@ impl Draft {
             &mut admit,
         );
         let custom = formation.custom(association, source::storage::Payload::default())?;
-        element.set_custom_payload(Some(custom));
+        element.set_custom_context(state, Some(custom));
         let formed = formation.finish(element);
         self.replace_element_formed(key, formed, None, cancel)
     }

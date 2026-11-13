@@ -535,6 +535,174 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     assert!(dom.apply(allowed, &cancel()).is_ok());
 }
 
+#[test]
+fn adopted_custom_element_exports_the_definition_from_its_original_registry() {
+    use surgeist_html::elements::native::HtmlCustomElementState;
+    use surgeist_html_semantics::{
+        HtmlCaptureLimits, HtmlCapturedCustomElementDefinition, HtmlCapturedNodeKind,
+        HtmlCapturedRegistry, HtmlCustomElementDefinition,
+    };
+
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let original = hosted(&mut dom, &mut issuer);
+    let destination = hosted(&mut dom, &mut issuer);
+    let mut batch = DomBatch::new();
+    let ticket = batch.create_element(original.document(), "x-widget");
+    let node = apply(&mut dom, batch).created(&ticket).unwrap().unwrap();
+    let initial = dom.snapshot();
+    let registry_of = |document| {
+        let DomRegistryBinding::Registry(id) = initial
+            .document(document)
+            .unwrap()
+            .metadata()
+            .custom_element_registry()
+        else {
+            panic!("hosted document registry");
+        };
+        id
+    };
+    let source_registry = registry_of(original.document());
+    let destination_registry = registry_of(destination.document());
+    let other = HtmlCustomElementDefinition::new("x-other".into(), "x-other".into(), false, false);
+    dom.prepare_global_registry_definition(
+        &issuer,
+        original.global(),
+        source_registry,
+        &other,
+        source_limits(1),
+        &cancel(),
+    )
+    .unwrap()
+    .commit();
+    let competing =
+        HtmlCustomElementDefinition::new("x-widget".into(), "x-widget".into(), false, true);
+    let (_, wrong) = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            destination.global(),
+            destination_registry,
+            &competing,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit();
+    let facts =
+        HtmlCustomElementDefinition::new("x-widget".into(), "x-widget".into(), false, false);
+    let (_, definition) = dom
+        .prepare_global_registry_definition(
+            &issuer,
+            original.global(),
+            source_registry,
+            &facts,
+            source_limits(1),
+            &cancel(),
+        )
+        .unwrap()
+        .commit();
+
+    // This fixture starts at the native state publication boundary after a
+    // successful constructor. No guest completion is fabricated by the API.
+    let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel()).unwrap();
+    let key = Key::Existing(node);
+    let binding = DomRegistryBinding::Registry(source_registry);
+    assert_eq!(
+        draft.complete_element_upgrade(key, wrong, &cancel()),
+        Err(DomError::InvalidSourceOperation)
+    );
+    assert_eq!(
+        draft
+            .lookup_element_definition(key, binding, &cancel())
+            .unwrap(),
+        Some(definition)
+    );
+    draft
+        .complete_element_upgrade(key, definition, &cancel())
+        .unwrap();
+    let prepared = draft.finish(&dom, &cancel()).unwrap();
+    let commit = dom.publish(prepared, &cancel()).unwrap();
+    assert!(
+        commit
+            .changes()
+            .changes()
+            .contains(&DomChange::ElementState(node))
+    );
+    let before_adoption = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.adopt(node, destination.document());
+    apply(&mut dom, batch);
+
+    let snapshot = dom.snapshot();
+    let view = snapshot.node(node).unwrap().as_element().unwrap();
+    assert_eq!(
+        view.custom_element_registry(),
+        DomRegistryBinding::Registry(destination_registry)
+    );
+    assert_eq!(
+        view.custom_element_definition(),
+        DomElementDefinition::Definition(definition)
+    );
+    assert_eq!(view.custom_element_state(), HtmlCustomElementState::Custom);
+    assert_eq!(
+        before_adoption
+            .node(node)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_registry(),
+        binding
+    );
+    assert_eq!(
+        initial
+            .node(node)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_definition(),
+        DomElementDefinition::Null
+    );
+
+    let export = snapshot
+        .html_capture(
+            destination.document(),
+            None,
+            HtmlCaptureLimits::new(256, 4096, 1024, 65_536, 256, 16, 16, 1_000_000),
+            DomHtmlCaptureLimits::new(256, 1_000_000),
+            &cancel(),
+        )
+        .unwrap();
+    let capture = export.capture();
+    let node = capture.node(&export.subject(node).unwrap()).unwrap();
+    let HtmlCapturedRegistry::Registry(current_registry) = node.lookup_registry() else {
+        panic!("adopted registry");
+    };
+    let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+        panic!("captured element");
+    };
+    let HtmlCapturedCustomElementDefinition::Definition(associated) =
+        element.custom_element_definition()
+    else {
+        panic!("captured definition");
+    };
+    assert_ne!(associated.registry(), &current_registry);
+    assert_eq!(definition.ordinal(), 1);
+    assert_eq!(associated.ordinal(), 1);
+    assert_eq!(capture.definition(associated).unwrap(), &facts);
+    let captured = HtmlCapturedRegistry::Registry(current_registry);
+    assert_eq!(
+        capture
+            .lookup_definition(
+                &captured,
+                &surgeist_html::values::Namespace::html(),
+                &"x-widget".into(),
+                None,
+            )
+            .unwrap(),
+        Some(&competing)
+    );
+}
+
 fn detached_document(
     snapshot: &DomSnapshot,
     document: DocumentId,

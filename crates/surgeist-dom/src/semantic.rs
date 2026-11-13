@@ -771,14 +771,37 @@ impl DomSnapshot {
                             || control.charge(1),
                         )
                         .map_err(element_capture_error)?;
-                    let definition = match element.custom_element_definition() {
-                        DomElementDefinition::Null => HtmlCaptureDefinitionInput::Null,
-                    };
-                    builder.establish_custom_element_context(
-                        &subject,
-                        HtmlCapturedCustomElementState::Known(element.custom_element_state()),
-                        definition,
-                    )?;
+                    let state =
+                        HtmlCapturedCustomElementState::Known(element.custom_element_state());
+                    match element.custom_element_definition() {
+                        DomElementDefinition::Null => builder.establish_custom_element_context(
+                            &subject,
+                            state,
+                            HtmlCaptureDefinitionInput::Null,
+                        )?,
+                        DomElementDefinition::Definition(id) => {
+                            let HtmlCaptureRegistryInput::Registry(registry) = registry_input(
+                                &mut builder,
+                                self,
+                                DomRegistryBinding::Registry(id.registry()),
+                                &mut registries,
+                                &mut control,
+                            )?
+                            else {
+                                return Err(DomHtmlCaptureError::UnmappedSubject);
+                            };
+                            control.charge(1)?;
+                            let definition = builder.definition_handle(&registry, id.ordinal())?;
+                            builder
+                                .establish_custom_element_context_with(
+                                    &subject,
+                                    state,
+                                    HtmlCaptureDefinitionInput::Definition(definition),
+                                    || control.charge(1),
+                                )
+                                .map_err(edge_capture_error)?;
+                        }
+                    }
                     if let Some(link) = node.as_link() {
                         control.charge(1)?;
                         builder.establish_link_history(&subject, link.history())?;

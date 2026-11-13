@@ -66,11 +66,11 @@ macro_rules! native_payload {
     };
 }
 
-/// Definition association established by this native generic creation surface.
-/// Registry/definition object admission is a separate, unexposed capability.
+/// The element's associated definition, independent of its lookup registry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomElementDefinition {
     Null,
+    Definition(crate::DomRegistryDefinitionId),
 }
 
 /// Canonical supported native Element state, captured with its owner and tree.
@@ -825,7 +825,12 @@ impl DomElement {
             .as_ref()
             .map_or(DomRegistryBinding::Null, |value| value.value.registry)
     }
-    pub(crate) fn set_custom_payload(&mut self, value: Option<Arc<Payload<CustomAssociation>>>) {
+    pub(crate) fn set_custom_context(
+        &mut self,
+        state: HtmlCustomElementState,
+        value: Option<Arc<Payload<CustomAssociation>>>,
+    ) {
+        self.custom_state = state;
         self.custom = value;
     }
     pub fn custom_element_definition(&self) -> DomElementDefinition {

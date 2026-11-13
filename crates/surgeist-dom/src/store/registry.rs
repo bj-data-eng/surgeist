@@ -483,6 +483,37 @@ impl Dom {
 }
 
 impl Draft {
+    pub(super) fn lookup_element_definition(
+        &self,
+        key: Key,
+        binding: crate::DomRegistryBinding,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomRegistryDefinitionId>, DomError> {
+        let crate::DomRegistryBinding::Registry(registry) = binding else {
+            return Ok(None);
+        };
+        let record = self
+            .registries
+            .as_ref()
+            .ok_or(DomError::HostedSourceUnavailable)?
+            .get_with(registry, &mut || self.source_step(cancel))?;
+        let element = self.node(key)?.element().ok_or(DomError::WrongNodeKind)?;
+        if element.common_state().html().is_none() {
+            return Ok(None);
+        }
+        let ordinal = record.lookup_with(
+            element.name().local_name(),
+            element.saved_is(),
+            &mut |amount| {
+                for _ in 0..amount {
+                    self.source_step(cancel)?;
+                }
+                Ok(())
+            },
+        )?;
+        Ok(ordinal.map(|ordinal| DomRegistryDefinitionId { registry, ordinal }))
+    }
+
     pub(super) fn select_element_registry(
         &mut self,
         key: Key,
@@ -499,9 +530,9 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let node = self.node(key)?;
-        let Some(element) = node.element() else {
+        if node.element().is_none() {
             return Ok(());
-        };
+        }
         let metadata = self
             .document_metadata(node.document())
             .map_err(|error| match error {
@@ -509,27 +540,11 @@ impl Draft {
                 error => error,
             })?;
         let binding = selected.unwrap_or_else(|| metadata.custom_element_registry());
-        if let crate::DomRegistryBinding::Registry(id) = binding {
-            let record = self
-                .registries
-                .as_ref()
-                .ok_or(DomError::HostedSourceUnavailable)?
-                .get_with(id, &mut || self.source_step(cancel))?;
-            if element.common_state().html().is_some() {
-                let found = record.lookup_with(
-                    element.name().local_name(),
-                    element.saved_is(),
-                    &mut |amount| {
-                        for _ in 0..amount {
-                            self.source_step(cancel)?;
-                        }
-                        Ok(())
-                    },
-                )?;
-                if found.is_some() {
-                    return Err(DomError::NotSupported);
-                }
-            }
+        if self
+            .lookup_element_definition(key, binding, cancel)?
+            .is_some()
+        {
+            return Err(DomError::NotSupported);
         }
         self.establish_element_registry(key, binding, cancel)?;
         Ok(())
