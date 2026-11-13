@@ -1383,6 +1383,7 @@ impl OrdinaryBindings {
                         DomDetachedNodeCreation::Fragment => GuestNode::Fragment,
                         DomDetachedNodeCreation::Text(_) => GuestNode::Text,
                         DomDetachedNodeCreation::Comment(_) => GuestNode::Comment,
+                        DomDetachedNodeCreation::DocumentType { .. } => GuestNode::DocumentType,
                     };
                     let mut dom = session.dom();
                     let dom = dom.raw_mut();
@@ -1403,6 +1404,11 @@ impl OrdinaryBindings {
                             DomDetachedNodeCreation::Comment(data) => {
                                 batch.create_comment(document, data)
                             }
+                            DomDetachedNodeCreation::DocumentType {
+                                name,
+                                public_id,
+                                system_id,
+                            } => batch.create_document_type(document, name, public_id, system_id),
                         };
                         dom.apply_with_node_retirement_watch(
                             batch,

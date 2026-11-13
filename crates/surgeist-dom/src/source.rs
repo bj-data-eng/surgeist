@@ -493,6 +493,11 @@ pub enum DomDetachedNodeCreation {
     Fragment,
     Text(DocumentString),
     Comment(DocumentString),
+    DocumentType {
+        name: DocumentString,
+        public_id: DocumentString,
+        system_id: DocumentString,
+    },
 }
 
 impl DomDetachedNodeCreation {
@@ -505,6 +510,11 @@ impl DomDetachedNodeCreation {
             Self::Fragment => DomSourceEdit::create_fragment(document.node()),
             Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
             Self::Comment(data) => DomSourceEdit::create_comment(document.node(), data),
+            Self::DocumentType {
+                name,
+                public_id,
+                system_id,
+            } => DomSourceEdit::create_document_type(document.node(), name, public_id, system_id),
         }
     }
 }

@@ -1,12 +1,16 @@
 //! DOMImplementation identity associated with a canonical Document.
 
 use super::*;
-use surgeist_bindings_js::NativeProjectionPrototype;
+use character_data::copy_native_data;
+use surgeist_bindings_js::{
+    NativeProjectionPrototype, conversion::declarations, dom_exception::DomExceptionName,
+};
+use surgeist_dom::DomDetachedNodeCreation;
 
 const INTERFACE: &[u16] = &ascii(b"DOMImplementation");
 const IMPLEMENTATION_REFERENCE: u32 = 0;
 
-struct Implementation;
+struct Implementation(DocumentId);
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
@@ -61,6 +65,22 @@ pub(super) fn install<'scope>(
         true,
     )?;
 
+    let factory = (funding.capture)(size_of::<Capture>())?;
+    let name = &ascii(b"createDocumentType");
+    let method = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| factory.create_document_type(scope, arguments)),
+        FunctionMetadata { name, length: 3 },
+    )?;
+    define_data(
+        scope,
+        &prototype,
+        PropertyKey::String(name),
+        &method,
+        true,
+        true,
+        true,
+    )?;
+
     let handler = (funding.capture)(size_of::<Capture>())?;
     install_getter(
         scope,
@@ -99,7 +119,7 @@ impl Capture {
             let project = |scope: &mut Scope<'scope>, prototype: &RetainedCallbackObject| {
                 let (value, holder, ()) = scope.try_project_retained_native_object(
                     NativeProjectionPrototype::Creation(prototype),
-                    Implementation,
+                    Implementation(document),
                     |payload, holder| {
                         Ok::<_, DocumentGuestEventError>((
                             events.reserve(&owner, payload)?,
@@ -127,5 +147,84 @@ impl Capture {
             }
         })();
         complete(scope, &events, result)
+    }
+
+    fn create_document_type<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(receiver) = scope.native_object::<Implementation>(arguments.receiver())? else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"DOMImplementation required"))?,
+            ));
+        };
+        let document = receiver.payload().0;
+        if arguments.len() < 3 {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Missing document type arguments"))?,
+            ));
+        }
+        let (owner, events) = self.active(scope)?;
+        let result = (|| -> Result<_, DocumentGuestEventError> {
+            let name = declarations::dom_implementation_create_document_type_0_name();
+            let public_id = declarations::dom_implementation_create_document_type_0_public_id();
+            let system_id = declarations::dom_implementation_create_document_type_0_system_id();
+            let (name, public_id, system_id) = self
+                .callbacks
+                .conversion
+                .run(scope, |conversion| {
+                    Ok((
+                        conversion.argument(&name, arguments.get(name.index()))?,
+                        conversion.argument(&public_id, arguments.get(public_id.index()))?,
+                        conversion.argument(&system_id, arguments.get(system_id.index()))?,
+                    ))
+                })
+                .map_err(Error::from)?;
+            scope.check_active()?;
+            let (
+                ArgumentValue::Present(name),
+                ArgumentValue::Present(public_id),
+                ArgumentValue::Present(system_id),
+            ) = (name.get(), public_id.get(), system_id.get())
+            else {
+                return Err(Error::BackendUnavailable.into());
+            };
+            let (name, _name_backing) = copy_native_data(&owner, &events, name.as_code_units())?;
+            let (public_id, _public_id_backing) =
+                copy_native_data(&owner, &events, public_id.as_code_units())?;
+            let (system_id, _system_id_backing) =
+                copy_native_data(&owner, &events, system_id.as_code_units())?;
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let create = |scope: &mut Scope<'scope>, prototypes: &DocumentPrototypes| {
+                public.document.ordinary.create_detached(
+                    scope,
+                    self,
+                    (&owner, &events),
+                    ordinary::NodePrototype::Creation(&prototypes.document_type),
+                    (
+                        document,
+                        DomDetachedNodeCreation::DocumentType {
+                            name,
+                            public_id,
+                            system_id,
+                        },
+                    ),
+                )
+            };
+            if let Some(global) = public.other_document_origin(&owner, &events, document)? {
+                public.with_origin(&events, global, |origin| create(scope, &origin.documents))
+            } else {
+                create(scope, &public.document.prototypes)
+            }
+        })();
+        match result {
+            Err(DocumentGuestEventError::Document(DocumentScriptError::Native(
+                DocumentScriptNativeError::Dom(DomError::InvalidCharacter),
+            ))) => Ok(Completion::Throw(
+                scope.dom_exception(DomExceptionName::InvalidCharacterError, &[])?,
+            )),
+            result => complete(scope, &events, result),
+        }
     }
 }
