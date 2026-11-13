@@ -241,3 +241,272 @@ fn invalid_receiver_stops_before_the_receiving_lines_provider_calls() {
     ));
     assert_eq!(*trace.borrow(), previous);
 }
+
+fn balanced_input<S: LayoutScalar>() -> MixedInlineRunInputOf<S> {
+    let mut query = input(vec![
+        atomic(0, false, true),
+        atomic(1, true, true),
+        atomic(2, false, false),
+        atomic(3, false, false),
+        atomic(4, false, false),
+    ]);
+    for (participant, width) in query
+        .participants
+        .iter_mut()
+        .zip([10.0, 10.0, 30.0, 30.0, 10.0])
+    {
+        let MixedInlineParticipantOf::Atomic { item, .. } = participant else {
+            unreachable!()
+        };
+        item.size.width = S::from_f64(width);
+    }
+    query.text_wrap_style = crate::TextWrapStyle::Balance;
+    query.available_inline_extent = AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Definite(
+            crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+        ),
+        crate::SizingOperation::Normal,
+    );
+    query
+}
+
+fn balanced_band<S: LayoutScalar>(
+    trace: &RefCell<Vec<Event<S>>>,
+    start: S,
+    end: S,
+) -> Result<LogicalLineBandQueryResultOf<S>, Infallible> {
+    trace.borrow_mut().push(Event::Band(start, end));
+    Ok(LogicalLineBandQueryResultOf {
+        inline_start: S::ZERO,
+        inline_end: S::from_f64(60.0),
+        next_transition: None,
+    })
+}
+
+fn expected_balanced_trace<S: LayoutScalar>() -> Vec<Event<S>> {
+    fn line<S: LayoutScalar>(events: &mut Vec<Event<S>>, start: f64, queries: usize) {
+        for _ in 0..queries {
+            events.push(Event::Band(S::from_f64(start), S::from_f64(start + 7.0)));
+        }
+        events.push(Event::Clear(
+            S::from_f64(start + 7.0),
+            PostLineClearIntent::None,
+        ));
+    }
+    fn prefix<S: LayoutScalar>(events: &mut Vec<Event<S>>) {
+        line(events, 0.0, 1);
+        line(events, 7.0, 1);
+    }
+    fn group<S: LayoutScalar>(events: &mut Vec<Event<S>>, queries: &[usize]) {
+        events.push(Event::Receiver(1));
+        for (index, &count) in queries.iter().enumerate() {
+            line(events, 14.0 + 7.0 * index as f64, count);
+        }
+    }
+    let mut events = Vec::new();
+    prefix(&mut events);
+    group(&mut events, &[1, 1]); // whole reference Auto
+    prefix(&mut events);
+    group(&mut events, &[1, 1]); // rolling local Auto
+    // Residuals0/50 generate seventeen goals0..50 in steps of3.125.
+    // Goals0..12.5 retain60/10;15.625..25 choose30/40; larger goals
+    // choose30/30/10 and exceed the authentic two-line count. Each quality
+    // line queries every legal completion/prefix twice and its selected band
+    // once: three/two/one candidates therefore mean7/5/3 provider queries.
+    for _ in 0..5 {
+        group(&mut events, &[7, 3]);
+    }
+    for _ in 0..4 {
+        group(&mut events, &[7, 5]);
+    }
+    for _ in 0..8 {
+        group(&mut events, &[7, 5, 3]);
+    }
+    group(&mut events, &[7, 5]); // first best goal's winner replay
+    prefix(&mut events);
+    group(&mut events, &[7, 5]); // whole selected program replay
+    events
+}
+
+#[test]
+fn balanced_receiver_resume_preserves_eligible_search_and_selected_program() {
+    fn lane<S: LayoutScalar>() {
+        let query = balanced_input::<S>();
+        let trace = RefCell::new(Vec::new());
+        let mut run = NumericRun::new(query.clone(), true).unwrap();
+        while let Some(demand) = run
+            .advance(
+                |start, end| balanced_band(&trace, start, end),
+                |block, intent| clear(&trace, block, intent),
+            )
+            .unwrap()
+        {
+            assert_eq!(demand.source_index, 1);
+            assert!(demand.expected == named());
+            trace.borrow_mut().push(Event::Receiver(1));
+            run.accept_receiver(resolved()).unwrap();
+        }
+        let report = run.finish::<Infallible>().unwrap();
+        assert_eq!(report.inline_extent, S::from_f64(40.0));
+        assert_eq!(report.block_extent, S::from_f64(28.0));
+        assert_eq!(report.line_bands.len(), 4);
+        assert_eq!(report.atomics.len(), 5);
+        assert_eq!(
+            report.lines.iter().map(|line| line.end).collect::<Vec<_>>(),
+            [
+                surgeist_text::LineEnd::Forced,
+                surgeist_text::LineEnd::Forced,
+                surgeist_text::LineEnd::Soft,
+                surgeist_text::LineEnd::Paragraph,
+            ]
+        );
+        for (actual, (source, x, y)) in report.atomics.iter().zip([
+            (0, 0.0, 0.0),
+            (1, 0.0, 7.0),
+            (2, 0.0, 14.0),
+            (3, 0.0, 21.0),
+            (4, 30.0, 21.0),
+        ]) {
+            assert_eq!(actual.item.source_index, source);
+            assert_eq!(
+                expect_logical_position(actual.position),
+                LogicalPointOf::new(S::from_f64(x), S::from_f64(y))
+            );
+        }
+        let baselines = report.baselines.numeric();
+        assert_eq!(baselines.first, Some(S::from_f64(7.0)));
+        assert_eq!(baselines.last, Some(S::from_f64(28.0)));
+        assert!(baselines.first_named && baselines.last_named);
+        assert_eq!(*trace.borrow(), expected_balanced_trace());
+        let synchronous_trace = RefCell::new(Vec::new());
+        let synchronous = layout_mixed_inline_run_with_formatted_observation(
+            query,
+            |start, end| balanced_band(&synchronous_trace, start, end),
+            |block, intent| clear(&synchronous_trace, block, intent),
+            true,
+            |index, reference| {
+                assert_eq!(index, 1);
+                assert!(reference == named());
+                synchronous_trace.borrow_mut().push(Event::Receiver(index));
+                Ok(resolved())
+            },
+        )
+        .unwrap();
+        assert_eq!(synchronous, report);
+        assert_eq!(synchronous_trace.into_inner(), expected_balanced_trace());
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn balanced_losing_trial_preserves_exact_provider_error_after_receiver() {
+    let trace = RefCell::new(Vec::new());
+    let queries = Cell::new(0);
+    let mut run = NumericRun::new(balanced_input::<f64>(), true).unwrap();
+    loop {
+        let next = run.advance(
+            |start, end| {
+                trace.borrow_mut().push(Event::Band(start, end));
+                queries.set(queries.get() + 1);
+                // Reference and local Auto each query four real lines. The first
+                // finite goal is0, which would tie local Auto and lose its priority.
+                if queries.get() == 9 {
+                    return Err("losing Balance trial band");
+                }
+                Ok(LogicalLineBandQueryResultOf {
+                    inline_start: 0.0,
+                    inline_end: 60.0,
+                    next_transition: None,
+                })
+            },
+            |block, intent| clear(&trace, block, intent),
+        );
+        match next {
+            Ok(Some(demand)) => {
+                assert_eq!(demand.source_index, 1);
+                trace.borrow_mut().push(Event::Receiver(1));
+                run.accept_receiver(resolved()).unwrap();
+            }
+            Err(NumericRunError::Band(error)) => {
+                assert_eq!(error, "losing Balance trial band");
+                break;
+            }
+            _ => panic!("the real losing-trial provider error must propagate"),
+        }
+    }
+    let literal = expected_balanced_trace::<f64>();
+    // Each Auto pass has two prefix lines and two receiving-group lines:
+    // nine events each. The next receiver precedes the failing provider call.
+    assert_eq!(*trace.borrow(), literal[..20]);
+}
+
+#[test]
+fn balanced_group_receipts_reject_real_count_and_terminal_mismatches() {
+    fn walk(
+        query: &MixedInlineRunInputOf<f64>,
+        limit: Option<usize>,
+        width: f64,
+    ) -> (NumericSequence<f64>, NumericWalkOutcome) {
+        let supplied = project_inline_participants(&query.participants);
+        let mut sequence = NumericSequence::new(query, true);
+        let boundaries = numeric_line_boundaries(query);
+        let outcome = walk_numeric_sequence(
+            NumericWalkInput {
+                input: query,
+                supplied: &supplied,
+                available: 60.0,
+                receiver_source: ReceiverSourceMode::Deferred,
+            },
+            &mut sequence,
+            &mut boundaries.into_iter().peekable(),
+            NumericWalkControl::group(None, limit),
+            |_, _| {
+                Ok::<_, Infallible>(LogicalLineBandQueryResultOf {
+                    inline_start: 0.0,
+                    inline_end: width,
+                    next_transition: None,
+                })
+            },
+            |block, _| block,
+        )
+        .unwrap();
+        (sequence, outcome)
+    }
+    let query = super::balance_tests::input::<f64>(
+        &[30.0, 30.0, 10.0, 10.0],
+        &[],
+        Direction::Ltr,
+        crate::TextWrapStyle::Balance,
+    );
+    let (reference, _) = walk(&query, None, 60.0);
+    let references = numeric_reference_groups(&reference.selected_lines).unwrap();
+    assert_eq!(references[0].count, 2);
+    let entry = NumericSequence::new(&query, true).checkpoint();
+    let (count, outcome) = walk(&query, Some(2), 30.0);
+    assert!(outcome == NumericWalkOutcome::CountExceeded);
+    assert_eq!(count.selected_lines.len(), 3);
+    assert!(
+        finish_numeric_group_trial(&count, entry, &references[0], outcome)
+            .unwrap()
+            .is_none()
+    );
+    let forced = super::balance_tests::input::<f64>(
+        &[30.0, 30.0, 10.0, 10.0],
+        &[2],
+        Direction::Ltr,
+        crate::TextWrapStyle::Balance,
+    );
+    let (terminal, outcome) = walk(&forced, Some(2), 60.0);
+    assert!(outcome == NumericWalkOutcome::GroupComplete);
+    assert_eq!(terminal.selected_lines.len(), 2);
+    assert_eq!(
+        terminal.selected_lines.last().unwrap().ending,
+        surgeist_text::LineEnd::Forced
+    );
+    assert!(
+        finish_numeric_group_trial(&terminal, entry, &references[0], outcome)
+            .unwrap()
+            .is_none()
+    );
+}

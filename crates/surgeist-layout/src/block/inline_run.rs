@@ -438,7 +438,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         if self.prepared.text_run.is_none()
-            && crate::inline::numeric_fit_is_ordinary(constants.wrap_style, context.inline_request)
+            && crate::inline::numeric_fit_supports_continuation(
+                constants.wrap_style,
+                context.inline_request,
+            )
         {
             return Ok(Some(Box::new(NumericFit::begin(
                 tree,
