@@ -183,3 +183,96 @@ pub(super) fn template_content_reaches_parsed_and_retired_native_contents() {
         ))
     ));
 }
+
+pub(super) fn template_attributes_reflect_the_live_native_element() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 8_000, 80_000);
+    let permit = host.permit().unwrap();
+    let node = host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            (() => {
+                const template = document.createElement('template');
+                for (const key of ['htmlFor', 'shadowRootMode', 'shadowRootSlotAssignment',
+                    'shadowRootCustomElementRegistry', 'shadowRootDelegatesFocus',
+                    'shadowRootSerializable', 'shadowRootClonable']) {
+                    const descriptor = Object.getOwnPropertyDescriptor(HTMLTemplateElement.prototype, key);
+                    if (!descriptor?.get || !descriptor?.set ||
+                        !descriptor.enumerable || !descriptor.configurable) return 'missing ' + key;
+                    let coerced = false;
+                    try {
+                        descriptor.set.call(Object.create(template), {toString() { coerced = true; return ''; }});
+                        return 'invalid setter';
+                    } catch (error) {
+                        if (!(error instanceof TypeError) || coerced) return 'brand order';
+                    }
+                    try { descriptor.get.call(new Proxy(template, {})); return 'invalid getter'; }
+                    catch (error) { if (!(error instanceof TypeError)) return error.name; }
+                }
+                if (template.htmlFor !== '' || template.shadowRootMode !== '' ||
+                    template.shadowRootSlotAssignment !== 'named' ||
+                    template.shadowRootCustomElementRegistry !== '') return 'missing defaults';
+                template.setAttributeNS('urn:foreign', 'for', 'foreign');
+                if (template.htmlFor !== '') return 'foreign namespace';
+                template.htmlFor = {toString() {
+                    template.setAttribute('for', 'nested');
+                    return 'exact\ud800';
+                }};
+                if (template.htmlFor !== 'exact\ud800' ||
+                    template.getAttributeNS(null, 'for') !== 'exact\ud800' ||
+                    template.getAttributeNS('urn:foreign', 'for') !== 'foreign') return 'reflection reentry';
+                template.shadowRootMode = 'OPEN';
+                template.shadowRootSlotAssignment = 'MANUAL';
+                if (template.shadowRootMode !== 'open' || template.shadowRootSlotAssignment !== 'manual' ||
+                    template.getAttribute('shadowrootmode') !== 'OPEN') return 'canonical keyword';
+                template.shadowRootMode = 'invalid';
+                template.shadowRootSlotAssignment = '';
+                if (template.shadowRootMode !== '' ||
+                    template.shadowRootSlotAssignment !== 'named') return 'invalid defaults';
+                for (const [key, name] of [
+                    ['shadowRootDelegatesFocus', 'shadowrootdelegatesfocus'],
+                    ['shadowRootSerializable', 'shadowrootserializable'],
+                    ['shadowRootClonable', 'shadowrootclonable'],
+                ]) {
+                    template.setAttributeNS('urn:foreign', name, '');
+                    if (template[key] !== false) return 'boolean namespace';
+                    template[key] = {};
+                    if (template[key] !== true || template.getAttributeNS(null, name) !== '')
+                        return 'boolean presence';
+                    template.setAttributeNS(null, name, 'false');
+                    if (!template[key]) return 'boolean content';
+                    template[key] = 0;
+                    if (template[key] || template.getAttributeNS(null, name) !== null ||
+                        template.getAttributeNS('urn:foreign', name) !== '') return 'boolean removal';
+                }
+                template.shadowRootCustomElementRegistry = 'exact\udc00';
+                if (template.shadowRootCustomElementRegistry !== 'exact\udc00' ||
+                    template.getAttribute('shadowrootcustomelementregistry') !== 'exact\udc00')
+                    return 'registry string';
+                globalThis.reflectedTemplate = template;
+                return 'ok';
+            })()
+        "#)?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        let template = evaluate(scope, "reflectedTemplate")?;
+        projected_node_id(scope, &template)
+    }).unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.set_attribute(node, "shadowrootmode", "CLOSED");
+        batch.set_attribute(node, "shadowrootclonable", "");
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    let before = host.snapshot().unwrap().stamp();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(
+            scope,
+            "reflectedTemplate.shadowRootMode === 'closed' && reflectedTemplate.shadowRootClonable",
+        )?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+}
