@@ -193,7 +193,7 @@ pub(super) fn test_owning_depth(result: &HtmlConstructionResult, position: usize
             HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner),
         ) = node.fragment_owner()
         {
-            result.node_by_result_id(owner).unwrap()
+            result.node_by_result_id(&owner).unwrap()
         } else {
             return depth;
         };

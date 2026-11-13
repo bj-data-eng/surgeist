@@ -7,13 +7,11 @@
 //! record stores its content.
 
 use super::attribute_table::{AttrRow, PublishedAttr};
+use super::names::NameEntry;
 use super::*;
 use crate::internal::elements::rel::HtmlLinkFlags;
 use crate::internal::values::{Attribute, Namespace};
-use std::{
-    iter::{Skip, Take},
-    slice,
-};
+use std::slice;
 
 /// The content of one published node, by value.
 ///
@@ -35,32 +33,57 @@ pub enum HtmlNodeKind<'a> {
     ProcessingInstruction(HtmlProcessingInstruction),
     /// A document type declaration.
     Doctype(HtmlDoctype),
+    /// A reference of the node's row that its result does not resolve: the cause names the kind
+    /// of reference, an interned name, a text range, a run of attributes, a leaf or the row
+    /// itself. Publication validates every such reference once and a result cannot be made without
+    /// that pass, so a result that a storage published never reads as this; a consumer maps it to
+    /// its typed defect error and never skips the node.
+    Unreadable(HtmlConstructionCause),
 }
 
 /// A borrowed element: its exact name, ordered attributes and link history.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct HtmlElementView<'a> {
-    content: &'a ElementContent<DocumentString>,
+    entry: &'a NameEntry,
+    attrs: &'a [PublishedAttr],
+    link_flags: Option<HtmlLinkFlags>,
 }
+impl PartialEq for HtmlElementView<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.entry.name() == other.entry.name()
+            && self.attrs == other.attrs
+            && self.link_flags == other.link_flags
+    }
+}
+impl Eq for HtmlElementView<'_> {}
 impl<'a> HtmlElementView<'a> {
+    pub(super) fn new(
+        entry: &'a NameEntry,
+        attrs: &'a [PublishedAttr],
+        link_flags: Option<HtmlLinkFlags>,
+    ) -> Self {
+        Self {
+            entry,
+            attrs,
+            link_flags,
+        }
+    }
     /// Exact qualified name.
     pub fn name(self) -> &'a QualifiedName {
-        self.content.name()
+        self.entry.name()
     }
     /// The key of the element's name, which the tests compare with the vocabulary.
     #[cfg(test)]
     pub(crate) fn key(self) -> crate::internal::values::element_key::ElementKey {
-        self.content.key()
+        self.entry.key()
     }
     /// The element's attributes in producer order.
     pub fn attributes(self) -> HtmlAttributes<'a> {
-        HtmlAttributes {
-            slice: self.content.attrs.as_ref(),
-        }
+        HtmlAttributes { rows: self.attrs }
     }
     /// Actual construction flags. Records of a result that kept no link history return `None`.
     pub fn link_flags(self) -> Option<HtmlLinkFlags> {
-        self.content.link_flags
+        self.link_flags
     }
 }
 
@@ -100,14 +123,8 @@ impl crate::internal::values::semantic_input::HtmlAttributeInput for HtmlAttribu
     }
 }
 
-/// The attributes of an element that has none: the rows of no slice.
-fn no_rows() -> Take<Skip<slice::Iter<'static, PublishedAttr>>> {
-    const NONE: &[PublishedAttr] = &[];
-    NONE.iter().skip(1).take(0)
-}
-
 /// The iterator of the attributes of a published element.
-struct PublishedAttributes<'a>(Take<Skip<slice::Iter<'a, PublishedAttr>>>);
+struct PublishedAttributes<'a>(slice::Iter<'a, PublishedAttr>);
 impl<'a> Iterator for PublishedAttributes<'a> {
     type Item = HtmlAttribute<'a>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -135,12 +152,12 @@ impl ExactSizeIterator for PublishedAttributes<'_> {}
 /// Attributes keep their producer order and are unique by namespace and local name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlAttributes<'a> {
-    slice: Option<&'a RowSlice>,
+    rows: &'a [PublishedAttr],
 }
 impl<'a> HtmlAttributes<'a> {
     /// The number of attributes.
     pub fn len(self) -> usize {
-        self.slice.map_or(0, RowSlice::len)
+        self.rows.len()
     }
     /// Whether there are no attributes.
     pub fn is_empty(self) -> bool {
@@ -148,16 +165,13 @@ impl<'a> HtmlAttributes<'a> {
     }
     /// The attribute at a zero-based index in producer order; `None` at or past `len`.
     pub fn get(self, index: usize) -> Option<HtmlAttribute<'a>> {
-        self.slice?.get(index).map(HtmlAttribute::of)
+        self.rows.get(index).map(HtmlAttribute::of)
     }
     /// Iterates in producer order.
     pub fn iter(
         self,
     ) -> impl ExactSizeIterator<Item = HtmlAttribute<'a>> + DoubleEndedIterator + 'a {
-        PublishedAttributes(match self.slice {
-            Some(slice) => slice.iter(),
-            None => no_rows(),
-        })
+        PublishedAttributes(self.rows.iter())
     }
     /// Finds an attribute by exact namespace and local-name identity.
     pub fn find(
@@ -272,6 +286,9 @@ pub enum ConstructionNodeKind<'a> {
     ProcessingInstruction(ConstructionProcessingInstruction<'a>),
     /// A document type declaration.
     Doctype(ConstructionDoctype<'a>),
+    /// A reference of a published record's row that its result does not resolve; see
+    /// [`HtmlNodeKind::Unreadable`].
+    Unreadable(HtmlConstructionCause),
 }
 
 /// One attribute of a record of a construction storage: its exact name, and its value as the
@@ -321,7 +338,7 @@ enum AttrSource<'a> {
         text: &'a TextArena,
     },
     /// The attributes of a record of a published result.
-    Published(Option<&'a RowSlice>),
+    Published(&'a [PublishedAttr]),
     /// The record names a run its storage does not hold.
     Invalid,
 }
@@ -341,7 +358,7 @@ impl<'a> BuildAttributes<'a> {
     pub fn len(self) -> Result<usize, HtmlConstructionError> {
         match self.source {
             AttrSource::Rows { rows, .. } => Ok(rows.len()),
-            AttrSource::Published(slice) => Ok(slice.map_or(0, RowSlice::len)),
+            AttrSource::Published(rows) => Ok(rows.len()),
             AttrSource::Invalid => Err(HtmlConstructionCause::InvalidAttributeReference.error()),
         }
     }
@@ -356,9 +373,7 @@ impl<'a> BuildAttributes<'a> {
             AttrSource::Rows { rows, text } => {
                 Ok(rows.get(index).map(|row| BuildAttribute::of(row, text)))
             }
-            AttrSource::Published(slice) => Ok(slice
-                .and_then(|slice| slice.get(index))
-                .map(BuildAttribute::published)),
+            AttrSource::Published(rows) => Ok(rows.get(index).map(BuildAttribute::published)),
             AttrSource::Invalid => Err(HtmlConstructionCause::InvalidAttributeReference.error()),
         }
     }
@@ -366,8 +381,7 @@ impl<'a> BuildAttributes<'a> {
     pub fn iter(self) -> Result<BuildAttributeIter<'a>, HtmlConstructionError> {
         Ok(BuildAttributeIter(match self.source {
             AttrSource::Rows { rows, text } => IterSource::Rows(rows.iter(), text),
-            AttrSource::Published(Some(slice)) => IterSource::Published(slice.iter()),
-            AttrSource::Published(None) => IterSource::Published(no_rows()),
+            AttrSource::Published(rows) => IterSource::Published(rows.iter()),
             AttrSource::Invalid => {
                 return Err(HtmlConstructionCause::InvalidAttributeReference.error());
             }
@@ -388,7 +402,7 @@ impl Eq for BuildAttributes<'_> {}
 #[derive(Clone, Debug)]
 enum IterSource<'a> {
     Rows(slice::Iter<'a, AttrRow>, &'a TextArena),
-    Published(Take<Skip<slice::Iter<'a, PublishedAttr>>>),
+    Published(slice::Iter<'a, PublishedAttr>),
 }
 
 /// The attributes of a record of a construction storage, in producer order.
@@ -466,7 +480,7 @@ impl<'a> ConstructionElementView<'a> {
     /// The view of an element record of a storage that builds, whose attributes are the rows of
     /// its run in `table` and whose values are ranges of `text`.
     fn building(
-        content: &'a ElementContent<TextRun>,
+        content: &'a ElementContent,
         table: &'a AttributeTable,
         text: &'a TextArena,
     ) -> Self {
@@ -484,14 +498,18 @@ impl<'a> ConstructionElementView<'a> {
         }
     }
     /// The view of an element record of a published result.
-    fn published(content: &'a ElementContent<DocumentString>) -> Self {
+    pub(super) fn published(
+        entry: &'a NameEntry,
+        rows: &'a [PublishedAttr],
+        link_flags: Option<HtmlLinkFlags>,
+    ) -> Self {
         Self {
-            name: content.name(),
+            name: entry.name(),
             #[cfg(test)]
-            key: content.key(),
-            link_flags: content.link_flags,
+            key: entry.key(),
+            link_flags,
             attributes: BuildAttributes {
-                source: AttrSource::Published(content.attrs.as_ref()),
+                source: AttrSource::Published(rows),
             },
         }
     }
@@ -504,6 +522,12 @@ pub struct ConstructionProcessingInstruction<'a> {
     data: BuildStr<'a>,
 }
 impl<'a> ConstructionProcessingInstruction<'a> {
+    pub(super) fn of(value: &'a HtmlProcessingInstruction) -> Self {
+        Self {
+            target: BuildStr::new(value.target().code_units()),
+            data: BuildStr::new(value.data().code_units()),
+        }
+    }
     /// Exact target.
     pub fn target(self) -> BuildStr<'a> {
         self.target
@@ -522,6 +546,14 @@ pub struct ConstructionDoctype<'a> {
     system_id: Option<BuildStr<'a>>,
 }
 impl<'a> ConstructionDoctype<'a> {
+    pub(super) fn of(value: &'a HtmlDoctype) -> Self {
+        let units = |value: &'a DocumentString| BuildStr::new(value.code_units());
+        Self {
+            name: units(value.name()),
+            public_id: value.public_id().map(units),
+            system_id: value.system_id().map(units),
+        }
+    }
     /// Exact doctype name.
     pub fn name(self) -> BuildStr<'a> {
         self.name
@@ -536,67 +568,11 @@ impl<'a> ConstructionDoctype<'a> {
     }
 }
 
-impl<T: Cell> NodeContent<T> {
+impl NodeContent {
     /// Whether a record of this content can hold ordinary children.
     pub(super) fn is_container(&self) -> bool {
         matches!(self, Self::Document(_) | Self::Fragment | Self::Element(_))
     }
-    /// The build view of this content, with the text of a text or comment record read by `text`
-    /// and the view of an element read by `element`.
-    fn viewed<'a>(
-        &'a self,
-        text: impl Fn(&'a T) -> BuildText<'a>,
-        element: impl Fn(&'a ElementContent<T>) -> ConstructionElementView<'a>,
-    ) -> ConstructionNodeKind<'a> {
-        fn units(value: &DocumentString) -> BuildStr<'_> {
-            BuildStr::new(value.code_units())
-        }
-        match self {
-            Self::Document(mode) => ConstructionNodeKind::Document(*mode),
-            Self::Fragment => ConstructionNodeKind::Fragment,
-            Self::Element(content) => ConstructionNodeKind::Element(element(content)),
-            Self::Text(value) => ConstructionNodeKind::Text(text(value)),
-            Self::Comment(value) => ConstructionNodeKind::Comment(text(value)),
-            Self::ProcessingInstruction(value) => {
-                ConstructionNodeKind::ProcessingInstruction(ConstructionProcessingInstruction {
-                    target: units(value.target()),
-                    data: units(value.data()),
-                })
-            }
-            Self::Doctype(value) => ConstructionNodeKind::Doctype(ConstructionDoctype {
-                name: units(value.name()),
-                public_id: value.public_id().map(units),
-                system_id: value.system_id().map(units),
-            }),
-        }
-    }
-}
-
-impl NodeContent<DocumentString> {
-    /// The published view of this content.
-    pub(super) fn published(&self) -> HtmlNodeKind<'_> {
-        match self {
-            Self::Document(mode) => HtmlNodeKind::Document(*mode),
-            Self::Fragment => HtmlNodeKind::Fragment,
-            Self::Element(content) => HtmlNodeKind::Element(HtmlElementView { content }),
-            Self::Text(value) => HtmlNodeKind::Text(value.clone()),
-            Self::Comment(value) => HtmlNodeKind::Comment(value.clone()),
-            Self::ProcessingInstruction(value) => {
-                HtmlNodeKind::ProcessingInstruction(value.clone())
-            }
-            Self::Doctype(value) => HtmlNodeKind::Doctype(value.clone()),
-        }
-    }
-    /// The build view of this published content, which reads each text as its borrowed units.
-    pub(super) fn building_published(&self) -> ConstructionNodeKind<'_> {
-        self.viewed(
-            |value| BuildText::Units(value.code_units()),
-            ConstructionElementView::published,
-        )
-    }
-}
-
-impl NodeContent<TextRun> {
     /// The build view of this content, whose text and comment units and attribute values are
     /// read from `text`, and whose attributes are the rows of `table`.
     pub(super) fn building<'a>(
@@ -604,12 +580,22 @@ impl NodeContent<TextRun> {
         text: &'a TextArena,
         table: &'a AttributeTable,
     ) -> ConstructionNodeKind<'a> {
-        self.viewed(
-            |run| {
-                text.get(run.text())
-                    .map_or(BuildText::Invalid, BuildText::Units)
-            },
-            |content| ConstructionElementView::building(content, table, text),
-        )
+        let units = |run: &TextRun| {
+            text.get(run.text())
+                .map_or(BuildText::Invalid, BuildText::Units)
+        };
+        match self {
+            Self::Document(mode) => ConstructionNodeKind::Document(*mode),
+            Self::Fragment => ConstructionNodeKind::Fragment,
+            Self::Element(content) => ConstructionNodeKind::Element(
+                ConstructionElementView::building(content, table, text),
+            ),
+            Self::Text(run) => ConstructionNodeKind::Text(units(run)),
+            Self::Comment(run) => ConstructionNodeKind::Comment(units(run)),
+            Self::ProcessingInstruction(value) => ConstructionNodeKind::ProcessingInstruction(
+                ConstructionProcessingInstruction::of(value),
+            ),
+            Self::Doctype(value) => ConstructionNodeKind::Doctype(ConstructionDoctype::of(value)),
+        }
     }
 }

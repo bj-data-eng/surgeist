@@ -115,9 +115,12 @@ impl ParseControl {
             }
             HtmlConstructionBank::Text
             | HtmlConstructionBank::TextBlock
-            | HtmlConstructionBank::PublishedRecords
-            | HtmlConstructionBank::PublishedContents
+            | HtmlConstructionBank::PublishedRows
+            | HtmlConstructionBank::PublishedChildren
             | HtmlConstructionBank::PublishedAttributes
+            | HtmlConstructionBank::PublishedRuns
+            | HtmlConstructionBank::PublishedAssociations
+            | HtmlConstructionBank::PublishedLeaves
             | HtmlConstructionBank::Wrapper
             | HtmlConstructionBank::NameSlots
             | HtmlConstructionBank::NameEntry => Ok(minimum),

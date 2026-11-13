@@ -224,6 +224,11 @@ pub enum HtmlConstructionCaptureError {
     RepresentationExhausted,
     AllocationFailed,
     Cancelled,
+    /// A node of the source result holds a reference that its result does not resolve: the cause
+    /// names the kind of reference. Publication checks every reference, so a result that a
+    /// construction storage published never raises this; it reports a defect in the source
+    /// result, and the capture never skips the node.
+    UnreadableSource(surgeist_html::construction::HtmlConstructionCause),
     Capture(HtmlCaptureError),
     /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
     /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
@@ -249,13 +254,20 @@ impl HtmlConstructionCaptureError {
             | Self::LimitExceeded
             | Self::RepresentationExhausted
             | Self::AllocationFailed
-            | Self::Cancelled => None,
+            | Self::Cancelled
+            | Self::UnreadableSource(_) => None,
         }
     }
 }
 impl fmt::Display for HtmlConstructionCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "construction capture: {self:?}")
+        match self {
+            Self::UnreadableSource(cause) => write!(
+                f,
+                "construction capture: a source node holds a reference its result does not resolve: {cause:?}"
+            ),
+            _ => write!(f, "construction capture: {self:?}"),
+        }
     }
 }
 impl Error for HtmlConstructionCaptureError {}
@@ -1153,6 +1165,12 @@ fn traverse<'a>(
                         value.target().clone(),
                         value.data().clone(),
                     )?
+                }
+                // A reference of the source's row that its result does not resolve is a defect in
+                // the source result, which publication rules out; the capture fails on it with the
+                // cause and never skips the node.
+                HtmlNodeKind::Unreadable(cause) => {
+                    return Err(HtmlConstructionCaptureError::UnreadableSource(cause));
                 }
             };
             control.poll()?;

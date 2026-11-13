@@ -8,21 +8,14 @@
 //! otherwise moves the run once to a fresh region at the tail that is twice its new size, so the
 //! rows that `n` appends copy are linear in the rows the run holds at the end. The rows a run
 //! left when it moved, and the room reserved after a run, hold the filler row until a run writes
-//! them. Publication copies the live rows of every run into the exact table of the result.
-//!
-//! A published element holds a [`RowSlice`] of the one published table, which the table checks
-//! against its finished vector when the slice is made.
+//! them. Publication copies the live rows of every run into the exact table of the result, and
+//! the published rows hold the names and the values of the attributes of every element in one
+//! vector that the runs of the result name.
 
 use super::text::TextRef;
 use super::{HtmlConstructionCause, HtmlConstructionError, names::NameEntry};
 use crate::internal::values::{DocumentString, Namespace, QualifiedName};
-use std::{
-    fmt,
-    iter::{Skip, Take},
-    num::NonZeroU32,
-    slice,
-    sync::Arc,
-};
+use std::{fmt, num::NonZeroU32, sync::Arc};
 
 /// An attribute of an element that is still being built: its interned name and the range of its
 /// value in the text arena.
@@ -172,6 +165,7 @@ impl AttributeTable {
         let name = self.filler.get_or_insert_with(|| {
             Arc::new(NameEntry::new(
                 QualifiedName::new(Namespace::none(), None, DocumentString::from("")),
+                0,
                 0,
             ))
         });
@@ -432,69 +426,6 @@ impl PublishedAttr {
     }
 }
 
-/// The attributes of one published element: a range of the one published table of the result.
-///
-/// Only [`Self::new`] makes one, and it checks the range against the finished table, so a read
-/// of the range is total. A read walks the slice iterator, so it indexes nothing.
-#[derive(Clone)]
-pub(crate) struct RowSlice {
-    rows: Arc<Vec<PublishedAttr>>,
-    start: u32,
-    len: u32,
-}
-impl RowSlice {
-    /// The slice of `len` rows from `start` of the finished table `rows`, or the
-    /// invalid-reference cause when the table does not hold them.
-    pub(crate) fn new(
-        rows: &Arc<Vec<PublishedAttr>>,
-        start: usize,
-        len: usize,
-    ) -> Result<Self, HtmlConstructionError> {
-        let end = start.checked_add(len).ok_or_else(invalid)?;
-        if end > rows.len() {
-            return Err(invalid());
-        }
-        Ok(Self {
-            rows: rows.clone(),
-            start: u32::try_from(start).map_err(|_| exhausted())?,
-            len: u32::try_from(len).map_err(|_| exhausted())?,
-        })
-    }
-    /// The number of attributes.
-    pub(crate) fn len(&self) -> usize {
-        self.len as usize
-    }
-    /// The attribute at a zero-based index of the slice, or `None` at or past `len`. It reads
-    /// one row of the table and scans nothing.
-    pub(crate) fn get(&self, index: usize) -> Option<&PublishedAttr> {
-        if index >= self.len() {
-            return None;
-        }
-        let at = (self.start as usize).checked_add(index)?;
-        self.rows.get(at)
-    }
-    /// The attributes in producer order. Skipping and taking on a slice iterator take constant
-    /// time, and a consumer that reaches an index through `nth` or `nth_back` of the iterator or
-    /// of the iterators that wrap it makes no scan; [`Self::get`] reads one index directly.
-    pub(crate) fn iter(&self) -> Take<Skip<slice::Iter<'_, PublishedAttr>>> {
-        self.rows
-            .iter()
-            .skip(self.start as usize)
-            .take(self.len as usize)
-    }
-}
-impl PartialEq for RowSlice {
-    fn eq(&self, other: &Self) -> bool {
-        self.iter().eq(other.iter())
-    }
-}
-impl Eq for RowSlice {}
-impl fmt::Debug for RowSlice {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,6 +435,7 @@ mod tests {
             Arc::new(NameEntry::new(
                 QualifiedName::new(Namespace::none(), None, DocumentString::from(local)),
                 u64::from(start),
+                0,
             )),
             TextRef::at(start, 1),
         )
@@ -627,35 +559,5 @@ mod tests {
         assert_eq!(names(&table, ix), ["B", "c"]);
         let error = table.remove(ix, 2).unwrap_err();
         assert_eq!(error.cause(), HtmlConstructionCause::OperandMissing);
-    }
-
-    #[test]
-    fn a_published_slice_is_checked_against_the_finished_table() {
-        let rows = Arc::new(vec![
-            PublishedAttr::new(row("a", 0).name, DocumentString::from("1")),
-            PublishedAttr::new(row("b", 1).name, DocumentString::from("2")),
-            PublishedAttr::new(row("c", 2).name, DocumentString::from("3")),
-        ]);
-        let slice = RowSlice::new(&rows, 1, 2).unwrap();
-        let names: Vec<String> = slice
-            .iter()
-            .map(|row| row.name().local_name().to_utf8().unwrap())
-            .collect();
-        assert_eq!(names, ["b", "c"]);
-        assert_eq!(
-            slice
-                .iter()
-                .nth(1)
-                .map(|row| row.value().to_utf8().unwrap()),
-            Some("3".into())
-        );
-        assert_eq!(slice.iter().rev().count(), 2);
-        for (start, len) in [(2, 2), (4, 0), (usize::MAX, 1)] {
-            let error = RowSlice::new(&rows, start, len).unwrap_err();
-            assert_eq!(
-                error.cause(),
-                HtmlConstructionCause::InvalidAttributeReference
-            );
-        }
     }
 }

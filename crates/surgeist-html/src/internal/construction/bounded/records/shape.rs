@@ -32,9 +32,7 @@ pub(in crate::internal::construction::bounded) fn walk_budget(records: usize) ->
 
 /// The record that owns `record` in its tree: its parent, or the host or template that owns the
 /// fragment.
-pub(in crate::internal::construction::bounded) fn owning_parent(
-    record: &Record<TextRun>,
-) -> Option<NodeIx> {
+pub(in crate::internal::construction::bounded) fn owning_parent(record: &Record) -> Option<NodeIx> {
     record.parent.or(match &record.owner {
         Some(HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) => {
             Some(owner.index)
@@ -89,7 +87,7 @@ pub(in crate::internal::construction::bounded) fn next_edge(
 
 impl BuildArena {
     /// The record at `index`, or the unknown-node error.
-    fn record_at_index(&self, index: NodeIx) -> Result<&Record<TextRun>, HtmlConstructionError> {
+    fn record_at_index(&self, index: NodeIx) -> Result<&Record, HtmlConstructionError> {
         self.records
             .get(index.position())
             .ok_or(HtmlConstructionCause::UnknownNode.error())

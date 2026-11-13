@@ -162,6 +162,67 @@ fn publish(storage: HtmlConstructionStorage, root: HtmlBuilderNode) -> HtmlConst
         Err(_) => panic!("publication refused"),
     }
 }
+/// What a reference model says a published record reads as: its ordinary children in order and
+/// its ordinary parent.
+struct Expected {
+    node: HtmlBuilderNode,
+    children: Vec<HtmlBuilderNode>,
+    parent: Option<HtmlBuilderNode>,
+}
+
+/// Publishes `storage` at `root` and compares the result with `expected`, which holds one entry
+/// for every record of the storage:
+/// - every record is readable by its identity, detached ones included, with the children and the
+///   parent the model gives, and its children read the same from either end;
+/// - every record that has a parent is listed once among the children of all the rows of the
+///   result, and every record that has none is listed nowhere.
+fn publish_and_compare(
+    storage: HtmlConstructionStorage,
+    root: HtmlBuilderNode,
+    expected: &[Expected],
+) -> HtmlConstructionResult {
+    let ids: std::collections::HashMap<HtmlBuilderNode, surgeist_html::construction::HtmlNodeId> =
+        expected
+            .iter()
+            .map(|entry| (entry.node, storage.result_id(&entry.node).unwrap()))
+            .collect();
+    let result = publish(storage, root);
+    assert_eq!(result.len(), expected.len());
+    for entry in expected {
+        let node = result
+            .node(&ids[&entry.node])
+            .expect("a detached record keeps its row");
+        let children: Vec<_> = entry.children.iter().map(|child| ids[child]).collect();
+        assert_eq!(node.children().len(), children.len());
+        assert!(node.children().eq(children.iter().copied()));
+        assert!(node.children().rev().eq(children.iter().rev().copied()));
+        for (index, child) in children.iter().enumerate() {
+            assert_eq!(node.children().nth(index), Some(*child));
+            assert_eq!(
+                node.children().nth_back(children.len() - 1 - index),
+                Some(*child)
+            );
+        }
+        assert_eq!(node.children().nth(children.len()), None);
+        assert_eq!(node.parent(), entry.parent.map(|parent| ids[&parent]));
+    }
+    let mut listed = std::collections::HashMap::new();
+    for position in 0..result.len() {
+        let row = result.node_at(position).unwrap().as_node().unwrap();
+        for child in row.children() {
+            *listed.entry(child).or_insert(0usize) += 1;
+        }
+    }
+    for entry in expected {
+        assert_eq!(
+            listed.get(&ids[&entry.node]).copied().unwrap_or(0),
+            usize::from(entry.parent.is_some()),
+            "{:?}",
+            entry.node
+        );
+    }
+    result
+}
 /// Refuses `op` with the expected cause and checks that the usage and the record count are as
 /// they were.
 fn refuse(
@@ -455,7 +516,7 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge() {
     let host_id = owner.result_id(&host).unwrap();
     assert_eq!(
         owner.node(&shadow).unwrap().fragment_owner(),
-        Some(&HtmlFragmentOwner::ShadowHost(host_id))
+        Some(HtmlFragmentOwner::ShadowHost(host_id))
     );
     let result = publish(owner, root);
     assert_eq!(

@@ -186,11 +186,14 @@ interned, and the capacity of a bank that grew before the refusal follows the re
 
 Publication copies the live rows of every run, in record order, into one table of exactly that many
 rows (`PublishedAttributes`, 24 bytes a row), packs the values of the rows with the text into the
-one block of the result when more than a quarter of the arena is spare, and gives each element a
-slice of the table, checked against the finished vector when it is made. A published attribute is an
-`HtmlAttribute`, a view of the row's name and its value, which is a borrower of the result's block.
-`HtmlAttributes::{get, iter, find}` return it. A publication admits and records five banks and takes
-each back when it refuses.
+one block of the result when more than a quarter of the arena is spare, and gives each element that
+has attributes a run: its row holds the position of an 8-byte run, a start and a length in the
+table, and the reader resolves the run when it reads the element, so a run the table does not hold
+reads as `Unreadable`. A published attribute is an `HtmlAttribute`, a view of the row's name and its
+value, which is a borrower of the result's block. `HtmlAttributes::{get, iter, find}` return it. A
+publication admits and records at most eight banks, the shared tree, the published attribute rows,
+their runs, the text block when it packs, the rows, the child entries, the associations and the
+leaves, and none for a bank that the result has no entry for. It takes each back when it refuses.
 
 `OrderedAttributes::from_parser_storage`, `parser_backing_mut` and
 `into_parser_storage` must not expose `ParseControl` or mutable shared storage in
@@ -266,9 +269,9 @@ out-of-range IDs; it neither constructs a result ID nor publishes an immutable
 result. This checked read follows existing owning-association IDs without
 exposing their private identity/index or adding another mapping bank. Borrowed
 node views provide kind, position, parent, child iteration, contents kind/target,
-`fragment_owner() -> Option<&HtmlFragmentOwner>`, shadow properties and issued
+`fragment_owner() -> Option<HtmlFragmentOwner>`, shadow properties and issued
 handle access. The published result's `HtmlNode::fragment_owner()` returns
-`Option<HtmlFragmentOwner>` by value. Following one read edge copies a 16-byte id
+`Option<HtmlFragmentOwner>` by value too. Following one read edge copies a 16-byte id
 and clones nothing; parser admission covers its actual described observation.
 
 Each method takes the storage exclusively and its consumer's admission. A method that needs a
@@ -318,9 +321,10 @@ kind, that all retained owning links are reciprocal and in range, that
 association roots have the right owner, and that each non-owning contents reference
 targets a live result-local shadow-contents fragment. Its checks are charged to the caller's
 admission before they run. It returns
-the published `HtmlConstructionResult::{Document(HtmlDocument), Fragment(HtmlFragment)}` with no
-later fallible work, except the abort of an allocator failure that the move into the shared arena
-documents below. Invalid structure yields `HtmlConstructionError` and the
+the published `HtmlConstructionResult::{Document(HtmlDocument), Fragment(HtmlFragment)}`. The walk
+that fills the tables is its last fallible work: it can refuse when the block cannot share a text
+or a value, which takes every bank back like any other refusal, and the move that follows can only
+abort on the allocator failure documented below. Invalid structure yields `HtmlConstructionError` and the
 same owned storage, in `HtmlConstructionPublishRefusal`. A stopped publication exposes no successful
 document or fragment. A published result does not hand its storage back.
 
@@ -366,9 +370,9 @@ does not hold, a state no storage makes. The view hands out no shared string of 
 record. `HtmlConstructionNode::as_node()` returns `Result<HtmlNode, HtmlConstructionError>`: a
 record of a storage that has not published it has no published view, and the refusal is
 `NotPublished`.
-`HtmlDeclarativeShadowRoot<'a>` becomes a read-only borrowed view over those IDs
-and the target's properties; `host()` and `contents()` return the `Copy` IDs by
-value, and `properties()` copies the same value without allocation. This
+`HtmlDeclarativeShadowRoot` is a `Copy` value that holds those IDs and the target's
+properties; `host()` and `contents()` return the IDs by value, and `properties()`
+copies the same value without allocation. This
 pre-v1 shape change has no compatibility wrapper. Captured-host shadow properties
 therefore survive in the same HTML result even when no local host is present.
 
@@ -598,16 +602,16 @@ are:
 - the child order of one record;
 - the text arena;
 - one string of a processing instruction or doctype;
-- the shared arena;
-- the contents;
-- the text block, the published attributes and the published records of a publication;
+- the shared tree;
+- the text block, the published attributes and their runs, the published rows, child entries,
+  associations and leaves of a publication;
 - the three banks of a new name.
 
 Every growth of an operation is admitted before the first is recorded. `record_growth` records the
 capacity chosen before the bank is reserved, and a second time with the capacity reached when it
 differs, which includes the unchanged capacity of a reservation the allocator refused.
 `record_change` records the usage and is the last step that can refuse. The writes that follow
-reserve and allocate nothing, except that the shared arena, the table of published attributes and
+reserve and allocate nothing, except that the shared tree, the table of published attributes and
 the text block of a publication allocate their handles, and a filler name that an attribute table
 makes when it first needs one: stable Rust has no fallible constructor for them, so an allocator
 failure there aborts, as any infallible allocation does. The text of a text or comment leaf is
@@ -696,7 +700,7 @@ record and each child entry a constant number of times.
 
 The parser is the consumer of these operations. The session storage holds the construction
 storage itself, and beside it the bytes the parse holds for the banks of the records, the child
-orders, the interned names, the text arena and the published arena, which are credited once when
+orders, the interned names, the text arena and the shared tree, which are credited once when
 the storage is released; there is no
 ticket for a bank, no per-record registry of banks and no custody state in which the records are
 lent. A record bank and a child order that has capacity grow to the greater of the capacity needed
@@ -708,7 +712,7 @@ holds one `AuxiliaryEntries` entry, its node-join cell. An insertion's depth, st
 and edge checks run in `admit_change` in this order: the depth observation (the library records it
 before the call), one record visit, the standalone-document revocation, and the edge check, against the lent
 storage. Publication consumes the storage and a refusal hands it back; the parser's frozen arena
-reads the usage the published records hold from the result when it is released.
+reads the usage the published tree holds from the result when it is released.
 
 #### Origins of record strings
 
@@ -844,27 +848,35 @@ bank, the actual capacity and the high-water values before its cancellation or a
 limit check, and a stop leaves the grown bank with the storage. No ordinary record write follows
 such a stop. HTML stores no resource totals or parser controller identity.
 
-A publication allocates the shared arena only after its layout is admitted. It validates every text
-range of the arena, copies the units the texts hold, in record order, into a new block when more
-than a quarter of the arena's capacity is spare (the units of a relocated text's old region, the
-room after a text, and rolled-back units) and otherwise makes the arena's own vector the block,
-builds the content of each record with the string of the block that a text or comment holds, and
-moves the records into a vector of published records. The publication allocates the published
-records and the contents vector, each at its element size times the record count; the result keeps
-the published records and the block, which is one allocation of two bytes a unit whatever the number
-of texts, and every text and comment of the result is a range of it. The publication admits and
-records the banks one at a time, the shared arena, the contents, the text block when it packs, and
-the published records. A refusal takes back, in reverse order, each record the consumer accepted,
-restores the text arena and hands the storage back, so the consumer holds what it held before the
-publication. A take-back record does not change the layout the consumer reports for an allocation
-refusal. The contents vector is freed when the records move, and the parser releases the bytes it
-recorded for it then: they count in `PeakTransientBytes` and in the high-water of
-`ManagedCapacityBytes`, not in their current value. The move into the shared arena allocates its
-handle and cannot refuse. The result holds the only strong owner of the arena the parse made; the
-parser's frozen arena reads the usage from the result and releases what the parse holds for it.
-Read-only storage and result node access replace `arena.records` reaches in the parser's metadata,
-history and alias preflight. Private dense joins remain local; exposed result identities come from
-the checked storage or result view, never from constructing an ID from an ordinal.
+A publication allocates the shared tree only after its layout is admitted. It validates every text
+range of the arena, every name an element record holds against the storage's name table and every
+attribute run and value, copies the units the texts hold, in record order, into a new block when
+more than a quarter of the arena's capacity is spare (the units of a relocated text's old region,
+the room after a text, and rolled-back units) and otherwise makes the arena's own vector the block.
+It then makes, in one walk of the records, one 20-byte row for each record, the children of every
+row in one array of 4-byte entries, the attribute rows and an 8-byte run for each element that has
+attributes, a 12-byte entry for each template contents and each shadow root, and a vector of the
+processing instructions and doctypes. A row holds the position of its parent, the end of its
+children in the array, and its content: the position of an element's name in the result's name
+table and of its run, the range of a text or comment in the block, or the position of a leaf. The
+publication admits and records the banks one at a time, the shared tree, the attribute rows, their
+runs, the text block when it packs, the rows, the child entries, the associations and the leaves,
+each exactly as large as the result needs and none when the result needs no entry. A refusal takes
+back, in reverse order, each record the consumer accepted, restores the text arena and hands the
+storage back, so the consumer holds what it held before the publication. A take-back record does
+not change the layout the consumer reports for an allocation refusal. The records, their child
+orders and the storage's attribute table are freed when the move ends, and the parser releases the
+bytes it recorded for the records and the child orders then: they count in `PeakTransientBytes`
+and in the high-water of `ManagedCapacityBytes`, not in their current value. The move into the
+shared tree allocates its handle and cannot refuse. The result holds the only strong owner of the
+tree the parse made; the parser's frozen arena reads the usage from the result and releases what
+the parse holds for it. A reader of the result looks up the row of its view once. A reference of a
+row that the result does not hold reads as `HtmlNodeKind::Unreadable` or
+`ConstructionNodeKind::Unreadable`, which a result a storage published never does because
+publication checks every such reference first; a consumer maps it to its typed defect error and
+never skips the node. Read-only storage and result node access replace `arena.records` reaches in
+the parser's metadata, history and alias preflight. Private dense joins remain local; exposed
+result identities come from the checked storage or result view, never from constructing an ID from an ordinal.
 
 ### Captures, fragment context and lazy facts
 

@@ -263,3 +263,65 @@ fn a_fragment_root_view_is_a_fragment() {
     let fragment = HtmlFragment::builder(limits()).unwrap().finish().unwrap();
     assert_eq!(fragment.root().kind(), HtmlNodeKind::Fragment);
 }
+
+/// A fragment whose only element is an `a` with `id` set to `id`, after `leading` elements that
+/// intern other names first. The attribute names of the result are numbered by the order in which
+/// its storage met them.
+fn anchor_after(leading: &[&str], id: &str) -> HtmlFragment {
+    let mut builder = HtmlFragment::builder(limits()).unwrap();
+    let mut parent = builder.root();
+    for local in leading {
+        parent = builder
+            .append_element(
+                &parent,
+                QualifiedName::new(Namespace::html(), None, *local),
+                OrderedAttributes::default(),
+            )
+            .unwrap();
+    }
+    builder
+        .append_element(
+            &parent,
+            QualifiedName::new(Namespace::html(), None, "a"),
+            OrderedAttributes::new([plain("id", id)]).unwrap(),
+        )
+        .unwrap();
+    builder.finish().unwrap()
+}
+/// The first element below the root of `fragment` that has no child element.
+fn innermost_kind(fragment: &HtmlFragment) -> HtmlNodeKind<'_> {
+    let mut node = fragment.root().children().next().unwrap();
+    while let Some(child) = fragment.node(&node).unwrap().children().next() {
+        node = child;
+    }
+    fragment.node(&node).unwrap().kind()
+}
+
+#[test]
+fn element_views_and_kinds_compare_by_name_not_by_the_order_tables_met_names() {
+    // The attribute name `id` is the third name of one table and the second of the other.
+    let deep = anchor_after(&["p"], "x");
+    let shallow = anchor_after(&[], "x");
+    let (HtmlNodeKind::Element(deep_view), HtmlNodeKind::Element(shallow_view)) =
+        (innermost_kind(&deep), innermost_kind(&shallow))
+    else {
+        panic!("expected elements");
+    };
+    assert_eq!(deep_view.attributes(), shallow_view.attributes());
+    assert_eq!(deep_view, shallow_view);
+    assert_eq!(innermost_kind(&deep), innermost_kind(&shallow));
+}
+
+#[test]
+fn element_views_with_different_attribute_values_compare_unequal() {
+    let deep = anchor_after(&["p"], "x");
+    let other = anchor_after(&[], "y");
+    let (HtmlNodeKind::Element(deep_view), HtmlNodeKind::Element(other_view)) =
+        (innermost_kind(&deep), innermost_kind(&other))
+    else {
+        panic!("expected elements");
+    };
+    assert_ne!(deep_view.attributes(), other_view.attributes());
+    assert_ne!(deep_view, other_view);
+    assert_ne!(innermost_kind(&deep), innermost_kind(&other));
+}

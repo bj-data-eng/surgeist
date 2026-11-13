@@ -426,7 +426,7 @@ impl ParserArenaSession {
         let mut taken = self.storage.take().ok_or(SessionError::Consumed)?;
         let records = taken.construction;
         let published = publish_records(control, &taken.control, &mut taken.holds, records, &root);
-        let (result, contents) = match published {
+        let (result, freed) = match published {
             Ok(published) => published,
             Err((records, error)) => {
                 taken.construction = records;
@@ -488,11 +488,12 @@ impl ParserArenaSession {
                 fragment,
             }),
         };
-        // The contents vector of the publication is freed with the move of the records. It stays
-        // in the high-water marks of the bytes held and leaves what is held. The frozen arena
-        // owns every hold, so a refused release credits all of them and strands none.
+        // The record bank and the child orders are freed with the move of the records into the
+        // tree of the result. They stay in the high-water marks of the bytes held and leave what
+        // is held. The frozen arena owns every hold, so a refused release credits all of them and
+        // strands none.
         let released = match frozen.storage.as_mut() {
-            Some(storage) => storage.holds.release_contents(control, contents),
+            Some(storage) => storage.holds.release_freed_banks(control, freed),
             None => Err(SessionError::Consumed),
         };
         if let Err(error) = released {

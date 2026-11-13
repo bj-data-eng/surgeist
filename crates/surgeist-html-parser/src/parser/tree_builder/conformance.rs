@@ -999,6 +999,9 @@ fn native_kind(kind: &HtmlNodeKind) -> Kind {
             public: d.public_id().map(|s| s.code_units().to_vec()),
             system: d.system_id().map(|s| s.code_units().to_vec()),
         },
+        HtmlNodeKind::Unreadable(cause) => {
+            panic!("a published node reads as unreadable: {cause:?}")
+        }
     }
 }
 

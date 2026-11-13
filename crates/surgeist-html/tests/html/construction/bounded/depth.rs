@@ -158,6 +158,20 @@ fn usage_depth_follows_an_independent_forest_through_random_moves_and_detaches()
             rises > 5 && falls > 5,
             "seed {seed}: {rises} rises, {falls} falls"
         );
+        // The published result lists the children and names the parents as the forest does, and
+        // its depth is the forest's.
+        let expected: Vec<Expected> = (0..handles.len())
+            .map(|node| Expected {
+                node: handles[node],
+                children: forest.children[node]
+                    .iter()
+                    .map(|&child| handles[child])
+                    .collect(),
+                parent: forest.parent[node].map(|parent| handles[parent]),
+            })
+            .collect();
+        let result = publish_and_compare(owner, handles[0], &expected);
+        assert_eq!(result.usage().depth(), forest.max_depth(), "seed {seed}");
     }
 }
 

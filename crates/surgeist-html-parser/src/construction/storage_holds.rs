@@ -22,6 +22,9 @@ pub(super) struct StorageHolds {
     /// The bytes held for the record bank, the child order of every record and the shared arena
     /// of a publication: the capacity each reserved.
     pub(super) bank_bytes: u64,
+    /// The part of `bank_bytes` held for the record bank and the child order of every record,
+    /// which a publication frees.
+    pub(super) build_bytes: u64,
     /// The logical attribute slots held for the attributes of the storage.
     pub(super) attribute_entries: u64,
     /// The units held for the strings of the non-element fields of the storage: the text,
@@ -38,15 +41,16 @@ impl StorageHolds {
             name_index: None,
             name_index_slots: None,
             bank_bytes: 0,
+            build_bytes: 0,
             attribute_entries: 0,
             string_units: 0,
             string_bytes: 0,
         }
     }
 
-    /// Credits the `bytes` the parse held for a vector of a publication that the publication has
+    /// Credits the `bytes` the parse held for the banks of a storage that a publication has
     /// freed. They stay in the high-water marks of the bytes held, and leave what is held.
-    pub(super) fn release_contents(
+    pub(super) fn release_freed_banks(
         &mut self,
         control: &mut ParseControl,
         bytes: u64,

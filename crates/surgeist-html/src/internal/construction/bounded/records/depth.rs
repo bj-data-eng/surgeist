@@ -131,7 +131,7 @@ impl DepthPlan {
 
 impl HtmlConstructionStorage {
     /// The record at `index`, or the unknown-node error.
-    pub(super) fn record(&self, index: NodeIx) -> Result<&Record<TextRun>, HtmlConstructionError> {
+    pub(super) fn record(&self, index: NodeIx) -> Result<&Record, HtmlConstructionError> {
         self.arena
             .records
             .get(index.position())

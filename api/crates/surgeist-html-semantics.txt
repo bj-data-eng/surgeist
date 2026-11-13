@@ -281,6 +281,7 @@ pub surgeist_html_semantics::HtmlConstructionCaptureError::MissingNodeDocument
 pub surgeist_html_semantics::HtmlConstructionCaptureError::MissingShadowFacts
 pub surgeist_html_semantics::HtmlConstructionCaptureError::OutsideImportedClosure
 pub surgeist_html_semantics::HtmlConstructionCaptureError::RepresentationExhausted
+pub surgeist_html_semantics::HtmlConstructionCaptureError::UnreadableSource(surgeist_html::internal::construction::HtmlConstructionCause)
 pub surgeist_html_semantics::HtmlConstructionCaptureError::WrongFactRole
 impl surgeist_html_semantics::HtmlConstructionCaptureError
 pub fn surgeist_html_semantics::HtmlConstructionCaptureError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
