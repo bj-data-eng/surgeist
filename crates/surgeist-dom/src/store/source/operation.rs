@@ -119,6 +119,7 @@ pub(in crate::store) struct Operation {
     headroom: Option<headroom::Reservation>,
     command_admitted: bool,
     outputs: usize,
+    scalar_output_admitted: bool,
     identities: u64,
     context: Option<(u64, Arc<DomStyleSource>)>,
     request: Option<DomStyleRequest>,
@@ -499,6 +500,7 @@ impl Dom {
             headroom: None,
             command_admitted: false,
             outputs: 0,
+            scalar_output_admitted: false,
             identities: 0,
             context: None,
             request: None,
@@ -1493,7 +1495,10 @@ impl Operation {
                 .and_then(|next| next.checked_add(protected))
                 .ok_or(DomError::RevisionExhausted)?;
         }
-        let scalar_output = !incomplete
+        // A scalar completion is owed even when mandatory native services
+        // split this mutation into several publications. Retain its admission
+        // in the original operation before exposing the first segment.
+        let scalar_output = !self.scalar_output_admitted
             && matches!(
                 prepared.node_output_kinds.first(),
                 Some(
@@ -1824,6 +1829,7 @@ impl Operation {
             child,
             historical,
             outputs,
+            scalar_output_admitted: self.scalar_output_admitted || scalar_output,
             identities,
             changed,
             dialog,
@@ -1847,6 +1853,7 @@ struct SegmentPublication {
     child: Option<hosted::Child>,
     historical: Vec<Option<NodeId>>,
     outputs: usize,
+    scalar_output_admitted: bool,
     identities: u64,
     changed: bool,
     dialog: Option<crate::DomSourceDialogRequest>,
@@ -1867,6 +1874,7 @@ impl SegmentPublication {
             child,
             historical,
             outputs,
+            scalar_output_admitted,
             identities,
             changed,
             dialog,
@@ -1973,6 +1981,7 @@ impl SegmentPublication {
         }
         op.historical = historical;
         op.outputs = outputs;
+        op.scalar_output_admitted = scalar_output_admitted;
         op.identities = identities;
         if changed && let Some(headroom) = &mut op.headroom {
             headroom.remaining_phases -= 1;
@@ -3972,6 +3981,7 @@ impl Dom {
                 headroom: None,
                 command_admitted: false,
                 outputs: 0,
+                scalar_output_admitted: false,
                 identities: 0,
                 context: None,
                 request: None,

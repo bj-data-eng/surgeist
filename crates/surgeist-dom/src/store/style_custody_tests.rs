@@ -274,7 +274,8 @@ fn toggle_admits_its_boolean_before_exposing_a_style_owner_update() {
     let sheet = css.sheets()[0].clone();
     let mut limits = source_limits();
     // The first segment records the Element, new Attr and Source marker.
-    // The final segment records closing Source and the Boolean result.
+    // Its Boolean result and the closing Source marker must also fit before
+    // publication. Completion additionally records the changed association.
     limits.outputs = 4;
     let edit = || DomSourceEdit::toggle_attribute(style, "media", Some(true));
     let mut lease = dom.begin_source_edit(edit(), limits, &cancel).unwrap();
@@ -287,7 +288,7 @@ fn toggle_admits_its_boolean_before_exposing_a_style_owner_update() {
     assert_eq!(owner.snapshot().unwrap().revision(), css.revision());
     drop(lease);
 
-    limits.outputs = 5;
+    limits.outputs = 6;
     let mut lease = dom.begin_source_edit(edit(), limits, &cancel).unwrap();
     let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
         lease.advance(&cancel).unwrap()
@@ -296,6 +297,15 @@ fn toggle_admits_its_boolean_before_exposing_a_style_owner_update() {
     };
     assert_eq!(request.action(), DomStyleAction::OwnerAttributes);
     assert_eq!(request.source().media(), Some(&DocumentString::from("")));
+    let operation = lease.operation();
+    drop(lease);
+    let mut smaller = limits;
+    smaller.outputs = 3;
+    assert!(matches!(
+        dom.resume_source_edit(operation, smaller, &cancel),
+        Err(DomError::InvalidLimit(DomResource::SourceRetainedBytes))
+    ));
+    let mut lease = dom.resume_source_edit(operation, limits, &cancel).unwrap();
     let request = lease.qualify_cssom(&request, owner.root(), &css).unwrap();
     let previous = css.sheet(&sheet).unwrap().inputs();
     let mut version = previous.version.clone();
@@ -340,6 +350,7 @@ fn toggle_admits_its_boolean_before_exposing_a_style_owner_update() {
         Some(DomSourceOutput::ElementAttributePresent(true))
     );
     assert_eq!(done.published_node(), None);
+    assert_eq!(done.commit().changes().changes().len(), 2);
     assert!(
         lease
             .snapshot()
