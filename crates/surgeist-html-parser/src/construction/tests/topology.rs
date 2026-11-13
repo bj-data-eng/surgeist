@@ -382,8 +382,8 @@ fn node_and_depth_cap_failures_leave_topology_unmodified_and_cleanup_releases_ca
             .construction
             .node_at(0)
             .expect("retained construction position")
-            .child_count()
-            == 0
+            .first_child()
+            .is_none()
     );
     assert!(
         session
@@ -441,8 +441,8 @@ fn foreign_handles_controls_roots_and_wrong_siblings_reject_before_topology_chan
             .construction
             .node_at(0)
             .expect("retained construction position")
-            .child_count()
-            == 0
+            .first_child()
+            .is_none()
     );
     let before = foreign.usage().clone();
     assert!(matches!(
@@ -947,24 +947,20 @@ fn publication_sizes(children: usize) -> (usize, usize, usize, usize) {
 
 #[test]
 fn the_freed_banks_of_a_publication_are_released_by_the_freeze() {
-    // Three and seven children make four and eight records, which fill their record banks, and
-    // their child orders, which double from one entry, hold four and eight entries. The record
-    // bank and the child order of the root are the banks the publication frees. What a freeze
-    // adds to what the parse holds is the shared tree, the rows and the child entries, less those
-    // two banks.
+    // Three and seven children make four and eight records, which fill the bank of their rows and
+    // the column of their depths. The two banks are the banks the publication frees: the children
+    // are links of the rows, so there is no bank of child orders. What a freeze adds to what the
+    // parse holds is the shared tree, the rows and the child entries, less those two banks.
     let small = freeze_figures(3);
     let large = freeze_figures(7);
     assert_eq!((small.4, large.4), (4, 8));
     for (children, figures) in [(3usize, small), (7, large)] {
         let (arena, row, rows, listed) = publication_sizes(children);
         let published = arena + rows * row + listed * CHILD_BYTES;
-        // A record of the record bank is as large as the storage reports it, and an entry of a
-        // child order holds the index of a record, as an entry of the published array does.
-        let (record, entry) = (
-            crate::construction::test_support::record_element_size(),
-            CHILD_BYTES,
-        );
-        let freed = rows * record + rows * entry;
+        // A record of the banks of rows is as large as the storage reports it: a row and its
+        // entry of the depth column.
+        let record = crate::construction::test_support::record_element_size();
+        let freed = rows * record;
         assert_eq!(
             figures.1 as i64 - figures.0 as i64,
             published as i64 - freed as i64,
@@ -1001,8 +997,8 @@ fn the_new_banks_of_a_publication_stay_in_the_transient_bytes_until_the_freed_ba
     // Thirty-one and sixty-three comments make thirty-two and sixty-four records, which fill
     // their record banks. The comments are not inserted, so no row is listed as a child and no
     // bank holds one. The banks of the publication add to the transient bytes while the banks it
-    // frees are not yet credited: the shared tree and every row. The peak the parse reached while
-    // the record bank grew to its size is higher than that sum, so the high water does not move.
+    // frees are not yet credited: the shared tree and every row. The build banks are smaller than
+    // the banks they replaced, so the publication is the peak of the parse.
     for comments in [31usize, 63] {
         let mut c = control();
         let (mut session, root) = fragment_with_comments(&mut c, comments);
@@ -1037,7 +1033,16 @@ fn the_new_banks_of_a_publication_stay_in_the_transient_bytes_until_the_freed_ba
             (arena + count * ROW_BYTES) as u64,
             "{count} records"
         );
-        assert_eq!(after.high_water, before.high_water, "{count} records");
+        // The build banks hold 36 bytes a record, so the peak the parse reached while they grew is
+        // below what the publication reaches: the banks it adds on top of the build banks that
+        // are not yet credited.
+        assert_eq!(after.high_water, after.current, "{count} records");
+        assert_eq!(
+            after.high_water,
+            before.current + (arena + count * ROW_BYTES) as u64,
+            "{count} records"
+        );
+        assert!(after.high_water > before.high_water, "{count} records");
     }
 }
 

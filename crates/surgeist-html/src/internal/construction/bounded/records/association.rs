@@ -3,11 +3,16 @@
 //! A shadow root is an unowned shadow contents fragment attached to a host element; a template
 //! element owns a contents fragment, or refers to shadow contents instead. Each association adds
 //! or releases the edge between a host or template and a fragment, moves the fragment's subtree
-//! to its new depth, and sets the owner and association fields.
+//! to its new depth, and sets the owner of the fragment and the entry of the association table.
+//!
+//! The table is sorted by owner and kind, so an owner finds its entries by a search, and a node
+//! that has no entry does not search: its row says so. An entry is added in order, and the entries
+//! after it move, which the operation charges.
 
 use super::depth::{DepthPlan, Placement, Request};
 use super::shape::{ordinary_owned_contents, unowned_fragment};
 use super::*;
+use crate::internal::construction::rows::AssocTable;
 
 /// The association a change writes.
 #[derive(Clone, Copy, Debug)]
@@ -29,19 +34,29 @@ enum Write {
         released: NodeIx,
     },
 }
+impl Write {
+    /// The shadow entry the write adds to the table, as its owner and contents.
+    fn added(self) -> Option<(NodeIx, NodeIx)> {
+        match self {
+            Self::AttachShadow { host, contents }
+            | Self::AttachTemplateShadow { host, contents, .. } => Some((host, contents)),
+            Self::SetTemplateShadowContents { .. } => None,
+        }
+    }
+}
 
 impl HtmlConstructionStorage {
     /// Checks that `host` is an element with no shadow root, and that `contents` is an unowned
     /// shadow contents fragment.
     fn check_shadow(&self, host: NodeIx, contents: NodeIx) -> Result<(), HtmlConstructionError> {
-        let record = self.record(host)?;
-        if !matches!(record.kind, NodeContent::Element(_)) {
+        let row = self.row(host)?;
+        if row.kind != RowKind::Element {
             return Err(HtmlConstructionCause::ShadowHostMustBeElement.error());
         }
-        if record.shadow.is_some() {
+        if row.flags.has(NodeFlags::HAS_ASSOC) && self.arena.shadow_of(host).is_some() {
             return Err(HtmlConstructionCause::ShadowAlreadyAttached.error());
         }
-        self.record(contents)?;
+        self.row(contents)?;
         unowned_fragment(&self.arena, contents, true)
     }
 
@@ -99,7 +114,7 @@ impl HtmlConstructionStorage {
         // The host of a template shadow may sit inside the contents the template gives up, so its
         // depth is measured after the change, by a walk. A record is inside the contents only
         // through a child of theirs, so a host cannot be inside contents that have none.
-        let placement = if self.record(released).map_err(faulted)?.children.is_empty() {
+        let placement = if self.row(released).map_err(faulted)?.is_childless() {
             Placement::Under(host)
         } else {
             Placement::AfterHost(host)
@@ -144,7 +159,7 @@ impl HtmlConstructionStorage {
         let template = self.operand(template, admission)?;
         let contents = self.operand(contents, admission)?;
         let released = ordinary_owned_contents(&self.arena, template).map_err(faulted)?;
-        self.record(contents).map_err(faulted)?;
+        self.row(contents).map_err(faulted)?;
         unowned_fragment(&self.arena, contents, true).map_err(faulted)?;
         if contents == released {
             return Err(fault(HtmlConstructionCause::InvalidContentsReference));
@@ -181,24 +196,43 @@ impl HtmlConstructionStorage {
     ) -> Result<(), HtmlConstructionRecordError<A::Stop>> {
         let before = self.arena.usage;
         after.depth = depths.depth;
-        // The owner of the contents, the association of the host or template, and for a template
-        // shadow the released contents' owner.
-        let (fields, copied) = match write {
-            Write::AttachShadow { .. } => (
-                2,
-                size_of::<Option<HtmlFragmentOwner>>() + size_of::<Option<ShadowAssociation>>(),
-            ),
-            Write::AttachTemplateShadow { .. } => (
-                4,
-                2 * size_of::<Option<HtmlFragmentOwner>>()
-                    + size_of::<Option<TemplateContents>>()
-                    + size_of::<Option<ShadowAssociation>>(),
-            ),
-            Write::SetTemplateShadowContents { .. } => (
-                2,
-                size_of::<Option<HtmlFragmentOwner>>() + size_of::<Option<TemplateContents>>(),
-            ),
+        // The entries the table moves to open the place of the entry the write adds.
+        let (added, shifted) = match write.added() {
+            Some((host, _)) => {
+                let table = &self.arena.associations;
+                let at = table.place(host, BuildAssocKind::Shadow);
+                (1usize, table.len().saturating_sub(at))
+            }
+            None => (0, 0),
         };
+        let table_writes = if added == 0 {
+            0
+        } else {
+            plus(1, shifted).map_err(faulted)?
+        };
+        // The owner of the contents, the flag of the host, the entry of the table that the write
+        // changes, the entries it adds and moves, and for a template shadow the released
+        // contents' owner.
+        let fields = match write {
+            Write::AttachShadow { .. } => 2,
+            Write::AttachTemplateShadow { .. } => 4,
+            Write::SetTemplateShadowContents { .. } => 2,
+        };
+        let copied = plus(
+            plus(
+                times(fields, size_of::<u32>()).map_err(faulted)?,
+                times(table_writes, size_of::<BuildAssoc>()).map_err(faulted)?,
+            )
+            .map_err(faulted)?,
+            size_of::<NodeFlags>(),
+        )
+        .map_err(faulted)?;
+        let growth = if added == 0 {
+            None
+        } else {
+            self.associations_growth(plus(self.arena.associations.len(), 1).map_err(faulted)?)
+        };
+        let index_growth = self.index_growth(depths.levels().map_err(faulted)?);
         let (depth_visits, depth_writes) = depths.work().map_err(faulted)?;
         let usage = HtmlConstructionChange { before, after };
         admission
@@ -208,21 +242,38 @@ impl HtmlConstructionStorage {
         // The writes are charged once the limits admitted the change.
         Work {
             record_visits: depth_visits,
+            provider_calls: usize::from(growth.is_some())
+                + index_growth.into_iter().flatten().count(),
             copied_bytes: plus(
                 plus(
                     copied,
-                    times(depth_writes, size_of::<usize>()).map_err(faulted)?,
+                    times(depth_writes, size_of::<u32>()).map_err(faulted)?,
                 )
                 .map_err(faulted)?,
                 size_of::<HtmlConstructionUsage>(),
             )
             .map_err(faulted)?,
-            record_writes: plus(plus(fields, depth_writes).map_err(faulted)?, 1)
-                .map_err(faulted)?,
+            record_writes: plus(
+                plus(plus(fields, table_writes).map_err(faulted)?, depth_writes)
+                    .map_err(faulted)?,
+                1,
+            )
+            .map_err(faulted)?,
             ..Work::default()
         }
         .charge(admission)?;
-        // Every record the writes name exists, checked before the last step that can refuse.
+        let chosen = growth
+            .map(|growth| Self::admit_bank(growth, admission))
+            .transpose()?;
+        let index_chosen = Self::admit_index(index_growth, admission)?;
+        if let (Some(growth), Some(chosen)) = (growth, chosen) {
+            self.grow(growth, chosen, admission, |storage, additional| {
+                storage.reserve_association_bank(additional)
+            })?;
+        }
+        self.grow_index(index_growth, index_chosen, admission)?;
+        // Every record the writes name exists, and the table has room for the entry it adds,
+        // checked before the last step that can refuse.
         self.verify_association(write).map_err(faulted)?;
         admission.record_change(self, usage).map_err(stopped)?;
         depths.apply(&mut self.arena).map_err(faulted)?;
@@ -231,7 +282,8 @@ impl HtmlConstructionStorage {
         Ok(())
     }
 
-    /// Checks that every record `write` names exists.
+    /// Checks that every record `write` names exists, that the entries it changes are in the
+    /// table, and that the table has room for the entry it adds.
     fn verify_association(&self, write: Write) -> Result<(), HtmlConstructionError> {
         let names: [Option<NodeIx>; 4] = match write {
             Write::AttachShadow { host, contents } => [Some(host), Some(contents), None, None],
@@ -248,8 +300,59 @@ impl HtmlConstructionStorage {
             } => [Some(template), Some(contents), Some(released), None],
         };
         for name in names.into_iter().flatten() {
-            self.record(name)?;
+            self.row(name)?;
         }
+        let table = &self.arena.associations;
+        if write.added().is_some() && table.len() >= table.capacity() {
+            return Err(HtmlConstructionCause::CapacityMismatch.error());
+        }
+        if let Write::AttachTemplateShadow { template, .. }
+        | Write::SetTemplateShadowContents { template, .. } = write
+        {
+            self.arena
+                .template_contents_of(template)
+                .ok_or(HtmlConstructionCause::InvalidTemplateAssociation.error())?;
+        }
+        Ok(())
+    }
+
+    /// Sets the entry of the table that `template` holds for its contents to refer to `contents`.
+    fn refer_template(
+        &mut self,
+        template: NodeIx,
+        contents: NodeIx,
+    ) -> Result<(), HtmlConstructionError> {
+        let at = self
+            .arena
+            .associations
+            .place(template, BuildAssocKind::Owned);
+        let entry = self
+            .arena
+            .associations
+            .get_mut(at)
+            .filter(|entry| entry.owner == template && entry.kind.is_contents())
+            .ok_or(HtmlConstructionCause::InvalidTemplateAssociation.error())?;
+        entry.contents = contents;
+        entry.kind = BuildAssocKind::ShadowReference;
+        Ok(())
+    }
+
+    /// Adds the shadow entry of `host`, in its place in the table, which has room for it.
+    fn add_shadow(&mut self, host: NodeIx, contents: NodeIx) -> Result<(), HtmlConstructionError> {
+        let table = &mut self.arena.associations;
+        if table.len() >= table.capacity() {
+            return Err(HtmlConstructionCause::CapacityMismatch.error());
+        }
+        let at = table.place(host, BuildAssocKind::Shadow);
+        table.insert(
+            at,
+            BuildAssoc {
+                owner: host,
+                contents,
+                kind: BuildAssocKind::Shadow,
+            },
+        );
+        self.row_mut(host)?.flags.set(NodeFlags::HAS_ASSOC, true);
         Ok(())
     }
 
@@ -258,12 +361,8 @@ impl HtmlConstructionStorage {
     fn apply_association(&mut self, write: Write) -> Result<(), HtmlConstructionError> {
         match write {
             Write::AttachShadow { host, contents } => {
-                let (host_id, contents_id) = (self.arena.id(host), self.arena.id(contents));
-                self.record_mut(contents)?.owner = Some(HtmlFragmentOwner::ShadowHost(host_id));
-                self.record_mut(host)?.shadow = Some(ShadowAssociation {
-                    host: host_id,
-                    contents: contents_id,
-                });
+                self.row_mut(contents)?.set_owner(Some(host));
+                self.add_shadow(host, contents)?;
             }
             Write::AttachTemplateShadow {
                 template,
@@ -271,24 +370,18 @@ impl HtmlConstructionStorage {
                 contents,
                 released,
             } => {
-                let (host_id, contents_id) = (self.arena.id(host), self.arena.id(contents));
-                self.record_mut(released)?.owner = None;
-                self.record_mut(template)?.template_contents =
-                    Some(TemplateContents::ShadowReference(contents));
-                self.record_mut(contents)?.owner = Some(HtmlFragmentOwner::ShadowHost(host_id));
-                self.record_mut(host)?.shadow = Some(ShadowAssociation {
-                    host: host_id,
-                    contents: contents_id,
-                });
+                self.row_mut(released)?.set_owner(None);
+                self.refer_template(template, contents)?;
+                self.row_mut(contents)?.set_owner(Some(host));
+                self.add_shadow(host, contents)?;
             }
             Write::SetTemplateShadowContents {
                 template,
                 contents,
                 released,
             } => {
-                self.record_mut(released)?.owner = None;
-                self.record_mut(template)?.template_contents =
-                    Some(TemplateContents::ShadowReference(contents));
+                self.row_mut(released)?.set_owner(None);
+                self.refer_template(template, contents)?;
             }
         }
         Ok(())

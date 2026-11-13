@@ -334,7 +334,7 @@ fn empty_preparation_work_is_independent_of_actual_ordinary_ancestor_depth() {
             .construction
             .node_at(0)
             .expect("retained construction position")
-            .child_at(0)
+            .first_child()
             .expect("retained child ordinal")
             .position();
         let mut parent = session.active().unwrap().node(&mut c, html_index).unwrap();
@@ -524,8 +524,8 @@ fn cancelled_domain_insert_preserves_ordinary_eligibility_and_all_actual_owners(
             .construction
             .node_at(contents.index)
             .expect("retained construction position")
-            .child_count()
-            == 0
+            .first_child()
+            .is_none()
     );
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     assert!(matches!(
@@ -651,8 +651,8 @@ fn exact_and_one_short_domain_insert_work_admit_eligibility_only_with_topology()
                         .construction
                         .node_at(contents.index)
                         .expect("retained construction position")
-                        .child_count()
-                        == 0
+                        .first_child()
+                        .is_none()
                 );
             } else {
                 assert_eq!(

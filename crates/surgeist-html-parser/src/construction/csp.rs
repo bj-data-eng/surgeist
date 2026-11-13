@@ -357,9 +357,8 @@ impl SessionStorage {
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
-            .children()
-            .len()
-            != 0
+            .first_child()
+            .is_some()
         {
             return Err(SessionError::WrongToken);
         }

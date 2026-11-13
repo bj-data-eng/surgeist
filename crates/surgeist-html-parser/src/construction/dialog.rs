@@ -352,7 +352,7 @@ mod tests {
             .construction
             .node_at(0)
             .unwrap()
-            .child_at(0)
+            .first_child()
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
@@ -459,7 +459,7 @@ mod tests {
             .construction
             .node_at(0)
             .unwrap()
-            .child_at(0)
+            .first_child()
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
@@ -524,7 +524,7 @@ mod tests {
             .construction
             .node_at(0)
             .unwrap()
-            .child_at(0)
+            .first_child()
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();

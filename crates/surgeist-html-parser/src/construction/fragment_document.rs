@@ -110,13 +110,15 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
     let records = &storage.view;
     let document = records.node_at(0).ok_or(SessionError::ContextUnavailable)?;
     if !matches!(document.kind(), ConstructionNodeKind::Document(mode) if mode == fragment.context.document_mode())
-        || document.children().len() != 1
+        || document.first_child().map(|child| child.position())
+            != document.last_child().map(|child| child.position())
+        || document.first_child().is_none()
     {
         return Err(SessionError::ContextUnavailable);
     }
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let root = document
-        .child_at(0)
+        .first_child()
         .ok_or(SessionError::ContextUnavailable)?;
     let ConstructionNodeKind::Element(element) = root.kind() else {
         return Err(SessionError::ContextUnavailable);

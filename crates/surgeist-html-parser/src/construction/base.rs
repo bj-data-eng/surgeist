@@ -678,7 +678,7 @@ pub(super) mod tests {
                     .construction
                     .node_at($root.index)
                     .unwrap()
-                    .child_at(0)
+                    .first_child()
                     .map(|n| n.position());
                 storage
                     .insert_indices_with_cause(
@@ -1364,7 +1364,7 @@ pub(super) mod tests {
                     .construction
                     .node_at(root.index)
                     .expect("retained construction position")
-                    .child_at(0)
+                    .first_child()
                     .expect("retained child ordinal")
                     .position(),
                 base.index

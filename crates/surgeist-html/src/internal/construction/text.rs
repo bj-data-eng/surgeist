@@ -30,6 +30,18 @@ impl TextRef {
     pub(crate) fn len(self) -> usize {
         self.len as usize
     }
+    /// The first unit of the range, as a row holds it.
+    pub(crate) fn start(self) -> u32 {
+        self.start
+    }
+    /// The number of units in the range, as a row holds it.
+    pub(crate) fn stored_len(self) -> u32 {
+        self.len
+    }
+    /// The range a row holds as `start` and `len`.
+    pub(crate) fn from_stored(start: u32, len: u32) -> Self {
+        Self { start, len }
+    }
     /// The range as indices. An end that `usize` cannot hold saturates, which no arena holds, so
     /// the range is then one that `get` refuses.
     pub(crate) fn range(self) -> Range<usize> {
@@ -55,6 +67,14 @@ impl TextRun {
     /// The range of the text in its arena.
     pub(crate) fn text(self) -> TextRef {
         self.text
+    }
+    /// The units reserved after the text.
+    pub(crate) fn room(self) -> u32 {
+        self.room
+    }
+    /// The run of `text` with `room` units reserved after it, as a row holds them.
+    pub(crate) fn from_parts(text: TextRef, room: u32) -> Self {
+        Self { text, room }
     }
 }
 

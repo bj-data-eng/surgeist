@@ -53,16 +53,14 @@ pub(super) fn next_ordinary_view_node(
 ) -> Result<Option<usize>, SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let record = records.node_at(node).ok_or(SessionError::ForeignNode)?;
-    for position in 0..record.child_count() {
+    let mut child = record.first_child();
+    while let Some(candidate) = child {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let child = record
-            .child_at(position)
-            .ok_or_else(|| latch_registry_row(control))?
-            .position();
-        if detached != Some(child) || root == child {
-            control.note_sibling(node, position);
-            return Ok(Some(child));
+        let position = candidate.position();
+        if detached != Some(position) || root == position {
+            return Ok(Some(position));
         }
+        child = candidate.next_sibling();
     }
     next_ordinary_view_after_subtree(records, control, root, node, detached)
 }
@@ -81,44 +79,17 @@ pub(super) fn next_ordinary_view_after_subtree(
         let parent = ordinary_view_parent(records, control, node, detached)?
             .ok_or(SessionError::WrongSibling)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let children = records.node_at(parent).ok_or(SessionError::ForeignNode)?;
-        let count = children.child_count();
-        // The walk that reached `node` usually left its ordinal behind, so the
-        // search for it starts there and costs the siblings after it, not the
-        // ones before.
-        let mut ordinal = None;
-        if let Some(hinted) = control.sibling_hint(parent)
-            && hinted < count
-        {
+        let mut sibling = records
+            .node_at(node)
+            .ok_or(SessionError::ForeignNode)?
+            .next_sibling();
+        while let Some(candidate) = sibling {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if children.child_at(hinted).map(|child| child.position()) == Some(node) {
-                ordinal = Some(hinted);
+            let position = candidate.position();
+            if detached != Some(position) || root == position {
+                return Ok(Some(position));
             }
-        }
-        if ordinal.is_none() {
-            for position in 0..count {
-                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let child = children
-                    .child_at(position)
-                    .ok_or_else(|| latch_registry_row(control))?
-                    .position();
-                if child == node {
-                    ordinal = Some(position);
-                    break;
-                }
-            }
-        }
-        let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
-        for position in ordinal.saturating_add(1)..count {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let child = children
-                .child_at(position)
-                .ok_or_else(|| latch_registry_row(control))?
-                .position();
-            if detached != Some(child) || root == child {
-                control.note_sibling(parent, position);
-                return Ok(Some(child));
-            }
+            sibling = candidate.next_sibling();
         }
         node = parent;
     }

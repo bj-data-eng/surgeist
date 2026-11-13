@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::bounded::construction::HtmlConstructionNode;
 use surgeist_html::construction::HtmlDocumentMode;
 
 #[test]
@@ -53,7 +54,20 @@ fn combined_template_record_reserve_one_short_precedes_inert_document_and_cache_
                 ..
             }
     )));
-    assert_eq!(c.usage().actual_capacity_bytes, before_capacity);
+    // The reservation grows two banks, the rows and then their depths. The limit that is one byte
+    // short of both refuses the second, and the first keeps the room it reserved, as a grown bank
+    // does: the parse holds what it held and the rows the geometric rule chose, the greater of the
+    // records required and twice the capacity, and nothing of the depths.
+    let row_bytes = HtmlConstructionNode::ROW_BYTES;
+    assert_eq!(element_size, row_bytes + size_of::<u32>());
+    let grown = required.max(2 * capacity);
+    let held = c.usage().actual_capacity_bytes;
+    assert_eq!(before_capacity, initial);
+    assert_eq!(
+        held,
+        before_capacity + ((grown - capacity) * row_bytes) as u64
+    );
+    assert!(held < one_short);
     let first = c.stop();
     session.release(&mut c).unwrap();
     assert_eq!(c.stop(), first);

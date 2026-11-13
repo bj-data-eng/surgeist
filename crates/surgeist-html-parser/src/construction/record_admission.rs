@@ -153,11 +153,16 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
             _ => &mut self.holds.bank_bytes,
         };
         let outcome = self.control.record_bank_growth(old, actual, expected, held);
-        // The record bank and the child orders are the banks a publication frees, so the bytes
-        // held for them are kept apart for the release that follows the publication.
+        // The banks of the rows are the banks a publication frees, so the bytes held for them are
+        // kept apart for the release that follows the publication.
         if matches!(
             growth.bank(),
-            HtmlConstructionBank::Records | HtmlConstructionBank::Children { .. }
+            HtmlConstructionBank::NodeRows
+                | HtmlConstructionBank::Depths
+                | HtmlConstructionBank::DepthIndex
+                | HtmlConstructionBank::DepthScratch
+                | HtmlConstructionBank::Associations
+                | HtmlConstructionBank::Leaves
         ) {
             let after = self.holds.bank_bytes;
             let Some(build) = self
@@ -183,8 +188,8 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
         change: HtmlConstructionChange,
     ) -> Result<(), SessionError> {
         if let Some(insertion) = &self.insertion {
-            // These fixed source payloads precede the atomic commit, after the child-order
-            // preparation.
+            // These fixed source payloads precede the atomic commit, after the storage has
+            // checked the links.
             if insertion.revoke {
                 payload_write::<Option<HtmlParseUnsupportedState>>(self.control, 1)?;
             }
@@ -545,8 +550,8 @@ impl Charge<HtmlWork, HtmlResource> for SessionCharge<'_> {
     }
 }
 
-/// Publishes the records and returns the result with the bytes the parse held for the record bank
-/// and the child orders, which the publication has freed. A refusal hands the storage back
+/// Publishes the records and returns the result with the bytes the parse held for the banks of
+/// the build rows, which the publication has freed. A refusal hands the storage back
 /// with the session error, so the session keeps its records and releases them as it would after
 /// any refused step.
 #[expect(clippy::result_large_err)] // Refusal hands the complete storage back without allocating after failure.

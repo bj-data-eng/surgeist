@@ -147,8 +147,8 @@ impl SessionStorage {
                 .construction
                 .node_at(node)
                 .ok_or_else(|| latch_registry_row(c))?
-                .child_count()
-                == 0
+                .first_child()
+                .is_none()
         {
             return Ok(());
         }

@@ -52,7 +52,7 @@ fn measured_append(
 
 #[test]
 fn appending_one_node_charges_the_same_work_at_every_fanout() {
-    // 1,000 to 8,000 children each leave spare room in a child order that doubles.
+    // 1,000 to 8,000 children each leave spare room in row banks that double.
     let measure = |fanout: usize| {
         let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
@@ -91,7 +91,7 @@ fn appending_one_node_charges_the_same_work_at_every_depth() {
             session.insert(&mut c, &parent, &child, None, None).unwrap();
             parent = child;
         }
-        // Three siblings leave room for a fourth in a child order that doubles.
+        // Three siblings leave room for a fourth in row banks that double.
         for _ in 0..3 {
             let child = session
                 .allocate_element(&mut c, element(Namespace::none(), "y"))

@@ -8,6 +8,9 @@
 
 use super::attribute_table::{AttrRow, PublishedAttr};
 use super::names::NameEntry;
+use super::rows::{NodeRow, RowKind};
+use super::text::TextRun;
+use super::tree::Leaf;
 use super::*;
 use crate::internal::elements::rel::HtmlLinkFlags;
 use crate::internal::values::{Attribute, Namespace};
@@ -480,17 +483,18 @@ impl<'a> ConstructionElementView<'a> {
     /// The view of an element record of a storage that builds, whose attributes are the rows of
     /// its run in `table` and whose values are ranges of `text`.
     fn building(
-        content: &'a ElementContent,
+        entry: &'a NameEntry,
+        row: &NodeRow,
         table: &'a AttributeTable,
         text: &'a TextArena,
     ) -> Self {
         Self {
-            name: content.name(),
+            name: entry.name(),
             #[cfg(test)]
-            key: content.key(),
-            link_flags: content.link_flags,
+            key: entry.key(),
+            link_flags: row.link_flags(),
             attributes: BuildAttributes {
-                source: match table.live(content.attrs) {
+                source: match table.live(row.run()) {
                     Ok(rows) => AttrSource::Rows { rows, text },
                     Err(_) => AttrSource::Invalid,
                 },
@@ -568,34 +572,62 @@ impl<'a> ConstructionDoctype<'a> {
     }
 }
 
-impl NodeContent {
-    /// Whether a record of this content can hold ordinary children.
-    pub(super) fn is_container(&self) -> bool {
-        matches!(self, Self::Document(_) | Self::Fragment | Self::Element(_))
-    }
-    /// The build view of this content, whose text and comment units and attribute values are
-    /// read from `text`, and whose attributes are the rows of `table`.
-    pub(super) fn building<'a>(
+impl BuildArena {
+    /// The build view of the content of `row`, whose text and comment units and attribute values
+    /// are read from `text`, whose attributes are the rows of `table`, and whose names and leaves
+    /// are read from this arena. A reference the storage does not hold is reported as the typed
+    /// [`ConstructionNodeKind::Unreadable`] and never as an ordinary value; a text reference is
+    /// reported by [`BuildText::Invalid`].
+    pub(super) fn kind_of<'a>(
         &'a self,
+        row: &'a NodeRow,
         text: &'a TextArena,
         table: &'a AttributeTable,
     ) -> ConstructionNodeKind<'a> {
-        let units = |run: &TextRun| {
+        let units = |run: TextRun| {
             text.get(run.text())
                 .map_or(BuildText::Invalid, BuildText::Units)
         };
-        match self {
-            Self::Document(mode) => ConstructionNodeKind::Document(*mode),
-            Self::Fragment => ConstructionNodeKind::Fragment,
-            Self::Element(content) => ConstructionNodeKind::Element(
-                ConstructionElementView::building(content, table, text),
-            ),
-            Self::Text(run) => ConstructionNodeKind::Text(units(run)),
-            Self::Comment(run) => ConstructionNodeKind::Comment(units(run)),
-            Self::ProcessingInstruction(value) => ConstructionNodeKind::ProcessingInstruction(
-                ConstructionProcessingInstruction::of(value),
-            ),
-            Self::Doctype(value) => ConstructionNodeKind::Doctype(ConstructionDoctype::of(value)),
+        let leaf = || {
+            usize::try_from(row.a)
+                .ok()
+                .and_then(|position| self.leaves.get(position))
+        };
+        match row.kind {
+            RowKind::Document(mode) => ConstructionNodeKind::Document(mode),
+            RowKind::Fragment => ConstructionNodeKind::Fragment,
+            RowKind::Element => {
+                let entry = usize::try_from(row.a)
+                    .ok()
+                    .and_then(|position| self.names.get(position));
+                match entry {
+                    Some(entry) => ConstructionNodeKind::Element(
+                        ConstructionElementView::building(entry, row, table, text),
+                    ),
+                    None => ConstructionNodeKind::Unreadable(
+                        HtmlConstructionCause::InvalidNameReference,
+                    ),
+                }
+            }
+            RowKind::Text | RowKind::Comment => match row.text_run() {
+                Some(run) if row.kind == RowKind::Text => ConstructionNodeKind::Text(units(run)),
+                Some(run) => ConstructionNodeKind::Comment(units(run)),
+                None => ConstructionNodeKind::Unreadable(HtmlConstructionCause::UnknownNode),
+            },
+            RowKind::ProcessingInstruction => match leaf() {
+                Some(Leaf::ProcessingInstruction(value)) => {
+                    ConstructionNodeKind::ProcessingInstruction(
+                        ConstructionProcessingInstruction::of(value),
+                    )
+                }
+                _ => ConstructionNodeKind::Unreadable(HtmlConstructionCause::InvalidLeafReference),
+            },
+            RowKind::Doctype => match leaf() {
+                Some(Leaf::Doctype(value)) => {
+                    ConstructionNodeKind::Doctype(ConstructionDoctype::of(value))
+                }
+                _ => ConstructionNodeKind::Unreadable(HtmlConstructionCause::InvalidLeafReference),
+            },
         }
     }
 }

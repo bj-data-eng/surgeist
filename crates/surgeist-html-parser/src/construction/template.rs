@@ -187,53 +187,12 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(parent) = self
+        Ok(self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
-            .parent()
-            .map(|node| node.position())
-        else {
-            return Ok(None);
-        };
-        let siblings = self
-            .construction
-            .node_at(parent)
-            .ok_or_else(|| latch_registry_row(c))?;
-        let count = siblings.child_count();
-        // The walk that reached `node` left its ordinal behind (a walk over
-        // the siblings of one parent asks for each in turn), so the search
-        // starts there and costs one step, not the siblings before it.
-        let mut ordinal = None;
-        if let Some(hinted) = c.sibling_hint(parent)
-            && hinted < count
-        {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if siblings.child_at(hinted).map(|child| child.position()) == Some(node) {
-                ordinal = Some(hinted);
-            }
-        }
-        if ordinal.is_none() {
-            for position in 0..count {
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let child = siblings
-                    .child_at(position)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .position();
-                if child == node {
-                    ordinal = Some(position);
-                    break;
-                }
-            }
-        }
-        let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let following = successor(c, ordinal)?;
-        let next = siblings.child_at(following).map(|node| node.position());
-        if next.is_some() {
-            c.note_sibling(parent, following);
-        }
-        Ok(next)
+            .next_sibling()
+            .map(|sibling| sibling.position()))
     }
     /// The marker search of `template for` (HTML 877d6146487f, the template element): the first
     /// processing instruction named `name` in tree order within `scope`, then its matching end.
@@ -808,35 +767,35 @@ impl ParserArenaSession {
             // never a body child in the immutable captured Document.
             return Ok(false);
         };
-        for ordinal in 0..storage
+        let mut next = storage
             .construction
             .node_at(document)
             .ok_or_else(|| latch_registry_row(c))?
-            .child_count()
-        {
+            .first_child()
+            .map(|child| child.position());
+        while let Some(child) = next {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let child = storage
+            next = storage
                 .construction
-                .node_at(document)
+                .node_at(child)
                 .ok_or_else(|| latch_registry_row(c))?
-                .child_at(ordinal)
-                .ok_or_else(|| latch_registry_row(c))?
-                .position();
+                .next_sibling()
+                .map(|sibling| sibling.position());
             if storage.html_local(c, child, "html")? {
-                for ordinal in 0..storage
+                let mut next = storage
                     .construction
                     .node_at(child)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_count()
-                {
+                    .first_child()
+                    .map(|child| child.position());
+                while let Some(candidate) = next {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let candidate = storage
+                    next = storage
                         .construction
-                        .node_at(child)
+                        .node_at(candidate)
                         .ok_or_else(|| latch_registry_row(c))?
-                        .child_at(ordinal)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .position();
+                        .next_sibling()
+                        .map(|sibling| sibling.position());
                     if storage.html_local(c, candidate, "body")?
                         || storage.html_local(c, candidate, "frameset")?
                     {

@@ -344,8 +344,8 @@ fn element_guard_rejects_foreign_handles_controls_and_cancellation_before_mutati
                 .construction
                 .node_at(0)
                 .expect("retained construction position")
-                .child_count()
-                == 0
+                .first_child()
+                .is_none()
         );
         assert!(
             session

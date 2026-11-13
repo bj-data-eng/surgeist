@@ -305,14 +305,14 @@ The native builders' `finish(self)` publishes the storage and returns
 `Result<HtmlDocument | HtmlFragment, HtmlConstructionError>`; a refusal ends the session. The
 builder keeps its storage through every refused step of an append.
 
-A native append that finds the record bank or the parent's child order full grows it to the
-amortized capacity of the bank, from a minimum, so `n` appends change each capacity `O(log n)`
-times. The target never exceeds the node limit for records or the edge limit for a child order, and
-never falls below what the append needs. Unlike the amortized capacity of the bounded consumers,
-which never depends on a limit, the cap is the admission: the native builder has no
-capacity-bytes limit and admits nothing beyond its node and edge limits, so spare room above them
-could never be used. The builder's admission chooses that capacity for the record bank and the
-child order. An allocator refusal of the spare room retries the least capacity
+A native append that finds the row bank or the depth column full grows it to the amortized
+capacity of the bank, from a minimum, so `n` appends change each capacity `O(log n)` times. The
+target never exceeds the node limit for rows and depths, the edge limit for the association table
+or the depth limit plus one for the depth index, and never falls below what the append needs.
+Unlike the amortized capacity of the bounded consumers, which never depends on a limit, the cap is
+the admission: the native builder has no capacity-bytes limit and admits nothing beyond its node,
+edge and depth limits, so spare room above them could never be used. The builder's admission
+chooses that capacity for each of those banks. An allocator refusal of the spare room retries the least capacity
 that suffices, so an append fails only where growing by one slot fails.
 
 `HtmlConstructionStorage::publish` consumes the storage and the root's handle. It checks that the
@@ -598,8 +598,13 @@ and the layout it reaches as the largest of their resources, and the charge of i
 the admission, before any bank grows. `admit_growth` receives the growth of
 a bank and returns the capacity to reserve, at least the minimum the operation needs. The banks
 are:
-- the records;
-- the child order of one record;
+- the rows of the records, 32 bytes each (`NodeRows`), and the depth of each, 4 bytes (`Depths`);
+- the depth index, which the storage makes when it needs the count of records at each depth to find
+  the usage depth, and keeps after (`DepthIndex`, 4 bytes for each level), and the scratch beside it
+  that a planning walk writes (`DepthScratch`, 4 bytes for each level, its own allocation, grown
+  after the counts and of their length);
+- the template and shadow associations (`Associations`, 12 bytes each) and the processing
+  instructions and doctypes (`Leaves`);
 - the text arena;
 - one string of a processing instruction or doctype;
 - the shared tree;
@@ -620,12 +625,14 @@ processing instruction or doctype are built where they are reserved, before it. 
 a record qualification read cannot fail to find it; were one missing, the unknown-node defect is
 returned and no write is skipped.
 
-A refusal at any step before the writes leaves the records, the order of the children, the cached
-depths and the usage as they were. Three residues remain. A bank that grew keeps the room it
-reserved, and a refusal that follows leaves the consumer holding the capacity it last recorded for
-that bank. A string that a leaf creation reserved and then dropped is such a bank. Walk scratch (the
-cursors and level counts of a subtree walk, and the membership counts of a publication's validation
-pass) is not state and may be left written. A refused publication hands the storage back with the
+A refusal at any step before the writes leaves the records, the links of the children, the depths
+and the usage as they were. The depth index is derived from the depths, so a storage that made it
+for a change the consumer then refused keeps it, as it keeps the room of a grown bank. Three
+residues remain. A bank that grew keeps the room it reserved, and a refusal that follows leaves the
+consumer holding the capacity it last recorded for that bank. A string that a leaf creation
+reserved and then dropped is such a bank. The only scratch is `DepthIndex::moved`, the counts a
+planning walk writes for the records of a moved subtree; it is not state and may be left written. A
+publication's validation writes nothing. A refused publication hands the storage back with the
 records, their order, depths and usage as they were, and with no capacity of the arena recorded.
 A refused reservation of spare room is retried with the room that is needed, and the retry is one
 provider call.
@@ -687,24 +694,27 @@ It creates the element from the `NameId`, so a name is hashed once for each toke
 the entries, the index and the copied names are held with the banks of the storage.
 
 The work is counted in the records an operation writes, the bytes of rows and units it copies, one
-provider call for every request to the allocator, and the records it visits. A creation writes two fields for
-each record it makes and one for the usage, copies each row, the usage and the units of a leaf in
-runs of at most 256 bytes, and, for an element, interns its name: the hash of the local name is the
-inspection of twice its length.
-An insertion visits its operands, the entries of the child orders it walks and, for a node that has
-something below it, the owners above the parent. A fresh childless node needs no walk of the owners
-and no walk of its subtree, and a new last child shifts no entry, so its work does not depend on the
-fanout of its parent or the depth of the tree. Locating a reference child or the old place of a moved
-node costs about twice its distance from the nearer end of the order. A publication visits each
-record and each child entry a constant number of times.
+provider call for every request to the allocator, and the records it visits. A creation writes the
+row and its depth entry for each record it makes and one for the usage (and a count of the depth
+index when the storage has one, an association entry for a template and a leaf for a processing
+instruction or doctype), copies each row, the usage and the units of a leaf in runs of at most 256
+bytes, and, for an element, interns its name: the hash of the local name is the inspection of
+twice its length.
+An insertion visits its operands and, for a node that has something below it, the owners above the
+parent. A fresh childless node needs no walk of the owners and no walk of its subtree. The edit of
+the links is a fixed number of writes whatever the place: five to put a node in a list, two more to
+take it out of its old list, five to detach it. The work does not depend on the fanout of the
+parent, on the place, or on the depth of the tree. A publication visits each record and each child
+a constant number of times.
 
 The parser is the consumer of these operations. The session storage holds the construction
-storage itself, and beside it the bytes the parse holds for the banks of the records, the child
-orders, the interned names, the text arena and the shared tree, which are credited once when
+storage itself, and beside it the bytes the parse holds for the banks of the records, the rows,
+the interned names, the text arena and the shared tree, which are credited once when
 the storage is released; there is no
 ticket for a bank, no per-record registry of banks and no custody state in which the records are
-lent. A record bank and a child order that has capacity grow to the greater of the capacity needed
-and double the capacity, within the limits; one that has none takes exactly the room needed. The
+lent. A row bank, depth column, depth index, depth scratch, association table or leaf bank that has capacity grows to
+the greater of the capacity needed and double the capacity, within the limits; one that has none
+takes exactly the room needed. The
 units of a text or comment record are copied from the token's string into the text arena, which
 the parser releases once the record exists or its creation is refused, and the units are acquired
 as `ManagedUtf16Units` with the record, in the last admission of the creation, so a refused creation holds none. Each record
@@ -740,32 +750,41 @@ changes nothing. Native and controlled callers use the same methods; parser form
 remain parser-owned. This follows the [unchanged-order determination in
 #1174](https://github.com/bj-data-eng/surgeist/issues/1174).
 
-Insert, move and detach edit the parents' child orders in place after every refusable step, so a
-refused change leaves every order, parent link and logical fact as it was. A place is found by
-walking the order from both ends in turn, starting at the last entry, one entry per visit: the
-moving node's place in its old parent, then the reference sibling's place in the new parent (a
-change with no reference needs no walk). A walk costs about twice the entries between the target
-and the nearer end. Each child order is a deque, so the change shifts only the entries between the
-place it closes or opens and the nearer end: for a removal at position `p` of `n` entries the
-lesser of `p` and `n - 1 - p`, and for an insertion at `p` among `n` entries the lesser of `p` and
-`n - p`. When a node moves within one parent, `n` for the insertion counts the entries left after
-its removal. The change writes the parent link, the removed and inserted entries and every shifted
-entry, besides the depth work. A change near either end of an order therefore does work that does
-not depend on the parent's child count, and appending, which shifts nothing and needs no walk,
-does too.
+The ordinary children of a record are a doubly linked list through the rows: the parent holds its
+first and last child, and each child its next and previous sibling. Insert, move and detach edit
+the links in place after every refusable step, so a refused change leaves every link, parent and
+logical fact as it was. The edit needs no search: the node's links name its neighbours, the
+reference sibling's links name the place, and a reference that is not a child of the parent is
+refused with `WrongSibling` from its parent link. The edit is applied as it was verified: a row it
+names that is missing is the unknown-node defect, and a node whose neighbours do not hold it as
+their link says is refused with `ParentChildConflict`, before any write. No bank grows for a
+change of links.
 
-Only a push into a full order allocates. A move within one parent needs no growth, because the node
-leaves the order before it returns, and a detachment never grows an order. A change whose planned
-place no longer holds the entry planning found is refused with `ParentChildConflict`, and one
-whose push would reallocate with `CapacityMismatch`, before the writes, so a parent link and its
-list cannot diverge.
+The build view reads the links: `first_child`, `last_child`, `next_sibling` and `previous_sibling`,
+and `children()`, which runs from both ends and does not know its length. A published result holds
+the children of a parent as a run, so its `children()` knows its length, and its `next_sibling`
+and `previous_sibling` search the run of the parent.
 
-A publication checks that every ordinary child appears exactly once in its parent's child list,
-with work linear in the records and child entries, not in each parent's fanout. Three passes reset a
-private one-byte count in every record, add one count for each list entry naming its list's owner
-as parent, and then validate the records in index order, where each record with a parent must have
-a count of exactly one (`ParentChildConflict` otherwise). The count lives in the record layout, so
-it needs no allocation, and a stale count is reset before it is read.
+The depth of every record is a column of its own. While only creations and fresh insertions
+happen the usage depth is a running maximum, which is exact because those changes only add records
+and move them deeper. A change that moves the subtree that holds the deepest record shallower needs
+the count of records at each depth: the storage makes the depth index, one pass over the depths,
+admitted as two banks, the counts and the scratch, and charged, and every change after it keeps
+the index equal to the depths. When the index is made, a refusal of the second bank frees what the
+first reserved, and the consumer takes back the dimensions it recorded for it. When an existing
+index grows, a refusal of the scratch leaves the counts grown and recorded, and the next growth
+reserves the scratch alone. A change walks each moved subtree once to find its height and size, by the links, with no cursor in
+the rows.
+
+A publication checks every row in one walk. For each row it checks the parent and the associations
+the row names, then follows the chain of the row's children from its first child: each child names
+the row as its parent and the child before it as its previous sibling, and the chain ends at the
+row's last child. A row names one parent and one previous sibling, so a row that the chains list is
+listed once, and the children listed equal the rows that have a parent exactly when every such row
+is listed (`ParentChildConflict` otherwise). Every name, text range, run, value and leaf a row
+names is checked in the same walk. The walk reads the storage and changes nothing, and it comes
+before the first bank is admitted. The conversion that follows fills the child array by the same
+links.
 
 `create_element` makes the contents fragment of an HTML `template` and returns the element;
 `HtmlConstructionNode::template_contents` gives the contents handle. Cloning a template clones its
@@ -864,9 +883,9 @@ runs, the text block when it packs, the rows, the child entries, the association
 each exactly as large as the result needs and none when the result needs no entry. A refusal takes
 back, in reverse order, each record the consumer accepted, restores the text arena and hands the
 storage back, so the consumer holds what it held before the publication. A take-back record does
-not change the layout the consumer reports for an allocation refusal. The records, their child
-orders and the storage's attribute table are freed when the move ends, and the parser releases the
-bytes it recorded for the records and the child orders then: they count in `PeakTransientBytes`
+not change the layout the consumer reports for an allocation refusal. The rows, the depth column
+and index, the association table, the leaves and the storage's attribute table are freed when the
+move ends, and the parser releases the bytes it recorded for the row banks then: they count in `PeakTransientBytes`
 and in the high-water of `ManagedCapacityBytes`, not in their current value. The move into the
 shared tree allocates its handle and cannot refuse. The result holds the only strong owner of the
 tree the parse made; the parser's frozen arena reads the usage from the result and releases what

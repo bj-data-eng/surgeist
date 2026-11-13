@@ -240,16 +240,16 @@ impl HtmlConstructionStorage {
     /// The position of `node` when it is an element.
     fn attribute_target(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         let position = self.position(node)?;
-        match self.arena.records.get(position).map(|record| &record.kind) {
-            Some(NodeContent::Element(_)) => Ok(position),
+        match self.arena.rows.get(position).map(|row| row.kind) {
+            Some(RowKind::Element) => Ok(position),
             _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
 
     /// The run of the element at `target`, which is none while the element has no attribute.
     fn element_run(&self, target: usize) -> Result<Option<RunIx>, HtmlConstructionError> {
-        match self.arena.records.get(target).map(|record| &record.kind) {
-            Some(NodeContent::Element(element)) => Ok(element.attrs),
+        match self.arena.rows.get(target) {
+            Some(row) if row.kind == RowKind::Element => Ok(row.run()),
             _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
@@ -260,14 +260,9 @@ impl HtmlConstructionStorage {
         target: usize,
         ix: RunIx,
     ) -> Result<(), HtmlConstructionError> {
-        match self
-            .arena
-            .records
-            .get_mut(target)
-            .map(|record| &mut record.kind)
-        {
-            Some(NodeContent::Element(element)) => {
-                element.attrs = Some(ix);
+        match self.arena.rows.get_mut(target) {
+            Some(row) if row.kind == RowKind::Element => {
+                row.b = ix.stored();
                 Ok(())
             }
             _ => Err(HtmlConstructionCause::WrongNodeKind.into()),

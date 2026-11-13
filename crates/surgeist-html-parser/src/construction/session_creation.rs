@@ -603,8 +603,8 @@ impl ParserArenaSession {
                     .construction
                     .node_at(node.index)
                     .ok_or_else(|| latch_registry_row(control))?
-                    .child_count()
-                    != 0
+                    .first_child()
+                    .is_some()
                 {
                     return Err(SessionError::WrongToken);
                 }
@@ -638,8 +638,8 @@ impl ParserArenaSession {
                     .construction
                     .node_at(node.index)
                     .ok_or_else(|| latch_registry_row(control))?
-                    .child_count()
-                    != 0
+                    .first_child()
+                    .is_some()
                 {
                     return Err(SessionError::WrongToken);
                 }

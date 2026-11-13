@@ -1,11 +1,10 @@
 //! Publication of the storage as an immutable result.
 
-use super::shape::validate_record;
+use super::shape::{validate_association, validate_row};
 use super::*;
 use crate::internal::construction::attribute_table::PublishedAttr;
-use crate::internal::construction::tree::{
-    Assoc, AssocKind, AttrSpan, Leaf, PackedShadow, RowOwner, Span,
-};
+use crate::internal::construction::rows::{BuildAssocKind, NodeFlags, RowKind};
+use crate::internal::construction::tree::{Assoc, AssocKind, AttrSpan, Leaf, RowOwner, Span};
 use std::ops::Range;
 
 /// A publication the storage or the consumer refused, which hands the storage back unchanged.
@@ -33,6 +32,20 @@ struct Prepared {
     runs: Vec<AttrSpan>,
     leaves: Vec<Leaf>,
     block: TextBlock,
+}
+
+/// What the validation of a publication counts, which sizes the banks of the result.
+#[derive(Default)]
+struct Totals {
+    /// The units the block holds: the texts and the attribute values.
+    used: usize,
+    /// The attribute rows and runs of the elements.
+    rows: usize,
+    runs: usize,
+    /// The children listed, and so the rows that have a parent.
+    children: usize,
+    associations: usize,
+    leaves: usize,
 }
 
 /// The banks a publication records with its consumer: the wrapper, the attribute rows, the runs,
@@ -78,8 +91,7 @@ impl HtmlConstructionStorage {
     /// immutable result, after checking that every record agrees with its parent, its children and
     /// its associations, and that every name, text range, attribute run and value a record names is
     /// in the storage. A refusal hands the storage back with its records, their order, depths,
-    /// text and usage as they were. The validation passes may leave their scratch counts written,
-    /// which are not state.
+    /// text and usage as they were. The validation walk writes nothing.
     ///
     /// The result holds one 20-byte row for each record, the children of every row in one array,
     /// the template and shadow associations in one table, the attributes of every element in one
@@ -174,131 +186,28 @@ impl HtmlConstructionStorage {
         trail: &mut BankTrail,
     ) -> Result<Prepared, HtmlConstructionRecordError<A::Stop>> {
         let root = self.operand(root, admission)?;
-        let record = self.record(root).map_err(faulted)?;
-        let mode = match record.kind {
-            NodeContent::Document(mode) => Some(mode),
-            NodeContent::Fragment => None,
+        let row = self.arena.row(root).map_err(faulted)?;
+        let mode = match row.kind {
+            RowKind::Document(mode) => Some(mode),
+            RowKind::Fragment => None,
             _ => return Err(fault(HtmlConstructionCause::InvalidOutputRoot)),
         };
-        if record.parent.is_some() {
+        if row.parent.is_some() {
             return Err(fault(HtmlConstructionCause::InvalidOutputRoot));
         }
-        let count = self.arena.records.len();
-        // Every record's membership count is reset, then each record's entries in its parent's
-        // child list are counted once, then every record is validated in index order and its
-        // count read in constant time.
-        for position in 0..count {
-            Work {
-                record_visits: 1,
-                record_writes: 1,
-                ..Work::default()
-            }
-            .charge(admission)?;
-            if let Some(record) = self.arena.records.get_mut(position) {
-                record.publish_found = 0;
-            }
-        }
-        for position in 0..count {
-            let parent = NodeIx::new(position)
-                .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
-            let children = self.record(parent).map_err(faulted)?.children.len();
-            Work {
-                record_visits: plus(1, children).map_err(faulted)?,
-                record_writes: children,
-                ..Work::default()
-            }
-            .charge(admission)?;
-            for offset in 0..children {
-                let Some(child) = self
-                    .record(parent)
-                    .map_err(faulted)?
-                    .children
-                    .get(offset)
-                    .copied()
-                else {
-                    break;
-                };
-                // Only an entry naming this list's owner as its parent counts; the validation
-                // refuses every other entry when it reaches it.
-                if let Some(target) = self.arena.records.get_mut(child.position())
-                    && target.parent == Some(parent)
-                {
-                    target.publish_found = target.publish_found.saturating_add(1).min(2);
-                }
-            }
-        }
-        for position in 0..count {
-            let index = NodeIx::new(position)
-                .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
-            let children = self.record(index).map_err(faulted)?.children.len();
-            Work {
-                record_visits: plus(3, children).map_err(faulted)?,
-                ..Work::default()
-            }
-            .charge(admission)?;
-            validate_record(&self.arena, index).map_err(faulted)?;
-            let record = self.record(index).map_err(faulted)?;
-            for &child in &record.children {
-                let target = self.record(child).map_err(faulted)?;
-                if target.parent != Some(index)
-                    || target.owner.is_some()
-                    || matches!(
-                        target.kind,
-                        NodeContent::Document(_) | NodeContent::Fragment
-                    )
-                {
-                    return Err(fault(HtmlConstructionCause::ParentChildConflict));
-                }
-            }
-            // Every entry of every parent's list was counted before this pass: the record must
-            // appear in its parent's list exactly once.
-            if record.parent.is_some() && record.publish_found != 1 {
-                return Err(fault(HtmlConstructionCause::ParentChildConflict));
-            }
-        }
-        // Every name, range, run and value a record names is in the storage, before anything is
-        // reserved or moved, and the sizes of the vectors of the result are counted.
-        let mut used = 0usize;
-        let mut rows_total = 0usize;
-        let mut runs_total = 0usize;
-        let mut children_total = 0usize;
-        let mut associations_total = 0usize;
-        let mut leaves_total = 0usize;
-        for record in &self.arena.records {
-            children_total = plus(children_total, record.children.len()).map_err(faulted)?;
-            associations_total = plus(
-                associations_total,
-                usize::from(record.template_contents.is_some())
-                    + usize::from(record.shadow.is_some()),
-            )
-            .map_err(faulted)?;
-            match &record.kind {
-                NodeContent::Text(run) | NodeContent::Comment(run) => {
-                    self.text.get(run.text()).map_err(faulted)?;
-                    used = plus(used, run.len()).map_err(faulted)?;
-                }
-                NodeContent::Element(element) => {
-                    let held = usize::try_from(element.name.number())
-                        .ok()
-                        .and_then(|number| self.arena.names.get(number));
-                    if !held.is_some_and(|entry| Arc::ptr_eq(entry, &element.name)) {
-                        return Err(fault(HtmlConstructionCause::InvalidNameReference));
-                    }
-                    let rows = self.attrs.live(element.attrs).map_err(faulted)?;
-                    for row in rows {
-                        self.text.get(row.value()).map_err(faulted)?;
-                        used = plus(used, row.value().len()).map_err(faulted)?;
-                    }
-                    rows_total = plus(rows_total, rows.len()).map_err(faulted)?;
-                    runs_total =
-                        plus(runs_total, usize::from(!rows.is_empty())).map_err(faulted)?;
-                }
-                NodeContent::ProcessingInstruction(_) | NodeContent::Doctype(_) => {
-                    leaves_total = plus(leaves_total, 1).map_err(faulted)?;
-                }
-                NodeContent::Document(_) | NodeContent::Fragment => {}
-            }
-        }
+        let count = self.arena.rows.len();
+        // One walk over the links validates every row and lists every child once, and checks
+        // every name, text range, run, value and leaf a row names. It reads the storage and
+        // changes nothing, and it comes before the first bank is admitted, so a refusal of the
+        // validation reserves nothing.
+        let Totals {
+            used,
+            rows: rows_total,
+            runs: runs_total,
+            children: children_total,
+            associations: associations_total,
+            leaves: leaves_total,
+        } = self.validate_rows(admission)?;
         let pack = self.text.wants_packing();
         let has_rows = rows_total != 0;
         let bank =
@@ -484,14 +393,19 @@ impl HtmlConstructionStorage {
         // whole: the walk restores the units of an unpacked block, and the caller takes back the
         // banks.
         let units = if pack {
-            for record in &self.arena.records {
-                match &record.kind {
-                    NodeContent::Text(run) | NodeContent::Comment(run) => {
+            for row in &self.arena.rows {
+                match row.kind {
+                    RowKind::Text | RowKind::Comment => {
+                        let run = row
+                            .text_run()
+                            .ok_or_else(|| fault(HtmlConstructionCause::InvalidTextReference))?;
                         packed.extend_from_slice(self.text.get(run.text()).map_err(faulted)?);
                     }
-                    NodeContent::Element(element) => {
-                        for row in self.attrs.live(element.attrs).map_err(faulted)? {
-                            packed.extend_from_slice(self.text.get(row.value()).map_err(faulted)?);
+                    RowKind::Element => {
+                        for attribute in self.attrs.live(row.run()).map_err(faulted)? {
+                            packed.extend_from_slice(
+                                self.text.get(attribute.value()).map_err(faulted)?,
+                            );
                         }
                     }
                     _ => {}
@@ -542,6 +456,126 @@ impl HtmlConstructionStorage {
         })
     }
 
+    /// The one walk over the rows and their links that validates the storage for publication.
+    ///
+    /// Each row is checked with its parent, its place among its siblings and its association, and
+    /// the walk follows the chain of its children from its first child: every child names the row
+    /// as its parent and the child before it as its previous sibling, and the chain ends at the
+    /// row's last child. A row names one parent and one previous sibling, so a row that the chains
+    /// list is listed once, and the children listed equal the rows that have a parent exactly when
+    /// every such row is listed. The associations are checked first, against the rows they name,
+    /// and then each row against the associations that name it.
+    fn validate_rows<A: HtmlRecordAdmission>(
+        &self,
+        admission: &mut A,
+    ) -> Result<Totals, HtmlConstructionRecordError<A::Stop>> {
+        let conflict = || fault(HtmlConstructionCause::ParentChildConflict);
+        let count = self.arena.rows.len();
+        let mut totals = Totals::default();
+        let mut last: Option<(u32, usize)> = None;
+        let mut owners = 0usize;
+        for entry in &self.arena.associations {
+            Work::visit(admission)?;
+            validate_association(&self.arena, entry).map_err(faulted)?;
+            let key = (
+                entry.owner.stored(),
+                usize::from(entry.kind == BuildAssocKind::Shadow),
+            );
+            if last.is_some_and(|last| last >= key) {
+                return Err(fault(HtmlConstructionCause::InvalidTemplateAssociation));
+            }
+            owners = plus(owners, usize::from(last.is_none_or(|last| last.0 != key.0)))
+                .map_err(faulted)?;
+            last = Some(key);
+        }
+        let (mut with_parent, mut with_associations) = (0usize, 0usize);
+        for position in 0..count {
+            Work::visit(admission)?;
+            let index = NodeIx::new(position)
+                .ok_or_else(|| fault(HtmlConstructionCause::RepresentationExhausted))?;
+            validate_row(&self.arena, index).map_err(faulted)?;
+            let row = self.arena.row(index).map_err(faulted)?;
+            with_parent = plus(with_parent, usize::from(row.parent.is_some())).map_err(faulted)?;
+            with_associations = plus(
+                with_associations,
+                usize::from(row.flags.has(NodeFlags::HAS_ASSOC)),
+            )
+            .map_err(faulted)?;
+            let (mut cursor, mut previous, mut steps) = (row.first(), None, 0usize);
+            while let Some(child) = cursor {
+                Work::visit(admission)?;
+                steps = plus(steps, 1).map_err(faulted)?;
+                if steps > count {
+                    return Err(conflict());
+                }
+                let target = self.arena.row(child).map_err(faulted)?;
+                if target.parent != Some(index)
+                    || target.prev != previous
+                    || target.flags.has(NodeFlags::OWNED)
+                    || matches!(target.kind, RowKind::Document(_) | RowKind::Fragment)
+                {
+                    return Err(conflict());
+                }
+                totals.children = plus(totals.children, 1).map_err(faulted)?;
+                previous = Some(child);
+                cursor = target.next;
+            }
+            if previous != row.last() {
+                return Err(conflict());
+            }
+            match row.kind {
+                RowKind::Text | RowKind::Comment => {
+                    let run = row
+                        .text_run()
+                        .ok_or_else(|| fault(HtmlConstructionCause::InvalidTextReference))?;
+                    self.text.get(run.text()).map_err(faulted)?;
+                    totals.used = plus(totals.used, run.len()).map_err(faulted)?;
+                }
+                RowKind::Element => {
+                    let held = usize::try_from(row.a)
+                        .ok()
+                        .and_then(|number| self.arena.names.get(number));
+                    if held.is_none() {
+                        return Err(fault(HtmlConstructionCause::InvalidNameReference));
+                    }
+                    let attributes = self.attrs.live(row.run()).map_err(faulted)?;
+                    for attribute in attributes {
+                        self.text.get(attribute.value()).map_err(faulted)?;
+                        totals.used =
+                            plus(totals.used, attribute.value().len()).map_err(faulted)?;
+                    }
+                    totals.rows = plus(totals.rows, attributes.len()).map_err(faulted)?;
+                    totals.runs =
+                        plus(totals.runs, usize::from(!attributes.is_empty())).map_err(faulted)?;
+                }
+                RowKind::ProcessingInstruction | RowKind::Doctype => {
+                    let held = usize::try_from(row.a)
+                        .ok()
+                        .and_then(|position| self.arena.leaves.get(position));
+                    if !matches!(
+                        (row.kind, held),
+                        (
+                            RowKind::ProcessingInstruction,
+                            Some(Leaf::ProcessingInstruction(_))
+                        ) | (RowKind::Doctype, Some(Leaf::Doctype(_)))
+                    ) {
+                        return Err(fault(HtmlConstructionCause::InvalidLeafReference));
+                    }
+                    totals.leaves = plus(totals.leaves, 1).map_err(faulted)?;
+                }
+                RowKind::Document(_) | RowKind::Fragment => {}
+            }
+        }
+        if totals.children != with_parent {
+            return Err(conflict());
+        }
+        if owners != with_associations {
+            return Err(fault(HtmlConstructionCause::InvalidTemplateAssociation));
+        }
+        totals.associations = self.arena.associations.len();
+        Ok(totals)
+    }
+
     /// Admits `growth`, and grows `slot` to the capacity the consumer chose for it, recording
     /// the growth in `trail`.
     fn reserve_published<T, A: HtmlRecordAdmission>(
@@ -583,8 +617,10 @@ impl HtmlConstructionStorage {
     }
 
     /// The walk of the conversion: the rows of every record in record order, the child entries of
-    /// each row after the previous row's, the runs and attribute rows of the elements, the
-    /// associations, which are in owner order because the records are, and the leaves.
+    /// each row after the previous row's, which the links of the row list in order, the runs and
+    /// attribute rows of the elements, the leaves, and then the associations, which are in owner
+    /// order because the table is. Validation checked every reference and chain this walk follows,
+    /// so a lookup that fails here is a defect and is returned.
     fn fill(
         &self,
         block: &TextBlock,
@@ -592,36 +628,27 @@ impl HtmlConstructionStorage {
         parts: &mut Parts,
     ) -> Result<(), HtmlConstructionError> {
         let mut cursor = pack.then_some(0usize);
-        for (position, record) in self.arena.records.iter().enumerate() {
-            let owner = NodeIx::new(position)
-                .ok_or(HtmlConstructionCause::RepresentationExhausted.error())?;
-            let content = match &record.kind {
-                NodeContent::Document(mode) => RowContent::Document {
-                    mode: *mode,
-                    known_null_focus: record.document_focused_area_designation
-                        == Some(HtmlFocusedAreaDesignation::KnownNull),
+        for row in &self.arena.rows {
+            let content = match row.kind {
+                RowKind::Document(mode) => RowContent::Document {
+                    mode,
+                    known_null_focus: row.flags.has(NodeFlags::KNOWN_NULL_FOCUS),
                 },
-                NodeContent::Fragment => RowContent::Fragment {
-                    shadow: record.shadow_properties.map(PackedShadow::pack),
-                    owner: record.owner.map(|owner| match owner {
-                        HtmlFragmentOwner::Template(id) => RowOwner {
-                            node: id.index,
-                            shadow_host: false,
-                        },
-                        HtmlFragmentOwner::ShadowHost(id) => RowOwner {
-                            node: id.index,
-                            shadow_host: true,
-                        },
+                RowKind::Fragment => RowContent::Fragment {
+                    shadow: row.shadow(),
+                    owner: row.owner().map(|node| RowOwner {
+                        node,
+                        shadow_host: row.shadow().is_some(),
                     }),
                 },
-                NodeContent::Element(element) => {
-                    let live = self.attrs.live(element.attrs)?;
+                RowKind::Element => {
+                    let live = self.attrs.live(row.run())?;
                     let start = parts.attrs.len();
-                    for row in live {
-                        let value = block_string(block, &mut cursor, row.value())?;
+                    for attribute in live {
+                        let value = block_string(block, &mut cursor, attribute.value())?;
                         parts
                             .attrs
-                            .push(PublishedAttr::new(row.entry().clone(), value));
+                            .push(PublishedAttr::new(attribute.entry().clone(), value));
                     }
                     let run = if live.is_empty() {
                         None
@@ -637,58 +664,66 @@ impl HtmlConstructionStorage {
                         Some(stored)
                     };
                     RowContent::Element {
-                        link_flags: element.link_flags,
-                        name: element.name.number(),
+                        link_flags: row.link_flags(),
+                        name: row.a,
                         run,
                     }
                 }
-                NodeContent::Text(run) => {
-                    RowContent::Text(text_span(block, &mut cursor, run.text())?)
+                RowKind::Text | RowKind::Comment => {
+                    let run = row
+                        .text_run()
+                        .ok_or(HtmlConstructionCause::InvalidTextReference.error())?;
+                    let span = text_span(block, &mut cursor, run.text())?;
+                    if row.kind == RowKind::Text {
+                        RowContent::Text(span)
+                    } else {
+                        RowContent::Comment(span)
+                    }
                 }
-                NodeContent::Comment(run) => {
-                    RowContent::Comment(text_span(block, &mut cursor, run.text())?)
-                }
-                NodeContent::ProcessingInstruction(value) => {
+                RowKind::ProcessingInstruction | RowKind::Doctype => {
                     let at = leaf_position(parts.leaves.len())?;
-                    parts
-                        .leaves
-                        .push(Leaf::ProcessingInstruction(value.clone()));
-                    RowContent::ProcessingInstruction(at)
-                }
-                NodeContent::Doctype(value) => {
-                    let at = leaf_position(parts.leaves.len())?;
-                    parts.leaves.push(Leaf::Doctype(value.clone()));
-                    RowContent::Doctype(at)
+                    let leaf = usize::try_from(row.a)
+                        .ok()
+                        .and_then(|position| self.arena.leaves.get(position))
+                        .ok_or(HtmlConstructionCause::InvalidLeafReference.error())?;
+                    parts.leaves.push(leaf.clone());
+                    if row.kind == RowKind::Doctype {
+                        RowContent::Doctype(at)
+                    } else {
+                        RowContent::ProcessingInstruction(at)
+                    }
                 }
             };
-            parts.children.extend(record.children.iter().copied());
+            let mut child = row.first();
+            while let Some(next) = child {
+                if parts.children.len() >= parts.children.capacity() {
+                    return Err(HtmlConstructionCause::CapacityMismatch.error());
+                }
+                parts.children.push(next);
+                child = self.arena.row(next)?.next;
+            }
             parts.rows.push(PublishedRow {
-                parent: record.parent,
+                parent: row.parent,
                 child_end: u32::try_from(parts.children.len())
                     .map_err(|_| HtmlConstructionCause::RepresentationExhausted.error())?,
                 content,
             });
-            if let Some(contents) = record.template_contents {
-                parts.associations.push(Assoc {
-                    owner,
-                    contents: contents.position(),
-                    kind: match contents {
-                        TemplateContents::Owned(_) => AssocKind::Owned,
-                        TemplateContents::ShadowReference(_) => AssocKind::ShadowReference,
-                    },
-                });
-            }
-            if let Some(shadow) = &record.shadow {
-                let properties = self
-                    .record(shadow.contents.index)?
-                    .shadow_properties
-                    .ok_or(HtmlConstructionCause::InvalidShadowAssociation.error())?;
-                parts.associations.push(Assoc {
-                    owner,
-                    contents: shadow.contents.index,
-                    kind: AssocKind::Shadow(PackedShadow::pack(properties)),
-                });
-            }
+        }
+        for entry in &self.arena.associations {
+            parts.associations.push(Assoc {
+                owner: entry.owner,
+                contents: entry.contents,
+                kind: match entry.kind {
+                    BuildAssocKind::Owned => AssocKind::Owned,
+                    BuildAssocKind::ShadowReference => AssocKind::ShadowReference,
+                    BuildAssocKind::Shadow => AssocKind::Shadow(
+                        self.arena
+                            .row(entry.contents)?
+                            .shadow()
+                            .ok_or(HtmlConstructionCause::InvalidShadowAssociation.error())?,
+                    ),
+                },
+            });
         }
         Ok(())
     }

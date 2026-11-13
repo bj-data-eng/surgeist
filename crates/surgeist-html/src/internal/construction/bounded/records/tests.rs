@@ -14,7 +14,7 @@ struct Refused;
 
 /// A consumer that records what it is asked and refuses at a chosen admission point: the
 /// `refuse_at`th call of any of its methods, counting from zero. It chooses double the capacity of
-/// a record or child bank, and the capacity a string needs.
+/// a row, depth, association or leaf bank, and the capacity a string needs.
 #[derive(Default)]
 struct Meter {
     refuse_at: Option<usize>,
@@ -38,7 +38,7 @@ struct Meter {
 #[derive(Clone, Copy)]
 enum Huge {
     Text,
-    Children,
+    Associations,
     Records,
 }
 const VISIT: usize = 0;
@@ -107,8 +107,8 @@ impl HtmlRecordAdmission for Meter {
             (
                 Some(Huge::Text),
                 HtmlConstructionBank::Text | HtmlConstructionBank::TextArena
-            ) | (Some(Huge::Children), HtmlConstructionBank::Children { .. })
-                | (Some(Huge::Records), HtmlConstructionBank::Records)
+            ) | (Some(Huge::Associations), HtmlConstructionBank::Associations)
+                | (Some(Huge::Records), HtmlConstructionBank::NodeRows)
         );
         if refused || self.huge_bank == Some(growth.bank()) {
             return Ok(isize::MAX as usize / growth.element_size());
@@ -117,7 +117,12 @@ impl HtmlRecordAdmission for Meter {
             return Ok(growth.minimum_capacity());
         }
         Ok(match growth.bank() {
-            HtmlConstructionBank::Records | HtmlConstructionBank::Children { .. } => growth
+            HtmlConstructionBank::NodeRows
+            | HtmlConstructionBank::Depths
+            | HtmlConstructionBank::DepthIndex
+            | HtmlConstructionBank::DepthScratch
+            | HtmlConstructionBank::Associations
+            | HtmlConstructionBank::Leaves => growth
                 .minimum_capacity()
                 .max(growth.before().capacity() * 2),
             _ => growth.minimum_capacity(),
@@ -137,6 +142,28 @@ impl HtmlRecordAdmission for Meter {
         _: HtmlConstructionChange,
     ) -> Result<(), Refused> {
         self.call("record_change")
+    }
+}
+
+/// The append of a text: it doubles the arena when it grows and refuses nothing.
+impl crate::internal::construction::bounded::text_data::HtmlTextAdmission for Meter {
+    fn admit_append(
+        &mut self,
+        growth: crate::internal::construction::bounded::text_data::HtmlConstructionTextGrowth,
+    ) -> Result<usize, Refused> {
+        self.call("admit_append")?;
+        Ok(growth
+            .minimum_capacity()
+            .max(growth.before().capacity() * 2))
+    }
+    fn record_growth(
+        &mut self,
+        _: crate::internal::construction::bounded::text_data::HtmlConstructionTextCapacity,
+    ) -> Result<(), Refused> {
+        self.call("record_text_growth")
+    }
+    fn record_units(&mut self, _: usize) -> Result<(), Refused> {
+        self.call("record_units")
     }
 }
 
@@ -208,32 +235,33 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Vec<String> {
     rows.push(format!("attributes {:?}", storage.attrs));
     rows
 }
-/// The content of a record without the way it holds its text.
-fn kind_shape(kind: &NodeContent) -> String {
-    match kind {
-        NodeContent::Text(text) => format!("Text of {} units", text.len()),
-        NodeContent::Comment(text) => format!("Comment of {} units", text.len()),
-        other => format!("{other:?}"),
+/// The content of a row without the way it holds its text.
+fn kind_shape(row: &NodeRow) -> String {
+    match (row.kind, row.text_run()) {
+        (RowKind::Text, Some(text)) => format!("Text of {} units", text.len()),
+        (RowKind::Comment, Some(text)) => format!("Comment of {} units", text.len()),
+        _ => format!("{:?} {} {}", row.kind, row.a, row.b),
     }
 }
-/// The logical state of an arena.
+/// The logical state of an arena: its rows with their links and depths, the association table and
+/// the leaves. The depth index is derived from the depths, and is checked by [`assert_exact`].
 fn arena_snapshot(arena: &BuildArena) -> Vec<String> {
     let mut rows = vec![format!("{:?}", arena.usage)];
-    for (index, record) in arena.records.iter().enumerate() {
+    for (index, row) in arena.rows.iter().enumerate() {
         rows.push(format!(
-            "{index} {} parent {:?} children {:?} depth {} population {} contents {:?} shadow {:?} properties {:?} owner {:?} designation {:?}",
-            kind_shape(&record.kind),
-            record.parent.map(NodeIx::position),
-            record.children.iter().map(|child| child.position()).collect::<Vec<_>>(),
-            record.depth,
-            record.population,
-            record.template_contents,
-            record.shadow,
-            record.shadow_properties,
-            record.owner,
-            record.document_focused_area_designation,
+            "{index} {} parent {:?} first {:?} last {:?} next {:?} prev {:?} flags {:?} depth {:?}",
+            kind_shape(row),
+            row.parent.map(NodeIx::position),
+            row.first().map(NodeIx::position),
+            row.last().map(NodeIx::position),
+            row.next.map(NodeIx::position),
+            row.prev.map(NodeIx::position),
+            row.flags,
+            arena.depths.get(index),
         ));
     }
+    rows.push(format!("associations {:?}", arena.associations));
+    rows.push(format!("leaves {:?}", arena.leaves));
     rows
 }
 
@@ -367,10 +395,7 @@ fn creations_make_the_records_they_name_and_count_what_they_hold() {
     // local name 3 and the HTML namespace URI 28.
     assert_eq!(usage.utf16_units(), 4 + 3 + 3 + 7 + 1 + 3 + 28);
     assert_eq!(usage.depth(), 0);
-    assert_eq!(
-        storage.arena.records[0].document_focused_area_designation,
-        Some(HtmlFocusedAreaDesignation::KnownNull)
-    );
+    assert!(storage.arena.rows[0].flags.has(NodeFlags::KNOWN_NULL_FOCUS));
 }
 
 #[test]
@@ -392,9 +417,8 @@ fn a_template_creates_its_owned_contents_and_one_edge() {
     assert_eq!(storage.usage().nodes(), 2);
     assert_eq!(storage.usage().edges(), 1);
     assert_eq!(storage.usage().depth(), 1);
-    assert_eq!(storage.arena.records[1].depth, 1);
-    assert_eq!(storage.arena.population(0), 1);
-    assert_eq!(storage.arena.population(1), 1);
+    assert_eq!(storage.arena.depths, [0, 1]);
+    assert!(storage.arena.depth_index().is_none());
     // A template in another namespace is an ordinary element.
     let foreign = ok(storage.create_element(
         &QualifiedName::new(Namespace::svg(), None, "template"),
@@ -416,40 +440,45 @@ fn a_creation_charges_its_rows_its_units_and_its_growth() {
     let mut storage = storage();
     let mut meter = Meter::default();
     ok(storage.create_text(&utf16("abc"), &mut meter));
-    // One record bank and the text arena grow; each charges one provider call.
-    assert_eq!(meter.work[PROVIDER], 2);
-    assert_eq!(meter.growths.len(), 2);
-    assert_eq!(meter.growths[0].bank(), HtmlConstructionBank::Records);
+    // The row bank, the depth column and the text arena grow; each charges one provider call.
+    assert_eq!(meter.work[PROVIDER], 3);
+    assert_eq!(meter.growths.len(), 3);
+    assert_eq!(meter.growths[0].bank(), HtmlConstructionBank::NodeRows);
     assert_eq!(meter.growths[0].minimum_capacity(), 1);
-    assert_eq!(meter.growths[0].element_size(), size_of::<Record>());
-    assert_eq!(meter.growths[1].bank(), HtmlConstructionBank::TextArena);
-    assert_eq!(meter.growths[1].minimum_capacity(), 3);
-    assert_eq!(meter.growths[1].element_size(), 2);
-    assert_eq!(meter.growths[1].wrapper_bytes(), 0);
-    // The rows and the usage, then 3 units = 6 bytes in one run.
+    assert_eq!(meter.growths[0].element_size(), size_of::<NodeRow>());
+    assert_eq!(meter.growths[1].bank(), HtmlConstructionBank::Depths);
+    assert_eq!(meter.growths[1].minimum_capacity(), 1);
+    assert_eq!(meter.growths[1].element_size(), size_of::<u32>());
+    assert_eq!(meter.growths[2].bank(), HtmlConstructionBank::TextArena);
+    assert_eq!(meter.growths[2].minimum_capacity(), 3);
+    assert_eq!(meter.growths[2].element_size(), 2);
+    assert_eq!(meter.growths[2].wrapper_bytes(), 0);
+    // The row and its depth entry and the usage, then 3 units = 6 bytes in one run.
     assert_eq!(
         meter.work[COPY] as usize,
-        size_of::<Record>() + size_of::<usize>() + size_of::<HtmlConstructionUsage>() + 6
+        size_of::<NodeRow>() + size_of::<u32>() + size_of::<HtmlConstructionUsage>() + 6
     );
-    // Two writes per record, one for the usage, one for the run of units.
-    assert_eq!(meter.work[WRITE], 2 + 1 + 1);
+    // One write for the row, one for its depth entry, one for the usage, one for the run of units.
+    assert_eq!(meter.work[WRITE], 1 + 1 + 1 + 1);
     assert_eq!(meter.work[VISIT], 0);
     let largest = meter.largest.clone();
-    assert!(largest.contains(&(HtmlResource::AtomicLayoutBytes, size_of::<Record>() as u64)));
+    assert!(largest.contains(&(HtmlResource::AtomicLayoutBytes, size_of::<NodeRow>() as u64)));
     assert!(largest.contains(&(HtmlResource::TreeDepth, 0)));
     // The first record of each growth is the capacity chosen; the second is absent when the
     // reservation reached what was chosen.
-    assert_eq!(meter.records.len(), 2);
-    assert_eq!(meter.records[1].chosen(), 3);
-    assert_eq!(meter.records[1].reached().capacity(), 3);
+    assert_eq!(meter.records.len(), 3);
+    assert_eq!(meter.records[2].chosen(), 3);
+    assert_eq!(meter.records[2].reached().capacity(), 3);
     // Room that is there needs no growth: reserving what the bank holds admits nothing.
     let mut again = Meter::default();
     ok(storage.reserve_records(0, &mut again));
     assert!(again.growths.is_empty());
     ok(storage.reserve_records(9, &mut again));
-    assert_eq!(again.growths.len(), 1);
+    assert_eq!(again.growths.len(), 2);
     assert_eq!(again.growths[0].before().initialized_len(), 1);
-    assert!(storage.arena.records.capacity() >= 10);
+    assert_eq!(again.growths[1].before().initialized_len(), 1);
+    assert!(storage.arena.rows.capacity() >= 10);
+    assert!(storage.arena.depths.capacity() >= 10);
     let mut roomy = Meter::default();
     ok(storage.create_comment(&[], &mut roomy));
     assert!(
@@ -626,11 +655,8 @@ fn shadow_and_template_associations_set_owners_edges_and_depths() {
         Some(HtmlFragmentOwner::ShadowHost(owner)) if owner == host_id
     ));
     // The shadow contents sit one below the host, and their child one more.
-    assert_eq!(
-        storage.arena.records[position(&storage, &contents)].depth,
-        2
-    );
-    assert_eq!(storage.arena.records[position(&storage, &inner)].depth, 3);
+    assert_eq!(storage.arena.depths[position(&storage, &contents)], 2);
+    assert_eq!(storage.arena.depths[position(&storage, &inner)], 3);
     assert_eq!(storage.usage().depth(), 3);
     let m = Meter::default;
     use HtmlConstructionCause as Cause;
@@ -866,9 +892,8 @@ fn tree() -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]) {
     (storage, [root, parent, middle, fresh])
 }
 
-/// The same tree with every bank full: the record bank holds exactly its records and the child
-/// order of each record exactly its children, so a creation grows the records and an insertion
-/// grows the child order.
+/// The same tree with every bank full: the row bank and the depth bank hold exactly their rows, so
+/// a creation grows them and an insertion, which only edits links, grows nothing.
 fn full_tree() -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]) {
     let exact = || Meter {
         exact: true,
@@ -898,10 +923,8 @@ fn full_tree() -> (HtmlConstructionStorage, [HtmlBuilderNode; 4]) {
     for (node, under) in [(&parent, &root), (&middle, &parent), (&text, &parent)] {
         ok(storage.insert(node, under, None, &mut exact()));
     }
-    assert_eq!(
-        storage.arena.records.capacity(),
-        storage.arena.records.len()
-    );
+    assert_eq!(storage.arena.rows.capacity(), storage.arena.rows.len());
+    assert_eq!(storage.arena.depths.capacity(), storage.arena.depths.len());
     (storage, [root, parent, middle, fresh])
 }
 
@@ -911,17 +934,18 @@ fn creations_that_grow_the_records_are_refused_at_each_admission_point_leaving_t
     let calls = sweep(full_tree, |storage, _, meter| {
         storage.create_text(&utf16("abc"), meter).map(|_| ())
     });
-    // The records grow, then the string: two growths, each recorded before it is reserved.
+    // The rows and their depths grow, then the text arena: three growths, each recorded before it
+    // is reserved.
     assert_eq!(
         calls.iter().filter(|call| **call == "admit_growth").count(),
-        2
+        3
     );
     assert_eq!(
         calls
             .iter()
             .filter(|call| **call == "record_growth")
             .count(),
-        2
+        3
     );
     sweep(full_tree, |storage, _, meter| {
         storage
@@ -953,30 +977,41 @@ fn every_operation_refused_at_each_admission_point_leaves_the_storage_as_it_was(
     let calls = sweep(tree, |storage, [_, parent, _, fresh], meter| {
         storage.insert(fresh, parent, None, meter)
     });
-    // The insertion grows the parent's child order from two entries: it is admitted, recorded and
+    // The insertion is a fixed number of link writes and grows no bank: it is admitted and
     // changed once each.
-    for point in [
-        "admit_change",
-        "admit_growth",
-        "record_growth",
-        "record_change",
-    ] {
+    for point in ["admit_change", "record_change"] {
         assert!(calls.contains(&point), "no {point} in {calls:?}");
     }
-    // The limits are admitted before the charge of the writes, which comes before any growth.
+    assert!(!calls.contains(&"admit_growth"), "{calls:?}");
+    // The limits are admitted before the charge of the writes, which comes before the change is
+    // recorded.
     let admitted = calls
         .iter()
         .position(|call| *call == "admit_change")
         .unwrap();
-    let grown = calls
+    let recorded = calls
+        .iter()
+        .position(|call| *call == "record_change")
+        .unwrap();
+    assert!(
+        calls[admitted..recorded].contains(&"charge"),
+        "no charge between the admission of the change and its record in {calls:?}"
+    );
+    // Taking the deepest subtree out of its parent needs the count of records at each depth to
+    // find the usage depth, so the storage makes the index: a growth, admitted after the charge of
+    // its pass and before the admission of the change.
+    let lifted = sweep(tree, |storage, [_, parent, ..], meter| {
+        storage.detach(parent, meter)
+    });
+    let growth = lifted
         .iter()
         .position(|call| *call == "admit_growth")
         .unwrap();
-    assert!(
-        calls[admitted..grown].contains(&"charge"),
-        "no charge between the admission of the change and the growth in {calls:?}"
-    );
-    assert!(!calls[..admitted].contains(&"admit_growth"));
+    let change = lifted
+        .iter()
+        .position(|call| *call == "admit_change")
+        .unwrap();
+    assert!(growth < change, "{lifted:?}");
     sweep(tree, |storage, [_, parent, middle, fresh], meter| {
         storage.insert(fresh, parent, Some(middle), meter)
     });
@@ -1106,55 +1141,57 @@ fn an_allocator_that_refuses_the_spare_room_is_asked_again_for_the_room_needed()
     assert_eq!(records[0].reached().capacity(), isize::MAX as usize / 2);
     assert_eq!(records[1].recorded().capacity(), isize::MAX as usize / 2);
     assert_eq!(records[1].reached().capacity(), 3);
-    // Two growths and the retry: three requests to the allocator, three provider calls.
-    assert_eq!(meter.work[PROVIDER], 3);
+    // Three growths (the rows, their depths and the text arena) and the retry of the arena: four
+    // requests to the allocator, four provider calls.
+    assert_eq!(meter.work[PROVIDER], 4);
     assert!(matches!(
         storage.node(&text).unwrap().kind(),
         crate::internal::construction::ConstructionNodeKind::Text(value) if value.code_units().unwrap() == utf16("abc")
     ));
 
-    // A child order of two entries that is full: the push asks for room for three.
-    let (mut storage, [_, parent, _, fresh]) = full_tree();
+    // The association table, empty: attaching a shadow root asks for room for one entry.
+    let mut storage = ok(HtmlConstructionStorage::new(&mut Meter::default()));
+    let host = element(&mut storage, "div");
+    let shadow = ok(storage.create_shadow_contents(shadow_properties(), &mut Meter::default()));
     let mut meter = Meter {
-        huge: Some(Huge::Children),
+        huge: Some(Huge::Associations),
         ..Meter::default()
     };
-    ok(storage.insert(&fresh, &parent, None, &mut meter));
-    let records = growth_records(&meter, |bank| {
-        matches!(bank, HtmlConstructionBank::Children { .. })
-    });
+    ok(storage.attach_shadow(&host, &shadow, &mut meter));
+    let records = growth_records(&meter, |bank| bank == HtmlConstructionBank::Associations);
     assert_eq!(records.len(), 2);
-    assert_eq!(records[0].recorded().capacity(), 2);
+    assert_eq!(records[0].recorded().capacity(), 0);
     assert_eq!(
         records[0].reached().capacity(),
-        isize::MAX as usize / size_of::<NodeIx>()
+        isize::MAX as usize / size_of::<BuildAssoc>()
     );
-    assert_eq!(records[1].reached().capacity(), 3);
+    assert_eq!(records[1].reached().capacity(), 1);
     assert_eq!(meter.work[PROVIDER], 2, "one growth and its retry");
-    assert_eq!(children(&storage, &parent).len(), 3);
+    assert!(storage.node(&host).unwrap().shadow_root().is_some());
 
-    // The record bank, full: a reservation of one more record.
+    // The row bank, full: a reservation of one more record grows the row bank, which asks again
+    // for the room needed, and the depth column.
     let (mut storage, _) = full_tree();
-    let before = storage.arena.records.len();
+    let before = storage.arena.rows.len();
     let mut meter = Meter {
         huge: Some(Huge::Records),
         ..Meter::default()
     };
     ok(storage.reserve_records(1, &mut meter));
-    let records = growth_records(&meter, |bank| bank == HtmlConstructionBank::Records);
+    let records = growth_records(&meter, |bank| bank == HtmlConstructionBank::NodeRows);
     assert_eq!(records.len(), 2);
     assert_eq!(records[0].recorded().capacity(), before);
     assert_eq!(records[1].reached().capacity(), before + 1);
-    assert_eq!(storage.arena.records.capacity(), before + 1);
-    assert_eq!(meter.work[PROVIDER], 2);
+    assert_eq!(storage.arena.rows.capacity(), before + 1);
+    assert_eq!(meter.work[PROVIDER], 3, "two growths and the retry");
 }
 
 #[test]
 fn an_allocator_that_refuses_the_room_needed_is_an_allocation_failure_that_changes_nothing() {
     // No operation can need more room than an allocator gives, so the refusal of the room needed
     // is injected into the reservation of `grow`, which every operation reserves through.
-    for kind in [Huge::Text, Huge::Children, Huge::Records] {
-        let (mut storage, [_, parent, _, _]) = full_tree();
+    for kind in [Huge::Text, Huge::Associations, Huge::Records] {
+        let (mut storage, _) = full_tree();
         let before = snapshot(&storage);
         let growth = match kind {
             Huge::Text => HtmlConstructionBankGrowth {
@@ -1164,10 +1201,8 @@ fn an_allocator_that_refuses_the_room_needed_is_an_allocation_failure_that_chang
                 element_size: size_of::<u16>(),
                 wrapper_bytes: size_of::<Vec<u16>>(),
             },
-            Huge::Children => storage.children_growth(parent.index, 3).unwrap(),
-            Huge::Records => storage
-                .records_growth(storage.arena.records.len() + 1)
-                .unwrap(),
+            Huge::Associations => storage.associations_growth(1).unwrap(),
+            Huge::Records => storage.rows_growth(storage.arena.rows.len() + 1).unwrap(),
         };
         let chosen = growth.minimum_capacity() + 4;
         let mut meter = Meter::default();
@@ -1196,6 +1231,175 @@ fn an_allocator_that_refuses_the_room_needed_is_an_allocation_failure_that_chang
         );
         assert_eq!(snapshot(&storage), before);
     }
+}
+
+/// The dimensions the consumer holds for each bank after the records of a meter, in the order the
+/// banks first appear.
+fn held_dimensions(meter: &Meter) -> Vec<(HtmlConstructionBank, HtmlConstructionBankCapacity)> {
+    let mut held: Vec<(HtmlConstructionBank, HtmlConstructionBankCapacity)> = Vec::new();
+    for record in &meter.records {
+        let bank = record.growth().bank();
+        match held.iter_mut().find(|(held, _)| *held == bank) {
+            Some((_, reached)) => *reached = record.reached(),
+            None => held.push((bank, record.reached())),
+        }
+    }
+    held
+}
+
+/// The depth index is vectors of 4-byte entries, each recorded as its own allocation: its banks
+/// together hold 8 bytes for each level, and none reports a larger single allocation than 4.
+#[test]
+fn the_banks_of_the_depth_index_are_vectors_of_four_byte_entries_holding_eight_bytes_a_level() {
+    let (mut storage, [_, parent, ..]) = tree();
+    let mut meter = Meter::default();
+    // Taking the deepest subtree out of its parent needs the count of records at each depth, so
+    // the storage makes the index for the levels it has now.
+    let levels = storage.usage().depth + 1;
+    ok(storage.detach(&parent, &mut meter));
+    assert!(storage.arena.index.is_some());
+    assert!(!meter.growths.is_empty());
+    for growth in &meter.growths {
+        assert_eq!(growth.element_size(), 4, "{:?}", growth.bank());
+    }
+    let bytes: usize = meter
+        .growths
+        .iter()
+        .map(|growth| growth.minimum_capacity() * growth.element_size())
+        .sum();
+    assert_eq!(bytes, 8 * levels);
+}
+
+/// The two vectors of the depth index are two banks of 4-byte entries, the counts and the scratch
+/// beside them, each recorded with the layout of its own allocation.
+#[test]
+fn the_depth_index_is_recorded_as_two_banks_of_four_byte_entries() {
+    let (mut storage, [_, parent, ..]) = tree();
+    let mut meter = Meter::default();
+    // Taking the deepest subtree out of its parent needs the count of records at each depth.
+    ok(storage.detach(&parent, &mut meter));
+    let banks: Vec<_> = meter
+        .growths
+        .iter()
+        .map(|growth| (growth.bank(), growth.element_size()))
+        .collect();
+    assert_eq!(
+        banks,
+        [
+            (HtmlConstructionBank::DepthIndex, 4),
+            (HtmlConstructionBank::DepthScratch, 4)
+        ]
+    );
+    assert_eq!(meter.work[PROVIDER], 2, "one request for each vector");
+    let held = held_dimensions(&meter);
+    let index = storage
+        .arena
+        .index
+        .as_ref()
+        .expect("the storage made the index");
+    assert_eq!(held[0].1.capacity(), index.counts.capacity());
+    assert_eq!(held[1].1.capacity(), index.moved.capacity());
+}
+
+/// A refusal of the scratch after the counts were recorded leaves the storage without an index, and
+/// the consumer holds nothing for the banks of an index the storage does not have.
+#[test]
+fn a_depth_index_whose_scratch_the_allocator_refuses_is_taken_back_whole() {
+    let (mut storage, [_, parent, ..]) = tree();
+    let before = snapshot(&storage);
+    let mut meter = Meter::default();
+    let refusal = crate::internal::amortized::fault::refuse_depth_scratch();
+    assert_eq!(
+        cause(storage.detach(&parent, &mut meter)),
+        HtmlConstructionCause::AllocationFailed
+    );
+    drop(refusal);
+    assert!(storage.arena.index.is_none());
+    assert_eq!(snapshot(&storage), before);
+    assert_exact(&storage.arena, "after the refusal");
+    let held = held_dimensions(&meter);
+    let banks: Vec<_> = held.iter().map(|(bank, _)| *bank).collect();
+    assert_eq!(
+        banks,
+        [
+            HtmlConstructionBank::DepthIndex,
+            HtmlConstructionBank::DepthScratch
+        ]
+    );
+    for (bank, reached) in held {
+        assert_eq!(
+            reached,
+            HtmlConstructionBankCapacity::default(),
+            "the consumer holds the {bank:?} the storage freed"
+        );
+    }
+    // The same operation then succeeds with room.
+    ok(storage.detach(&parent, &mut Meter::default()));
+    assert_exact(&storage.arena, "after the detach");
+}
+
+/// A refusal of the scratch after the counts of an existing index grew leaves the counts grown and
+/// recorded and the scratch as it was; the next growth of the index reserves the scratch alone.
+#[test]
+fn an_index_whose_scratch_growth_is_refused_keeps_its_counts_grown_and_recorded() {
+    let (mut storage, [root, parent, middle, fresh]) = tree();
+    ok(storage.detach(&parent, &mut Meter::default()));
+    ok(storage.insert(&parent, &root, None, &mut Meter::default()));
+    let index = storage
+        .arena
+        .index
+        .as_ref()
+        .expect("the storage made the index");
+    let (levels, counts_before, scratch_before) = (
+        index.counts.len(),
+        index.counts.capacity(),
+        index.moved.capacity(),
+    );
+    assert_eq!(counts_before, scratch_before);
+    // One level more than the index holds: a fresh node below the middle record.
+    let deeper = element(&mut storage, "i");
+    ok(storage.insert(&deeper, &middle, None, &mut Meter::default()));
+    let index = storage.arena.index.as_ref().unwrap();
+    assert!(index.counts.len() > levels);
+    // One level more than the capacity of the index, with the scratch refused: the counts grow
+    // and are recorded, and the scratch does not.
+    let (mut next, mut under) = (fresh, deeper);
+    let mut refused = Meter::default();
+    let mut before = snapshot(&storage);
+    let refusal = crate::internal::amortized::fault::refuse_depth_scratch();
+    let mut outcome = Ok(());
+    for _ in 0..8 {
+        before = snapshot(&storage);
+        outcome = storage.insert(&next, &under, None, &mut refused);
+        if outcome.is_err() {
+            break;
+        }
+        under = next;
+        next = element(&mut storage, "b");
+    }
+    drop(refusal);
+    assert_eq!(cause(outcome), HtmlConstructionCause::AllocationFailed);
+    assert_eq!(snapshot(&storage), before);
+    let index = storage.arena.index.as_ref().unwrap();
+    assert!(index.counts.capacity() > index.moved.capacity());
+    assert_eq!(index.counts.len(), index.moved.len());
+    let held = held_dimensions(&refused);
+    let counts = held
+        .iter()
+        .find(|(bank, _)| *bank == HtmlConstructionBank::DepthIndex)
+        .expect("the counts were recorded");
+    assert_eq!(counts.1.capacity(), index.counts.capacity());
+    let scratch = held
+        .iter()
+        .find(|(bank, _)| *bank == HtmlConstructionBank::DepthScratch)
+        .expect("the scratch was recorded");
+    assert_eq!(scratch.1.capacity(), index.moved.capacity());
+    // The next operation reserves the scratch alone and applies.
+    let mut retry = Meter::default();
+    ok(storage.insert(&next, &under, None, &mut retry));
+    let banks: Vec<_> = retry.growths.iter().map(|growth| growth.bank()).collect();
+    assert_eq!(banks, [HtmlConstructionBank::DepthScratch]);
+    assert_exact(&storage.arena, "after the scratch grew");
 }
 
 #[test]
@@ -1281,38 +1485,59 @@ fn a_growth_chosen_too_small_or_unrepresentable_is_a_typed_fault() {
 
 // ---- exactness of depths ----
 
-fn histogram_is_exact(arena: &BuildArena) -> bool {
-    (0..arena.records.len()).all(|depth| {
-        arena.population(depth)
-            == arena
-                .records
-                .iter()
-                .filter(|record| record.depth == depth)
-                .count()
+/// Whether the depth index, when the storage has made it, counts the records at each depth.
+fn index_is_exact(arena: &BuildArena) -> bool {
+    arena.depth_index().is_none_or(|counts| {
+        (0..counts.len()).all(|depth| {
+            counts[depth] as usize
+                == arena
+                    .depths
+                    .iter()
+                    .filter(|held| **held as usize == depth)
+                    .count()
+        }) && arena
+            .depths
+            .iter()
+            .all(|held| (*held as usize) < counts.len())
     })
 }
 
-/// Checks every cached depth, the usage depth and the histogram against depths recounted from
-/// each record's own parent or owner.
+/// Checks every depth of the column, the usage depth and the index, when the storage has made
+/// one, against depths recounted from each record's own parent or owner.
 fn assert_exact(arena: &BuildArena, context: &str) {
     use super::shape::owning_parent;
     let recount = |start: NodeIx| {
         let (mut index, mut depth) = (start, 0usize);
-        while let Some(parent) = arena.records.get(index.position()).and_then(owning_parent) {
+        while let Some(parent) = arena.rows.get(index.position()).and_then(owning_parent) {
             index = parent;
             depth += 1;
-            assert!(depth <= arena.records.len(), "{context}: owner cycle");
+            assert!(depth <= arena.rows.len(), "{context}: owner cycle");
         }
         depth
     };
+    assert_eq!(
+        arena.depths.len(),
+        arena.rows.len(),
+        "{context}: depth column"
+    );
     let mut deepest = 0;
-    for (index, record) in arena.records.iter().enumerate() {
+    for index in 0..arena.rows.len() {
         let expected = recount(NodeIx::at(index));
-        assert_eq!(record.depth, expected, "{context}: depth of record {index}");
+        assert_eq!(
+            arena.depths[index] as usize, expected,
+            "{context}: depth of record {index}"
+        );
         deepest = deepest.max(expected);
     }
     assert_eq!(arena.usage.depth, deepest, "{context}: usage depth");
-    assert!(histogram_is_exact(arena), "{context}: histogram");
+    assert!(index_is_exact(arena), "{context}: depth index");
+    if let Some(index) = &arena.index {
+        assert_eq!(
+            index.moved.len(),
+            index.counts.len(),
+            "{context}: the depth scratch has the length of the counts"
+        );
+    }
 }
 
 /// A deterministic pseudo-random sequence; the seed is the only input.
@@ -1328,7 +1553,7 @@ impl Sequence {
 }
 
 #[test]
-fn every_topology_operation_keeps_depths_usage_and_histogram_exact_under_random_use() {
+fn every_topology_operation_keeps_depths_usage_and_index_exact_under_random_use() {
     const KINDS: usize = 6;
     let mut successes = [0usize; KINDS];
     for seed in [1, 2, 3, 4, 5, 6] {
@@ -1423,7 +1648,7 @@ fn every_topology_operation_keeps_depths_usage_and_histogram_exact_under_random_
 }
 
 #[test]
-fn rolling_back_nothing_a_refused_creation_leaves_the_histogram_exact() {
+fn rolling_back_nothing_a_refused_creation_leaves_the_index_exact() {
     let mut storage = storage();
     ok(storage.create_fragment(&mut Meter::default()));
     let before = snapshot(&storage);
@@ -1441,7 +1666,7 @@ fn rolling_back_nothing_a_refused_creation_leaves_the_histogram_exact() {
             break;
         }
         assert_eq!(snapshot(&storage), before);
-        assert!(histogram_is_exact(&storage.arena));
+        assert!(index_is_exact(&storage.arena));
     }
 }
 
@@ -1450,7 +1675,7 @@ fn rolling_back_nothing_a_refused_creation_leaves_the_histogram_exact() {
 /// The work of inserting a fresh element at the end of a parent, by category.
 fn append_work(storage: &mut HtmlConstructionStorage, parent: &HtmlBuilderNode) -> [u64; 5] {
     let fresh = element(storage, "fresh");
-    // The child order has room, so the insertion grows nothing.
+    // An insertion edits links and grows no bank.
     let mut meter = Meter::default();
     ok(storage.insert(&fresh, parent, None, &mut meter));
     assert!(
@@ -1500,12 +1725,15 @@ fn appending_a_fresh_node_visits_the_same_records_at_every_fanout_and_depth() {
     }
     // The visits are the operands, the shallow check and the placement, and no more.
     assert_eq!(base_wide[VISIT], 2 + 2 + 3);
-    assert_eq!(base_deep, base_wide);
+    assert_eq!(base_deep[VISIT], base_wide[VISIT]);
+    // `wide` took a node out of the deepest level, so its storage kept the count of records at
+    // each depth after it: the depth entry of the new node and its count are two writes more.
+    assert_eq!(base_wide[WRITE], base_deep[WRITE] + 2);
 }
 
-/// The records written by inserting a fresh element before the child at `place` of `fanout`
-/// children, or last when `place == fanout`, with room in the child order.
-fn insert_writes(fanout: usize, place: usize) -> u64 {
+/// The records visited and written by inserting a fresh element before the child at `place` of
+/// `fanout` children, or last when `place == fanout`, with room in the row banks.
+fn insert_work_at(fanout: usize, place: usize) -> [u64; 5] {
     let mut storage = storage();
     let root = ok(storage.create_fragment(&mut Meter::default()));
     ok(storage.reserve_records(fanout + 2, &mut Meter::default()));
@@ -1515,35 +1743,59 @@ fn insert_writes(fanout: usize, place: usize) -> u64 {
         insert(&mut storage, &child, &root);
         children.push(child);
     }
-    assert!(
-        storage.node(&root).unwrap().children().len() < 64,
-        "the child order has room for one more entry"
-    );
     let fresh = element(&mut storage, "fresh");
+    // The insertion's own reservation is not the cost being compared.
+    let mut meter = Meter::default();
+    let spare = element(&mut storage, "spare");
+    ok(storage.insert(&spare, &root, None, &mut meter));
+    ok(storage.detach(&spare, &mut meter));
     let mut meter = Meter::default();
     ok(storage.insert(&fresh, &root, children.get(place), &mut meter));
     assert!(meter.growths.is_empty(), "the insertion grew a bank");
-    meter.work[WRITE]
+    meter.work
 }
 
 #[test]
-fn inserting_at_a_place_writes_the_entries_shifted_towards_the_nearer_end() {
-    // A deque opens a place by moving the entries between it and the nearer end, so inserting
-    // before the child at place `p` of `n` entries moves the lesser of `p` and `n - p` of them,
-    // one write each, and every other write of the insertion is the same at every place.
+fn inserting_before_a_sibling_visits_the_same_records_at_every_place() {
     let fanout = 60;
-    let base = insert_writes(fanout, 0);
-    for place in [1, 7, 29, 30, 31, 53, 59, 60] {
-        let moved = place.min(fanout - place) as u64;
+    let base = insert_work_at(fanout, 0)[VISIT];
+    for place in [1, 7, 29, 30, 31, 53, 59] {
         assert_eq!(
-            insert_writes(fanout, place),
-            base + moved,
+            insert_work_at(fanout, place)[VISIT],
+            base,
             "inserting before the child at place {place} of {fanout}"
+        );
+    }
+    // Inserting last names no sibling, so it visits one record less: the operand of the sibling.
+    assert_eq!(insert_work_at(fanout, fanout)[VISIT] + 1, base);
+}
+
+#[test]
+fn the_writes_of_an_insert_in_the_middle_of_a_parent_stay_constant_as_the_fanout_doubles() {
+    let base = insert_work_at(1_000, 500)[WRITE];
+    for fanout in [2_000, 4_000, 8_000] {
+        assert_eq!(
+            insert_work_at(fanout, fanout / 2)[WRITE],
+            base,
+            "inserting in the middle of {fanout} children"
         );
     }
 }
 
-/// A fragment `root` with the ordinary children `a` (position 1) and `b` (position 2).
+#[test]
+fn a_build_row_is_thirty_two_bytes_and_the_bank_that_holds_it_grows_by_that_size() {
+    let mut storage = storage();
+    let mut meter = Meter::default();
+    ok(storage.create_fragment(&mut meter));
+    let growth = meter.growths[0];
+    assert_eq!(growth.bank(), HtmlConstructionBank::NodeRows);
+    assert_eq!(growth.element_size(), 32);
+    // The depth is a column of its own, four bytes a record.
+    let depths = meter.growths[1];
+    assert_eq!(depths.bank(), HtmlConstructionBank::Depths);
+    assert_eq!(depths.element_size(), 4);
+}
+
 fn membership_tree() -> (HtmlConstructionStorage, HtmlBuilderNode) {
     let mut storage = storage();
     let root = ok(storage.create_fragment(&mut Meter::default()));
@@ -1570,37 +1822,263 @@ fn publish_refusal(
 }
 
 #[test]
-fn a_publication_accepts_each_child_listed_exactly_once_whatever_stale_counts_say() {
-    let (mut storage, root) = membership_tree();
-    // A count left by an earlier publication is never trusted.
-    for record in &mut storage.arena.records {
-        record.publish_found = 2;
-    }
+fn a_publication_lists_each_child_exactly_once_in_the_order_of_its_links() {
+    let (storage, root) = membership_tree();
     let result = ok(storage
         .publish(&root, &mut Meter::default())
         .map_err(|refusal| refusal.into_parts().1));
     assert_eq!(result.len(), 3);
+    let listed: Vec<_> = result
+        .node_at(0)
+        .unwrap()
+        .children()
+        .map(HtmlConstructionNode::position)
+        .collect();
+    assert_eq!(listed, [1, 2]);
+}
+
+/// A text that moved when it was appended to holds the units reserved after it in the slot of its
+/// first child. Every reader of the children sees none, and the published node has none.
+#[test]
+fn a_text_that_holds_room_has_no_children_for_any_reader_and_publishes_without_any() {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    let div = element(&mut storage, "div");
+    insert(&mut storage, &div, &root);
+    let moved = ok(storage.create_text(&utf16("ab"), &mut Meter::default()));
+    let tail = ok(storage.create_text(&utf16("cd"), &mut Meter::default()));
+    insert(&mut storage, &moved, &div);
+    insert(&mut storage, &tail, &div);
+    // The text is no longer the tail of the arena, so the append moves it to a region twice the
+    // three units it becomes ("abx"), which leaves three units of room after it.
+    let offset = ok(storage.append_text(&moved, &utf16("x"), &mut Meter::default()));
+    assert_eq!(offset, 2);
+    let at = position(&storage, &moved);
+    let room = storage.arena.rows[at]
+        .text_run()
+        .expect("a text run")
+        .room();
+    assert_eq!(room, 3, "the append left room after the text");
+    assert!(
+        storage.arena.rows[at].first_child.is_some(),
+        "the room is held in the slot of the first child"
+    );
+
+    let node = storage.node(&moved).unwrap();
+    assert!(node.first_child().is_none(), "built first_child");
+    assert!(node.last_child().is_none(), "built last_child");
+    assert!(
+        node.children().next().is_none(),
+        "built children from the front"
+    );
+    assert!(
+        node.children().next_back().is_none(),
+        "built children from the back"
+    );
+    // The links among its siblings are unaffected.
+    assert_eq!(
+        node.next_sibling().map(HtmlConstructionNode::position),
+        Some(position(&storage, &tail))
+    );
+    assert_eq!(
+        node.parent().map(HtmlConstructionNode::position),
+        Some(position(&storage, &div))
+    );
+    // A walk of the text's subtree reaches the text alone.
+    let mut walk = super::depth::Walk::new(&storage.arena, NodeIx::at(at), None);
+    assert_eq!(walk.next(&storage.arena), Ok(Some((NodeIx::at(at), 0))));
+    assert_eq!(walk.next(&storage.arena), Ok(None));
+    // Moving the subtree that holds it keeps every depth exact: the walk of the move reads no
+    // child of the text.
+    let elsewhere = element(&mut storage, "section");
+    insert(&mut storage, &elsewhere, &root);
+    let deeper = element(&mut storage, "p");
+    insert(&mut storage, &deeper, &elsewhere);
+    ok(storage.insert(&div, &deeper, None, &mut Meter::default()));
+    assert_exact(
+        &storage.arena,
+        "after moving the parent of a text with room",
+    );
+    ok(storage.detach(&div, &mut Meter::default()));
+    assert_exact(
+        &storage.arena,
+        "after detaching the parent of a text with room",
+    );
+    insert(&mut storage, &div, &root);
+    assert_exact(&storage.arena, "after attaching it again");
+
+    let result = ok(storage
+        .publish(&root, &mut Meter::default())
+        .map_err(|refusal| refusal.into_parts().1));
+    let published = result.node_at(at).expect("the published text");
+    assert!(published.first_child().is_none(), "published first_child");
+    assert!(published.last_child().is_none(), "published last_child");
+    assert!(
+        published.children().next().is_none(),
+        "published children from the front"
+    );
+    assert!(
+        published.children().next_back().is_none(),
+        "published children from the back"
+    );
+    let units = match published.kind() {
+        crate::internal::construction::ConstructionNodeKind::Text(text) => {
+            text.code_units().unwrap().to_vec()
+        }
+        other => panic!("a text, got {other:?}"),
+    };
+    assert_eq!(units, utf16("abx"));
+}
+
+/// A first-child link that names an ancestor makes the walk of a subtree descend for ever. The
+/// descent counts against the same budget as the ascent, so the walk ends with the cycle defect
+/// within a number of steps that depends only on the rows.
+#[test]
+fn a_walk_down_a_first_child_cycle_ends_with_the_cycle_defect() {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    let a = element(&mut storage, "a");
+    let b = element(&mut storage, "b");
+    insert(&mut storage, &a, &root);
+    insert(&mut storage, &b, &a);
+    let (at_a, at_b) = (position(&storage, &a), position(&storage, &b));
+    // `b` lists its own parent as its first child.
+    storage.arena.rows[at_b].first_child = Some(NodeIx::at(at_a));
+    let mut walk = super::depth::Walk::new(&storage.arena, NodeIx::at(at_a), None);
+    let limit = 3 * storage.arena.rows.len() + 10;
+    let mut result = Ok(None);
+    for _ in 0..limit {
+        result = walk.next(&storage.arena);
+        if result.is_err() {
+            break;
+        }
+    }
+    assert_eq!(result, Err(HtmlConstructionCause::Cycle.error()));
+}
+
+/// The published arm of the sibling methods answers from the children of the parent.
+#[test]
+fn a_published_node_reaches_its_siblings_as_its_parents_children_list_them() {
+    let mut storage = storage();
+    let root = ok(storage.create_fragment(&mut Meter::default()));
+    let parent = element(&mut storage, "div");
+    insert(&mut storage, &parent, &root);
+    let mut kids = Vec::new();
+    for local in ["a", "b", "c", "d"] {
+        let kid = element(&mut storage, local);
+        insert(&mut storage, &kid, &parent);
+        kids.push(kid);
+    }
+    let grandchild = element(&mut storage, "g");
+    insert(&mut storage, &grandchild, &kids[1]);
+    let detached = element(&mut storage, "detached");
+    let positions_of: Vec<_> = [&root, &parent, &grandchild, &detached]
+        .into_iter()
+        .chain(kids.iter())
+        .map(|handle| (*handle, position(&storage, handle)))
+        .collect();
+    let result = ok(storage
+        .publish(&root, &mut Meter::default())
+        .map_err(|refusal| refusal.into_parts().1));
+    let view = |handle: &HtmlBuilderNode| {
+        let (_, at) = positions_of
+            .iter()
+            .find(|(held, _)| held == handle)
+            .expect("a handle of the storage");
+        result.node_at(*at).expect("a published view")
+    };
+    let positions = |nodes: Vec<HtmlConstructionNode<'_>>| {
+        nodes
+            .into_iter()
+            .map(HtmlConstructionNode::position)
+            .collect::<Vec<_>>()
+    };
+    let listed = positions(view(&parent).children().collect());
+    assert_eq!(listed.len(), 4);
+    for (at, kid) in kids.iter().enumerate() {
+        let node = view(kid);
+        let next = listed.get(at + 1).copied();
+        let previous = at
+            .checked_sub(1)
+            .and_then(|before| listed.get(before))
+            .copied();
+        assert_eq!(
+            node.next_sibling().map(HtmlConstructionNode::position),
+            next,
+            "next sibling of child {at}"
+        );
+        assert_eq!(
+            node.previous_sibling().map(HtmlConstructionNode::position),
+            previous,
+            "previous sibling of child {at}"
+        );
+    }
+    // The first child has no previous sibling and the last no next.
+    assert!(view(&kids[0]).previous_sibling().is_none());
+    assert!(view(&kids[3]).next_sibling().is_none());
+    // An only child, a root and a record that was never inserted have neither.
+    for (handle, context) in [
+        (&grandchild, "an only child"),
+        (&root, "the root"),
+        (&detached, "a detached record"),
+    ] {
+        assert!(view(handle).next_sibling().is_none(), "{context}: next");
+        assert!(
+            view(handle).previous_sibling().is_none(),
+            "{context}: previous"
+        );
+    }
+    // The same walk by siblings from the first child lists the children in order.
+    let mut walked = Vec::new();
+    let mut cursor = view(&parent).first_child();
+    while let Some(node) = cursor {
+        walked.push(node.position());
+        cursor = node.next_sibling();
+    }
+    assert_eq!(walked, listed);
 }
 
 #[test]
-fn a_publication_refuses_a_child_listed_twice_and_a_later_one_never_trusts_its_counts() {
+fn a_publication_refuses_a_child_listed_twice_and_hands_the_storage_back_whole() {
     let (mut storage, root) = membership_tree();
-    let listed = storage.arena.records[0].children.clone();
-    storage.arena.records[0].children =
-        VecDeque::from([NodeIx::at(1), NodeIx::at(1), NodeIx::at(2)]);
+    let (a, b) = (NodeIx::at(1), NodeIx::at(2));
+    // The first child lists itself as its next sibling, so the chain meets it twice.
+    storage.arena.rows[1].next = Some(a);
+    let corrupt = snapshot(&storage);
     let (mut storage, cause) = publish_refusal(storage, &root);
     assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
-    // The refusal left its counts written; mending the list lets the next publication succeed.
-    storage.arena.records[0].children = listed;
-    let published = storage.publish(&root, &mut Meter::default());
-    assert!(published.is_ok());
+    assert_eq!(snapshot(&storage), corrupt);
+    // Mending the link lets the next publication succeed.
+    storage.arena.rows[1].next = Some(b);
+    assert!(storage.publish(&root, &mut Meter::default()).is_ok());
 }
 
 #[test]
-fn a_publication_refuses_a_child_missing_from_its_parents_list_despite_a_stale_count() {
+fn a_publication_refuses_a_child_that_lost_its_parent() {
     let (mut storage, root) = membership_tree();
-    storage.arena.records[0].children = VecDeque::from([NodeIx::at(1)]);
-    storage.arena.records[2].publish_found = 1;
+    storage.arena.rows[2].parent = None;
+    let corrupt = snapshot(&storage);
+    let (storage, cause) = publish_refusal(storage, &root);
+    assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
+    assert_eq!(snapshot(&storage), corrupt);
+}
+
+#[test]
+fn a_publication_refuses_a_child_whose_previous_sibling_is_wrong() {
+    let (mut storage, root) = membership_tree();
+    storage.arena.rows[2].prev = None;
+    let corrupt = snapshot(&storage);
+    let (storage, cause) = publish_refusal(storage, &root);
+    assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
+    assert_eq!(snapshot(&storage), corrupt);
+}
+
+#[test]
+fn a_publication_refuses_a_child_missing_from_its_parents_chain() {
+    let (mut storage, root) = membership_tree();
+    // `b` names the root as its parent, but the root's chain ends at `a`.
+    storage.arena.rows[0].last_child = Some(NodeIx::at(1));
+    storage.arena.rows[1].next = None;
     let (_, cause) = publish_refusal(storage, &root);
     assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
 }
@@ -1609,102 +2087,334 @@ fn a_publication_refuses_a_child_missing_from_its_parents_list_despite_a_stale_c
 fn a_publication_refuses_a_child_listed_only_by_another_parent() {
     // `b` names the root as its parent but only `a` lists it.
     let (mut storage, root) = membership_tree();
-    storage.arena.records[0].children = VecDeque::from([NodeIx::at(1)]);
-    storage.arena.records[1].children = VecDeque::from([NodeIx::at(2)]);
+    storage.arena.rows[0].last_child = Some(NodeIx::at(1));
+    storage.arena.rows[1].next = None;
+    storage.arena.rows[1].first_child = Some(NodeIx::at(2));
+    storage.arena.rows[1].last_child = Some(NodeIx::at(2));
+    storage.arena.rows[2].prev = None;
     let (_, cause) = publish_refusal(storage, &root);
     assert_eq!(cause, HtmlConstructionCause::ParentChildConflict);
 }
 
-/// The planned writes of an order edit that no longer find what planning found are refused before
-/// the writes, with the records as they were.
+/// An order edit whose links no longer agree with the rows planning read is refused before the
+/// writes, with the records as they were.
 #[test]
 fn an_order_edit_that_no_longer_finds_its_planned_places_is_refused_before_any_write() {
-    use super::order::Edit;
     let (mut storage, _root) = membership_tree();
     let (a, b) = (NodeIx::at(1), NodeIx::at(2));
-    // `b` leaves the root's order for its end: the place it is planned to leave must hold it.
-    let planned = Edit {
-        old_parent: Some(NodeIx::FIRST),
-        old_position: 1,
-        insertion_position: 1,
-    };
-    // The root's order has room for the entry it gets back.
-    storage.arena.records[0].children.reserve(4);
+    // `b` leaves the root's list for its end: its neighbours must hold it.
+    assert_eq!(storage.verify_order(b, Some(NodeIx::FIRST), None), Ok(()));
     assert_eq!(
-        storage.verify_order(b, Some(NodeIx::FIRST), &planned),
+        storage.verify_order(a, Some(NodeIx::FIRST), Some(b)),
         Ok(())
     );
     let before = snapshot(&storage);
-    for (edit, cause) in [
-        (
-            Edit {
-                old_position: 0,
-                ..planned
-            },
-            HtmlConstructionCause::ParentChildConflict,
-        ),
-        (
-            Edit {
-                insertion_position: 2,
-                ..planned
-            },
-            HtmlConstructionCause::ParentChildConflict,
-        ),
-    ] {
-        assert_eq!(
-            storage.verify_order(b, Some(NodeIx::FIRST), &edit),
-            Err(cause.error())
-        );
-    }
-    // A parent past every record is the unknown-node defect, and a full order is a capacity
-    // mismatch.
+    // A previous sibling that does not list the node as its next one.
+    storage.arena.rows[1].next = None;
     assert_eq!(
-        storage.verify_order(
-            a,
-            Some(NodeIx::at(u32::MAX as usize - 1)),
-            &Edit {
-                old_parent: None,
-                ..Edit::default()
-            }
-        ),
+        storage.verify_order(a, Some(NodeIx::FIRST), None),
+        Err(HtmlConstructionCause::ParentChildConflict.error())
+    );
+    storage.arena.rows[1].next = Some(b);
+    // A place whose parent is not the one the node goes into.
+    assert_eq!(
+        storage.verify_order(b, Some(a), Some(a)),
+        Err(HtmlConstructionCause::ParentChildConflict.error())
+    );
+    // A parent past every record is the unknown-node defect.
+    assert_eq!(
+        storage.verify_order(a, Some(NodeIx::at(u32::MAX as usize - 1)), None),
         Err(HtmlConstructionCause::UnknownNode.error())
     );
-    let children = &mut storage.arena.records[0].children;
-    while children.len() < children.capacity() {
-        children.push_back(NodeIx::FIRST);
-    }
-    let full = snapshot(&storage);
-    assert_eq!(
-        storage.verify_order(
-            a,
-            Some(NodeIx::FIRST),
-            &Edit {
-                old_parent: None,
-                insertion_position: 0,
-                ..Edit::default()
+    assert_eq!(snapshot(&storage), before);
+}
+
+/// The three maps of the associations, kept by a model that knows nothing of the table: the
+/// contents of each template and whether it owns them, the shadow root of each host, and the
+/// owner of each contents fragment, as a node id and as a position. The elements that are children
+/// of a fragment are fixed for the run.
+#[derive(Default)]
+struct AssociationModel {
+    contents: std::collections::HashMap<usize, (usize, HtmlTemplateContentsKind)>,
+    shadow: std::collections::HashMap<usize, usize>,
+    owner: std::collections::HashMap<usize, HtmlFragmentOwner>,
+    owner_at: std::collections::HashMap<usize, usize>,
+    inside: std::collections::HashMap<usize, usize>,
+}
+impl AssociationModel {
+    /// Whether `target` lies on the chain above `from`, `from` included: an element's parent
+    /// fragment, and the element that owns a fragment.
+    fn above(&self, from: usize, target: usize) -> bool {
+        let mut cursor = Some(from);
+        for _ in 0..=self.inside.len() + self.owner_at.len() + 1 {
+            match cursor {
+                None => return false,
+                Some(at) if at == target => return true,
+                Some(at) => {
+                    cursor = self
+                        .inside
+                        .get(&at)
+                        .or_else(|| self.owner_at.get(&at))
+                        .copied();
+                }
             }
-        ),
-        Err(HtmlConstructionCause::CapacityMismatch.error())
-    );
-    assert_eq!(snapshot(&storage), full);
-    assert_ne!(full, before, "the order was filled to make it full");
+        }
+        panic!("the model's owner chain has a cycle");
+    }
 }
 
 #[test]
-fn rolling_back_a_native_append_removes_its_records_from_the_histogram() {
+fn the_association_table_agrees_with_a_model_of_three_maps_through_random_attachments() {
+    let mut accepted = [0usize; 3];
+    let (mut cycles, mut nested_hosts) = (0usize, 0usize);
+    let is_cycle = |outcome: &Outcome<()>| matches!(outcome, Err(HtmlChargedError::Faulted(error)) if error.cause() == HtmlConstructionCause::Cycle);
+    for seed in [11, 12, 13, 14] {
+        let mut sequence = Sequence(seed);
+        let mut storage = storage();
+        let m = Meter::default;
+        let (mut templates, mut hosts, mut shadows) = (Vec::new(), Vec::new(), Vec::new());
+        for _ in 0..24 {
+            hosts.push(element(&mut storage, "e"));
+        }
+        for _ in 0..16 {
+            templates.push(element(&mut storage, "template"));
+        }
+        for _ in 0..48 {
+            shadows.push(ok(
+                storage.create_shadow_contents(shadow_properties(), &mut m())
+            ));
+        }
+        let mut model = AssociationModel::default();
+        let mut fragments = Vec::new();
+        for template in &templates {
+            let owned = storage
+                .node(template)
+                .unwrap()
+                .template_contents()
+                .unwrap()
+                .position();
+            fragments.push(owned);
+            model.contents.insert(
+                position(&storage, template),
+                (owned, HtmlTemplateContentsKind::Owned),
+            );
+            model.owner.insert(
+                owned,
+                HtmlFragmentOwner::Template(storage.result_id(template).unwrap()),
+            );
+            model.owner_at.insert(owned, position(&storage, template));
+        }
+        fragments.extend(shadows.iter().map(|shadow| position(&storage, shadow)));
+        // The nested cases: a shadow host inside a shadow root, and a template inside the
+        // contents of another template.
+        for (at, host) in hosts[12..].iter().enumerate() {
+            insert(&mut storage, host, &shadows[at]);
+            model
+                .inside
+                .insert(position(&storage, host), position(&storage, &shadows[at]));
+        }
+        for (at, template) in templates[8..].iter().enumerate() {
+            let contents = storage
+                .node(&templates[at])
+                .unwrap()
+                .template_contents()
+                .unwrap()
+                .handle();
+            insert(&mut storage, template, &contents);
+            model
+                .inside
+                .insert(position(&storage, template), position(&storage, &contents));
+        }
+        let elements: Vec<HtmlBuilderNode> = hosts.iter().chain(&templates).cloned().collect();
+        // Half the time a host that sits inside a shadow root is offered that root as its own,
+        // which is a cycle whenever the root is still free.
+        let own_container = |storage: &HtmlConstructionStorage,
+                             model: &AssociationModel,
+                             host: &HtmlBuilderNode,
+                             shadow: HtmlBuilderNode,
+                             sequence: &mut Sequence| {
+            let own = model
+                .inside
+                .get(&position(storage, host))
+                .and_then(|fragment| {
+                    shadows
+                        .iter()
+                        .find(|candidate| position(storage, candidate) == *fragment)
+                });
+            match own {
+                Some(own) if sequence.next(2) == 0 => *own,
+                _ => shadow,
+            }
+        };
+        for step in 0..400 {
+            let kind = sequence.next(3);
+            let ids = |storage: &HtmlConstructionStorage, node: &HtmlBuilderNode| {
+                storage.result_id(node).unwrap()
+            };
+            let outcome = match kind {
+                0 => {
+                    let host = elements[sequence.next(elements.len())];
+                    let shadow = shadows[sequence.next(shadows.len())];
+                    let shadow = own_container(&storage, &model, &host, shadow, &mut sequence);
+                    let (h, c) = (position(&storage, &host), position(&storage, &shadow));
+                    let allowed = !model.shadow.contains_key(&h) && !model.owner.contains_key(&c);
+                    // The shadow root may not hold its own host, however deep.
+                    let cycle = allowed && model.above(h, c);
+                    let ok_model = allowed && !cycle;
+                    let outcome = storage.attach_shadow(&host, &shadow, &mut m());
+                    assert_eq!(outcome.is_ok(), ok_model, "seed {seed}, step {step}");
+                    assert_eq!(is_cycle(&outcome), cycle, "seed {seed}, step {step}");
+                    cycles += usize::from(cycle);
+                    nested_hosts += usize::from(ok_model && model.inside.contains_key(&h));
+                    if ok_model {
+                        model.owner_at.insert(c, h);
+                        model.shadow.insert(h, c);
+                        model
+                            .owner
+                            .insert(c, HtmlFragmentOwner::ShadowHost(ids(&storage, &host)));
+                    }
+                    outcome
+                }
+                1 => {
+                    let template = templates[sequence.next(templates.len())];
+                    let host = elements[sequence.next(elements.len())];
+                    let shadow = shadows[sequence.next(shadows.len())];
+                    let shadow = own_container(&storage, &model, &host, shadow, &mut sequence);
+                    let (t, h, c) = (
+                        position(&storage, &template),
+                        position(&storage, &host),
+                        position(&storage, &shadow),
+                    );
+                    let owns = matches!(
+                        model.contents.get(&t),
+                        Some((_, HtmlTemplateContentsKind::Owned))
+                    );
+                    let allowed =
+                        owns && !model.shadow.contains_key(&h) && !model.owner.contains_key(&c);
+                    let cycle = allowed && model.above(h, c);
+                    let ok_model = allowed && !cycle;
+                    let released = model.contents.get(&t).map(|(released, _)| *released);
+                    let outcome =
+                        storage.attach_template_shadow(&template, &host, &shadow, &mut m());
+                    assert_eq!(outcome.is_ok(), ok_model, "seed {seed}, step {step}");
+                    assert_eq!(is_cycle(&outcome), cycle, "seed {seed}, step {step}");
+                    cycles += usize::from(cycle);
+                    nested_hosts += usize::from(ok_model && model.inside.contains_key(&h));
+                    if ok_model {
+                        model.owner.remove(&released.unwrap());
+                        model.owner_at.remove(&released.unwrap());
+                        model.owner_at.insert(c, h);
+                        model
+                            .contents
+                            .insert(t, (c, HtmlTemplateContentsKind::ShadowReference));
+                        model.shadow.insert(h, c);
+                        model
+                            .owner
+                            .insert(c, HtmlFragmentOwner::ShadowHost(ids(&storage, &host)));
+                    }
+                    outcome
+                }
+                _ => {
+                    let template = templates[sequence.next(templates.len())];
+                    let shadow = shadows[sequence.next(shadows.len())];
+                    let (t, c) = (position(&storage, &template), position(&storage, &shadow));
+                    let owns = matches!(
+                        model.contents.get(&t),
+                        Some((_, HtmlTemplateContentsKind::Owned))
+                    );
+                    let ok_model = owns && !model.owner.contains_key(&c);
+                    let released = model.contents.get(&t).map(|(released, _)| *released);
+                    let outcome =
+                        storage.set_template_shadow_contents(&template, &shadow, &mut m());
+                    assert_eq!(outcome.is_ok(), ok_model, "seed {seed}, step {step}");
+                    if ok_model {
+                        model.owner.remove(&released.unwrap());
+                        model.owner_at.remove(&released.unwrap());
+                        model
+                            .contents
+                            .insert(t, (c, HtmlTemplateContentsKind::ShadowReference));
+                    }
+                    outcome
+                }
+            };
+            accepted[kind] += usize::from(outcome.is_ok());
+            // Every template, host and fragment reads what the model holds.
+            for node in &elements {
+                let view = storage.node(node).unwrap();
+                let at = position(&storage, node);
+                assert_eq!(
+                    view.template_contents().map(HtmlConstructionNode::position),
+                    model.contents.get(&at).map(|(contents, _)| *contents),
+                    "seed {seed}, step {step}: contents of {at}"
+                );
+                assert_eq!(
+                    view.template_contents_kind(),
+                    model.contents.get(&at).map(|(_, kind)| *kind),
+                    "seed {seed}, step {step}: kind of {at}"
+                );
+                assert_eq!(
+                    view.shadow_root().map(|root| root.contents()),
+                    model
+                        .shadow
+                        .get(&at)
+                        .map(|contents| storage.node_at(*contents).unwrap().handle())
+                        .map(|handle| storage.result_id(&handle).unwrap()),
+                    "seed {seed}, step {step}: shadow root of {at}"
+                );
+            }
+            // Every fragment, owned or released, nested or not, reads the owner the model holds.
+            for contents in fragments.iter().copied() {
+                assert_eq!(
+                    storage.node_at(contents).unwrap().fragment_owner(),
+                    model.owner.get(&contents).copied(),
+                    "seed {seed}, step {step}: owner of {contents}"
+                );
+            }
+            // The nested elements stay the children of the fragments they were inserted into.
+            for (child, fragment) in &model.inside {
+                assert_eq!(
+                    storage
+                        .node_at(*child)
+                        .unwrap()
+                        .parent()
+                        .map(HtmlConstructionNode::position),
+                    Some(*fragment),
+                    "seed {seed}, step {step}: parent of {child}"
+                );
+            }
+            assert_exact(&storage.arena, "associations");
+        }
+        // The table publishes: its entries are sorted and every one is valid.
+        let root = ok(storage.create_fragment(&mut m()));
+        assert!(storage.publish(&root, &mut m()).is_ok(), "seed {seed}");
+    }
+    assert!(
+        accepted.iter().all(|count| *count > 5),
+        "accepted attachments per kind: {accepted:?}"
+    );
+    assert!(
+        cycles > 5 && nested_hosts > 5,
+        "cycles {cycles}, accepted nested hosts {nested_hosts}"
+    );
+}
+
+#[test]
+fn rolling_back_a_native_append_removes_its_records_from_the_depth_column() {
     let mut storage = storage();
     ok(storage.create_fragment(&mut Meter::default()));
     let (len, usage) = (storage.len(), storage.usage());
-    assert!(histogram_is_exact(&storage.arena));
-    // A template creates two records, at depths 0 and 1.
+    assert_exact(&storage.arena, "before");
+    // A template creates two records, at depths 0 and 1, and an entry of the association table.
     element(&mut storage, "template");
     assert_eq!(storage.len(), len + 2);
-    assert!(histogram_is_exact(&storage.arena));
+    assert_eq!(storage.arena.associations.len(), 1);
+    assert_exact(&storage.arena, "created");
     storage.rollback_native_append(len, usage).unwrap();
     assert_eq!(storage.len(), len);
     assert_eq!(storage.usage(), usage);
-    assert!(histogram_is_exact(&storage.arena));
-    assert_eq!(storage.arena.population(0), 1);
+    assert!(storage.arena.associations.is_empty());
+    assert_exact(&storage.arena, "rolled back");
+    assert_eq!(storage.arena.depths, [0]);
 }
 
 /// The tree of [`tree`] whose text arena has room for many more units than its text holds, so
@@ -2013,7 +2723,7 @@ fn a_text_the_block_cannot_share_refuses_the_publication_and_returns_the_text_wh
 #[test]
 fn a_text_record_that_names_units_the_arena_lacks_refuses_the_publication() {
     let (mut storage, [root, ..]) = tree();
-    storage.arena.records[3].kind = NodeContent::Text(TextRun::invalid());
+    storage.arena.rows[3].set_text_run(TextRun::invalid());
     let before = snapshot(&storage);
     let (storage, error) = match publish_tree(storage, &root, &mut Meter::default()) {
         Err(refusal) => *refusal,
@@ -2485,19 +3195,19 @@ fn a_refusal_at_any_step_of_creating_an_authored_element_leaves_storage_and_ledg
     //   change: 5;
     // - the charge of the writes: 1, of the filled rows (one quantum): 1, and of the run: 1;
     // - for each attribute the charge of its value (one chunk) and of its row: 2 x 4;
-    // - the admission of the four banks (records, text, runs, rows): 4, and the record of each
-    //   at the capacity chosen, which the allocator reaches exactly: 4;
+    // - the admission of the five banks (rows, depths, text, runs, attribute rows): 5, and the
+    //   record of each at the capacity chosen, which the allocator reaches exactly: 5;
     // - the record of the change: 1.
-    let expected = 1 + 3 * 5 + 5 + (1 + 1 + 1) + 2 * 4 + 4 + 4 + 1;
-    assert_eq!(expected, 41);
+    let expected = 1 + 3 * 5 + 5 + (1 + 1 + 1) + 2 * 4 + 5 + 5 + 1;
+    assert_eq!(expected, 43);
     assert_eq!(refused, expected, "the creation made {refused} calls");
 }
 
 #[test]
 fn a_refused_allocator_request_at_each_point_of_creating_an_authored_element_is_all_or_nothing() {
     use crate::internal::amortized::fault;
-    // The creation makes five requests: the vector of the interned names of the attributes, then
-    // the banks it grows (records, text, runs and rows), each with spare room.
+    // The creation makes six requests: the vector of the interned names of the attributes, then
+    // the banks it grows (rows, depths, text, runs and attribute rows), each with spare room.
     let mut counted = storage();
     let (element, attributes) = authored_element(&mut counted);
     let mut ledger = Ledger {
@@ -2508,7 +3218,7 @@ fn a_refused_allocator_request_at_each_point_of_creating_an_authored_element_is_
     ok(counted.create_element(&element, attributes, None, &mut ledger));
     let requests = fault::requests();
     drop(counting);
-    assert_eq!(requests, 1 + 4);
+    assert_eq!(requests, 1 + 5);
     let units = ledger.units;
     for refuse_from in 1..=requests {
         let mut storage = storage();
@@ -2650,15 +3360,10 @@ fn a_value_the_arena_lacks_and_a_run_the_table_lacks_refuse_the_publication_and_
     use crate::internal::construction::attribute_table::AttrRow;
     // A value whose range the text arena does not hold.
     let (mut storage, [root, ..]) = attributed_tree(false);
-    let target = storage.attrs.live(match &storage.arena.records[1].kind {
-        NodeContent::Element(element) => element.attrs,
-        _ => panic!("the first child record is the div"),
-    });
-    let first = target.unwrap()[0].entry().clone();
-    let run = match &storage.arena.records[1].kind {
-        NodeContent::Element(element) => element.attrs.unwrap(),
-        _ => unreachable!(),
-    };
+    let run = storage.arena.rows[1]
+        .run()
+        .expect("the first child record is the div");
+    let first = storage.attrs.live(Some(run)).unwrap()[0].entry().clone();
     storage
         .attrs
         .replace(run, 0, AttrRow::new(first, TextRun::invalid().text()))
@@ -2684,9 +3389,8 @@ fn a_value_the_arena_lacks_and_a_run_the_table_lacks_refuse_the_publication_and_
     assert_eq!(snapshot(&storage), before);
     // An element that names a run the table does not hold.
     let (mut storage, [root, ..]) = attributed_tree(false);
-    if let NodeContent::Element(element) = &mut storage.arena.records[1].kind {
-        element.attrs = Some(crate::internal::construction::attribute_table::RunIx::beyond());
-    }
+    storage.arena.rows[1].b =
+        crate::internal::construction::attribute_table::RunIx::beyond().stored();
     let view = storage.node_at(1).unwrap().kind();
     let crate::internal::construction::ConstructionNodeKind::Element(element) = view else {
         panic!("an element record");
@@ -2910,17 +3614,11 @@ fn a_published_tree_lists_every_node_with_a_parent_once_and_keeps_rows_for_detac
 
 #[test]
 fn a_publication_refuses_an_element_that_names_an_entry_its_names_do_not_hold() {
-    // An entry of another table at the position of an entry of this one, and an entry at a
-    // position this table does not have.
-    for number in [0u32, 99] {
+    // A position this table does not have. A position it has names an entry of the table, which
+    // is another valid name and not a reference the publication can refuse.
+    for number in [99u32, u32::MAX] {
         let (mut storage, [root, ..]) = attributed_tree(false);
-        if let NodeContent::Element(element) = &mut storage.arena.records[1].kind {
-            element.name = Arc::new(crate::internal::construction::names::NameEntry::new(
-                name("other"),
-                0,
-                number,
-            ));
-        }
+        storage.arena.rows[1].a = number;
         let before = snapshot(&storage);
         let mut meter = Meter::default();
         let (storage, error) = match publish_tree(storage, &root, &mut meter) {

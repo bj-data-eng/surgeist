@@ -1,91 +1,23 @@
 //! Insertion, detachment and the structural check of a transfer of children.
 //!
-//! The child order of a record is a deque: it makes room for an entry by moving the entries
-//! between its place and the nearer end, so a place near either end shifts few entries. A place is
-//! found by walking the order from both ends alternately, one entry per visit, starting at the
-//! last entry, so locating a place costs about twice the entries between it and the nearer end,
-//! which the edit shifts anyway. Appending a node costs a constant whatever the fanout.
+//! The ordinary children of a record are a doubly linked list through the rows: the parent holds
+//! its first and last child, and each child its next and previous sibling. Appending a node, inserting
+//! it before a sibling and detaching it are edits of a fixed number of links, so their work does
+//! not depend on the fanout of the parent or on the place.
 
 use super::depth::{DepthPlan, Placement, Request};
 use super::shape::structural_parent;
 use super::*;
 
-/// The place of an entry in a child order, and what the edit of the order writes.
-#[derive(Clone, Copy, Debug, Default)]
-pub(super) struct Edit {
-    pub(super) old_parent: Option<NodeIx>,
-    pub(super) old_position: usize,
-    /// The place in the new parent's order, counted without the moving node.
-    pub(super) insertion_position: usize,
-}
-
-impl Edit {
-    /// The entries the edit writes: the node's parent link, the removed and inserted entries, and
-    /// every entry moved to close or open their places. A deque closes or opens a place by moving
-    /// the entries between it and the nearer end.
-    fn writes(
-        &self,
-        old_length: usize,
-        new_length: usize,
-        inserts: bool,
-        same_parent: bool,
-    ) -> Result<usize, HtmlConstructionError> {
-        let mut writes = 1usize;
-        let mut target = new_length;
-        if self.old_parent.is_some() {
-            let behind = old_length.saturating_sub(self.old_position.saturating_add(1));
-            writes = plus(plus(writes, 1)?, behind.min(self.old_position))?;
-            if same_parent {
-                target = old_length.saturating_sub(1);
-            }
-        }
-        if inserts {
-            let behind = target.saturating_sub(self.insertion_position);
-            writes = plus(plus(writes, 1)?, behind.min(self.insertion_position))?;
-        }
-        Ok(writes)
-    }
-}
+/// The link writes of removing a node from its parent's list: the neighbour before it or the
+/// parent's first child, and the neighbour after it or the parent's last child.
+const UNLINK_WRITES: usize = 2;
+/// The link writes of placing a node: its parent, its previous and its next sibling, and the
+/// previous sibling of the place or the parent's first child with the node it goes before or the
+/// parent's last child.
+const LINK_WRITES: usize = 5;
 
 impl HtmlConstructionStorage {
-    /// The place of `wanted` among the children of `parent`, found by the alternating walk from
-    /// the last entry, charging each entry examined. `not_found` is the cause when it is not there.
-    fn locate<C: Charge<HtmlWork, HtmlResource>>(
-        &self,
-        parent: NodeIx,
-        wanted: NodeIx,
-        not_found: HtmlConstructionCause,
-        charge: &mut C,
-    ) -> Result<usize, HtmlConstructionRecordError<C::Stop>> {
-        let children = &self
-            .arena
-            .records
-            .get(parent.position())
-            .ok_or_else(|| fault(HtmlConstructionCause::UnknownNode))?
-            .children;
-        let (mut front, mut back, mut from_back) = (0usize, children.len(), true);
-        loop {
-            let index = if from_back {
-                back.checked_sub(1).filter(|index| *index >= front)
-            } else {
-                Some(front).filter(|index| *index < back)
-            };
-            let Some(index) = index else {
-                return Err(fault(not_found));
-            };
-            Work::visit(charge)?;
-            if children.get(index) == Some(&wanted) {
-                return Ok(index);
-            }
-            if from_back {
-                back = index;
-            } else {
-                front = plus(index, 1).map_err(faulted)?;
-            }
-            from_back = !from_back;
-        }
-    }
-
     /// Whether `target` lies on the chain of owners above `start`, including `start` itself,
     /// walking one record per visit. The chain has at most as many records as the storage.
     fn is_above<C: Charge<HtmlWork, HtmlResource>>(
@@ -99,7 +31,7 @@ impl HtmlConstructionStorage {
             if current == target {
                 return Ok(true);
             }
-            if steps >= self.arena.records.len() {
+            if steps >= self.arena.rows.len() {
                 // A chain longer than the storage is a cycle of its own.
                 return Err(fault(HtmlConstructionCause::Cycle));
             }
@@ -128,8 +60,11 @@ impl HtmlConstructionStorage {
         }
         .charge(charge)?;
         if self.is_shallow(target).map_err(faulted)? {
-            if let Some(TemplateContents::Owned(contents)) =
-                self.record(target).map_err(faulted)?.template_contents
+            if let Some(BuildAssoc {
+                contents,
+                kind: BuildAssocKind::Owned,
+                ..
+            }) = self.arena.template_contents_of(target)
                 && contents == start
             {
                 return Err(fault(HtmlConstructionCause::Cycle));
@@ -175,6 +110,9 @@ impl HtmlConstructionStorage {
     /// Only inserting `node` before itself changes nothing and admits nothing; every other
     /// insertion runs the full ordering and ancestry checks.
     ///
+    /// The edit is a fixed number of link writes: the work of an insertion does not depend on the
+    /// fanout of `parent`, on the place, or on the number of siblings of `node`.
+    ///
     /// Documents and fragments, including template contents and shadow contents, cannot be moved
     /// this way. A `template` element or a shadow host can, because moving it leaves its
     /// association in place.
@@ -203,34 +141,9 @@ impl HtmlConstructionStorage {
             }
         }
         let before_usage = self.arena.usage;
-        let old_parent = self.record(node).map_err(faulted)?.parent;
+        let old_parent = self.row(node).map_err(faulted)?.parent;
         let mut after = before_usage;
         after.edges = plus(after.edges, usize::from(old_parent.is_none())).map_err(faulted)?;
-        let mut edit = Edit {
-            old_parent,
-            ..Edit::default()
-        };
-        if let Some(old) = old_parent {
-            edit.old_position = self.locate(
-                old,
-                node,
-                HtmlConstructionCause::ParentChildConflict,
-                admission,
-            )?;
-        }
-        let parent_length = self.record(parent).map_err(faulted)?.children.len();
-        edit.insertion_position = match before {
-            Some(before) => self.locate(
-                parent,
-                before,
-                HtmlConstructionCause::WrongSibling,
-                admission,
-            )?,
-            None => parent_length,
-        };
-        if old_parent == Some(parent) && edit.old_position < edit.insertion_position {
-            edit.insertion_position = minus(edit.insertion_position, 1).map_err(faulted)?;
-        }
         self.require_acyclic(parent, node, admission)?;
         let depths = self.plan_depths(
             &[Request {
@@ -242,27 +155,18 @@ impl HtmlConstructionStorage {
             admission,
         )?;
         after.depth = depths.depth;
-        let same_parent = old_parent == Some(parent);
-        let old_length = match old_parent {
-            Some(old) => self.record(old).map_err(faulted)?.children.len(),
-            None => 0,
-        };
-        let writes = edit
-            .writes(old_length, parent_length, true, same_parent)
-            .map_err(faulted)?;
-        let growth = if same_parent {
-            None
+        let writes = if old_parent.is_some() {
+            plus(UNLINK_WRITES, LINK_WRITES).map_err(faulted)?
         } else {
-            self.children_growth(parent, plus(parent_length, 1).map_err(faulted)?)
+            LINK_WRITES
         };
         self.commit_order(
             OrderChange {
                 node,
                 parent: Some(parent),
-                edit,
+                before,
                 writes,
                 depths,
-                growth,
             },
             after,
             admission,
@@ -281,23 +185,12 @@ impl HtmlConstructionStorage {
         HtmlConstructionNode::building(&self.arena, &self.text, &self.attrs, node)
             .check_detachment()
             .map_err(faulted)?;
-        let Some(old) = self.record(node).map_err(faulted)?.parent else {
+        if self.row(node).map_err(faulted)?.parent.is_none() {
             return Ok(());
-        };
+        }
         let before_usage = self.arena.usage;
         let mut after = before_usage;
         after.edges = minus(after.edges, 1).map_err(faulted)?;
-        let edit = Edit {
-            old_parent: Some(old),
-            old_position: self.locate(
-                old,
-                node,
-                HtmlConstructionCause::ParentChildConflict,
-                admission,
-            )?,
-            insertion_position: 0,
-        };
-        let old_length = self.record(old).map_err(faulted)?.children.len();
         let depths = self.plan_depths(
             &[Request {
                 root: node,
@@ -308,15 +201,13 @@ impl HtmlConstructionStorage {
             admission,
         )?;
         after.depth = depths.depth;
-        let writes = edit.writes(old_length, 0, false, false).map_err(faulted)?;
         self.commit_order(
             OrderChange {
                 node,
                 parent: None,
-                edit,
-                writes,
+                before: None,
+                writes: plus(UNLINK_WRITES, 3).map_err(faulted)?,
                 depths,
-                growth: None,
             },
             after,
             admission,
@@ -334,15 +225,15 @@ impl HtmlConstructionStorage {
         let OrderChange {
             node,
             parent,
-            edit,
+            before: place,
             writes,
             depths,
-            growth,
         } = change;
         let before = self.arena.usage;
         let (depth_visits, depth_writes) = depths.work().map_err(faulted)?;
         let record_writes =
             plus(plus(writes, depth_writes).map_err(faulted)?, 1).map_err(faulted)?;
+        let index_growth = self.index_growth(depths.levels().map_err(faulted)?);
         let usage = HtmlConstructionChange { before, after };
         admission
             .record_largest(HtmlResource::TreeDepth, wide(after.depth))
@@ -351,11 +242,11 @@ impl HtmlConstructionStorage {
         // The writes are charged once the limits admitted the change, and before any bank grows.
         Work {
             record_visits: depth_visits,
-            provider_calls: usize::from(growth.is_some()),
+            provider_calls: index_growth.into_iter().flatten().count(),
             copied_bytes: plus(
                 plus(
-                    times(writes, size_of::<NodeIx>()).map_err(faulted)?,
-                    times(depth_writes, size_of::<usize>()).map_err(faulted)?,
+                    times(writes, size_of::<Option<NodeIx>>()).map_err(faulted)?,
+                    times(depth_writes, size_of::<u32>()).map_err(faulted)?,
                 )
                 .map_err(faulted)?,
                 size_of::<HtmlConstructionUsage>(),
@@ -365,75 +256,111 @@ impl HtmlConstructionStorage {
             ..Work::default()
         }
         .charge(admission)?;
-        if let (Some(growth), Some(parent)) = (growth, parent) {
-            let chosen = Self::admit_bank(growth, admission)?;
-            self.grow(growth, chosen, admission, |storage, additional| {
-                storage.reserve_child_bank(parent, additional)
-            })?;
-        }
-        // The entries are where planning found them and the order has the room: checked before
-        // the last step that can refuse, so that the writes find what they name.
-        self.verify_order(node, parent, &edit).map_err(faulted)?;
+        let index_chosen = Self::admit_index(index_growth, admission)?;
+        self.grow_index(index_growth, index_chosen, admission)?;
+        // The rows the edit reads and the links it rewrites are where planning found them: checked
+        // before the last step that can refuse, so that the writes find what they name.
+        self.verify_order(node, parent, place).map_err(faulted)?;
         admission.record_change(self, usage).map_err(stopped)?;
         depths.apply(&mut self.arena).map_err(faulted)?;
-        self.apply_order(node, parent, &edit).map_err(faulted)?;
+        self.apply_order(node, parent, place).map_err(faulted)?;
         self.arena.usage = after;
         Ok(())
     }
 
-    /// Checks that the edit applies as planned: the node is the entry planning located, the
-    /// position in the new parent's order exists, and the order has room for the entry.
+    /// Checks that the edit applies as planned: every row it reads exists, the node is the entry
+    /// of its neighbours that its links say, and the place in the new parent's list exists.
     pub(super) fn verify_order(
         &self,
         node: NodeIx,
         parent: Option<NodeIx>,
-        edit: &Edit,
+        place: Option<NodeIx>,
     ) -> Result<(), HtmlConstructionError> {
-        self.record(node)?;
-        let mut removed = 0usize;
-        if let Some(old) = edit.old_parent {
-            if self.record(old)?.children.get(edit.old_position) != Some(&node) {
-                return Err(HtmlConstructionCause::ParentChildConflict.error());
+        let conflict = || HtmlConstructionCause::ParentChildConflict.error();
+        let row = self.row(node)?;
+        if let Some(old) = row.parent {
+            let old_row = self.row(old)?;
+            let before_node = match row.prev {
+                Some(prev) => self.row(prev)?.next,
+                None => old_row.first(),
+            };
+            let after_node = match row.next {
+                Some(next) => self.row(next)?.prev,
+                None => old_row.last(),
+            };
+            if before_node != Some(node) || after_node != Some(node) {
+                return Err(conflict());
             }
-            if Some(old) == parent {
-                removed = 1;
-            }
+        } else if row.prev.is_some() || row.next.is_some() {
+            return Err(conflict());
         }
         if let Some(parent) = parent {
-            let record = self.record(parent)?;
-            let length = minus(record.children.len(), removed)?;
-            if edit.insertion_position > length {
-                return Err(HtmlConstructionCause::ParentChildConflict.error());
-            }
-            if length >= record.children.capacity() {
-                return Err(HtmlConstructionCause::CapacityMismatch.error());
+            let parent_row = self.row(parent)?;
+            match place {
+                Some(place) => {
+                    let place_row = self.row(place)?;
+                    if place_row.parent != Some(parent) {
+                        return Err(conflict());
+                    }
+                    if let Some(prev) = place_row.prev {
+                        self.row(prev)?;
+                    }
+                }
+                None => {
+                    if let Some(last) = parent_row.last() {
+                        self.row(last)?;
+                    }
+                }
             }
         }
         Ok(())
     }
 
     /// Applies the edit `verify_order` accepted. A lookup that fails here is a defect and is
-    /// returned, never skipped.
+    /// returned, never skipped. The node is first taken out of its old list, and then put where
+    /// the links of the new list are, as they stand.
     fn apply_order(
         &mut self,
         node: NodeIx,
         parent: Option<NodeIx>,
-        edit: &Edit,
+        place: Option<NodeIx>,
     ) -> Result<(), HtmlConstructionError> {
-        if let Some(old) = edit.old_parent {
-            self.record_mut(old)?
-                .children
-                .remove(edit.old_position)
-                .ok_or(HtmlConstructionCause::ParentChildConflict.error())?;
-        }
-        if let Some(parent) = parent {
-            let children = &mut self.record_mut(parent)?.children;
-            if edit.insertion_position > children.len() || children.len() >= children.capacity() {
-                return Err(HtmlConstructionCause::CapacityMismatch.error());
+        let row = *self.arena.row(node)?;
+        if let Some(old) = row.parent {
+            match row.prev {
+                Some(prev) => self.arena.row_mut(prev)?.next = row.next,
+                None => self.arena.row_mut(old)?.first_child = row.next,
             }
-            children.insert(edit.insertion_position, node);
+            match row.next {
+                Some(next) => self.arena.row_mut(next)?.prev = row.prev,
+                None => self.arena.row_mut(old)?.last_child = row.prev,
+            }
         }
-        self.record_mut(node)?.parent = parent;
+        {
+            let row = self.arena.row_mut(node)?;
+            row.parent = None;
+            row.prev = None;
+            row.next = None;
+        }
+        let Some(parent) = parent else {
+            return Ok(());
+        };
+        let (prev, next) = match place {
+            Some(place) => (self.arena.row(place)?.prev, Some(place)),
+            None => (self.arena.row(parent)?.last_child, None),
+        };
+        match prev {
+            Some(prev) => self.arena.row_mut(prev)?.next = Some(node),
+            None => self.arena.row_mut(parent)?.first_child = Some(node),
+        }
+        match next {
+            Some(next) => self.arena.row_mut(next)?.prev = Some(node),
+            None => self.arena.row_mut(parent)?.last_child = Some(node),
+        }
+        let row = self.arena.row_mut(node)?;
+        row.parent = Some(parent);
+        row.prev = prev;
+        row.next = next;
         Ok(())
     }
 }
@@ -442,8 +369,8 @@ impl HtmlConstructionStorage {
 struct OrderChange {
     node: NodeIx,
     parent: Option<NodeIx>,
-    edit: Edit,
+    /// The sibling the node goes before, or `None` for the end of the list.
+    before: Option<NodeIx>,
     writes: usize,
     depths: DepthPlan,
-    growth: Option<HtmlConstructionBankGrowth>,
 }

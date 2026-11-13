@@ -87,20 +87,20 @@ impl SessionStorage {
         let mut units = 0usize;
         let copied = (|| {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            for position in 0..self
+            let mut next = self
                 .construction
                 .node_at(node)
                 .ok_or_else(|| latch_registry_row(control))?
-                .child_count()
-            {
+                .first_child()
+                .map(|child| child.position());
+            while let Some(child) = next {
                 control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                let child = self
+                next = self
                     .construction
-                    .node_at(node)
+                    .node_at(child)
                     .ok_or_else(|| latch_registry_row(control))?
-                    .child_at(position)
-                    .ok_or_else(|| latch_registry_row(control))?
-                    .position();
+                    .next_sibling()
+                    .map(|sibling| sibling.position());
                 if Some(child) != detached
                     && let ConstructionNodeKind::Text(value) = &self
                         .construction
@@ -223,9 +223,7 @@ impl SessionStorage {
             .node_at(node)
             .ok_or_else(|| latch_registry_row(control))?;
         let last = parent
-            .child_count()
-            .checked_sub(1)
-            .and_then(|last| parent.child_at(last))
+            .last_child()
             .and_then(|child| self.construction.node_at(child.position()))
             .map(|record| record.kind());
         let Some(ConstructionNodeKind::Text(text)) = last else {

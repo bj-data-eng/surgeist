@@ -142,8 +142,11 @@ impl HtmlConstructionStorage {
         node: &HtmlBuilderNode,
     ) -> Result<(usize, TextRun), HtmlConstructionError> {
         let position = self.position(node)?;
-        match self.arena.records.get(position).map(|record| &record.kind) {
-            Some(NodeContent::Text(run)) => Ok((position, *run)),
+        match self.arena.rows.get(position) {
+            Some(row) if row.kind == RowKind::Text => row
+                .text_run()
+                .map(|run| (position, run))
+                .ok_or(HtmlConstructionCause::WrongNodeKind.into()),
             _ => Err(HtmlConstructionCause::WrongNodeKind.into()),
         }
     }
@@ -237,20 +240,21 @@ impl HtmlConstructionStorage {
             .map_err(HtmlChargedError::Stopped)?;
         // Nothing below refuses on a record this append read, and the run is replaced after the
         // units are written.
-        let Some(NodeContent::Text(slot)) = self
+        let Some(slot) = self
             .arena
-            .records
+            .rows
             .get_mut(target)
-            .map(|record| &mut record.kind)
+            .filter(|row| row.kind == RowKind::Text)
         else {
             return Err(HtmlChargedError::Faulted(
                 HtmlConstructionCause::WrongNodeKind.into(),
             ));
         };
-        *slot = self
-            .text
-            .append(run, units, plan)
-            .map_err(HtmlChargedError::Faulted)?;
+        slot.set_text_run(
+            self.text
+                .append(run, units, plan)
+                .map_err(HtmlChargedError::Faulted)?,
+        );
         self.arena.usage = usage;
         Ok(offset)
     }
@@ -863,7 +867,7 @@ mod tests {
     fn a_text_record_that_names_units_the_arena_lacks_is_refused_and_read_as_invalid() {
         let (mut storage, first, _) = two_texts();
         let position = storage.position(&first).unwrap();
-        storage.arena.records[position].kind = NodeContent::Text(TextRun::invalid());
+        storage.arena.rows[position].set_text_run(TextRun::invalid());
         let usage = storage.usage();
         let error = storage
             .append_text(&first, &utf16("c"), &mut Meter::default())

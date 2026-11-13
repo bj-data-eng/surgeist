@@ -399,20 +399,20 @@ impl ParserArenaSession {
         ) {
             return Err(SessionError::NotDocument);
         }
-        for position in 0..storage
+        let mut next = storage
             .construction
             .node_at(0)
             .ok_or_else(|| latch_registry_row(control))?
-            .child_count()
-        {
+            .first_child()
+            .map(|child| child.position());
+        while let Some(child) = next {
             control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let child = storage
+            next = storage
                 .construction
-                .node_at(0)
+                .node_at(child)
                 .ok_or_else(|| latch_registry_row(control))?
-                .child_at(position)
-                .ok_or_else(|| latch_registry_row(control))?
-                .position();
+                .next_sibling()
+                .map(|sibling| sibling.position());
             if matches!(
                 storage
                     .construction

@@ -3,6 +3,7 @@
 mod attribute_table;
 pub(crate) mod bounded;
 pub(crate) mod names;
+mod rows;
 mod text;
 mod tree;
 mod views;
@@ -23,14 +24,15 @@ use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
     internal::values::QualifiedName, internal::values::TextBlock,
 };
-use attribute_table::{AttributeTable, RunIx};
+use attribute_table::AttributeTable;
 use names::{NameEntry, NameTable};
-use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
+use rows::{BuildAssoc, NodeRow};
+use std::{error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
     Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
 };
 use text::{TextArena, TextRun};
-use tree::{PublishedRow, RowContent, Tree};
+use tree::{Leaf, PublishedRow, RowContent, Tree};
 
 /// The HTML document's selected compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -228,10 +230,10 @@ pub enum HtmlConstructionCause {
     /// An element record names an entry that its storage's name table does not hold, or a
     /// published element row names one that its result's name table does not hold.
     InvalidNameReference,
-    /// A published processing-instruction or doctype row names a leaf that its result does not
-    /// hold. No storage holds such a reference: the publication walk assigns the position of a
-    /// leaf as it pushes the leaf, so a row it writes names a leaf that exists, and the cause is
-    /// reachable only from a tree that no storage built.
+    /// A processing-instruction or doctype row names a leaf that its storage or result does not
+    /// hold. No storage makes such a row, and the publication walk assigns the position of a leaf
+    /// as it pushes the leaf, so a published row names a leaf that exists: the cause is reachable
+    /// only from a tree that no storage built.
     InvalidLeafReference,
     /// A record was read through a view of a storage that has not published it, where the
     /// operation needs the published result.
@@ -422,6 +424,14 @@ impl NodeIx {
     /// The position `count` records after this one, or `None` when it does not fit.
     pub(crate) fn offset(self, count: usize) -> Option<Self> {
         Self::new(self.position().checked_add(count)?)
+    }
+    /// The stored value, the position plus one, which a row holds in one word.
+    pub(crate) fn stored(self) -> u32 {
+        self.0.get()
+    }
+    /// The index whose stored value is `stored`, or `None` for zero, which names no record.
+    pub(crate) fn from_stored(stored: u32) -> Option<Self> {
+        NonZeroU32::new(stored).map(Self)
     }
 }
 
@@ -648,44 +658,6 @@ impl fmt::Display for HtmlProcessingInstructionError {
 }
 impl Error for HtmlProcessingInstructionError {}
 
-/// The stored name, attributes and link history of an element record.
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ElementContent {
-    link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
-    name: Arc<NameEntry>,
-    attrs: Option<RunIx>,
-}
-impl ElementContent {
-    fn name(&self) -> &QualifiedName {
-        self.name.name()
-    }
-    fn key(&self) -> crate::internal::values::element_key::ElementKey {
-        self.name.key()
-    }
-}
-
-/// The stored content of a node record of a storage that builds. Readers see it only through
-/// [`ConstructionNodeKind`]; a published result holds its content in rows.
-///
-/// A text or comment holds a [`TextRun`] of the storage's text arena.
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum NodeContent {
-    /// The Document node, carrying the compatibility mode selected when it was built.
-    Document(HtmlDocumentMode),
-    /// A document-fragment root.
-    Fragment,
-    /// An element with its exact qualified name and ordered raw attributes.
-    Element(ElementContent),
-    /// A text node; the payload preserves the exact UTF-16 code units.
-    Text(TextRun),
-    /// A comment node; the payload preserves the exact UTF-16 code units.
-    Comment(TextRun),
-    /// A processing instruction recorded with its exact target and data.
-    ProcessingInstruction(HtmlProcessingInstruction),
-    /// A document type declaration.
-    Doctype(HtmlDoctype),
-}
-
 /// Declarative shadow-root visibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlShadowRootMode {
@@ -771,29 +743,6 @@ impl HtmlDeclarativeShadowRoot {
         self.properties
     }
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ShadowAssociation {
-    host: HtmlNodeId,
-    contents: HtmlNodeId,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TemplateContents {
-    Owned(NodeIx),
-    ShadowReference(NodeIx),
-}
-impl TemplateContents {
-    fn position(self) -> NodeIx {
-        match self {
-            Self::Owned(i) | Self::ShadowReference(i) => i,
-        }
-    }
-    fn kind(self) -> HtmlTemplateContentsKind {
-        match self {
-            Self::Owned(_) => HtmlTemplateContentsKind::Owned,
-            Self::ShadowReference(_) => HtmlTemplateContentsKind::ShadowReference,
-        }
-    }
-}
 /// The non-child relationship that owns an associated fragment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentOwner {
@@ -825,64 +774,30 @@ pub enum HtmlFocusedAreaDesignation {
     Unavailable,
 }
 
-#[derive(Debug)]
-struct Record {
-    kind: NodeContent,
-    document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
-    parent: Option<NodeIx>,
-    /// The ordinary children in order. A deque, so that taking or placing an entry near either
-    /// end shifts no more entries than lie between it and the nearer end.
-    children: VecDeque<NodeIx>,
-    /// Depth of this record within its own tree, counting association edges;
-    /// the root of every tree, attached or detached, is at zero. Every
-    /// admitted change keeps it exact.
-    depth: usize,
-    /// How many records of the arena have a depth equal to this record's
-    /// *index*. The depth histogram needs no allocation of its own: a record
-    /// at depth `d` implies a chain of `d + 1` records, so index `d` exists
-    /// whenever the bucket for `d` is nonempty. Only depth placement writes it.
-    population: usize,
-    /// Scratch: next edge a subtree walk takes from this record. A walk sets it
-    /// on entry, so a stale value is never trusted.
-    walk_cursor: usize,
-    /// Scratch: how many records of the walked subtree sit at a level equal to
-    /// this record's *index*. A walk initializes a level on first reaching it.
-    level_count: usize,
-    template_contents: Option<TemplateContents>,
-    shadow: Option<ShadowAssociation>,
-    shadow_properties: Option<HtmlShadowRootProperties>,
-    owner: Option<HtmlFragmentOwner>,
-    /// Scratch count of this record's entries in its parent's child list,
-    /// saturating at two. Only a publication check writes it: reset, then
-    /// counted, then read, so a stale value is never trusted.
-    publish_found: u8,
+/// The counts of the nodes of a storage at each depth, which a storage that builds makes when a
+/// change needs them and keeps exact after. `moved` is scratch beside `counts`, of the same length,
+/// in an allocation of its own that grows after `counts`.
+#[derive(Debug, Default)]
+struct DepthIndex {
+    counts: Vec<u32>,
+    moved: Vec<u32>,
 }
-impl Record {
-    fn new(kind: NodeContent, parent: Option<NodeIx>, depth: usize) -> Self {
-        let document_focused_area_designation = matches!(kind, NodeContent::Document(_))
-            .then_some(HtmlFocusedAreaDesignation::Unavailable);
-        Self {
-            kind,
-            document_focused_area_designation,
-            parent,
-            children: VecDeque::new(),
-            depth,
-            population: 0,
-            walk_cursor: 0,
-            level_count: 0,
-            template_contents: None,
-            shadow: None,
-            shadow_properties: None,
-            owner: None,
-            publish_found: 0,
-        }
-    }
-}
-/// The records of a storage that builds, with the names of its elements and attributes.
+
+/// The rows of a storage that builds, with the depth of each, the associations and leaves they
+/// name, and the names of its elements and attributes.
 #[derive(Debug)]
 struct BuildArena {
-    records: Vec<Record>,
-    /// The names of the elements and attributes of the records.
+    rows: Vec<NodeRow>,
+    /// The depth of each row within its own tree, counting association edges; the root of every
+    /// tree, attached or detached, is at zero. Every admitted change keeps it exact.
+    depths: Vec<u32>,
+    /// The nodes at each depth, made when the usage depth cannot be kept exact without it.
+    index: Option<DepthIndex>,
+    /// The template and shadow associations, sorted by owner and kind.
+    associations: Vec<BuildAssoc>,
+    /// The processing instructions and doctypes the rows name.
+    leaves: Vec<Leaf>,
+    /// The names of the elements and attributes of the rows.
     names: NameTable,
     usage: HtmlConstructionUsage,
     // The tree serial of this storage's node ids and builder handles. It names this storage among
@@ -896,21 +811,34 @@ struct BuildArena {
 }
 
 impl BuildArena {
-    /// How many records have exactly this depth.
-    fn population(&self, depth: usize) -> usize {
-        self.records
-            .get(depth)
-            .map_or(0, |bucket| bucket.population)
-    }
     fn id(&self, index: NodeIx) -> HtmlNodeId {
         HtmlNodeId {
             tree: self.serial,
             index,
         }
     }
+    /// The row at `index`, or the unknown-node error.
+    fn row(&self, index: NodeIx) -> Result<&NodeRow, HtmlConstructionError> {
+        self.rows
+            .get(index.position())
+            .ok_or(HtmlConstructionCause::UnknownNode.error())
+    }
+    /// The row at `index` for a write, or the unknown-node error.
+    fn row_mut(&mut self, index: NodeIx) -> Result<&mut NodeRow, HtmlConstructionError> {
+        self.rows
+            .get_mut(index.position())
+            .ok_or(HtmlConstructionCause::UnknownNode.error())
+    }
+    /// The depth of the row at `index`, or the unknown-node error.
+    fn depth_of(&self, index: NodeIx) -> Result<usize, HtmlConstructionError> {
+        self.depths
+            .get(index.position())
+            .map(|depth| *depth as usize)
+            .ok_or(HtmlConstructionCause::UnknownNode.error())
+    }
     /// The record at `position`, or `None` past the last record.
     fn has_record(&self, position: usize) -> Option<NodeIx> {
-        NodeIx::new(position).filter(|index| index.position() < self.records.len())
+        NodeIx::new(position).filter(|index| index.position() < self.rows.len())
     }
     /// The record index a builder handle names: `ForeignBuilder` for another storage's handle and
     /// `UnknownNode` for an index past the records.
@@ -918,30 +846,55 @@ impl BuildArena {
         if handle.tree != self.serial {
             return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
-        if handle.index.position() >= self.records.len() {
+        if handle.index.position() >= self.rows.len() {
             return Err(HtmlConstructionCause::UnknownNode.into());
         }
         Ok(handle.index)
     }
+    /// The associations whose owner is `owner`.
+    fn associations_of(&self, owner: NodeIx) -> &[BuildAssoc] {
+        use rows::AssocTable;
+        self.associations.of(owner)
+    }
+    /// The contents a template element holds, owned or a reference to shadow contents.
+    fn template_contents_of(&self, owner: NodeIx) -> Option<BuildAssoc> {
+        self.associations_of(owner)
+            .iter()
+            .find(|entry| entry.kind.is_contents())
+            .copied()
+    }
+    /// The shadow contents attached to the host `owner`.
+    fn shadow_of(&self, owner: NodeIx) -> Option<NodeIx> {
+        self.associations_of(owner)
+            .iter()
+            .find(|entry| entry.kind == rows::BuildAssocKind::Shadow)
+            .map(|entry| entry.contents)
+    }
     /// The declarative shadow root of the host element at `index`: the association whose contents
     /// carry shadow properties.
     fn declarative_shadow_root(&self, index: NodeIx) -> Option<HtmlDeclarativeShadowRoot> {
-        let relation = self.records.get(index.position())?.shadow.as_ref()?;
-        // A declarative shadow root is an association whose contents carry shadow properties.
-        let properties = self
-            .records
-            .get(relation.contents.index.position())?
-            .shadow_properties?;
+        let contents = self.shadow_of(index)?;
+        let properties = self.row(contents).ok()?.shadow()?.unpack();
         Some(HtmlDeclarativeShadowRoot {
-            host: relation.host,
-            contents: relation.contents,
+            host: self.id(index),
+            contents: self.id(contents),
             properties,
+        })
+    }
+    /// The owner of the fragment at `index`: a template that owns it or the host that holds it.
+    fn fragment_owner(&self, index: NodeIx) -> Option<HtmlFragmentOwner> {
+        let row = self.rows.get(index.position())?;
+        let owner = self.id(row.owner()?);
+        Some(if row.shadow().is_some() {
+            HtmlFragmentOwner::ShadowHost(owner)
+        } else {
+            HtmlFragmentOwner::Template(owner)
         })
     }
     /// The record index a result id names, or `ForeignHtmlResult` for the id of another storage
     /// or one past the records.
     fn lookup_index(&self, id: &HtmlNodeId) -> Result<NodeIx, ForeignHtmlResult> {
-        if self.serial != id.tree || id.index.position() >= self.records.len() {
+        if self.serial != id.tree || id.index.position() >= self.rows.len() {
             return Err(ForeignHtmlResult);
         }
         Ok(id.index)
@@ -1281,15 +1234,15 @@ impl Creation {
 
 /// The admission of a native builder. The builder admits the limits of an append in full before it
 /// calls the storage, so every operation of the storage is admitted here without a further check,
-/// and the builder charges no work. A bank that is filled one entry at a time (the record bank and
-/// a child order) grows to its amortized capacity, never above what the limits admit, when the
-/// admission has spare room, as does the text arena that every text and comment is copied into;
-/// every other bank, and every bank of an admission without it, grows to the least capacity that
-/// suffices.
+/// and the builder charges no work. A bank that is filled one entry at a time (the row bank, the
+/// depth column and the other banks of nodes) grows to its amortized capacity, never above what
+/// the limits admit, when the admission has spare room, as does the text arena that every text and
+/// comment is copied into; every other bank, and every bank of an admission without it, grows to
+/// the least capacity that suffices.
 struct NativeAdmission {
-    /// The most records, the most child entries and the most text units the limits admit, or
-    /// `None` for exact growth.
-    spare_room: Option<(usize, usize, usize)>,
+    /// The most nodes, the most association entries, the most text units and the most depth levels
+    /// the limits admit, or `None` for exact growth.
+    spare_room: Option<(usize, usize, usize, usize)>,
 }
 impl NativeAdmission {
     fn exact() -> Self {
@@ -1297,7 +1250,12 @@ impl NativeAdmission {
     }
     fn with_spare_room(limits: HtmlConstructionLimits) -> Self {
         Self {
-            spare_room: Some((limits.nodes(), limits.edges(), limits.utf16_units())),
+            spare_room: Some((
+                limits.nodes(),
+                limits.edges(),
+                limits.utf16_units(),
+                limits.depth().saturating_add(1),
+            )),
         }
     }
 }
@@ -1320,19 +1278,19 @@ impl bounded::records::HtmlRecordAdmission for NativeAdmission {
     }
     /// The capacity a bank takes when it may grow with spare room: the amortized capacity of the
     /// bank, never above the most entries the limits admit, and never below what the operation
-    /// needs. The native builder admits nothing beyond its node and edge limits and has no
+    /// needs. The native builder admits nothing beyond its node, edge and depth limits and has no
     /// capacity-bytes limit, so a capacity above the entries those limits admit is spare room that
     /// no append can use; capping it there is the admission of the allocation.
     fn admit_growth(
         &mut self,
         growth: bounded::records::HtmlConstructionBankGrowth,
     ) -> Result<usize, Self::Stop> {
+        use bounded::records::HtmlConstructionBank as Bank;
         let ceiling = match (self.spare_room, growth.bank()) {
-            (Some((nodes, ..)), bounded::records::HtmlConstructionBank::Records) => Some(nodes),
-            (Some((_, edges, _)), bounded::records::HtmlConstructionBank::Children { .. }) => {
-                Some(edges)
-            }
-            (Some((.., units)), bounded::records::HtmlConstructionBank::TextArena) => Some(units),
+            (Some((nodes, ..)), Bank::NodeRows | Bank::Depths | Bank::Leaves) => Some(nodes),
+            (Some((_, edges, ..)), Bank::Associations) => Some(edges),
+            (Some((.., units, _)), Bank::TextArena) => Some(units),
+            (Some((.., levels)), Bank::DepthIndex | Bank::DepthScratch) => Some(levels),
             _ => None,
         };
         let minimum = growth.minimum_capacity();
@@ -1889,9 +1847,8 @@ impl HtmlFragmentBuilder {
 mod tests {
     use super::*;
 
-    /// How many times the record bank and the root's child order change capacity over `appends`
-    /// native appends, each of which makes room for one more record, and one more child of the
-    /// root.
+    /// How many times the row bank and the depth column change capacity over `appends` native
+    /// appends, each of which makes room for one more record.
     fn capacity_changes(appends: usize, nested: bool) -> (usize, usize) {
         let mut builder = Builder::new(
             HtmlConstructionLimits::new(appends + 1, appends, 0, 8 * appends, appends + 1),
@@ -1901,10 +1858,10 @@ mod tests {
         let root = builder.root;
         let mut parent = root;
         let mut previous = (
-            builder.storage.records_capacity(),
-            builder.storage.children_capacity(0),
+            builder.storage.rows_capacity(),
+            builder.storage.depths_capacity(),
         );
-        let (mut records, mut children) = (0, 0);
+        let (mut rows, mut depths) = (0, 0);
         for _ in 0..appends {
             let kind = if nested {
                 Creation::Element {
@@ -1920,12 +1877,12 @@ mod tests {
                 parent = appended;
             }
             let storage = &builder.storage;
-            let now = (storage.records_capacity(), storage.children_capacity(0));
-            records += usize::from(now.0 != previous.0);
-            children += usize::from(now.1 != previous.1);
+            let now = (storage.rows_capacity(), storage.depths_capacity());
+            rows += usize::from(now.0 != previous.0);
+            depths += usize::from(now.1 != previous.1);
             previous = now;
         }
-        (records, children)
+        (rows, depths)
     }
 
     /// Exact growth changes the capacity on every append; amortized growth changes it a number of
@@ -1934,23 +1891,23 @@ mod tests {
     fn native_appends_change_capacity_a_logarithmic_number_of_times() {
         for appends in [1_usize << 10, 1 << 12, 1 << 14] {
             let bound = appends.ilog2() as usize + 1;
-            let (records, children) = capacity_changes(appends, false);
+            let (rows, depths) = capacity_changes(appends, false);
             assert!(
-                records <= bound && children <= bound,
-                "{appends} appended children changed the record bank {records} times and the \
-                 root's child order {children} times, over the bound {bound}"
+                rows <= bound && depths <= bound,
+                "{appends} appended children changed the row bank {rows} times and the depth \
+                 column {depths} times, over the bound {bound}"
             );
-            let (records, _) = capacity_changes(appends, true);
+            let (rows, _) = capacity_changes(appends, true);
             assert!(
-                records <= bound,
-                "{appends} nested elements changed the record bank {records} times, over the \
+                rows <= bound,
+                "{appends} nested elements changed the row bank {rows} times, over the \
                  bound {bound}"
             );
         }
     }
 
-    /// The spare room of a reservation is never above what the limits admit: the record bank holds
-    /// at most the node limit and a child order at most the edge limit.
+    /// The spare room of a reservation is never above what the limits admit: the row bank and the
+    /// depth column hold at most the node limit.
     #[test]
     fn native_spare_room_stays_within_the_limits() {
         let (nodes, edges) = (6, 5);
@@ -1965,11 +1922,11 @@ mod tests {
                 .append(&root, Creation::Comment("c".into()))
                 .unwrap();
             let storage = &builder.storage;
-            assert!(storage.records_capacity() <= nodes);
-            assert!(storage.children_capacity(0).unwrap() <= edges);
+            assert!(storage.rows_capacity() <= nodes);
+            assert!(storage.depths_capacity() <= nodes);
         }
-        assert_eq!(builder.storage.records_capacity(), nodes);
-        assert_eq!(builder.storage.children_capacity(0), Some(edges));
+        assert_eq!(builder.storage.rows_capacity(), nodes);
+        assert_eq!(builder.storage.depths_capacity(), nodes);
     }
 
     /// An allocator refusal of the spare room never fails an append that growing by one slot
@@ -1990,8 +1947,8 @@ mod tests {
                 .unwrap();
             let storage = &builder.storage;
             assert_eq!(storage.len(), count + 1);
-            assert_eq!(storage.records_capacity(), count + 1);
-            assert_eq!(storage.children_capacity(0), Some(count));
+            assert_eq!(storage.rows_capacity(), count + 1);
+            assert_eq!(storage.depths_capacity(), count + 1);
         }
         assert!(crate::internal::amortized::fault::requests() >= 2 * appends - 1);
     }
@@ -2046,24 +2003,26 @@ mod tests {
     fn exact_recovered_pi_data_is_stored_without_becoming_checked_author_input() {
         // The five pinned PI states produce x/a? from <?x a??>. This is a
         // construction-record witness, not a substitute parser or public factory.
-        let recovered = HtmlProcessingInstruction {
-            target: DocumentString::from("x"),
-            data: DocumentString::from("a?"),
-        };
-        let record = Record::new(
-            NodeContent::ProcessingInstruction(recovered.clone()),
-            None,
-            0,
-        );
-        let NodeContent::ProcessingInstruction(stored) = record.kind else {
+        let mut storage = bounded::HtmlConstructionStorage::new(&mut NativeAdmission::exact())
+            .unwrap_or_else(|_| panic!("a storage is made"));
+        let node = storage
+            .create_processing_instruction(&[120], &[97, 63], &mut NativeAdmission::exact())
+            .unwrap_or_else(|_| panic!("a processing instruction is made"));
+        let ConstructionNodeKind::ProcessingInstruction(stored) =
+            storage.node(&node).unwrap().kind()
+        else {
             panic!("expected exact processing-instruction record");
         };
         assert_eq!(stored.target().code_units(), [120]);
         assert_eq!(stored.data().code_units(), [97, 63]);
+        let recovered = HtmlProcessingInstruction {
+            target: DocumentString::from("x"),
+            data: DocumentString::from("a?"),
+        };
         let builder = HtmlFragment::builder(HtmlConstructionLimits::new(2, 1, 0, 3, 1)).unwrap();
         let before = builder.usage();
         assert_eq!(
-            HtmlAuthoredProcessingInstruction::try_from(stored),
+            HtmlAuthoredProcessingInstruction::try_from(recovered.clone()),
             Err(HtmlProcessingInstructionError::DataEndsWithQuestionMark)
         );
         assert_eq!(builder.usage(), before);

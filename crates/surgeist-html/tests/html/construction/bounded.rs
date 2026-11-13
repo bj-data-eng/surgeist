@@ -238,7 +238,7 @@ fn refuse(
     storage
 }
 
-/// Appends `node` last under `parent` with an admission that doubles a full child order, and
+/// Appends `node` last under `parent` with an admission that doubles every bank it grows, and
 /// returns the capacities it asked to be given.
 fn append_amortized(
     storage: &mut HtmlConstructionStorage,
@@ -271,19 +271,19 @@ fn append_amortized(
 }
 
 #[test]
-fn amortized_appends_grow_the_child_order_geometrically_and_keep_their_order() {
+fn appends_grow_no_bank_and_keep_their_order() {
     let (mut owner, root) = fragment(storage());
     let mut appended = Vec::new();
-    let mut growth = Vec::new();
     for _ in 0..1024 {
         let (next, node) = create(owner, element("c"));
         owner = next;
-        growth.extend(append_amortized(&mut owner, &node, &root));
+        // The children are links of the rows, so an insertion has no bank to grow.
+        assert_eq!(
+            append_amortized(&mut owner, &node, &root),
+            Vec::<usize>::new()
+        );
         appended.push(node);
     }
-    // One growth at each power of two, never one per append.
-    assert_eq!(growth.len(), 11, "{growth:?}");
-    assert!(growth.iter().sum::<usize>() <= 2 * appended.len());
     assert_eq!(
         owner
             .node(&root)
@@ -298,52 +298,68 @@ fn amortized_appends_grow_the_child_order_geometrically_and_keep_their_order() {
             .iter()
             .all(|node| owner.node(node).unwrap().parent().unwrap().handle() == root)
     );
-}
-
-#[test]
-fn append_with_spare_child_order_capacity_requests_no_growth() {
-    let (mut owner, root) = fragment(storage());
-    let mut requests = Vec::new();
-    for _ in 0..4 {
-        let (next, node) = create(owner, element("c"));
-        owner = next;
-        requests.push(append_amortized(&mut owner, &node, &root));
+    // The same order read from the last child back through the previous siblings, and forward
+    // through the next siblings.
+    let mut backwards = Vec::new();
+    let mut cursor = owner.node(&root).unwrap().last_child();
+    while let Some(node) = cursor {
+        backwards.push(node.handle());
+        cursor = node.previous_sibling();
     }
-    // Capacity 1, 2 and 4 fill at lengths 1, 2 and 3; the fourth child fits.
-    assert_eq!(requests, [vec![1], vec![2], vec![4], vec![]]);
+    backwards.reverse();
+    assert_eq!(backwards, appended);
+    let mut forwards = Vec::new();
+    let mut cursor = owner.node(&root).unwrap().first_child();
+    while let Some(node) = cursor {
+        forwards.push(node.handle());
+        cursor = node.next_sibling();
+    }
+    assert_eq!(forwards, appended);
 }
 
 #[test]
-fn a_child_order_growth_names_the_entries_of_the_bank_and_the_capacity_it_reaches() {
-    // A child-order bank holds 32-bit record-index entries inline in its record, so the growth
-    // names a four-byte element and no wrapper. The first append reserves exactly the one slot it
+fn an_association_growth_names_the_entries_of_the_table_and_the_capacity_it_reaches() {
+    // The association table holds twelve-byte entries inline in the storage, so the growth names a
+    // twelve-byte element and no wrapper. The first attachment reserves exactly the one slot it
     // needs, and the second the capacity of 8 that the admission chooses.
-    let (owner, root) = fragment(storage());
-    let (owner, a) = create(owner, element("a"));
-    let (mut owner, b) = create(owner, element("b"));
-    let mut first = Direct::default();
-    let insert = |node, parent| Op::Insert {
-        node,
-        parent,
-        before: None,
+    let (owner, a) = create(storage(), element("a"));
+    let (owner, b) = create(owner, element("b"));
+    let shadow = || Make::ShadowContents {
+        properties: properties(),
     };
-    try_change(&mut owner, insert(a, root), &mut first).unwrap();
+    let (owner, first_contents) = create(owner, shadow());
+    let (mut owner, second_contents) = create(owner, shadow());
+    let mut first = Direct::default();
+    try_change(
+        &mut owner,
+        Op::AttachShadow {
+            host: a,
+            contents: first_contents,
+        },
+        &mut first,
+    )
+    .unwrap();
     let mut second = Direct {
         fixed: Some(8),
         ..Direct::default()
     };
-    try_change(&mut owner, insert(b, root), &mut second).unwrap();
+    try_change(
+        &mut owner,
+        Op::AttachShadow {
+            host: b,
+            contents: second_contents,
+        },
+        &mut second,
+    )
+    .unwrap();
     for (admission, len, capacity, chosen) in [(&first, 0, 0, 1), (&second, 1, 1, 8)] {
         let [growth] = admission.growths[..] else {
-            panic!("one child order grows: {:?}", admission.growths);
+            panic!("one association table grows: {:?}", admission.growths);
         };
-        assert_eq!(
-            growth.bank(),
-            HtmlConstructionBank::Children { position: 0 }
-        );
+        assert_eq!(growth.bank(), HtmlConstructionBank::Associations);
         assert_eq!(growth.before().initialized_len(), len);
         assert_eq!(growth.before().capacity(), capacity);
-        assert_eq!(growth.element_size(), size_of::<u32>());
+        assert_eq!(growth.element_size(), 12);
         assert_eq!(growth.wrapper_bytes(), 0);
         let last = admission.records.last().unwrap();
         assert_eq!(last.chosen(), chosen);
@@ -353,7 +369,7 @@ fn a_child_order_growth_names_the_entries_of_the_bank_and_the_capacity_it_reache
 }
 
 #[test]
-fn append_cycle_refuses_before_any_child_order_growth() {
+fn append_cycle_refuses_before_any_growth() {
     let (owner, outer) = create(storage(), element("outer"));
     let (owner, inner) = create(owner, element("inner"));
     let (mut owner, _) = change(
@@ -364,7 +380,7 @@ fn append_cycle_refuses_before_any_child_order_growth() {
             before: None,
         },
     );
-    // `inner` has no spare child capacity, yet the cycle is reached first.
+    // The cycle is reached before any bank is admitted.
     let mut admission = Direct::default();
     let error = try_change(
         &mut owner,
@@ -757,7 +773,7 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
         cause::WRONG_SIBLING,
     );
     assert_eq!(owner.node(&a).unwrap().parent().unwrap().handle(), root);
-    assert_eq!(owner.node(&other).unwrap().child_count(), 0);
+    assert_eq!(owner.node(&other).unwrap().children().count(), 0);
     let mut admission = Direct::default();
     try_change(
         &mut owner,

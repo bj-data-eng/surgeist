@@ -197,8 +197,8 @@ impl SessionStorage {
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
-            .child_count()
-            == 0;
+            .first_child()
+            .is_none();
         if bare {
             control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             self.payloads.forget_tree_root(node);

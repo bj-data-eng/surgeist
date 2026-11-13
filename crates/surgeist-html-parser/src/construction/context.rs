@@ -576,7 +576,7 @@ impl ParserArenaSession {
             .construction
             .node_at(0)
             .ok_or(SessionError::ContextUnavailable)?
-            .child_at(0)
+            .first_child()
             .ok_or(SessionError::ContextUnavailable)?
             .position();
         if output >= storage.construction.len()
@@ -2580,7 +2580,7 @@ impl FrozenArena {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(
                     HtmlParseWorkCategory::InspectByte,
-                    HtmlConstructionNode::CONTENT_BYTES as u64,
+                    HtmlConstructionNode::ROW_BYTES as u64,
                 )?;
                 let record = view.arena.node_at(index).ok_or(SessionError::ForeignNode)?;
                 if fragment && !matches!(record.kind(), ConstructionNodeKind::Fragment) {
