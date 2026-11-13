@@ -257,18 +257,20 @@ impl NativeOwner {
                 continue;
             }
             if reports.is_empty() {
-                let document = snapshot.node_with(input.document().node(), &mut || step())?;
-                let Some(global) = document.relevant_global()?.filter(|global| {
-                    self.attachment.get().is_some_and(|attached| {
-                        attached.target.global() == *global
-                            && attached.target.document() == input.document()
-                    })
-                }) else {
+                let Some(attached) = self.attachment.get() else {
                     return Ok(None);
                 };
+                let reporting_document = attached.target.document();
+                let global = attached.target.global();
+                // The policy belongs to the edited element's Document. The
+                // reporting Global comes from the original script attachment.
+                let document = snapshot.node_with(reporting_document.node(), &mut || step())?;
+                if document.relevant_global()? != Some(global) {
+                    return Ok(None);
+                }
                 origin = Some(ViolationOrigin {
                     global,
-                    document: input.document(),
+                    document: reporting_document,
                 });
                 let bytes = policies
                     .len()
