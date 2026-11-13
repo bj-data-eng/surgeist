@@ -1031,6 +1031,10 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                 cancelChecks &&= dialog.textContent === 'native event\ud800';
                 cancelChecks &&= dialog.hasChildNodes() && dialog.firstChild === dialog.lastChild &&
                     dialog.firstChild.parentElement === dialog && dialog.firstChild.nextSibling === null;
+                const survivor = dialog.firstChild;
+                const merge = dialog.appendChild(attachedDocument.createTextNode(' tail'));
+                cancelChecks &&= dialog.normalize() === undefined && dialog.firstChild === survivor &&
+                    survivor.data === 'native event\ud800 tail' && merge.parentNode === null;
                 const impl = attachedDocument.implementation;
                 const type = impl.createDocumentType('root', '', '');
                 const xml = impl.createDocument(null, 'root', type);
