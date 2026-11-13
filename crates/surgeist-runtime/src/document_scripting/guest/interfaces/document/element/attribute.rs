@@ -4,7 +4,7 @@ mod node;
 
 use super::{super::character_data::copy_native_data, *};
 use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
+    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError,
     document_scripting::guest::{
         AttributeReply, PendingAttribute,
         reports::{ViolationBacking, ViolationOrigin, ViolationQueue, violation_error},
@@ -157,8 +157,8 @@ impl Capture {
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
-        let mut no_style = |_: &surgeist_dom::DomStyleSource| None;
-        let mut services = attribute_services(&mut no_style);
+        let mut policy = initial_inline_style_policy;
+        let mut services = guest_source_services(&mut policy);
         let event = owner.active_event_request();
         let (mut result, mut pending, parent) =
             self.callbacks
@@ -711,28 +711,14 @@ fn resume_attribute_source(
         .map_err(|_| DocumentScriptNativeError::Busy)?;
     let mut source = session.source_execution();
     let mut dom = session.dom();
-    let mut no_style = |_: &surgeist_dom::DomStyleSource| None;
     let result = source.resume(
         &mut dom,
         operation,
         limits,
-        &mut attribute_services(&mut no_style),
+        &mut guest_source_services(&mut initial_inline_style_policy),
         &owner.cancellation,
     );
     Ok((result, dom.pending_source_edit()))
-}
-
-fn attribute_services(
-    style_policy: &mut dyn FnMut(
-        &surgeist_dom::DomStyleSource,
-    ) -> Option<surgeist_dom::DomStyleInlineCspObservation>,
-) -> DomSourceServices<'_> {
-    DomSourceServices {
-        meta: None,
-        execution_scope: None,
-        style_policy,
-        url: None,
-    }
 }
 
 fn accept_mismatch(

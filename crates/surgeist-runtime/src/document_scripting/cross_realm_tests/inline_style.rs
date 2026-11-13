@@ -5,8 +5,7 @@ use crate::document_scripting::guest::tests::{
 use surgeist_cssom::CssomStore;
 use surgeist_dom::DomStyleCssomRoot;
 
-#[test]
-fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
+pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session(&cancel, 0);
     let document = target.document();
@@ -57,7 +56,7 @@ fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
         let pending = host
             .with_native(|dom, _, mut source| {
                 dom.pending_source_edit().map(|status| {
-                    source.resume(
+                    let progress = source.resume(
                         dom,
                         status.operation(),
                         DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, 64, 64, 2),
@@ -68,7 +67,11 @@ fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
                             url: None,
                         },
                         &AtomicBool::new(false),
-                    )
+                    );
+                    match progress {
+                        Ok(DomSourceDriveProgress::Pending { reason, .. }) => format!("{reason:?}"),
+                        other => format!("{other:?}"),
+                    }
                 })
             })
             .unwrap();

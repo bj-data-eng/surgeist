@@ -1,9 +1,7 @@
 //! Web IDL CharacterData reads and the original canonical Source edit.
 
 use super::*;
-use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
-};
+use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
 use surgeist_bindings_js::conversion::{
     IntegerType,
     declarations::{
@@ -266,12 +264,7 @@ impl Capture {
                 &mut dom,
                 DomSourceEdit::replace_data(node.node(), offset, count, data),
                 events.limits.source_edits,
-                &mut DomSourceServices {
-                    meta: None,
-                    execution_scope: None,
-                    style_policy: &mut |_| None,
-                    url: None,
-                },
+                &mut guest_source_services(&mut initial_inline_style_policy),
                 &owner.cancellation,
             );
             Ok((result, dom.pending_source_edit()))

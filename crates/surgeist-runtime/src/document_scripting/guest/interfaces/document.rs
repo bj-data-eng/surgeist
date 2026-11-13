@@ -21,6 +21,30 @@ mod text;
 mod tree;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 
+fn guest_source_services(
+    style_policy: &mut dyn FnMut(
+        &surgeist_dom::DomStyleSource,
+    ) -> Option<surgeist_dom::DomStyleInlineCspObservation>,
+) -> crate::DomSourceServices<'_> {
+    crate::DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy,
+        url: None,
+    }
+}
+
+fn initial_inline_style_policy(
+    source: &surgeist_dom::DomStyleSource,
+) -> Option<surgeist_dom::DomStyleInlineCspObservation> {
+    match source.document_metadata().policy_container().csp() {
+        surgeist_dom::DomDocumentCspState::ConstructorInitialEmpty => Some(
+            surgeist_dom::DomStyleInlineCspObservation::complete_empty(source, 0),
+        ),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(in crate::document_scripting::guest) enum GuestNode {
     Document(DocumentId),

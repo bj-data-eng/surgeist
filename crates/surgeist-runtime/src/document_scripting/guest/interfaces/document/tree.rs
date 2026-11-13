@@ -1,9 +1,7 @@
 //! Structural Node methods over the original canonical Source operation.
 
 use super::*;
-use crate::{
-    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError, DomSourceServices,
-};
+use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
 use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
 use surgeist_dom::{DomSourceEdit, DomSourceRequest, DomSourceStatus};
 
@@ -215,12 +213,8 @@ impl Capture {
             self.callbacks
                 .with_qualified_session(owner, event.as_ref(), |session, _| {
                     let mut source = session.source_execution();
-                    let mut services = DomSourceServices {
-                        meta: None,
-                        execution_scope: None,
-                        style_policy: &mut |_| None,
-                        url: None,
-                    };
+                    let mut policy = initial_inline_style_policy;
+                    let mut services = guest_source_services(&mut policy);
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
                     let mut result = source.apply(&mut dom, edit, limits, &mut services, cancel);
