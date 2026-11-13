@@ -1621,6 +1621,7 @@ impl Draft {
                                 import::CloneRequest {
                                     document: self.node(fragment)?.document(),
                                     creation_global: None,
+                                    fallback_registry: crate::DomRegistryBinding::Null,
                                     placement: import::Placement::AfterClone(fragment),
                                     subtree: true,
                                     scoped: true,

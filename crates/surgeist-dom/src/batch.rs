@@ -235,6 +235,13 @@ pub(crate) enum Command {
         subtree: bool,
         fallback: Option<crate::DomCreationRealmFallback>,
     },
+    ImportLiveNode {
+        source: NodeId,
+        document: crate::DocumentId,
+        subtree: bool,
+        registry: Option<crate::DomRegistryId>,
+        fallback: crate::DomCreationRealmFallback,
+    },
     Import {
         snapshot: DomSnapshot,
         source: NodeId,

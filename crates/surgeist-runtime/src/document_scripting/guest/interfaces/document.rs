@@ -359,6 +359,7 @@ impl DocumentPrototypes {
         attr_factory::install(scope, &document, &funding.capture)?;
         element_factory::install(scope, &document, &funding.capture)?;
         tree::install_adoption(scope, &document, funding.capture)?;
+        tree::install_import(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         parent_node::install(
             scope,

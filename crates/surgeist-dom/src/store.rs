@@ -3530,6 +3530,23 @@ impl Draft {
                 let source = self.resolve(source.clone())?;
                 self.clone_node(source, *subtree, *fallback, limits, cancelled)?;
             }
+            Command::ImportLiveNode {
+                source,
+                document,
+                subtree,
+                registry,
+                fallback,
+            } => {
+                let source = self.resolve((*source).into())?;
+                let document = self.resolve(document.node().into())?;
+                self.import_live_node(
+                    source,
+                    document,
+                    (*subtree, *registry, *fallback),
+                    limits,
+                    cancelled,
+                )?;
+            }
             Command::CreateXmlDocument {
                 associated_document,
                 namespace,

@@ -1,4 +1,7 @@
-use crate::{PropertyKey, Value, ValueKind, declarations::ElementCreationArgument};
+use crate::{
+    PropertyKey, Value, ValueKind,
+    declarations::{ElementCreationArgument, ImportNodeArgument},
+};
 
 use super::{Conversion, Converted, Failure, IntegerType, Rule, Type, Work};
 
@@ -19,6 +22,30 @@ pub(super) fn element_creation_argument<'s>(
         }
     };
     Ok(Converted { value, storage })
+}
+
+pub(super) fn import_node_argument<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<ImportNodeArgument>, Failure> {
+    let kind = cx.scope.kind(input);
+    match cx.core(kind)? {
+        ValueKind::Object | ValueKind::Null | ValueKind::Undefined => {
+            let Converted { value, storage } =
+                cx.value(&super::declarations::import_node_options(), input)?;
+            Ok(Converted {
+                value: ImportNodeArgument::Options(value),
+                storage,
+            })
+        }
+        _ => {
+            let Converted { value, storage } = cx.value(&super::types::BOOLEAN, input)?;
+            Ok(Converted {
+                value: ImportNodeArgument::Subtree(value),
+                storage,
+            })
+        }
+    }
 }
 
 /// Closed typed descriptors compose without accepting downstream conversion
@@ -261,6 +288,14 @@ impl<'s> Conversion<'_, 's> {
         let token = self.scope.custom_element_registry_identity(value);
         self.core(token)?
             .map(Some)
+            .ok_or_else(|| self.validation(Rule::Interface("CustomElementRegistry")))
+    }
+
+    pub(super) fn required_custom_element_registry_member(
+        &mut self,
+        value: &Value<'s>,
+    ) -> Result<crate::CustomElementRegistryIdentity, Failure> {
+        self.custom_element_registry_member(value)?
             .ok_or_else(|| self.validation(Rule::Interface("CustomElementRegistry")))
     }
 }

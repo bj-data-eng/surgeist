@@ -53,6 +53,7 @@ pub fn surgeist_bindings_js::conversion::declarations::document_html_query_comma
 pub fn surgeist_bindings_js::conversion::declarations::document_html_query_command_state_0_command_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::document_html_query_command_supported_0_command_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::document_html_query_command_value_0_command_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::document_import_node_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ImportNodeArgument>>
 pub fn surgeist_bindings_js::conversion::declarations::document_ready_state() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::DocumentReadyState>
 pub fn surgeist_bindings_js::conversion::declarations::document_visibility_state() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::DocumentVisibilityState>
 pub fn surgeist_bindings_js::conversion::declarations::dom_exception_constructor_0_message() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -108,6 +109,7 @@ pub fn surgeist_bindings_js::conversion::declarations::html_collection_item_0_in
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_named_item_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_inner_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_outer_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::import_node_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ImportNodeOptions>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_ns_0_local_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_ns_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
@@ -374,6 +376,9 @@ pub fn surgeist_bindings_js::declarations::DocumentVisibilityState::from_code_un
 pub enum surgeist_bindings_js::declarations::ElementCreationArgument
 pub surgeist_bindings_js::declarations::ElementCreationArgument::Options(surgeist_bindings_js::declarations::ElementCreationOptions)
 pub surgeist_bindings_js::declarations::ElementCreationArgument::String(surgeist_bindings_js::DomString)
+pub enum surgeist_bindings_js::declarations::ImportNodeArgument
+pub surgeist_bindings_js::declarations::ImportNodeArgument::Options(surgeist_bindings_js::declarations::ImportNodeOptions)
+pub surgeist_bindings_js::declarations::ImportNodeArgument::Subtree(bool)
 pub enum surgeist_bindings_js::declarations::ShadowRootMode
 pub surgeist_bindings_js::declarations::ShadowRootMode::Closed
 pub surgeist_bindings_js::declarations::ShadowRootMode::Open
@@ -397,6 +402,9 @@ pub struct surgeist_bindings_js::declarations::EventListenerOptions
 pub surgeist_bindings_js::declarations::EventListenerOptions::capture: bool
 pub struct surgeist_bindings_js::declarations::GetRootNodeOptions
 pub surgeist_bindings_js::declarations::GetRootNodeOptions::composed: bool
+pub struct surgeist_bindings_js::declarations::ImportNodeOptions
+pub surgeist_bindings_js::declarations::ImportNodeOptions::custom_element_registry: core::option::Option<surgeist_bindings_js::CustomElementRegistryIdentity>
+pub surgeist_bindings_js::declarations::ImportNodeOptions::self_only: bool
 pub struct surgeist_bindings_js::declarations::ShadowRootInit
 pub surgeist_bindings_js::declarations::ShadowRootInit::clonable: bool
 pub surgeist_bindings_js::declarations::ShadowRootInit::custom_element_registry_is_null: bool

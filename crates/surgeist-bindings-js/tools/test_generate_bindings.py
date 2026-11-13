@@ -319,13 +319,14 @@ class ValueLoweringTests(unittest.TestCase):
     def test_current_dictionary_outputs_cover_their_admitted_profiles(self):
         model = g.lower_values(g.load())
         self.assertEqual([d["name"] for d in model["dictionaries"]],
-                         ["GetRootNodeOptions", "ElementCreationOptions", "ShadowRootInit", "EventInit", "EventListenerOptions"])
+                         ["GetRootNodeOptions", "ElementCreationOptions", "ImportNodeOptions",
+                          "ShadowRootInit", "EventInit", "EventListenerOptions"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
                          ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState", "DocumentVisibilityState"])
-        # No member may be discarded. Signal, native registry and source
-        # combinations outside the selected conversion profiles stay unavailable.
+        # No member may be discarded. Signal and source combinations outside
+        # the selected conversion profiles stay unavailable.
         for name in ("AddEventListenerOptions",
-                     "ImportNodeOptions", "ShowPopoverOptions", "TogglePopoverOptions"):
+                     "ShowPopoverOptions", "TogglePopoverOptions"):
             self.assertNotIn(name, [d["name"] for d in model["dictionaries"]])
 
     def test_inheritance_precedes_derived_lexicographic_members(self):

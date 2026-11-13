@@ -535,7 +535,10 @@ pub(in crate::store) fn commands(
             Command::SetAttributeValue { value, .. } => payload.string(value)?,
             // A whole-snapshot Import retains its actual missing controlled
             // frontier through Source InputCapture, not a second payload sum.
-            Command::Import { .. } | Command::ConstructDocument(_) | Command::CloneNode { .. } => {}
+            Command::Import { .. }
+            | Command::ImportLiveNode { .. }
+            | Command::ConstructDocument(_)
+            | Command::CloneNode { .. } => {}
             Command::ViewTransition {
                 edit: crate::view_transition::Edit::Append { name, .. },
                 ..

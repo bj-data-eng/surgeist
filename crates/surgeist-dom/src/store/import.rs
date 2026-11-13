@@ -15,6 +15,7 @@ pub(super) enum Placement {
 pub(super) struct CloneRequest {
     pub document: Key,
     pub creation_global: Option<crate::DomHostedGlobalId>,
+    pub fallback_registry: crate::DomRegistryBinding,
     pub placement: Placement,
     pub subtree: bool,
     pub scoped: bool,
@@ -25,6 +26,7 @@ pub(super) struct Frame {
     copy: Key,
     document: Key,
     creation_global: Option<crate::DomHostedGlobalId>,
+    fallback_registry: crate::DomRegistryBinding,
     placement: Placement,
     template_child: usize,
     appended: bool,
@@ -47,6 +49,7 @@ impl Frame {
             copy: self.copy,
             document: self.document,
             creation_global: self.creation_global,
+            fallback_registry: self.fallback_registry,
             placement: self.placement,
             template_child: self.template_child,
             appended: self.appended,
@@ -166,6 +169,7 @@ impl Draft {
             CloneRequest {
                 document,
                 creation_global: None,
+                fallback_registry: crate::DomRegistryBinding::Null,
                 placement: Placement::Detached,
                 subtree,
                 scoped: false,
@@ -200,8 +204,70 @@ impl Draft {
             CloneRequest {
                 document,
                 creation_global,
+                fallback_registry: crate::DomRegistryBinding::Null,
                 placement: Placement::Detached,
                 subtree,
+                scoped: self.effect_scoped,
+                root_ticket: true,
+            },
+            limits,
+            cancel,
+        )?;
+        self.run_effects(limits, cancel)
+    }
+
+    pub(super) fn import_live_node(
+        &mut self,
+        source: Key,
+        document: Key,
+        (subtree, registry, fallback): (
+            bool,
+            Option<crate::DomRegistryId>,
+            crate::DomCreationRealmFallback,
+        ),
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if matches!(
+            self.node(source)?.kind(),
+            transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
+        ) {
+            return Err(DomError::NotSupported);
+        }
+        let destination = self.document_metadata(document)?.custom_element_registry();
+        let fallback_registry = if let Some(id) = registry {
+            let selected = crate::DomRegistryBinding::Registry(id);
+            let registry = self.creation_registry(id, cancel)?;
+            match registry
+                .capture
+                .registry_scope(&registry.local)
+                .map_err(DomError::SelectCapture)?
+            {
+                surgeist_html_semantics::HtmlRegistryScope::Scoped => selected,
+                surgeist_html_semantics::HtmlRegistryScope::Global if destination == selected => {
+                    selected
+                }
+                surgeist_html_semantics::HtmlRegistryScope::Global => {
+                    return Err(DomError::NotSupported);
+                }
+                surgeist_html_semantics::HtmlRegistryScope::Unavailable => {
+                    return Err(DomError::HostedSourceUnavailable);
+                }
+            }
+        } else {
+            destination
+        };
+        let creation_global = self.resolve_creation_global(document, Some(fallback), cancel)?;
+        self.begin_clone(
+            Source::Staged(source),
+            None,
+            CloneRequest {
+                document,
+                creation_global,
+                fallback_registry,
+                subtree,
+                placement: Placement::Detached,
                 scoped: self.effect_scoped,
                 root_ticket: true,
             },
@@ -221,13 +287,14 @@ impl Draft {
         let CloneRequest {
             document,
             creation_global,
+            fallback_registry,
             placement,
             subtree,
             scoped,
             root_ticket,
         } = request;
         let start = self.created.len();
-        let copy = self.clone_single(&source, document, limits, cancel)?;
+        let copy = self.clone_single(&source, document, fallback_registry, limits, cancel)?;
         if creation_global.is_some() && self.node(copy)?.relevant_global().is_none() {
             self.establish_creation_global(copy, creation_global, cancel)?;
             let count = self.node(copy)?.attribute_ids().len();
@@ -257,6 +324,7 @@ impl Draft {
                 copy,
                 document,
                 creation_global,
+                fallback_registry,
                 placement,
                 template_child: 0,
                 appended: false,
@@ -297,6 +365,7 @@ impl Draft {
                 CloneRequest {
                     document,
                     creation_global,
+                    fallback_registry: crate::DomRegistryBinding::Null,
                     placement: Placement::BeforeChildren(parent),
                     subtree: true,
                     scoped,
@@ -325,6 +394,7 @@ impl Draft {
             let parent = frame.copy;
             let document = frame.document;
             let creation_global = frame.creation_global;
+            let fallback_registry = frame.fallback_registry;
             self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             self.begin_clone(
                 source,
@@ -332,6 +402,7 @@ impl Draft {
                 CloneRequest {
                     document,
                     creation_global,
+                    fallback_registry,
                     placement: Placement::BeforeChildren(parent),
                     subtree: true,
                     scoped,
@@ -368,6 +439,7 @@ impl Draft {
                         copy: root,
                         document,
                         creation_global,
+                        fallback_registry: crate::DomRegistryBinding::Null,
                         placement: Placement::Detached,
                         template_child: 0,
                         appended: true,
@@ -397,6 +469,7 @@ impl Draft {
         &mut self,
         source: &Source,
         document: Key,
+        fallback_registry: crate::DomRegistryBinding,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<Key, DomError> {
@@ -559,7 +632,11 @@ impl Draft {
         if matches!(source, Source::Staged(_))
             && let transaction::KindRead::Element(element) = original.kind()
         {
-            let registry = match element.custom_element_registry() {
+            let original_registry = match element.custom_element_registry() {
+                crate::DomRegistryBinding::Null => fallback_registry,
+                registry => registry,
+            };
+            let registry = match original_registry {
                 crate::DomRegistryBinding::Null => crate::DomRegistryBinding::Null,
                 crate::DomRegistryBinding::Registry(registry) => {
                     let record = self.creation_registry(registry, cancel)?;

@@ -1,5 +1,6 @@
 mod authored_toggle;
 mod declarative_shadow;
+mod document_import;
 mod document_type;
 mod dom_implementation;
 mod element_tasks;
@@ -335,6 +336,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     split_text::split_text_keeps_native_identity_and_range_boundaries();
     whole_text::whole_text_reads_the_current_contiguous_native_run();
     node_clone::clone_node_returns_fresh_canonical_subtrees();
+    document_import::import_node_uses_destination_and_standard_options();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
