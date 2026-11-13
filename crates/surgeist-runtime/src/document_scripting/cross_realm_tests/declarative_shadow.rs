@@ -170,21 +170,22 @@ pub(super) fn verify_declarative_shadow_reuse() {
                             return false;
                     }}
                     if (original !== null) {{
-                        const calls = [];
+                        const calls = globalThis.shadowReuseCalls = [];
+                        const marker = globalThis.shadowReuseException = {{}};
                         customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {{
-                            disconnectedCallback() {{ calls.push(this); }}
+                            disconnectedCallback() {{ calls.push(this); throw marker; }}
                         }});
-                        const custom = document.createElement('x-shadow-reuse-reaction');
+                        const custom = globalThis.shadowReuseReceiver =
+                            document.createElement('x-shadow-reuse-reaction');
                         original.appendChild(custom);
-                        try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
-                        catch (error) {{
-                            if (error.name !== "NotSupportedError" || custom.parentNode !== original ||
-                                shadowChild.parentNode !== original || calls.length !== 0) return false;
-                        }}
-                        original.removeChild(custom);
-                        if (calls.length !== 1 || calls[0] !== custom) return false;
+                        Promise.resolve().then(() => calls.push('before'));
                     }}
                     const observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                    if (original !== null) {{
+                        if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
+                            return false;
+                        Promise.resolve().then(() => shadowReuseCalls.push('after'));
+                    }}
                     try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
                     catch (error) {{
                         if (error.name !== "NotSupportedError") return false;
@@ -209,6 +210,29 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 failure.cause::<DocumentGuestEventError>()
             ),
             Err(error) => panic!("{matching} attachment failed: {error:?}"),
+        }
+        if mode == HtmlShadowRootMode::Open {
+            host.checkpoint().unwrap();
+            let report = host
+                .take_guest_custom_element_callback_exception(&permit)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                report.callback,
+                DocumentGuestCustomElementCallback::Disconnected
+            );
+            host.in_document(&permit, |scope| {
+                let correct = evaluate(
+                    scope,
+                    "shadowReuseCalls.length === 3 && shadowReuseCalls[0] === 'before' && +                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'after'",
+                )?;
+                assert!(scope.boolean(&correct)?);
+                let marker = evaluate(scope, "shadowReuseException")?;
+                let thrown = scope.import(report.exception.value())?;
+                assert!(scope.strict_equals(&marker, &thrown)?);
+                Ok(())
+            })
+            .unwrap();
         }
         let after = host.snapshot().unwrap();
         assert_eq!(
