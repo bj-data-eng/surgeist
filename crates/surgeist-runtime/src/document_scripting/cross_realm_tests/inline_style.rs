@@ -256,9 +256,25 @@ fn guest_style(
         assert_eq!(original.spent_work(), source_work);
         crate::document_scripting::guest::tests::assert_queued_trusted_types_violations(&host, &[]);
         if matches!(report, Some(StyleReport::RetryStopped)) {
+            let mut stopped = host
+                .stop()
+                .into_session()
+                .expect_err("the stopped host must retain the original Style continuation");
+            assert!(matches!(
+                stopped.settle_pending_style_edit(original.operation(), SOURCE).unwrap().unwrap(),
+                DomSourceDriveProgress::Complete(done) if done.operation() == original.operation()
+            ));
+            let mut session = stopped.into_session().unwrap();
+            assert!(session.dom().pending_source_edit().is_none());
+            let snapshot = session.snapshot();
+            assert_eq!(snapshot.node(style).unwrap().parent(), Some(head));
             assert!(
-                host.stop().into_session().is_err(),
-                "the stopped host must retain the original Style continuation"
+                styles
+                    .snapshot(document.node())
+                    .unwrap()
+                    .unwrap()
+                    .sheets()
+                    .is_empty()
             );
             return;
         }

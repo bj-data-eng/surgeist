@@ -359,7 +359,11 @@ impl NativeOwner {
         let Some(native) = Rc::get_mut(&mut owner) else {
             return Err(owner);
         };
-        if native.pending_attribute.get_mut().is_some() {
+        let pending_source = native.session.get_mut().read_dom().pending_source_edit();
+        if native.pending_attribute.get_mut().is_some()
+            || pending_source
+                .is_some_and(|status| *native.pending_style.get_mut() == Some(status.operation()))
+        {
             return Err(owner);
         }
         if let Some(attachment) = native.attachment.get() {
@@ -1352,7 +1356,7 @@ impl fmt::Debug for NativeOwner {
 impl StoppedDocumentScriptHost {
     /// Recover the same native Session. Its historical scripting facts remain
     /// usable with their exact historical snapshots.
-    /// A retained attribute write must be settled before recovery.
+    /// Retained attribute and Style edits must be settled before recovery.
     pub fn into_session(self) -> Result<DomSession, Self> {
         NativeOwner::recover(self.native).map_err(|native| Self { native })
     }

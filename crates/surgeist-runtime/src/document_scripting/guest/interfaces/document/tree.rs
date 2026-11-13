@@ -219,7 +219,7 @@ impl Capture {
                         &mut dom,
                         edit,
                         limits,
-                        &mut guest_source_services(&mut initial_inline_style_policy),
+                        &mut guest_source_services(&mut |_| None),
                         cancel,
                     );
                     Ok((result, parent))

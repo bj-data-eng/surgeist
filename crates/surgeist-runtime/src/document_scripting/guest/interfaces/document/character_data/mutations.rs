@@ -264,7 +264,7 @@ impl Capture {
                 &mut dom,
                 DomSourceEdit::replace_data(node.node(), offset, count, data),
                 events.limits.source_edits,
-                &mut guest_source_services(&mut initial_inline_style_policy),
+                &mut guest_source_services(&mut |_| None),
                 &owner.cancellation,
             ))
         })?;

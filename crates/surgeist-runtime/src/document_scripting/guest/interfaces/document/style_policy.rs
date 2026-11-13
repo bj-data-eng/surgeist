@@ -10,6 +10,12 @@ use crate::{
 use surgeist_dom::{DomSourceLimits, DomSourceRequest, DomStyleInlineCspObservation};
 use surgeist_html::{accounting::HtmlChargedError, security::csp::HtmlCspError};
 
+#[derive(Clone, Copy)]
+enum StyleReportDelivery {
+    Attached,
+    Stopped,
+}
+
 struct PreparedStylePolicy {
     observation: DomStyleInlineCspObservation,
     reports: Vec<ViolationReport<ViolationBacking>>,
@@ -24,14 +30,24 @@ impl NativeOwner {
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
         limits: DomSourceLimits,
     ) -> Result<(), DocumentScriptNativeError> {
+        self.finish_tree_policies(result, limits, StyleReportDelivery::Attached)
+    }
+
+    fn finish_tree_policies(
+        &self,
+        result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
+        limits: DomSourceLimits,
+        delivery: StyleReportDelivery,
+    ) -> Result<(), DocumentScriptNativeError> {
         let cancel = &self.cancellation;
         loop {
-            self.finish_guest_style(result, limits);
+            self.finish_style(result, limits, delivery);
             let Ok(DomSourceDriveProgress::Pending {
                 request: DomSourceRequest::MetaCsp(request),
                 ..
             }) = *result
             else {
+                self.reconcile_pending_style();
                 return Ok(());
             };
             let mut session = self
@@ -46,7 +62,7 @@ impl NativeOwner {
                 &mut session.dom(),
                 request.operation(),
                 limits,
-                &mut guest_source_services(&mut initial_inline_style_policy),
+                &mut guest_source_services(&mut |_| None),
                 cancel,
             );
         }
@@ -57,6 +73,15 @@ impl NativeOwner {
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
         limits: DomSourceLimits,
     ) {
+        self.finish_style(result, limits, StyleReportDelivery::Attached);
+    }
+
+    fn finish_style(
+        &self,
+        result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
+        limits: DomSourceLimits,
+        delivery: StyleReportDelivery,
+    ) {
         let cancel = &self.cancellation;
         while let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::Style(request),
@@ -66,7 +91,7 @@ impl NativeOwner {
             let operation = request.source().operation();
             self.pending_style.set(Some(operation));
             let accepted = (|| {
-                let Some(mut prepared) = self.evaluate_guest_style(request)? else {
+                let Some(mut prepared) = self.evaluate_guest_style(request, delivery)? else {
                     return Ok(false);
                 };
                 let mut session = self
@@ -131,19 +156,37 @@ impl NativeOwner {
                 Ok(progress) => progress,
                 Err(error) => Err(error.into()),
             };
-            self.reconcile_pending_style(operation);
+            self.reconcile_pending_style();
         }
     }
 
     fn evaluate_guest_style(
         &self,
         request: &surgeist_dom::DomStyleRequest,
+        delivery: StyleReportDelivery,
     ) -> Result<Option<PreparedStylePolicy>, DomStyleRuntimeError> {
         let cancel = &self.cancellation;
         let session = self
             .session
             .try_borrow()
             .map_err(|_| DomStyleRuntimeError::Binding)?;
+        let budget = session.read_dom().inline_csp_budget(request)?;
+        let input = request.source();
+        let csp = input.document_metadata().policy_container().csp();
+        let step = || budget.step(cancel);
+        step()?;
+        if matches!(
+            csp,
+            surgeist_dom::DomDocumentCspState::ConstructorInitialEmpty
+        ) {
+            return Ok(Some(PreparedStylePolicy {
+                observation: DomStyleInlineCspObservation::complete_empty(input, 0),
+                reports: Vec::new(),
+                origin: None,
+                _report_bank: None,
+                observation_backing: None,
+            }));
+        }
         let Some(processor) = &session.trusted_types_csp else {
             return Ok(None);
         };
@@ -151,31 +194,24 @@ impl NativeOwner {
             .processor
             .try_borrow()
             .map_err(|_| DomStyleRuntimeError::Binding)?;
-        let budget = session.read_dom().inline_csp_budget(request)?;
-        let input = request.source();
         let snapshot = session.snapshot();
-        let step = || budget.step(cancel);
-        step()?;
         let policies = processor
-            .document_policies_with(
-                input.document_metadata().policy_container().csp(),
-                &mut |layout| {
-                    budget.admit_bytes(layout.atomic_bytes(), cancel)?;
-                    layout
-                        .charge_work(&mut CspWork(|units| {
-                            for _ in 0..units {
-                                step()?;
-                            }
-                            Ok::<(), DocumentScriptNativeError>(())
-                        }))
-                        .map_err(|error| match error {
-                            HtmlChargedError::Stopped(DocumentScriptNativeError::Dom(error)) => {
-                                DomStyleRuntimeError::Dom(error)
-                            }
-                            _ => DomStyleRuntimeError::Admission,
-                        })
-                },
-            )
+            .document_policies_with(csp, &mut |layout| {
+                budget.admit_bytes(layout.atomic_bytes(), cancel)?;
+                layout
+                    .charge_work(&mut CspWork(|units| {
+                        for _ in 0..units {
+                            step()?;
+                        }
+                        Ok::<(), DocumentScriptNativeError>(())
+                    }))
+                    .map_err(|error| match error {
+                        HtmlChargedError::Stopped(DocumentScriptNativeError::Dom(error)) => {
+                            DomStyleRuntimeError::Dom(error)
+                        }
+                        _ => DomStyleRuntimeError::Admission,
+                    })
+            })
             .map_err(|error| match error {
                 HtmlCspError::Interrupted(error) => error,
                 HtmlCspError::Protocol(_) => DomStyleRuntimeError::Protocol,
@@ -206,6 +242,10 @@ impl NativeOwner {
                 return Ok(None);
             };
             if matches {
+                continue;
+            }
+            allowed &= !policy.delivery().enforces();
+            if matches!(delivery, StyleReportDelivery::Stopped) {
                 continue;
             }
             if reports.is_empty() {
@@ -255,7 +295,6 @@ impl NativeOwner {
                     ReportError::Allocation => DomStyleRuntimeError::Admission,
                 })?,
             );
-            allowed &= !policy.delivery().enforces();
         }
         let bytes = policies.iter().try_fold(
             size_of::<Vec<DocumentString>>() + 2 * size_of::<usize>(),
@@ -310,13 +349,14 @@ impl NativeOwner {
             &mut session.dom(),
             operation,
             limits,
-            &mut guest_source_services(&mut initial_inline_style_policy),
+            &mut guest_source_services(&mut |_| None),
             &self.cancellation,
         ))
     }
 
-    fn reconcile_pending_style(&self, operation: surgeist_dom::DomSourceOperationId) {
-        if let Ok(session) = self.session.try_borrow()
+    fn reconcile_pending_style(&self) {
+        if let Some(operation) = self.pending_style.get()
+            && let Ok(session) = self.session.try_borrow()
             && session
                 .read_dom()
                 .pending_source_edit()
@@ -338,16 +378,43 @@ impl DocumentScriptHost {
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
     {
         self.check_permit(permit)?;
-        let owner = &self.native;
-        if owner.pending_style.get() != Some(operation) {
+        self.native
+            .resume_style(operation, limits, StyleReportDelivery::Attached)
+    }
+}
+
+impl StoppedDocumentScriptHost {
+    /// Settle the original native Style edit after disposing of the engine.
+    /// The selected processor still decides the policy and the original
+    /// synchronous effects complete. Retired reports have no delivery owner.
+    pub fn settle_pending_style_edit(
+        &mut self,
+        operation: surgeist_dom::DomSourceOperationId,
+        limits: DomSourceLimits,
+    ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
+    {
+        self.native
+            .resume_style(operation, limits, StyleReportDelivery::Stopped)
+    }
+}
+
+impl NativeOwner {
+    fn resume_style(
+        &self,
+        operation: surgeist_dom::DomSourceOperationId,
+        limits: DomSourceLimits,
+        delivery: StyleReportDelivery,
+    ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
+    {
+        if self.pending_style.get() != Some(operation) {
             return Err(DocumentScriptNativeError::SourceAccess);
         }
-        let mut result = owner
+        let mut result = self
             .drive_pending_style(operation, limits)
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        owner.finish_guest_tree_policies(&mut result, limits)?;
-        owner.reconcile_pending_style(operation);
-        owner.reconcile_pending_attribute()?;
+        self.finish_tree_policies(&mut result, limits, delivery)?;
+        self.reconcile_pending_style();
+        self.reconcile_pending_attribute()?;
         Ok(result)
     }
 }

@@ -369,7 +369,9 @@ reporting Document, or that Document otherwise. An unavailable policy or
 required tokenizer fact leaves the original native request pending.
 After a resource refusal, use `resume_pending_style_edit` with the original
 operation and higher Source limits. The host uses the same Session processor
-and report queue.
+and report queue. After stopping the engine, use `settle_pending_style_edit`
+to complete the native edit before recovering the Session. Stop disposes of
+the guest report queue.
 
 Full NamedNodeMap collection behavior and live HTTP response CSP have separate
 integration work.

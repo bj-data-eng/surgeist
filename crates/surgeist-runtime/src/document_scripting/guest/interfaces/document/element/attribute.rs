@@ -157,8 +157,6 @@ impl Capture {
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
-        let mut policy = initial_inline_style_policy;
-        let mut services = guest_source_services(&mut policy);
         let event = owner.active_event_request();
         let (mut result, parent) =
             self.callbacks
@@ -166,7 +164,13 @@ impl Capture {
                     let mut source = session.source_execution();
                     let mut dom = session.dom();
                     let parent = dom.pending_source_edit().map(DomSourceStatus::operation);
-                    let result = source.apply(&mut dom, edit, limits, &mut services, cancel);
+                    let result = source.apply(
+                        &mut dom,
+                        edit,
+                        limits,
+                        &mut guest_source_services(&mut |_| None),
+                        cancel,
+                    );
                     Ok((result, parent))
                 })?;
         owner.finish_guest_style(&mut result, limits);
@@ -721,7 +725,7 @@ fn resume_attribute_source(
             &mut session.dom(),
             operation,
             limits,
-            &mut guest_source_services(&mut initial_inline_style_policy),
+            &mut guest_source_services(&mut |_| None),
             &owner.cancellation,
         )
     };
