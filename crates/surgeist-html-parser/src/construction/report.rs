@@ -2097,6 +2097,34 @@ mod tests {
         .unwrap()
     }
 
+    /// The base facts of a parse and the associated inputs that hold them are not registry rows,
+    /// and publication qualifies them by reading them: it makes no visit for the plain elements of
+    /// the parse. A parse with base facts and one without differ in the work they do for their
+    /// facts, which is the same at every size, so the work that `elements` plain elements add is
+    /// the same with and without them. Publication that walks the registry for the inputs of each
+    /// base facts row visits every row the elements added, and the work differs by that count.
+    #[test]
+    fn publication_makes_no_visit_for_the_plain_elements_of_a_parse_with_base_facts() {
+        let visits = |with_facts: bool, elements: usize| {
+            let text = format!("<!doctype html><body>{}", "<span>".repeat(elements));
+            let request = if with_facts {
+                super::super::base::tests::request(&text)
+            } else {
+                crate::HtmlDocumentParseRequest::offline(
+                    crate::HtmlSource::utf8(text.as_str()),
+                    super::super::tests::limits(),
+                )
+            };
+            request
+                .parse()
+                .unwrap()
+                .usage()
+                .work(crate::HtmlParseWorkCategory::RecordVisit)
+        };
+        let added = |with_facts: bool| visits(with_facts, 16) - visits(with_facts, 0);
+        assert_eq!(added(true), added(false));
+    }
+
     #[test]
     fn releasing_the_execution_bank_past_the_registry_reports_the_registry_row() {
         let mut report = published();
