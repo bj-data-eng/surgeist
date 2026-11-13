@@ -46,12 +46,18 @@ pub(crate) enum Edit {
         position: DocumentString,
         data: DocumentString,
     },
+    AdjacentElement {
+        receiver: NodeId,
+        position: DocumentString,
+        element: NodeId,
+    },
 }
 impl Edit {
     pub(crate) fn receiver(&self) -> NodeId {
         match self {
             Self::Variadic { receiver, .. }
             | Self::TextContent { receiver, .. }
+            | Self::AdjacentElement { receiver, .. }
             | Self::AdjacentText { receiver, .. } => *receiver,
         }
     }
@@ -111,6 +117,22 @@ impl DomSourceEdit {
                 receiver: element,
                 position: position.into(),
                 data: data.into(),
+            }),
+        }
+    }
+    /// Insert the original Element at the selected adjacent position. The
+    /// completion reports its original identity, or null for an outside
+    /// position on a detached receiver without adopting the operand.
+    pub fn insert_adjacent_element(
+        receiver: NodeId,
+        position: impl Into<DocumentString>,
+        element: NodeId,
+    ) -> Self {
+        Self {
+            command: Command::Compound(Edit::AdjacentElement {
+                receiver,
+                position: position.into(),
+                element,
             }),
         }
     }

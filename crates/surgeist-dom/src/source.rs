@@ -316,6 +316,9 @@ impl DomSourceScriptSettings {
 /// The value returned by a completed Source operation with an output.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceOutput {
+    /// Original identity returned by insertAdjacentElement, or null when an
+    /// outside position has no parent. This is historical completion evidence.
+    AdjacentElement(Option<NodeId>),
     /// The qualified toggle's selected presence branch. A removal returns
     /// false even if another namespace has an attribute with the same spelling.
     ElementAttributePresent(bool),

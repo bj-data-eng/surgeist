@@ -700,6 +700,9 @@ impl Draft {
             let key = ticket.key();
             let live = self.node(key).ok();
             let kind = match ticket {
+                NodeTicket::AdjacentElement(_, element) => {
+                    NodeOutputKind::AdjacentElement(*element)
+                }
                 NodeTicket::RemovedAttribute(_) => NodeOutputKind::RemovedAttribute,
                 NodeTicket::AttributeAttachment(_, kind) => {
                     NodeOutputKind::AttributeAttachment(*kind)
@@ -725,7 +728,8 @@ impl Draft {
                 live.is_some()
                     || matches!(
                         kind,
-                        NodeOutputKind::RemovedAttribute
+                        NodeOutputKind::AdjacentElement(_)
+                            | NodeOutputKind::RemovedAttribute
                             | NodeOutputKind::AttributeAttachment(_)
                             | NodeOutputKind::ElementAttributePresent(_)
                             | NodeOutputKind::ProcessingInstructionAttributePresent(_)

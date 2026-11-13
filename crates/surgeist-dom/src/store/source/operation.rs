@@ -1502,7 +1502,8 @@ impl Operation {
             && matches!(
                 prepared.node_output_kinds.first(),
                 Some(
-                    NodeOutputKind::ElementAttributePresent(_)
+                    NodeOutputKind::AdjacentElement(_)
+                        | NodeOutputKind::ElementAttributePresent(_)
                         | NodeOutputKind::ProcessingInstructionAttributePresent(_)
                 )
             );
@@ -1554,7 +1555,8 @@ impl Operation {
             for ticket in &self.draft.tickets {
                 self.draft.source_step(cancel)?;
                 historical.push(match ticket {
-                    NodeTicket::ElementAttributePresent(..)
+                    NodeTicket::AdjacentElement(..)
+                    | NodeTicket::ElementAttributePresent(..)
                     | NodeTicket::ProcessingInstructionAttributePresent(..) => None,
                     _ => match ticket.key() {
                         Key::Created(index) => ids.get(index),
@@ -2304,6 +2306,7 @@ impl DomSourceLease<'_> {
                         | Command::CreateHtmlDocument { .. }
                         | Command::CreateXmlDocument { .. }
                         | Command::ToggleAttribute { .. }
+                        | Command::Compound(crate::compound::Edit::AdjacentElement { .. })
                         | Command::ProcessingInstructionAttribute {
                             edit: crate::DomProcessingInstructionAttributeEdit::Toggle { .. },
                             ..

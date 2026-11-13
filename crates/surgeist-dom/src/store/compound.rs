@@ -102,6 +102,40 @@ impl Draft {
         }
         Ok(())
     }
+    fn adjacent_destination(
+        &self,
+        receiver: Key,
+        position: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(Key, Option<Key>)>, DomError> {
+        let mut selected = None;
+        for (index, name) in ["beforebegin", "afterbegin", "beforeend", "afterend"]
+            .into_iter()
+            .enumerate()
+        {
+            self.source_step(cancel)?;
+            if position.len() == name.len() {
+                let mut equal = true;
+                for (unit, expected) in position.code_units().iter().zip(name.bytes()) {
+                    self.source_step(cancel)?;
+                    equal &=
+                        u8::try_from(*unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&expected));
+                }
+                if equal {
+                    selected = Some(index);
+                    break;
+                }
+            }
+        }
+        let parent = self.node(receiver)?.parent();
+        match selected {
+            Some(0) => Ok(parent.map(|parent| (parent, Some(receiver)))),
+            Some(1) => Ok(Some((receiver, self.node(receiver)?.children().first()))),
+            Some(2) => Ok(Some((receiver, None))),
+            Some(3) => Ok(parent.map(|parent| (parent, self.next_sibling(receiver)))),
+            _ => Err(DomError::InvalidAdjacentPosition),
+        }
+    }
     pub(super) fn compound_edit(
         &mut self,
         edit: &Edit,
@@ -124,34 +158,9 @@ impl Draft {
                     cancel,
                 )?;
                 self.prepare_compound_failure_slot(cancel)?;
-                let mut selected = None;
-                for (index, name) in ["beforebegin", "afterbegin", "beforeend", "afterend"]
-                    .into_iter()
-                    .enumerate()
-                {
-                    self.source_step(cancel)?;
-                    if position.len() == name.len() {
-                        let mut equal = true;
-                        for (unit, expected) in position.code_units().iter().zip(name.bytes()) {
-                            self.source_step(cancel)?;
-                            equal &= u8::try_from(*unit)
-                                .is_ok_and(|unit| unit.eq_ignore_ascii_case(&expected));
-                        }
-                        if equal {
-                            selected = Some(index);
-                            break;
-                        }
-                    }
-                }
-                let parent = self.node(receiver)?.parent();
-                let destination = match selected {
-                    Some(0) => parent.map(|parent| (parent, Some(receiver))),
-                    Some(1) => Some((receiver, self.node(receiver)?.children().first())),
-                    Some(2) => Some((receiver, None)),
-                    Some(3) => parent.map(|parent| (parent, self.next_sibling(receiver))),
-                    _ => {
-                        return self.compound_error(DomError::InvalidAdjacentPosition);
-                    }
+                let destination = match self.adjacent_destination(receiver, position, cancel) {
+                    Ok(destination) => destination,
+                    Err(error) => return self.compound_error(error),
                 };
                 if let Some((parent, before)) = destination {
                     // Only the named algorithm's validation can select an
@@ -167,6 +176,35 @@ impl Draft {
                     self.run_effects(limits, cancel)?;
                 }
                 Ok(())
+            }
+            Edit::AdjacentElement {
+                position, element, ..
+            } => {
+                self.element(receiver)?;
+                let node = self.resolve((*element).into())?;
+                self.element(node)?;
+                self.prepare_compound_failure_slot(cancel)?;
+                let destination = match self.adjacent_destination(receiver, position, cancel) {
+                    Ok(destination) => destination,
+                    Err(error) => return self.compound_error(error),
+                };
+                let Some((parent, mut before)) = destination else {
+                    return self
+                        .register_node_ticket(NodeTicket::AdjacentElement(receiver, None), cancel);
+                };
+                if let Err(error) =
+                    self.ensure_pre_insert(node, parent, before, None, false, cancel)
+                {
+                    return self.compound_error(error);
+                }
+                if before == Some(node) {
+                    before = self.next_sibling(node);
+                }
+                self.register_node_ticket(
+                    NodeTicket::AdjacentElement(receiver, Some(*element)),
+                    cancel,
+                )?;
+                self.insert_validated(node, parent, before, limits, cancel)
             }
             Edit::Variadic { method, nodes, .. } => {
                 let child = matches!(

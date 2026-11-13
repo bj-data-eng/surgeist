@@ -407,6 +407,9 @@ pub(in crate::store) fn commands(
                     }
                 }
                 crate::compound::Edit::TextContent { value, .. } => payload.string(value)?,
+                crate::compound::Edit::AdjacentElement { position, .. } => {
+                    payload.string(position)?
+                }
                 crate::compound::Edit::AdjacentText { position, data, .. } => {
                     payload.string(position)?;
                     payload.string(data)?;

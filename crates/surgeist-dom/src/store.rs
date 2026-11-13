@@ -354,7 +354,7 @@ pub enum DomError {
     WrongNodeKind,
     WrongDocument,
     HierarchyRequest,
-    /// insertAdjacentText's position matched none of the four standard names.
+    /// An adjacent insertion position matched none of the four standard names.
     InvalidAdjacentPosition,
     InvalidCharacter,
     Namespace,
@@ -1192,6 +1192,7 @@ impl std::error::Error for DomHistoryError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeOutputKind {
+    AdjacentElement(Option<NodeId>),
     Node,
     Document,
     RemovedAttribute,
@@ -1221,6 +1222,7 @@ impl AttachmentKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeTicket {
+    AdjacentElement(Key, Option<NodeId>),
     Node(Key),
     RemovedAttribute(Key),
     AttributeAttachment(Key, AttachmentKind),
@@ -1231,7 +1233,8 @@ enum NodeTicket {
 impl NodeTicket {
     fn key(self) -> Key {
         match self {
-            Self::Node(key)
+            Self::AdjacentElement(key, _)
+            | Self::Node(key)
             | Self::RemovedAttribute(key)
             | Self::AttributeAttachment(key, _)
             | Self::ElementAttributePresent(key, _)
@@ -1273,6 +1276,9 @@ impl DomCommit {
         }
         if let Some(Some(node)) = self.node_outputs.first() {
             return Some(match self.node_output_kinds.first()? {
+                NodeOutputKind::AdjacentElement(element) => {
+                    crate::DomSourceOutput::AdjacentElement(*element)
+                }
                 NodeOutputKind::Document => crate::DomSourceOutput::Document(DocumentId(*node)),
                 NodeOutputKind::Node => crate::DomSourceOutput::Node(*node),
                 NodeOutputKind::RemovedAttribute => {
