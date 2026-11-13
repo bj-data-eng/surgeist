@@ -106,6 +106,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         FactoryScope,
         FactoryReconnect,
         DefinitionScope,
+        AttributeScope,
         Stop,
         Refuse,
         RefuseAfterFirst,
@@ -119,6 +120,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Open, Delivery::FactoryScope),
         (HtmlShadowRootMode::Open, Delivery::FactoryReconnect),
         (HtmlShadowRootMode::Open, Delivery::DefinitionScope),
+        (HtmlShadowRootMode::Open, Delivery::AttributeScope),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
@@ -131,6 +133,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         let factory_reconnect = matches!(delivery, Delivery::FactoryReconnect);
         let factory_scope = matches!(delivery, Delivery::FactoryScope) || factory_reconnect;
         let definition_scope = matches!(delivery, Delivery::DefinitionScope);
+        let attribute_scope = matches!(delivery, Delivery::AttributeScope);
         let refuse_after_first = matches!(delivery, Delivery::RefuseAfterFirst);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
@@ -143,7 +146,15 @@ pub(super) fn verify_declarative_shadow_reuse() {
             ),
         };
         let cancel = Arc::new(AtomicBool::new(false));
-        let (mut session, target) = hosted_session(&cancel, 0);
+        let (mut session, target) = if attribute_scope {
+            let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+                limits.with_meta_processing_work(1_000_000)
+            });
+            session.enable_trusted_types_csp(&cancel).unwrap();
+            (session, target)
+        } else {
+            hosted_session(&cancel, 0)
+        };
         let (document, element) = {
             let hosted = session.hosted_execution();
             let mut dom = session.dom();
@@ -200,6 +211,24 @@ pub(super) fn verify_declarative_shadow_reuse() {
             .hosted_shadow_root()
             .unwrap();
         let child = snapshot.node(root).unwrap().children()[0];
+        let policy = if attribute_scope {
+            let snapshot = session.snapshot();
+            let document = target.document();
+            let html = snapshot
+                .document(document)
+                .unwrap()
+                .document_element()
+                .unwrap();
+            let head = snapshot.node(html).unwrap().children()[0];
+            let mut batch = DomBatch::new();
+            let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+            batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+            batch.set_attribute(&meta, "content", "require-trusted-types-for 'script'");
+            let commit = session.dom().apply(batch, &cancel).unwrap();
+            Some((head, commit.created(&meta).unwrap().unwrap()))
+        } else {
+            None
+        };
         let mut host = attach_window(session, target, cancel.clone());
         let permit = host.permit().unwrap();
         for (node, name) in [(element, "shadowHost"), (child, "shadowChild")] {
@@ -214,6 +243,13 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 second,
                 "secondShadowHost",
             );
+        }
+        if let Some((head, meta)) = policy {
+            for (node, name) in [(head, "policyHead"), (meta, "shadowPolicy")] {
+                super::super::guest::tests::expose_public_node_for_source_test(
+                    &mut host, &permit, node, name,
+                );
+            }
         }
         let first_entered = Rc::new(Cell::new(false));
         if refuse_after_first {
@@ -231,8 +267,11 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 const calls = globalThis.shadowReuseCalls = [];
                 const marker = globalThis.shadowReuseException = {};
                 customElements.define('x-shadow-reuse-reaction', class extends HTMLElement {
+                    static observedAttributes = ['onclick', 'data-next'];
+                    attributeChangedCallback(name) { calls.push(name); }
                     disconnectedCallback() {
                         calls.push(this);
+                        if (globalThis.attributeShadowReuse) this.setAttribute('data-next', '1');
                         if (globalThis.exhaustReactionWork) {
                             exhaustReactionWork();
                             return;
@@ -334,6 +373,17 @@ pub(super) fn verify_declarative_shadow_reuse() {
                                 shadowReuseCalls[0] !== 'getter' ||
                                 shadowReuseCalls[1] !== shadowReuseReceiver) return false;
                         }}
+                    }} else if ({attribute_scope}) {{
+                        globalThis.attributeShadowReuse = true;
+                        policyHead.appendChild(shadowPolicy);
+                        trustedTypes.createPolicy('default', {{ createScript(value) {{
+                            observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                            return value;
+                        }} }});
+                        shadowReuseReceiver.setAttribute('onclick', 'handler');
+                        if (shadowReuseCalls.length !== 3 ||
+                            shadowReuseCalls[0] !== shadowReuseReceiver ||
+                            shadowReuseCalls.slice(1).join(',') !== 'onclick,data-next') return false;
                     }} else {{
                         observed = shadowHost.attachShadow({{mode: "{matching}"}});
                         if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
@@ -443,6 +493,9 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 } else if factory_reconnect {
                     "shadowReuseCalls.length === 5 && shadowReuseCalls[0] === shadowReuseReceiver && \
                      shadowReuseCalls.slice(1).join(',') === 'connected,constructor,before,after'"
+                } else if attribute_scope {
+                    "shadowReuseCalls.length === 5 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls.slice(1).join(',') === 'onclick,data-next,before,after'"
                 } else if definition_scope {
                     "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === 'getter' && \
                      shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls.slice(2).join(',') === 'before,after'"
