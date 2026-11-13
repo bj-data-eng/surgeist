@@ -2457,6 +2457,40 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
     }
 }
 
+/// Evaluate a command before its children, retaining only unread siblings.
+fn any_command_in_tree(
+    mut commands: &[RenderCommand],
+    account: &Account,
+    mut predicate: impl FnMut(&RenderCommand) -> Result<bool>,
+) -> Result<bool> {
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((command, siblings)) = commands.split_first() else {
+            let Some(siblings) = pending.pop() else {
+                return Ok(false);
+            };
+            commands = siblings;
+            continue;
+        };
+        commands = siblings;
+        account.work(RenderWork::CommandVisits, 1)?;
+        if predicate(command)? {
+            return Ok(true);
+        }
+        if let RenderCommand::Layer { children, .. } = command
+            && !children.is_empty()
+        {
+            if !siblings.is_empty() {
+                if pending.len() == pending.capacity() {
+                    pending.grow(pending.capacity().max(1))?;
+                }
+                pending.push(siblings)?;
+            }
+            commands = children;
+        }
+    }
+}
+
 fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) -> Result<bool> {
     fn sensitive(image: &crate::Image) -> bool {
         matches!(
@@ -2475,8 +2509,7 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
             crate::paint::PaintKind::Color(_) => false,
         })
     }
-    for command in commands {
-        account.work(RenderWork::CommandVisits, 1)?;
+    any_command_in_tree(commands, account, |command| {
         let requires = match command {
             RenderCommand::Image { image, .. } | RenderCommand::ImageRegion { image, .. } => {
                 sensitive(image)
@@ -2507,7 +2540,7 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
                 }
                 requires
             }
-            RenderCommand::Layer { layer, children } => {
+            RenderCommand::Layer { layer, .. } => {
                 layer.explicit_isolation
                     || (!layer.composition.is_source_over() && !layer.composition.is_plus())
                     || layer.mask.as_ref().is_some_and(|mask| {
@@ -2516,32 +2549,25 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
                             Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
                         )
                     })
-                    || commands_require_surface_grid(children, account)?
             }
             RenderCommand::Shadow { .. } => false,
         };
-        if requires {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+        Ok(requires)
+    })
 }
 
 fn commands_require_composition_domain(
     commands: &[RenderCommand],
     account: &Account,
 ) -> Result<bool> {
-    for command in commands {
-        account.work(RenderWork::CommandVisits, 1)?;
-        if let RenderCommand::Layer { layer, children } = command
-            && (layer.explicit_isolation
-                || (!layer.composition.is_source_over() && !layer.composition.is_plus())
-                || commands_require_composition_domain(children, account)?)
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    any_command_in_tree(commands, account, |command| {
+        Ok(matches!(
+            command,
+            RenderCommand::Layer { layer, .. }
+                if layer.explicit_isolation
+                    || (!layer.composition.is_source_over() && !layer.composition.is_plus())
+        ))
+    })
 }
 
 fn command_is_local_to_capture(
@@ -2549,36 +2575,54 @@ fn command_is_local_to_capture(
     parent_locality: CaptureParentLocality,
     account: &Account,
 ) -> Result<bool> {
-    account.work(RenderWork::CommandVisits, 1)?;
-    let RenderCommand::Layer { layer, children } = command else {
-        return Ok(true);
-    };
-    if layer.mask.is_some()
-        || layer.backdrop.is_some()
-        || layer.foreground_filters.is_some()
-        || layer.explicit_isolation
-        || (!layer.composition.is_source_over() && !layer.composition.is_plus())
-    {
-        return Ok(false);
-    }
-    if !layer.composition.is_source_over_normal()
-        && parent_locality == CaptureParentLocality::External
-    {
-        return Ok(false);
-    }
-    let child_parent_locality = if parent_locality == CaptureParentLocality::CaptureLocal
-        || layer.isolation == LayerIsolation::BackendLayer
-    {
-        CaptureParentLocality::CaptureLocal
-    } else {
-        CaptureParentLocality::External
-    };
-    for child in children {
-        if !command_is_local_to_capture(child, child_parent_locality, account)? {
+    let mut commands = std::slice::from_ref(command);
+    let mut parent_locality = parent_locality;
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((command, siblings)) = commands.split_first() else {
+            let Some((siblings, locality)) = pending.pop() else {
+                return Ok(true);
+            };
+            commands = siblings;
+            parent_locality = locality;
+            continue;
+        };
+        commands = siblings;
+        account.work(RenderWork::CommandVisits, 1)?;
+        let RenderCommand::Layer { layer, children } = command else {
+            continue;
+        };
+        if layer.mask.is_some()
+            || layer.backdrop.is_some()
+            || layer.foreground_filters.is_some()
+            || layer.explicit_isolation
+            || (!layer.composition.is_source_over() && !layer.composition.is_plus())
+        {
             return Ok(false);
         }
+        if !layer.composition.is_source_over_normal()
+            && parent_locality == CaptureParentLocality::External
+        {
+            return Ok(false);
+        }
+        let child_parent_locality = if parent_locality == CaptureParentLocality::CaptureLocal
+            || layer.isolation == LayerIsolation::BackendLayer
+        {
+            CaptureParentLocality::CaptureLocal
+        } else {
+            CaptureParentLocality::External
+        };
+        if !children.is_empty() {
+            if !siblings.is_empty() {
+                if pending.len() == pending.capacity() {
+                    pending.grow(pending.capacity().max(1))?;
+                }
+                pending.push((siblings, parent_locality))?;
+            }
+            commands = children;
+            parent_locality = child_parent_locality;
+        }
     }
-    Ok(true)
 }
 
 fn dependencies_for(
@@ -2641,6 +2685,9 @@ pub(super) fn graph_build<T>(result: GraphBuildResult<T>) -> Result<T> {
         )
     })
 }
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod capture_stack_tests;
 
 #[cfg(test)]
 mod diagnostic_tests {
