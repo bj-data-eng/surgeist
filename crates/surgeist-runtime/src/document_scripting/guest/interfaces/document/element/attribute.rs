@@ -247,10 +247,13 @@ impl Capture {
             }
         }
         let drain = |scope: &mut Scope<'scope>, operation| {
-            if let Some(queue) = shadow_reactions {
-                self.drain_routed_reactions(scope, owner, events, Some(queue))?;
-            }
-            self.drain_native_reactions(scope, owner, events, operation)
+            self.drain_source_and_routed_reactions(
+                scope,
+                owner,
+                events,
+                operation,
+                shadow_reactions,
+            )
         };
         match result.map(guest_source_terminal) {
             Ok(Some(Ok(done))) => {
@@ -573,7 +576,15 @@ impl DocumentScriptHost {
         if let Ok(result) = &progress
             && let Some(terminal) = guest_terminal_result(result)
         {
-            self.deliver_resumed_source_reactions(permit, terminal, shadow_reactions)?;
+            let delivery = self.deliver_resumed_source_reactions(
+                permit,
+                terminal,
+                shadow_reactions,
+                abrupt.is_some(),
+            );
+            if abrupt.is_none() {
+                delivery?;
+            }
         }
         if let Some(error) = abrupt {
             return Err(error.into());

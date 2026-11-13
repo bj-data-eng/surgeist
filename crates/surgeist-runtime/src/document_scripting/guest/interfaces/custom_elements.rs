@@ -932,7 +932,7 @@ impl Capture {
         events: &GuestEvents,
         operation: surgeist_dom::DomSourceOperationId,
     ) -> Result<(), DocumentGuestEventError> {
-        self.drain_reactions(scope, owner, events, operation)
+        self.drain_source_and_routed_reactions(scope, owner, events, operation, None)
     }
 
     pub(super) fn run_backup_reactions<'scope>(
@@ -975,12 +975,13 @@ impl Capture {
         Ok(())
     }
 
-    fn drain_reactions<'scope>(
+    pub(super) fn drain_source_and_routed_reactions<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
         operation: surgeist_dom::DomSourceOperationId,
+        queue: Option<surgeist_dom::DomSynchronousReactionQueue>,
     ) -> Result<(), DocumentGuestEventError> {
         let registration = reaction_registration(owner)?;
         let mut invocation = ReactionInvocation::new(owner)?;
@@ -1027,6 +1028,9 @@ impl Capture {
                     }
                     batch.acknowledge_front();
                 }
+            }
+            if let Some(queue) = queue {
+                self.drain_routed_reactions(scope, owner, events, Some(queue))?;
             }
             invocation.drain(self, scope, events)?;
             Ok(())
