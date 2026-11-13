@@ -181,7 +181,6 @@ struct NativeOwner {
     active_reaction_queue: RefCell<Option<Rc<guest::ActiveReactionQueue>>>,
     stopped_reaction_queues: RefCell<Option<Rc<guest::ActiveReactionQueue>>>,
     pending_constructor: RefCell<Option<Box<guest::PendingConstructor>>>,
-    pending_definition_reactions: RefCell<Option<Box<guest::PendingDefinitionReactions>>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
     pending_style: Cell<Option<(surgeist_dom::DomSourceOperationId, RealmId)>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
@@ -411,7 +410,6 @@ impl NativeOwner {
         let pending_source = native.session.get_mut().read_dom().pending_source_edit();
         if native.pending_attribute.get_mut().is_some()
             || native.pending_constructor.get_mut().is_some()
-            || native.pending_definition_reactions.get_mut().is_some()
             || native.stopped_reaction_queues.get_mut().is_some()
             || native.attachment.get().is_some_and(|attachment| {
                 native
@@ -559,7 +557,6 @@ impl PreparedDocumentScriptHost {
                 active_reaction_queue: RefCell::new(None),
                 stopped_reaction_queues: RefCell::new(None),
                 pending_constructor: RefCell::new(None),
-                pending_definition_reactions: RefCell::new(None),
                 pending_attribute: RefCell::new(None),
                 pending_style: Cell::new(None),
                 trusted_types_reports: RefCell::new(None),
@@ -1441,7 +1438,7 @@ impl StoppedDocumentScriptHost {
     pub fn discard_pending_queued_custom_element_reactions(
         &mut self,
     ) -> Result<usize, DocumentScriptNativeError> {
-        self.native.discard_stopped_queued_reactions()
+        self.native.discard_stopped_queued_reactions(false)
     }
 
     /// Discard native reaction facts retained by the original stopped attachment.
@@ -1488,7 +1485,7 @@ impl StoppedDocumentScriptHost {
     pub fn discard_pending_definition_reactions(
         &mut self,
     ) -> Result<usize, DocumentScriptNativeError> {
-        self.native.discard_stopped_definition_reactions()
+        self.native.discard_stopped_queued_reactions(true)
     }
 
     /// Borrow the original native owners for recovery after engine disposal.

@@ -3,9 +3,7 @@
 mod csp_task;
 mod element_task;
 mod interfaces;
-pub(super) use interfaces::{
-    ActiveConstructor, ActiveReactionQueue, PendingConstructor, PendingDefinitionReactions,
-};
+pub(super) use interfaces::{ActiveConstructor, ActiveReactionQueue, PendingConstructor};
 mod listeners;
 mod reports;
 mod source_event;

@@ -12,9 +12,7 @@ use super::*;
 pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
 #[cfg(test)]
 pub(in crate::document_scripting) use custom_elements::document_registry_identity;
-pub(in crate::document_scripting) use custom_elements::{
-    ActiveConstructor, ActiveReactionQueue, PendingDefinitionReactions,
-};
+pub(in crate::document_scripting) use custom_elements::{ActiveConstructor, ActiveReactionQueue};
 pub(in crate::document_scripting) use document::PendingConstructor;
 pub(super) use document::{GuestNodeProjection, NodeLifetime};
 use surgeist_bindings_js::{

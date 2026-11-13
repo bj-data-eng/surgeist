@@ -787,28 +787,11 @@ impl Capture {
                     )?;
                 Ok(candidates)
             })?;
-            let candidate_constructor = if candidates.values.is_empty() {
-                None
-            } else {
-                Some((
-                    scope.open_callback_object(&constructor)?,
-                    constructor.associated_realm().identity(),
-                ))
-            };
-            let mut reactions = if candidates.values.is_empty() {
-                None
-            } else {
-                let backing = events.reserve(&owner, size_of::<PendingDefinitionReactions>())?;
-                Some(Box::new(PendingDefinitionReactions {
-                    candidates,
-                    cursor: 0,
-                    next: None,
-                    _backing: backing,
-                }))
-            };
-            let initial_attribute = callbacks[4].clone();
-            let connected = callbacks[0].clone();
-            let observed = observed_attributes.clone();
+            let mut reactions = ReactionInvocation::new(&owner)?;
+            for node in candidates.values.iter().copied() {
+                reactions.stage_definition_candidate(&events, node)?;
+            }
+            drop(candidates);
             let mut rows = registry
                 .definitions
                 .try_borrow_mut()
@@ -862,51 +845,11 @@ impl Capture {
             });
             drop(rows);
             drop(waiting);
-            let drive = (|| {
-                if let Some((resolver, constructor)) = resolver.zip(definition_value) {
-                    scope.resolve_promise(resolver, &constructor)?;
-                }
-                if let Some(((constructor, realm), reactions)) =
-                    candidate_constructor.zip(reactions.as_mut())
-                {
-                    while let Some(&node) = reactions.candidates.values.get(reactions.cursor) {
-                        let mut accepted = false;
-                        let queue = self.invoke_upgrade_candidate(
-                            scope,
-                            (&owner, &events, public),
-                            node,
-                            UpgradeDefinition {
-                                id,
-                                global: registry.global,
-                                constructor: &constructor,
-                                interface,
-                                realm,
-                                initial_attribute: initial_attribute.as_ref(),
-                                connected: connected.as_ref(),
-                                observed: observed.as_deref(),
-                            },
-                            &mut accepted,
-                        );
-                        if accepted || queue.is_ok() {
-                            reactions.cursor += 1;
-                        }
-                        self.run_callback_queue(scope, &owner, &events, queue?)?;
-                    }
-                }
-                Ok::<(), DocumentGuestEventError>(())
-            })();
-            if drive.is_err()
-                && let Some(mut reactions) = reactions
-                && reactions.cursor < reactions.candidates.values.len()
-            {
-                let mut pending = owner
-                    .pending_definition_reactions
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                reactions.next = pending.take();
-                *pending = Some(reactions);
+            reactions.publish_definition_candidates(id);
+            if let Some((resolver, constructor)) = resolver.zip(definition_value) {
+                scope.resolve_promise(resolver, &constructor)?;
             }
-            drive?;
+            reactions.drain(self, scope, &events)?;
             Ok(Completion::Return(undefined))
         })();
         match result {
@@ -948,7 +891,8 @@ impl Capture {
                         surgeist_dom::DomCustomElementReactionKind::Upgrade
                     ) {
                         Some(QueuedReaction::Upgrade {
-                            definition: fact.definition,
+                            definition: Some(fact.definition),
+                            from_definition: false,
                             _backing: events.reserve(owner, QueuedReaction::storage_bytes())?,
                         })
                     } else {
@@ -966,11 +910,7 @@ impl Capture {
                     batch.acknowledge_front();
                 }
             }
-            for entry in &invocation.entries {
-                entry.queue.drain(self, scope, owner, events)?;
-            }
-            invocation.completed = true;
-            Ok(())
+            invocation.drain(self, scope, events)
         })();
         drop(invocation);
         result
@@ -1182,23 +1122,6 @@ impl Capture {
         Ok(Some(ActiveReactionQueue::new(
             owner, events, receiver, reactions,
         )?))
-    }
-
-    fn run_callback_queue<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
-        queue: Option<Rc<ActiveReactionQueue>>,
-    ) -> Result<(), DocumentGuestEventError> {
-        let Some(queue) = queue else { return Ok(()) };
-        let entry = queue.enter(owner)?;
-        let result = queue.drain(self, scope, owner, events);
-        drop(entry);
-        if result.is_err() {
-            owner.keep_stopped_reaction_queue(queue);
-        }
-        result
     }
 
     fn prepare_native_callback<'scope>(
@@ -1591,43 +1514,6 @@ impl GlobalRegistry {
     }
 }
 
-pub(in crate::document_scripting) struct PendingDefinitionReactions {
-    candidates: ReactionList<NodeId>,
-    cursor: usize,
-    next: Option<Box<Self>>,
-    _backing: GuestBacking,
-}
-
-impl Drop for PendingDefinitionReactions {
-    fn drop(&mut self) {
-        let mut next = self.next.take();
-        while let Some(mut item) = next {
-            next = item.next.take();
-        }
-    }
-}
-
-impl NativeOwner {
-    pub(in crate::document_scripting) fn discard_stopped_definition_reactions(
-        &self,
-    ) -> Result<usize, DocumentScriptNativeError> {
-        let mut pending = self
-            .pending_definition_reactions
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let mut discarded = 0usize;
-        let mut next = pending.as_deref();
-        while let Some(item) = next {
-            discarded = discarded
-                .checked_add(item.candidates.values.len() - item.cursor)
-                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            next = item.next.as_deref();
-        }
-        pending.take();
-        Ok(discarded)
-    }
-}
-
 struct ReactionList<T> {
     values: Vec<T>,
     backing: Option<GuestBacking>,
@@ -1750,13 +1636,24 @@ impl CallbackReaction {
 
 enum QueuedReaction {
     Upgrade {
-        definition: DomRegistryDefinitionId,
+        definition: Option<DomRegistryDefinitionId>,
+        from_definition: bool,
         _backing: GuestBacking,
     },
     Callback(CallbackReaction),
 }
 
 impl QueuedReaction {
+    fn is_definition_upgrade(&self) -> bool {
+        matches!(
+            self,
+            Self::Upgrade {
+                from_definition: true,
+                ..
+            }
+        )
+    }
+
     const fn storage_bytes() -> usize {
         size_of::<Self>() + 2 * size_of::<usize>()
     }
@@ -1765,6 +1662,7 @@ impl QueuedReaction {
 struct InvocationEntry {
     queue: Rc<ActiveReactionQueue>,
     installed: bool,
+    definition_reaction: LinkedList<QueuedReaction>,
     _backing: GuestBacking,
 }
 
@@ -1803,12 +1701,27 @@ impl<'a> ReactionInvocation<'a> {
                 return Ok(entry.queue.clone());
             }
         }
+        Ok(self.add_receiver(events, receiver, false)?.queue.clone())
+    }
+
+    fn add_receiver(
+        &mut self,
+        events: &GuestEvents,
+        receiver: NodeId,
+        definition_candidates: bool,
+    ) -> Result<&mut InvocationEntry, DocumentGuestEventError> {
         let mut active = self
             .owner
             .active_reaction_queue
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let mut matching = active.clone();
+        // A definition visits each native candidate once. Search only queues
+        // installed by an enclosing invocation during that unique traversal.
+        let mut matching = if definition_candidates {
+            self.original.clone()
+        } else {
+            active.clone()
+        };
         while let Some(queue) = matching.as_ref() {
             events.step()?;
             if queue.receiver == receiver {
@@ -1838,9 +1751,59 @@ impl<'a> ReactionInvocation<'a> {
         self.entries.push_back(InvocationEntry {
             queue: queue.clone(),
             installed,
+            definition_reaction: LinkedList::new(),
             _backing: backing,
         });
-        Ok(queue)
+        self.entries
+            .back_mut()
+            .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+    }
+
+    fn stage_definition_candidate(
+        &mut self,
+        events: &GuestEvents,
+        receiver: NodeId,
+    ) -> Result<(), DocumentGuestEventError> {
+        let backing = events.reserve(self.owner, QueuedReaction::storage_bytes())?;
+        let entry = self.add_receiver(events, receiver, true)?;
+        entry
+            .definition_reaction
+            .push_back(QueuedReaction::Upgrade {
+                definition: None,
+                from_definition: true,
+                _backing: backing,
+            });
+        Ok(())
+    }
+
+    fn publish_definition_candidates(&mut self, id: DomRegistryDefinitionId) {
+        for entry in &mut self.entries {
+            for reaction in &mut entry.definition_reaction {
+                // The linked-list node is already admitted. Give it the exact
+                // identity from canonical publication before any guest entry.
+                if let QueuedReaction::Upgrade { definition, .. } = reaction {
+                    *definition = Some(id);
+                }
+            }
+            entry
+                .queue
+                .reactions
+                .borrow_mut()
+                .append(&mut entry.definition_reaction);
+        }
+    }
+
+    fn drain<'scope>(
+        &mut self,
+        capture: &Capture,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+    ) -> Result<(), DocumentGuestEventError> {
+        for entry in &self.entries {
+            entry.queue.drain(capture, scope, self.owner, events)?;
+        }
+        self.completed = true;
+        Ok(())
     }
 }
 
@@ -1955,7 +1918,9 @@ impl ActiveReactionQueue {
                     .try_borrow()
                     .map_err(|_| DocumentScriptNativeError::Busy)?;
                 match reactions.front() {
-                    Some(QueuedReaction::Upgrade { definition, .. }) => Some(*definition),
+                    Some(QueuedReaction::Upgrade { definition, .. }) => {
+                        Some(definition.ok_or(DocumentScriptNativeError::ProjectionCustody)?)
+                    }
                     Some(QueuedReaction::Callback(_)) => None,
                     None => return Ok(()),
                 }
@@ -2101,6 +2066,7 @@ impl NativeOwner {
 
     pub(in crate::document_scripting) fn discard_stopped_queued_reactions(
         &self,
+        from_definition: bool,
     ) -> Result<usize, DocumentScriptNativeError> {
         let mut stopped = self
             .stopped_reaction_queues
@@ -2110,14 +2076,36 @@ impl NativeOwner {
         let mut next = stopped.clone();
         while let Some(queue) = next {
             count = count
-                .checked_add(queue.reactions.borrow().len())
+                .checked_add(
+                    queue
+                        .reactions
+                        .borrow()
+                        .iter()
+                        .filter(|reaction| reaction.is_definition_upgrade() == from_definition)
+                        .count(),
+                )
                 .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
             next = queue.stopped_next.borrow().clone();
         }
-        let mut next = stopped.take();
-        while let Some(queue) = next {
-            next = queue.stopped_next.borrow_mut().take();
+        let mut link = stopped.take();
+        let mut retained = None;
+        while let Some(queue) = link {
+            link = queue.stopped_next.borrow_mut().take();
+            let mut reactions = queue.reactions.borrow_mut();
+            let mut remaining = std::mem::take(&mut *reactions);
+            while let Some(front) = remaining.front() {
+                let discard = front.is_definition_upgrade() == from_definition;
+                let mut tail = remaining.split_off(1);
+                if !discard {
+                    reactions.append(&mut remaining);
+                }
+                std::mem::swap(&mut remaining, &mut tail);
+            }
+            if !reactions.is_empty() {
+                queue.stopped_next.replace(retained.replace(queue.clone()));
+            }
         }
+        *stopped = retained;
         Ok(count)
     }
 }
