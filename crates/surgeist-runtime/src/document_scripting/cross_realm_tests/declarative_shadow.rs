@@ -108,6 +108,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         DefinitionScope,
         AttributeScope,
         AttributeAbruptRefusal,
+        AttributeAbruptCallbackRefusal,
         Stop,
         Refuse,
         RefuseAfterFirst,
@@ -123,6 +124,10 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Open, Delivery::DefinitionScope),
         (HtmlShadowRootMode::Open, Delivery::AttributeScope),
         (HtmlShadowRootMode::Open, Delivery::AttributeAbruptRefusal),
+        (
+            HtmlShadowRootMode::Open,
+            Delivery::AttributeAbruptCallbackRefusal,
+        ),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
@@ -135,7 +140,9 @@ pub(super) fn verify_declarative_shadow_reuse() {
         let factory_reconnect = matches!(delivery, Delivery::FactoryReconnect);
         let factory_scope = matches!(delivery, Delivery::FactoryScope) || factory_reconnect;
         let definition_scope = matches!(delivery, Delivery::DefinitionScope);
-        let attribute_abrupt_refusal = matches!(delivery, Delivery::AttributeAbruptRefusal);
+        let callback_refusal = matches!(delivery, Delivery::AttributeAbruptCallbackRefusal);
+        let attribute_abrupt_refusal =
+            matches!(delivery, Delivery::AttributeAbruptRefusal) || callback_refusal;
         let attribute_scope =
             matches!(delivery, Delivery::AttributeScope) || attribute_abrupt_refusal;
         let refuse_after_first = matches!(delivery, Delivery::RefuseAfterFirst);
@@ -278,6 +285,8 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         if (globalThis.attributeShadowReuse) this.setAttribute('data-next', '1');
                         if (globalThis.exhaustReactionWork) {
                             exhaustReactionWork();
+                            if (globalThis.refuseDuringDisconnection)
+                                this.setAttribute('data-next', 'later');
                             return;
                         }
                         if (this === globalThis.shadowReuseReceiver &&
@@ -379,11 +388,12 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         }}
                     }} else if ({attribute_scope}) {{
                         globalThis.attributeShadowReuse = true;
+                        globalThis.refuseDuringDisconnection = {callback_refusal};
                         policyHead.appendChild(shadowPolicy);
                         trustedTypes.createPolicy('default', {{ createScript(value) {{
                             observed = shadowHost.attachShadow({{mode: "{matching}"}});
                             if ({attribute_abrupt_refusal}) {{
-                                exhaustReactionWork();
+                                if (!{callback_refusal}) exhaustReactionWork();
                                 throw shadowReuseException;
                             }}
                             return value;
@@ -448,7 +458,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 stopped
                     .discard_pending_native_custom_element_reactions()
                     .unwrap(),
-                1
+                usize::from(!callback_refusal)
             );
             assert!(stopped.into_session().is_ok());
             continue;
