@@ -14,6 +14,7 @@ mod node_position;
 mod node_relations;
 mod normalize;
 mod processing_instruction;
+mod scoped_registries;
 mod split_text;
 mod template_content;
 mod title_text;
@@ -343,6 +344,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     whole_text::whole_text_reads_the_current_contiguous_native_run();
     node_clone::clone_node_returns_fresh_canonical_subtrees();
     document_import::import_node_uses_destination_and_standard_options();
+    scoped_registries::scoped_registries_keep_independent_native_associations();
     node_identity::node_comparisons_use_live_ordinary_ancestry_and_exact_identity();
     node_identity::node_comparisons_refuse_retired_operands();
     node_namespace::namespace_lookups_follow_live_native_names_and_declarations();
