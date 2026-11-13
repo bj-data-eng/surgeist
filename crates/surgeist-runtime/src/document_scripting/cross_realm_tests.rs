@@ -10,6 +10,7 @@ mod normalize;
 mod processing_instruction;
 mod split_text;
 mod trusted_attribute;
+mod whole_text;
 
 use super::*;
 use crate::{
@@ -331,6 +332,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     normalize::normalize_keeps_native_text_and_range_identity();
     normalize::normalize_preserves_typed_native_refusal();
     split_text::split_text_keeps_native_identity_and_range_boundaries();
+    whole_text::whole_text_reads_the_current_contiguous_native_run();
     dom_implementation::factory_refusal_preserves_native_dom();
     dom_implementation::xml_factory_retains_the_original_style_operation();
     super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
