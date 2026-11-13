@@ -743,6 +743,11 @@ pub(in crate::document_scripting) fn native_document_and_fragment_use_their_regi
                         && event.composedPath()[1] === root;
                 }, { once: true });
                 return root === originChild.getRootNode() && root === originChild.parentNode
+                    && root === originChild.ownerDocument
+                    && root.firstChild === originChild && root.lastChild === originChild
+                    && Object.getOwnPropertyDescriptor(Node.prototype, 'firstChild').get.call(root) === originChild
+                    && originChild.parentElement === null && originChild.previousSibling === null
+                    && originChild.nextSibling === null && root.hasChildNodes()
                     && root.documentElement === originChild
                     && originChild.dispatchEvent(new Event("origin", { bubbles: true }))
                     && observed;

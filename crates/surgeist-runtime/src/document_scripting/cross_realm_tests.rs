@@ -1025,6 +1025,8 @@ fn attached_registry_delivers_the_original_native_cancel_event() {
                     && dialog.removeAttributeNode(cancelAttr) === cancelAttr;
                 dialog.textContent = 'native event\ud800';
                 cancelChecks &&= dialog.textContent === 'native event\ud800';
+                cancelChecks &&= dialog.hasChildNodes() && dialog.firstChild === dialog.lastChild &&
+                    dialog.firstChild.parentElement === dialog && dialog.firstChild.nextSibling === null;
                 const impl = attachedDocument.implementation;
                 const type = impl.createDocumentType('root', '', '');
                 const xml = impl.createDocument(null, 'root', type);

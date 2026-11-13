@@ -5,7 +5,7 @@ use crate::DomSourceDriveProgress;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
 use surgeist_dom::{
     DomBatch, DomDocumentInterface, DomNodeKind, DomNodeRetirementInbox, DomQualifiedName,
-    DomTagName, NodeId,
+    DomSiblingDirection, DomTagName, NodeId,
 };
 use surgeist_html::values::DocumentString;
 
@@ -411,6 +411,11 @@ enum NodeMember {
     Name,
     OwnerDocument,
     Parent,
+    ParentElement,
+    FirstChild,
+    LastChild,
+    Sibling(DomSiblingDirection),
+    HasChildren,
     Connected,
 }
 
@@ -640,6 +645,31 @@ pub(super) fn install_node<'scope>(
             &ascii(b"parentNode")[..],
             &ascii(b"get parentNode")[..],
         ),
+        (
+            NodeMember::ParentElement,
+            &ascii(b"parentElement")[..],
+            &ascii(b"get parentElement")[..],
+        ),
+        (
+            NodeMember::FirstChild,
+            &ascii(b"firstChild")[..],
+            &ascii(b"get firstChild")[..],
+        ),
+        (
+            NodeMember::LastChild,
+            &ascii(b"lastChild")[..],
+            &ascii(b"get lastChild")[..],
+        ),
+        (
+            NodeMember::Sibling(DomSiblingDirection::Previous),
+            &ascii(b"previousSibling")[..],
+            &ascii(b"get previousSibling")[..],
+        ),
+        (
+            NodeMember::Sibling(DomSiblingDirection::Next),
+            &ascii(b"nextSibling")[..],
+            &ascii(b"get nextSibling")[..],
+        ),
     ] {
         let handler = capture(size_of::<(Capture, NodeMember)>())?;
         install_getter(
@@ -651,6 +681,23 @@ pub(super) fn install_node<'scope>(
             Callback::new(move |scope, arguments| handler.node_member(scope, arguments, member)),
         )?;
     }
+    let handler = capture(size_of::<Capture>())?;
+    let name = &ascii(b"hasChildNodes");
+    let method = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| {
+            handler.node_member(scope, arguments, NodeMember::HasChildren)
+        }),
+        FunctionMetadata { name, length: 0 },
+    )?;
+    define_data(
+        scope,
+        &node,
+        PropertyKey::String(name),
+        &method,
+        true,
+        true,
+        true,
+    )?;
     text::install(scope, &node, capture)?;
     tree::install(scope, &node, capture)?;
     let root = capture(size_of::<Capture>())?;
@@ -901,6 +948,15 @@ impl Capture {
                         Observation::Node(node.owner_document().map(DocumentId::node))
                     }
                     NodeMember::Parent => Observation::Node(node.parent()),
+                    NodeMember::ParentElement => {
+                        Observation::Node(node.parent_element_with(|| read.step())?)
+                    }
+                    NodeMember::FirstChild => Observation::Node(node.children().first().copied()),
+                    NodeMember::LastChild => Observation::Node(node.children().last().copied()),
+                    NodeMember::Sibling(direction) => {
+                        Observation::Node(node.sibling_with(direction, || read.step())?)
+                    }
+                    NodeMember::HasChildren => Observation::Boolean(!node.children().is_empty()),
                     NodeMember::Connected => Observation::Boolean(
                         node.root_with(true, || read.step())?
                             .as_document()
