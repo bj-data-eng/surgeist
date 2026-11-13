@@ -1,5 +1,8 @@
 use super::*;
-use crate::document_scripting::guest::tests::attach_public_nodes;
+use crate::document_scripting::guest::tests::{
+    attach_public_nodes, attach_public_nodes_with_source_output_limit,
+    expose_public_node_for_source_test,
+};
 
 pub(super) fn element_toggle_attribute_uses_one_canonical_edit() {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -31,12 +34,14 @@ pub(super) fn element_toggle_attribute_uses_one_canonical_edit() {
                     return 'brand and required argument';
                 if (!throws(() => element.toggleAttribute('invalid name', false), 'InvalidCharacterError'))
                     return 'validation before absence';
-                if (element.toggleAttribute('DATA-OPTIONAL', false) !== false ||
-                    element.toggleAttribute('DATA-OPTIONAL', null) !== false ||
-                    element.toggleAttribute('DATA-OPTIONAL', undefined) !== true ||
-                    element.getAttribute('data-optional') !== '' ||
-                    element.toggleAttribute('DATA-OPTIONAL') !== false ||
-                    element.hasAttribute('data-optional')) return 'force conversion';
+                if (element.toggleAttribute('DATA-OPTIONAL', false) !== false) return 'false force';
+                if (element.toggleAttribute('DATA-OPTIONAL', null) !== false) return 'null force';
+                if (element.toggleAttribute('DATA-OPTIONAL', undefined) !== true)
+                    return 'undefined force';
+                if (element.getAttribute('data-optional') !== '')
+                    return 'empty append ' + element.getAttributeNames().join();
+                if (element.toggleAttribute('DATA-OPTIONAL') !== false ||
+                    element.hasAttribute('data-optional')) return 'omitted force';
                 const object = { valueOf() { throw Error('unexpected coercion'); } };
                 if (element.toggleAttribute('data-object', object) !== true ||
                     element.toggleAttribute('data-object', object) !== true)
@@ -88,4 +93,63 @@ pub(super) fn element_toggle_attribute_uses_one_canonical_edit() {
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
         Ok(())
     }).unwrap();
+    host.stop().into_session().unwrap();
+    element_toggle_output_is_admitted_before_publication();
+}
+
+fn element_toggle_output_is_admitted_before_publication() {
+    for outputs in [2, 3] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (mut session, target) = hosted_session(&cancel, 0);
+        let mut batch = DomBatch::new();
+        let element = batch.create_element(target.document(), "div");
+        batch.set_attribute(&element, "data-watch", "original");
+        let element = session
+            .dom()
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&element)
+            .unwrap()
+            .unwrap();
+        let mut host =
+            attach_public_nodes_with_source_output_limit(session, target, cancel, outputs);
+        let permit = host.permit().unwrap();
+        expose_public_node_for_source_test(&mut host, &permit, element, "limitedToggle");
+        let before = host.snapshot().unwrap();
+        let attr = before
+            .node(element)
+            .unwrap()
+            .get_attribute_node(&"data-watch".into())
+            .unwrap()
+            .id();
+        let result = host.in_document(&permit, |scope| {
+            let result = evaluate(scope, "limitedToggle.toggleAttribute('data-watch', false)")?;
+            let absent = scope.primitive(Primitive::Boolean(false))?;
+            assert!(scope.strict_equals(&result, &absent)?);
+            Ok(())
+        });
+        let after = host.snapshot().unwrap();
+        let attribute = after.attr(attr.node()).unwrap();
+        assert_eq!(attribute.value(), &"original".into());
+        if outputs == 2 {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("one-short output budget must refuse before the removal: {result:?}");
+            };
+            assert!(matches!(
+                failure.cause::<crate::DomSourceDriveError>(),
+                Some(crate::DomSourceDriveError::Source(
+                    crate::DomSourceRuntimeError::Dom(surgeist_dom::DomError::SourceOutputLimit)
+                ))
+            ));
+            assert_eq!(after.stamp(), before.stamp());
+            assert_eq!(attribute.owner_element(), Some(element));
+        } else {
+            result.unwrap();
+            assert_ne!(after.stamp(), before.stamp());
+            assert_eq!(attribute.owner_element(), None);
+        }
+        host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+            .unwrap();
+        host.stop().into_session().unwrap();
+    }
 }

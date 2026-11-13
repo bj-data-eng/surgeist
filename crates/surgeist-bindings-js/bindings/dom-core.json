@@ -5594,17 +5594,8 @@
     "Element.toggleAttribute:0/call": {
       "kind": "native",
       "adapter": "element.toggleattribute.call",
-      "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
-      ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "A single toggleAttribute validation/read/branch operation: validate the name even for false-and-absent, preserve source HTML casing and required same-value notification behavior; remove_attribute deliberately skips construction validation.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-element-toggleattribute"
-        }
-      ]
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "toggle_attribute"}],
+      "requirements": []
     },
     "Element.hasAttribute:0/call": {
       "kind": "native",

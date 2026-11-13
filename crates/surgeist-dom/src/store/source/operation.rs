@@ -1496,7 +1496,10 @@ impl Operation {
         let scalar_output = !incomplete
             && matches!(
                 prepared.node_output_kinds.first(),
-                Some(NodeOutputKind::ProcessingInstructionAttributePresent(_))
+                Some(
+                    NodeOutputKind::ElementAttributePresent(_)
+                        | NodeOutputKind::ProcessingInstructionAttributePresent(_)
+                )
             );
         let outputs = self
             .outputs
@@ -1546,7 +1549,8 @@ impl Operation {
             for ticket in &self.draft.tickets {
                 self.draft.source_step(cancel)?;
                 historical.push(match ticket {
-                    NodeTicket::ProcessingInstructionAttributePresent(..) => None,
+                    NodeTicket::ElementAttributePresent(..)
+                    | NodeTicket::ProcessingInstructionAttributePresent(..) => None,
                     _ => match ticket.key() {
                         Key::Created(index) => ids.get(index),
                         Key::Existing(node) => Some(node),
@@ -2290,6 +2294,7 @@ impl DomSourceLease<'_> {
                         | Command::AttachShadow { .. }
                         | Command::CreateHtmlDocument { .. }
                         | Command::CreateXmlDocument { .. }
+                        | Command::ToggleAttribute { .. }
                         | Command::ProcessingInstructionAttribute {
                             edit: crate::DomProcessingInstructionAttributeEdit::Toggle { .. },
                             ..

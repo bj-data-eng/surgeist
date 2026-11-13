@@ -14,6 +14,7 @@ enum Method {
     Read(Lookup),
     WriteValue { namespaced: bool },
     RemoveValue(NameArguments),
+    Toggle,
     SetNode,
     RemoveNode,
 }
@@ -119,6 +120,7 @@ pub(in crate::document_scripting::guest::interfaces::document::element) fn insta
             )),
             2,
         ),
+        (&ascii(b"toggleAttribute")[..], Method::Toggle, 1),
         (
             &ascii(b"hasAttribute")[..],
             Method::Read(Lookup {
@@ -166,11 +168,17 @@ pub(in crate::document_scripting::guest::interfaces::document::element) fn insta
         (&ascii(b"removeAttributeNode")[..], Method::RemoveNode, 1),
     ] {
         let handler = capture(size_of::<(Capture, Method, u32)>())?;
-        let function = scope.fixed_arity_function(
+        let maximum = if matches!(method, Method::Toggle) {
+            2
+        } else {
+            length
+        };
+        let function = scope.bounded_function(
             &Callback::new(move |scope, arguments| {
                 handler.attribute_entry(scope, arguments, method, length)
             }),
             FunctionMetadata { name, length },
+            maximum,
         )?;
         define_data(
             scope,
@@ -246,6 +254,10 @@ impl Capture {
             Method::WriteValue { namespaced } => {
                 self.write_attribute(scope, arguments, (&owner, &events, element), namespaced)
             }
+            Method::Toggle => {
+                let result = self.toggle_attribute(scope, &arguments, (&owner, &events, element));
+                tree::tree_completion(scope, &events, result)
+            }
             Method::Read(method) => {
                 let result = self
                     .lookup_attribute(scope, &arguments, &owner, &events, element, method)
@@ -303,6 +315,51 @@ impl Capture {
                 }
             }
         }
+    }
+
+    fn toggle_attribute<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: &Arguments<'scope>,
+        (owner, events, element): (&NativeOwner, &GuestEvents, NodeId),
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let name = declarations::element_toggle_attribute_0_qualified_name();
+        let force = declarations::element_toggle_attribute_0_force();
+        let (name, force) = self
+            .callbacks
+            .conversion
+            .run(scope, |cx| {
+                let name = cx.argument(&name, arguments.get(name.index()))?;
+                let force = match cx.argument(&force, arguments.get(force.index()))?.get() {
+                    ArgumentValue::Missing => None,
+                    ArgumentValue::Present(force) => Some(*force),
+                };
+                Ok((name, force))
+            })
+            .map_err(Error::from)?;
+        scope.check_active()?;
+        let ArgumentValue::Present(name) = name.get() else {
+            return Err(Error::BackendUnavailable.into());
+        };
+        let (name, _backing) = copy_native_data(owner, events, name.as_code_units())?;
+        let absent = scope.primitive(Primitive::Boolean(false))?;
+        let present = scope.primitive(Primitive::Boolean(true))?;
+        let edit = DomSourceEdit::toggle_attribute(element, name, force);
+        let drive =
+            self.drive_guest_tree_edit(owner, events, scope.realm_authority()?.identity(), edit)?;
+        self.finish_guest_tree_edit(
+            scope,
+            owner,
+            events,
+            drive.progress,
+            (drive.parent, drive.pending),
+            |_, done| match done.output() {
+                Some(DomSourceOutput::ElementAttributePresent(found)) => {
+                    Ok(Completion::Return(if found { present } else { absent }))
+                }
+                _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),
+            },
+        )
     }
 
     fn attribute_names<'scope>(

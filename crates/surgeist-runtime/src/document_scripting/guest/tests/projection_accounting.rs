@@ -22,7 +22,7 @@ fn host(mode: ProfileMode, node_work: u64) -> DocumentScriptHost {
     enable_public_nodes(
         prepared,
         target,
-        (node_work, 20_000, 4),
+        (node_work, public_node_source_limits(20_000, 64), 4),
         &mut Some(registry),
     )
 }
@@ -322,7 +322,7 @@ fn oversized_profile_setup_returns_the_unpublished_owner() {
             .owner
             .with_guest_accounting_profile(ProfileMode::Summary { timing: false }),
         target,
-        (1_000, 20_000, 4),
+        (1_000, public_node_source_limits(20_000, 64), 4),
         &mut registry,
     );
     assert!(registry.is_none());

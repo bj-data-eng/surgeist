@@ -619,32 +619,27 @@ impl Draft {
     ) -> Result<(), DomError> {
         let element = self.element(node)?;
         let position = self.prepared_attribute_position(element, &prepared, cancelled)?;
+        let Some(position) = position else {
+            return self.append_prepared_attribute(node, prepared, value, limits, cancelled);
+        };
         // Existing set-value preserves its exact canonical prefix and order.
         // Discard lookup spelling before admitting the selected occurrence.
-        let (name, name_formation) = if let Some(position) = position {
-            let normalized = prepared.discard_name();
-            let formation = source::formation::Formation::new(self, cancelled)?;
-            let name = self.bind_canonical_name(
-                element
-                    .attributes()
-                    .get(position)
-                    .ok_or(DomError::StaleNode)?
-                    .name(),
-                formation.as_ref(),
-                cancelled,
-            )?;
-            drop(normalized);
-            (name, formation)
-        } else {
-            let formation = source::formation::Formation::new(self, cancelled)?;
-            let name = self.bind_name(&prepared.raw_name, formation.as_ref(), cancelled)?;
-            drop(prepared);
-            (name, formation)
-        };
+        let normalized = prepared.discard_name();
+        let name_formation = source::formation::Formation::new(self, cancelled)?;
+        let name = self.bind_canonical_name(
+            element
+                .attributes()
+                .get(position)
+                .ok_or(DomError::StaleNode)?
+                .name(),
+            name_formation.as_ref(),
+            cancelled,
+        )?;
+        drop(normalized);
         self.write_attribute(
             AttributeWrite {
                 node,
-                position,
+                position: Some(position),
                 name,
                 value,
                 cause: AttributeCause::Change,
@@ -653,6 +648,63 @@ impl Draft {
             limits,
             cancelled,
         )
+    }
+
+    fn append_prepared_attribute(
+        &mut self,
+        node: Key,
+        prepared: PreparedAttributeName,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let name_formation = source::formation::Formation::new(self, cancel)?;
+        let name = self.bind_name(&prepared.raw_name, name_formation.as_ref(), cancel)?;
+        drop(prepared);
+        self.write_attribute(
+            AttributeWrite {
+                node,
+                position: None,
+                name,
+                value,
+                cause: AttributeCause::Change,
+                name_formation,
+            },
+            limits,
+            cancel,
+        )
+    }
+
+    pub(super) fn toggle_attribute(
+        &mut self,
+        node: Key,
+        name: &DocumentString,
+        force: Option<bool>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let prepared = self.prepare_attribute_name(node, None, name, cancel)?;
+        let position = self.prepared_attribute_position(self.element(node)?, &prepared, cancel)?;
+        let present = force.unwrap_or(position.is_none());
+        self.register_node_ticket(NodeTicket::ElementAttributePresent(node, present), cancel)?;
+        match (position, present) {
+            (None, true) => {
+                let formation = source::formation::Formation::new(self, cancel)?;
+                let empty = source::formation::string("", formation.as_ref(), cancel)?;
+                self.append_prepared_attribute(node, prepared, &empty, limits, cancel)
+            }
+            (Some(position), false) => {
+                drop(prepared);
+                self.remove_attribute_at(
+                    node,
+                    position,
+                    AttributeRemoval::IgnoreMissing,
+                    limits,
+                    cancel,
+                )
+            }
+            _ => Ok(()),
+        }
     }
     pub(super) fn apply_verified_attribute_name(
         &mut self,

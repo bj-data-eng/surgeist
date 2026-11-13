@@ -704,6 +704,9 @@ impl Draft {
                 NodeTicket::AttributeAttachment(_, kind) => {
                     NodeOutputKind::AttributeAttachment(*kind)
                 }
+                NodeTicket::ElementAttributePresent(_, present) => {
+                    NodeOutputKind::ElementAttributePresent(*present)
+                }
                 NodeTicket::ProcessingInstructionAttributePresent(_, present) => {
                     NodeOutputKind::ProcessingInstructionAttributePresent(*present)
                 }
@@ -724,6 +727,7 @@ impl Draft {
                         kind,
                         NodeOutputKind::RemovedAttribute
                             | NodeOutputKind::AttributeAttachment(_)
+                            | NodeOutputKind::ElementAttributePresent(_)
                             | NodeOutputKind::ProcessingInstructionAttributePresent(_)
                     )
             }));
