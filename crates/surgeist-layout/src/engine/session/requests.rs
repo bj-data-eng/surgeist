@@ -405,6 +405,8 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let own = FlowAxes::new(style.writing_mode, style.direction);
         if !self.tree.has_leaf_measurement(node) {
             if own.inline_axis() == axis && style.display.inner_display() == Display::Block {
+                // This scalar demand has a separate completion from a full
+                // child request and no host cache key.
                 let demand = BlockAxisDemand::begin(self, node, input, axis)?;
                 return self.advance_block_axis(demand, pending);
             }

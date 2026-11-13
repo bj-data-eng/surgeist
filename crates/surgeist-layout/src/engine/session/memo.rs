@@ -251,9 +251,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
 impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
     pub(crate) fn enable_request_memo(&mut self) {
         // These profiles own receipts or context beyond ordinary cache stores
-        // and unrounded geometry. Fragmentation also owns its cache bypass.
-        if self.bound.is_some()
-            || self.fragmentation.is_some()
+        // and unrounded geometry. A continuous publication target contributes
+        // no child state. Its host cache bypass is enforced by the cache owner.
+        if self.fragmentation.is_some()
             || self.text.is_some()
             || self.groups.is_some()
             || self.wrapping.context.is_some()
