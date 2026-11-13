@@ -38,8 +38,9 @@ pub(super) fn guest_style_violations_retarget_at_dispatch() {
         StyleReport::Detached,
         StyleReport::Stop,
         StyleReport::Retry,
+        StyleReport::RetryStopped,
     ] {
-        let policy = if matches!(report, StyleReport::Retry) {
+        let policy = if matches!(report, StyleReport::Retry | StyleReport::RetryStopped) {
             format!(
                 "default-src 'none' 'report-sample'; extension {}",
                 "x".repeat(6_000)
@@ -64,6 +65,7 @@ enum StyleReport {
     Detached,
     Stop,
     Retry,
+    RetryStopped,
 }
 
 fn guest_insertion(policy: Option<&str>, nonce: Option<(&str, bool)>, expected_sheet: bool) {
@@ -144,7 +146,7 @@ fn guest_style(
     let style = batch.create_element_ns(document, Namespace::html(), "style");
     let text = batch.create_text(document, text);
     batch.insert_before(&text, &style, None);
-    let retry = matches!(report, Some(StyleReport::Retry));
+    let retry = matches!(report, Some(StyleReport::Retry | StyleReport::RetryStopped));
     let retry_tail = retry.then(|| {
         let fragment = batch.create_fragment(document);
         let meta = batch.create_element_ns(document, Namespace::html(), "meta");
@@ -253,6 +255,13 @@ fn guest_style(
         assert!(original.has_published());
         assert_eq!(original.spent_work(), source_work);
         crate::document_scripting::guest::tests::assert_queued_trusted_types_violations(&host, &[]);
+        if matches!(report, Some(StyleReport::RetryStopped)) {
+            assert!(
+                host.stop().into_session().is_err(),
+                "the stopped host must retain the original Style continuation"
+            );
+            return;
+        }
         assert!(matches!(
             host.resume_pending_style_edit(&permit, original.operation(), SOURCE).unwrap().unwrap(),
             DomSourceDriveProgress::Complete(done) if done.operation() == original.operation()
