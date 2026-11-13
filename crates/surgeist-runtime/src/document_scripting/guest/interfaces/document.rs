@@ -128,15 +128,13 @@ impl DocumentScriptHost {
                 return Ok(());
             }
             if let Some(cause) = terminal.error {
-                type PriorFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
-                let backing = match events.reserve(
-                    &owner,
-                    PriorFailure::storage_bytes() + 2 * size_of::<usize>(),
-                ) {
-                    Ok(backing) => backing,
+                if let Some(prior) = reaction_failure {
+                    return scope.complete_after_host_failure(prior, cause.clone().into(), drain);
+                }
+                let prior = match prepare_reaction_failure(scope, &owner, &events) {
+                    Ok(prior) => prior,
                     Err(_) => return refuse(scope, &events.refusal, cause.clone().into()),
                 };
-                let prior = PriorFailure::new(&scope.realm_authority()?, backing)?;
                 return scope.complete_after_host_failure(&prior, cause.clone().into(), drain);
             }
             match drain(scope) {

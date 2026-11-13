@@ -260,11 +260,19 @@ impl Capture {
         };
         match result.map(guest_source_terminal) {
             Ok(Some(Ok(done))) => {
-                let reactions = drain(scope, done.operation());
                 if done.cancellation_requested() {
+                    if let Some(prior) = &reaction_failure {
+                        scope.complete_after_host_failure(
+                            prior,
+                            DomError::Cancelled.into(),
+                            |scope| drain(scope, done.operation()),
+                        )?;
+                    } else {
+                        let _ = drain(scope, done.operation());
+                    }
                     return Err(DomError::Cancelled.into());
                 }
-                reactions?;
+                drain(scope, done.operation())?;
                 match (result_kind, done.output()) {
                     (AttributeResult::Value, None) => Ok(Completion::Undefined),
                     (
@@ -312,7 +320,11 @@ impl Capture {
                     }
                     return Err(original.into());
                 }
-                if drain(scope, operation).is_err() {
+                if let Some(prior) = &reaction_failure {
+                    scope.complete_after_host_failure(prior, error.clone().into(), |scope| {
+                        drain(scope, operation)
+                    })?;
+                } else if drain(scope, operation).is_err() {
                     return Err(error.into());
                 }
                 attribute_failure(scope, error)
