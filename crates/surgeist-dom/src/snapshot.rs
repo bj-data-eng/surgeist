@@ -502,6 +502,24 @@ impl<'a> DomNode<'a> {
         }
         Ok(false)
     }
+    /// Test ordinary inclusive ancestry in this snapshot. The other node and
+    /// each visited ancestor are resolved through the supplied meter.
+    pub fn contains_with<E: From<DomError>>(
+        self,
+        other: NodeId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let mut candidate = self.snapshot.node_with(other, &mut step)?;
+        loop {
+            if candidate.id == self.id {
+                return Ok(true);
+            }
+            let Some(parent) = candidate.parent() else {
+                return Ok(false);
+            };
+            candidate = self.snapshot.node_with(parent, &mut step)?;
+        }
+    }
     /// Inclusive ordinary preorder. No allocation, recursion or shadow piercing.
     pub fn tree_order(self) -> DomTreeOrder<'a> {
         DomTreeOrder {
