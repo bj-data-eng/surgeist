@@ -1,5 +1,18 @@
 use super::*;
 
+pub(in crate::document_scripting) fn projected_node_id<'scope>(
+    scope: &mut Scope<'scope>,
+    value: &Value<'scope>,
+) -> Result<surgeist_dom::NodeId, Error> {
+    Ok(scope
+        .native_object::<interfaces::GuestNodeProjection>(value)?
+        .unwrap()
+        .payload()
+        .id()
+        .unwrap()
+        .node())
+}
+
 pub(in crate::document_scripting) mod attributes;
 pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod registered_origin;

@@ -537,6 +537,64 @@ pub(in crate::document_scripting) fn native_doctype_uses_its_registered_creation
         .unwrap();
 }
 
+pub(in crate::document_scripting) fn implementation_factories_use_the_receiver_realm() {
+    let RegisteredOrigin {
+        mut host,
+        permit,
+        origin,
+        ..
+    } = retired_origin_with_moved_element();
+    let results = host
+        .in_document(&permit, |scope| {
+            let results = scope.evaluate(&units(
+                r#"(() => {
+            const doc = originChild.ownerDocument;
+            const get = Object.getOwnPropertyDescriptor(Document.prototype, 'implementation').get;
+            const impl = get.call(doc);
+            const type = DOMImplementation.prototype.createDocumentType.call(impl, 'root', '', '');
+            const xml = DOMImplementation.prototype.createDocument.call(impl, null, 'root', type);
+            const html = DOMImplementation.prototype.createHTMLDocument.call(impl, 'title');
+            return {impl, xml, html, type, same: impl === doc.implementation};
+        })()"#,
+            ))?;
+            Ok(scope.retain(&results))
+        })
+        .unwrap();
+    let engine = host.engine.as_mut().unwrap();
+    let realm = engine
+        .creations
+        .find(origin.global(), || Ok::<_, Error>(()))
+        .unwrap()
+        .unwrap();
+    engine
+        .process
+        .execution()
+        .in_realm(realm, |scope| {
+            let results = scope.import(&results)?;
+            let global = scope.global()?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("factoryResults")),
+                &results,
+            )?;
+            assert_guest(
+                scope,
+                r#"(() => {
+            const {impl, xml, html, type, same} = factoryResults;
+            return same && Object.getPrototypeOf(impl) === DOMImplementation.prototype &&
+                Object.getPrototypeOf(xml) === XMLDocument.prototype &&
+                Object.getPrototypeOf(html) === Document.prototype &&
+                Object.getPrototypeOf(type) === DocumentType.prototype &&
+                Object.getPrototypeOf(xml.implementation) === DOMImplementation.prototype &&
+                Object.getPrototypeOf(xml.documentElement) === Element.prototype &&
+                Object.getPrototypeOf(html.doctype) === DocumentType.prototype &&
+                html.documentElement instanceof HTMLElement;
+        })()"#,
+            )
+        })
+        .unwrap();
+}
+
 pub(in crate::document_scripting) fn native_document_and_fragment_use_their_registered_realm() {
     let RegisteredOrigin {
         mut host,

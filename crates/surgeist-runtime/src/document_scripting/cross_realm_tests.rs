@@ -314,6 +314,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     document_type::document_type_tracks_native_tree();
     dom_implementation::document_implementation_is_the_same_object();
     dom_implementation::implementation_creates_native_doctypes();
+    dom_implementation::implementation_creates_native_documents();
+    super::guest::tests::registered_origin::implementation_factories_use_the_receiver_realm();
     super::guest::tests::registered_origin::native_doctype_uses_its_registered_creation_realm();
     source_comment_qualification_precedes_foreign_handler();
     super::guest::tests::registered_origin::borrowed_fragment_factory_keeps_dom_on_wrapper_refusal(
