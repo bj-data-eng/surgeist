@@ -267,9 +267,9 @@ pub struct surgeist_runtime::document_scripting::StoppedDocumentScriptHost
 impl surgeist_runtime::document_scripting::StoppedDocumentScriptHost
 pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::abandon_pending_attribute_write(&mut self, limits: surgeist_dom::source::DomSourceLimits) -> core::result::Result<core::result::Result<surgeist_runtime::DomSourceDriveProgress, surgeist_runtime::DomSourceDriveError>, surgeist_runtime::document_scripting::DocumentGuestEventError>
 impl surgeist_runtime::document_scripting::StoppedDocumentScriptHost
-pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::discard_pending_custom_element_callbacks(&mut self) -> core::result::Result<usize, surgeist_runtime::document_scripting::DocumentScriptNativeError>
 pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::discard_pending_definition_reactions(&mut self) -> core::result::Result<usize, surgeist_runtime::document_scripting::DocumentScriptNativeError>
 pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::discard_pending_native_custom_element_reactions(&mut self) -> core::result::Result<usize, surgeist_runtime::document_scripting::DocumentScriptNativeError>
+pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::discard_pending_queued_custom_element_reactions(&mut self) -> core::result::Result<usize, surgeist_runtime::document_scripting::DocumentScriptNativeError>
 pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::into_session(self) -> core::result::Result<surgeist_runtime::DomSession, Self>
 pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::raise_pending_custom_element_limits(&mut self, limits: surgeist_dom::source::DomSourceLimits) -> core::result::Result<(), surgeist_runtime::document_scripting::DocumentScriptNativeError>
 pub fn surgeist_runtime::document_scripting::StoppedDocumentScriptHost::settle_pending_custom_element(&mut self, limits: surgeist_dom::source::DomSourceLimits) -> core::result::Result<(), surgeist_runtime::document_scripting::DocumentGuestEventError>

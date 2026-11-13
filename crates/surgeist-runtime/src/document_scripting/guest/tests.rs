@@ -732,13 +732,17 @@ pub(in crate::document_scripting) fn insertion_upgrade_keeps_only_unentered_call
             .evaluate(&units(
                 r#"
             const candidate = document.createElement('x-pending-callback');
+            const sibling = document.createElement('x-pending-callback');
+            const fragment = document.createDocumentFragment();
+            fragment.appendChild(candidate);
+            fragment.appendChild(sibling);
             candidate.setAttribute('data-first', '1');
             candidate.setAttribute('data-second', '2');
             customElements.define('x-pending-callback', class extends HTMLElement {
                 static observedAttributes = ['data-first', 'data-second'];
                 attributeChangedCallback() { throw {}; }
             });
-            document.documentElement.appendChild(candidate);
+            document.documentElement.appendChild(fragment);
         "#,
             ))
             .map(drop)
@@ -755,11 +759,15 @@ pub(in crate::document_scripting) fn insertion_upgrade_keeps_only_unentered_call
         0
     );
     assert_eq!(
-        stopped.discard_pending_custom_element_callbacks().unwrap(),
-        1
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
+        2
     );
     assert_eq!(
-        stopped.discard_pending_custom_element_callbacks().unwrap(),
+        stopped
+            .discard_pending_queued_custom_element_reactions()
+            .unwrap(),
         0
     );
     assert!(stopped.into_session().is_ok());

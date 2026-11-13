@@ -97,7 +97,7 @@ impl NativeOwner {
                     .next;
             } else {
                 if let Some(queue) = frame.upgrade_callbacks.take() {
-                    self.keep_stopped_callback_queue(queue);
+                    self.keep_stopped_reaction_queue(queue);
                 }
                 *link = frame.next.take();
             }
@@ -185,7 +185,7 @@ impl NativeOwner {
             return Err(DocumentScriptNativeError::SourceAccess.into());
         }
         if let Some(queue) = pending.upgrade_callbacks.take() {
-            self.keep_stopped_callback_queue(queue);
+            self.keep_stopped_reaction_queue(queue);
         }
         *link = pending.next.take();
         Ok(())

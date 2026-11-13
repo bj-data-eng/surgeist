@@ -929,91 +929,112 @@ impl Capture {
         events: &GuestEvents,
         operation: surgeist_dom::DomSourceOperationId,
     ) -> Result<(), DocumentGuestEventError> {
-        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
         let registration = owner
             .attachment
             .get()
             .and_then(|attachment| attachment.registration.upgrade())
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        loop {
-            let inspections = registration.custom_element_reaction_segments();
-            let work =
-                u64::try_from(inspections).map_err(|_| DocumentGuestEventError::WorkLimit)?;
-            events.charge_work(work)?;
-            let Some(mut batch) =
-                registration.take_custom_element_reactions(operation, inspections)?
-            else {
-                break;
-            };
-            while let Some(fact) = batch.front() {
-                if !matches!(
-                    fact.kind,
-                    surgeist_dom::DomCustomElementReactionKind::Upgrade
-                ) {
-                    let queue = self.enqueue_native_callback(scope, owner, events, fact)?;
-                    batch.acknowledge_front();
-                    if let Some((queue, active)) = queue {
-                        if active {
-                            queue.drain(scope, owner, events)?;
-                        } else {
-                            self.run_callback_queue(scope, owner, events, Some(queue))?;
-                        }
+        let mut invocation = ReactionInvocation::new(owner)?;
+        let result = (|| {
+            loop {
+                let inspections = registration.custom_element_reaction_segments();
+                let work =
+                    u64::try_from(inspections).map_err(|_| DocumentGuestEventError::WorkLimit)?;
+                events.charge_work(work)?;
+                let Some(mut batch) =
+                    registration.take_custom_element_reactions(operation, inspections)?
+                else {
+                    break;
+                };
+                while let Some(fact) = batch.front() {
+                    let reaction = if matches!(
+                        fact.kind,
+                        surgeist_dom::DomCustomElementReactionKind::Upgrade
+                    ) {
+                        Some(QueuedReaction::Upgrade {
+                            definition: fact.definition,
+                            _backing: events.reserve(owner, QueuedReaction::storage_bytes())?,
+                        })
+                    } else {
+                        self.prepare_native_callback(scope, owner, events, fact)?
+                            .map(QueuedReaction::Callback)
+                    };
+                    if let Some(reaction) = reaction {
+                        let queue = invocation.queue(events, fact.element)?;
+                        queue
+                            .reactions
+                            .try_borrow_mut()
+                            .map_err(|_| DocumentScriptNativeError::Busy)?
+                            .push_back(reaction);
                     }
-                    continue;
-                }
-                let (global, constructor, interface, initial_attribute, connected, observed) =
-                    self.callbacks.with_read(owner, events, |read, _| {
-                        public.with_registry(
-                            read,
-                            |registry| registry.id == fact.definition.registry(),
-                            |registry| {
-                                read.step()?;
-                                let rows = registry
-                                    .definitions
-                                    .try_borrow()
-                                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                                let row = rows
-                                    .rows
-                                    .get(fact.definition.ordinal())
-                                    .filter(|row| row.id == fact.definition)
-                                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                                Ok((
-                                    registry.global,
-                                    row.constructor.clone(),
-                                    row.interface,
-                                    row.callbacks[4].clone(),
-                                    row.callbacks[0].clone(),
-                                    row.observed.clone(),
-                                ))
-                            },
-                        )
-                    })?;
-                let realm = constructor.associated_realm().identity();
-                let constructor = scope.open_callback_object(&constructor)?;
-                let mut accepted = false;
-                let queue = self.invoke_upgrade_candidate(
-                    scope,
-                    (owner, events, public),
-                    fact.element,
-                    UpgradeDefinition {
-                        id: fact.definition,
-                        global,
-                        constructor: &constructor,
-                        interface,
-                        realm,
-                        initial_attribute: initial_attribute.as_ref(),
-                        connected: connected.as_ref(),
-                        observed: observed.as_deref(),
-                    },
-                    &mut accepted,
-                );
-                if accepted || queue.is_ok() {
                     batch.acknowledge_front();
                 }
-                self.run_callback_queue(scope, owner, events, queue?)?;
             }
-        }
-        Ok(())
+            for entry in &invocation.entries {
+                entry.queue.drain(self, scope, owner, events)?;
+            }
+            invocation.completed = true;
+            Ok(())
+        })();
+        drop(invocation);
+        result
+    }
+
+    fn invoke_native_upgrade<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        element: NodeId,
+        definition: DomRegistryDefinitionId,
+        accepted: &mut bool,
+    ) -> Result<Option<Rc<ActiveReactionQueue>>, DocumentGuestEventError> {
+        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        let (global, constructor, interface, initial_attribute, connected, observed) =
+            self.callbacks.with_read(owner, events, |read, _| {
+                public.with_registry(
+                    read,
+                    |registry| registry.id == definition.registry(),
+                    |registry| {
+                        read.step()?;
+                        let rows = registry
+                            .definitions
+                            .try_borrow()
+                            .map_err(|_| DocumentScriptNativeError::Busy)?;
+                        let row = rows
+                            .rows
+                            .get(definition.ordinal())
+                            .filter(|row| row.id == definition)
+                            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                        Ok((
+                            registry.global,
+                            row.constructor.clone(),
+                            row.interface,
+                            row.callbacks[4].clone(),
+                            row.callbacks[0].clone(),
+                            row.observed.clone(),
+                        ))
+                    },
+                )
+            })?;
+        let realm = constructor.associated_realm().identity();
+        let constructor = scope.open_callback_object(&constructor)?;
+        self.invoke_upgrade_candidate(
+            scope,
+            (owner, events, public),
+            element,
+            UpgradeDefinition {
+                id: definition,
+                global,
+                constructor: &constructor,
+                interface,
+                realm,
+                initial_attribute: initial_attribute.as_ref(),
+                connected: connected.as_ref(),
+                observed: observed.as_deref(),
+            },
+            accepted,
+        )
     }
 
     fn invoke_upgrade_candidate<'scope>(
@@ -1114,7 +1135,7 @@ impl Capture {
         let mut callbacks = LinkedList::new();
         if let Some(callback) = initial_attribute {
             for arguments in &attributes.values {
-                callbacks.push_back(CallbackReaction::prepare(
+                callbacks.push_back(QueuedReaction::Callback(CallbackReaction::prepare(
                     scope,
                     (owner, events),
                     id,
@@ -1125,11 +1146,11 @@ impl Capture {
                     ),
                     &receiver,
                     Some(ReactionArguments::Attribute(arguments.each_ref())),
-                )?);
+                )?));
             }
         }
         if let Some(callback) = connected.filter(|_| is_connected) {
-            callbacks.push_back(CallbackReaction::prepare(
+            callbacks.push_back(QueuedReaction::Callback(CallbackReaction::prepare(
                 scope,
                 (owner, events),
                 id,
@@ -1140,7 +1161,7 @@ impl Capture {
                 ),
                 &receiver,
                 None,
-            )?);
+            )?));
         }
         let queue = self.prepare_callback_queue(owner, events, node, callbacks)?;
         public.document.ordinary.upgrade_existing(
@@ -1157,22 +1178,14 @@ impl Capture {
         owner: &NativeOwner,
         events: &GuestEvents,
         receiver: NodeId,
-        callbacks: LinkedList<CallbackReaction>,
+        reactions: LinkedList<QueuedReaction>,
     ) -> Result<Option<Rc<ActiveReactionQueue>>, DocumentGuestEventError> {
-        if callbacks.is_empty() {
+        if reactions.is_empty() {
             return Ok(None);
         }
-        let backing = events.reserve(
-            owner,
-            size_of::<ActiveReactionQueue>() + 2 * size_of::<usize>(),
-        )?;
-        Ok(Some(Rc::new(ActiveReactionQueue {
-            receiver,
-            callbacks: RefCell::new(callbacks),
-            previous: RefCell::new(None),
-            stopped_next: RefCell::new(None),
-            _backing: backing,
-        })))
+        Ok(Some(ActiveReactionQueue::new(
+            owner, events, receiver, reactions,
+        )?))
     }
 
     fn run_callback_queue<'scope>(
@@ -1193,21 +1206,21 @@ impl Capture {
             active: &owner.active_reaction_queue,
             queue: queue.clone(),
         };
-        let result = queue.drain(scope, owner, events);
+        let result = queue.drain(self, scope, owner, events);
         drop(entry);
         if result.is_err() {
-            owner.keep_stopped_callback_queue(queue);
+            owner.keep_stopped_reaction_queue(queue);
         }
         result
     }
 
-    fn enqueue_native_callback<'scope>(
+    fn prepare_native_callback<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
         fact: surgeist_dom::DomCustomElementReaction<'_>,
-    ) -> Result<Option<(Rc<ActiveReactionQueue>, bool)>, DocumentGuestEventError> {
+    ) -> Result<Option<CallbackReaction>, DocumentGuestEventError> {
         use surgeist_dom::DomCustomElementReactionKind as Kind;
         let (kind, callback_index) = match fact.kind {
             Kind::AttributeChanged { .. } => {
@@ -1337,40 +1350,14 @@ impl Capture {
             ReactionArguments::Attribute(values) => ReactionArguments::Attribute(values.each_ref()),
             ReactionArguments::Adoption(values) => ReactionArguments::Adoption(values.each_ref()),
         });
-        let reaction = CallbackReaction::prepare(
+        Ok(Some(CallbackReaction::prepare(
             scope,
             (owner, events),
             fact.definition,
             (kind, &callback, continuation),
             &receiver,
             arguments,
-        )?;
-        let mut current = owner
-            .active_reaction_queue
-            .try_borrow()
-            .map_err(|_| DocumentScriptNativeError::Busy)?
-            .clone();
-        while let Some(queue) = current {
-            events.step()?;
-            if queue.receiver == fact.element {
-                queue
-                    .callbacks
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?
-                    .push_back(reaction);
-                return Ok(Some((queue, true)));
-            }
-            current = queue
-                .previous
-                .try_borrow()
-                .map_err(|_| DocumentScriptNativeError::Busy)?
-                .clone();
-        }
-        let mut callbacks = LinkedList::new();
-        callbacks.push_back(reaction);
-        Ok(self
-            .prepare_callback_queue(owner, events, fact.element, callbacks)?
-            .map(|queue| (queue, false)))
+        )?))
     }
 
     fn registry_extends<'scope>(
@@ -1754,7 +1741,7 @@ impl CallbackReaction {
         receiver: &Value<'scope>,
         arguments: Option<ReactionArguments<&Value<'scope>>>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let backing = events.reserve(owner, size_of::<Self>() + 2 * size_of::<usize>())?;
+        let backing = events.reserve(owner, QueuedReaction::storage_bytes())?;
         Ok(Self {
             definition,
             kind,
@@ -1774,9 +1761,122 @@ impl CallbackReaction {
     }
 }
 
+enum QueuedReaction {
+    Upgrade {
+        definition: DomRegistryDefinitionId,
+        _backing: GuestBacking,
+    },
+    Callback(CallbackReaction),
+}
+
+impl QueuedReaction {
+    const fn storage_bytes() -> usize {
+        size_of::<Self>() + 2 * size_of::<usize>()
+    }
+}
+
+struct InvocationEntry {
+    queue: Rc<ActiveReactionQueue>,
+    installed: bool,
+    _backing: GuestBacking,
+}
+
+/// Makes all receivers of the native edit discoverable before its first
+/// callback. A nested edit adds to the same FIFO and gets its own drain order.
+struct ReactionInvocation<'a> {
+    owner: &'a NativeOwner,
+    original: Option<Rc<ActiveReactionQueue>>,
+    entries: LinkedList<InvocationEntry>,
+    completed: bool,
+}
+
+impl<'a> ReactionInvocation<'a> {
+    fn new(owner: &'a NativeOwner) -> Result<Self, DocumentScriptNativeError> {
+        let original = owner
+            .active_reaction_queue
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .clone();
+        Ok(Self {
+            owner,
+            original,
+            entries: LinkedList::new(),
+            completed: false,
+        })
+    }
+
+    fn queue(
+        &mut self,
+        events: &GuestEvents,
+        receiver: NodeId,
+    ) -> Result<Rc<ActiveReactionQueue>, DocumentGuestEventError> {
+        for entry in &self.entries {
+            events.step()?;
+            if entry.queue.receiver == receiver {
+                return Ok(entry.queue.clone());
+            }
+        }
+        let mut active = self
+            .owner
+            .active_reaction_queue
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut matching = active.clone();
+        while let Some(queue) = matching.as_ref() {
+            events.step()?;
+            if queue.receiver == receiver {
+                break;
+            }
+            let previous = queue
+                .previous
+                .try_borrow()
+                .map_err(|_| DocumentScriptNativeError::Busy)?
+                .clone();
+            matching = previous;
+        }
+        let backing = events.reserve(
+            self.owner,
+            size_of::<InvocationEntry>() + 2 * size_of::<usize>(),
+        )?;
+        let installed = matching.is_none();
+        let queue = match matching {
+            Some(queue) => queue,
+            None => {
+                let queue =
+                    ActiveReactionQueue::new(self.owner, events, receiver, LinkedList::new())?;
+                queue.previous.replace(active.replace(queue.clone()));
+                queue
+            }
+        };
+        self.entries.push_back(InvocationEntry {
+            queue: queue.clone(),
+            installed,
+            _backing: backing,
+        });
+        Ok(queue)
+    }
+}
+
+impl Drop for ReactionInvocation<'_> {
+    fn drop(&mut self) {
+        self.owner
+            .active_reaction_queue
+            .replace(self.original.take());
+        for entry in std::mem::take(&mut self.entries) {
+            if entry.installed {
+                entry.queue.previous.replace(None);
+                if !self.completed {
+                    self.owner.keep_stopped_reaction_queue(entry.queue);
+                }
+            }
+        }
+    }
+}
+
 pub(in crate::document_scripting) struct ActiveReactionQueue {
     receiver: NodeId,
-    callbacks: RefCell<LinkedList<CallbackReaction>>,
+    reactions: RefCell<LinkedList<QueuedReaction>>,
+    stopped: Cell<bool>,
     previous: RefCell<Option<Rc<Self>>>,
     stopped_next: RefCell<Option<Rc<Self>>>,
     _backing: GuestBacking,
@@ -1805,21 +1905,103 @@ impl Drop for ReactionQueueEntry<'_> {
     }
 }
 
+struct UpgradeEntry<'a> {
+    queue: &'a RefCell<LinkedList<QueuedReaction>>,
+    front: LinkedList<QueuedReaction>,
+    accepted: bool,
+}
+
+impl Drop for UpgradeEntry<'_> {
+    fn drop(&mut self) {
+        if !self.accepted {
+            let mut queue = self.queue.borrow_mut();
+            self.front.append(&mut queue);
+            std::mem::swap(&mut self.front, &mut *queue);
+        }
+    }
+}
+
 impl ActiveReactionQueue {
+    fn new(
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        receiver: NodeId,
+        reactions: LinkedList<QueuedReaction>,
+    ) -> Result<Rc<Self>, DocumentGuestEventError> {
+        let backing = events.reserve(owner, size_of::<Self>() + 2 * size_of::<usize>())?;
+        Ok(Rc::new(Self {
+            receiver,
+            reactions: RefCell::new(reactions),
+            stopped: Cell::new(false),
+            previous: RefCell::new(None),
+            stopped_next: RefCell::new(None),
+            _backing: backing,
+        }))
+    }
+
     fn drain<'scope>(
         &self,
+        capture: &Capture,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
     ) -> Result<(), DocumentGuestEventError> {
         loop {
-            let next = {
-                let callbacks = self
-                    .callbacks
+            let upgrade = {
+                let reactions = self
+                    .reactions
                     .try_borrow()
                     .map_err(|_| DocumentScriptNativeError::Busy)?;
-                let Some(next) = callbacks.front() else {
-                    return Ok(());
+                match reactions.front() {
+                    Some(QueuedReaction::Upgrade { definition, .. }) => Some(*definition),
+                    Some(QueuedReaction::Callback(_)) => None,
+                    None => return Ok(()),
+                }
+            };
+            if let Some(definition) = upgrade {
+                let mut reactions = self
+                    .reactions
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let tail = reactions.split_off(1);
+                let front = std::mem::replace(&mut *reactions, tail);
+                drop(reactions);
+                let mut entry = UpgradeEntry {
+                    queue: &self.reactions,
+                    front,
+                    accepted: false,
+                };
+                let result = capture.invoke_native_upgrade(
+                    scope,
+                    owner,
+                    events,
+                    self.receiver,
+                    definition,
+                    &mut entry.accepted,
+                );
+                let initial = result?;
+                entry.accepted = true;
+                if let Some(initial) = initial {
+                    let mut reactions = self
+                        .reactions
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    let mut initial = initial
+                        .reactions
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    initial.append(&mut reactions);
+                    std::mem::swap(&mut *initial, &mut *reactions);
+                }
+                continue;
+            }
+            let next = {
+                let reactions = self
+                    .reactions
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                let Some(QueuedReaction::Callback(next)) = reactions.front() else {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
                 };
                 let receiver = scope.import(&next.receiver)?;
                 let callback = scope.open_callback_object(&next.callback)?;
@@ -1843,12 +2025,14 @@ impl ActiveReactionQueue {
             let _arguments =
                 events.reserve(owner, scope.argument_copy_storage_bytes(arguments.len())?)?;
             scope.check_active()?;
-            let reaction = self
-                .callbacks
+            let Some(QueuedReaction::Callback(reaction)) = self
+                .reactions
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?
                 .pop_front()
-                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            else {
+                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            };
             let mut kind = reaction.kind;
             let mut realm = reaction.callback.associated_realm().identity();
             let mut result = scope.call(&callback, &receiver, arguments);
@@ -1881,19 +2065,19 @@ impl ActiveReactionQueue {
 }
 
 impl NativeOwner {
-    pub(in crate::document_scripting) fn keep_stopped_callback_queue(
+    pub(in crate::document_scripting) fn keep_stopped_reaction_queue(
         &self,
         queue: Rc<ActiveReactionQueue>,
     ) {
         // No callback is running with a queue borrow. Stopped custody is only
         // accessed synchronously by the owning host after engine entry.
-        if !queue.callbacks.borrow().is_empty() {
+        if !queue.reactions.borrow().is_empty() && !queue.stopped.replace(true) {
             let mut stopped = self.stopped_reaction_queues.borrow_mut();
             queue.stopped_next.replace(stopped.replace(queue.clone()));
         }
     }
 
-    pub(in crate::document_scripting) fn discard_stopped_callback_reactions(
+    pub(in crate::document_scripting) fn discard_stopped_queued_reactions(
         &self,
     ) -> Result<usize, DocumentScriptNativeError> {
         let mut stopped = self
@@ -1904,7 +2088,7 @@ impl NativeOwner {
         let mut next = stopped.clone();
         while let Some(queue) = next {
             count = count
-                .checked_add(queue.callbacks.borrow().len())
+                .checked_add(queue.reactions.borrow().len())
                 .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
             next = queue.stopped_next.borrow().clone();
         }

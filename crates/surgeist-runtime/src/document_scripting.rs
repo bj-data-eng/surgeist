@@ -1437,11 +1437,11 @@ impl fmt::Debug for NativeOwner {
 }
 
 impl StoppedDocumentScriptHost {
-    /// Discard callbacks that never entered the original stopped heap.
-    pub fn discard_pending_custom_element_callbacks(
+    /// Discard queued custom-element reactions that never entered the original heap.
+    pub fn discard_pending_queued_custom_element_reactions(
         &mut self,
     ) -> Result<usize, DocumentScriptNativeError> {
-        self.native.discard_stopped_callback_reactions()
+        self.native.discard_stopped_queued_reactions()
     }
 
     /// Discard native reaction facts retained by the original stopped attachment.
