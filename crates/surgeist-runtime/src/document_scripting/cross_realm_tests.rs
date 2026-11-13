@@ -254,6 +254,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     trusted_attribute::hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier();
     trusted_attribute::guest_tree_edits_deliver_original_meta_policies();
     inline_style::guest_insertion_publishes_a_sheet_under_the_known_empty_policy();
+    inline_style::style_runtime_refusal_preserves_the_original_guest_edit();
     inline_style::guest_insertion_uses_the_effective_meta_style_directive();
     inline_style::guest_style_update_matches_the_exact_nonce();
     inline_style::guest_style_hashes_exact_utf16_source();

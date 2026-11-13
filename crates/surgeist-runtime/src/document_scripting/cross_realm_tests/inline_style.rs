@@ -3,12 +3,127 @@ use crate::document_scripting::guest::tests::{
     attach_public_nodes, expose_public_node_for_source_test,
 };
 use crate::{DomSourceDriveError, DomStyleRuntimeError};
+use std::sync::atomic::Ordering;
 use surgeist_cssom::CssomStore;
 use surgeist_dom::DomStyleCssomRoot;
 use surgeist_html::values::DocumentString;
 
 pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
     guest_insertion(None, None, true);
+}
+
+pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = hosted_session(&cancel, 0);
+    let document = target.document();
+    let body = session
+        .snapshot()
+        .node(
+            session
+                .snapshot()
+                .document(document)
+                .unwrap()
+                .document_element()
+                .unwrap(),
+        )
+        .unwrap()
+        .children()[1];
+    let mut batch = DomBatch::new();
+    let style = batch.create_element_ns(document, Namespace::html(), "style");
+    let text = batch.create_text(document, "p { color: red }");
+    batch.insert_before(&text, &style, None);
+    let style = session
+        .dom()
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&style)
+        .unwrap()
+        .unwrap();
+    let mut styles = session.style_execution();
+    let mut limits = DomStyleRuntimeLimits {
+        roots: 4,
+        completions: 32,
+        reports: 32,
+        storage_bytes: 16_000_000,
+        work: 4,
+        css_input: CssUtf16InputLimits::default(),
+    };
+    styles.set_limits(&session.dom(), limits, &cancel).unwrap();
+    let mut host = attach_public_nodes(session, target, cancel.clone(), 5_000, 60_000);
+    let permit = host.permit().unwrap();
+    expose_public_node_for_source_test(&mut host, &permit, body, "styleParent");
+    expose_public_node_for_source_test(&mut host, &permit, style, "inlineStyle");
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
+        .in_document(&permit, |scope| {
+            evaluate(scope, "styleParent.appendChild(inlineStyle)").map(drop)
+        })
+    else {
+        panic!("the Style Runtime work gate must refuse");
+    };
+    assert!(matches!(
+        failure.cause::<DomSourceDriveError>(),
+        Some(DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+            DomStyleRuntimeError::Admission
+        )))
+    ));
+    let parked = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert!(parked.has_published());
+    assert_eq!(
+        host.snapshot().unwrap().node(style).unwrap().parent(),
+        Some(body)
+    );
+    limits.work = 1_000_000;
+    host.with_native(|dom, _, _| {
+        styles.set_limits(dom, limits, &cancel).unwrap();
+        styles
+            .bind_root(
+                dom,
+                "refused-style".into(),
+                &mut Some(DomStyleCssomRoot::new(
+                    document.node(),
+                    CssomStore::new(Default::default(), Default::default()).unwrap(),
+                )),
+                &cancel,
+            )
+            .unwrap();
+    })
+    .unwrap();
+    cancel.store(true, Ordering::Relaxed);
+    let cancelled = host.resume_pending_style_edit(&permit, parked.operation(), SOURCE);
+    assert!(
+        matches!(
+            cancelled,
+            Ok(Err(DomSourceDriveError::Source(
+                DomSourceRuntimeError::Dom(DomError::Cancelled)
+            ))) | Ok(Err(DomSourceDriveError::Source(
+                DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(DomError::Cancelled))
+            )))
+        ),
+        "{cancelled:?}"
+    );
+    cancel.store(false, Ordering::Relaxed);
+    assert_eq!(
+        host.with_native(|dom, _, _| dom.pending_source_edit())
+            .unwrap(),
+        Some(parked)
+    );
+    assert!(matches!(
+        host.resume_pending_style_edit(&permit, parked.operation(), SOURCE).unwrap().unwrap(),
+        DomSourceDriveProgress::Complete(done) if done.operation() == parked.operation()
+    ));
+    let snapshot = host.snapshot().unwrap();
+    assert!(
+        snapshot
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_some()
+    );
 }
 
 pub(super) fn character_data_edit_in_a_native_listener_settles_style_before_return() {
