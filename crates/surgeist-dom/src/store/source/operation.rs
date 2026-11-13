@@ -230,6 +230,14 @@ impl DomStyleCspBudget<'_> {
 }
 
 impl Dom {
+    /// Identify the current operation if it has reached an external Style
+    /// request. This grants no authority to inspect or acknowledge the request.
+    pub fn pending_style_source_edit(&self) -> Option<DomSourceOperationId> {
+        let operation = self.source_operation.as_ref()?;
+        operation.request.as_ref()?;
+        Some(operation.id)
+    }
+
     /// Qualify metering for the exact reached inline Style request.
     pub fn inline_csp_budget(
         &self,

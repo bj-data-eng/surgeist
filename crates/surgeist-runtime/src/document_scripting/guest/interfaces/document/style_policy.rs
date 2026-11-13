@@ -82,6 +82,7 @@ impl NativeOwner {
         limits: DomSourceLimits,
         delivery: StyleReportDelivery,
     ) {
+        self.record_reached_style();
         let cancel = &self.cancellation;
         while let Ok(DomSourceDriveProgress::Pending {
             request: DomSourceRequest::Style(request),
@@ -89,7 +90,6 @@ impl NativeOwner {
         }) = result
         {
             let operation = request.source().operation();
-            self.pending_style.set(Some(operation));
             let accepted = (|| {
                 let Some(mut prepared) = self.evaluate_guest_style(request, delivery)? else {
                     return Ok(false);
@@ -157,6 +157,14 @@ impl NativeOwner {
                 Err(error) => Err(error.into()),
             };
             self.reconcile_pending_style();
+        }
+    }
+
+    fn record_reached_style(&self) {
+        if let Ok(session) = self.session.try_borrow()
+            && let Some(operation) = session.read_dom().pending_style_source_edit()
+        {
+            self.pending_style.set(Some(operation));
         }
     }
 

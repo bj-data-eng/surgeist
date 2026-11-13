@@ -126,6 +126,95 @@ pub(super) fn style_runtime_refusal_preserves_the_original_guest_edit() {
     );
 }
 
+pub(super) fn guest_style_preserves_foreign_and_unavailable_policy() {
+    for select_other_processor in [false, true] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
+            limits.with_meta_processing_work(1_000_000)
+        });
+        let document = target.document();
+        let snapshot = session.snapshot();
+        let html = snapshot
+            .document(document)
+            .unwrap()
+            .document_element()
+            .unwrap();
+        let head = snapshot.node(html).unwrap().children()[0];
+        let body = snapshot.node(html).unwrap().children()[1];
+        let mut batch = DomBatch::new();
+        let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+        batch.set_attribute(&meta, "http-equiv", "content-security-policy");
+        batch.set_attribute(&meta, "content", "style-src 'unsafe-inline'");
+        let style = batch.create_element_ns(document, Namespace::html(), "style");
+        let text = batch.create_text(document, "p { color: red }");
+        batch.insert_before(&text, &style, None);
+        let commit = session.dom().apply(batch, &cancel).unwrap();
+        let meta = commit.created(&meta).unwrap().unwrap();
+        let style = commit.created(&style).unwrap().unwrap();
+        session.enable_trusted_types_csp(&cancel).unwrap();
+        install_policy_before_style_retry(&mut session, meta, head, &cancel);
+        let original_processor = session.trusted_types_csp.take().unwrap();
+        if select_other_processor {
+            session.enable_trusted_types_csp(&cancel).unwrap();
+        }
+        let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
+        let permit = host.permit().unwrap();
+        expose_public_node_for_source_test(&mut host, &permit, body, "styleParent");
+        expose_public_node_for_source_test(&mut host, &permit, style, "inlineStyle");
+        let result = host.in_document(&permit, |scope| {
+            evaluate(scope, "styleParent.appendChild(inlineStyle)").map(drop)
+        });
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+            panic!("unqualified policy must keep the edit pending: {result:?}");
+        };
+        let original = host
+            .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+            .unwrap();
+        assert!(original.has_published());
+        let before = host.snapshot().unwrap();
+        assert_eq!(before.node(style).unwrap().parent(), Some(body));
+        let retried = host
+            .resume_pending_style_edit(&permit, original.operation(), SOURCE)
+            .unwrap();
+        if select_other_processor {
+            assert!(matches!(
+                failure.cause::<DomSourceDriveError>(),
+                Some(DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+                    DomStyleRuntimeError::Protocol
+                )))
+            ));
+            assert!(
+                matches!(
+                    retried,
+                    Err(DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+                        DomStyleRuntimeError::Protocol
+                    )))
+                ),
+                "{retried:?}"
+            );
+        } else {
+            assert!(matches!(
+                failure.cause::<DocumentGuestEventError>(),
+                Some(DocumentGuestEventError::SourcePending(operation)) if *operation == original.operation()
+            ));
+            assert!(
+                matches!(
+                    retried,
+                    Ok(DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Style(ref request),
+                        reason: DomSourceUnavailable::Style(crate::DomStyleUnavailable::InlinePolicy),
+                    }) if request.source().operation() == original.operation()
+                ),
+                "{retried:?}"
+            );
+        }
+        assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+        crate::document_scripting::guest::tests::assert_queued_trusted_types_violations(&host, &[]);
+        assert!(host.stop().into_session().is_err());
+        drop(original_processor);
+    }
+}
+
 pub(super) fn character_data_edit_in_a_native_listener_settles_style_before_return() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target, dialog) = hosted_element(&cancel, "dialog");
