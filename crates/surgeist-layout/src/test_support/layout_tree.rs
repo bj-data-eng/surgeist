@@ -63,6 +63,7 @@ pub struct PublicLayoutTreeOf<S: LayoutScalar = DefaultScalar> {
     layout_inputs: HashMap<u32, LayoutInputOf<S>>,
     measurements: HashMap<u32, PublicMeasurementOf<S>>,
     non_box_input: NodeInputOf<S>,
+    measurement_queries: std::cell::Cell<Option<usize>>,
 }
 
 impl<S: LayoutScalar> Default for PublicLayoutTreeOf<S> {
@@ -72,11 +73,22 @@ impl<S: LayoutScalar> Default for PublicLayoutTreeOf<S> {
             layout_inputs: HashMap::new(),
             measurements: HashMap::new(),
             non_box_input: NodeInputOf::non_box(),
+            measurement_queries: std::cell::Cell::new(None),
         }
     }
 }
 
 impl<S: LayoutScalar> PublicLayoutTreeOf<S> {
+    pub fn reset_measurement_queries(&self) {
+        self.measurement_queries.set(Some(0));
+    }
+
+    pub fn measurement_queries(&self) -> usize {
+        self.measurement_queries
+            .get()
+            .expect("measurement query recording enabled")
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -167,6 +179,9 @@ impl<S: LayoutScalar> LayoutTree for PublicLayoutTreeOf<S> {
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
+        if let Some(count) = self.measurement_queries.get() {
+            self.measurement_queries.set(Some(count + 1));
+        }
         self.measurements.contains_key(&node)
     }
 

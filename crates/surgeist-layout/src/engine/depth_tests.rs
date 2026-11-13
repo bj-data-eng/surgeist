@@ -1642,3 +1642,220 @@ fn deep_ratio_flex_chain_preserves_content_height() {
         },
     );
 }
+
+fn assert_scoped_container_chain<S: LayoutScalar>(display: Display, depth: u32) -> usize {
+    use crate::{
+        AlignItems, BlockFragmentainerOf, FragmentationBreakKinds, FragmentationKind,
+        LayoutBoundRequestOf, LayoutFlowInput, LayoutSourceBasis, MinSizeOf, PageProgression,
+        Point, PreferredSizeOf, WrappingInput, compute_layout_with_flow,
+    };
+
+    let px = |value| PreferredSizeOf::px(S::from_f64(value));
+    let mut tree = PublicLayoutTreeOf::<S>::new()
+        .children(0, [1])
+        .children(1, [2])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(px(60.0), PreferredSizeOf::AUTO),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                writing_mode: WritingMode::VerticalRl,
+                size: Size::new(px(60.0), px(40.0)),
+                ..NodeInputOf::default()
+            },
+        );
+    let leaf = depth + 2;
+    for node in 2..=leaf {
+        tree = tree.style(
+            node,
+            NodeInputOf {
+                display: if node == leaf {
+                    Display::Block
+                } else {
+                    display
+                },
+                size: Size::new(px(60.0), px(40.0)),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                align_items: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        );
+        if node < leaf {
+            tree = tree.children(node, [node + 1]);
+        }
+    }
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let sizing = SizingRequestOf::new(
+        Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let request = LayoutRootRequestOf::standalone(sizing, axes, Size::NONE);
+    let bound = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        request,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
+        axes,
+        vec![BlockFragmentainerOf {
+            origin: Point::ZERO,
+            size: Size::new(S::from_f64(60.0), S::from_f64(100.0)),
+            breaks: FragmentationBreakKinds::NONE,
+            page_side: None,
+        }],
+    )
+    .expect("one page frame");
+    let target = bound.target_basis();
+    let flow = LayoutFlowInput::try_new_bound(
+        &tree,
+        0,
+        bound,
+        Vec::new(),
+        WrappingInput::default(),
+        Vec::new(),
+    )
+    .expect("bound numeric flow");
+    tree.reset_measurement_queries();
+    let batch =
+        compute_layout_with_flow(&flow, 0, request).expect("scoped container chain returns");
+    assert_eq!(batch.target_basis(), Some(&target));
+    assert_eq!(batch.node_layouts().len(), (depth + 3) as usize);
+    assert_eq!(batch.fragmentainers().len(), 1);
+    let mut counts = vec![0; (depth + 3) as usize];
+    for fragment in batch.fragments() {
+        let node = fragment.node();
+        let pair = fragment.principal_box().expect("actual box");
+        let output = pair.final_geometry();
+        // The orthogonal 60x40 box is atomic in the horizontal page flow.
+        // Its fixed-size descendants fill it, and the root consumes 40px.
+        assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(40.0)));
+        assert_eq!(output.location, Point::ZERO);
+        counts[node as usize] += 1;
+    }
+    assert!(
+        counts.iter().all(|count| *count == 1),
+        "one actual box per node"
+    );
+    tree.measurement_queries()
+}
+
+#[test]
+fn shallow_scoped_flex_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_scoped_flex_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::Flex, 2);
+            assert_scoped_container_chain::<f64>(Display::Flex, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_scoped_flex_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_scoped_flex_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::Flex, 24);
+            assert_scoped_container_chain::<f64>(Display::Flex, 24);
+        },
+    );
+}
+
+#[test]
+fn shallow_scoped_grid_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_scoped_grid_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::Grid, 2);
+            assert_scoped_container_chain::<f64>(Display::Grid, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_scoped_grid_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_scoped_grid_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::Grid, 24);
+            assert_scoped_container_chain::<f64>(Display::Grid, 24);
+        },
+    );
+}
+
+#[test]
+fn shallow_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::GridLanes, 2);
+            assert_scoped_container_chain::<f64>(Display::GridLanes, 2);
+        },
+    );
+}
+
+#[test]
+fn deep_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_scoped_grid_lanes_chain_preserves_atomic_fragment_geometry",
+        || {
+            assert_scoped_container_chain::<f32>(Display::GridLanes, 24);
+            assert_scoped_container_chain::<f64>(Display::GridLanes, 24);
+        },
+    );
+}
+
+fn assert_scoped_flex_work_is_bounded<S: LayoutScalar>() {
+    // A fixed-size single-child chain has a constant set of sizing requests per
+    // node. Allow headroom for admission and source qualification, but reject
+    // repeated performed work multiplying at every additional tree level.
+    let counts = [2, 4, 8].map(|depth| {
+        (
+            depth,
+            assert_scoped_container_chain::<S>(Display::Flex, depth),
+        )
+    });
+    assert!(
+        counts
+            .iter()
+            .all(|&(depth, queries)| queries <= 128 * (depth as usize + 3)),
+        "scoped fixed-size Flex work must remain bounded per node: {counts:?}"
+    );
+}
+
+#[test]
+fn scoped_flex_work_is_bounded_per_node_f32() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_scoped_flex_work_is_bounded::<f32>)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn scoped_flex_work_is_bounded_per_node_f64() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_scoped_flex_work_is_bounded::<f64>)
+        .unwrap()
+        .join()
+        .unwrap();
+}

@@ -541,6 +541,7 @@ pub(crate) fn compute_block_content_frame<Tree: LayoutTree>(
     session.retain_block_bodies();
     session.install_wrapping(std::sync::Arc::new(wrapping), &graph);
     session.begin_content_scope(root, input)?;
+    session.enable_request_memo();
     let context = crate::block::content::prepare(&mut session, root, input, original)?;
     let mut projection = crate::block::content::Projection {
         block_reference: reference,
@@ -633,6 +634,7 @@ pub(crate) fn compute_block_scope_root_frame<Tree: LayoutTree>(
     session.install_block_scopes(root, binding.dispatch)?;
     session.retain_block_bodies();
     session.install_wrapping(std::sync::Arc::new(wrapping), &graph);
+    session.enable_request_memo();
     root::compute_root_scoped(&mut session, root, request)?;
     root::position_fragment_root(&mut session, root, axes, frame.size)?;
     Ok(session.block_packet()?)
