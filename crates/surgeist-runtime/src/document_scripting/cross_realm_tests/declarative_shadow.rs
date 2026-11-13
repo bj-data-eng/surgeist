@@ -102,6 +102,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         Reconnect,
         Nested,
         MissingCallback,
+        ReceiverPosition,
         Stop,
         Refuse,
     }
@@ -110,6 +111,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Open, Delivery::Reconnect),
         (HtmlShadowRootMode::Open, Delivery::Nested),
         (HtmlShadowRootMode::Open, Delivery::MissingCallback),
+        (HtmlShadowRootMode::Open, Delivery::ReceiverPosition),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
@@ -117,6 +119,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
         let reenter = matches!(delivery, Delivery::Reconnect);
         let nested = matches!(delivery, Delivery::Nested);
         let missing_callback = matches!(delivery, Delivery::MissingCallback);
+        let receiver_position = matches!(delivery, Delivery::ReceiverPosition);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
                 "<template shadowrootmode=open shadowrootdelegatesfocus><p>child</p></template>",
@@ -158,7 +161,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 &cancel,
             )
             .unwrap();
-        let second = if nested || missing_callback {
+        let second = if nested || missing_callback || receiver_position {
             let mut batch = DomBatch::new();
             let second = batch.create_element_ns(document, Namespace::html(), "div");
             batch.insert_before(&second, element, None);
@@ -266,8 +269,8 @@ pub(super) fn verify_declarative_shadow_reuse() {
                             document.createElement('x-without-disconnection'));
                         secondShadowHost.attachShadow({{mode: 'open'}});
                     }}
-                    if ({nested}) {{
-                        globalThis.nestedShadowReuse = true;
+                    if ({nested} || {receiver_position}) {{
+                        globalThis.nestedShadowReuse = {nested};
                         globalThis.secondShadowReceiver = document.createElement('x-shadow-reuse-reaction');
                         original.appendChild(secondShadowReceiver);
                     }}
@@ -281,6 +284,13 @@ pub(super) fn verify_declarative_shadow_reuse() {
                         if (shadowReuseCalls.length !== 2 ||
                             shadowReuseCalls[0] !== shadowReuseReceiver ||
                             shadowReuseCalls[1] !== 'connected') return false;
+                    }}
+                    if ({receiver_position}) {{
+                        secondShadowHost.shadowRoot.appendChild(shadowReuseReceiver);
+                        if (shadowReuseCalls.length !== 2 ||
+                            shadowReuseCalls[0] !== shadowReuseReceiver ||
+                            shadowReuseCalls[1] !== 'connected') return false;
+                        secondShadowHost.attachShadow({{mode: 'open'}});
                     }}
                     Promise.resolve().then(() => shadowReuseCalls.push('after'));
                     try {{ shadowHost.attachShadow({{mode: "{matching}"}}); return false; }}
@@ -364,6 +374,11 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 let correct = evaluate(scope, if reenter {
                     "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === shadowReuseReceiver && \
                      shadowReuseCalls.slice(1).join(',') === 'connected,before,after'"
+                } else if receiver_position {
+                    "shadowReuseCalls.length === 6 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls[1] === 'connected' && shadowReuseCalls[2] === 'before' && \
+                     shadowReuseCalls[3] === shadowReuseReceiver && shadowReuseCalls[4] === secondShadowReceiver && \
+                     shadowReuseCalls[5] === 'after'"
                 } else if nested {
                     "shadowReuseCalls.length === 7 && shadowReuseCalls[0] === 'before' && \
                      shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls[2] === 'connected' && \
