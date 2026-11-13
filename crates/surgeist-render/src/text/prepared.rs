@@ -490,15 +490,48 @@ impl FontData {
     ) -> Result<PreparedGlyphRun> {
         let account = account.at(RenderPhase::GlyphPrepare);
         account.phase(RenderPhase::GlyphPrepare, || {
-            self.prepare_glyph_run_body(instance, glyphs, &account, font_bytes)
+            self.prepare_glyph_run_body(
+                instance,
+                glyphs,
+                &account,
+                font_bytes,
+                #[cfg(feature = "render-text")]
+                None,
+            )
         })
     }
+    /// Selects once and records temporary per-input-glyph envelopes alongside
+    /// the unchanged canonical run. The adapter owns shared-font admission.
+    #[cfg(feature = "render-text")]
+    pub(crate) fn prepare_glyph_run_with_bounds(
+        &self,
+        instance: &TextInstance,
+        glyphs: &[TextGlyph],
+        account: &Account,
+    ) -> Result<(PreparedGlyphRun, AccountedVec<TextRunBounds>)> {
+        let account = account.at(RenderPhase::GlyphPrepare);
+        account.phase(RenderPhase::GlyphPrepare, || {
+            let mut recorded_bounds = account.temporary(glyphs.len())?;
+            let run = self.prepare_glyph_run_body(
+                instance,
+                glyphs,
+                &account,
+                0,
+                Some(&mut recorded_bounds),
+            )?;
+            Ok((run, recorded_bounds))
+        })
+    }
+
     fn prepare_glyph_run_body(
         &self,
         instance: &TextInstance,
         glyphs: &[TextGlyph],
         account: &Account,
         font_bytes: usize,
+        #[cfg(feature = "render-text")] mut recorded_bounds: Option<
+            &mut AccountedVec<TextRunBounds>,
+        >,
     ) -> Result<PreparedGlyphRun> {
         let font = skrifa::FontRef::from_index(self.bytes(), self.index())
             .map_err(|_| Error::from(GlyphPreparationError::InvalidFont))?;
@@ -606,6 +639,10 @@ impl FontData {
         };
         for glyph in glyphs {
             account.work(RenderWork::GlyphVisits, 1)?;
+            #[cfg(feature = "render-text")]
+            if recorded_bounds.is_some() {
+                pen.glyph_bounds = Some(None);
+            }
             if let Some(format) = crate::vello_engine::glyph::selected_color_format(
                 &font,
                 GlyphId::new(glyph.id()),
@@ -639,6 +676,10 @@ impl FontData {
                 let start = pen.elements.len();
                 draw_outline(&mut pen, &context, *glyph, None)?;
                 pen.paint_fill(start, None, None, true)?;
+            }
+            #[cfg(feature = "render-text")]
+            if let Some(records) = recorded_bounds.as_mut() {
+                records.push(admitted_bounds(pen.glyph_bounds.flatten(), account)?)?;
             }
         }
         let path_capacity = pen.elements.capacity();
@@ -1085,15 +1126,54 @@ fn provider_point(value: f64) -> Error {
     .into()
 }
 
+#[cfg(feature = "render-text")]
+fn admitted_bounds(bounds: Option<kurbo::Rect>, account: &Account) -> Result<TextRunBounds> {
+    match bounds {
+        None => Ok(TextRunBounds::empty()),
+        Some(r) => {
+            account.work(RenderWork::CoordinateVisits, 4)?;
+            let (x0, y0, x1, y1) = (r.x0, r.y0, r.x1, r.y1);
+            let width = placement_action(account, || x1 - x0)?;
+            let height = placement_action(account, || y1 - y0)?;
+            TextRunBounds::try_ink(Rect::try_new(x0, y0, width, height)?)
+        }
+    }
+}
+
 struct CollectingPen {
     elements: AccountedVec<kurbo::PathEl>,
     account: Account,
     bounds: Option<kurbo::Rect>,
     paints: AccountedVec<GlyphPaint>,
     coalesce_previous: bool,
+    #[cfg(feature = "render-text")]
+    glyph_bounds: Option<Option<kurbo::Rect>>,
 }
 
 impl CollectingPen {
+    fn include_bounds(
+        &mut self,
+        bounds: kurbo::Rect,
+        #[cfg(feature = "render-text")] phase: RenderPhase,
+    ) -> Result<()> {
+        self.bounds = Some(
+            self.bounds
+                .map_or(bounds, |previous| previous.union(bounds)),
+        );
+        #[cfg(feature = "render-text")]
+        if let Some(current) = &mut self.glyph_bounds {
+            *current = Some(match *current {
+                None => bounds,
+                Some(previous) => {
+                    self.account
+                        .at(phase)
+                        .work(RenderWork::CoordinateVisits, 4)?;
+                    previous.union(bounds)
+                }
+            });
+        }
+        Ok(())
+    }
     fn paint(&mut self, paint: GlyphPaint) -> Result<()> {
         self.account.work(RenderWork::PaintVisits, 1)?;
         self.coalesce_previous = false;
@@ -1142,6 +1222,8 @@ impl CollectingPen {
             paints: account.retained(0)?,
             account,
             coalesce_previous: false,
+            #[cfg(feature = "render-text")]
+            glyph_bounds: None,
         })
     }
     fn finish(self) -> Result<(kurbo::BezPath, TextRunBounds, Vec<GlyphPaint>)> {
@@ -1292,11 +1374,11 @@ impl<'a> GlyphOutlinePen<'a> {
                 r = r.intersect(clip);
             }
             if r.width() > 0.0 && r.height() > 0.0 {
-                self.collector.bounds = Some(
-                    self.collector
-                        .bounds
-                        .map_or(r, |previous| previous.union(r)),
-                );
+                self.collector.include_bounds(
+                    r,
+                    #[cfg(feature = "render-text")]
+                    RenderPhase::Outline,
+                )?;
             }
         }
         Ok(())
@@ -1527,6 +1609,17 @@ pub(crate) fn qualify_preparation_bounds(
     bounds: Option<Rect>,
     account: &Account,
 ) -> Result<()> {
+    qualify_preparation_native_bounds(
+        transform,
+        preparation_input_bounds(bounds, account)?,
+        account,
+    )
+}
+
+fn preparation_input_bounds(
+    bounds: Option<Rect>,
+    account: &Account,
+) -> Result<Option<kurbo::Rect>> {
     let bounds = if let Some(bounds) = bounds {
         account.work(RenderWork::CoordinateVisits, 4)?;
         let (x, y, width, height) = (bounds.x(), bounds.y(), bounds.width(), bounds.height());
@@ -1536,7 +1629,7 @@ pub(crate) fn qualify_preparation_bounds(
     } else {
         None
     };
-    qualify_preparation_native_bounds(transform, bounds, account)
+    Ok(bounds)
 }
 
 fn qualify_preparation_native_bounds(
@@ -1544,6 +1637,32 @@ fn qualify_preparation_native_bounds(
     bounds: Option<kurbo::Rect>,
     account: &Account,
 ) -> Result<()> {
+    map_preparation_native_bounds(transform, bounds, account).map(drop)
+}
+
+#[cfg(feature = "render-text")]
+pub(crate) fn map_preparation_bounds(
+    transform: kurbo::Affine,
+    bounds: TextRunBounds,
+    account: &Account,
+) -> Result<TextRunBounds> {
+    // Empty carries no rectangle and therefore no native placement operands.
+    // Whole-run qualification likewise skips an admitted run without paints.
+    if bounds.ink_rect().is_none() {
+        return Ok(TextRunBounds::empty());
+    }
+    let bounds = preparation_input_bounds(bounds.ink_rect(), account)?;
+    admitted_bounds(
+        map_preparation_native_bounds(transform, bounds, account)?,
+        account,
+    )
+}
+
+fn map_preparation_native_bounds(
+    transform: kurbo::Affine,
+    bounds: Option<kurbo::Rect>,
+    account: &Account,
+) -> Result<Option<kurbo::Rect>> {
     account.work(RenderWork::CoordinateVisits, 6)?;
     let coefficients = transform.as_coeffs();
     for value in coefficients {
@@ -1640,8 +1759,9 @@ fn qualify_preparation_native_bounds(
                 .into());
             }
         }
+        return Ok(Some(placed));
     }
-    Ok(())
+    Ok(None)
 }
 
 #[cfg(test)]

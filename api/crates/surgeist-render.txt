@@ -495,6 +495,7 @@ pub surgeist_render::RenderAttemptKind::ColorFilterProjection
 pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::GlyphRun
 pub surgeist_render::RenderAttemptKind::ImageRepeat
+pub surgeist_render::RenderAttemptKind::LeaderPattern
 pub surgeist_render::RenderAttemptKind::PaintGradient
 pub surgeist_render::RenderAttemptKind::Readback
 pub surgeist_render::RenderAttemptKind::SceneInspection
@@ -729,6 +730,7 @@ pub surgeist_render::RenderWork::ImageTexelVisits
 pub surgeist_render::RenderWork::ImagesEmitted
 pub surgeist_render::RenderWork::KernelSampleVisits
 pub surgeist_render::RenderWork::LayersEmitted
+pub surgeist_render::RenderWork::LeaderClusterVisits
 pub surgeist_render::RenderWork::NativeBitmapDecodeBytes
 pub surgeist_render::RenderWork::OutlinePointVisits
 pub surgeist_render::RenderWork::PaintVisits
@@ -1806,6 +1808,7 @@ pub surgeist_render::RenderWorkTable::ImageTexelVisits: T
 pub surgeist_render::RenderWorkTable::ImagesEmitted: T
 pub surgeist_render::RenderWorkTable::KernelSampleVisits: T
 pub surgeist_render::RenderWorkTable::LayersEmitted: T
+pub surgeist_render::RenderWorkTable::LeaderClusterVisits: T
 pub surgeist_render::RenderWorkTable::NativeBitmapDecodeBytes: T
 pub surgeist_render::RenderWorkTable::OutlinePointVisits: T
 pub surgeist_render::RenderWorkTable::PaintVisits: T

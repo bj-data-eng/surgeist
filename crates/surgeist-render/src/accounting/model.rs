@@ -48,8 +48,10 @@ dimensions! {
         GlyphInputs,
         /// Original normalized coordinate values accepted once per input instance.
         CoordinateInputs,
-        /// Nonempty placed Text runs accepted once in whole-layout preflight.
+        /// Nonempty finalized or placed Text runs accepted once in preflight.
         TextRuns,
+        /// Actual leader cluster and glyph/group association records visited.
+        LeaderClusterVisits,
         /// Placed Text decoration records accepted once in preflight.
         TextDecorations,
         /// Retained glyph path elements appended, including synthesis and clip expansion.
@@ -202,6 +204,7 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Readback)
             || self.supported_for(RenderAttemptKind::GlyphRun)
             || self.supported_for(RenderAttemptKind::TextLayout)
+            || self.supported_for(RenderAttemptKind::LeaderPattern)
             || self.supported_for(RenderAttemptKind::SceneInspection)
             || self.supported_for(RenderAttemptKind::ImageRepeat)
             || self.supported_for(RenderAttemptKind::Background)
@@ -257,6 +260,14 @@ impl RenderWork {
                         || matches!(
                             self,
                             Self::ResourceProbes | Self::TextRuns | Self::TextDecorations
+                        ))
+            }
+            RenderAttemptKind::LeaderPattern => {
+                cfg!(feature = "render-text")
+                    && (self.supported_for(RenderAttemptKind::GlyphRun)
+                        || matches!(
+                            self,
+                            Self::ResourceProbes | Self::TextRuns | Self::LeaderClusterVisits
                         ))
             }
             RenderAttemptKind::Frame => {
@@ -890,6 +901,8 @@ pub enum RenderAttemptKind {
     BoxDecoration,
     /// Whole placed Text-layout preparation.
     TextLayout,
+    /// Admission of one authentic finalized Text leader pattern.
+    LeaderPattern,
     /// Standalone native Paint geometry/used-stop consumption.
     PaintGradient,
     /// Standalone resolved color preparation for an SDR sRGB destination.

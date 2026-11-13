@@ -59,6 +59,14 @@ or counterclockwise sideways runs. One `TextLayoutLimits` budget covers the comp
 Scene; a later refusal publishes no prefix. Text shaping, line selection and
 live computed-style authentication belong to their producing subsystems.
 
+The same feature adds `prepare_leader_pattern`, which borrows one exact finalized
+Text leader and admits its original glyph representations and paint groups.
+The receipt reports conservative ink envelopes in Text's physical pattern-local
+frame, including proved Empty, with central `RenderAccountingContext` limits.
+It preserves canonical combined fills and intrinsic paint barriers. Layout owns
+logical mapping, period and repetition; whole-group masking and command lowering
+remain separate operations.
+
 Ledger owns Render's named work, capacity admission and optional bounded profiling.
 Set `Options::with_accounting` before creating a Renderer. Each frame has a fresh
 work allowance, while Renderer CPU backing and native device generations retain

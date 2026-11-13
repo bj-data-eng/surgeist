@@ -1,4 +1,10 @@
-//! Consumer of an authentic immutable placed Text layout.
+//! Consumers of authentic immutable Text layouts and finalized leader patterns.
+
+mod leader;
+pub use leader::{
+    LeaderPatternCause, LeaderPatternError, PreparedLeaderGlyph, PreparedLeaderGroup,
+    PreparedLeaderPattern, PreparedLeaderRun, prepare_leader_pattern,
+};
 
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,

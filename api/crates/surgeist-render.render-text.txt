@@ -121,6 +121,7 @@ pub surgeist_render::ErrorCode::GradientHint
 pub surgeist_render::ErrorCode::GradientRealization
 pub surgeist_render::ErrorCode::ImageUploadFailed
 pub surgeist_render::ErrorCode::InvalidInput
+pub surgeist_render::ErrorCode::LeaderPattern
 pub surgeist_render::ErrorCode::PresentFailed
 pub surgeist_render::ErrorCode::ReadbackFailed
 pub surgeist_render::ErrorCode::RenderFailed
@@ -278,6 +279,15 @@ pub surgeist_render::ImageRepeatMode::NoRepeat
 pub surgeist_render::ImageRepeatMode::RepeatBoth
 pub surgeist_render::ImageRepeatMode::RepeatX
 pub surgeist_render::ImageRepeatMode::RepeatY
+pub enum surgeist_render::LeaderPatternCause
+pub surgeist_render::LeaderPatternCause::Render(alloc::boxed::Box<surgeist_render::Error>)
+pub surgeist_render::LeaderPatternCause::Text(alloc::boxed::Box<surgeist_text::error::Error>)
+pub enum surgeist_render::LeaderPatternError
+pub surgeist_render::LeaderPatternError::Run
+pub surgeist_render::LeaderPatternError::Run::cause: surgeist_render::LeaderPatternCause
+pub surgeist_render::LeaderPatternError::Run::run: usize
+impl core::convert::From<surgeist_render::LeaderPatternError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::LeaderPatternError) -> Self
 pub enum surgeist_render::LineCap
 pub surgeist_render::LineCap::Butt
 pub surgeist_render::LineCap::Round
@@ -496,6 +506,7 @@ pub surgeist_render::RenderAttemptKind::ColorFilterProjection
 pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::GlyphRun
 pub surgeist_render::RenderAttemptKind::ImageRepeat
+pub surgeist_render::RenderAttemptKind::LeaderPattern
 pub surgeist_render::RenderAttemptKind::PaintGradient
 pub surgeist_render::RenderAttemptKind::Readback
 pub surgeist_render::RenderAttemptKind::SceneInspection
@@ -730,6 +741,7 @@ pub surgeist_render::RenderWork::ImageTexelVisits
 pub surgeist_render::RenderWork::ImagesEmitted
 pub surgeist_render::RenderWork::KernelSampleVisits
 pub surgeist_render::RenderWork::LayersEmitted
+pub surgeist_render::RenderWork::LeaderClusterVisits
 pub surgeist_render::RenderWork::NativeBitmapDecodeBytes
 pub surgeist_render::RenderWork::OutlinePointVisits
 pub surgeist_render::RenderWork::PaintVisits
@@ -1122,6 +1134,7 @@ pub const fn surgeist_render::Error::gradient_hint_diagnostic(&self) -> core::op
 pub const fn surgeist_render::Error::gradient_realization_diagnostic(&self) -> core::option::Option<&surgeist_render::GradientRealizationError>
 pub fn surgeist_render::Error::invalid_value(name: impl core::convert::Into<alloc::string::String>, value: impl core::fmt::Display, rule: &'static str) -> Self
 pub const fn surgeist_render::Error::invalid_value_diagnostic(&self) -> core::option::Option<&surgeist_render::InvalidValue>
+pub fn surgeist_render::Error::leader_pattern_diagnostic(&self) -> core::option::Option<&surgeist_render::LeaderPatternError>
 pub fn surgeist_render::Error::message(&self) -> &str
 pub fn surgeist_render::Error::runtime_capability_unavailable(value: surgeist_render::RuntimeCapabilityUnavailable) -> Self
 pub const fn surgeist_render::Error::runtime_capability_unavailable_diagnostic(&self) -> core::option::Option<&surgeist_render::RuntimeCapabilityUnavailable>
@@ -1138,6 +1151,8 @@ impl core::convert::From<surgeist_render::GradientHintError> for surgeist_render
 pub fn surgeist_render::Error::from(value: surgeist_render::GradientHintError) -> Self
 impl core::convert::From<surgeist_render::GradientRealizationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GradientRealizationError) -> Self
+impl core::convert::From<surgeist_render::LeaderPatternError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::LeaderPatternError) -> Self
 impl core::convert::From<surgeist_render::RenderAccountingError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::RenderAccountingError) -> Self
 impl core::convert::From<surgeist_render::TextLayoutError> for surgeist_render::Error
@@ -1608,6 +1623,32 @@ pub fn surgeist_render::PreparedGlyphRun::is_same_preparation(&self, other: &Sel
 pub fn surgeist_render::PreparedGlyphRun::path_elements(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::PathElement> + '_
 impl core::cmp::PartialEq for surgeist_render::PreparedGlyphRun
 pub fn surgeist_render::PreparedGlyphRun::eq(&self, other: &Self) -> bool
+pub struct surgeist_render::PreparedLeaderGlyph<'a>
+impl<'a> surgeist_render::PreparedLeaderGlyph<'a>
+pub fn surgeist_render::PreparedLeaderGlyph<'a>::bounds(self) -> surgeist_render::TextRunBounds
+pub fn surgeist_render::PreparedLeaderGlyph<'a>::glyph(self) -> &'a surgeist_render::TextGlyph
+pub fn surgeist_render::PreparedLeaderGlyph<'a>::group(self) -> surgeist_text::engine::leader::LeaderPaintGroup
+pub const fn surgeist_render::PreparedLeaderGlyph<'a>::ordinal(self) -> usize
+pub const fn surgeist_render::PreparedLeaderGlyph<'a>::run(self) -> surgeist_render::PreparedLeaderRun<'a>
+pub struct surgeist_render::PreparedLeaderGroup<'a>
+impl<'a> surgeist_render::PreparedLeaderGroup<'a>
+pub const fn surgeist_render::PreparedLeaderGroup<'a>::bounds(self) -> surgeist_render::TextRunBounds
+pub fn surgeist_render::PreparedLeaderGroup<'a>::glyphs(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_render::PreparedLeaderGlyph<'a>>
+pub const fn surgeist_render::PreparedLeaderGroup<'a>::group(self) -> surgeist_text::engine::leader::LeaderPaintGroup
+pub struct surgeist_render::PreparedLeaderPattern<'text>
+impl<'text> surgeist_render::PreparedLeaderPattern<'text>
+pub const fn surgeist_render::PreparedLeaderPattern<'text>::bounds(&self) -> surgeist_render::TextRunBounds
+pub fn surgeist_render::PreparedLeaderPattern<'text>::groups(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_render::PreparedLeaderGroup<'_>>
+pub const fn surgeist_render::PreparedLeaderPattern<'text>::pattern(&self) -> &'text surgeist_text::engine::leader::FinalizedLeaderPattern
+pub fn surgeist_render::PreparedLeaderPattern<'text>::runs(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_render::PreparedLeaderRun<'_>>
+pub struct surgeist_render::PreparedLeaderRun<'a>
+impl<'a> surgeist_render::PreparedLeaderRun<'a>
+pub const fn surgeist_render::PreparedLeaderRun<'a>::frame(self) -> surgeist_text::geometry::GlyphFrame
+pub fn surgeist_render::PreparedLeaderRun<'a>::glyphs(self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_render::PreparedLeaderGlyph<'a>>
+pub const fn surgeist_render::PreparedLeaderRun<'a>::ordinal(self) -> usize
+pub const fn surgeist_render::PreparedLeaderRun<'a>::paint(self) -> &'a surgeist_render::TextPaint
+pub const fn surgeist_render::PreparedLeaderRun<'a>::run(self) -> &'a surgeist_render::PreparedGlyphRun
+pub const fn surgeist_render::PreparedLeaderRun<'a>::transform(self) -> surgeist_render::Transform
 pub struct surgeist_render::PreparedTextScene<'a>
 impl<'a> surgeist_render::PreparedTextScene<'a>
 pub fn surgeist_render::PreparedTextScene<'a>::glyph_draws(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::PreparedGlyphDraw<'_>>
@@ -1850,6 +1891,7 @@ pub surgeist_render::RenderWorkTable::ImageTexelVisits: T
 pub surgeist_render::RenderWorkTable::ImagesEmitted: T
 pub surgeist_render::RenderWorkTable::KernelSampleVisits: T
 pub surgeist_render::RenderWorkTable::LayersEmitted: T
+pub surgeist_render::RenderWorkTable::LeaderClusterVisits: T
 pub surgeist_render::RenderWorkTable::NativeBitmapDecodeBytes: T
 pub surgeist_render::RenderWorkTable::OutlinePointVisits: T
 pub surgeist_render::RenderWorkTable::PaintVisits: T
@@ -2234,6 +2276,7 @@ pub struct surgeist_render::WebCanvas
 impl surgeist_render::WebCanvas
 pub fn surgeist_render::WebCanvas::id(&self) -> &str
 pub fn surgeist_render::WebCanvas::new(id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_render::prepare_leader_pattern<'text>(pattern: &'text surgeist_text::engine::leader::FinalizedLeaderPattern, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedLeaderPattern<'text>>
 pub fn surgeist_render::prepare_sdr_srgb_color(resolved: surgeist_color::value::Color, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Color>
 pub fn surgeist_render::prepare_text_layout<'a>(layout: &'a surgeist_text::layout::Layout, placement: surgeist_render::Transform, limits: surgeist_render::TextLayoutLimits, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedTextScene<'a>>
 pub type surgeist_render::Result<T> = core::result::Result<T, surgeist_render::Error>

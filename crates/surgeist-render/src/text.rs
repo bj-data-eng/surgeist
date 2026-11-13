@@ -14,7 +14,9 @@ pub use prepared::{
     GlyphSynthesis, NormalizedCoordinate, PreparedGlyphRun, TextInstance, VariationTable,
 };
 #[cfg(feature = "render-text")]
-pub(crate) use prepared::{qualify_preparation_bounds, qualify_preparation_placement};
+pub(crate) use prepared::{
+    map_preparation_bounds, qualify_preparation_bounds, qualify_preparation_placement,
+};
 
 /// An opaque caller-defined font identity used by authored text runs.
 ///

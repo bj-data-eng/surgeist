@@ -44,6 +44,8 @@ struct ErrorContext {
     preparation: Option<PreparationDiagnostic>,
     #[cfg(feature = "render-text")]
     text_layout: Option<crate::TextLayoutError>,
+    #[cfg(feature = "render-text")]
+    leader_pattern: Option<crate::LeaderPatternError>,
 }
 
 #[derive(Debug)]
@@ -162,6 +164,8 @@ impl ErrorPayload {
                     preparation: Some(PreparationDiagnostic::Accounting(diagnostic)),
                     #[cfg(feature = "render-text")]
                     text_layout: None,
+                    #[cfg(feature = "render-text")]
+                    leader_pattern: None,
                 })
             }
         }
@@ -206,6 +210,16 @@ impl Error {
         }
     }
 
+    /// Preserved failure at an actual finalized leader run.
+    #[cfg(feature = "render-text")]
+    #[must_use]
+    pub fn leader_pattern_diagnostic(&self) -> Option<&crate::LeaderPatternError> {
+        match &self.payload {
+            ErrorPayload::Accounting(_) => None,
+            ErrorPayload::Context(context) => context.leader_pattern.as_ref(),
+        }
+    }
+
     #[must_use]
     pub(crate) fn new(code: BackendErrorCode, message: impl Into<String>) -> Self {
         Self::context(ErrorContext {
@@ -220,6 +234,8 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 
@@ -326,6 +342,8 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 
@@ -349,6 +367,8 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 
@@ -368,6 +388,8 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 
@@ -387,6 +409,8 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 
@@ -406,6 +430,8 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 
@@ -538,6 +564,8 @@ impl From<crate::GlyphPreparationError> for Error {
             preparation: Some(PreparationDiagnostic::Glyph(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 }
@@ -556,6 +584,8 @@ impl From<GradientHintError> for Error {
             preparation: Some(PreparationDiagnostic::GradientHint(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 }
@@ -585,6 +615,8 @@ impl From<GeometryRealizationError> for Error {
             preparation: Some(PreparationDiagnostic::GeometryRealization(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 }
@@ -630,6 +662,8 @@ impl From<GradientRealizationError> for Error {
             preparation: Some(PreparationDiagnostic::GradientRealization(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 }
@@ -674,6 +708,8 @@ impl From<crate::PaintGradientError> for Error {
             preparation: Some(PreparationDiagnostic::PaintGradient(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
         })
     }
 }
@@ -692,6 +728,26 @@ impl From<crate::TextLayoutError> for Error {
             runtime_capability_unavailable: None,
             preparation: None,
             text_layout: Some(value),
+            leader_pattern: None,
+        })
+    }
+}
+
+#[cfg(feature = "render-text")]
+impl From<crate::LeaderPatternError> for Error {
+    fn from(value: crate::LeaderPatternError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::LeaderPattern,
+            message: format!("leader pattern admission refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: None,
+            text_layout: None,
+            leader_pattern: Some(value),
         })
     }
 }
@@ -744,6 +800,9 @@ pub enum ErrorCode {
     /// Reports atomic standalone Text-layout admission failure.
     #[cfg(feature = "render-text")]
     TextLayout,
+    /// Reports atomic finalized leader-pattern admission failure.
+    #[cfg(feature = "render-text")]
+    LeaderPattern,
     /// Reports a semantic headless glyph-preparation refusal.
     GlyphPreparation,
     /// Reports failure to create a GPU device.

@@ -14,6 +14,7 @@ current source API.
 | Gradient paints | `Gradient`, `RepeatingGradient`, `GradientStop`, `GradientHint`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
 | Native Paint consumer (`render-paint`) | `prepare_linear_gradient`, `prepare_radial_gradient`, `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
 | Native zero-height Paint colors (`render-paint`) | `prepare_zero_height_gradient_color` | [Color preparation](#zero-height-paint-colors) |
+| Leader-pattern admission (`render-text`) | `prepare_leader_pattern`, `PreparedLeaderPattern`, `PreparedLeaderRun`, `PreparedLeaderGroup`, `LeaderPatternError` | [Adapter](../src/text_layout/leader.rs) |
 | Placed Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
@@ -736,7 +737,7 @@ typed refusal before the frame publishes.
 | Configuration | Leaf boundary |
 | --- | --- |
 | Default features (`[]`) | Native headless GPU execution without a window. |
-| `render-text` | Optional direct Text dependency, without Text default features; immutable placed-layout consumption, independent of window/web/accessibility adapters. |
+| `render-text` | Optional direct Text dependency, without Text default features; immutable placed-layout and finalized leader admission, independent of window/web/accessibility adapters. |
 | `render-paint` | Optional direct Paint dependency; native positive and zero-width geometry/used-stop consumption, independent of host adapters. |
 | `render-window` | Enables `surgeist-window` and native window attachment; live presentation requires its graphical host lifecycle. |
 | `render-web` | Enables `wgpu/webgpu`; web-canvas support requires `wasm32`. The documented wasm leaf check compiles `--lib --tests`. |
@@ -812,6 +813,37 @@ basis before applying that matrix. Existing outline synthesis operates in glyph 
 before that basis; caller placement follows once. Decorations are already
 physical and receive caller placement once. Text owns admission of the actual
 shaping profile; font, outline and numeric refusals retain their existing owners.
+
+The `prepare_leader_pattern` adapter borrows an authentic finalized Text leader.
+Its private-field receipt retains each actual prepared run and original ordered
+paint program, and exposes borrowed runs, per-glyph group associations and group
+ink envelopes. A glyphless group stays present. Envelopes are conservative
+representation bounds, not advance rectangles, alpha-support tests or mask-ready
+contour intervals. Consecutive ordinary outlines remain one NonZero fill;
+selected intrinsic Empty glyphs remain barriers between those spans.
+
+Bounds use the physical pattern-local frame supplied by each Text `glyph_frame`,
+with shared baseline anchor (0,0). Compressed combined cells retain their own
+horizontal pens and frame; their inner orientation does not identify an outer
+logical inline axis. No caller placement, period, source identity or reconstructed
+glyph/group association is accepted. `pattern()` returns the exact borrowed
+source and its original font catalogue, mappings and opaque group scope.
+Layout/Runtime owns logical mapping, positive-period selection, reservation,
+repetition and occurrence authentication. Positive-area group masking and
+faithful lowering remain separate work; envelopes alone do not prove overlap.
+
+This operation uses central `RenderAccountingContext` limits, with attempt kind
+`LeaderPattern`. Glyph/coordinate inputs are accepted once, run inputs count only
+nonempty runs, and `LeaderClusterVisits` measures actual cluster and glyph/group
+traversal. Group comparisons and resource deduplication charge `ResourceProbes`.
+Temporary glyph envelopes and conversion buffers, retained group membership and
+run rows, real path/paint/image backing, and unique font resources are accounted.
+Borrowed Text storage is outside Render's byte bounds. Receipt metadata has no
+Scene/frame import in this phase. A later consumer must account metadata it
+retains or discard it after producing accounted draw storage. Central accounting
+refusals remain direct; other failures preserve the actual run ordinal and typed
+Text or Render cause through `leader_pattern_diagnostic()`. No partial receipt
+escapes; an unchanged-input raised-budget retry starts fresh.
 
 ## Frame accounting
 
@@ -1163,7 +1195,7 @@ move its terminal record to caller custody with `take_last_attempt`, as describe
 under [standalone accounting](#standalone-accounting). Every preparation path
 requires the context.
 
-The measured boundary is standalone glyph and placed-Text preparation, including
+The measured boundary is standalone glyph, placed-Text and finalized-leader preparation, including
 outline/variation qualification, provider callbacks, intrinsic color/bitmap
 processing, PNG decoding and coordinate conversion. Scene/GPU work dimensions
 remain zero in preparation reports, and configuring them for a preparation
@@ -1173,6 +1205,7 @@ readback accounting are outside this preparation contract.
 
 | Preparation work | Unit and boundary |
 | --- | --- |
+| `LeaderClusterVisits` | Actual finalized leader clusters and glyph/group association rows traversed; glyphless groups do not count as glyphs. |
 | `GlyphInputs`, `CoordinateInputs`, `TextRuns`, `TextDecorations` | Original glyphs, normalized coordinates, nonempty runs and decoration records accepted once. Whole-Text preflight owns admission; nested glyph runs never accept these again. |
 | `GlyphVisits`, `FontRecordVisits`, `CoordinateVisits` | One actual glyph fact, directory/instance record, bitmap strike/index record or scalar/axis record inspected. Repeated traversals charge separately; early exits retain only the visited prefix. |
 | `PathElementVisits`, `OutlinePointVisits`, `VariationTupleVisits`, `GlyphComponentVisits` | One raw contour endpoint/provider path element, point-flag record/point/delta, variation tuple or composite child edge inspected. Dependency internals are not reported as Render visits. |
