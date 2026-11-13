@@ -458,6 +458,33 @@ fn registry_definition_commit_preserves_identity_history_and_hosted_quota() {
     assert_eq!(after_first.definition(first_id).unwrap(), &autonomous);
     assert_eq!(after_second.definition(first_id).unwrap(), &autonomous);
     assert_eq!(after_second.definition(second_id).unwrap(), &custom);
+    for (snapshot, expected) in [(&initial, 0), (&intermediate, 1), (&current, 2)] {
+        let exported = snapshot
+            .html_capture(
+                owner.document(),
+                None,
+                surgeist_html_semantics::HtmlCaptureLimits::new(
+                    256, 4096, 1024, 65_536, 256, 16, 16, 1_000_000,
+                ),
+                DomHtmlCaptureLimits::new(256, 1_000_000),
+                &cancel(),
+            )
+            .unwrap();
+        let capture = exported.capture();
+        let document = capture
+            .node(&exported.subject(owner.document().node()).unwrap())
+            .unwrap();
+        let surgeist_html_semantics::HtmlCapturedRegistry::Registry(registry) =
+            document.lookup_registry()
+        else {
+            panic!("exported document has its registry");
+        };
+        assert!(matches!(
+            capture.definitions(&registry).unwrap(),
+            surgeist_html_semantics::HtmlCapturedDefinitions::Complete(definitions)
+                if definitions == &[autonomous.clone(), custom.clone()][..expected]
+        ));
+    }
     assert!(after_first.definition(second_id).is_err());
     assert!(before.definition(first_id).is_err());
     assert!(

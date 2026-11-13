@@ -100,7 +100,7 @@ impl Bank {
     pub(crate) fn get(&self, id: DomRegistryId) -> Result<&Record, DomError> {
         self.get_with(id, &mut || Ok(()))
     }
-    pub(in crate::store) fn get_with<E: From<DomError>>(
+    pub(crate) fn get_with<E: From<DomError>>(
         &self,
         id: DomRegistryId,
         step: &mut impl FnMut() -> Result<(), E>,

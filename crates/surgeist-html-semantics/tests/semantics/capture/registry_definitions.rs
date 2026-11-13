@@ -219,6 +219,51 @@ fn sharing_whole_strings_charges_their_actual_spare_capacity() {
 }
 
 #[test]
+fn import_admits_definition_storage_before_copying_and_preserves_the_original() {
+    let original = append(&global(), &definition("x-record", "button"));
+    let units = original.retained_storage_usage().utf16_extent();
+    let revision = HtmlHostFactsRevision::fresh();
+    let limits = |units| HtmlCaptureLimits::new(0, 0, 0, units, 0, 1, 1, 0);
+    let mut short = HtmlCaptureBuilder::new(limits(units - 1), revision.clone());
+    assert!(matches!(
+        short.import_registry_with(original.capture(), original.registry(), |_| Ok::<_, ()>(())),
+        Err(HtmlRegistryFormationError::Capture(HtmlCaptureError::LimitExceeded { required, .. }))
+            if required == units
+    ));
+    assert_eq!(short.usage().registries(), 0);
+    assert_eq!(short.usage().definitions(), 0);
+    let mut exact = HtmlCaptureBuilder::new(limits(units), revision);
+    let error = exact
+        .import_registry_with(original.capture(), original.registry(), |cost| {
+            if cost == 0 {
+                Err("before reservation")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err();
+    assert_eq!(
+        error,
+        HtmlRegistryFormationError::Interrupted("before reservation")
+    );
+    assert_eq!(exact.usage().registries(), 0);
+    let handle = exact
+        .import_registry_with(original.capture(), original.registry(), |_| Ok::<_, ()>(()))
+        .unwrap();
+    let result = exact.finish().unwrap();
+    let imported = result.registry_id(&handle).unwrap();
+    assert!(matches!(
+        result.definitions(&imported).unwrap(),
+        HtmlCapturedDefinitions::Complete([facts])
+            if facts == &definition("x-record", "button")
+    ));
+    assert_eq!(
+        original.capture().definitions(&imported).unwrap_err(),
+        HtmlCaptureError::ForeignCapture
+    );
+}
+
+#[test]
 fn append_refuses_unqualified_definitions_and_preserves_registry_scope() {
     let mut builder = HtmlCaptureBuilder::new(
         HtmlCaptureLimits::new(0, 0, 0, 0, 0, 3, 0, 0),

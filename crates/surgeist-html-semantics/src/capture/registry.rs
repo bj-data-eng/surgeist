@@ -476,6 +476,108 @@ fn preflight_error<E>(
     }
 }
 
+impl HtmlCaptureBuilder {
+    /// Copies a complete registry of known scope from immutable evidence into this
+    /// capture. Definition order is preserved and all new IDs are local.
+    /// Work and cancellation are admitted before observations and reservation.
+    /// The destination admits the requested definition count and UTF-16 extent
+    /// before copying, and checks actual capacity before filling borrowed ranges.
+    pub fn import_registry_with<E>(
+        &mut self,
+        source: &HtmlCapture,
+        registry: &HtmlCaptureRegistryId,
+        mut step: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<HtmlCaptureBuilderRegistry, HtmlRegistryFormationError<E>> {
+        use HtmlRegistryFormationError::Capture;
+
+        Control::step(&mut step, 1)?;
+        let scope = source.registry_scope(registry).map_err(Capture)?;
+        let HtmlCapturedDefinitions::Complete(definitions) =
+            source.definitions(registry).map_err(Capture)?
+        else {
+            return Err(Capture(HtmlCaptureError::UnavailableDefinitions(
+                registry.clone(),
+            )));
+        };
+        if scope == HtmlRegistryScope::Unavailable {
+            return Err(Capture(HtmlCaptureError::MissingFact {
+                subject: None,
+                fact: HtmlCaptureFact::RegistryScope,
+            }));
+        }
+        self.admit(0, 0, 0, 0, 1, definitions.len())
+            .map_err(Capture)?;
+        let mut units = 0;
+        for definition in definitions {
+            Control::step(&mut step, 1)?;
+            // Borrowed inputs are normalized to exact private blocks below;
+            // whole owners retain their exposed capacity.
+            units = Control::plus(units, definition.name().occurrence_units())?;
+            units = Control::plus(units, definition.local_name().occurrence_units())?;
+        }
+        self.admit(0, 0, 0, units, 1, definitions.len())
+            .map_err(Capture)?;
+        let mut staged = Vec::new();
+        Control::step(&mut step, 0)?;
+        staged
+            .try_reserve_exact(definitions.len())
+            .map_err(|_| HtmlRegistryFormationError::AllocationFailed)?;
+        for definition in definitions {
+            Control::step(&mut step, 1)?;
+            let mut string = |value: &DocumentString| {
+                Control::step(&mut step, 1)?;
+                if value.is_whole_block() {
+                    return Ok(value.clone());
+                }
+                let mut buffer = Vec::new();
+                Control::step(&mut step, 0)?;
+                buffer
+                    .try_reserve_exact(value.len())
+                    .map_err(|_| HtmlRegistryFormationError::AllocationFailed)?;
+                units = Control::plus(units, buffer.capacity() - value.len())?;
+                self.admit(0, 0, 0, units, 1, definitions.len())
+                    .map_err(Capture)?;
+                for offset in 0..value.len() {
+                    Control::step(&mut step, 1)?;
+                    buffer.push(value.code_units()[offset]);
+                }
+                Ok(DocumentString::from_utf16(buffer))
+            };
+            let name = string(definition.name())?;
+            let local = string(definition.local_name())?;
+            staged.push(HtmlCustomElementDefinition::new(
+                name,
+                local,
+                definition.form_associated(),
+                definition.disable_shadow(),
+            ));
+        }
+        let charges = self
+            .admit(0, 0, 0, units, 1, staged.len())
+            .map_err(Capture)?;
+        Control::step(&mut step, 1)?;
+        if self.data.registries.len() == self.data.registries.capacity() {
+            Control::step(&mut step, self.data.registries.len())?;
+        }
+        self.data
+            .registries
+            .try_reserve(1)
+            .map_err(|_| HtmlRegistryFormationError::AllocationFailed)?;
+        self.commit(charges).map_err(Capture)?;
+        let index = self.data.registries.len();
+        self.data.registries.push(RegistryRecord {
+            definitions: staged,
+            complete: true,
+            scope,
+            scope_established: true,
+        });
+        Ok(HtmlCaptureBuilderRegistry {
+            capture: self.data.identity.clone(),
+            index,
+        })
+    }
+}
+
 impl HtmlCapture {
     /// Forms exactly one complete-empty Global registry, with no captured nodes.
     ///
