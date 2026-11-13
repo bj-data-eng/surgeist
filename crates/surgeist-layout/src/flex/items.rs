@@ -202,13 +202,6 @@ where
     false
 }
 
-type FlexItemCollectionResult<Tree, M> = LayoutResultOf<
-    <Tree as Traverse>::Node,
-    Vec<CollectedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>,
-    <Tree as Traverse>::Scalar,
-    M,
->;
-
 pub(super) struct ItemCollection<'input, Node, S: LayoutScalar> {
     source: CollectionSource<Node>,
     items: Vec<CollectedFlexItem<Node, S>>,
@@ -382,23 +375,6 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
             })
             .collect()
     }
-}
-
-pub(super) fn collect_items<'input, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    constants: &Constants<Tree::Scalar>,
-    run_mode: RunMode,
-) -> FlexItemCollectionResult<Tree, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let mut collection = ItemCollection::new(tree, node, run_mode);
-    while let Some(request) = collection.next(tree, constants)? {
-        let output = tree.compute_child(request.node, request.input)?;
-        collection.accept(tree, constants, output)?;
-    }
-    Ok(collection.finish())
 }
 
 pub(super) struct FlexItemRequest<Node, S: LayoutScalar> {

@@ -1550,3 +1550,95 @@ fn deep_flex_baseline_chain_exports_settled_ports() {
         },
     );
 }
+
+fn assert_ratio_flex_chain<S: LayoutScalar>(depth: u32) {
+    let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
+    let mut tree = PublicLayoutTreeOf::<S>::new();
+    for node in 0..=depth {
+        let leaf = node == depth;
+        tree = tree.style(
+            node,
+            NodeInputOf {
+                display: if leaf { Display::Block } else { Display::Flex },
+                size: Size::new(
+                    if leaf {
+                        px(60.0)
+                    } else {
+                        crate::PreferredSizeOf::MAX_CONTENT
+                    },
+                    if leaf {
+                        px(40.0)
+                    } else {
+                        crate::PreferredSizeOf::AUTO
+                    },
+                ),
+                aspect_ratio: if leaf {
+                    None
+                } else {
+                    crate::AspectRatioOf::new(S::from_f64(2.0))
+                },
+                flex_basis: crate::FlexBasisOf::value(
+                    crate::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                ),
+                min_size: Size::new(crate::MinSizeOf::ZERO, crate::MinSizeOf::AUTO),
+                align_items: Some(crate::AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        );
+        if !leaf {
+            let hidden_parent = depth + 1 + node * 2;
+            let hidden_leaf = hidden_parent + 1;
+            tree = tree
+                .children(node, [node + 1, hidden_parent])
+                .children(hidden_parent, [hidden_leaf])
+                .style(
+                    hidden_parent,
+                    NodeInputOf {
+                        display: Display::None,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(hidden_leaf, NodeInputOf::default());
+        }
+    }
+    let batch = compute_layout(&tree, 0, standalone()).expect("ratio chain returns");
+    assert_eq!(batch.node_layouts().len(), (3 * depth + 1) as usize);
+    for (node, view) in batch.node_layouts() {
+        if node > depth {
+            let hidden = view.non_box().expect("hidden subtree");
+            assert_eq!(hidden.kind(), crate::NonBoxKind::Hidden);
+            assert_eq!(hidden.final_geometry().size, Size::ZERO);
+            let source_index = usize::from((node - depth - 1).is_multiple_of(2));
+            assert_eq!(hidden.source_index(), crate::SourceIndex::new(source_index));
+        } else {
+            let output = view.single_box().expect("visible box").final_output();
+            // The sole 60px basis sets the inline extent. The 40px content
+            // floor exceeds the 30px height transferred by the ratio.
+            assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(40.0)));
+            assert_eq!(output.location, crate::Point::ZERO);
+            assert_eq!(output.source_index, crate::SourceIndex::new(0));
+        }
+    }
+}
+
+#[test]
+fn shallow_ratio_flex_chain_preserves_content_height() {
+    on_bounded_stack(
+        "engine::depth_tests::shallow_ratio_flex_chain_preserves_content_height",
+        || {
+            assert_ratio_flex_chain::<f32>(2);
+            assert_ratio_flex_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_ratio_flex_chain_preserves_content_height() {
+    on_bounded_stack(
+        "engine::depth_tests::deep_ratio_flex_chain_preserves_content_height",
+        || {
+            assert_ratio_flex_chain::<f32>(6);
+            assert_ratio_flex_chain::<f64>(6);
+        },
+    );
+}
