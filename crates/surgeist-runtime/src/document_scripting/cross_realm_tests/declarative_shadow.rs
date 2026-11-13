@@ -96,7 +96,7 @@ fn attach_window(
 }
 
 pub(super) fn verify_declarative_shadow_reuse() {
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     enum Delivery {
         Checkpoint,
         Reconnect,
@@ -104,6 +104,8 @@ pub(super) fn verify_declarative_shadow_reuse() {
         MissingCallback,
         ReceiverPosition,
         FactoryScope,
+        FactoryReconnect,
+        DefinitionScope,
         Stop,
         Refuse,
         RefuseAfterFirst,
@@ -115,6 +117,8 @@ pub(super) fn verify_declarative_shadow_reuse() {
         (HtmlShadowRootMode::Open, Delivery::MissingCallback),
         (HtmlShadowRootMode::Open, Delivery::ReceiverPosition),
         (HtmlShadowRootMode::Open, Delivery::FactoryScope),
+        (HtmlShadowRootMode::Open, Delivery::FactoryReconnect),
+        (HtmlShadowRootMode::Open, Delivery::DefinitionScope),
         (HtmlShadowRootMode::Closed, Delivery::Checkpoint),
         (HtmlShadowRootMode::Closed, Delivery::Stop),
         (HtmlShadowRootMode::Closed, Delivery::Refuse),
@@ -124,7 +128,9 @@ pub(super) fn verify_declarative_shadow_reuse() {
         let nested = matches!(delivery, Delivery::Nested);
         let missing_callback = matches!(delivery, Delivery::MissingCallback);
         let receiver_position = matches!(delivery, Delivery::ReceiverPosition);
-        let factory_scope = matches!(delivery, Delivery::FactoryScope);
+        let factory_reconnect = matches!(delivery, Delivery::FactoryReconnect);
+        let factory_scope = matches!(delivery, Delivery::FactoryScope) || factory_reconnect;
+        let definition_scope = matches!(delivery, Delivery::DefinitionScope);
         let refuse_after_first = matches!(delivery, Delivery::RefuseAfterFirst);
         let (markup, assertion) = match mode {
             HtmlShadowRootMode::Open => (
@@ -300,13 +306,34 @@ pub(super) fn verify_declarative_shadow_reuse() {
                             constructor() {{
                                 super();
                                 observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                                if ({factory_reconnect}) shadowHost.appendChild(shadowReuseReceiver);
                                 shadowReuseCalls.push('constructor');
                             }}
                         }});
                         document.createElement('x-shadow-trigger');
-                        if (shadowReuseCalls.length !== 2 ||
+                        if ({factory_reconnect}) {{
+                            if (shadowReuseCalls.length !== 3 ||
+                                shadowReuseCalls[0] !== shadowReuseReceiver ||
+                                shadowReuseCalls.slice(1).join(',') !== 'connected,constructor')
+                                return false;
+                        }} else if (shadowReuseCalls.length !== 2 ||
                             shadowReuseCalls[0] !== 'constructor' ||
                             shadowReuseCalls[1] !== shadowReuseReceiver) return false;
+                    }} else if ({definition_scope}) {{
+                        const sentinel = {{}};
+                        class Trigger extends HTMLElement {{
+                            get connectedCallback() {{
+                                observed = shadowHost.attachShadow({{mode: "{matching}"}});
+                                shadowReuseCalls.push('getter');
+                                throw sentinel;
+                            }}
+                        }}
+                        try {{ customElements.define('x-shadow-getter', Trigger); return false; }}
+                        catch (error) {{
+                            if (error !== sentinel || shadowReuseCalls.length !== 2 ||
+                                shadowReuseCalls[0] !== 'getter' ||
+                                shadowReuseCalls[1] !== shadowReuseReceiver) return false;
+                        }}
                     }} else {{
                         observed = shadowHost.attachShadow({{mode: "{matching}"}});
                         if (shadowReuseReceiver.parentNode !== null || shadowReuseCalls.length !== 0)
@@ -339,7 +366,7 @@ pub(super) fn verify_declarative_shadow_reuse() {
             let yes = scope.primitive(Primitive::Boolean(true))?;
             assert!(
                 scope.strict_equals(&value, &yes)?,
-                "{matching} root must preserve its canonical projection"
+                "{matching} root must preserve its canonical projection and reaction order for {delivery:?}"
             );
             Ok(())
         });
@@ -413,6 +440,12 @@ pub(super) fn verify_declarative_shadow_reuse() {
                 let correct = evaluate(scope, if reenter {
                     "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === shadowReuseReceiver && \
                      shadowReuseCalls.slice(1).join(',') === 'connected,before,after'"
+                } else if factory_reconnect {
+                    "shadowReuseCalls.length === 5 && shadowReuseCalls[0] === shadowReuseReceiver && \
+                     shadowReuseCalls.slice(1).join(',') === 'connected,constructor,before,after'"
+                } else if definition_scope {
+                    "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === 'getter' && \
+                     shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls.slice(2).join(',') === 'before,after'"
                 } else if factory_scope {
                     "shadowReuseCalls.length === 4 && shadowReuseCalls[0] === 'constructor' && \
                      shadowReuseCalls[1] === shadowReuseReceiver && shadowReuseCalls.slice(2).join(',') === 'before,after'"
