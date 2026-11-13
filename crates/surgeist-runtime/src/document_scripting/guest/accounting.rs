@@ -49,6 +49,7 @@ pub(super) struct Accounting {
     ledger: Ledger,
     root: LedgerScope,
     projection: LedgerScope,
+    capture: LedgerScope,
     profiling: bool,
     cleanup_error: Cell<Option<AccountingError>>,
     _backing: DomHostedRuntimeRetention,
@@ -58,12 +59,13 @@ pub(super) struct Accounting {
 pub(super) enum AccountScope {
     Adapter,
     Projection,
+    Capture,
 }
 
 pub(super) struct GuestBudget(Rc<Accounting>);
 
 impl GuestBudget {
-    const SCOPES: usize = 2;
+    const SCOPES: usize = 3;
 
     pub(super) fn setup_bytes(mode: ProfileMode) -> Result<usize, DocumentScriptNativeError> {
         Ledger::profiled_backing_bytes(Self::SCOPES, mode)
@@ -91,10 +93,17 @@ impl GuestBudget {
             Limits::unlimited(),
             Tariffs::identity(),
         )?;
+        let capture = operation.child(
+            root,
+            "callback-capture",
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
         Ok(Self(Rc::new(Accounting {
             ledger: operation.share(),
             root,
             projection,
+            capture,
             profiling: mode != ProfileMode::Off,
             cleanup_error: Cell::new(None),
             _backing: backing,
@@ -209,6 +218,29 @@ impl GuestBudget {
         .unwrap()
     }
 
+    #[cfg(test)]
+    pub(super) fn peak_used(&self) -> usize {
+        usize::try_from(
+            self.0
+                .usage()
+                .unwrap()
+                .peak(DocumentGuestResource::BackingBytes),
+        )
+        .unwrap()
+    }
+
+    #[cfg(test)]
+    pub(super) fn capture_used(&self) -> usize {
+        usize::try_from(
+            self.0
+                .ledger
+                .usage(self.0.capture)
+                .unwrap()
+                .live(DocumentGuestResource::BackingBytes),
+        )
+        .unwrap()
+    }
+
     pub(super) fn work_remaining(&self) -> Result<u64, DocumentGuestEventError> {
         let limit = self
             .0
@@ -235,6 +267,7 @@ impl Accounting {
         match scope {
             AccountScope::Adapter => self.root,
             AccountScope::Projection => self.projection,
+            AccountScope::Capture => self.capture,
         }
     }
 
@@ -285,6 +318,63 @@ impl Accounting {
                 },
                 error => error.into(),
             })
+    }
+}
+
+/// Capture release must finish before the binding boundary chooses its result.
+struct CaptureBacking {
+    backing: GuestBacking,
+    refusal: Rc<reports::DispatchFailure>,
+}
+
+fn capture_refusal(slot: &reports::DispatchFailure, error: DocumentGuestEventError) -> Error {
+    match slot.record(error) {
+        Ok(failure) | Err(RecordFailure::Occupied { first: failure, .. }) => {
+            Error::HostFailure(failure)
+        }
+        Err(RecordFailure::Inactive { error, .. }) => error,
+    }
+}
+
+impl surgeist_bindings_js::capture::Retention for CaptureBacking {
+    fn release(self: Box<Self>) -> Result<(), Error> {
+        let Self { backing, refusal } = *self;
+        let account = backing.account.clone();
+        drop(backing);
+        match account.cleanup_error.get() {
+            Some(error) => Err(capture_refusal(&refusal, error.into())),
+            None => Ok(()),
+        }
+    }
+}
+
+impl GuestBudget {
+    pub(super) fn install_capture(
+        &self,
+        process: &mut Process,
+        owner: &Rc<NativeOwner>,
+        refusal: Rc<reports::DispatchFailure>,
+    ) -> Result<(), DocumentGuestEventError> {
+        let weak = Rc::downgrade(owner);
+        let budget = Self(self.0.clone());
+        let policy = surgeist_bindings_js::capture::Admission::new(
+            move |request: surgeist_bindings_js::capture::Request| {
+                let native = weak.upgrade().ok_or(Error::ExpiredIdentity)?;
+                let backing = budget
+                    .reserve(AccountScope::Capture, &native, request.bytes())
+                    .map_err(|error| capture_refusal(&refusal, error))?;
+                Ok(CaptureBacking {
+                    backing,
+                    refusal: refusal.clone(),
+                })
+            },
+        );
+        let bytes = policy
+            .storage_bytes::<GuestBacking>()
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let backing = self.reserve(AccountScope::Adapter, owner, bytes)?;
+        policy.install(process, backing)?;
+        Ok(())
     }
 }
 

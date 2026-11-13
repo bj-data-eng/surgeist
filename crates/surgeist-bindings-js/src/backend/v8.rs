@@ -43,6 +43,7 @@ struct RootEntry {
     identity: Weak<RootIdentity>,
     handle: RootHandle,
     backing: OnceCell<Box<dyn std::any::Any>>,
+    _capture: Option<crate::capture::Guard>,
 }
 
 enum RootHandle {
@@ -108,6 +109,15 @@ impl Roots {
         realm: RealmKey,
         handle: impl FnOnce() -> RootHandle,
     ) -> Result<Root, Error> {
+        self.retain_admitted_handle(realm, None, handle)
+    }
+
+    fn retain_admitted_handle(
+        &self,
+        realm: RealmKey,
+        capture: Option<crate::capture::Guard>,
+        handle: impl FnOnce() -> RootHandle,
+    ) -> Result<Root, Error> {
         self.available()?;
         if realm.owner != self.owner.id() {
             return Err(Error::ForeignOwner);
@@ -125,12 +135,54 @@ impl Roots {
             identity: Rc::downgrade(&root.0),
             handle: handle(),
             backing: OnceCell::new(),
+            _capture: capture,
         };
         self.entries
             .try_borrow_mut()
             .map_err(|_| self.conflict())?
             .insert(index, Rc::new(entry));
         Ok(root)
+    }
+
+    fn capture_root(
+        &self,
+        scope: &v8::PinScope,
+        realm: RealmKey,
+        value: v8::Local<v8::Value>,
+    ) -> Result<Root, Error> {
+        let bytes =
+            size_of::<RootIdentity>() + size_of::<RootEntry>() + size_of::<(u64, Rc<RootEntry>)>();
+        let guard = self.admit_capture(crate::capture::Request::RootRecord { bytes })?;
+        self.retain_admitted_handle(realm, guard, || {
+            RootHandle::Value(v8::Global::new(scope, value))
+        })
+    }
+
+    fn admit_capture(
+        &self,
+        request: crate::capture::Request,
+    ) -> Result<Option<crate::capture::Guard>, Error> {
+        self.owner
+            .capture
+            .get()
+            .map(|account| account.admit(request))
+            .transpose()
+    }
+
+    fn capture_buffer<'scope>(&self, count: usize) -> Result<crate::ArgumentValues<'scope>, Error> {
+        let bytes = count
+            .checked_mul(size_of::<Value<'_>>())
+            .ok_or(Error::Allocation)?;
+        let backing = if count == 0 {
+            None
+        } else {
+            self.admit_capture(crate::capture::Request::Buffer { bytes })?
+        };
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(count)
+            .map_err(|_| Error::Allocation)?;
+        Ok(crate::ArgumentValues { values, backing })
     }
 
     fn local<'s>(
@@ -183,8 +235,10 @@ impl Roots {
             // Cleanup can latch the shared failure without using this SDK
             // adapter. Interrupt before returning through a native callback
             // or accepting another engine operation, even in that case.
-            if matches!(result, Err(Error::ConversionCleanup(_)))
-                && !self.interrupt.is_execution_terminating()
+            if matches!(
+                result,
+                Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_))
+            ) && !self.interrupt.is_execution_terminating()
             {
                 self.cleanup_interrupt.set(true);
             }
@@ -338,7 +392,9 @@ impl Engine {
         // Preserve the chosen Rust result until the actual host boundary has
         // also reaped abandoned captures and observed their cleanup.
         match entered.check_active() {
-            Err(Error::ConversionCleanup(_)) => self.roots.owner.operation_result(result),
+            Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_)) => {
+                self.roots.owner.operation_result(result)
+            }
             Err(error) => Err(error),
             Ok(()) => self.roots.owner.operation_result(result),
         }
@@ -576,7 +632,9 @@ impl Entered<'_, '_, '_> {
                 // A Rust scoped handler can already own its exact exception
                 // when a later local Drop records cleanup. Refuse continuation
                 // without replacing that selected operation result.
-                Error::ConversionCleanup(_) => self.roots.owner.operation_result(result),
+                Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_) => {
+                    self.roots.owner.operation_result(result)
+                }
                 other => Err(other),
             };
         }
@@ -828,9 +886,8 @@ impl Operations for Entered<'_, '_, '_> {
                 })
                 .map(|value| value.root);
                 let result = match entered.check_active() {
-                    Err(Error::ConversionCleanup(_)) | Ok(()) => {
-                        roots.owner.operation_result(result)
-                    }
+                    Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_))
+                    | Ok(()) => roots.owner.operation_result(result),
                     Err(error) => Err(error),
                 };
                 let root = result?;
@@ -1779,19 +1836,16 @@ fn invoke_callback<'s>(
     let outcome = match (&lease.callback, role) {
         (NativeCallback::Callable(callback, prefix), 0) => {
             let receiver = Value {
-                root: roots.retain(entered.scope, lease.realm, arguments.this().into())?,
+                root: roots.capture_root(entered.scope, lease.realm, arguments.this().into())?,
                 invariant: std::marker::PhantomData,
             };
-            let mut values = Vec::new();
             let supplied = arguments.length();
             let selected = prefix.map_or(supplied, |prefix| prefix.min(supplied));
             let count = usize::try_from(selected).map_err(|_| Error::TooManyArguments)?;
-            values
-                .try_reserve_exact(count)
-                .map_err(|_| Error::Allocation)?;
+            let mut values = roots.capture_buffer(count)?;
             for index in 0..selected {
-                values.push(Value {
-                    root: roots.retain(entered.scope, lease.realm, arguments.get(index))?,
+                values.values.push(Value {
+                    root: roots.capture_root(entered.scope, lease.realm, arguments.get(index))?,
                     invariant: std::marker::PhantomData,
                 });
             }
@@ -1831,21 +1885,18 @@ fn invoke_callback<'s>(
             if count > i32::MAX as usize {
                 return Err(Error::TooManyArguments);
             }
-            let mut values = Vec::new();
-            values
-                .try_reserve_exact(count)
-                .map_err(|_| Error::Allocation)?;
+            let mut values = roots.capture_buffer(count)?;
             for index in 0..selected {
                 let value = list
                     .get_index(entered.scope, index)
                     .ok_or(Error::BackendUnavailable)?;
-                values.push(Value {
-                    root: roots.retain(entered.scope, lease.realm, value)?,
+                values.values.push(Value {
+                    root: roots.capture_root(entered.scope, lease.realm, value)?,
                     invariant: std::marker::PhantomData,
                 });
             }
             let new_target = Value {
-                root: roots.retain(entered.scope, lease.realm, arguments.get(2))?,
+                root: roots.capture_root(entered.scope, lease.realm, arguments.get(2))?,
                 invariant: std::marker::PhantomData,
             };
             let outcome = (callback.0.action)(
@@ -1878,7 +1929,7 @@ fn invoke_callback<'s>(
         other => other,
     };
     let outcome = match entered.check_active() {
-        Err(Error::ConversionCleanup(_)) | Ok(()) => outcome,
+        Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_)) | Ok(()) => outcome,
         Err(error) => Err(error),
     };
     match boundary.finish(outcome) {

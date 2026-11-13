@@ -75,6 +75,7 @@
 
 mod backend;
 mod callback_object;
+pub mod capture;
 pub mod conversion;
 pub mod css;
 mod custom_elements;
@@ -92,6 +93,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub use callback_object::{CallbackObject, RetainedCallbackObject};
+pub use capture::{ArgumentValues, ArgumentValuesIntoIter};
 pub use custom_elements::{CustomElementRegistryIdentity, PublishedCustomElementRegistry};
 pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
@@ -179,6 +181,12 @@ impl Process {
         Execution {
             engine: self.engine.as_mut(),
         }
+    }
+
+    /// Whether incoming callbacks have a caller admission policy. Without one,
+    /// Rust capture is explicitly unaccounted. Profiling remains caller-owned.
+    pub fn has_callback_capture_admission(&self) -> bool {
+        self.engine.owner_state().capture.get().is_some()
     }
 
     /// Secondary conversion cleanup observations, including after terminal
@@ -459,7 +467,7 @@ impl ConstructorCallback {
 /// );
 /// ```
 pub struct ConstructorArguments<'scope> {
-    values: Vec<Value<'scope>>,
+    values: ArgumentValues<'scope>,
     new_target: Value<'scope>,
     fallback: PrototypeResolver,
 }
@@ -482,7 +490,7 @@ impl<'scope> ConstructorArguments<'scope> {
         &self.new_target
     }
     /// Moves the values and authentic NewTarget out without selecting a prototype.
-    pub fn into_parts(self) -> (Vec<Value<'scope>>, Value<'scope>) {
+    pub fn into_parts(self) -> (ArgumentValues<'scope>, Value<'scope>) {
         (self.values, self.new_target)
     }
     /// Reads the original NewTarget.prototype once, preserving abrupt completion.
@@ -521,7 +529,7 @@ impl<'scope> ConstructorArguments<'scope> {
 /// remains in its original creation realm even when the selected prototype and
 /// NewTarget belong to another realm.
 pub struct ConstructorInvocation<'scope> {
-    values: Vec<Value<'scope>>,
+    values: ArgumentValues<'scope>,
     new_target: Value<'scope>,
     prototype: Value<'scope>,
 }
@@ -546,7 +554,7 @@ impl<'scope> ConstructorInvocation<'scope> {
     pub fn prototype(&self) -> &Value<'scope> {
         &self.prototype
     }
-    pub fn into_parts(self) -> (Vec<Value<'scope>>, Value<'scope>, Value<'scope>) {
+    pub fn into_parts(self) -> (ArgumentValues<'scope>, Value<'scope>, Value<'scope>) {
         (self.values, self.new_target, self.prototype)
     }
 }
@@ -576,7 +584,7 @@ pub enum ConstructorCompletion<'scope> {
 /// ```
 pub struct Arguments<'scope> {
     receiver: Value<'scope>,
-    values: Vec<Value<'scope>>,
+    values: ArgumentValues<'scope>,
 }
 
 impl<'scope> Arguments<'scope> {
@@ -600,7 +608,7 @@ impl<'scope> Arguments<'scope> {
         self.values.get(index)
     }
     /// Moves the receiver and arguments out while preserving their scope brand.
-    pub fn into_parts(self) -> (Value<'scope>, Vec<Value<'scope>>) {
+    pub fn into_parts(self) -> (Value<'scope>, ArgumentValues<'scope>) {
         (self.receiver, self.values)
     }
 }

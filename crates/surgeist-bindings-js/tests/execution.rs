@@ -1,5 +1,7 @@
 #[path = "execution/callback_object.rs"]
 mod callback_object;
+#[path = "execution/capture.rs"]
+mod capture;
 #[path = "execution/dom_exception.rs"]
 mod dom_exception;
 #[path = "execution/host.rs"]
@@ -2604,6 +2606,11 @@ fn main() -> Result<(), Error> {
     host::rejected_failure_drop_stays_in_callback_guard()?;
     callback_object::terminal_cleanup()?;
     callback_object::native_projection_refuses_foreign_prototype_before_admission()?;
+    capture::boundaries_and_retained_roots()?;
+    capture::constructors_and_nested_callbacks_share_admission()?;
+    capture::failed_release_keeps_the_original_guest_exception()?;
+    capture::setup_custody_follows_surviving_observations()?;
+    capture::admission_refusals_and_prior_host_errors_are_terminal()?;
     println!(
         "execution ownership, realms, roots, UTF-16, exceptions, properties, calls, jobs and native callbacks passed"
     );

@@ -54,6 +54,10 @@ pub enum Error {
     ConversionLedger(LedgerError),
     /// Fatal cleanup failed; its selected primary, if any, is retained exactly.
     ConversionCleanup(CleanupFailure),
+    /// Incoming callback capture already has its process-wide caller policy.
+    CallbackCaptureAlreadyAdmitted,
+    /// Capture release failed, preserving an already selected guest cause.
+    CallbackCaptureCleanup(crate::capture::CleanupFailure),
     /// Bootstrap is already held by another live process token.
     OwnerAlreadyActive,
     /// Only the thread that initialized the platform may acquire this backend.
@@ -114,6 +118,10 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::CallbackCaptureAlreadyAdmitted => {
+                "callback capture admission is already installed"
+            }
+            Self::CallbackCaptureCleanup(_) => "incoming callback capture cleanup failed",
             Self::HostFailure(_) => "native host refused execution",
             Self::ConversionLedger(_) => "binding conversion admission failed",
             Self::ConversionCleanup(_) => "binding conversion cleanup failed",
@@ -153,6 +161,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::HostFailure(failure) => Some(failure),
+            Self::CallbackCaptureCleanup(failure) => Some(failure),
             _ => None,
         }
     }

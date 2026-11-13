@@ -95,7 +95,13 @@ impl Failure {
             Some(exception) => exception
                 .conversion_rule()
                 .map_or(FailureKind::GuestException, FailureKind::TypeError),
-            None if matches!(self.0, Error::ConversionCleanup(_)) => FailureKind::Cleanup,
+            None if matches!(
+                self.0,
+                Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_)
+            ) =>
+            {
+                FailureKind::Cleanup
+            }
             None => FailureKind::HostRefusal,
         }
     }
@@ -103,6 +109,10 @@ impl Failure {
         match &self.0 {
             Error::Exception(exception) => Some(exception),
             Error::ConversionCleanup(failure) => match failure.primary() {
+                Some(CleanupPrimary::Exception(exception)) => Some(exception),
+                _ => None,
+            },
+            Error::CallbackCaptureCleanup(failure) => match failure.primary() {
                 Some(CleanupPrimary::Exception(exception)) => Some(exception),
                 _ => None,
             },

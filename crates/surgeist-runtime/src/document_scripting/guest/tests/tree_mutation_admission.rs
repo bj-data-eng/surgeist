@@ -58,14 +58,28 @@ fn invoke(scope: &mut Scope<'_>) -> Result<(), Error> {
 }
 
 pub(in crate::document_scripting) fn normalized_operands_admit_exact_backing_and_work() {
-    let bytes = 2 * (size_of::<surgeist_dom::DomNodeOrString>() + size_of::<GuestBacking>())
+    let normalized_bytes = 2
+        * (size_of::<surgeist_dom::DomNodeOrString>() + size_of::<GuestBacking>())
         + size_of::<Vec<u16>>()
         + 2 * size_of::<usize>()
         + 3 * size_of::<u16>();
     // One buffer reservation, two operand visits, one native text reservation
     // and the exact three UTF16 copy steps. Conversion has its own account.
-    let work = 1 + 2 + 1 + 3;
+    let normalized_work = 1 + 2 + 1 + 3;
     let (mut control, permit, observed) = fixture();
+    // The outer call captures its receiver, two selected operands and their
+    // buffer. The observation callback captures its receiver with no buffer.
+    let retention_bytes = size_of::<GuestBacking>() + size_of::<Rc<reports::DispatchFailure>>();
+    let root_bytes = control
+        .engine
+        .as_ref()
+        .unwrap()
+        .process
+        .managed_object_storage_bytes()
+        + retention_bytes;
+    let capture_bytes = 4 * root_bytes + 2 * size_of::<Value<'_>>() + retention_bytes;
+    let bytes = normalized_bytes + capture_bytes;
+    let work = normalized_work + 5;
     let events = control.guest_events().unwrap();
     let before = (events.budget.used(), events.budget.work().unwrap());
     let stamp = control.snapshot().unwrap().stamp();

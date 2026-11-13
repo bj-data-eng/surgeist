@@ -560,7 +560,7 @@ pub(super) struct GuestEvents {
     next_callback: Cell<u64>,
     exception_root_bytes: usize,
     reports: Rc<GuestExceptionReports>,
-    refusal: reports::DispatchFailure,
+    refusal: Rc<reports::DispatchFailure>,
     window_event: Rc<window_event::WindowEvent>,
     target_prototype: OnceCell<RetainedCallbackObject>,
     public: Option<PublicEventBindings>,
@@ -752,6 +752,11 @@ impl PreparedDocumentScriptHost {
             script.retained_bytes.checked_add(limits.storage_bytes),
             &script.authority,
         )?;
+        admission.budget.install_capture(
+            &mut script.process,
+            &self.native,
+            admission.refusal.clone(),
+        )?;
         admission.public = Some(PublicEventBindings::install(
             &mut script,
             &self.native,
@@ -768,7 +773,7 @@ struct GuestEventAdmission {
     retained: usize,
     budget: GuestBudget,
     reports: Rc<GuestExceptionReports>,
-    refusal: reports::DispatchFailure,
+    refusal: Rc<reports::DispatchFailure>,
     backing: GuestBacking,
     public: Option<PublicEventBindings>,
 }
@@ -790,7 +795,9 @@ impl GuestEventAdmission {
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let report_bytes = GuestExceptionReports::storage_bytes(limits.pending_exception_reports)
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let refusal_bytes = reports::DispatchFailure::storage_bytes();
+        let refusal_bytes = reports::DispatchFailure::storage_bytes()
+            .checked_add(size_of::<reports::DispatchFailure>())
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let required = fixed
             .checked_add(report_bytes)
             .and_then(|bytes| bytes.checked_add(refusal_bytes))
@@ -835,7 +842,7 @@ impl GuestEventAdmission {
             limits.pending_exception_reports,
             report_backing,
         )?);
-        let refusal = reports::DispatchFailure::new(authority, refusal_backing)?;
+        let refusal = Rc::new(reports::DispatchFailure::new(authority, refusal_backing)?);
         Ok(Self {
             limits,
             retained,
@@ -926,6 +933,11 @@ impl DocumentScriptHost {
             limits,
             engine.retained_bytes_with(limits.storage_bytes),
             authority,
+        )?;
+        admission.budget.install_capture(
+            &mut engine.process,
+            &self.native,
+            admission.refusal.clone(),
         )?;
         let registry = registry
             .take()
