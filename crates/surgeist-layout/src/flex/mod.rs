@@ -35,6 +35,7 @@ mod input;
 mod intrinsic;
 mod items;
 mod lines;
+mod rounds;
 mod scroll;
 
 pub(crate) use absolute::AbsoluteChild;
@@ -56,12 +57,13 @@ use intrinsic::{
 use items::{
     CollectedFlexItem, FinalFlexItem, FinalItems, FlexItemRequest, ItemCollection,
     PendingFinalItem, ResolvedFlexItem, collect_items, compute_sized_item, has_eligible_items,
-    recollect_items,
 };
 use lines::{
     CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines,
     flex_line_collection_size,
 };
+use rounds::{FlexRoundChild, FlexRounds, ResolvedFlexRound};
+
 use scroll::{
     FlexChildContribution, flex_container_scroll_box, flex_container_scroll_geometry,
     flex_scroll_contribution_error, flex_scroll_contributions, retain_flex_scroll_geometry,
@@ -174,8 +176,7 @@ pub(crate) struct FlexChild<'input, Node, S: LayoutScalar> {
 
 enum FlexChildPhase<'input, Node, S: LayoutScalar> {
     Collect(FlexItemRequest<Node, S>),
-    Intrinsic(FlexItemRequest<Node, S>),
-    CrossSize(CrossSizeChild<Node, S>),
+    Resolve(FlexRoundChild<Node, S>),
     Place(PendingFinalItem<'input, Node, S>),
     Absolute(AbsoluteChild<Node, S>),
 }
@@ -183,10 +184,8 @@ enum FlexChildPhase<'input, Node, S: LayoutScalar> {
 impl<Node: Copy, S: LayoutScalar> FlexChild<'_, Node, S> {
     pub(crate) fn request(&self) -> (Node, ComputeInputOf<S>) {
         match &self.phase {
-            FlexChildPhase::Collect(child) | FlexChildPhase::Intrinsic(child) => {
-                (child.node, child.input)
-            }
-            FlexChildPhase::CrossSize(child) => (child.request.node, child.request.input),
+            FlexChildPhase::Collect(child) => (child.node, child.input),
+            FlexChildPhase::Resolve(child) => child.request(),
             FlexChildPhase::Place(child) => (child.request.node, child.request.input),
             FlexChildPhase::Absolute(child) => (child.node, child.input),
         }
@@ -195,8 +194,7 @@ impl<Node: Copy, S: LayoutScalar> FlexChild<'_, Node, S> {
 
 enum FlexPhase<'input, Node, S: LayoutScalar> {
     Collect(Box<FlexCollection<'input, Node, S>>),
-    Intrinsic(Box<FlexIntrinsicPhase<Node, S>>),
-    CrossSize(Box<FlexCrossSizePhase<Node, S>>),
+    Resolve(Box<FlexResolution<'input, Node, S>>),
     Place(FlexPlacement<Node, S>),
     Absolute(FlexPass<Node, S>),
 }
@@ -228,15 +226,9 @@ struct CollectedFlexItems<Node, S: LayoutScalar> {
     used_overflow: crate::scroll::UsedOverflow,
 }
 
-struct FlexIntrinsicPhase<Node, S: LayoutScalar> {
+struct FlexResolution<'input, Node, S: LayoutScalar> {
     collection: CollectedFlexItems<Node, S>,
-    round: FlexRound<Node, S>,
-    measurement: IntrinsicMainSize<S>,
-}
-
-struct FlexCrossSizePhase<Node, S: LayoutScalar> {
-    collection: CollectedFlexItems<Node, S>,
-    sizing: FlexRoundCrossSize<Node, S>,
+    rounds: FlexRounds<'input, Node, S>,
 }
 
 struct FlexPlacement<Node, S: LayoutScalar> {
@@ -318,53 +310,29 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
                     let FlexPhase::Collect(collection) = *phase else {
                         unreachable!()
                     };
-                    match collection.finish(tree, self.node, self.pass_input)? {
-                        ControlFlow::Break(output) => output,
-                        ControlFlow::Continue(phase) => {
-                            self.pass = Some(phase);
-                            continue;
-                        }
-                    }
-                }
-                Some(FlexPhase::Intrinsic(intrinsic)) => {
-                    if let Some(child) = intrinsic.measurement.next(
-                        tree,
-                        &intrinsic.round.constants,
-                        intrinsic.round.items(&intrinsic.collection.items),
-                    )? {
-                        return Ok(ControlFlow::Continue(FlexChild {
-                            phase: FlexChildPhase::Intrinsic(child),
-                        }));
-                    }
-                    let phase = self.pass.take().expect("active intrinsic Flex phase");
-                    let FlexPhase::Intrinsic(intrinsic) = *phase else {
-                        unreachable!()
-                    };
-                    let outer_size = intrinsic.measurement.outer_size(&intrinsic.round.constants);
-                    let FlexIntrinsicPhase {
-                        collection, round, ..
-                    } = *intrinsic;
-                    self.pass = Some(begin_cross_size_phase(
-                        tree, self.node, collection, round, outer_size,
-                    )?);
+                    self.pass = Some(Box::new(FlexPhase::Resolve(Box::new(
+                        collection.finish(self.node)?,
+                    ))));
                     continue;
                 }
-                Some(FlexPhase::CrossSize(cross)) => {
-                    if let Some(child) =
-                        cross
-                            .sizing
-                            .advance(tree, self.node, &cross.collection.items)?
-                    {
-                        return Ok(ControlFlow::Continue(FlexChild {
-                            phase: FlexChildPhase::CrossSize(child),
-                        }));
-                    }
-                    let phase = self.pass.take().expect("active Flex cross sizing");
-                    let FlexPhase::CrossSize(cross) = *phase else {
+                Some(FlexPhase::Resolve(resolution)) => {
+                    let layout = match resolution.rounds.advance(
+                        tree,
+                        self.node,
+                        &resolution.collection.items,
+                    )? {
+                        ControlFlow::Continue(child) => {
+                            return Ok(ControlFlow::Continue(FlexChild {
+                                phase: FlexChildPhase::Resolve(child),
+                            }));
+                        }
+                        ControlFlow::Break(layout) => layout,
+                    };
+                    let phase = self.pass.take().expect("active Flex rounds");
+                    let FlexPhase::Resolve(resolution) = *phase else {
                         unreachable!()
                     };
-                    let FlexCrossSizePhase { collection, sizing } = *cross;
-                    let layout = sizing.finish();
+                    let FlexResolution { collection, .. } = *resolution;
                     match finish_flex_collection(
                         tree,
                         self.node,
@@ -449,17 +417,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexComputation<'input, Node, S> 
             (Some(FlexPhase::Collect(collection)), FlexChildPhase::Collect(_)) => {
                 collection.items.accept(tree, &collection.constants, output)
             }
-            (Some(FlexPhase::Intrinsic(intrinsic)), FlexChildPhase::Intrinsic(_)) => {
-                intrinsic.measurement.accept(
-                    tree,
-                    &intrinsic.round.constants,
-                    intrinsic.round.items(&intrinsic.collection.items),
-                    output,
-                )
-            }
-            (Some(FlexPhase::CrossSize(cross)), FlexChildPhase::CrossSize(child)) => {
-                cross.sizing.accept(self.node, child, output)
-            }
+            (Some(FlexPhase::Resolve(resolution)), FlexChildPhase::Resolve(child)) => resolution
+                .rounds
+                .accept(tree, self.node, &resolution.collection.items, child, output),
             (Some(FlexPhase::Place(placement)), FlexChildPhase::Place(child)) => placement
                 .items
                 .accept(tree, &placement.constants, child, output),
@@ -605,83 +565,27 @@ where
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexCollection<'input, Node, S> {
-    fn finish<Tree, M>(
-        self,
-        tree: &mut Tree,
-        node: Node,
-        input: ComputeInputOf<S>,
-    ) -> FlexPassStart<'input, Node, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    fn finish<M>(self, node: Node) -> LayoutResultOf<Node, FlexResolution<'input, Node, S>, S, M> {
         let Self {
             phase,
             items,
             constants,
             used_overflow,
         } = self;
-        let collected_items = items.finish();
+        let items = items.finish();
         let run_mode = match phase {
             CollectionPhase::Initial { first_run_mode, .. } => first_run_mode,
             CollectionPhase::Accepted { contents_run_mode } => contents_run_mode,
         };
+        let rounds = FlexRounds::begin(node, &items, constants, run_mode)?;
         let collection = CollectedFlexItems {
             phase,
-            items: collected_items,
+            items,
             constants,
             used_overflow,
         };
-        if collection.items.iter().any(CollectedFlexItem::is_collapsed)
-            || column_cross_offer(
-                &constants,
-                &collection.items,
-                FlexLineCollectionRound::Normal,
-            )
-            .is_some()
-        {
-            let layout =
-                resolve_flex_collection(tree, node, run_mode, &constants, &collection.items)?;
-            return finish_flex_collection(tree, node, input, collection, layout);
-        }
-
-        let round = FlexRound::begin(node, constants, &collection.items, None)?;
-        let phase = match begin_main_size(
-            &round.constants,
-            round.items(&collection.items),
-            round.sizing_lines(),
-        ) {
-            ControlFlow::Break(outer_size) => {
-                begin_cross_size_phase(tree, node, collection, round, outer_size)?
-            }
-            ControlFlow::Continue(measurement) => {
-                Box::new(FlexPhase::Intrinsic(Box::new(FlexIntrinsicPhase {
-                    collection,
-                    round,
-                    measurement,
-                })))
-            }
-        };
-        Ok(ControlFlow::Continue(phase))
+        Ok(FlexResolution { collection, rounds })
     }
-}
-
-type FlexCrossSizeStart<'input, Node, S, M> =
-    LayoutResultOf<Node, Box<FlexPhase<'input, Node, S>>, S, M>;
-
-fn begin_cross_size_phase<'input, Tree, M>(
-    tree: &Tree,
-    node: Tree::Node,
-    collection: CollectedFlexItems<Tree::Node, Tree::Scalar>,
-    round: FlexRound<Tree::Node, Tree::Scalar>,
-    outer_size: Tree::Scalar,
-) -> FlexCrossSizeStart<'input, Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let sizing = round.begin_cross_size(tree, node, &collection.items, outer_size)?;
-    Ok(Box::new(FlexPhase::CrossSize(Box::new(
-        FlexCrossSizePhase { collection, sizing },
-    ))))
 }
 
 fn finish_flex_collection<'input, Tree, M, S>(
@@ -963,8 +867,8 @@ where
             .sizing_request
             .with_axes(axes.with_cross_size(minimum.sizing_request.axes(), cross_request));
         let items = collect_items(tree, node, &minimum, RunMode::ComputeSize)?;
-        let (measured, _, _) =
-            resolve_flex_collection(tree, node, RunMode::ComputeSize, &minimum, &items)?;
+        let (measured, _, _) = FlexRounds::begin(node, &items, minimum, RunMode::ComputeSize)?
+            .compute(tree, node, &items)?;
         transferred.max(
             axes.cross_size(measured.node_outer_size)
                 .expect("Flex cross measurement resolves the measured outer size"),
@@ -979,312 +883,6 @@ where
             axes.cross_size(constants.max_outer_size),
         )
         .max(axes.cross_size(constants.padding_border_size)))
-}
-
-type ResolvedFlexRound<Node, S> = (
-    Constants<S>,
-    Vec<ResolvedFlexItem<Node, S>>,
-    Vec<FlexLine<S>>,
-);
-
-type FlexRoundResult<Node, S, M> = LayoutResultOf<Node, ResolvedFlexRound<Node, S>, S, M>;
-
-fn resolve_flex_collection<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    run_mode: RunMode,
-    constants: &Constants<Tree::Scalar>,
-    collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
-) -> FlexRoundResult<Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let mut first_constants = *constants;
-    let first_round = FlexLineCollectionRound::Normal;
-    let first_items = collect_with_column_cross_offer(
-        tree,
-        &mut first_constants,
-        collected_items,
-        run_mode,
-        first_round,
-    )?;
-    let first_layout = resolve_flex_round(tree, node, &first_constants, &first_items, None)?;
-    if !collected_items.iter().any(CollectedFlexItem::is_collapsed) {
-        return Ok(first_layout);
-    }
-
-    drop(first_items);
-    let (_, _, first_lines) = first_layout;
-    let struts = CollapsedFlexStruts::capture(collected_items, &first_lines);
-    let mut second_constants = *constants;
-    let second_round = FlexLineCollectionRound::Collapsed;
-    let second_items = collect_with_column_cross_offer(
-        tree,
-        &mut second_constants,
-        collected_items,
-        run_mode,
-        second_round,
-    )?;
-    resolve_flex_round(tree, node, &second_constants, &second_items, Some(struts))
-}
-
-type FlexRoundItems<'a, Tree> =
-    std::borrow::Cow<'a, [CollectedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>]>;
-
-fn collect_with_column_cross_offer<'input, 'a, Tree, M>(
-    tree: &mut Tree,
-    constants: &mut Constants<Tree::Scalar>,
-    collected_items: &'a [CollectedFlexItem<Tree::Node, Tree::Scalar>],
-    run_mode: RunMode,
-    round: FlexLineCollectionRound,
-) -> LayoutResultOf<Tree::Node, FlexRoundItems<'a, Tree>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    if let Some(offer) = column_cross_offer(constants, collected_items, round) {
-        // The common cross offer can change flex bases as well as line widths.
-        constants.cross_content_offer = Some(offer.max(Tree::Scalar::ZERO));
-        return recollect_items(tree, collected_items, constants, run_mode, round)
-            .map(std::borrow::Cow::Owned);
-    }
-    Ok(std::borrow::Cow::Borrowed(collected_items))
-}
-
-fn column_cross_offer<Node, S: LayoutScalar>(
-    constants: &Constants<S>,
-    collected_items: &[CollectedFlexItem<Node, S>],
-    round: FlexLineCollectionRound,
-) -> Option<S> {
-    if constants.is_wrapping_column()
-        && constants
-            .axes
-            .cross_size(constants.node_outer_size)
-            .is_none()
-        && constants
-            .axes
-            .cross_size(constants.sizing_request.axes())
-            .operation()
-            == crate::SizingOperation::MaxContent
-    {
-        collected_items
-            .iter()
-            .filter(|item| round == FlexLineCollectionRound::Normal || !item.is_collapsed())
-            .map(|item| {
-                constants.axes.cross_size(item.hypothetical_size)
-                    + constants.axes.cross_edge_sum(item.margin)
-            })
-            .reduce(S::max)
-    } else {
-        None
-    }
-}
-
-fn resolve_flex_round<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    constants: &Constants<Tree::Scalar>,
-    collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
-    collapsed_struts: Option<CollapsedFlexStruts<Tree::Node, Tree::Scalar>>,
-) -> FlexRoundResult<Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let round = FlexRound::begin(node, *constants, collected_items, collapsed_struts)?;
-    let outer_size = match begin_main_size(
-        &round.constants,
-        round.items(collected_items),
-        round.sizing_lines(),
-    ) {
-        ControlFlow::Break(size) => size,
-        ControlFlow::Continue(mut intrinsic) => {
-            let items = round.items(collected_items);
-            while let Some(request) = intrinsic.next(tree, constants, items)? {
-                let output = tree.compute_child(request.node, request.input)?;
-                intrinsic.accept(tree, constants, items, output)?;
-            }
-            intrinsic.outer_size(constants)
-        }
-    };
-    let mut sizing = round.begin_cross_size(tree, node, collected_items, outer_size)?;
-    while let Some(child) = sizing.advance(tree, node, collected_items)? {
-        let output = tree.compute_child(child.request.node, child.request.input)?;
-        sizing.accept(node, child, output)?;
-    }
-    Ok(sizing.finish())
-}
-
-type CollapsedFlexItems<Node, S> = (Vec<CollectedFlexItem<Node, S>>, Vec<FlexLine<S>>);
-
-struct FlexRound<Node, S: LayoutScalar> {
-    constants: Constants<S>,
-    kind: FlexLineCollectionRound,
-    lines: Vec<FlexLine<S>>,
-    collapsed_struts: Option<CollapsedFlexStruts<Node, S>>,
-    collapsed: Option<CollapsedFlexItems<Node, S>>,
-}
-
-impl<Node: Copy + Eq, S: LayoutScalar> FlexRound<Node, S> {
-    fn begin<M>(
-        node: Node,
-        constants: Constants<S>,
-        collected_items: &[CollectedFlexItem<Node, S>],
-        collapsed_struts: Option<CollapsedFlexStruts<Node, S>>,
-    ) -> LayoutResultOf<Node, Self, S, M> {
-        let kind = if collapsed_struts.is_some() {
-            FlexLineCollectionRound::Collapsed
-        } else {
-            FlexLineCollectionRound::Normal
-        };
-        let lines = collect_flex_lines(collected_items, &constants, kind)
-            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        let collapsed = collapsed_struts
-            .as_ref()
-            .map(|struts| struts.prepare_second_round(collected_items, &lines));
-        Ok(Self {
-            constants,
-            kind,
-            lines,
-            collapsed_struts,
-            collapsed,
-        })
-    }
-
-    fn items<'a>(
-        &'a self,
-        collected: &'a [CollectedFlexItem<Node, S>],
-    ) -> &'a [CollectedFlexItem<Node, S>] {
-        self.collapsed
-            .as_ref()
-            .map_or(collected, |(items, _)| items.as_slice())
-    }
-
-    fn sizing_lines(&self) -> &[FlexLine<S>] {
-        self.collapsed
-            .as_ref()
-            .map_or(self.lines.as_slice(), |(_, lines)| lines.as_slice())
-    }
-
-    fn begin_cross_size<'input, Tree, M>(
-        self,
-        tree: &Tree,
-        node: Node,
-        collected_items: &[CollectedFlexItem<Node, S>],
-        outer_size: S,
-    ) -> LayoutResultOf<Node, FlexRoundCrossSize<Node, S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        let Self {
-            constants,
-            kind: round,
-            mut lines,
-            collapsed_struts,
-            mut collapsed,
-        } = self;
-        let layout_constants = finish_main_size(tree, node, constants, outer_size)?;
-        if constants.wraps
-            && !collected_items.is_empty()
-            && flex_line_collection_size(&constants) != flex_line_collection_size(&layout_constants)
-        {
-            // Intrinsic and auto sizing can use provisional lines. Placement and
-            // collapsed struts use the accepted inner main size.
-            lines = collect_flex_lines(collected_items, &layout_constants, round)
-                .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-            collapsed = collapsed_struts
-                .as_ref()
-                .map(|struts| struts.prepare_second_round(collected_items, &lines));
-        }
-        let (collapsed_items, lines) = match collapsed {
-            Some((items, lines)) => (Some(items), lines),
-            None => (None, lines),
-        };
-        let resolution =
-            LineResolution::new(collapsed_items.as_deref().unwrap_or(collected_items), lines);
-        Ok(FlexRoundCrossSize {
-            constants: layout_constants,
-            resolution: Some(resolution),
-            collapsed_items,
-            followup: None,
-            accepted_basis: false,
-        })
-    }
-}
-
-struct FlexRoundCrossSize<Node, S: LayoutScalar> {
-    constants: Constants<S>,
-    resolution: Option<LineResolution<Node, S>>,
-    collapsed_items: Option<Vec<CollectedFlexItem<Node, S>>>,
-    followup: Option<CrossSizeChild<Node, S>>,
-    accepted_basis: bool,
-}
-
-impl<Node: Copy, S: LayoutScalar> FlexRoundCrossSize<Node, S> {
-    fn advance<'input, Tree, M>(
-        &mut self,
-        tree: &mut Tree,
-        node: Node,
-        collected_items: &[CollectedFlexItem<Node, S>],
-    ) -> LayoutResultOf<Node, Option<CrossSizeChild<Node, S>>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        if let Some(child) = self.followup.take() {
-            return Ok(Some(child));
-        }
-        let resolution = self
-            .resolution
-            .as_mut()
-            .expect("active Flex line resolution");
-        if let Some(child) = resolution.advance(tree, node, &self.constants)? {
-            return Ok(Some(child));
-        }
-        if !self.accepted_basis {
-            let cross_constants =
-                resolved_cross_layout_constants(&self.constants, resolution.lines());
-            let retry = cross_constants.node_inner_size != self.constants.node_inner_size;
-            self.constants = cross_constants;
-            self.accepted_basis = true;
-            if retry {
-                let (_, lines) = self
-                    .resolution
-                    .take()
-                    .expect("first Flex cross sizing")
-                    .finish();
-                self.resolution = Some(LineResolution::new(
-                    self.collapsed_items.as_deref().unwrap_or(collected_items),
-                    lines,
-                ));
-                return self
-                    .resolution
-                    .as_mut()
-                    .expect("accepted Flex cross sizing")
-                    .advance(tree, node, &self.constants);
-            }
-        }
-        Ok(None)
-    }
-
-    fn accept<M>(
-        &mut self,
-        node: Node,
-        child: CrossSizeChild<Node, S>,
-        output: ComputeOutputOf<S>,
-    ) -> LayoutResultOf<Node, (), S, M> {
-        let resolution = self
-            .resolution
-            .as_mut()
-            .expect("active Flex line resolution");
-        self.followup = resolution.accept(node, &self.constants, child, output)?;
-        Ok(())
-    }
-
-    fn finish(self) -> ResolvedFlexRound<Node, S> {
-        let (items, lines) = self
-            .resolution
-            .expect("completed Flex line resolution")
-            .finish();
-        (self.constants, items, lines)
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
