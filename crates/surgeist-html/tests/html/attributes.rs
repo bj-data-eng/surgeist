@@ -12,6 +12,7 @@ mod control_length;
 mod control_text;
 mod details_name;
 mod encoding_label;
+mod global_reflection;
 mod hash_name;
 mod heading_offset;
 mod hyperlink_context;

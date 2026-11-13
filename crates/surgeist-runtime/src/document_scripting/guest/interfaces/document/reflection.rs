@@ -4,7 +4,8 @@ use super::{element::HTML_NAMESPACE, *};
 use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING};
 use surgeist_dom::{DomNode, DomSourceEdit, Namespace};
 use surgeist_html::bounded::attributes::{
-    template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
+    dir_keyword_with, popover_keyword_with, template_shadow_root_mode_keyword_with,
+    template_shadow_root_slot_assignment_keyword_with,
 };
 
 #[derive(Clone, Copy)]
@@ -13,6 +14,8 @@ pub(super) enum Reflection {
     Boolean,
     Mode,
     SlotAssignment,
+    Direction,
+    Popover,
 }
 
 #[derive(Clone, Copy)]
@@ -140,14 +143,18 @@ impl Capture {
                     Reflection::String => {
                         Reflected::String(stored.map(|value| value.value().clone()))
                     }
-                    Reflection::Mode => {
-                        Reflected::Keyword(template_shadow_root_mode_keyword_with(units, |_| {
-                            read.step()
-                        })?)
-                    }
-                    Reflection::SlotAssignment => Reflected::Keyword(
+                    Reflection::Mode => Reflected::Keyword(Some(
+                        template_shadow_root_mode_keyword_with(units, |_| read.step())?,
+                    )),
+                    Reflection::SlotAssignment => Reflected::Keyword(Some(
                         template_shadow_root_slot_assignment_keyword_with(units, |_| read.step())?,
-                    ),
+                    )),
+                    Reflection::Direction => {
+                        Reflected::Keyword(Some(dir_keyword_with(units, |_| read.step())?))
+                    }
+                    Reflection::Popover => {
+                        Reflected::Keyword(popover_keyword_with(units, |_| read.step())?)
+                    }
                 }))
             })?;
             let Some(value) = value else {
@@ -162,7 +169,8 @@ impl Capture {
                     scope,
                     value.as_ref().map_or(&[], DocumentString::code_units),
                 )?),
-                Reflected::Keyword(keyword) => {
+                Reflected::Keyword(None) => Some(scope.primitive(Primitive::Null)?),
+                Reflected::Keyword(Some(keyword)) => {
                     let mut units = [0_u16; 6];
                     let units = units
                         .get_mut(..keyword.len())
@@ -195,6 +203,18 @@ impl Capture {
                 } else {
                     None
                 }
+            } else if matches!(reflection, Reflection::Popover) {
+                let converted = self
+                    .callbacks
+                    .conversion
+                    .run(scope, |cx| cx.value(&DOM_STRING.nullable(), input))
+                    .map_err(Error::from)?;
+                scope.check_active()?;
+                converted
+                    .get()
+                    .as_ref()
+                    .map(|value| copy_native_data(&owner, &events, value.as_code_units()))
+                    .transpose()?
             } else {
                 let converted = self
                     .callbacks
@@ -235,5 +255,5 @@ enum Reflected {
     Write,
     Boolean(bool),
     String(Option<DocumentString>),
-    Keyword(&'static str),
+    Keyword(Option<&'static str>),
 }

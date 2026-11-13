@@ -371,6 +371,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     adjacent_text::adjacent_text_uses_the_original_compound_source_edit();
     adjacent_element::adjacent_element_uses_the_current_native_branch_and_original_operand();
     html_reflection::html_reflections_use_exact_live_attributes_and_html_brands();
+    html_reflection::local_keyword_reflections_follow_current_native_attributes();
     tree_mutations::native_mutation_mixins_preserve_original_operands_and_conversion_order();
     super::guest::tests::tree_mutation_admission::normalized_operands_admit_exact_backing_and_work(
     );

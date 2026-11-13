@@ -117,6 +117,13 @@ restrictions. `union` combines actual restriction sets without relaxing either
 contribution. The live owner selects the actual element and parent Document
 contributions before establishing a child policy.
 
+`bounded::attributes::dir_keyword_with` and `popover_keyword_with` project
+canonical reflected keywords from exact content using the shared enumeration
+inventory. Caller admission precedes each reached header and comparison.
+Direction reflects missing/invalid content as empty. Popover preserves missing
+content as `None`, empty as `auto` and invalid as `manual`. These allocation-free
+local projections supply language values for a consuming live binding.
+
 `HtmlOpenerPolicyValue` supplies the five pinned language values, and
 `HtmlOpenerPolicy::initial` creates the actual four-field default record. Both
 policy values start as unsafe-none and both reporting endpoints are null.

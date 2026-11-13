@@ -2889,7 +2889,7 @@ pub(crate) mod bounded_rules {
         raw: Option<&[u16]>,
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<&'static str, E> {
-        template_keyword_with(&SHADOWROOTMODE, raw, admit)
+        reflected_keyword_with(&SHADOWROOTMODE, raw, admit).map(|keyword| keyword.unwrap_or(""))
     }
 
     /// Returns the canonical reflected keyword for a Template's exact
@@ -2898,16 +2898,36 @@ pub(crate) mod bounded_rules {
         raw: Option<&[u16]>,
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<&'static str, E> {
-        template_keyword_with(&SHADOWROOTSLOTASSIGNMENT, raw, admit)
+        reflected_keyword_with(&SHADOWROOTSLOTASSIGNMENT, raw, admit)
+            .map(|keyword| keyword.unwrap_or(""))
     }
 
-    fn template_keyword_with<T: Copy + PartialEq, E>(
+    /// Projects dir's limited-known-values reflection from exact content.
+    /// Missing and invalid states reflect as empty without computing direction.
+    pub fn dir_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<&'static str, E> {
+        reflected_keyword_with(&DIR, raw, admit).map(|keyword| keyword.unwrap_or(""))
+    }
+
+    /// Projects popover's nullable limited-known-values reflection. Missing
+    /// content returns None, empty returns auto and invalid returns manual.
+    /// This supplies no visibility state or authority to show a popover.
+    pub fn popover_keyword_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<Option<&'static str>, E> {
+        reflected_keyword_with(&POPOVER, raw, admit)
+    }
+
+    fn reflected_keyword_with<T: Copy + PartialEq, E>(
         rule: &EnumRule<T>,
         raw: Option<&[u16]>,
         mut admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
-    ) -> Result<&'static str, E> {
+    ) -> Result<Option<&'static str>, E> {
         let default = match enum_recognition_with(rule, raw, &mut admit)? {
-            EnumRecognition::Keyword(keyword) => return Ok(keyword.canonical),
+            EnumRecognition::Keyword(keyword) => return Ok(Some(keyword.canonical)),
             EnumRecognition::Missing => rule.missing,
             EnumRecognition::Empty => rule.empty.or(rule.invalid),
             EnumRecognition::Unrecognized => rule.invalid,
@@ -2916,11 +2936,11 @@ pub(crate) mod bounded_rules {
             for keyword in rule.keywords {
                 admit(HtmlAttributeKeywordRead::KeywordHeader)?;
                 if keyword.state == default {
-                    return Ok(keyword.canonical);
+                    return Ok(Some(keyword.canonical));
                 }
             }
         }
-        Ok("")
+        Ok(None)
     }
 
     /// CORS settings content-state processing for an already qualified caller.
