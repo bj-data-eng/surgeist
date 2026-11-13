@@ -94,6 +94,11 @@ impl Pending {
                         key,
                         if successful {
                             HtmlCustomElementState::Custom
+                        } else if self.name.is_none() {
+                            // An existing upgrade reached the constructor.
+                            // Only the synchronous factory overwrites this
+                            // state with Failed after the upgrade throws.
+                            HtmlCustomElementState::Precustomized
                         } else {
                             HtmlCustomElementState::Failed
                         },
