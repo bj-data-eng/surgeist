@@ -6,8 +6,6 @@ pub(super) type ResolvedFlexRound<Node, S> = (
     Vec<FlexLine<S>>,
 );
 
-type FlexRoundResult<Node, S, M> = LayoutResultOf<Node, ResolvedFlexRound<Node, S>, S, M>;
-
 pub(super) enum FlexRoundChild<Node, S: LayoutScalar> {
     Recollect(FlexItemRequest<Node, S>),
     Intrinsic(FlexItemRequest<Node, S>),
@@ -201,27 +199,6 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexRounds<'input, Node, S> {
                 cross.accept(node, child, output)
             }
             _ => unreachable!("Flex child receipt resumes its owning round phase"),
-        }
-    }
-
-    pub(super) fn compute<Tree, M>(
-        mut self,
-        tree: &mut Tree,
-        node: Node,
-        original: &[CollectedFlexItem<Node, S>],
-    ) -> FlexRoundResult<Node, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        loop {
-            match self.advance(tree, node, original)? {
-                ControlFlow::Break(layout) => return Ok(layout),
-                ControlFlow::Continue(child) => {
-                    let (child_node, input) = child.request();
-                    let output = tree.compute_child(child_node, input)?;
-                    self.accept(tree, node, original, child, output)?;
-                }
-            }
         }
     }
 }

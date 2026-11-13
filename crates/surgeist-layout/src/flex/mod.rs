@@ -56,7 +56,7 @@ use intrinsic::{
 };
 use items::{
     CollectedFlexItem, FinalFlexItem, FinalItems, FlexItemRequest, ItemCollection,
-    PendingFinalItem, ResolvedFlexItem, collect_items, has_eligible_items,
+    PendingFinalItem, ResolvedFlexItem, has_eligible_items,
 };
 use lines::{
     CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines,
@@ -220,6 +220,19 @@ enum CollectionPhase<S: LayoutScalar> {
     Accepted {
         contents_run_mode: RunMode,
     },
+    RatioMinimum(Box<FlexRatioMinimum<S>>),
+}
+
+struct FlexRatioMinimum<S: LayoutScalar> {
+    contents: AcceptedFlexContents<S>,
+    transferred: S,
+}
+
+struct AcceptedFlexContents<S: LayoutScalar> {
+    constants: Constants<S>,
+    scroll_box: CanonicalScrollBoxOf<S>,
+    run_mode: RunMode,
+    qualify_ratio_cross: bool,
 }
 
 struct CollectedFlexItems<Node, S: LayoutScalar> {
@@ -610,6 +623,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FlexCollection<'input, Node, S> {
         let run_mode = match phase {
             CollectionPhase::Initial { first_run_mode, .. } => first_run_mode,
             CollectionPhase::Accepted { contents_run_mode } => contents_run_mode,
+            CollectionPhase::RatioMinimum(_) => RunMode::ComputeSize,
         };
         let rounds = FlexRounds::begin(node, &items, constants, run_mode)?;
         let collection = CollectedFlexItems {
@@ -638,27 +652,25 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
-    let scroll_box_for = |tree: &Tree, constants: &Constants<S>, size: Size<S>| {
-        DistributionNumber::finite(constants.axes.main_size(size)).map_err(|value| {
-            crate::error::sizing_resolution_error(
-                node,
-                LengthResolutionStatus::InvalidNumeric { value }.into(),
-            )
-        })?;
-        self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |projection, _| {
-            flex_container_scroll_box::<_, S, M>(
-                node,
-                input.run_mode(),
-                projection,
-                constants,
-                size,
-            )
-        })
+    let phase = match phase {
+        CollectionPhase::RatioMinimum(ratio) => {
+            let axes = ratio.contents.constants.axes;
+            let measured_cross = axes
+                .cross_size(layout_constants.node_outer_size)
+                .expect("Flex cross measurement resolves the measured outer size");
+            let cross = ratio.transferred.max(measured_cross);
+            return ratio
+                .contents
+                .collect(tree, node, input, used_overflow, Some(cross))
+                .map(ControlFlow::Continue);
+        }
+        phase => phase,
     };
+    let sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
     // Normal size queries need the same accepted inline frame as publication.
     // Constructing this internal box does not stage output geometry.
-    let final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
+    let final_scroll_box =
+        resolved_flex_scroll_box(tree, node, input, &layout_constants, sizes.output)?;
     if let CollectionPhase::Initial {
         own_ratio_cross,
         contents_run_mode,
@@ -667,7 +679,7 @@ where
         ..
     } = phase
         && (!collected_items.is_empty() || own_ratio_cross.is_some())
-        && let Some(mut contents_constants) = constants
+        && let Some(contents_constants) = constants
             .complete_inline_contents(
                 final_scroll_box,
                 requested_inline_operation,
@@ -675,39 +687,56 @@ where
             )
             .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?
     {
+        let contents = AcceptedFlexContents {
+            constants: contents_constants,
+            scroll_box: final_scroll_box,
+            run_mode: contents_run_mode,
+            qualify_ratio_cross: !inherited_indefinite_cross
+                && constants
+                    .axes
+                    .main_size(constants.entry_percentage_basis)
+                    .is_some(),
+        };
         if let Some(ratio) = own_ratio_cross {
-            let cross = settle_own_ratio_cross(tree, node, &contents_constants, ratio)?;
-            let size = contents_constants
-                .axes
-                .with_cross_size(final_scroll_box.border_box().size(), cross);
-            let settled = scroll_box_for(tree, &contents_constants, size)?;
-            contents_constants = contents_constants.with_final_scroll_box(settled);
-            let axes = constants.axes;
-            if !inherited_indefinite_cross
-                && axes.main_size(constants.entry_percentage_basis).is_some()
-            {
-                // Only an independently definite determining axis grants
-                // percentage authority to the size transferred by the ratio.
-                let cross_basis = Some(axes.cross_size(settled.content_box().size()));
-                contents_constants.percentage_parent_size =
-                    axes.with_cross_size(contents_constants.percentage_parent_size, cross_basis);
-                contents_constants.entry_percentage_basis =
-                    axes.with_cross_size(contents_constants.entry_percentage_basis, cross_basis);
+            let axes = contents.constants.axes;
+            let main = axes
+                .main_size(contents.constants.node_outer_size)
+                .expect("the ratio settles after the preferred inline size");
+            let transferred = axes
+                .cross_size_from_main_in_sizing_box(main, ratio.value, ratio.sizing_box_insets)
+                .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
+            if ratio.needs_content_minimum {
+                // Measure the content floor at the accepted inline size with no
+                // provisional cross size. Apply the authored maximum after measuring.
+                let mut minimum = contents.constants;
+                minimum.max_outer_size = axes.with_cross_size(minimum.max_outer_size, None);
+                minimum.max_inner_size = axes.with_cross_size(minimum.max_inner_size, None);
+                let cross_request = AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                );
+                minimum.sizing_request = minimum
+                    .sizing_request
+                    .with_axes(axes.with_cross_size(minimum.sizing_request.axes(), cross_request));
+                return Ok(ControlFlow::Continue(Box::new(FlexPhase::Collect(
+                    Box::new(FlexCollection {
+                        phase: CollectionPhase::RatioMinimum(Box::new(FlexRatioMinimum {
+                            contents,
+                            transferred,
+                        })),
+                        items: ItemCollection::new(tree, node, RunMode::ComputeSize),
+                        constants: minimum,
+                        used_overflow,
+                    }),
+                ))));
             }
-            contents_constants.max_inner_size = contents_constants
-                .max_outer_size
-                .sub_optional_unchecked(contents_constants.content_box_inset.sum_axes())
-                .max_optional(Size::ZERO.map(Some));
+            return contents
+                .collect(tree, node, input, used_overflow, Some(transferred))
+                .map(ControlFlow::Continue);
         }
-        let items = ItemCollection::new(tree, node, contents_run_mode);
-        return Ok(ControlFlow::Continue(Box::new(FlexPhase::Collect(
-            Box::new(FlexCollection {
-                phase: CollectionPhase::Accepted { contents_run_mode },
-                items,
-                constants: contents_constants,
-                used_overflow,
-            }),
-        ))));
+        return contents
+            .collect(tree, node, input, used_overflow, None)
+            .map(ControlFlow::Continue);
     }
     let no_eligible_items = collected_items.is_empty();
     if input.run_mode().is_perform_layout() {
@@ -888,54 +917,85 @@ fn flex_output<Node: Copy, S: LayoutScalar, M>(
     Ok(output)
 }
 
-fn settle_own_ratio_cross<'input, Tree, S, M>(
-    tree: &mut Tree,
+fn resolved_flex_scroll_box<'input, Tree, M>(
+    tree: &Tree,
     node: Tree::Node,
-    constants: &Constants<S>,
-    ratio: OwnRatioCross<S>,
-) -> LayoutResultOf<Tree::Node, S, S, M>
+    input: ComputeInputOf<Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    size: Size<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, CanonicalScrollBoxOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M, Scalar = S>,
-    S: LayoutScalar,
+    Tree: Compute<'input, M>,
 {
-    let axes = constants.axes;
-    let main = axes
-        .main_size(constants.node_outer_size)
-        .expect("the ratio settles after the preferred inline size");
-    let transferred = axes
-        .cross_size_from_main_in_sizing_box(main, ratio.value, ratio.sizing_box_insets)
-        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
-
-    let cross = if ratio.needs_content_minimum {
-        // Measure the content floor at the accepted inline size with no
-        // provisional cross size. Apply the authored maximum after measuring.
-        let mut minimum = *constants;
-        minimum.max_outer_size = axes.with_cross_size(minimum.max_outer_size, None);
-        minimum.max_inner_size = axes.with_cross_size(minimum.max_inner_size, None);
-        let cross_request = AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        );
-        minimum.sizing_request = minimum
-            .sizing_request
-            .with_axes(axes.with_cross_size(minimum.sizing_request.axes(), cross_request));
-        let items = collect_items(tree, node, &minimum, RunMode::ComputeSize)?;
-        let (measured, _, _) = FlexRounds::begin(node, &items, minimum, RunMode::ComputeSize)?
-            .compute(tree, node, &items)?;
-        transferred.max(
-            axes.cross_size(measured.node_outer_size)
-                .expect("Flex cross measurement resolves the measured outer size"),
+    DistributionNumber::finite(constants.axes.main_size(size)).map_err(|value| {
+        crate::error::sizing_resolution_error(
+            node,
+            LengthResolutionStatus::InvalidNumeric { value }.into(),
         )
-    } else {
-        transferred
-    };
-
-    Ok(cross
-        .clamp_max_before_min_optional(
-            axes.cross_size(constants.min_outer_size),
-            axes.cross_size(constants.max_outer_size),
+    })?;
+    self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |projection, _| {
+        flex_container_scroll_box::<_, Tree::Scalar, M>(
+            node,
+            input.run_mode(),
+            projection,
+            constants,
+            size,
         )
-        .max(axes.cross_size(constants.padding_border_size)))
+    })
+}
+
+impl<S: LayoutScalar> AcceptedFlexContents<S> {
+    fn collect<'input, Tree, M>(
+        self,
+        tree: &mut Tree,
+        node: Tree::Node,
+        input: ComputeInputOf<S>,
+        used_overflow: crate::scroll::UsedOverflow,
+        ratio_cross: Option<S>,
+    ) -> LayoutResultOf<Tree::Node, Box<FlexPhase<'input, Tree::Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let Self {
+            mut constants,
+            scroll_box,
+            run_mode,
+            qualify_ratio_cross,
+        } = self;
+        if let Some(cross) = ratio_cross {
+            let axes = constants.axes;
+            let cross = cross
+                .clamp_max_before_min_optional(
+                    axes.cross_size(constants.min_outer_size),
+                    axes.cross_size(constants.max_outer_size),
+                )
+                .max(axes.cross_size(constants.padding_border_size));
+            let size = axes.with_cross_size(scroll_box.border_box().size(), cross);
+            let settled = resolved_flex_scroll_box(tree, node, input, &constants, size)?;
+            constants = constants.with_final_scroll_box(settled);
+            if qualify_ratio_cross {
+                // Only an independently definite determining axis grants
+                // percentage authority to the size transferred by the ratio.
+                let cross_basis = Some(axes.cross_size(settled.content_box().size()));
+                constants.percentage_parent_size =
+                    axes.with_cross_size(constants.percentage_parent_size, cross_basis);
+                constants.entry_percentage_basis =
+                    axes.with_cross_size(constants.entry_percentage_basis, cross_basis);
+            }
+            constants.max_inner_size = constants
+                .max_outer_size
+                .sub_optional_unchecked(constants.content_box_inset.sum_axes())
+                .max_optional(Size::ZERO.map(Some));
+        }
+        Ok(Box::new(FlexPhase::Collect(Box::new(FlexCollection {
+            phase: CollectionPhase::Accepted {
+                contents_run_mode: run_mode,
+            },
+            items: ItemCollection::new(tree, node, run_mode),
+            constants,
+            used_overflow,
+        }))))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
