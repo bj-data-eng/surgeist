@@ -346,6 +346,9 @@ reaction adapter.
 HTMLFontElement reflects color, face and size through that adapter. Only color
 applies its specified null-to-empty DOMString conversion. The reflected values
 remain raw attribute strings.
+HTMLDivElement, HTMLParagraphElement and HTMLHeadingElement reflect align as a
+raw DOMString through the same admitted Source and reaction adapter. All six
+heading elements share HTMLHeadingElement's reflected member.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous

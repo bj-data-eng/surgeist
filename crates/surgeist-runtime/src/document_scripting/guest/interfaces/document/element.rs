@@ -279,6 +279,15 @@ impl ElementBindings {
             match interface {
                 "HTMLBRElement" => super::break_elements::install_br(scope, &prototype, capture)?,
                 "HTMLHRElement" => super::break_elements::install_hr(scope, &prototype, capture)?,
+                "HTMLDivElement" => {
+                    super::structural_alignment::install_div(scope, &prototype, capture)?
+                }
+                "HTMLParagraphElement" => {
+                    super::structural_alignment::install_paragraph(scope, &prototype, capture)?
+                }
+                "HTMLHeadingElement" => {
+                    super::structural_alignment::install_heading(scope, &prototype, capture)?
+                }
                 "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLSlotElement" => super::slot::install(scope, &prototype, capture)?,
