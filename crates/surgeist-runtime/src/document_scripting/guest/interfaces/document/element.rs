@@ -288,6 +288,12 @@ impl ElementBindings {
                 "HTMLHeadingElement" => {
                     super::structural_alignment::install_heading(scope, &prototype, capture)?
                 }
+                "HTMLDListElement" => {
+                    super::list_compact::install_dlist(scope, &prototype, capture)?
+                }
+                "HTMLDirectoryElement" => {
+                    super::list_compact::install_directory(scope, &prototype, capture)?
+                }
                 "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLSlotElement" => super::slot::install(scope, &prototype, capture)?,

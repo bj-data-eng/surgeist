@@ -22,6 +22,7 @@ pub(super) mod element;
 mod element_factory;
 mod font;
 mod fragment;
+mod list_compact;
 mod meta;
 mod ordinary;
 mod parent_node;
