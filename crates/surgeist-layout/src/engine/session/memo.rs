@@ -55,11 +55,32 @@ struct Sample<S: LayoutScalar> {
     output: Size<S>,
 }
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct UncachedAdmission<Node, S: LayoutScalar> {
+    pub(crate) node: Node,
+    pub(crate) input: ComputeInputOf<S>,
+    pub(crate) context: CacheKeyContext,
+}
+
+#[cfg(test)]
+impl<Node: Eq, S: LayoutScalar> UncachedAdmission<Node, S> {
+    pub(crate) fn same_request(&self, other: &Self) -> bool {
+        self.node == other.node
+            && self.input == other.input
+            && exact_optional_size(self.input.known(), other.input.known())
+            && exact_optional_size(self.input.parent(), other.input.parent())
+            && self.context == other.context
+    }
+}
+
 struct Table<Node, S: LayoutScalar> {
     profile: Profile,
     eligible: Vec<bool>,
     completions: Mutex<Completions<Node, S>>,
     samples: Mutex<Vec<Vec<Sample<S>>>>,
+    #[cfg(test)]
+    uncached_admissions: Mutex<Option<Vec<UncachedAdmission<Node, S>>>>,
 }
 
 /// Ordinary completed effects can be shared with disposable trials of the same call.
@@ -94,6 +115,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
                     effects: Vec::new(),
                 }),
                 samples: Mutex::new(samples),
+                #[cfg(test)]
+                uncached_admissions: Mutex::new(None),
             }),
             effects: Vec::new(),
             active: Vec::new(),
@@ -111,6 +134,37 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
             active: Vec::new(),
             failed: None,
         })
+    }
+
+    #[cfg(test)]
+    fn start_admission_trace(&self) {
+        *self.table.uncached_admissions.lock().unwrap() = Some(Vec::new());
+    }
+
+    #[cfg(test)]
+    fn take_admission_trace(&self) -> Vec<UncachedAdmission<Node, S>> {
+        self.table
+            .uncached_admissions
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap()
+    }
+
+    #[cfg(test)]
+    pub(super) fn record_uncached_admission(
+        &self,
+        node: Node,
+        input: ComputeInputOf<S>,
+        context: CacheKeyContext,
+    ) {
+        if let Some(admissions) = self.table.uncached_admissions.lock().unwrap().as_mut() {
+            admissions.push(UncachedAdmission {
+                node,
+                input,
+                context,
+            });
+        }
     }
 
     pub(super) fn is_scoped(&self) -> bool {
@@ -580,6 +634,56 @@ fn memo_allocation<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, 
         LayoutOperation::ChildLayout,
         LayoutErrorKindOf::Allocation,
     )
+}
+
+#[cfg(test)]
+type TracedLayoutResult<Tree> = crate::LayoutResultOf<
+    <Tree as crate::Traverse>::Node,
+    (
+        crate::CompletedLayoutBatchOf<
+            <Tree as crate::Traverse>::Node,
+            <Tree as crate::Traverse>::Scalar,
+        >,
+        Vec<UncachedAdmission<<Tree as crate::Traverse>::Node, <Tree as crate::Traverse>::Scalar>>,
+    ),
+    <Tree as crate::Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+
+// Numeric-only tests use the same validated Session, root, rounding and batch
+// owners as compute_layout. The retained fork observes all disposable forks of
+// that call through the existing shared table, without changing eligibility.
+#[cfg(test)]
+pub(crate) fn compute_ordinary_with_request_trace<Tree: LayoutTree>(
+    tree: &Tree,
+    root: Tree::Node,
+    request: crate::LayoutRootRequestOf<Tree::Scalar>,
+) -> TracedLayoutResult<Tree> {
+    let (graph, invalidated) =
+        crate::engine::validation::validate_layout_request_with_text_graph(tree, root, &[], &[])?;
+    let wrapping = crate::inline_wrapping::WrappingContext::new(
+        tree,
+        &graph,
+        &crate::WrappingInput::default(),
+        &[],
+        |_| false,
+    )
+    .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+    let mut session = ComputeSession::new(tree, invalidated);
+    session.install_wrapping(Arc::new(wrapping), &graph);
+    assert!(!session.has_text() && !session.groups_active());
+    session.enable_request_memo();
+    let observer = session
+        .memo
+        .as_ref()
+        .and_then(Memo::fork)
+        .expect("ordinary test session retains its request table");
+    observer.start_admission_trace();
+    crate::engine::compute_root(&mut session, root, request)?;
+    session.release_request_memo();
+    crate::engine::round_layout(&mut session, root)?;
+    let batch = session.complete_for_root(root);
+    Ok((batch, observer.take_admission_trace()))
 }
 
 #[cfg(test)]

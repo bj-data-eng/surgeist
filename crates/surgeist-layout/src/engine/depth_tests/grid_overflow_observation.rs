@@ -83,7 +83,23 @@ fn overflow_grid_chain<S: LayoutScalar>(
 
 fn assert_overflow_grid_geometry<S: LayoutScalar>(depth: u32, hidden_subtree: bool) {
     let tree = overflow_grid_chain::<S>(depth, hidden_subtree, valid_measurement::<S>);
-    let batch = compute_layout(&tree, 0, standalone()).expect("automatic-overflow Grid layout");
+    assert_overflow_grid_tree_geometry(&tree, depth, hidden_subtree);
+}
+
+fn assert_overflow_grid_tree_geometry<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+    depth: u32,
+    hidden_subtree: bool,
+) {
+    let batch = compute_layout(tree, 0, standalone()).expect("automatic-overflow Grid layout");
+    assert_overflow_grid_batch_geometry(&batch, depth, hidden_subtree);
+}
+
+fn assert_overflow_grid_batch_geometry<S: LayoutScalar>(
+    batch: &crate::CompletedLayoutBatchOf<u32, S>,
+    depth: u32,
+    hidden_subtree: bool,
+) {
     assert_eq!(
         batch.node_layouts().len(),
         (2 * depth + 1 + u32::from(hidden_subtree)) as usize
@@ -215,3 +231,48 @@ deep_grid_observation_test!(
     assert_overflow_grid_refusal,
     true
 );
+
+fn assert_overflow_grid_distinct_request_work<S: LayoutScalar>() {
+    let mut traces = Vec::new();
+    for hidden_subtree in [false, true] {
+        for depth in [2, 3] {
+            let tree = overflow_grid_chain::<S>(depth, hidden_subtree, valid_measurement::<S>);
+            let (batch, admissions) =
+                crate::engine::compute_ordinary_with_request_trace(&tree, 0, standalone())
+                    .expect("ordinary Grid request trace completes");
+            assert_overflow_grid_batch_geometry(&batch, depth, hidden_subtree);
+            for node in 0..=depth {
+                assert!(
+                    admissions.iter().any(|row| row.node == node),
+                    "every visible root, Grid and terminal has actual body work: depth={depth}, hidden_subtree={hidden_subtree}, node={node}"
+                );
+            }
+            assert!(
+                admissions.iter().all(|row| row.node <= depth),
+                "hidden traversal bypasses actual body admission"
+            );
+            traces.push((depth, hidden_subtree, admissions));
+        }
+    }
+    for (depth, hidden_subtree, admissions) in traces {
+        for (index, admission) in admissions.iter().enumerate() {
+            let earlier = admissions[..index]
+                .iter()
+                .find(|row| row.same_request(admission));
+            assert!(
+                earlier.is_none(),
+                "ordinary completed work must run once per full request identity: depth={depth}, hidden_subtree={hidden_subtree}, repeated={admission:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn grid_overflow_work_runs_once_per_distinct_request_f32() {
+    assert_overflow_grid_distinct_request_work::<f32>();
+}
+
+#[test]
+fn grid_overflow_work_runs_once_per_distinct_request_f64() {
+    assert_overflow_grid_distinct_request_work::<f64>();
+}

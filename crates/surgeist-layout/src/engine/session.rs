@@ -1,5 +1,7 @@
 mod cache_stores;
 mod memo;
+#[cfg(test)]
+pub(crate) use memo::compute_ordinary_with_request_trace;
 mod requests;
 
 #[cfg(test)]
@@ -1609,12 +1611,18 @@ where
         let restore_subtree = input.run_mode().is_perform_layout() && self.child_count(node) != 0;
         let uncached_input = input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL);
         let host_cache = !restore_subtree || self.subtree_uses_shape_provider(node);
+        #[cfg(test)]
+        let admission_context;
         let (cache, memo) = if host_cache || self.memo.is_some() {
             let context = if host_cache {
                 self.cache_context()
             } else {
                 crate::CacheKeyContext::new()
             };
+            #[cfg(test)]
+            {
+                admission_context = context;
+            }
             let cache = host_cache.then(|| {
                 let cache_input = if restore_subtree {
                     uncached_input
@@ -1637,8 +1645,18 @@ where
             }
             (cache, memo)
         } else {
+            #[cfg(test)]
+            {
+                admission_context = crate::CacheKeyContext::new();
+            }
             (None, None)
         };
+        #[cfg(test)]
+        if let Some(observer) = &self.memo {
+            // Observe the requested key before the uncached body resets its
+            // scrollbar pass. Hidden traversal and ready hits returned above.
+            observer.record_uncached_admission(node, input, admission_context);
+        }
         Ok(ChildAdmission::Uncached {
             input: uncached_input,
             cache,
