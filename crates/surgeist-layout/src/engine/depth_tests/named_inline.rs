@@ -392,3 +392,83 @@ fn deep_balanced_named_receiver_returns_typed_refusal_f64() {
         || assert_named_refusal_with_wrap_style::<f64>(24, crate::TextWrapStyle::Balance),
     );
 }
+
+// Each thirteen-unit atom occupies its entire line and Mandatory/Forced
+// endings bound the groups. Each final Paragraph group has at most one formatted
+// line, so tail repair has no eligible pair or alternative break geometry.
+#[test]
+fn shallow_tail_named_receiver_preserves_geometry_and_refusal() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::shallow_tail_named_receiver_preserves_geometry_and_refusal",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f32>(
+                2,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            );
+            assert_named_receiver_geometry_with_wrap_style::<f64>(
+                2,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            );
+            assert_named_refusal_with_wrap_style::<f32>(
+                2,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            );
+            assert_named_refusal_with_wrap_style::<f64>(
+                2,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            );
+        },
+    );
+}
+
+#[test]
+fn deep_tail_named_receiver_publishes_actual_named_lines_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_tail_named_receiver_publishes_actual_named_lines_f32",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f32>(
+                24,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            );
+        },
+    );
+}
+
+#[test]
+fn deep_tail_named_receiver_publishes_actual_named_lines_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_tail_named_receiver_publishes_actual_named_lines_f64",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f64>(
+                24,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            );
+        },
+    );
+}
+
+#[test]
+fn deep_tail_named_receiver_returns_typed_refusal_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_tail_named_receiver_returns_typed_refusal_f32",
+        || {
+            assert_named_refusal_with_wrap_style::<f32>(
+                24,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            )
+        },
+    );
+}
+
+#[test]
+fn deep_tail_named_receiver_returns_typed_refusal_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_tail_named_receiver_returns_typed_refusal_f64",
+        || {
+            assert_named_refusal_with_wrap_style::<f64>(
+                24,
+                crate::TextWrapStyle::AvoidShortLastLine,
+            )
+        },
+    );
+}
