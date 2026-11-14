@@ -409,11 +409,14 @@ fn bounded_growth(cut: Cut) -> TestResult {
         Ok(())
     });
     let observed = events.borrow();
-    assert!(!observed.contains(&units("CLOSE")));
+    assert!(!observed.iter().any(|marker| marker == &units("CLOSE")));
     if matches!(cut, Cut::Exact) {
         result?;
         assert_eq!(accepted.get(), 1);
-        assert_eq!(observed.last(), Some(&units("done5")));
+        assert_eq!(
+            observed.last().map(|marker| &**marker),
+            Some(&units("done5"))
+        );
         assert_eq!(
             ledger.usage(ledger.root())?.peak(Resource::BufferBytes),
             peak
@@ -428,7 +431,7 @@ fn bounded_growth(cut: Cut) -> TestResult {
         } else {
             "value4"
         };
-        assert_eq!(observed.last(), Some(&units(last)));
+        assert_eq!(observed.last().map(|marker| &**marker), Some(&units(last)));
     }
     assert_eq!(ledger.usage(ledger.root())?.live(Resource::BufferBytes), 0);
     assert_eq!(account.cleanup_status().failures(), Some(0));

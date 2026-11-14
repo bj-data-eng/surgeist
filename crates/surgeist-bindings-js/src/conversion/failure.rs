@@ -97,7 +97,7 @@ impl Failure {
                 .map_or(FailureKind::GuestException, FailureKind::TypeError),
             None if matches!(
                 self.0,
-                Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_)
+                Error::ConversionCleanup(_) | Error::PreparationCleanup(_)
             ) =>
             {
                 FailureKind::Cleanup
@@ -112,7 +112,7 @@ impl Failure {
                 Some(CleanupPrimary::Exception(exception)) => Some(exception),
                 _ => None,
             },
-            Error::CallbackCaptureCleanup(failure) => match failure.primary() {
+            Error::PreparationCleanup(failure) => match failure.primary() {
                 Some(CleanupPrimary::Exception(exception)) => Some(exception),
                 _ => None,
             },

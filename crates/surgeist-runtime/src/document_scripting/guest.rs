@@ -1,12 +1,14 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
 mod accounting;
+use accounting::AccountingError;
 pub(crate) use accounting::GuestBacking;
-use accounting::{AccountScope, AccountingError, GuestBudget};
+pub(super) use accounting::{AccountScope, CaptureBacking, GuestBudget, capture_refusal};
 pub use accounting::{
     DocumentGuestAccounting, DocumentGuestAccountingReport, DocumentGuestResource,
     DocumentGuestWork,
 };
+pub(super) use reports::DispatchFailure;
 mod csp_task;
 mod element_task;
 mod interfaces;
@@ -32,8 +34,8 @@ pub(super) use interfaces::creation_document_registry;
 pub(super) use interfaces::{
     document_registry_identity, missing_pins_refuse_without_native_publication,
 };
+use reports::DirectExceptions;
 pub(crate) use reports::QueuedViolation;
-use reports::{DirectExceptions, ExceptionRoots};
 pub(super) use reports::{GuestExceptionReports, ViolationQueue};
 use surgeist_bindings_js::{
     Exception, NativeObjectToken, ObjectPrototype, RetainedCallbackObject, Root, Value,
@@ -558,7 +560,11 @@ pub(super) struct GuestEvents {
     limits: DocumentGuestEventLimits,
     budget: GuestBudget,
     next_callback: Cell<u64>,
-    exception_root_bytes: usize,
+    preparation: Option<
+        surgeist_bindings_js::preparation::Controller<
+            crate::document_scripting::preparation::Backing,
+        >,
+    >,
     reports: Rc<GuestExceptionReports>,
     refusal: Rc<reports::DispatchFailure>,
     window_event: Rc<window_event::WindowEvent>,
@@ -602,6 +608,17 @@ impl OriginAdmission {
 }
 
 impl GuestEvents {
+    pub(super) fn preparation(
+        &self,
+    ) -> Result<
+        &surgeist_bindings_js::preparation::Controller<
+            crate::document_scripting::preparation::Backing,
+        >,
+        Error,
+    > {
+        self.preparation.as_ref().ok_or(Error::BackendUnavailable)
+    }
+
     pub(super) fn installs_public_bindings(&self) -> bool {
         self.public.is_some()
     }
@@ -749,14 +766,18 @@ impl PreparedDocumentScriptHost {
             &self.native,
             input,
             limits,
-            script.retained_bytes.checked_add(limits.storage_bytes),
+            &script.preparation,
             &script.authority,
         )?;
-        admission.budget.install_capture(
-            &mut script.process,
-            &self.native,
+        script.preparation.activate(
+            &admission.budget,
             admission.refusal.clone(),
+            admission
+                .allowance
+                .take()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
         )?;
+        admission.preparation = Some(script.preparation.controller().clone());
         admission.public = Some(PublicEventBindings::install(
             &mut script,
             &self.native,
@@ -770,12 +791,17 @@ impl PreparedDocumentScriptHost {
 
 struct GuestEventAdmission {
     limits: DocumentGuestEventLimits,
-    retained: usize,
     budget: GuestBudget,
     reports: Rc<GuestExceptionReports>,
     refusal: Rc<reports::DispatchFailure>,
     backing: GuestBacking,
     public: Option<PublicEventBindings>,
+    preparation: Option<
+        surgeist_bindings_js::preparation::Controller<
+            crate::document_scripting::preparation::Backing,
+        >,
+    >,
+    allowance: Option<crate::document_scripting::preparation::CapReservation>,
 }
 
 impl GuestEventAdmission {
@@ -783,7 +809,7 @@ impl GuestEventAdmission {
         owner: &NativeOwner,
         input: &DomEventDispatcher<()>,
         limits: DocumentGuestEventLimits,
-        total: Option<usize>,
+        preparation: &crate::document_scripting::preparation::Prepared,
         authority: &RealmAuthority,
     ) -> Result<Self, DocumentGuestEventError> {
         let fixed = size_of::<GuestEvents>() + size_of::<GuestFixedBacking>();
@@ -802,13 +828,10 @@ impl GuestEventAdmission {
             .checked_add(report_bytes)
             .and_then(|bytes| bytes.checked_add(refusal_bytes))
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        if limits.storage_bytes < required
-            || total
-                .and_then(|total| total.checked_add(setup))
-                .is_none_or(|total| total > owner.storage_limit)
-        {
+        if limits.storage_bytes < required {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
+        let allowance = preparation.reserve_external(retained)?;
         let (accounting, backing, report_backing, refusal_backing) = {
             let mut session = owner
                 .session
@@ -845,12 +868,13 @@ impl GuestEventAdmission {
         let refusal = Rc::new(reports::DispatchFailure::new(authority, refusal_backing)?);
         Ok(Self {
             limits,
-            retained,
             budget,
             reports,
             refusal,
             backing,
             public: None,
+            preparation: None,
+            allowance: Some(allowance),
         })
     }
 
@@ -861,20 +885,20 @@ impl GuestEventAdmission {
     ) -> Rc<GuestExceptionReports> {
         let Self {
             limits,
-            retained,
             budget,
             reports,
             refusal,
             backing,
             public,
+            preparation,
+            allowance: _,
         } = self;
-        let exception_root_bytes = engine.process.managed_object_storage_bytes();
         let events = Rc::new(GuestEvents {
             registry: RefCell::new(registry),
             limits,
             budget,
             next_callback: Cell::new(0),
-            exception_root_bytes,
+            preparation,
             reports: reports.clone(),
             refusal,
             window_event: engine.window_event.clone(),
@@ -889,7 +913,6 @@ impl GuestEventAdmission {
             public.activate(&events);
         }
         engine.guest_events = Some(events);
-        engine.retained_bytes += retained;
         reports
     }
 }
@@ -927,18 +950,22 @@ impl DocumentScriptHost {
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?
             .realm;
-        let admission = GuestEventAdmission::prepare(
+        let mut admission = GuestEventAdmission::prepare(
             &self.native,
             input,
             limits,
-            engine.retained_bytes_with(limits.storage_bytes),
+            &engine.preparation,
             authority,
         )?;
-        admission.budget.install_capture(
-            &mut engine.process,
-            &self.native,
+        engine.preparation.activate(
+            &admission.budget,
             admission.refusal.clone(),
+            admission
+                .allowance
+                .take()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
         )?;
+        admission.preparation = Some(engine.preparation.controller().clone());
         let registry = registry
             .take()
             .ok_or(DocumentGuestEventError::RegistryState)?;
@@ -1221,7 +1248,6 @@ impl GuestEvents {
     ) -> Result<DomEventDispatchReceipt, DocumentGuestEventError> {
         let max = self.limits.dispatch.failure_records;
         let bank = DirectExceptions::reserve(self, owner, max)?;
-        let mut roots = ExceptionRoots::reserve(self, owner, max)?;
         // Store observations outside the engine entry, whose terminal failure
         // can override the result returned by its action.
         let exceptions = exceptions.insert(bank);
@@ -1234,7 +1260,7 @@ impl GuestEvents {
             invocation,
             &receiver,
             &argument,
-            |scope, exception| exceptions.publish(scope, &mut roots, exception),
+            |_scope, exception| exceptions.publish(exception),
         )
     }
 

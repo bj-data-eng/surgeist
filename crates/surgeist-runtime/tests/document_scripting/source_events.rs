@@ -159,13 +159,11 @@ fn fixture_with_setup<T>(
         .map_err(|failure| failure.error)?;
     let permit = host.permit().unwrap();
     let additional = setup(&mut host, &permit, top);
-    let handler = host
-        .in_document(&permit, |scope| {
-            initialize(scope)?;
-            let function = scope.evaluate(&handler.encode_utf16().collect::<Vec<_>>())?;
-            Ok(scope.retain(&function))
-        })
-        .unwrap();
+    let handler = host.in_document(&permit, |scope| {
+        initialize(scope)?;
+        let function = scope.evaluate(&handler.encode_utf16().collect::<Vec<_>>())?;
+        Ok(scope.retain(&function))
+    })?;
     let request = host
         .with_native(|dom, _, mut source| {
             let progress = source
@@ -805,13 +803,24 @@ enum StorageAdmission {
     Admitted,
 }
 
-fn observe_pin_admission(storage: usize) -> StorageAdmission {
+fn observe_pin_admission(storage: usize, detach: bool) -> (StorageAdmission, usize) {
     let calls = Arc::new(AtomicUsize::new(0));
     let count = calls.clone();
+    // Keep authored roots live across the operation so its boundary exceeds
+    // the already-released host installation peak.
+    let mut padding = Vec::new();
     let mut fixture = match fixture_with_storage(
-        "((comment) => { reachedGuest(); detachIf(1, comment); })",
+        if detach {
+            "((comment) => { reachedGuest(); detachIf(1, comment); })"
+        } else {
+            "((comment) => { reachedGuest(); })"
+        },
         Arc::new(cancel()),
         |scope| {
+            for _ in 0..64 {
+                let value = scope.primitive(Primitive::Undefined)?;
+                padding.push(scope.retain(&value));
+            }
             let callback = Callback::new(move |_, _| {
                 count.fetch_add(1, Ordering::Relaxed);
                 Ok(Completion::Undefined)
@@ -825,7 +834,14 @@ fn observe_pin_admission(storage: usize) -> StorageAdmission {
     ) {
         Ok(fixture) => fixture,
         Err(DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)) => {
-            return StorageAdmission::BeforeOperation;
+            return (StorageAdmission::BeforeOperation, 0);
+        }
+        Err(DocumentScriptError::Script(Error::HostFailure(error))) => {
+            assert!(matches!(
+                error.cause::<DocumentScriptNativeError>(),
+                Some(DocumentScriptNativeError::StorageLimit)
+            ));
+            return (StorageAdmission::BeforeOperation, 0);
         }
         Err(error) => panic!("unexpected host admission failure: {error:?}"),
     };
@@ -841,7 +857,7 @@ fn observe_pin_admission(storage: usize) -> StorageAdmission {
             Ok(DocumentScriptEventProgress::Selected(selected)) => selected,
             Err(DocumentScriptEventError::Access(DocumentScriptError::Native(
                 DocumentScriptNativeError::StorageLimit,
-            ))) => return StorageAdmission::BeforeOperation,
+            ))) => return (StorageAdmission::BeforeOperation, 0),
             Err(error) => panic!("unexpected listener selection failure: {error:?}"),
             Ok(_) => panic!("the original dispatcher must select the routed host listener"),
         };
@@ -862,7 +878,14 @@ fn observe_pin_admission(storage: usize) -> StorageAdmission {
         outcome
     };
     let admitted = outcome == StorageAdmission::Admitted;
-    assert_eq!(calls.load(Ordering::Relaxed), usize::from(admitted));
+    let reached = calls.load(Ordering::Relaxed);
+    if admitted {
+        assert_eq!(reached, 1);
+    } else if !detach {
+        assert_eq!(reached, 0);
+    } else {
+        assert!(reached <= 1);
+    }
     assert_eq!(
         fixture
             .host
@@ -871,31 +894,39 @@ fn observe_pin_admission(storage: usize) -> StorageAdmission {
             .node(fixture.comment)
             .unwrap()
             .parent(),
-        (!admitted).then_some(fixture.document.node())
+        (!(admitted && detach)).then_some(fixture.document.node())
     );
-    outcome
+    (outcome, reached)
 }
 
-fn exact_one_pin_storage() -> usize {
-    let mut short = 0;
-    let mut exact = STORAGE;
-    assert_eq!(observe_pin_admission(exact), StorageAdmission::Admitted);
-    while exact - short > 1 {
-        let probe = short + (exact - short) / 2;
-        if observe_pin_admission(probe) == StorageAdmission::Admitted {
-            exact = probe;
-        } else {
-            short = probe;
+fn exact_projection_and_handler_storage_are_required() {
+    for detach in [false, true] {
+        let mut short = 0;
+        let mut exact = STORAGE;
+        assert_eq!(
+            observe_pin_admission(exact, detach),
+            (StorageAdmission::Admitted, 1)
+        );
+        while exact - short > 1 {
+            let probe = short + (exact - short) / 2;
+            if observe_pin_admission(probe, detach).0 == StorageAdmission::Admitted {
+                exact = probe;
+            } else {
+                short = probe;
+            }
         }
+        // The first native marker remains untouched when its preparation is short.
+        // With the second callback, its own preparation can refuse after the first
+        // marker; both refused paths leave the delegated Comment attached.
+        assert_eq!(
+            observe_pin_admission(short, detach),
+            (StorageAdmission::Refused, usize::from(detach))
+        );
     }
-    // Selection still succeeds at one byte short. The typed refusal must be
-    // from projection, and the guest marker and native node must be untouched.
-    assert_eq!(observe_pin_admission(short), StorageAdmission::Refused);
-    exact
 }
 
 fn projected_comment_survives_detach_but_does_not_alias_a_replacement() {
-    let storage = exact_one_pin_storage();
+    exact_projection_and_handler_storage_are_required();
     let mut fixture = fixture_with_storage(
         "globalThis.turn = 0; globalThis.same = 0; globalThis.fresh = 0;
          globalThis.rejected = 0; globalThis.coercions = 0; globalThis.traps = 0;
@@ -917,7 +948,7 @@ fn projected_comment_survives_detach_but_does_not_alias_a_replacement() {
          })",
         Arc::new(cancel()),
         |_| Ok(()),
-        storage,
+        STORAGE,
     )
     .unwrap();
     let original = fixture.comment;
@@ -1312,20 +1343,45 @@ fn observe_creation_admission(storage: usize) -> StorageAdmission {
         {
             return StorageAdmission::BeforeOperation;
         }
+        Err(failure)
+            if matches!(
+                &failure.error,
+                DocumentScriptError::Script(Error::HostFailure(error))
+                    if matches!(error.cause::<DocumentScriptNativeError>(), Some(DocumentScriptNativeError::StorageLimit))
+            ) =>
+        {
+            return StorageAdmission::BeforeOperation;
+        }
         Err(failure) => panic!("unexpected script owner admission: {failure:?}"),
     };
     let permit = host.permit().unwrap();
-    let (origin, _) = native_creation_host(&mut host);
-    let outcome = match host.register_node_creation_realm(&permit, origin) {
-        Ok(()) => {
-            assert!(matches!(
-                host.register_node_creation_realm(&permit, origin),
-                Err(DocumentScriptError::Native(
-                    DocumentScriptNativeError::CreationRealmAlreadyRegistered
-                ))
-            ));
-            StorageAdmission::Admitted
+    // Keep the realm operation's accepted live prefix above the freed setup
+    // peak, without assuming the private physical extent of either owner.
+    let padding = match host.in_document(&permit, |scope| {
+        let mut roots = Vec::new();
+        for _ in 0..64 {
+            let value = scope.primitive(Primitive::Undefined)?;
+            roots.push(scope.retain(&value));
         }
+        Ok(roots)
+    }) {
+        Ok(roots) => roots,
+        Err(DocumentScriptError::Script(Error::HostFailure(error))) => {
+            assert!(matches!(
+                error.cause::<DocumentScriptNativeError>(),
+                Some(DocumentScriptNativeError::StorageLimit)
+            ));
+            return StorageAdmission::BeforeOperation;
+        }
+        Err(error) => panic!("unexpected creation realm padding admission: {error:?}"),
+    };
+    let (origin, _) = native_creation_host(&mut host);
+    let stamp = host.snapshot().unwrap().stamp();
+    let observation = host.observe_scripting(&permit).unwrap();
+    assert_eq!(observation.status(), HtmlScriptingStatus::Enabled);
+    let mut terminal = None;
+    let outcome = match host.register_node_creation_realm(&permit, origin) {
+        Ok(()) => StorageAdmission::Admitted,
         Err(DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)) => {
             assert!(matches!(
                 host.register_node_creation_realm(&permit, origin),
@@ -1335,20 +1391,60 @@ fn observe_creation_admission(storage: usize) -> StorageAdmission {
             ));
             StorageAdmission::Refused
         }
+        Err(DocumentScriptError::Script(Error::HostFailure(error))) => {
+            let cause = error.cause::<DocumentScriptNativeError>().unwrap();
+            assert!(matches!(cause, DocumentScriptNativeError::StorageLimit));
+            let Err(DocumentScriptError::Script(Error::HostFailure(sticky))) =
+                host.register_node_creation_realm(&permit, origin)
+            else {
+                panic!("a refused realm producer must retain its first failure");
+            };
+            assert!(std::ptr::eq(
+                cause,
+                sticky.cause::<DocumentScriptNativeError>().unwrap()
+            ));
+            terminal = Some(error);
+            StorageAdmission::Refused
+        }
         Err(error) => panic!("unexpected creation realm admission: {error:?}"),
     };
+    if let Some(original) = terminal {
+        let Err(DocumentScriptError::Script(Error::HostFailure(sticky))) =
+            host.observe_scripting(&permit)
+        else {
+            panic!("scripting observation checks the original Realm's active owner");
+        };
+        assert!(std::ptr::eq(
+            original.cause::<DocumentScriptNativeError>().unwrap(),
+            sticky.cause::<DocumentScriptNativeError>().unwrap()
+        ));
+    } else {
+        assert_eq!(
+            host.observe_scripting(&permit).unwrap().status(),
+            HtmlScriptingStatus::Enabled
+        );
+    }
+    let snapshot = host.snapshot().unwrap();
+    if outcome == StorageAdmission::Refused {
+        assert_eq!(snapshot.stamp(), stamp);
+        snapshot.with_document_scripting(observation).unwrap();
+    }
     assert_eq!(
-        host.observe_scripting(&permit).unwrap().status(),
-        HtmlScriptingStatus::Enabled
-    );
-    assert_eq!(
-        host.snapshot()
-            .unwrap()
-            .document(origin.document())
-            .unwrap()
-            .scripting(),
+        snapshot.document(origin.document()).unwrap().scripting(),
         HtmlScriptingStatus::Disabled
     );
+    if outcome == StorageAdmission::Admitted {
+        // Duplicate qualification reserves its own temporary record first.
+        // Release the exact-envelope filler before this separate semantic probe.
+        drop(padding);
+        host.in_document(&permit, |_| Ok(())).unwrap();
+        assert!(matches!(
+            host.register_node_creation_realm(&permit, origin),
+            Err(DocumentScriptError::Native(
+                DocumentScriptNativeError::CreationRealmAlreadyRegistered
+            ))
+        ));
+    }
     outcome
 }
 

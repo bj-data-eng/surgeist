@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
-use crate::callback_object::CallbackObjectIdentity;
+use crate::callback_object::{CallbackObjectIdentity, HolderBacking};
 use crate::{Error, RealmKey, Root};
 
 use super::{Entered, Operations, Roots};
@@ -12,8 +12,9 @@ struct Entry {
     identity: Weak<CallbackObjectIdentity>,
     object: v8::Global<v8::Object>,
     _context: v8::Global<v8::Context>,
-    // Both engine handles are destroyed before the native backing is released.
-    _backing: Box<dyn Any>,
+    // Both engine handles are destroyed before releasing this metadata-custody
+    // edge. Surviving identities retain the same engine-free backing.
+    _backing: Rc<HolderBacking>,
 }
 
 #[derive(Default)]
@@ -24,7 +25,10 @@ pub(super) struct CallbackObjects {
 
 impl CallbackObjects {
     pub(super) const fn storage_bytes() -> usize {
-        size_of::<CallbackObjectIdentity>() + size_of::<Entry>() + size_of::<(u64, Rc<Entry>)>()
+        size_of::<CallbackObjectIdentity>()
+            + size_of::<Entry>()
+            + size_of::<(u64, Rc<Entry>)>()
+            + size_of::<HolderBacking>()
     }
 
     fn entry(
@@ -80,24 +84,32 @@ impl CallbackObjects {
     }
 
     pub(super) fn reap(&self, roots: &Roots) {
-        let retired = match self.entries.try_borrow_mut() {
-            Ok(mut entries) => {
-                let dead: Vec<_> = entries
-                    .iter()
-                    .filter_map(|(index, entry)| {
+        let end = self.next.get();
+        let mut last = 0;
+        loop {
+            let retired = {
+                let Ok(mut entries) = self.entries.try_borrow_mut() else {
+                    roots.conflict();
+                    return;
+                };
+                let Some(index) = entries
+                    .range((
+                        std::ops::Bound::Excluded(last),
+                        std::ops::Bound::Included(end),
+                    ))
+                    .find_map(|(index, entry)| {
                         (entry.identity.strong_count() == 0).then_some(*index)
                     })
-                    .collect();
-                dead.into_iter()
-                    .filter_map(|index| entries.remove(&index))
-                    .collect::<Vec<_>>()
-            }
-            Err(_) => {
-                roots.conflict();
-                return;
-            }
-        };
-        drop(retired);
+                else {
+                    return;
+                };
+                last = index;
+                entries.remove(&index)
+            };
+            // Release handles and backing outside the registry loan. Records
+            // inserted by their destructors belong to a later reap.
+            drop(retired);
+        }
     }
 }
 
@@ -147,9 +159,11 @@ impl Entered<'_, '_, '_> {
             .checked_add(1)
             .ok_or(Error::IdentityExhausted)?;
         bank.next.set(index);
+        let backing = HolderBacking::new(backing);
         let identity = Rc::new(CallbackObjectIdentity {
             owner: realm.owner,
             index,
+            _backing: backing.clone(),
         });
         let entry = Rc::new(Entry {
             identity: Rc::downgrade(&identity),

@@ -1279,7 +1279,7 @@ fn promise_resolver_rejects_self_resolution_in_its_original_realm() -> TestResul
     let original = execution.create_realm()?;
     let other = execution.create_realm()?;
     let (resolver, promise, original_type_error) = execution.in_realm(&original, |scope| {
-        let resolver = scope.promise_resolver(Box::new(()))?;
+        let resolver = scope.promise_resolver()?;
         let promise = scope.resolver_promise(&resolver)?;
         let error = scope.evaluate(&units("TypeError"))?;
         Ok((resolver, scope.retain(&promise), scope.retain(&error)))

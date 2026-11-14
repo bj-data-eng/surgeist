@@ -84,12 +84,10 @@ impl Capture {
                         self.callbacks.with_read(&owner, &events, |read, _| {
                             let instruction = instruction(read.node(node)?)?;
                             let count = instruction.attributes().len();
-                            let copied = scope.argument_copy_storage_bytes(count)?;
                             let bytes = count
                                 .checked_mul(
                                     size_of::<DocumentString>() + size_of::<Value<'scope>>(),
                                 )
-                                .and_then(|size| size.checked_add(copied))
                                 .ok_or(Error::Allocation)?;
                             let backing = read.reserve(bytes)?;
                             let mut names = reserved_names(count)?;

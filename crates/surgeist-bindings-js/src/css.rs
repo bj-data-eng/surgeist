@@ -3,10 +3,10 @@
 use std::mem::size_of;
 
 use surgeist_css::serialization::{CssSerializationError, CssomIdentifierLimits};
-use surgeist_ledger::{Limits, Operation, Tariffs};
+use surgeist_ledger::{Limits, Operation, SharedOperation, Tariffs};
 
 use crate::conversion::{
-    ArgumentValue, ConversionAccount, Work,
+    ArgumentValue, ConversionAccount, Resource, Work,
     declarations::{
         WINDOW_CSS_ESCAPE_ARITY, WINDOW_CSS_ESCAPE_NAME, WINDOW_CSS_NAME, css_escape_0_ident,
     },
@@ -87,11 +87,16 @@ impl<Storage: 'static> Escape<Storage> {
     }
 }
 
-/// Requested Rust callback target and retained conversion account bodies.
+/// Requested Rust callback target, conversion account and shared Ledger bodies,
+/// including the two reserved scopes. Returns `None` on size overflow.
 /// The host keeps the separate native failure custody funded using
 /// [`HostFailureSlot::storage_bytes`].
-pub const fn callback_storage_bytes<Storage>() -> usize {
-    size_of::<Escape<Storage>>() + ConversionAccount::retained_body_bytes()
+pub fn callback_storage_bytes<Storage>() -> Option<usize> {
+    size_of::<Escape<Storage>>()
+        .checked_add(ConversionAccount::retained_body_bytes())?
+        .checked_add(SharedOperation::<Work, Resource>::reserved_backing_bytes(
+            2,
+        )?)
 }
 
 /// Installs the standard namespace in the entered, host-authenticated Window.
@@ -117,7 +122,7 @@ pub fn install_window_css<Storage: 'static>(
         },
         |_| limits.buffer_bytes,
     );
-    let ledger = Operation::new("window-css", conversion_limits, 2)
+    let ledger = Operation::with_reserved_scopes("window-css", conversion_limits, 2)
         .map_err(Error::ConversionLedger)?
         .share();
     let conversion = ConversionAccount::new(
@@ -173,4 +178,17 @@ pub fn install_window_css<Storage: 'static>(
             configurable: true,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn callback_storage_includes_its_shared_ledger_and_two_reserved_scopes() {
+        let ledger = SharedOperation::<Work, Resource>::reserved_backing_bytes(2).unwrap();
+        let expected =
+            size_of::<Escape<[u8; 3]>>() + ConversionAccount::retained_body_bytes() + ledger;
+        assert_eq!(callback_storage_bytes::<[u8; 3]>(), Some(expected));
+    }
 }

@@ -133,12 +133,7 @@ impl DocumentScriptHost {
             .as_ref()
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let bytes = event_report_bytes();
-        if engine
-            .retained_bytes_with(bytes)
-            .is_none_or(|total| total > self.native.storage_limit)
-        {
-            return Err(DocumentScriptNativeError::StorageLimit.into());
-        }
+        let cap = engine.preparation.reserve_external(bytes)?;
 
         let cancellation = self.native.cancellation.clone();
         let (progress, backing) = self.with_native(|dom, _, source| {
@@ -163,6 +158,7 @@ impl DocumentScriptHost {
                     invocation,
                     request: request.clone(),
                     _backing: backing,
+                    _cap: cap,
                 },
             )),
             progress => Ok(DocumentScriptEventProgress::Native(progress)),
@@ -177,6 +173,7 @@ pub struct SelectedDocumentScriptListener<'host> {
     invocation: DomEventHostInvocation,
     request: DomSourceEventRequest,
     _backing: DomSourceEventRetention,
+    _cap: preparation::CapReservation,
 }
 
 impl<'host> SelectedDocumentScriptListener<'host> {
@@ -204,6 +201,7 @@ impl<'host> SelectedDocumentScriptListener<'host> {
             invocation,
             request,
             _backing,
+            _cap,
         } = self;
         let outcome = match call_guest(host, handler, request, delegated, limits) {
             Ok(()) => DocumentScriptGuestResult::Returned,
@@ -215,6 +213,7 @@ impl<'host> SelectedDocumentScriptListener<'host> {
             invocation,
             outcome,
             _backing,
+            _cap,
         }
     }
 }
@@ -238,6 +237,7 @@ pub struct DocumentScriptEventReport<'host> {
     invocation: DomEventHostInvocation,
     outcome: DocumentScriptGuestResult,
     _backing: DomSourceEventRetention,
+    _cap: preparation::CapReservation,
 }
 
 impl DocumentScriptEventReport<'_> {
@@ -278,8 +278,8 @@ fn call_guest(
         Funded {
             plan: projection::SlotPlan,
             watch: DomNodeRetirementWatch,
-            backing: DomSourceEventPayloadRetention,
-            slots_backing: Option<DomSourceEventPayloadRetention>,
+            backing: (DomSourceEventPayloadRetention, preparation::CapReservation),
+            slots_backing: Option<(DomSourceEventPayloadRetention, preparation::CapReservation)>,
         },
     }
 
@@ -302,14 +302,14 @@ fn call_guest(
         engine.settle_engine_cleanup(&attachment.realm);
         return result;
     }
-    let pin_bytes = projection::ProjectedComments::pin_bytes(&engine.process);
+    let pin_bytes = Some(projection::ProjectedComments::pin_bytes());
     let plan = engine.comments.plan_slot();
     let slot_bytes = plan.and_then(projection::SlotPlan::growth_bytes);
     let miss_bytes = pin_bytes
         .zip(slot_bytes)
         .and_then(|(pin, slots)| pin.checked_add(slots))
-        .and_then(|bytes| bytes.checked_add(event_report_bytes()))
         .and_then(|additional| engine.retained_bytes_with(additional));
+    let preparation = &engine.preparation;
     let comments = &mut engine.comments;
     let receiving_realm = &engine.realm;
     let result = (|| {
@@ -357,16 +357,25 @@ fn call_guest(
                     let bytes = pin_bytes
                         .checked_add(slot_bytes)
                         .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let mut cap = preparation.reserve_external(bytes)?;
                     let mut retained = dom.raw().retain_source_event_payload(
                         &request,
                         bytes,
                         0,
                         &native.cancellation,
                     )?;
-                    let backing = retained.split_payload(pin_bytes, 0)?;
-                    let slots_backing = (slot_bytes != 0)
-                        .then(|| retained.split_payload(slot_bytes, 0))
-                        .transpose()?;
+                    let backing = (
+                        retained.split_payload(pin_bytes, 0)?,
+                        cap.split_off(pin_bytes)?,
+                    );
+                    let slots_backing = if slot_bytes == 0 {
+                        None
+                    } else {
+                        Some((
+                            retained.split_payload(slot_bytes, 0)?,
+                            cap.split_off(slot_bytes)?,
+                        ))
+                    };
                     let watch = comments.arm(
                         dom.raw_mut(),
                         &request,

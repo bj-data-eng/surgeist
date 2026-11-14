@@ -53,13 +53,7 @@ impl RegisteredGuestListener {
                 }
             }
             RegisteredListenerObject::Traced(traced) => {
-                if let Some(target) = scope.open_native_object(&traced.target)? {
-                    scope.set_native_object_reference::<GuestTargetProjection>(
-                        &target,
-                        traced.slot,
-                        None,
-                    )?;
-                }
+                scope.clear_native_object_reference(&traced.target, traced.slot)?;
             }
         }
         Ok(())

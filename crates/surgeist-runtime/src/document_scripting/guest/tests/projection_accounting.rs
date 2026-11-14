@@ -29,12 +29,12 @@ fn host(mode: ProfileMode, node_work: u64) -> DocumentScriptHost {
 
 fn projection(report: &DocumentGuestAccountingReport) -> &Observation {
     let [root, projection, capture] = report.scopes.as_slice() else {
-        panic!("expected adapter, projection and callback capture scopes");
+        panic!("expected adapter, projection and binding preparation scopes");
     };
     assert_eq!(root.name, "runtime-guest");
     assert_eq!(projection.name, "node-projection");
     assert_eq!(projection.parent, Some(root.scope));
-    assert_eq!(capture.name, "callback-capture");
+    assert_eq!(capture.name, "binding-preparation");
     assert_eq!(capture.parent, Some(root.scope));
     projection
 }
@@ -58,9 +58,10 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
     let mut control = host(ProfileMode::Off, NATIVE_WATCH_WORK);
     let events = control.guest_events().unwrap();
     let before = (events.budget.work().unwrap(), events.budget.used());
-    open(&mut control).unwrap();
+    let (result, peak) = events.budget.measure_peak(|| open(&mut control));
+    result.unwrap();
     let work = events.budget.work().unwrap() - before.0;
-    let bytes = events.budget.peak_used() - before.1;
+    let bytes = peak - before.1;
     let retained = events.budget.used() - before.1;
     assert!(
         control
@@ -122,11 +123,18 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
             attached_bytes + retained as u64
         );
         let capture = &report.scopes[2];
-        assert_eq!(capture.usage.live(DocumentGuestResource::BackingBytes), 0);
+        assert_eq!(
+            capture.usage.live(DocumentGuestResource::BackingBytes),
+            initial.scopes[2]
+                .usage
+                .live(DocumentGuestResource::BackingBytes)
+        );
+        // Compile/evaluate result slots; Window getter frame, receiver, global
+        // and reopened Document; Element getter frame, receiver and new root.
         assert_eq!(
             capture.usage.work(DocumentGuestWork::Adapter)
                 - initial.scopes[2].usage.work(DocumentGuestWork::Adapter),
-            2
+            2 + 4 + 3
         );
         assert_eq!(report.events.len(), if detailed { 8 } else { 0 });
         assert_eq!(report.dropped_events > 0, detailed);
@@ -253,10 +261,33 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
                 .live(DocumentGuestResource::BackingBytes)
         );
         assert!(projection(&after).usage.work(DocumentGuestWork::Adapter) > 0);
+        assert!(projection(&after).first_refusal.is_none());
         assert_eq!(
-            projection(&after).first_refusal.is_some(),
-            native == NATIVE_WATCH_WORK
+            after.scopes[2].first_refusal.is_some(),
+            native == NATIVE_WATCH_WORK,
+            "native={native} work={work_remaining} storage_short={storage_short}; preparation={:?}",
+            after.scopes[2].first_refusal,
         );
+        assert!(after.scopes[0].first_refusal.is_none());
+        if let Some(refusal) = after.scopes[2].first_refusal {
+            assert_eq!(refusal.scope, after.scopes[0].scope);
+            let expected = if storage_short {
+                let bytes = host
+                    .engine
+                    .as_ref()
+                    .unwrap()
+                    .process
+                    .managed_object_storage_bytes()
+                    + size_of::<crate::document_scripting::preparation::Backing>();
+                surgeist_ledger::Change::Acquire(
+                    DocumentGuestResource::BackingBytes,
+                    u64::try_from(bytes).unwrap(),
+                )
+            } else {
+                surgeist_ledger::Change::Work(DocumentGuestWork::Adapter, 1)
+            };
+            assert_eq!(refusal.change, expected);
+        }
         drop((guard, failure, host, events));
         let final_report = account.snapshot().unwrap().unwrap();
         assert_eq!(

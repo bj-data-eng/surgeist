@@ -24,7 +24,7 @@ pub(super) fn install<'scope>(
             name: &ascii(b"DocumentType"),
             length: 0,
         },
-        &illegal_constructor(),
+        &illegal_constructor(funding.capture)?,
     )?;
     for (field, key, name) in [
         (Field::Name, &ascii(b"name")[..], &ascii(b"get name")[..]),

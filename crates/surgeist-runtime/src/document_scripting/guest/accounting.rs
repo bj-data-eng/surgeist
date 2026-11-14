@@ -1,6 +1,7 @@
 //! Adapter admission and observation for the original attached guest owner.
 
 use super::*;
+use crate::document_scripting::preparation::CapReservation;
 use surgeist_ledger::{
     Change, Limits, Operation, ProfileMode, Scope as LedgerScope, SharedOperation, Tariffs,
 };
@@ -22,7 +23,8 @@ surgeist_ledger::dimensions! {
 }
 
 type Ledger = SharedOperation<DocumentGuestWork, DocumentGuestResource>;
-pub(super) type AccountingError = surgeist_ledger::Error<DocumentGuestWork, DocumentGuestResource>;
+pub(in crate::document_scripting) type AccountingError =
+    surgeist_ledger::Error<DocumentGuestWork, DocumentGuestResource>;
 type Usage = surgeist_ledger::Usage<DocumentGuestWork, DocumentGuestResource>;
 
 /// An observation of one attachment's Runtime guest admission.
@@ -45,35 +47,43 @@ impl DocumentGuestAccounting {
     }
 }
 
-pub(super) struct Accounting {
+pub(in crate::document_scripting) struct Accounting {
     ledger: Ledger,
     root: LedgerScope,
     projection: LedgerScope,
-    capture: LedgerScope,
+    preparation_scope: LedgerScope,
     profiling: bool,
+    reserved_storage: usize,
     cleanup_error: Cell<Option<AccountingError>>,
+    #[cfg(test)]
+    measured_peak: Cell<Option<usize>>,
+    // The original native cap covers every surviving guest body and report.
+    preparation_allowance: OnceCell<CapReservation>,
     _backing: DomHostedRuntimeRetention,
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum AccountScope {
+pub(in crate::document_scripting) enum AccountScope {
     Adapter,
     Projection,
-    Capture,
+    Preparation,
 }
 
-pub(super) struct GuestBudget(Rc<Accounting>);
+#[derive(Clone)]
+pub(in crate::document_scripting) struct GuestBudget(Rc<Accounting>);
 
 impl GuestBudget {
     const SCOPES: usize = 3;
 
-    pub(super) fn setup_bytes(mode: ProfileMode) -> Result<usize, DocumentScriptNativeError> {
+    pub(in crate::document_scripting) fn setup_bytes(
+        mode: ProfileMode,
+    ) -> Result<usize, DocumentScriptNativeError> {
         Ledger::profiled_backing_bytes(Self::SCOPES, mode)
             .and_then(|bytes| bytes.checked_add(size_of::<Accounting>()))
             .ok_or(DocumentScriptNativeError::StorageLimit)
     }
 
-    pub(super) fn new(
+    pub(in crate::document_scripting) fn new(
         limits: DocumentGuestEventLimits,
         mode: ProfileMode,
         backing: DomHostedRuntimeRetention,
@@ -93,9 +103,9 @@ impl GuestBudget {
             Limits::unlimited(),
             Tariffs::identity(),
         )?;
-        let capture = operation.child(
+        let preparation_scope = operation.child(
             root,
-            "callback-capture",
+            "binding-preparation",
             Limits::unlimited(),
             Tariffs::identity(),
         )?;
@@ -103,18 +113,41 @@ impl GuestBudget {
             ledger: operation.share(),
             root,
             projection,
-            capture,
+            preparation_scope,
             profiling: mode != ProfileMode::Off,
+            reserved_storage: limits.storage_bytes,
             cleanup_error: Cell::new(None),
+            #[cfg(test)]
+            measured_peak: Cell::new(None),
+            preparation_allowance: OnceCell::new(),
             _backing: backing,
         })))
     }
 
-    pub(super) fn observation(&self) -> DocumentGuestAccounting {
+    pub(in crate::document_scripting) fn reserved_storage_bytes(
+        &self,
+    ) -> Result<usize, DocumentGuestEventError> {
+        self.0
+            .reserved_storage
+            .checked_add(self.0._backing.retained_bytes())
+            .ok_or_else(|| DocumentScriptNativeError::StorageLimit.into())
+    }
+
+    pub(in crate::document_scripting) fn observation(&self) -> DocumentGuestAccounting {
         DocumentGuestAccounting(self.0.clone())
     }
 
-    pub(super) fn phase<T>(
+    pub(in crate::document_scripting) fn attach_preparation_allowance(
+        &self,
+        allowance: CapReservation,
+    ) -> Result<(), DocumentGuestEventError> {
+        self.0
+            .preparation_allowance
+            .set(allowance)
+            .map_err(|_| DocumentGuestEventError::RegistryState)
+    }
+
+    pub(in crate::document_scripting) fn phase<T>(
         &self,
         run: impl FnOnce() -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
@@ -131,7 +164,7 @@ impl GuestBudget {
         }
     }
 
-    pub(super) fn charge_work(
+    pub(in crate::document_scripting) fn charge_work(
         &self,
         scope: AccountScope,
         units: u64,
@@ -140,7 +173,10 @@ impl GuestBudget {
             .apply(scope, Change::Work(DocumentGuestWork::Adapter, units))
     }
 
-    pub(super) fn check_work(&self, units: u64) -> Result<(), DocumentGuestEventError> {
+    pub(in crate::document_scripting) fn check_work(
+        &self,
+        units: u64,
+    ) -> Result<(), DocumentGuestEventError> {
         self.0.check(
             AccountScope::Adapter,
             Change::Work(DocumentGuestWork::Adapter, units),
@@ -148,11 +184,11 @@ impl GuestBudget {
     }
 
     #[cfg(test)]
-    pub(super) fn work(&self) -> Result<u64, DocumentGuestEventError> {
+    pub(in crate::document_scripting) fn work(&self) -> Result<u64, DocumentGuestEventError> {
         Ok(self.0.usage()?.work(DocumentGuestWork::Adapter))
     }
 
-    pub(super) fn reserve(
+    pub(in crate::document_scripting) fn reserve(
         &self,
         scope: AccountScope,
         owner: &NativeOwner,
@@ -170,7 +206,7 @@ impl GuestBudget {
         })
     }
 
-    pub(super) fn reserve_with(
+    pub(in crate::document_scripting) fn reserve_with(
         &self,
         scope: AccountScope,
         bytes: usize,
@@ -189,7 +225,7 @@ impl GuestBudget {
         })
     }
 
-    pub(super) fn adopt_fixed(
+    pub(in crate::document_scripting) fn adopt_fixed(
         &self,
         canonical: DomHostedRuntimeRetention,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
@@ -208,7 +244,7 @@ impl GuestBudget {
     }
 
     #[cfg(test)]
-    pub(super) fn used(&self) -> usize {
+    pub(in crate::document_scripting) fn used(&self) -> usize {
         usize::try_from(
             self.0
                 .usage()
@@ -219,7 +255,7 @@ impl GuestBudget {
     }
 
     #[cfg(test)]
-    pub(super) fn peak_used(&self) -> usize {
+    pub(in crate::document_scripting) fn peak_used(&self) -> usize {
         usize::try_from(
             self.0
                 .usage()
@@ -229,19 +265,51 @@ impl GuestBudget {
         .unwrap()
     }
 
+    /// Observe accepted live storage within this test operation, independently
+    /// of earlier setup peaks. Nested windows contribute to their outer peak.
     #[cfg(test)]
-    pub(super) fn capture_used(&self) -> usize {
+    pub(in crate::document_scripting) fn measure_peak<T>(
+        &self,
+        run: impl FnOnce() -> T,
+    ) -> (T, usize) {
+        struct Window<'a> {
+            account: &'a Accounting,
+            previous: Option<usize>,
+        }
+        impl Drop for Window<'_> {
+            fn drop(&mut self) {
+                let peak = self.account.measured_peak.get().unwrap();
+                self.account
+                    .measured_peak
+                    .set(self.previous.map(|previous| previous.max(peak)));
+            }
+        }
+        let previous = self.0.measured_peak.replace(Some(self.used()));
+        let window = Window {
+            account: &self.0,
+            previous,
+        };
+        let result = run();
+        let peak = self.0.measured_peak.get().unwrap();
+        drop(window);
+        (result, peak)
+    }
+
+    #[cfg(test)]
+    pub(in crate::document_scripting) fn capture_used(&self) -> usize {
         usize::try_from(
             self.0
                 .ledger
-                .usage(self.0.capture)
+                .usage(self.0.preparation_scope)
                 .unwrap()
                 .live(DocumentGuestResource::BackingBytes),
         )
         .unwrap()
     }
 
-    pub(super) fn work_remaining(&self) -> Result<u64, DocumentGuestEventError> {
+    pub(in crate::document_scripting) fn work_remaining(
+        &self,
+    ) -> Result<u64, DocumentGuestEventError> {
         let limit = self
             .0
             .ledger
@@ -251,7 +319,7 @@ impl GuestBudget {
     }
 
     #[cfg(test)]
-    pub(super) fn set_work_remaining(&self, remaining: u64) {
+    pub(in crate::document_scripting) fn set_work_remaining(&self, remaining: u64) {
         let limits = self.0.ledger.limits(self.0.root).unwrap();
         let work = self.work().unwrap().checked_add(remaining).unwrap();
         let limits = Limits::new(
@@ -267,7 +335,7 @@ impl Accounting {
         match scope {
             AccountScope::Adapter => self.root,
             AccountScope::Projection => self.projection,
-            AccountScope::Capture => self.capture,
+            AccountScope::Preparation => self.preparation_scope,
         }
     }
 
@@ -317,17 +385,41 @@ impl Accounting {
                     Change::Release(..) => error.into(),
                 },
                 error => error.into(),
-            })
+            })?;
+        #[cfg(test)]
+        if matches!(change, Change::Acquire(..))
+            && let Some(peak) = self.measured_peak.get()
+        {
+            let live = usize::try_from(self.usage()?.live(DocumentGuestResource::BackingBytes))
+                .map_err(|_| DocumentScriptNativeError::StorageLimit)?;
+            self.measured_peak.set(Some(peak.max(live)));
+        }
+        Ok(())
     }
 }
 
-/// Capture release must finish before the binding boundary chooses its result.
-struct CaptureBacking {
+/// Preparation release must finish before the binding boundary chooses its result.
+pub(in crate::document_scripting) struct CaptureBacking {
     backing: GuestBacking,
-    refusal: Rc<reports::DispatchFailure>,
+    refusal: Weak<reports::DispatchFailure>,
 }
 
-fn capture_refusal(slot: &reports::DispatchFailure, error: DocumentGuestEventError) -> Error {
+impl CaptureBacking {
+    pub(in crate::document_scripting) fn new(
+        backing: GuestBacking,
+        refusal: Rc<reports::DispatchFailure>,
+    ) -> Self {
+        Self {
+            backing,
+            refusal: Rc::downgrade(&refusal),
+        }
+    }
+}
+
+pub(in crate::document_scripting) fn capture_refusal(
+    slot: &reports::DispatchFailure,
+    error: DocumentGuestEventError,
+) -> Error {
     match slot.record(error) {
         Ok(failure) | Err(RecordFailure::Occupied { first: failure, .. }) => {
             Error::HostFailure(failure)
@@ -336,45 +428,24 @@ fn capture_refusal(slot: &reports::DispatchFailure, error: DocumentGuestEventErr
     }
 }
 
-impl surgeist_bindings_js::capture::Retention for CaptureBacking {
-    fn release(self: Box<Self>) -> Result<(), Error> {
-        let Self { backing, refusal } = *self;
+impl CaptureBacking {
+    pub(in crate::document_scripting) fn release(self) -> Result<(), Error> {
+        let Self { backing, refusal } = self;
         let account = backing.account.clone();
         drop(backing);
         match account.cleanup_error.get() {
-            Some(error) => Err(capture_refusal(&refusal, error.into())),
+            Some(error) => Err(match refusal.upgrade() {
+                Some(refusal) => capture_refusal(&refusal, error.into()),
+                None => Error::ExpiredIdentity,
+            }),
             None => Ok(()),
         }
     }
 }
 
-impl GuestBudget {
-    pub(super) fn install_capture(
-        &self,
-        process: &mut Process,
-        owner: &Rc<NativeOwner>,
-        refusal: Rc<reports::DispatchFailure>,
-    ) -> Result<(), DocumentGuestEventError> {
-        let weak = Rc::downgrade(owner);
-        let budget = Self(self.0.clone());
-        let policy = surgeist_bindings_js::capture::Admission::new(
-            move |request: surgeist_bindings_js::capture::Request| {
-                let native = weak.upgrade().ok_or(Error::ExpiredIdentity)?;
-                let backing = budget
-                    .reserve(AccountScope::Capture, &native, request.bytes())
-                    .map_err(|error| capture_refusal(&refusal, error))?;
-                Ok(CaptureBacking {
-                    backing,
-                    refusal: refusal.clone(),
-                })
-            },
-        );
-        let bytes = policy
-            .storage_bytes::<GuestBacking>()
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let backing = self.reserve(AccountScope::Adapter, owner, bytes)?;
-        policy.install(process, backing)?;
-        Ok(())
+impl surgeist_bindings_js::preparation::Retention for CaptureBacking {
+    fn release(self: Box<Self>) -> Result<(), Error> {
+        (*self).release()
     }
 }
 
@@ -385,11 +456,14 @@ pub(crate) struct GuestBacking {
 }
 
 impl GuestBacking {
-    pub(super) fn retained_bytes(&self) -> usize {
+    pub(in crate::document_scripting) fn retained_bytes(&self) -> usize {
         self.canonical.retained_bytes()
     }
 
-    pub(super) fn split_off(&mut self, bytes: usize) -> Result<Self, DocumentScriptNativeError> {
+    pub(in crate::document_scripting) fn split_off(
+        &mut self,
+        bytes: usize,
+    ) -> Result<Self, DocumentScriptNativeError> {
         let canonical = self
             .canonical
             .split_off(bytes)

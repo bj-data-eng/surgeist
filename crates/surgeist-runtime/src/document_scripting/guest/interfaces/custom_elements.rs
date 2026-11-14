@@ -142,7 +142,11 @@ impl PublicEventBindings {
                 if row.id.registry() != registry.id || row.id.ordinal() != ordinal {
                     return Err(DocumentScriptNativeError::ProjectionCustody.into());
                 }
-                let constructor = scope.open_callback_object(&row.constructor)?;
+                let constructor = scope.open_callback_object_funded(
+                    &row.constructor,
+                    read.events.preparation()?,
+                    |request| read.prepare_root(request),
+                )?;
                 if scope.strict_equals(&constructor, new_target)? {
                     return Ok(Some((row.id, row.interface)));
                 }
@@ -456,7 +460,7 @@ pub(super) fn install<'scope>(
 ) -> Result<Rc<Registry>, DocumentGuestEventError> {
     let prototype = scope.object(ObjectPrototype::Default)?;
     let fallback = capture(size_of::<Capture>())?;
-    let construct = capture(size_of::<(Capture, DomHostedGlobalId)>())?;
+    let construct = constructor_capture(capture, size_of::<(Capture, DomHostedGlobalId)>())?;
     let constructor = scope.constructor(
         &ConstructorCallback::bounded(
             0,
@@ -677,6 +681,7 @@ impl Capture {
         }
         let (owner, events) = self.active(scope)?;
         let result = (|| {
+            let preparation = events.preparation()?;
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             self.callbacks.with_read(&owner, &events, |read, _| {
                 public.with_registry(
@@ -689,19 +694,31 @@ impl Capture {
                             .map_err(|_| DocumentScriptNativeError::Busy)?;
                         for definition in &definitions.rows {
                             read.step()?;
-                            let stored = scope.open_callback_object(&definition.constructor)?;
+                            let stored = scope.open_callback_object_funded(
+                                &definition.constructor,
+                                preparation,
+                                |request| read.prepare_root(request),
+                            )?;
                             if scope.strict_equals(&stored, constructor)? {
                                 return Ok(Completion::Return(
                                     self.callbacks
                                         .conversion
                                         .run(scope, |cx| {
-                                            cx.copy_to_js(definition.name.code_units())
+                                            cx.copy_to_js_funded(
+                                                definition.name.code_units(),
+                                                preparation,
+                                                |request| read.prepare_root(request),
+                                            )
                                         })
                                         .map_err(Error::from)?,
                                 ));
                             }
                         }
-                        Ok(Completion::Return(scope.primitive(Primitive::Null)?))
+                        Ok(Completion::Return(scope.primitive_funded(
+                            Primitive::Null,
+                            preparation,
+                            |request| read.prepare_root(request),
+                        )?))
                     },
                 )
             })
@@ -831,7 +848,7 @@ impl Capture {
             let (Some(identity), Some(name)) = (registry, arguments.get(0)) else {
                 let reason =
                     scope.type_error(&ascii(b"Invalid custom element registry arguments"))?;
-                return settled_definition_promise(scope, &owner, &events, &reason, true);
+                return settled_definition_promise(scope, &reason, true);
             };
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let registry = self.callbacks.with_read(&owner, &events, |read, _| {
@@ -849,7 +866,7 @@ impl Capture {
                 Ok(name) => name,
                 Err(Error::Exception(exception)) => {
                     let reason = scope.import(exception.value())?;
-                    return settled_definition_promise(scope, &owner, &events, &reason, true);
+                    return settled_definition_promise(scope, &reason, true);
                 }
                 Err(error) => return Err(error.into()),
             };
@@ -857,7 +874,7 @@ impl Capture {
                 document::copy_native_data(&owner, &events, name.get().as_code_units())?;
             if !valid_registry_name(&events, &name)? {
                 let reason = scope.dom_exception(DomExceptionName::SyntaxError, &[])?;
-                return settled_definition_promise(scope, &owner, &events, &reason, true);
+                return settled_definition_promise(scope, &reason, true);
             }
             let existing = self.callbacks.with_read(&owner, &events, |read, _| {
                 let constructor = registry.find_with(
@@ -868,6 +885,13 @@ impl Capture {
                             read.step()?;
                             read.step()
                         })
+                    },
+                    |scope, callback| {
+                        scope.open_callback_object_funded(
+                            callback,
+                            events.preparation()?,
+                            |request| read.prepare_root(request),
+                        )
                     },
                 )?;
                 if let Some(constructor) = constructor {
@@ -888,7 +912,14 @@ impl Capture {
                             read.step()
                         },
                     )? {
-                        return Ok(Some((scope.resolver_promise(&entry.resolver)?, false)));
+                        return Ok(Some((
+                            scope.resolver_promise_funded(
+                                &entry.resolver,
+                                events.preparation()?,
+                                |request| read.prepare_root(request),
+                            )?,
+                            false,
+                        )));
                     }
                     next = entry.next.as_deref();
                 }
@@ -896,7 +927,7 @@ impl Capture {
             })?;
             match existing {
                 Some((constructor, true)) => {
-                    return settled_definition_promise(scope, &owner, &events, &constructor, false);
+                    return settled_definition_promise(scope, &constructor, false);
                 }
                 Some((promise, false)) => return Ok(promise),
                 None => (),
@@ -906,7 +937,7 @@ impl Capture {
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             let record = events.reserve(&owner, size_of::<DefinitionWaiter>())?;
-            let resolver = new_definition_resolver(scope, &owner, &events)?;
+            let resolver = new_definition_resolver(scope)?;
             let promise = scope.resolver_promise(&resolver)?;
             let entry = Box::new(DefinitionWaiter {
                 name,
@@ -1432,6 +1463,7 @@ impl Capture {
         }: UpgradeDefinition<'_, 'scope>,
         accepted: &mut bool,
     ) -> Result<Option<Rc<ActiveReactionQueue>>, DocumentGuestEventError> {
+        let preparation = events.preparation()?;
         let initial = self.callbacks.with_read(owner, events, |read, _| {
             let node = match read.node(node) {
                 Ok(node) => node,
@@ -1464,33 +1496,49 @@ impl Capture {
                                 let local = self
                                     .callbacks
                                     .conversion
-                                    .run(scope, |cx| cx.copy_to_js(name.local_name().code_units()))
+                                    .run(scope, |cx| {
+                                        cx.copy_to_js_funded(
+                                            name.local_name().code_units(),
+                                            preparation,
+                                            |request| read.prepare_root(request),
+                                        )
+                                    })
                                     .map_err(Error::from)?;
                                 let value = self
                                     .callbacks
                                     .conversion
-                                    .run(scope, |cx| cx.copy_to_js(attribute.value().code_units()))
+                                    .run(scope, |cx| {
+                                        cx.copy_to_js_funded(
+                                            attribute.value().code_units(),
+                                            preparation,
+                                            |request| read.prepare_root(request),
+                                        )
+                                    })
                                     .map_err(Error::from)?;
                                 let namespace = match name.namespace_uri() {
                                     Some(uri) => self
                                         .callbacks
                                         .conversion
-                                        .run(scope, |cx| cx.copy_to_js(uri.code_units()))
+                                        .run(scope, |cx| {
+                                            cx.copy_to_js_funded(
+                                                uri.code_units(),
+                                                preparation,
+                                                |request| read.prepare_root(request),
+                                            )
+                                        })
                                         .map_err(Error::from)?,
-                                    None => scope.primitive(Primitive::Null)?,
+                                    None => scope.primitive_funded(
+                                        Primitive::Null,
+                                        preparation,
+                                        |request| read.prepare_root(request),
+                                    )?,
                                 };
-                                let old = scope.primitive(Primitive::Null)?;
-                                let root_bytes = events
-                                    .exception_root_bytes
-                                    .checked_add(size_of::<GuestBacking>())
-                                    .ok_or(DocumentScriptNativeError::StorageLimit)?;
+                                let old = scope.primitive_funded(
+                                    Primitive::Null,
+                                    preparation,
+                                    |request| read.prepare_root(request),
+                                )?;
                                 let arguments = [local, old, value, namespace];
-                                for argument in &arguments {
-                                    scope.retain_invocation_result_backing(
-                                        argument,
-                                        Box::new(read.reserve(root_bytes)?),
-                                    )?;
-                                }
                                 attributes.push(read, arguments)?;
                                 break;
                             }
@@ -1646,12 +1694,6 @@ impl Capture {
             return Ok(None);
         };
         let receiver = public.project_node(scope, owner, events, fact.element)?;
-        let bytes = events
-            .exception_root_bytes
-            .checked_add(size_of::<GuestBacking>())
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        scope
-            .retain_invocation_result_backing(&receiver, Box::new(events.reserve(owner, bytes)?))?;
         let mut convert = |argument: Option<&[u16]>| {
             let value = match argument {
                 Some(text) => self
@@ -1661,10 +1703,6 @@ impl Capture {
                     .map_err(Error::from)?,
                 None => scope.primitive(Primitive::Null)?,
             };
-            scope.retain_invocation_result_backing(
-                &value,
-                Box::new(events.reserve(owner, bytes)?),
-            )?;
             Ok::<_, DocumentGuestEventError>(value)
         };
         let arguments = match fact.kind {
@@ -1685,10 +1723,6 @@ impl Capture {
             } => {
                 let mut document = |id: DocumentId| {
                     let value = public.project_node(scope, owner, events, id.node())?;
-                    scope.retain_invocation_result_backing(
-                        &value,
-                        Box::new(events.reserve(owner, bytes)?),
-                    )?;
                     Ok::<_, DocumentGuestEventError>(value)
                 };
                 Some(ReactionArguments::Adoption([
@@ -1869,7 +1903,11 @@ impl Capture {
                 _ => return Err(DomError::WrongNodeKind.into()),
             };
             let DomRegistryBinding::Registry(id) = binding else {
-                return Ok(scope.primitive(Primitive::Null)?);
+                return Ok(scope.primitive_funded(
+                    Primitive::Null,
+                    events.preparation()?,
+                    |request| read.prepare_root(request),
+                )?);
             };
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             public.open_registry(scope, read, id)
@@ -1927,7 +1965,12 @@ impl Registry {
         events: &GuestEvents,
         matches: impl FnMut(&mut Scope<'scope>, &Definition) -> Result<bool, DocumentGuestEventError>,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        self.find_with(scope, || events.step(), matches)
+        self.find_with(
+            scope,
+            || events.step(),
+            matches,
+            |scope, callback| scope.open_callback_object(callback),
+        )
     }
 
     fn find_with<'scope>(
@@ -1938,6 +1981,10 @@ impl Registry {
             &mut Scope<'scope>,
             &Definition,
         ) -> Result<bool, DocumentGuestEventError>,
+        mut open: impl FnMut(
+            &mut Scope<'scope>,
+            &RetainedCallbackObject,
+        ) -> Result<Value<'scope>, Error>,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         let rows = self
             .definitions
@@ -1949,7 +1996,7 @@ impl Registry {
                 return Err(DocumentScriptNativeError::ProjectionCustody.into());
             }
             if matches(scope, row)? {
-                return Ok(Some(scope.open_callback_object(&row.constructor)?));
+                return Ok(Some(open(scope, &row.constructor)?));
             }
         }
         Ok(None)
@@ -2535,9 +2582,7 @@ impl ActiveReactionQueue {
             let arguments = arguments
                 .as_ref()
                 .map_or(&[][..], ReactionArguments::as_slice);
-            let mut report = events.reports.reserve_constructor(events, owner)?;
-            let _arguments =
-                events.reserve(owner, scope.argument_copy_storage_bytes(arguments.len())?)?;
+            let mut report = events.reports.reserve_constructor()?;
             let mut entered = LinkedList::new();
             let mut result = scope.call_with_entry(&callback, &receiver, arguments, || {
                 let mut queue = self
@@ -2573,7 +2618,7 @@ impl ActiveReactionQueue {
             match result {
                 Ok(_) => (),
                 Err(Error::Exception(exception)) => {
-                    report.prepare(scope, &exception)?;
+                    report.prepare()?;
                     report.publish_custom_element_callback(
                         DocumentGuestCustomElementCallbackException {
                             receiver: self.receiver,
@@ -2669,24 +2714,16 @@ fn matching_definition_waiter<'a>(
 
 fn new_definition_resolver(
     scope: &mut Scope<'_>,
-    owner: &NativeOwner,
-    events: &GuestEvents,
 ) -> Result<PromiseResolver, DocumentGuestEventError> {
-    let bytes = events
-        .exception_root_bytes
-        .checked_add(size_of::<GuestBacking>())
-        .ok_or(DocumentScriptNativeError::StorageLimit)?;
-    Ok(scope.promise_resolver(Box::new(events.reserve(owner, bytes)?))?)
+    Ok(scope.promise_resolver()?)
 }
 
 fn settled_definition_promise<'scope>(
     scope: &mut Scope<'scope>,
-    owner: &NativeOwner,
-    events: &GuestEvents,
     value: &Value<'scope>,
     reject: bool,
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
-    let resolver = new_definition_resolver(scope, owner, events)?;
+    let resolver = new_definition_resolver(scope)?;
     let promise = scope.resolver_promise(&resolver)?;
     if reject {
         scope.reject_promise(resolver, value)?;
@@ -2771,7 +2808,13 @@ impl PublicEventBindings {
         self.with_registry(
             read,
             |registry| registry.id == id,
-            |registry| Ok(scope.open_callback_object(&registry.object)?),
+            |registry| {
+                Ok(scope.open_callback_object_funded(
+                    &registry.object,
+                    read.events.preparation()?,
+                    |request| read.prepare_root(request),
+                )?)
+            },
         )
     }
 

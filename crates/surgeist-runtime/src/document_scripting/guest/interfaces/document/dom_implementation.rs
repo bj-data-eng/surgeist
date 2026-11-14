@@ -29,7 +29,7 @@ pub(super) fn install<'scope>(
     let global = scope.global()?;
     let prototype = scope.object(ObjectPrototype::Default)?;
     let constructor = scope.constructor(
-        &illegal_constructor(),
+        &illegal_constructor(funding.capture)?,
         FunctionMetadata {
             name: INTERFACE,
             length: 0,

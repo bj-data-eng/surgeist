@@ -4,8 +4,16 @@ mod callback_object;
 mod capture;
 #[path = "execution/dom_exception.rs"]
 mod dom_exception;
+#[path = "execution/holder_custody.rs"]
+mod holder_custody;
 #[path = "execution/host.rs"]
 mod host;
+#[path = "execution/panic_preparation.rs"]
+mod panic_preparation;
+#[path = "execution/root_custody.rs"]
+mod root_custody;
+#[path = "execution/setup_preparation.rs"]
+mod setup_preparation;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -23,7 +31,11 @@ fn units(source: &str) -> Vec<u16> {
     source.encode_utf16().collect()
 }
 
-fn evaluate(execution: &mut Execution<'_>, realm: &Realm, source: &str) -> Result<Vec<u16>, Error> {
+fn evaluate(
+    execution: &mut Execution<'_>,
+    realm: &Realm,
+    source: &str,
+) -> Result<surgeist_bindings_js::preparation::Admitted<Vec<u16>>, Error> {
     execution.in_realm(realm, |scope| {
         let value = scope.evaluate(&units(source))?;
         scope.to_utf16(&value)
@@ -376,17 +388,9 @@ fn web_idl_strings_preserve_units_and_validate_bytes(process: &mut Process) -> R
             dom.as_code_units(),
             [0, 0xd800, 0x61, 0xdc00, 0xd83d, 0xde00, 0xdbff]
         );
-        assert_eq!(
-            dom.into_code_units(),
-            [0, 0xd800, 0x61, 0xdc00, 0xd83d, 0xde00, 0xdbff]
-        );
         let usv = scope.usv_string(&value)?;
         assert_eq!(
             usv.as_code_units(),
-            [0, 0xfffd, 0x61, 0xfffd, 0xd83d, 0xde00, 0xfffd]
-        );
-        assert_eq!(
-            usv.into_code_units(),
             [0, 0xfffd, 0x61, 0xfffd, 0xd83d, 0xde00, 0xfffd]
         );
         assert!(matches!(
@@ -397,7 +401,6 @@ fn web_idl_strings_preserve_units_and_validate_bytes(process: &mut Process) -> R
         let bytes = scope.string(&[0, 0x7f, 0x80, 0xff])?;
         let bytes = scope.byte_string(&bytes)?;
         assert_eq!(bytes.as_bytes(), [0, 0x7f, 0x80, 0xff]);
-        assert_eq!(bytes.into_bytes(), [0, 0x7f, 0x80, 0xff]);
         let too_large = scope.string(&[0x100])?;
         assert!(matches!(
             scope.byte_string(&too_large),
@@ -2508,6 +2511,10 @@ fn main() -> Result<(), Error> {
     if std::env::args().nth(1).as_deref() == Some("--constructor-length") {
         return declared_constructor_length_is_exact_u32(&mut process);
     }
+    if std::env::args().nth(1).as_deref() == Some("--root-custody") {
+        drop(process);
+        return root_custody::root_custody_contracts();
+    }
     assert!(matches!(
         Process::bootstrap(EngineKind::V8),
         Err(Error::OwnerAlreadyActive)
@@ -2606,11 +2613,21 @@ fn main() -> Result<(), Error> {
     host::rejected_failure_drop_stays_in_callback_guard()?;
     callback_object::terminal_cleanup()?;
     callback_object::native_projection_refuses_foreign_prototype_before_admission()?;
+    capture::general_roots_keep_admission_until_reaping()?;
+    capture::private_native_slots_admit_only_returned_value_records()?;
+    capture::native_slot_cleanup_preserves_terminal_refusal()?;
+    capture::evaluation_prepares_its_outcome_before_guest_entry()?;
+    capture::utf16_output_keeps_its_buffer_admitted_after_process_teardown()?;
+    capture::callable_registration_follows_guest_reachability_and_teardown()?;
     capture::boundaries_and_retained_roots()?;
     capture::constructors_and_nested_callbacks_share_admission()?;
     capture::failed_release_keeps_the_original_guest_exception()?;
     capture::setup_custody_follows_surviving_observations()?;
     capture::admission_refusals_and_prior_host_errors_are_terminal()?;
+    setup_preparation::setup_preparation_contracts()?;
+    panic_preparation::panic_preparation_contracts()?;
+    root_custody::root_custody_contracts()?;
+    holder_custody::holder_custody_contracts()?;
     println!(
         "execution ownership, realms, roots, UTF-16, exceptions, properties, calls, jobs and native callbacks passed"
     );

@@ -10,7 +10,7 @@ use surgeist_dom::{
 #[derive(Default)]
 pub(super) struct ProjectedComments {
     slots: Vec<Slot>,
-    slots_backing: Option<DomSourceEventPayloadRetention>,
+    slots_backing: Option<(DomSourceEventPayloadRetention, preparation::CapReservation)>,
     free: Option<usize>,
     live: usize,
     inbox: Option<DomNodeRetirementInbox>,
@@ -25,7 +25,7 @@ struct Pin {
     node: NodeId,
     object: ManagedObject,
     watch: DomNodeRetirementWatch,
-    backing: DomSourceEventPayloadRetention,
+    backing: (DomSourceEventPayloadRetention, preparation::CapReservation),
 }
 
 impl Pin {
@@ -63,7 +63,7 @@ impl VacantSlot<'_> {
         node: NodeId,
         object: ManagedObject,
         watch: DomNodeRetirementWatch,
-        backing: DomSourceEventPayloadRetention,
+        backing: (DomSourceEventPayloadRetention, preparation::CapReservation),
     ) {
         *self.slot = Slot::Pin(Box::new(Pin {
             node,
@@ -77,14 +77,11 @@ impl VacantSlot<'_> {
 }
 
 impl ProjectedComments {
-    pub(super) fn pin_bytes(process: &Process) -> Option<usize> {
-        size_of::<Pin>().checked_add(process.managed_object_storage_bytes())
+    pub(super) const fn pin_bytes() -> usize {
+        size_of::<Pin>()
     }
 
-    pub(super) fn slot_bytes(&self) -> Option<usize> {
-        self.slots.capacity().checked_mul(size_of::<Slot>())
-    }
-
+    #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.live
     }
@@ -144,7 +141,7 @@ impl ProjectedComments {
     pub(super) fn grow(
         &mut self,
         plan: SlotPlan,
-        backing: Option<DomSourceEventPayloadRetention>,
+        backing: Option<(DomSourceEventPayloadRetention, preparation::CapReservation)>,
     ) -> Result<(), DomError> {
         let Some(backing) = backing else {
             return Ok(());

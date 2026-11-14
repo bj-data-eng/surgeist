@@ -1,5 +1,7 @@
 use super::*;
-use surgeist_bindings_js::capture::{Admission, Request, Retention};
+use surgeist_bindings_js::preparation::{
+    Admission, BufferKind, Request, Retention, Work as PreparationWork,
+};
 use surgeist_ledger::{Change, Limits, Operation, ProfileMode, SharedOperation};
 
 surgeist_ledger::dimensions! {
@@ -57,17 +59,44 @@ impl Account {
         Ok(Backing {
             account: self.clone(),
             bytes,
+            tracked: true,
         })
+    }
+
+    fn admit_incoming(self: &Rc<Self>, request: Request) -> Result<Backing, Error> {
+        match request {
+            Request::IncomingRoot { .. } | Request::IncomingBuffer { .. } => self.admit(request),
+            _ => Ok(self.untracked()),
+        }
+    }
+
+    fn admit_general_root(self: &Rc<Self>, request: Request) -> Result<Backing, Error> {
+        match request {
+            Request::RootRecord { .. } => self.admit(request),
+            _ => Ok(self.untracked()),
+        }
+    }
+
+    fn untracked(self: &Rc<Self>) -> Backing {
+        Backing {
+            account: self.clone(),
+            bytes: 0,
+            tracked: false,
+        }
     }
 }
 
 struct Backing {
     account: Rc<Account>,
     bytes: u64,
+    tracked: bool,
 }
 
-impl Retention for Backing {
-    fn release(self: Box<Self>) -> Result<(), Error> {
+impl Backing {
+    fn finish(self) -> Result<(), Error> {
+        if !self.tracked {
+            return Ok(());
+        }
         self.account
             .ledger
             .apply(
@@ -83,20 +112,490 @@ impl Retention for Backing {
     }
 }
 
+impl Retention for Backing {
+    fn release(self: Box<Self>) -> Result<(), Error> {
+        (*self).finish()
+    }
+}
+
 fn install(
     process: &mut Process,
     account: Rc<Account>,
-) -> Result<surgeist_bindings_js::capture::Observation, Error> {
-    assert!(!process.has_callback_capture_admission());
-    let policy = Admission::new(move |request| account.admit(request));
+) -> Result<surgeist_bindings_js::preparation::Observation, Error> {
+    assert!(!process.has_preparation_admission());
+    // These capture regressions select only incoming physical records. General
+    // preparation is exercised independently by the general-root cases below.
+    let policy = Admission::new(move |request| account.admit_incoming(request), |_| Ok(()));
     assert!(policy.storage_bytes::<()>().is_some());
-    let observation = policy.install(process, ())?;
-    assert!(process.has_callback_capture_admission());
+    let controller = policy.install(process, ())?;
+    assert!(process.has_preparation_admission());
     assert!(matches!(
-        Admission::new(|_| -> Result<Backing, Error> { unreachable!() }).install(process, ()),
-        Err(Error::CallbackCaptureAlreadyAdmitted)
+        Admission::new(|_| -> Result<Backing, Error> { unreachable!() }, |_| Ok(()))
+            .install(process, ()),
+        Err(Error::PreparationAlreadyAdmitted)
     ));
-    Ok(observation)
+    Ok(controller.observation())
+}
+
+fn install_general_roots(process: &mut Process, account: Rc<Account>) -> Result<(), Error> {
+    Admission::new(
+        move |request| account.admit_general_root(request),
+        |_| Ok(()),
+    )
+    .install(process, ())?;
+    Ok(())
+}
+
+/// General value materialization owns a record, while importing or retaining
+/// an existing identity shares that record without another admission.
+pub(super) fn private_native_slots_admit_only_returned_value_records() -> Result<(), Error> {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = process.execution().create_realm()?;
+    let (native, reference, token) = process.execution().in_realm(&realm, |scope| {
+        let reference = scope.object(ObjectPrototype::Null)?;
+        let native = scope.project_native_object_with_reference(
+            ObjectPrototype::Null,
+            7_u32,
+            3,
+            &reference,
+            |_| Ok::<_, Error>(()),
+        )?;
+        let token = scope.native_object_token::<u32>(&native)?.unwrap();
+        Ok((scope.retain(&native), scope.retain(&reference), token))
+    })?;
+    let bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
+    let account = Account::new(2, u64::try_from(2 * bytes).unwrap(), ProfileMode::Off);
+    let admitted = account.clone();
+    Admission::new(
+        move |request| admitted.admit_general_root(request),
+        |_| Ok(()),
+    )
+    .install(&mut process, ())?;
+    process.execution().in_realm(&realm, |scope| {
+        let original = scope.import(&native)?;
+        let reference = scope.import(&reference)?;
+        let opened = scope.open_native_object(&token)?.unwrap();
+        assert!(scope.strict_equals(&original, &opened)?);
+        let value = scope.native_object_reference::<u32>(&opened, 3)?.unwrap();
+        assert!(scope.strict_equals(&reference, &value)?);
+        assert_eq!(account.work(), 2);
+        assert_eq!(account.live(), u64::try_from(2 * bytes).unwrap());
+        scope.clear_native_object_reference(&token, 3)?;
+        scope.clear_native_object_reference(&token, 3)?;
+        assert!(scope.native_object_reference::<u32>(&opened, 3)?.is_none());
+        scope.set_native_object_reference::<u32>(&opened, 4, Some(&reference))?;
+        assert_eq!(scope.kind(&opened)?, ValueKind::Object);
+        assert_eq!(account.work(), 2);
+        Ok(())
+    })?;
+    assert_eq!(account.live(), 0);
+    Ok(())
+}
+
+pub(super) fn native_slot_cleanup_preserves_terminal_refusal() -> Result<(), Error> {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = process.execution().create_realm()?;
+    let (native, token) = process.execution().in_realm(&realm, |scope| {
+        let reference = scope.object(ObjectPrototype::Null)?;
+        let native = scope.project_native_object_with_reference(
+            ObjectPrototype::Null,
+            7_u32,
+            3,
+            &reference,
+            |_| Ok::<_, Error>(()),
+        )?;
+        let token = scope.native_object_token::<u32>(&native)?.unwrap();
+        Ok((scope.retain(&native), token))
+    })?;
+    let account = Account::new(0, 0, ProfileMode::Off);
+    install_general_roots(&mut process, account.clone())?;
+    let result = process.execution().in_realm(&realm, |scope| {
+        assert!(matches!(
+            scope.primitive(Primitive::Undefined),
+            Err(Error::TooManyArguments)
+        ));
+        // Checking the selected failure also requests SDK termination. Cleanup
+        // must still remove the private edge without reviving guest execution.
+        assert!(matches!(scope.check_active(), Err(Error::TooManyArguments)));
+        scope.clear_native_object_reference(&token, 3)?;
+        scope.clear_native_object_reference(&token, 3)?;
+        assert!(matches!(scope.check_active(), Err(Error::TooManyArguments)));
+        assert_eq!(account.work(), 0);
+        assert!(account.requests.borrow().is_empty());
+        Ok(())
+    });
+    assert!(matches!(result, Err(Error::TooManyArguments)));
+    drop((native, process));
+    assert_eq!(account.live(), 0);
+
+    // A later heap may reuse the native index. The original token still has
+    // no authority to clear that heap's reference.
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = process.execution().create_realm()?;
+    let retired = process.execution().in_realm(&realm, |scope| {
+        let reference = scope.object(ObjectPrototype::Null)?;
+        let native = scope.project_native_object_with_reference(
+            ObjectPrototype::Null,
+            7_u32,
+            3,
+            &reference,
+            |_| Ok::<_, Error>(()),
+        )?;
+        assert!(matches!(
+            scope.clear_native_object_reference(&token, 3),
+            Err(Error::ForeignOwner)
+        ));
+        let retained = scope.native_object_reference::<u32>(&native, 3)?.unwrap();
+        assert!(scope.strict_equals(&retained, &reference)?);
+        scope
+            .native_object_token::<u32>(&native)?
+            .ok_or(Error::ExpectedNativeObject)
+    })?;
+    process.execution().memory_pressure();
+    process.execution().in_realm(&realm, |scope| {
+        assert!(scope.open_native_object(&retired)?.is_none());
+        scope.clear_native_object_reference(&retired, 3)?;
+        scope.clear_native_object_reference(&retired, 3)?;
+        Ok(())
+    })?;
+    Ok(())
+}
+
+pub(super) fn general_roots_keep_admission_until_reaping() -> Result<(), Error> {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = process.execution().create_realm()?;
+    let bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
+    let account = Account::new(1, u64::try_from(bytes).unwrap(), ProfileMode::Off);
+    install_general_roots(&mut process, account.clone())?;
+    let root = process.execution().in_realm(&realm, |scope| {
+        let value = scope.primitive(Primitive::Number(42.0))?;
+        assert_eq!(*account.requests.borrow(), [Request::RootRecord { bytes }]);
+        assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+        Ok(scope.retain(&value))
+    })?;
+    let clone = root.clone();
+    process.execution().in_realm(&realm, |scope| {
+        let imported = scope.import(&clone)?;
+        assert_eq!(scope.kind(&imported)?, ValueKind::Number);
+        let retained = scope.retain(&imported);
+        drop(retained);
+        assert_eq!(account.requests.borrow().len(), 1);
+        assert_eq!(account.work(), 1);
+        Ok(())
+    })?;
+    drop(root);
+    process.execution().memory_pressure();
+    assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+    drop(clone);
+    process.execution().memory_pressure();
+    assert_eq!(account.live(), 0);
+    assert_eq!(account.work(), 1);
+
+    drop(process);
+    for (work, available, expected_work) in [(1, bytes - 1, 1), (0, bytes, 0)] {
+        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let realm = process.execution().create_realm()?;
+        let account = Account::new(work, u64::try_from(available).unwrap(), ProfileMode::Off);
+        install_general_roots(&mut process, account.clone())?;
+        let result = process.execution().in_realm(&realm, |scope| {
+            scope.primitive(Primitive::Number(42.0)).map(|_| ())
+        });
+        if work == 0 {
+            assert!(matches!(result, Err(Error::TooManyArguments)));
+        } else {
+            assert!(matches!(result, Err(Error::Allocation)));
+        }
+        assert!(account.requests.borrow().is_empty());
+        assert_eq!(account.work(), expected_work);
+        assert_eq!(account.live(), 0);
+    }
+    Ok(())
+}
+
+pub(super) fn evaluation_prepares_its_outcome_before_guest_entry() -> Result<(), Error> {
+    for work in [1, 2] {
+        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let realm = process.execution().create_realm()?;
+        let called = Rc::new(Cell::new(false));
+        let marker = called.clone();
+        let callback = Callback::new(move |_, _| {
+            marker.set(true);
+            Ok(Completion::Undefined)
+        });
+        let original = process.execution().in_realm(&realm, |scope| {
+            let function = scope.function(&callback)?;
+            let global = scope.global()?;
+            scope.set(&global, PropertyKey::String(&units("reached")), &function)?;
+            let original = scope.object(ObjectPrototype::Default)?;
+            scope.set(&global, PropertyKey::String(&units("original")), &original)?;
+            Ok(scope.retain(&original))
+        })?;
+        let bytes = process.managed_object_storage_bytes() + size_of::<Backing>();
+        // Compilation and execution each need an original-exception slot.
+        // Successful compilation releases its unused slot before execution.
+        let account = Account::new(work, u64::try_from(bytes).unwrap(), ProfileMode::Off);
+        install_general_roots(&mut process, account.clone())?;
+        let result = process.execution().in_realm(&realm, |scope| {
+            scope
+                .evaluate(&units("reached(); throw original"))
+                .map(|_| ())
+        });
+        assert_eq!(account.work(), work);
+        if work == 1 {
+            assert!(matches!(result, Err(Error::TooManyArguments)));
+            assert!(!called.get(), "refused execution must not enter guest code");
+            assert_eq!(account.live(), 0);
+            assert_eq!(*account.requests.borrow(), [Request::RootRecord { bytes }]);
+            continue;
+        }
+        let Err(Error::Exception(exception)) = result else {
+            panic!("expected the original guest exception, got {result:?}")
+        };
+        assert!(called.get());
+        assert_eq!(exception.phase(), ExceptionPhase::Evaluate);
+        assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+        assert_eq!(
+            *account.requests.borrow(),
+            [Request::RootRecord { bytes }, Request::RootRecord { bytes }]
+        );
+        // No work remains. Observing exact identity must share existing roots,
+        // and throwing must have filled the admitted slot without new funding.
+        process.execution().in_realm(&realm, |scope| {
+            let original = scope.import(&original)?;
+            let thrown = scope.import(exception.value())?;
+            assert!(scope.strict_equals(&original, &thrown)?);
+            Ok(())
+        })?;
+        assert_eq!(account.work(), 2);
+        assert_eq!(account.requests.borrow().len(), 2);
+        drop(exception);
+        process.execution().memory_pressure();
+        assert_eq!(account.live(), 0);
+    }
+    Ok(())
+}
+
+pub(super) fn utf16_output_keeps_its_buffer_admitted_after_process_teardown() -> Result<(), Error> {
+    const ORIGINAL: [u16; 3] = [0, 0xd800, 0x61];
+    let bytes = ORIGINAL.len() * size_of::<u16>() + size_of::<Backing>();
+    // The selected tariff is one buffer allocation plus one unit per copied
+    // code unit. General roots and other preparation have an explicit zero tariff.
+    let exact_work = 1 + u64::try_from(ORIGINAL.len()).unwrap();
+    for (work, available) in [
+        (exact_work, bytes),
+        (exact_work - 1, bytes),
+        (exact_work, bytes - 1),
+    ] {
+        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let realm = process.execution().create_realm()?;
+        let original = process.execution().in_realm(&realm, |scope| {
+            let value = scope.string(&ORIGINAL)?;
+            Ok(scope.retain(&value))
+        })?;
+        let account = Account::new(work, u64::try_from(available).unwrap(), ProfileMode::Off);
+        let storage = account.clone();
+        let copied = account.clone();
+        Admission::new(
+            move |request| match request {
+                Request::Buffer {
+                    kind: BufferKind::Utf16,
+                    ..
+                } => storage.admit(request),
+                _ => Ok(storage.untracked()),
+            },
+            move |work| {
+                let PreparationWork::CodeUnits { units } = work else {
+                    return Ok(());
+                };
+                let units = u64::try_from(units).map_err(|_| Error::Allocation)?;
+                copied
+                    .ledger
+                    .apply(copied.ledger.root(), Change::Work(Work::Capture, units))
+                    .map_err(|_| Error::TooManyArguments)
+            },
+        )
+        .install(&mut process, ())?;
+        let result = process.execution().in_realm(&realm, |scope| {
+            let value = scope.import(&original)?;
+            scope.to_utf16(&value)
+        });
+        if available < bytes {
+            assert!(matches!(result, Err(Error::Allocation)));
+            assert_eq!(account.work(), 1);
+            assert!(account.requests.borrow().is_empty());
+            assert_eq!(account.live(), 0);
+            continue;
+        }
+        assert_eq!(
+            *account.requests.borrow(),
+            [Request::Buffer {
+                kind: BufferKind::Utf16,
+                bytes,
+                elements: ORIGINAL.len(),
+            }]
+        );
+        if work < exact_work {
+            assert!(matches!(result, Err(Error::TooManyArguments)));
+            assert_eq!(account.work(), 1);
+            assert_eq!(account.live(), 0);
+            continue;
+        }
+        let output = result?;
+        assert_eq!(output, ORIGINAL);
+        assert_eq!(account.work(), exact_work);
+        assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+        drop(process);
+        assert_eq!(output, ORIGINAL);
+        assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+        drop(output);
+        assert_eq!(account.live(), 0);
+    }
+    Ok(())
+}
+
+struct RegistrationBacking {
+    backing: Backing,
+    callback_drops: Rc<Cell<usize>>,
+}
+
+impl Retention for RegistrationBacking {
+    fn release(self: Box<Self>) -> Result<(), Error> {
+        let Self {
+            backing,
+            callback_drops,
+        } = *self;
+        if backing.tracked {
+            assert_eq!(
+                callback_drops.get(),
+                1,
+                "release the callback before its backing"
+            );
+        }
+        backing.finish()
+    }
+}
+
+fn registration_case(
+    capacity: u64,
+    constructor: bool,
+    collect: bool,
+) -> Result<Option<usize>, Error> {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = process.execution().create_realm()?;
+    let account = Account::new(1, capacity, ProfileMode::Off);
+    let callback_drops = Rc::new(Cell::new(0));
+    let drops = callback_drops.clone();
+    let admitted = account.clone();
+    Admission::new(
+        move |request| {
+            let backing = match request {
+                Request::CallableRegistration { .. } => admitted.admit(request)?,
+                _ => admitted.untracked(),
+            };
+            Ok(RegistrationBacking {
+                backing,
+                callback_drops: drops.clone(),
+            })
+        },
+        |_| Ok(()),
+    )
+    .install(&mut process, ())?;
+    let calls = Rc::new(Cell::new(0));
+    let called = calls.clone();
+    let receipt = DropReceipt(callback_drops.clone());
+    let result = process.execution().in_realm(&realm, |scope| {
+        let function = if constructor {
+            let callback = ConstructorCallback::bounded(
+                0,
+                |scope| scope.object(ObjectPrototype::Default),
+                move |scope, _| {
+                    let _capture = &receipt;
+                    called.set(called.get() + 1);
+                    Ok(ConstructorCompletion::Return(
+                        scope.object(ObjectPrototype::Default)?,
+                    ))
+                },
+            );
+            scope.constructor(
+                &callback,
+                FunctionMetadata {
+                    name: &units("held"),
+                    length: 0,
+                },
+            )?
+        } else {
+            let callback = Callback::new(move |_, _| {
+                let _capture = &receipt;
+                called.set(called.get() + 1);
+                Ok(Completion::Undefined)
+            });
+            scope.function(&callback)?
+        };
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("held")), &function)
+    });
+    assert_eq!(account.work(), 1);
+    if matches!(result, Err(Error::Allocation)) {
+        assert!(account.requests.borrow().is_empty());
+        assert_eq!(account.live(), 0);
+        assert_eq!(callback_drops.get(), 1);
+        assert_eq!(calls.get(), 0);
+        return Ok(None);
+    }
+    result?;
+    let bytes = match account.requests.borrow().as_slice() {
+        [Request::CallableRegistration { bytes }] => *bytes,
+        requests => panic!("expected one admitted registration, got {requests:?}"),
+    };
+    // Scoped roots have ended, but the global guest reference keeps the exact
+    // registration and its callback capture alive across repeated invocation.
+    process.execution().memory_pressure();
+    assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+    assert_eq!(callback_drops.get(), 0);
+    process.execution().in_realm(&realm, |scope| {
+        let source = if constructor {
+            "new held(); new held()"
+        } else {
+            "held(); held()"
+        };
+        scope.evaluate(&units(source))?;
+        Ok(())
+    })?;
+    assert_eq!(calls.get(), 2);
+    assert_eq!(account.requests.borrow().len(), 1);
+    assert_eq!(account.work(), 1);
+    assert_eq!(account.live(), u64::try_from(bytes).unwrap());
+    if collect {
+        process.execution().in_realm(&realm, |scope| {
+            scope.evaluate(&units("held = null; gc()"))?;
+            Ok(())
+        })?;
+        process.execution().memory_pressure();
+        assert_eq!(account.live(), 0);
+        assert_eq!(callback_drops.get(), 1);
+    }
+    drop(process);
+    assert_eq!(account.live(), 0);
+    assert_eq!(callback_drops.get(), 1);
+    Ok(Some(bytes))
+}
+
+pub(super) fn callable_registration_follows_guest_reachability_and_teardown() -> Result<(), Error> {
+    for constructor in [false, true] {
+        // The body is intentionally backend-private. Probe its public request,
+        // then independently qualify exact and one-short admission boundaries.
+        let bytes = registration_case(u64::MAX, constructor, true)?.unwrap();
+        assert!(bytes > size_of::<RegistrationBacking>());
+        assert_eq!(
+            registration_case(u64::try_from(bytes).unwrap(), constructor, false)?,
+            Some(bytes)
+        );
+        assert_eq!(
+            registration_case(u64::try_from(bytes - 1).unwrap(), constructor, false)?,
+            None
+        );
+    }
+    Ok(())
 }
 
 fn callable_case(
@@ -167,13 +666,13 @@ fn callable_case(
         assert!(called.get());
         let requests = account.requests.borrow();
         let mut expected = vec![
-            Request::RootRecord { bytes: root_bytes },
-            Request::Buffer {
+            Request::IncomingRoot { bytes: root_bytes },
+            Request::IncomingBuffer {
                 bytes: buffer_bytes,
             },
         ];
         expected.extend(std::iter::repeat_n(
-            Request::RootRecord { bytes: root_bytes },
+            Request::IncomingRoot { bytes: root_bytes },
             selected,
         ));
         assert_eq!(*requests, expected);
@@ -318,12 +817,12 @@ pub(super) fn constructors_and_nested_callbacks_share_admission() -> Result<(), 
         let requests = account.requests.borrow();
         let mut expected = Vec::new();
         if selected != 0 {
-            expected.push(Request::Buffer {
+            expected.push(Request::IncomingBuffer {
                 bytes: selected * size_of::<Value<'_>>() + size_of::<Backing>(),
             });
         }
         expected.extend(std::iter::repeat_n(
-            Request::RootRecord { bytes: root_bytes },
+            Request::IncomingRoot { bytes: root_bytes },
             selected + 1,
         ));
         assert_eq!(*requests, expected);
@@ -389,7 +888,7 @@ pub(super) fn failed_release_keeps_the_original_guest_exception() -> Result<(), 
         scope.evaluate(&units("globalThis.original={}; fail(original)"))?;
         Ok(())
     });
-    let Err(Error::CallbackCaptureCleanup(failure)) = result else {
+    let Err(Error::PreparationCleanup(failure)) = result else {
         panic!("unexpected {result:?}")
     };
     let Some(surgeist_bindings_js::conversion::CleanupPrimary::Exception(exception)) =
@@ -406,10 +905,12 @@ pub(super) fn failed_release_keeps_the_original_guest_exception() -> Result<(), 
         observation.cleanup_error(),
         Some(Error::BackendUnavailable)
     ));
-    // The selected exception intentionally retains its captured root until
-    // process teardown, even though ordinary capture records have been reaped.
+    // The selected exception retains its admitted identity metadata through
+    // the last clone, alongside any backend record that still owns the value.
     assert!(account.live() > 0);
     drop(process);
+    assert!(account.live() > 0);
+    drop(failure);
     assert_eq!(account.live(), 0);
     Ok(())
 }
@@ -424,8 +925,10 @@ pub(super) fn setup_custody_follows_surviving_observations() -> Result<(), Error
     let mut process = Process::bootstrap(EngineKind::V8)?;
     let drops = Rc::new(Cell::new(0));
     let account = Account::new(100, 1_000_000, ProfileMode::Off);
-    let observation = Admission::new(move |request| account.admit(request))
+    let controller = Admission::new(move |request| account.admit_incoming(request), |_| Ok(()))
         .install(&mut process, Setup(drops.clone()))?;
+    let observation = controller.observation();
+    drop(controller);
     drop(process);
     assert_eq!(drops.get(), 0);
     assert!(observation.cleanup_error().is_none());
@@ -444,8 +947,15 @@ pub(super) fn admission_refusals_and_prior_host_errors_are_terminal() -> Result<
         })
         .unwrap_err();
     assert!(matches!(original, Error::Exception(_)));
-    Admission::new(move |_| -> Result<Backing, Error> { Err(original.clone()) })
-        .install(&mut process, ())?;
+    let account = Account::new(100, 1_000_000, ProfileMode::Off);
+    Admission::new(
+        move |request| match request {
+            Request::IncomingRoot { .. } | Request::IncomingBuffer { .. } => Err(original.clone()),
+            _ => Ok(account.untracked()),
+        },
+        |_| Ok(()),
+    )
+    .install(&mut process, ())?;
     let calls = Rc::new(Cell::new(0));
     let marker = calls.clone();
     let callback = Callback::new(move |_, _| {

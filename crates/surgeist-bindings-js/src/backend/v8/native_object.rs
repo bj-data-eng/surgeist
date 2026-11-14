@@ -30,12 +30,17 @@ struct PreparedObject {
 
 fn prepare_payload<'s>(
     scope: &mut v8::PinScope<'s, '_>,
-    roots: &Roots,
+    roots: &Rc<Roots>,
     realm: RealmKey,
     prototype: impl FnOnce(&v8::PinScope<'s, '_>) -> Result<v8::Local<'s, v8::Value>, Error>,
     payload: Rc<dyn Any>,
     reference: Option<(u32, &Root)>,
+    funding: Option<crate::preparation::Guard>,
 ) -> Result<PreparedObject, Error> {
+    let mut root = match funding {
+        Some(guard) => roots.prepare_admitted_root(realm, Some(guard))?,
+        None => roots.prepare_root(realm)?,
+    };
     let bank = &roots.native_objects;
     let index = bank
         .next
@@ -70,7 +75,7 @@ fn prepare_payload<'s>(
             return Err(Error::BackendUnavailable);
         }
     }
-    let root = roots.retain(scope, realm, object.into())?;
+    let root = root.retain(scope, realm, object.into())?;
     let retired = Rc::new(Cell::new(false));
     let signal = retired.clone();
     let object =
@@ -127,7 +132,7 @@ impl NativeObjects {
         }
     }
 
-    pub(super) fn discard_unpublished(&self, roots: &Roots, index: u32) {
+    pub(super) fn discard_unpublished(&self, roots: &Roots, index: u32, root: &Root) {
         let entry = {
             let Ok(mut entries) = self.entries.try_borrow_mut() else {
                 roots.conflict();
@@ -136,6 +141,21 @@ impl NativeObjects {
             entries.remove(&index)
         };
         drop(entry);
+        let root_entry = {
+            let Ok(mut entries) = roots.entries.try_borrow_mut() else {
+                roots.conflict();
+                return;
+            };
+            if !entries
+                .get(&root.0.index)
+                .is_some_and(|entry| entry.identity.ptr_eq(&Rc::downgrade(&root.0)))
+            {
+                roots.conflict();
+                return;
+            }
+            entries.remove(&root.0.index)
+        };
+        drop(root_entry);
     }
 }
 
@@ -147,7 +167,7 @@ impl Entered<'_, '_, '_> {
         reference: Option<(u32, &Root)>,
     ) -> Result<Root, Error> {
         let PreparedObject { index, root, entry } =
-            self.prepare_payload(prototype, payload, reference)?;
+            self.prepare_payload(prototype, payload, reference, None)?;
         self.roots
             .native_objects
             .entries
@@ -162,8 +182,9 @@ impl Entered<'_, '_, '_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
-        let prepared = self.prepare_payload(prototype, payload, None)?;
+        funding: Option<crate::preparation::Guard>,
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
+        let prepared = self.prepare_payload(prototype, payload, None, funding)?;
         self.pin_prepared_payload(prepared, self.realm, backing)
     }
 
@@ -173,15 +194,24 @@ impl Entered<'_, '_, '_> {
         expected_realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
-        let prepared = self.attempt(ExceptionPhase::Prototype, |scope, roots, _, _| {
+        funding: Option<crate::preparation::Guard>,
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
+        let prepared = self.observe(ExceptionPhase::Prototype, |scope, roots, _, _| {
             let object = roots.callback_objects.local(scope, roots, prototype)?;
             let (context, realm) = creation_context(scope, roots, object)?;
             if realm != expected_realm {
                 return Err(Error::CallbackRealmUnavailable);
             }
             let scope = &mut v8::ContextScope::new(scope, context);
-            prepare_payload(scope, roots, realm, |_| Ok(object.into()), payload, None)
+            prepare_payload(
+                scope,
+                roots,
+                realm,
+                |_| Ok(object.into()),
+                payload,
+                None,
+                funding,
+            )
         })?;
         self.pin_prepared_payload(prepared, expected_realm, backing)
     }
@@ -191,13 +221,13 @@ impl Entered<'_, '_, '_> {
         prepared: PreparedObject,
         realm: RealmKey,
         backing: Box<dyn Any>,
-    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
         let holder = self.pin_callback_object(&prepared.root, realm, backing)?;
         let roots = &self.roots;
         match roots.native_objects.entries.try_borrow_mut() {
             Ok(mut entries) => {
                 entries.insert(prepared.index, prepared.entry);
-                Ok((holder, prepared.index))
+                Ok((holder, prepared.index, prepared.root))
             }
             Err(_) => {
                 let error = roots.conflict();
@@ -214,8 +244,9 @@ impl Entered<'_, '_, '_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
         reference: Option<(u32, &Root)>,
+        funding: Option<crate::preparation::Guard>,
     ) -> Result<PreparedObject, Error> {
-        self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
+        self.observe(ExceptionPhase::Prototype, |scope, roots, realm, _| {
             prepare_payload(
                 scope,
                 roots,
@@ -223,12 +254,13 @@ impl Entered<'_, '_, '_> {
                 |scope| prototype_value(scope, roots, prototype),
                 payload,
                 reference,
+                funding,
             )
         })
     }
 
     pub(super) fn native_payload(&mut self, root: &Root) -> Result<Option<Rc<dyn Any>>, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
+        self.observe(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
             Ok(find_native(scope, roots, root)?.map(|resolved| resolved.entry.payload.clone()))
         })
     }
@@ -238,7 +270,7 @@ impl Entered<'_, '_, '_> {
         root: &Root,
         brand: TypeId,
     ) -> Result<Option<u32>, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
+        self.observe(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
             Ok(find_native(scope, roots, root)?
                 .filter(|resolved| resolved.entry.payload.as_ref().type_id() == brand)
                 .map(|resolved| resolved.index))
@@ -250,7 +282,7 @@ impl Entered<'_, '_, '_> {
         index: u32,
         brand: TypeId,
     ) -> Result<Option<Root>, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+        self.observe(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
             let Some(entry) = find_entry(roots, index)? else {
                 return Ok(None);
             };
@@ -265,13 +297,41 @@ impl Entered<'_, '_, '_> {
         })
     }
 
+    pub(super) fn clear_native_reference(
+        &mut self,
+        index: u32,
+        brand: TypeId,
+        slot: u32,
+    ) -> Result<(), Error> {
+        // This cleanup only removes an engine-private edge. It accepts a
+        // terminal owner and creates no root, guest entry or admission request.
+        let Some(entry) = find_entry(&self.roots, index)? else {
+            return Ok(());
+        };
+        if entry.payload.as_ref().type_id() != brand {
+            return Err(Error::ExpectedNativeObject);
+        }
+        let Some(object) = entry.object.to_local(self.scope) else {
+            return Ok(());
+        };
+        let references = object
+            .get_internal_field(self.scope, 1)
+            .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+            .ok_or(Error::BackendUnavailable)?;
+        if references.delete_index(self.scope, slot) == Some(true) {
+            Ok(())
+        } else {
+            Err(Error::BackendUnavailable)
+        }
+    }
+
     pub(super) fn read_native_reference(
         &mut self,
         root: &Root,
         brand: TypeId,
         slot: u32,
     ) -> Result<Option<Root>, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+        self.observe(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
             let references = reference_holder(scope, roots, root, brand)?;
             let value = references
                 .get_index(scope, slot)
@@ -290,7 +350,7 @@ impl Entered<'_, '_, '_> {
         slot: u32,
         reference: Option<&Root>,
     ) -> Result<(), Error> {
-        self.attempt(ExceptionPhase::PropertyWrite, |scope, roots, _, _| {
+        self.observe(ExceptionPhase::PropertyWrite, |scope, roots, _, _| {
             let references = reference_holder(scope, roots, root, brand)?;
             let accepted = match reference {
                 Some(reference) => {

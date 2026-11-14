@@ -52,8 +52,11 @@ fn fixture() -> (DocumentScriptHost, DocumentScriptPermit, Observation) {
 
 fn invoke(scope: &mut Scope<'_>) -> Result<(), Error> {
     let actual = scope.evaluate(&units(SCRIPT))?;
-    let expected = scope.primitive(Primitive::Boolean(true))?;
-    assert!(scope.strict_equals(&actual, &expected)?);
+    assert_eq!(
+        scope.kind(&actual)?,
+        surgeist_bindings_js::ValueKind::Boolean
+    );
+    assert!(scope.boolean(&actual)?);
     Ok(())
 }
 
@@ -69,7 +72,7 @@ pub(in crate::document_scripting) fn normalized_operands_admit_exact_backing_and
     let (mut control, permit, observed) = fixture();
     // The outer call captures its receiver, two selected operands and their
     // buffer. The observation callback captures its receiver with no buffer.
-    let retention_bytes = size_of::<GuestBacking>() + size_of::<Rc<reports::DispatchFailure>>();
+    let retention_bytes = size_of::<crate::document_scripting::preparation::Backing>();
     let root_bytes = control
         .engine
         .as_ref()
@@ -78,13 +81,41 @@ pub(in crate::document_scripting) fn normalized_operands_admit_exact_backing_and
         .managed_object_storage_bytes()
         + retention_bytes;
     let capture_bytes = 4 * root_bytes + 2 * size_of::<Value<'_>>() + retention_bytes;
-    let bytes = normalized_bytes + capture_bytes;
-    let work = normalized_work + 5;
+    // Evaluation retains its result slot; the first operand's coerced-string
+    // record awaits reaping; the second operand's coercion reserves its original
+    // exception slot before entering guest code. Successful compilation has
+    // released its unused slot, but its admission still spent one work unit.
+    let general_bytes = 3 * root_bytes;
+    let known_bytes = normalized_bytes + capture_bytes + general_bytes;
+    // The append and observation callbacks each admit one panic-custody frame.
+    // Their private backend record sizes are independently qualified by Bindings;
+    // probe one frame with only the evaluation slot and incoming receiver root,
+    // then require exactly two copies of that extent during normalization.
+    let work = normalized_work + 5 + 4 + 2;
     let events = control.guest_events().unwrap();
+    let before_frame = events.budget.used();
+    control
+        .in_document(&permit, |scope| {
+            scope.evaluate(&units("observeMutationAdmission()"))?;
+            Ok(())
+        })
+        .unwrap();
+    let frame_bytes = observed
+        .get()
+        .unwrap()
+        .0
+        .checked_sub(before_frame + 2 * root_bytes)
+        .unwrap();
+    assert!(frame_bytes > retention_bytes);
+    assert_eq!(events.budget.used(), before_frame);
+    observed.set(None);
+    let bytes = known_bytes + 2 * frame_bytes;
     let before = (events.budget.used(), events.budget.work().unwrap());
     let stamp = control.snapshot().unwrap().stamp();
     control.in_document(&permit, invoke).unwrap();
-    assert_eq!(observed.get(), Some((before.0 + bytes, before.1 + work)));
+    let (observed_bytes, observed_work) = observed.get().unwrap();
+    assert_eq!(observed_work, before.1 + work);
+    assert_eq!(observed_bytes, before.0 + bytes);
     assert_eq!(events.budget.used(), before.0);
     assert_eq!(control.snapshot().unwrap().stamp(), stamp);
     drop((control, events));

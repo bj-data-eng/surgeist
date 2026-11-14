@@ -31,7 +31,7 @@ pub(super) fn install<'scope>(
             name: ATTR,
             length: 0,
         },
-        &illegal_constructor(),
+        &illegal_constructor(funding.capture)?,
     )?;
     for (member, key, name) in [
         (

@@ -82,7 +82,7 @@ pub(super) enum SynchronousNode<'a> {
     ReturnNode,
     Watch(NodeWatch<'a>),
     ElementFactory(NodeWatch<'a>),
-    ReturnedCustomElement(&'a mut bool),
+    ReturnedCustomElement(&'a mut Option<crate::DomSourceCustomElementDisposition>),
     CustomElementResult(NodeWatch<'a>),
 }
 
@@ -155,6 +155,16 @@ pub enum DomWatchedCustomElementResult<T> {
         projection: T,
         disposition: crate::DomSourceCustomElementDisposition,
     },
+}
+
+/// Observation of an accepted autonomous constructor result.
+/// A constructed receiver has completed its native publication. A fallback
+/// disposition leaves the original result pending without creating its node,
+/// so the caller can prepare its required error and wrapper before publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceCustomElementReturn {
+    Constructed(NodeId),
+    Fallback(crate::DomSourceCustomElementDisposition),
 }
 
 /// A loan of the exact canonical name prepared for a detached Element. Work
@@ -431,19 +441,20 @@ impl Dom {
 
 impl DomSourceLease<'_> {
     /// Settle a returned autonomous receiver without preparing fallback custody.
-    /// `None` leaves the original accepted result pending for watched fallback.
+    /// A fallback observation leaves the original accepted result pending for
+    /// watched publication and grants no additional execution authority.
     pub fn finish_returned_custom_element(
         &mut self,
         request: DomSourceCustomElementRequest,
         cancel: &AtomicBool,
-    ) -> Result<Option<NodeId>, DomError> {
+    ) -> Result<DomSourceCustomElementReturn, DomError> {
         self.qualify_autonomous_result(request)?;
-        let mut fallback = false;
+        let mut fallback = None;
         let mut execution = Execution::disabled();
         execution.synchronous_node = Some(SynchronousNode::ReturnedCustomElement(&mut fallback));
         let progress = self.advance_node(&mut execution, cancel);
-        if fallback {
-            return Ok(None);
+        if let Some(disposition) = fallback {
+            return Ok(DomSourceCustomElementReturn::Fallback(disposition));
         }
         match progress? {
             DomSourceProgress::Complete(done)
@@ -451,7 +462,9 @@ impl DomSourceLease<'_> {
                     == Some(crate::DomSourceCustomElementDisposition::Constructed) =>
             {
                 match done.output() {
-                    Some(DomSourceOutput::Node(node)) => Ok(Some(node)),
+                    Some(DomSourceOutput::Node(node)) => {
+                        Ok(DomSourceCustomElementReturn::Constructed(node))
+                    }
                     _ => Err(DomError::InvalidSourceOperation),
                 }
             }

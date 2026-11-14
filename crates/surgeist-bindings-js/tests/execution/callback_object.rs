@@ -446,7 +446,7 @@ pub(super) fn terminal_cleanup() -> Result<(), Error> {
     assert_eq!(live(&first), 0);
     assert!(live(&second) > 0);
     drop(process);
-    assert_eq!(live(&second), 0);
+    assert!(live(&second) > 0);
 
     let mut other = Process::bootstrap(EngineKind::V8)?;
     let mut execution = other.execution();
@@ -463,5 +463,6 @@ pub(super) fn terminal_cleanup() -> Result<(), Error> {
         other.release_callback_object(keep),
         Err(Error::ForeignOwner)
     ));
+    assert_eq!(live(&second), 0);
     Ok(())
 }

@@ -68,7 +68,7 @@ pub(super) fn install<'scope>(
             name: &ascii(b"ShadowRoot"),
             length: 0,
         },
-        &illegal_constructor(),
+        &illegal_constructor(capture)?,
     )?;
     custom_elements::install_node_getter(
         scope,

@@ -71,19 +71,11 @@ impl<'scope> Conversion<'_, 'scope> {
         prefix: &[Value<'scope>],
         trailing: &[Value<'scope>],
     ) -> Result<Converted<Option<TrustedTypeData>>, Failure> {
-        let count = prefix
-            .len()
-            .checked_add(trailing.len())
-            .ok_or_else(|| self.host(Error::TooManyArguments))?;
         let receiver = self.scope.primitive(Primitive::Undefined);
         let receiver = self.core(receiver)?;
-        let bytes = self.core(self.scope.argument_copy_storage_bytes(count))?;
-        let bytes = u64::try_from(bytes).map_err(|_| self.host(Error::Allocation))?;
-        let backing = self.reserve(bytes).map_err(Failure)?;
         let result = self
             .scope
             .call_with_prefix(function, &receiver, prefix, trailing);
-        drop(backing);
         let result = self.core(result)?;
         self.value(&trusted_policy_callback_result(kind), &result)
     }

@@ -297,10 +297,18 @@ fn native_window_relation_custody_and_collision() {
         match prepared.enable(top, ALLOW, hooks(&hook())) {
             Ok(host) => Some((host, top)),
             Err(failure) => {
-                assert!(matches!(
-                    failure.error,
-                    DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
-                ));
+                let cause = match &failure.error {
+                    DocumentScriptError::Native(error) => Some(error),
+                    DocumentScriptError::Script(Error::HostFailure(error)) => {
+                        error.cause::<DocumentScriptNativeError>()
+                    }
+                    _ => None,
+                };
+                assert!(
+                    matches!(cause, Some(DocumentScriptNativeError::StorageLimit)),
+                    "{:?}",
+                    failure.error
+                );
                 let session = failure.owner.into_session().unwrap();
                 assert_eq!(session.snapshot().stamp(), stamp);
                 assert_eq!(
@@ -378,12 +386,12 @@ fn native_window_relation_refusal_retains_the_first_typed_cause() {
                 .collect::<Vec<_>>(),
         )?;
         let wrong = scope.primitive(Primitive::Number(1.0))?;
-        cancellation.store(true, Ordering::Relaxed);
         assert!(matches!(
             scope.call(&getter, &wrong, &[]),
             Err(Error::Exception(_))
         ));
         let global = scope.global()?;
+        cancellation.store(true, Ordering::Relaxed);
         scope.call(&getter, &global, &[]).map(drop)
     });
     let original = native_failure(caught);
@@ -454,10 +462,15 @@ fn native_window_relation_work_is_admitted_at_the_callback() {
     }
     assert_eq!(probe(accepted, READ), Probe::Accepted);
     assert_eq!(probe(accepted - 1, READ), Probe::CallbackRefused);
-    // The setter repeats the same native qualification, then materializes
-    // the six-unit "parent" property key for the replacement.
-    assert_eq!(probe(accepted + 6, WRITE), Probe::Accepted);
-    assert_eq!(probe(accepted + 5, WRITE), Probe::CallbackRefused);
+    // Besides the shared qualification, the setter admits one argument root,
+    // its nonempty capture buffer, and the definition's exception outcome.
+    // The native replacement also admits the six-unit "parent" property key.
+    const SETTER_WORK: u64 = 1 + 1 + 1 + 6;
+    assert_eq!(probe(accepted + SETTER_WORK, WRITE), Probe::Accepted);
+    assert_eq!(
+        probe(accepted + SETTER_WORK - 1, WRITE),
+        Probe::CallbackRefused
+    );
 }
 
 fn prepare_event_window() -> (DocumentScriptHost, DomHostedTopLevel) {
@@ -498,7 +511,7 @@ fn attach_event_window(
             DocumentGuestEventLimits {
                 // These interface scenarios include the full native prototype
                 // graph and exercise behavior with guest storage headroom.
-                storage_bytes: 128_000,
+                storage_bytes: 512 * 1024,
                 work: 10_000,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
@@ -2143,6 +2156,15 @@ fn hook_work_refused(result: Result<DocumentScriptHost, DocumentScriptError>) ->
         Err(DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
             DomHostedRuntimeError::Admission,
         ))) => true,
+        Err(DocumentScriptError::Script(Error::HostFailure(error))) => {
+            assert!(matches!(
+                error.cause::<DocumentScriptNativeError>(),
+                Some(DocumentScriptNativeError::Hosted(
+                    DomHostedRuntimeError::Admission
+                ))
+            ));
+            true
+        }
         Err(error) => panic!("unexpected hook setup result: {error:?}"),
     }
 }

@@ -305,7 +305,7 @@ impl DocumentPrototypes {
         constructor: &Value<'scope>,
         funding: &OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let unavailable = illegal_constructor();
+        let unavailable = illegal_constructor(funding.capture)?;
         let (prototypes, _) = Self::install(
             scope,
             node,
@@ -343,7 +343,7 @@ impl DocumentPrototypes {
                 name: &ascii(b"XMLDocument"),
                 length: 0,
             },
-            &illegal_constructor(),
+            &illegal_constructor(funding.capture)?,
         )?;
         let (fragment_constructor, fragment) = install_derived_interface(
             scope,
@@ -464,7 +464,7 @@ impl DocumentBindings {
     ) -> Result<Self, DocumentGuestEventError> {
         let (node_constructor, node) = install_node(scope, target_prototype, &origin.capture)?;
         let fallback = capture(size_of::<Capture>())?;
-        let construct = capture(size_of::<Capture>())?;
+        let construct = constructor_capture(capture, size_of::<Capture>())?;
         let callback = ConstructorCallback::bounded(
             0,
             move |scope| {
@@ -629,16 +629,7 @@ pub(super) fn install_node<'scope>(
 ) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
     let node = scope.object(ObjectPrototype::Object(target_prototype))?;
     let node_constructor = scope.constructor(
-        &ConstructorCallback::bounded(
-            0,
-            // Node rejects construction before selecting any prototype.
-            |_| Err(Error::BackendUnavailable),
-            |scope, _| {
-                Ok(ConstructorCompletion::Throw(
-                    scope.type_error(&ascii(b"Illegal constructor"))?,
-                ))
-            },
-        ),
+        &illegal_constructor(capture)?,
         FunctionMetadata {
             name: NODE,
             length: 0,
@@ -855,16 +846,21 @@ pub(super) fn install_derived_interface<'scope>(
     Ok((constructor, prototype))
 }
 
-pub(super) fn illegal_constructor() -> ConstructorCallback {
-    ConstructorCallback::bounded(
+pub(super) fn illegal_constructor(
+    capture: CaptureFunding<'_>,
+) -> Result<ConstructorCallback, DocumentGuestEventError> {
+    let backing = constructor_capture(capture, size_of::<Capture>())?;
+    Ok(ConstructorCallback::bounded(
         0,
         |_| Err(Error::BackendUnavailable),
-        |scope, _| {
+        move |scope, _| {
+            // Reject before prototype selection while retaining admitted bodies.
+            let _backing = &backing;
             Ok(ConstructorCompletion::Throw(
                 scope.type_error(&ascii(b"Illegal constructor"))?,
             ))
         },
-    )
+    ))
 }
 
 fn install_getter<'scope>(

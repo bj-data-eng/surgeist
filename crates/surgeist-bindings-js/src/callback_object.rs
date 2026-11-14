@@ -7,6 +7,19 @@ use crate::{Error, Exception, ExceptionPhase, Process, PropertyKey, RealmAuthori
 pub(crate) struct CallbackObjectIdentity {
     pub(crate) owner: u64,
     pub(crate) index: u64,
+    pub(crate) _backing: Rc<HolderBacking>,
+}
+
+/// Shared caller funding for Rust holder metadata. SDK handles remain solely
+/// in the backend entry; a surviving identity cannot keep that entry alive.
+pub(crate) struct HolderBacking {
+    _storage: Box<dyn std::any::Any>,
+}
+
+impl HolderBacking {
+    pub(crate) fn new(storage: Box<dyn std::any::Any>) -> Rc<Self> {
+        Rc::new(Self { _storage: storage })
+    }
 }
 
 /// A callback object observed in one binding scope.
@@ -23,8 +36,10 @@ impl CallbackObject<'_> {
     }
 }
 
-/// One retained guest object in its original process. The backend holds its
-/// admitted backing until the actual persistent handle is released.
+/// One retained guest object in its original process. Clones share one holder
+/// and its caller-funded Rust metadata. Releasing the holder or Process drops
+/// the SDK handles immediately; metadata backing remains admitted until the
+/// final identity and backend entry are gone. An identity retains no engine.
 #[derive(Clone)]
 pub struct RetainedCallbackObject {
     holder: Rc<CallbackObjectIdentity>,
@@ -80,7 +95,10 @@ impl<'scope> Scope<'scope> {
     /// Retain the exact observed object under one newly admitted holder.
     /// The admission closure receives the requested Rust backing bytes,
     /// excluding allocator and engine allocations. Its returned guard travels
-    /// with the actual backend handle and should contain no engine custody.
+    /// with the holder identity and backend entry through their actual final
+    /// release. It must contain only caller funding, without engine custody or
+    /// retained binding identities. Cloning a retained holder shares this
+    /// admission without allocating a new holder record.
     pub fn retain_callback_object<Storage: 'static, E: From<Error>>(
         &mut self,
         callback: CallbackObject<'scope>,
@@ -105,8 +123,25 @@ impl<'scope> Scope<'scope> {
         Ok(self.value(root))
     }
 
-    /// Release this managed callback handle and its backing from within a
-    /// callback. Any separately opened scoped value remains valid.
+    /// Open an existing retained object with root backing supplied from a
+    /// current native read. This performs no guest conversion or invocation.
+    pub fn open_callback_object_funded<T: crate::preparation::Retention>(
+        &mut self,
+        callback: &RetainedCallbackObject,
+        controller: &crate::preparation::Controller<T>,
+        fund: impl FnOnce(crate::preparation::Request) -> Result<T, Error>,
+    ) -> Result<Value<'scope>, Error> {
+        self.operations.validate_callback_object(&callback.holder)?;
+        let backing = self.fund_root(controller, fund)?;
+        let root = self
+            .operations
+            .open_callback_object_funded(&callback.holder, backing)?;
+        Ok(self.value(root))
+    }
+
+    /// Release this managed callback handle from within a callback. Surviving
+    /// holder aliases keep metadata backing and become unavailable for opening.
+    /// Any separately opened scoped value remains valid.
     pub fn release_callback_object(
         &mut self,
         callback: RetainedCallbackObject,
@@ -138,9 +173,10 @@ impl<'scope> Scope<'scope> {
 }
 
 impl Process {
-    /// Release the exact managed callback handle and its backing without guest
-    /// entry. This also works after the original process refuses execution.
-    /// If the process is foreign, the original owner can still reap the handle.
+    /// Release the exact managed callback handle without guest entry. Surviving
+    /// aliases keep metadata backing and become unavailable for opening. This
+    /// also works after the original process refuses execution. If the process
+    /// is foreign, the original owner can still reap the handle.
     pub fn release_callback_object(
         &mut self,
         callback: RetainedCallbackObject,

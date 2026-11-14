@@ -390,10 +390,8 @@ impl Capture {
             Ok((names, backing))
         })?;
         let count = native_names.len();
-        let array_backing = scope.argument_copy_storage_bytes(count)?;
         let bytes = count
             .checked_mul(size_of::<Value<'scope>>())
-            .and_then(|bytes| bytes.checked_add(array_backing))
             .ok_or(Error::Allocation)?;
         let _output_backing = events.reserve(owner, bytes)?;
         let mut names = attribute_name_buffer(count)?;

@@ -13,7 +13,8 @@ use surgeist_dom::{
     DomDetachedNodeCreation, DomDocumentScriptRegistration, DomElementCreationName,
     DomElementCreationOptions, DomNodeRetirementWatch, DomSourceAttributeAttachmentOutput,
     DomSourceAttributeVerificationRequest, DomSourceCustomElementOutcome,
-    DomSourceCustomElementRequest, DomSourceEventRequest, DomWatchedCustomElementResult,
+    DomSourceCustomElementRequest, DomSourceCustomElementReturn, DomSourceEventRequest,
+    DomWatchedCustomElementResult,
 };
 
 pub(in crate::document_scripting::guest::interfaces) struct OrdinaryBindings {
@@ -550,16 +551,7 @@ impl OrdinaryBindings {
     > {
         let reaction_scope = SynchronousReactionScope::enter(owner)?;
         let cancel = &owner.cancellation;
-        let (
-            constructor,
-            registration,
-            entry,
-            backing,
-            realm,
-            report,
-            returned_backing,
-            customized,
-        ) = (|| {
+        let (constructor, registration, entry, backing, realm, report, customized) = (|| {
             let (constructor, realm, interface, customized) =
                 public.factory_constructor(scope, events, request)?;
             let registration = owner
@@ -568,12 +560,7 @@ impl OrdinaryBindings {
                 .and_then(|attachment| attachment.registration.upgrade())
                 .ok_or(DocumentScriptNativeError::Revoked)?;
             let backing = events.reserve(owner, size_of::<PendingConstructor>())?;
-            let report = events.reports.reserve_constructor(events, owner)?;
-            let returned_bytes = events
-                .exception_root_bytes
-                .checked_add(size_of::<GuestBacking>())
-                .ok_or(DocumentScriptNativeError::StorageLimit)?;
-            let returned_backing = events.reserve(owner, returned_bytes)?;
+            let report = events.reports.reserve_constructor()?;
             let entry = public.enter_factory_constructor(
                 owner,
                 events,
@@ -589,7 +576,6 @@ impl OrdinaryBindings {
                 backing,
                 realm,
                 report,
-                Box::new(returned_backing),
                 customized,
             ))
         })()
@@ -614,14 +600,13 @@ impl OrdinaryBindings {
             next: None,
             _backing: backing,
         });
-        let mut returned_backing = Some(returned_backing);
         let callback_scope = if customized {
             self.open_customized_callback(
                 scope,
                 (owner, events),
                 public,
                 request,
-                (&pending.registration, &mut returned_backing),
+                &pending.registration,
             )
             .map(|(callback, receiver)| (callback, Some(receiver)))
         } else {
@@ -671,13 +656,6 @@ impl OrdinaryBindings {
         drop(entry);
         let result = match result {
             Ok(value) => {
-                if let Some(backing) = returned_backing
-                    && let Err(error) = scope.retain_invocation_result_backing(&value, backing)
-                {
-                    pending.outcome = Some(DomSourceCustomElementOutcome::Failed);
-                    owner.keep_constructor_result(pending);
-                    return Err(error.into());
-                }
                 if pending.receiver.is_none() {
                     pending.returned = Some(scope.retain(&value));
                 }
@@ -746,16 +724,10 @@ impl OrdinaryBindings {
             .and_then(|attachment| attachment.registration.upgrade())
             .ok_or(DocumentScriptNativeError::Revoked)?;
         let backing = events.reserve(owner, size_of::<PendingConstructor>())?;
-        let mut report = events.reports.reserve_constructor(events, owner)?;
+        let mut report = events.reports.reserve_constructor()?;
         let frame = super::super::custom_elements::reserve_constructor_frame(owner, events)?;
         let retained_constructor = scope.retain(constructor);
         let retained_receiver = scope.retain(receiver);
-        let root_bytes = events
-            .exception_root_bytes
-            .checked_add(size_of::<GuestBacking>())
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let root_backing = events.reserve(owner, root_bytes)?;
-        scope.retain_invocation_result_backing(receiver, Box::new(root_backing))?;
         let callback = {
             let mut session = owner
                 .session
@@ -783,7 +755,7 @@ impl OrdinaryBindings {
                     &[],
                 )?;
                 let exception = scope.invocation_exception(&value);
-                report.prepare(scope, &exception)?;
+                report.prepare()?;
                 report.publish(DocumentGuestConstructorException {
                     definition,
                     realm,
@@ -861,10 +833,7 @@ impl OrdinaryBindings {
         (owner, events): (&NativeOwner, &GuestEvents),
         public: &PublicEventBindings,
         request: DomSourceCustomElementRequest,
-        (registration, root_backing): (
-            &'registration DomDocumentScriptRegistration,
-            &mut Option<Box<GuestBacking>>,
-        ),
+        registration: &'registration DomDocumentScriptRegistration,
     ) -> Result<
         (
             surgeist_dom::DomSourceCustomElementCallbackScope<'registration>,
@@ -887,6 +856,7 @@ impl OrdinaryBindings {
             let (payload, holder) =
                 scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
             let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
+            let root_funding = scope.prepare_native_projection_root()?;
             let open = |elements: &element::ElementBindings| {
                 let mut session = owner
                     .session
@@ -908,15 +878,11 @@ impl OrdinaryBindings {
                         let prototype = elements.prototype_for_name(name, || {
                             events.budget.charge_work(AccountScope::Projection, 1)
                         })?;
-                        let mut projection = scope.prepare_retained_native_object(
+                        let projection = scope.prepare_retained_native_object_funded(
                             NodePrototype::Creation(prototype).projection(),
                             pin.projection(),
                             |_, _| Ok::<_, DocumentGuestEventError>(backing),
-                        )?;
-                        projection.retain_root_backing(
-                            root_backing
-                                .take()
-                                .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
+                            root_funding,
                         )?;
                         Ok(projection)
                     },
@@ -961,10 +927,8 @@ impl OrdinaryBindings {
             let error = scope.type_error(&ascii(b"Constructor did not return its receiver"))?;
             pending.exception = Some(scope.invocation_exception(&error));
         }
-        if let Some(exception) = &pending.exception
-            && pending.report.needs_backing()
-        {
-            pending.report.prepare(scope, exception)?;
+        if pending.exception.is_some() && pending.report.needs_preparation() {
+            pending.report.prepare()?;
         }
         {
             let mut session = owner
@@ -1014,7 +978,7 @@ impl OrdinaryBindings {
             .as_ref()
             .map(|root| scope.import(root))
             .transpose()?;
-        {
+        let disposition = {
             let mut session = owner
                 .session
                 .try_borrow_mut()
@@ -1033,13 +997,13 @@ impl OrdinaryBindings {
                     cancel,
                 )?;
             }
-            if lease
-                .finish_returned_custom_element(pending.request, cancel)?
-                .is_some()
-            {
-                return returned.ok_or(DocumentScriptNativeError::ProjectionCustody.into());
+            match lease.finish_returned_custom_element(pending.request, cancel)? {
+                DomSourceCustomElementReturn::Constructed(_) => {
+                    return returned.ok_or(DocumentScriptNativeError::ProjectionCustody.into());
+                }
+                DomSourceCustomElementReturn::Fallback(disposition) => disposition,
             }
-        }
+        };
         let admission = Admission::ordinary(owner, events);
         admission.phase(|| {
             let mut pins = self
@@ -1055,12 +1019,29 @@ impl OrdinaryBindings {
             let (payload, holder) =
                 scope.retained_native_object_bytes::<GuestNodeProjection, GuestBacking>()?;
             let backing = (admission.reserve(payload)?, admission.reserve(holder)?);
-            if let Some(exception) = &pending.exception
-                && pending.report.needs_backing()
-            {
-                pending.report.prepare(scope, exception)?;
+            if pending.exception.is_some() && pending.report.needs_preparation() {
+                pending.report.prepare()?;
             }
             let prototype = public.unknown_element_prototype(events, pending.request.global())?;
+            if pending.exception.is_none()
+                && disposition != surgeist_dom::DomSourceCustomElementDisposition::Abrupt
+            {
+                let value = match disposition {
+                    surgeist_dom::DomSourceCustomElementDisposition::InvalidInterface => {
+                        scope.type_error(&ascii(b"HTMLElement required"))?
+                    }
+                    surgeist_dom::DomSourceCustomElementDisposition::InvalidElement => scope
+                        .dom_exception(
+                        surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError,
+                        &[],
+                    )?,
+                    _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
+                };
+                let exception = scope.invocation_exception(&value);
+                pending.report.prepare()?;
+                pending.exception = Some(exception);
+            }
+            let root_funding = scope.prepare_native_projection_root()?;
             let result = {
                 let mut session = owner
                     .session
@@ -1079,28 +1060,18 @@ impl OrdinaryBindings {
                     cancel,
                     |name| {
                         name.step()?;
-                        if pending.exception.is_none()
-                            && name.custom_element_disposition() != Some(surgeist_dom::DomSourceCustomElementDisposition::Abrupt)
-                        {
-                            let value = match name.custom_element_disposition() {
-                                Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidInterface) => scope.type_error(&ascii(b"HTMLElement required"))?,
-                                Some(surgeist_dom::DomSourceCustomElementDisposition::InvalidElement) => scope.dom_exception(
-                                    surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError, &[],
-                                )?,
-                                _ => return Err(DocumentScriptNativeError::ProjectionCustody.into()),
-                            };
-                            let exception = scope.invocation_exception(&value);
-                            pending.report.prepare(scope, &exception)?;
-                            pending.exception = Some(exception);
+                        if name.custom_element_disposition() != Some(disposition) {
+                            return Err(DocumentScriptNativeError::ProjectionCustody.into());
                         }
                         #[cfg(test)]
                         if self.refuse_next_constructor_fallback.replace(false) {
                             return Err(DocumentScriptNativeError::ProjectionCustody.into());
                         }
-                        scope.prepare_retained_native_object(
+                        scope.prepare_retained_native_object_funded(
                             NodePrototype::Creation(&prototype).projection(),
                             pin.projection(),
                             |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                            root_funding,
                         )
                     },
                 )?
@@ -1302,6 +1273,7 @@ impl OrdinaryBindings {
                 admission.reserve(holder_bytes)?,
             );
             admission.step()?;
+            let root_funding = scope.prepare_native_projection_root()?;
             let result = capture
                 .callbacks
                 .with_qualified_session(owner, event, |session, _| {
@@ -1319,10 +1291,11 @@ impl OrdinaryBindings {
                                 events.budget.charge_work(AccountScope::Projection, 1)
                             };
                             let prototype = elements.prototype_for_name(name.name(), step)?;
-                            let prepared = scope.prepare_retained_native_object(
+                            let prepared = scope.prepare_retained_native_object_funded(
                                 NodePrototype::Creation(prototype).projection(),
                                 payload,
                                 |_, _| Ok::<_, DocumentGuestEventError>(backing),
+                                root_funding,
                             )?;
                             #[cfg(test)]
                             self.qualify_projection()?;

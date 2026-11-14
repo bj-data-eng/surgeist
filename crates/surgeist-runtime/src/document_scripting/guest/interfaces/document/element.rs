@@ -186,7 +186,8 @@ impl ElementBindings {
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
     ) -> Result<Self, DocumentGuestEventError> {
         let global = scope.global()?;
-        let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
+        let (constructor, element) =
+            install(scope, &global, ELEMENT, node_constructor, node, capture)?;
         let unscopables = super::tree_mutations::unscopables(scope, &element)?;
         let yes = scope.primitive(Primitive::Boolean(true))?;
         define_data(
@@ -198,8 +199,15 @@ impl ElementBindings {
             true,
             true,
         )?;
-        let (_, mathml) = install(scope, &global, MATHML_ELEMENT, &constructor, &element)?;
-        let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, fund)?;
+        let (_, mathml) = install(
+            scope,
+            &global,
+            MATHML_ELEMENT,
+            &constructor,
+            &element,
+            capture,
+        )?;
+        let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, capture, fund)?;
         let (html_constructor, html) = install_html_constructor(
             scope,
             &global,
@@ -489,17 +497,17 @@ fn install<'scope>(
     name: &[u16],
     parent_constructor: &Value<'scope>,
     parent: &Value<'scope>,
-) -> Result<(Value<'scope>, Value<'scope>), Error> {
-    let callback = ConstructorCallback::bounded(
-        0,
-        |_| Err(Error::BackendUnavailable),
-        |scope, _| {
-            Ok(ConstructorCompletion::Throw(
-                scope.type_error(&ascii(b"Illegal constructor"))?,
-            ))
-        },
-    );
-    install_constructor(scope, global, name, parent_constructor, parent, &callback)
+    capture: CaptureFunding<'_>,
+) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
+    let callback = illegal_constructor(capture)?;
+    Ok(install_constructor(
+        scope,
+        global,
+        name,
+        parent_constructor,
+        parent,
+        &callback,
+    )?)
 }
 
 fn install_constructor<'scope>(
@@ -732,6 +740,7 @@ fn install_named<'scope>(
     name: &str,
     parent_constructor: &Value<'scope>,
     parent: &Value<'scope>,
+    capture: CaptureFunding<'_>,
 ) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
     let mut buffer = [0; 48];
     let units = buffer
@@ -740,7 +749,7 @@ fn install_named<'scope>(
     for (unit, byte) in units.iter_mut().zip(name.bytes()) {
         *unit = u16::from(byte);
     }
-    Ok(install(scope, global, units, parent_constructor, parent)?)
+    install(scope, global, units, parent_constructor, parent, capture)
 }
 
 fn install_html_constructor<'scope>(
@@ -758,8 +767,8 @@ fn install_html_constructor<'scope>(
     for (unit, byte) in units.iter_mut().zip(interface.bytes()) {
         *unit = u16::from(byte);
     }
-    let fallback = capture(size_of::<Capture>())?;
-    let construct = capture(size_of::<Capture>())?;
+    let fallback = capture(size_of::<(Capture, &'static str)>())?;
+    let construct = constructor_capture(capture, size_of::<(Capture, &'static str)>())?;
     let callback = ConstructorCallback::bounded(
         0,
         move |scope| fallback.html_element_prototype(scope, interface),

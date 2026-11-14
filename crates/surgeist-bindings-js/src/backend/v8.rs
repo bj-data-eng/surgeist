@@ -41,9 +41,54 @@ impl Drop for ActiveOwner {
 
 struct RootEntry {
     identity: Weak<RootIdentity>,
-    handle: RootHandle,
-    backing: OnceCell<Box<dyn std::any::Any>>,
-    _capture: Option<crate::capture::Guard>,
+    handle: OnceCell<RootHandle>,
+    _preparation: Option<Rc<crate::RootBacking>>,
+}
+
+/// An unpublished record. Rust identity, entry and map storage exist before
+/// guest entry. Filling only installs the opaque SDK persistent handle.
+struct PreparedRoot {
+    roots: Weak<Roots>,
+    root: Option<Root>,
+    entry: Rc<RootEntry>,
+}
+
+impl PreparedRoot {
+    fn finish(&mut self, handle: RootHandle) -> Result<Root, Error> {
+        let root = self.root.take().ok_or(Error::RegistryConflict)?;
+        self.entry
+            .handle
+            .set(handle)
+            .map_err(|_| Error::RegistryConflict)?;
+        Ok(root)
+    }
+
+    fn retain(
+        &mut self,
+        scope: &v8::PinScope,
+        _realm: RealmKey,
+        value: v8::Local<v8::Value>,
+    ) -> Result<Root, Error> {
+        self.finish(RootHandle::Value(v8::Global::new(scope, value)))
+    }
+}
+
+impl Drop for PreparedRoot {
+    fn drop(&mut self) {
+        let Some(root) = &self.root else { return };
+        let Some(roots) = self.roots.upgrade() else {
+            return;
+        };
+        let entry = {
+            let Ok(mut entries) = roots.entries.try_borrow_mut() else {
+                roots.conflict();
+                return;
+            };
+            entries.remove(&root.0.index)
+        };
+        // The owned entry field keeps backing alive until the table loan ends.
+        drop(entry);
+    }
 }
 
 enum RootHandle {
@@ -76,6 +121,75 @@ struct CallbackEntry {
     // The SDK finalizer previously held this same strong lease. Registry
     // custody adds no guest root: the function handle above remains weak.
     lease: Rc<CallbackLease>,
+    // Release backing after the weak handle, retirement signal and callback.
+    _preparation: Option<crate::preparation::Guard>,
+}
+
+struct PanicRecord {
+    next: Option<Box<PanicRecord>>,
+    payload: Option<Box<dyn std::any::Any + Send>>,
+    // The body and any panic payload are destroyed before backing is released.
+    _backing: Option<crate::preparation::Guard>,
+}
+
+#[derive(Default)]
+struct PanicRecords {
+    head: Cell<Option<Box<PanicRecord>>>,
+}
+
+impl PanicRecords {
+    fn push(&self, mut record: Box<PanicRecord>) {
+        record.next = self.head.take();
+        self.head.set(Some(record));
+    }
+
+    fn pop(&self) -> Option<Box<PanicRecord>> {
+        let mut record = self.head.take()?;
+        self.head.set(record.next.take());
+        Some(record)
+    }
+
+    fn drain(&self) {
+        // This temporary also drains iteratively if a payload or backing
+        // destructor unwinds. Each popped node has already lost its next link.
+        let remaining = Self {
+            head: Cell::new(self.head.take()),
+        };
+        while let Some(record) = remaining.pop() {
+            drop(record);
+        }
+    }
+}
+
+impl Drop for PanicRecords {
+    fn drop(&mut self) {
+        if self.head.get_mut().is_some() {
+            self.drain();
+        }
+    }
+}
+
+enum CallbackFrame {
+    // Process-funded custody for a panic during frame admission itself.
+    Emergency(Box<PanicRecord>),
+    Admitted(Box<PanicRecord>),
+}
+
+impl CallbackFrame {
+    fn finish(self, roots: &Roots) {
+        match self {
+            Self::Emergency(record) => roots.return_panic_emergency(record),
+            Self::Admitted(record) => roots.callback_frames.push(record),
+        }
+    }
+
+    fn retain_panic(self, roots: &Roots, payload: Box<dyn std::any::Any + Send>) {
+        let mut record = match self {
+            Self::Emergency(record) | Self::Admitted(record) => record,
+        };
+        record.payload = Some(payload);
+        roots.panic_payloads.push(record);
+    }
 }
 
 struct Roots {
@@ -89,14 +203,28 @@ struct Roots {
     interrupt: v8::IsolateHandle,
     dom_exception_key: v8::Global<v8::Private>,
     cleanup_interrupt: Cell<bool>,
-    // User panic payloads remain owned until teardown outside native callback
+    // Completed empty frames release only at owned post-SDK reaping boundaries.
+    callback_frames: PanicRecords,
+    // Payload records remain owned until teardown outside native callback
     // frames. Their arbitrary destructors follow ordinary Rust drop behavior.
-    panic_payloads: Cell<Vec<Box<dyn std::any::Any + Send>>>,
+    panic_payloads: PanicRecords,
+    // Taken before admission and returned before invoking host code. A panic
+    // during admission consumes it and terminal failure prevents later entry.
+    panic_emergency: Cell<Option<Box<PanicRecord>>>,
 }
 
 impl Roots {
+    fn return_panic_emergency(&self, record: Box<PanicRecord>) {
+        if let Some(displaced) = self.panic_emergency.replace(Some(record)) {
+            // Preserve custody even on an internal duplicate return. Never
+            // dispose of a potentially arbitrary payload in an SDK callback.
+            self.panic_payloads.push(displaced);
+            self.conflict();
+        }
+    }
+
     fn retain(
-        &self,
+        self: &Rc<Self>,
         scope: &v8::PinScope,
         realm: RealmKey,
         value: v8::Local<v8::Value>,
@@ -105,19 +233,36 @@ impl Roots {
     }
 
     fn retain_handle(
-        &self,
+        self: &Rc<Self>,
         realm: RealmKey,
         handle: impl FnOnce() -> RootHandle,
     ) -> Result<Root, Error> {
-        self.retain_admitted_handle(realm, None, handle)
+        self.prepare_root(realm)?.finish(handle())
     }
 
-    fn retain_admitted_handle(
-        &self,
+    fn root_storage_bytes() -> usize {
+        size_of::<RootIdentity>()
+            + size_of::<RootEntry>()
+            + size_of::<(u64, Rc<RootEntry>)>()
+            + size_of::<crate::RootBacking>()
+    }
+
+    fn prepare_root(self: &Rc<Self>, realm: RealmKey) -> Result<PreparedRoot, Error> {
+        self.available()?;
+        if realm.owner != self.owner.id() {
+            return Err(Error::ForeignOwner);
+        }
+        let guard = self.admit_preparation(crate::preparation::Request::RootRecord {
+            bytes: Self::root_storage_bytes(),
+        })?;
+        self.prepare_admitted_root(realm, guard)
+    }
+
+    fn prepare_admitted_root(
+        self: &Rc<Self>,
         realm: RealmKey,
-        capture: Option<crate::capture::Guard>,
-        handle: impl FnOnce() -> RootHandle,
-    ) -> Result<Root, Error> {
+        backing: Option<crate::preparation::Guard>,
+    ) -> Result<PreparedRoot, Error> {
         self.available()?;
         if realm.owner != self.owner.id() {
             return Err(Error::ForeignOwner);
@@ -127,43 +272,47 @@ impl Roots {
             .get()
             .checked_add(1)
             .ok_or(Error::IdentityExhausted)?;
-        // Reserve identity before entering the SDK. No table borrow crosses
-        // allocation, guest invocation or a potentially reentrant conversion.
         self.next.set(index);
-        let root = Root(Rc::new(RootIdentity { realm, index }));
-        let entry = RootEntry {
+        let backing = backing.map(crate::RootBacking::new);
+        let root = Root(Rc::new(RootIdentity {
+            realm,
+            index,
+            _backing: backing.clone(),
+        }));
+        let entry = Rc::new(RootEntry {
             identity: Rc::downgrade(&root.0),
-            handle: handle(),
-            backing: OnceCell::new(),
-            _capture: capture,
-        };
+            handle: OnceCell::new(),
+            _preparation: backing,
+        });
         self.entries
             .try_borrow_mut()
             .map_err(|_| self.conflict())?
-            .insert(index, Rc::new(entry));
-        Ok(root)
+            .insert(index, entry.clone());
+        Ok(PreparedRoot {
+            roots: Rc::downgrade(self),
+            root: Some(root),
+            entry,
+        })
     }
 
     fn capture_root(
-        &self,
+        self: &Rc<Self>,
         scope: &v8::PinScope,
         realm: RealmKey,
         value: v8::Local<v8::Value>,
     ) -> Result<Root, Error> {
-        let bytes =
-            size_of::<RootIdentity>() + size_of::<RootEntry>() + size_of::<(u64, Rc<RootEntry>)>();
-        let guard = self.admit_capture(crate::capture::Request::RootRecord { bytes })?;
-        self.retain_admitted_handle(realm, guard, || {
-            RootHandle::Value(v8::Global::new(scope, value))
-        })
+        let bytes = Self::root_storage_bytes();
+        let guard = self.admit_preparation(crate::preparation::Request::IncomingRoot { bytes })?;
+        self.prepare_admitted_root(realm, guard)?
+            .finish(RootHandle::Value(v8::Global::new(scope, value)))
     }
 
-    fn admit_capture(
+    fn admit_preparation(
         &self,
-        request: crate::capture::Request,
-    ) -> Result<Option<crate::capture::Guard>, Error> {
+        request: crate::preparation::Request,
+    ) -> Result<Option<crate::preparation::Guard>, Error> {
         self.owner
-            .capture
+            .preparation
             .get()
             .map(|account| account.admit(request))
             .transpose()
@@ -176,7 +325,7 @@ impl Roots {
         let backing = if count == 0 {
             None
         } else {
-            self.admit_capture(crate::capture::Request::Buffer { bytes })?
+            self.admit_preparation(crate::preparation::Request::IncomingBuffer { bytes })?
         };
         let mut values = Vec::new();
         values
@@ -191,7 +340,7 @@ impl Roots {
         root: &Root,
     ) -> Result<v8::Local<'s, v8::Value>, Error> {
         let entry = self.entry(root)?;
-        match &entry.handle {
+        match entry.handle.get().ok_or_else(|| self.conflict())? {
             RootHandle::Value(value) => Ok(v8::Local::new(scope, value)),
             RootHandle::PromiseResolver(_) => Err(self.conflict()),
         }
@@ -203,7 +352,7 @@ impl Roots {
         root: &Root,
     ) -> Result<v8::Local<'s, v8::PromiseResolver>, Error> {
         let entry = self.entry(root)?;
-        match &entry.handle {
+        match entry.handle.get().ok_or_else(|| self.conflict())? {
             RootHandle::PromiseResolver(resolver) => Ok(v8::Local::new(scope, resolver)),
             RootHandle::Value(_) => Err(self.conflict()),
         }
@@ -237,7 +386,7 @@ impl Roots {
             // or accepting another engine operation, even in that case.
             if matches!(
                 result,
-                Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_))
+                Err(Error::ConversionCleanup(_) | Error::PreparationCleanup(_))
             ) && !self.interrupt.is_execution_terminating()
             {
                 self.cleanup_interrupt.set(true);
@@ -260,45 +409,58 @@ impl Roots {
     }
 
     fn reap(&self) {
-        let retired = match self.entries.try_borrow_mut() {
-            Ok(mut entries) => {
-                let dead: Vec<_> = entries
-                    .iter()
-                    .filter_map(|(id, entry)| (entry.identity.strong_count() == 0).then_some(*id))
-                    .collect();
-                dead.into_iter()
-                    .filter_map(|id| entries.remove(&id))
-                    .collect::<Vec<_>>()
-            }
-            Err(_) => {
-                self.conflict();
-                return;
-            }
-        };
-        drop(retired);
+        self.callback_frames.drain();
+        // Destructors may reenter and insert records. Only visit identities
+        // allocated before this reap began, without allocating a retirement list.
+        let root_end = self.next.get();
+        let callback_end = self.next_callback.get();
+        let mut last = 0;
+        loop {
+            let retired = {
+                let Ok(mut entries) = self.entries.try_borrow_mut() else {
+                    self.conflict();
+                    return;
+                };
+                let Some(id) = entries
+                    .range((
+                        std::ops::Bound::Excluded(last),
+                        std::ops::Bound::Included(root_end),
+                    ))
+                    .find_map(|(id, entry)| (entry.identity.strong_count() == 0).then_some(*id))
+                else {
+                    break;
+                };
+                last = id;
+                entries.remove(&id)
+            };
+            drop(retired);
+        }
         self.callback_objects.reap(self);
         self.native_objects.reap(self);
-        let retired = match self.callbacks.try_borrow_mut() {
-            Ok(mut entries) => {
-                let dead: Vec<_> = entries
-                    .iter()
-                    .filter_map(|(id, entry)| entry.retired.get().then_some(*id))
-                    .collect();
-                dead.into_iter()
-                    .filter_map(|id| entries.remove(&id))
-                    .collect::<Vec<_>>()
-            }
-            Err(_) => {
-                self.conflict();
-                return;
-            }
-        };
-        // Engine lifecycle entry points call reap only after SDK/native frames
-        // have returned. Extraction also ended the table borrow above. Capture
-        // Drop therefore follows ordinary Rust unwind behavior here, without
-        // converting destructor panics into CallbackPanicked or changing the
-        // owner's preexisting first refusal.
-        drop(retired);
+        let mut last = 0;
+        loop {
+            let retired = {
+                let Ok(mut entries) = self.callbacks.try_borrow_mut() else {
+                    self.conflict();
+                    return;
+                };
+                let Some(id) = entries
+                    .range((
+                        std::ops::Bound::Excluded(last),
+                        std::ops::Bound::Included(callback_end),
+                    ))
+                    .find_map(|(id, entry)| entry.retired.get().then_some(*id))
+                else {
+                    break;
+                };
+                last = id;
+                entries.remove(&id)
+            };
+            // Engine lifecycle entry points reap after SDK/native frames return.
+            // Capture Drop runs outside the registry loan with ordinary Rust
+            // unwinding, preserving the owner's preexisting first refusal.
+            drop(retired);
+        }
     }
 }
 
@@ -306,6 +468,7 @@ struct ContextEntry {
     identity: Weak<RealmIdentity>,
     context: v8::Global<v8::Context>,
     intrinsics: v8::Global<v8::Object>,
+    _backing: Option<Rc<crate::RealmBacking>>,
 }
 
 pub(crate) struct Engine {
@@ -320,6 +483,27 @@ pub(crate) struct Engine {
 
 impl Engine {
     pub(crate) fn bootstrap() -> Result<Self, Error> {
+        Self::bootstrap_with_funding(|| Ok::<_, Error>(())).map(|(engine, ())| engine)
+    }
+
+    pub(crate) fn bootstrap_funded<B: 'static, E: From<Error>>(
+        fund: impl FnOnce(crate::preparation::Request) -> Result<B, E>,
+    ) -> Result<(Self, B), E> {
+        Self::bootstrap_with_funding(|| {
+            let bytes = size_of::<Self>()
+                .checked_add(size_of::<Roots>())
+                .and_then(|bytes| bytes.checked_add(size_of::<OwnerState>()))
+                .and_then(|bytes| bytes.checked_add(size_of::<Weak<Roots>>()))
+                .and_then(|bytes| bytes.checked_add(size_of::<PanicRecord>()))
+                .and_then(|bytes| bytes.checked_add(size_of::<B>()))
+                .ok_or(Error::Allocation)?;
+            fund(crate::preparation::Request::Process { bytes })
+        })
+    }
+
+    fn bootstrap_with_funding<B, E: From<Error>>(
+        fund: impl FnOnce() -> Result<B, E>,
+    ) -> Result<(Self, B), E> {
         let current = std::thread::current().id();
         let owner = OWNER_THREAD.get_or_init(|| {
             let platform = v8::new_default_platform(0, false).make_shared();
@@ -328,12 +512,13 @@ impl Engine {
             current
         });
         if *owner != current {
-            return Err(Error::WrongThread);
+            return Err(Error::WrongThread.into());
         }
         ACTIVE
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| Error::OwnerAlreadyActive)?;
         let active = ActiveOwner;
+        let backing = fund()?;
         let owner = NEXT_OWNER
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .map_err(|_| Error::IdentityExhausted)?;
@@ -355,16 +540,25 @@ impl Engine {
             interrupt: isolate.thread_safe_handle(),
             dom_exception_key,
             cleanup_interrupt: Cell::new(false),
-            panic_payloads: Cell::new(Vec::new()),
+            callback_frames: PanicRecords::default(),
+            panic_payloads: PanicRecords::default(),
+            panic_emergency: Cell::new(Some(Box::new(PanicRecord {
+                next: None,
+                payload: None,
+                _backing: None,
+            }))),
         });
         isolate.set_slot(Rc::downgrade(&roots));
-        Ok(Self {
-            next_realm: 0,
-            roots,
-            contexts: BTreeMap::new(),
-            isolate,
-            _active: active,
-        })
+        Ok((
+            Self {
+                next_realm: 0,
+                roots,
+                contexts: BTreeMap::new(),
+                isolate,
+                _active: active,
+            },
+            backing,
+        ))
     }
 
     fn with_context<T>(
@@ -392,7 +586,7 @@ impl Engine {
         // Preserve the chosen Rust result until the actual host boundary has
         // also reaped abandoned captures and observed their cleanup.
         match entered.check_active() {
-            Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_)) => {
+            Err(Error::ConversionCleanup(_) | Error::PreparationCleanup(_)) => {
                 self.roots.owner.operation_result(result)
             }
             Err(error) => Err(error),
@@ -424,13 +618,28 @@ impl super::Engine for Engine {
     fn owner_state(&self) -> Rc<OwnerState> {
         self.roots.owner.clone()
     }
-    fn create_realm(&mut self) -> Result<Realm, Error> {
+    fn prepare_realm(&mut self) -> Result<(), Error> {
         self.roots.available()?;
         if self.isolate.is_execution_terminating() {
             return Err(Error::Terminated);
         }
         self.reap();
         self.roots.available()?;
+        self.next_realm
+            .checked_add(1)
+            .ok_or(Error::IdentityExhausted)?;
+        Ok(())
+    }
+
+    fn create_realm_with_backing(
+        &mut self,
+        backing: Option<Rc<crate::RealmBacking>>,
+    ) -> Result<Realm, Error> {
+        // Funding may execute caller code; revalidate before materialization.
+        self.roots.available()?;
+        if self.isolate.is_execution_terminating() {
+            return Err(Error::Terminated);
+        }
         let index = self
             .next_realm
             .checked_add(1)
@@ -440,6 +649,7 @@ impl super::Engine for Engine {
                 owner: self.roots.owner.id(),
                 index,
             },
+            _backing: backing.clone(),
         }));
         let pinned = std::pin::pin!(v8::HandleScope::new(&mut self.isolate));
         let scope = &mut pinned.init();
@@ -503,12 +713,18 @@ impl super::Engine for Engine {
         if context.set_slot(Rc::new(realm.0.key)).is_some() {
             return Err(Error::BackendUnavailable);
         }
+        if let Some(backing) = &backing
+            && context.set_slot(backing.clone()).is_some()
+        {
+            return Err(Error::BackendUnavailable);
+        }
         self.contexts.insert(
             index,
             ContextEntry {
                 identity: Rc::downgrade(&realm.0),
                 context: v8::Global::new(scope, context),
                 intrinsics,
+                _backing: backing,
             },
         );
         self.next_realm = index;
@@ -555,12 +771,11 @@ impl super::Engine for Engine {
         std::mem::size_of::<RealmIdentity>()
             + std::mem::size_of::<(u64, ContextEntry)>()
             + std::mem::size_of::<RealmKey>()
+            + std::mem::size_of::<crate::RealmBacking>()
     }
 
     fn managed_object_storage_bytes(&self) -> usize {
-        std::mem::size_of::<RootIdentity>()
-            + std::mem::size_of::<RootEntry>()
-            + std::mem::size_of::<(u64, Rc<RootEntry>)>()
+        Roots::root_storage_bytes()
     }
 
     fn release_managed_object(&mut self, holder: Root) -> Result<(), Error> {
@@ -617,152 +832,212 @@ impl Entered<'_, '_, '_> {
         phase: ExceptionPhase,
         operation: impl for<'s> FnOnce(
             &mut v8::PinScope<'s, '_>,
-            &Roots,
+            &Rc<Roots>,
+            RealmKey,
+            v8::Local<'s, v8::Object>,
+        ) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        self.attempt_root(phase, |scope, roots, realm, intrinsics, _outcome| {
+            operation(scope, roots, realm, intrinsics)
+        })
+    }
+
+    fn attempt_root<T>(
+        &mut self,
+        phase: ExceptionPhase,
+        operation: impl for<'s> FnOnce(
+            &mut v8::PinScope<'s, '_>,
+            &Rc<Roots>,
+            RealmKey,
+            v8::Local<'s, v8::Object>,
+            &mut PreparedRoot,
+        ) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        self.check_active()?;
+        let mut outcome = self.roots.prepare_root(self.realm)?;
+        let caught = std::pin::pin!(v8::TryCatch::new(self.scope));
+        let caught = &mut caught.init();
+        let intrinsics = v8::Local::new(caught, self.intrinsics);
+        let result = operation(caught, &self.roots, self.realm, intrinsics, &mut outcome);
+        let result = match self.roots.available() {
+            Err(Error::ConversionCleanup(_) | Error::PreparationCleanup(_)) => {
+                // A nested Rust callback may already have selected its exact
+                // original exception before cleanup interrupted guest execution.
+                if matches!(result, Err(Error::Exception(_))) {
+                    result
+                } else if let Some(thrown) = caught.exception() {
+                    outcome
+                        .retain(caught, self.realm, thrown)
+                        .and_then(|value| {
+                            Err(Error::Exception(Exception {
+                                phase,
+                                value,
+                                rule: None,
+                            }))
+                        })
+                } else {
+                    result
+                }
+            }
+            Err(first) => Err(first),
+            Ok(()) if caught.has_terminated() || !caught.can_continue() => Err(Error::Terminated),
+            Ok(()) => match caught.exception() {
+                Some(thrown) => outcome
+                    .retain(caught, self.realm, thrown)
+                    .and_then(|value| {
+                        Err(Error::Exception(Exception {
+                            phase,
+                            value,
+                            rule: None,
+                        }))
+                    }),
+                None => result,
+            },
+        };
+        drop(outcome);
+        self.roots.owner.operation_result(result)
+    }
+
+    fn observe<T>(
+        &mut self,
+        _phase: ExceptionPhase,
+        operation: impl for<'s> FnOnce(
+            &mut v8::PinScope<'s, '_>,
+            &Rc<Roots>,
             RealmKey,
             v8::Local<'s, v8::Object>,
         ) -> Result<T, Error>,
     ) -> Result<T, Error> {
         self.check_active()?;
-        let caught = std::pin::pin!(v8::TryCatch::new(self.scope));
-        let caught = &mut caught.init();
-        let intrinsics = v8::Local::new(caught, self.intrinsics);
-        let result = operation(caught, &self.roots, self.realm, intrinsics);
-        if let Err(error) = self.roots.available() {
-            return match error {
-                // A Rust scoped handler can already own its exact exception
-                // when a later local Drop records cleanup. Refuse continuation
-                // without replacing that selected operation result.
-                Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_) => {
-                    self.roots.owner.operation_result(result)
-                }
-                other => Err(other),
-            };
-        }
-        if caught.has_terminated() || !caught.can_continue() {
-            return Err(Error::Terminated);
-        }
-        if let Some(thrown) = caught.exception() {
-            let value = self.roots.retain(caught, self.realm, thrown)?;
-            return Err(Error::Exception(Exception {
-                phase,
-                value,
-                rule: None,
-            }));
-        }
-        result
+        let result = operation(self.scope, &self.roots, self.realm, self.intrinsics);
+        self.roots.owner.operation_result(result)
     }
+
     fn native_function(
         &mut self,
         callback: NativeCallback,
         metadata: Option<FunctionMetadata<'_>>,
     ) -> Result<Root, Error> {
         self.check_active()?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, intrinsics| {
-            let name = metadata
-                .map(|metadata| string(scope, metadata.name))
-                .transpose()?;
-            let id = roots
-                .next_callback
-                .get()
-                .checked_add(1)
-                .ok_or(Error::IdentityExhausted)?;
-            roots.next_callback.set(id);
-            let is_constructor = matches!(callback, NativeCallback::Constructor(_));
-            let lease = Rc::new(CallbackLease { callback, realm });
-            let context = scope.get_current_context();
-            let role = if is_constructor {
-                CallbackRole::ConstructorTarget
-            } else {
-                CallbackRole::Callable
-            };
-            let data = callback_data(scope, context, intrinsics, id, role)?;
-            let function = v8::Function::builder(callback_trampoline)
-                .data(data.into())
-                // Native template metadata narrows internally. Public metadata
-                // is installed independently as an exact own data property.
-                .length(0)
-                .constructor_behavior(if is_constructor {
-                    v8::ConstructorBehavior::Allow
+        self.attempt_root(
+            ExceptionPhase::Coerce,
+            |scope, roots, realm, intrinsics, outcome| {
+                let name = metadata
+                    .map(|metadata| string(scope, metadata.name))
+                    .transpose()?;
+                let id = roots
+                    .next_callback
+                    .get()
+                    .checked_add(1)
+                    .ok_or(Error::IdentityExhausted)?;
+                roots.next_callback.set(id);
+                let is_constructor = matches!(callback, NativeCallback::Constructor(_));
+                let preparation =
+                    roots.admit_preparation(crate::preparation::Request::CallableRegistration {
+                        bytes: size_of::<CallbackLease>()
+                            + size_of::<Cell<bool>>()
+                            + size_of::<Rc<Cell<bool>>>()
+                            + size_of::<(u32, CallbackEntry)>(),
+                    })?;
+                let lease = Rc::new(CallbackLease { callback, realm });
+                let context = scope.get_current_context();
+                let role = if is_constructor {
+                    CallbackRole::ConstructorTarget
                 } else {
-                    v8::ConstructorBehavior::Throw
-                })
-                .build(scope)
-                .ok_or(Error::BackendUnavailable)?;
-            if let Some(name) = name {
-                function.set_name(name);
-            }
-            if let Some(metadata) = metadata {
-                let key = v8::String::new(scope, "length").ok_or(Error::BackendUnavailable)?;
-                // Every u32 integer is exactly representable by binary64.
-                let length = v8::Number::new(scope, f64::from(metadata.length));
-                let mut descriptor =
-                    v8::PropertyDescriptor::new_from_value_writable(length.into(), false);
-                descriptor.set_enumerable(false);
-                descriptor.set_configurable(true);
-                if function.define_property(scope, key.into(), &descriptor) != Some(true) {
-                    return Err(Error::BackendUnavailable);
-                }
-            }
-            let (value, lifetime_function) = if is_constructor {
-                let data = callback_data(
-                    scope,
-                    context,
-                    intrinsics,
-                    id,
-                    CallbackRole::ConstructorTrap,
-                )?;
-                let trap = v8::Function::builder(callback_trampoline)
+                    CallbackRole::Callable
+                };
+                let data = callback_data(scope, context, intrinsics, id, role)?;
+                let function = v8::Function::builder(callback_trampoline)
                     .data(data.into())
-                    .constructor_behavior(v8::ConstructorBehavior::Throw)
+                    // Native template metadata narrows internally. Public metadata
+                    // is installed independently as an exact own data property.
+                    .length(0)
+                    .constructor_behavior(if is_constructor {
+                        v8::ConstructorBehavior::Allow
+                    } else {
+                        v8::ConstructorBehavior::Throw
+                    })
                     .build(scope)
                     .ok_or(Error::BackendUnavailable)?;
-                let handler = private_handler(scope, "construct", trap)?;
-                let proxy = v8::Proxy::new(scope, function.into(), handler)
-                    .ok_or(Error::BackendUnavailable)?;
-                // Never expose the private target through its default prototype.
-                let name = v8::String::new(scope, "prototype").ok_or(Error::BackendUnavailable)?;
-                let prototype = function
-                    .get(scope, name.into())
-                    .ok_or(Error::BackendUnavailable)?;
-                let prototype = v8::Local::<v8::Object>::try_from(prototype)
-                    .map_err(|_| Error::BackendUnavailable)?;
-                let key = v8::String::new(scope, "constructor").ok_or(Error::BackendUnavailable)?;
-                let mut descriptor =
-                    v8::PropertyDescriptor::new_from_value_writable(proxy.into(), true);
-                descriptor.set_enumerable(false);
-                descriptor.set_configurable(true);
-                if prototype.define_property(scope, key.into(), &descriptor) != Some(true) {
-                    return Err(Error::BackendUnavailable);
+                if let Some(name) = name {
+                    function.set_name(name);
                 }
-                (v8::Local::<v8::Value>::from(proxy), trap)
-            } else {
-                (function.into(), function)
-            };
-            let root = roots.retain(scope, realm, value)?;
-            let retired = Rc::new(Cell::new(false));
-            let retirement_signal = retired.clone();
-            let weak = v8::Weak::with_guaranteed_finalizer(
-                scope,
-                lifetime_function,
-                // SDK second-pass callbacks cross an extern-C boundary. This
-                // callback only marks retirement: no allocation, registry
-                // access, fallible work or arbitrary capture destructor.
-                Box::new(move || retirement_signal.set(true)),
-            );
-            roots
-                .callbacks
-                .try_borrow_mut()
-                .map_err(|_| roots.conflict())?
-                .insert(
-                    id,
-                    CallbackEntry {
-                        _function: weak,
-                        retired,
-                        lease,
-                    },
+                if let Some(metadata) = metadata {
+                    let key = v8::String::new(scope, "length").ok_or(Error::BackendUnavailable)?;
+                    // Every u32 integer is exactly representable by binary64.
+                    let length = v8::Number::new(scope, f64::from(metadata.length));
+                    let mut descriptor =
+                        v8::PropertyDescriptor::new_from_value_writable(length.into(), false);
+                    descriptor.set_enumerable(false);
+                    descriptor.set_configurable(true);
+                    if function.define_property(scope, key.into(), &descriptor) != Some(true) {
+                        return Err(Error::BackendUnavailable);
+                    }
+                }
+                let (value, lifetime_function) = if is_constructor {
+                    let data = callback_data(
+                        scope,
+                        context,
+                        intrinsics,
+                        id,
+                        CallbackRole::ConstructorTrap,
+                    )?;
+                    let trap = v8::Function::builder(callback_trampoline)
+                        .data(data.into())
+                        .constructor_behavior(v8::ConstructorBehavior::Throw)
+                        .build(scope)
+                        .ok_or(Error::BackendUnavailable)?;
+                    let handler = private_handler(scope, "construct", trap)?;
+                    let proxy = v8::Proxy::new(scope, function.into(), handler)
+                        .ok_or(Error::BackendUnavailable)?;
+                    // Never expose the private target through its default prototype.
+                    let name =
+                        v8::String::new(scope, "prototype").ok_or(Error::BackendUnavailable)?;
+                    let prototype = function
+                        .get(scope, name.into())
+                        .ok_or(Error::BackendUnavailable)?;
+                    let prototype = v8::Local::<v8::Object>::try_from(prototype)
+                        .map_err(|_| Error::BackendUnavailable)?;
+                    let key =
+                        v8::String::new(scope, "constructor").ok_or(Error::BackendUnavailable)?;
+                    let mut descriptor =
+                        v8::PropertyDescriptor::new_from_value_writable(proxy.into(), true);
+                    descriptor.set_enumerable(false);
+                    descriptor.set_configurable(true);
+                    if prototype.define_property(scope, key.into(), &descriptor) != Some(true) {
+                        return Err(Error::BackendUnavailable);
+                    }
+                    (v8::Local::<v8::Value>::from(proxy), trap)
+                } else {
+                    (function.into(), function)
+                };
+                let root = outcome.retain(scope, realm, value)?;
+                let retired = Rc::new(Cell::new(false));
+                let retirement_signal = retired.clone();
+                let weak = v8::Weak::with_guaranteed_finalizer(
+                    scope,
+                    lifetime_function,
+                    // SDK second-pass callbacks cross an extern-C boundary. This
+                    // callback only marks retirement: no allocation, registry
+                    // access, fallible work or arbitrary capture destructor.
+                    Box::new(move || retirement_signal.set(true)),
                 );
-            Ok(root)
-        })
+                roots
+                    .callbacks
+                    .try_borrow_mut()
+                    .map_err(|_| roots.conflict())?
+                    .insert(
+                        id,
+                        CallbackEntry {
+                            _function: weak,
+                            retired,
+                            lease,
+                            _preparation: preparation,
+                        },
+                    );
+                Ok(root)
+            },
+        )
     }
 }
 
@@ -802,12 +1077,12 @@ impl Operations for Entered<'_, '_, '_> {
     }
 
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Coerce,
-            |scope, roots, realm, _intrinsics| {
+            |scope, _roots, realm, _intrinsics, outcome| {
                 let message = string(scope, message)?;
                 let exception = v8::Exception::type_error(scope, message);
-                roots.retain(scope, realm, exception)
+                outcome.retain(scope, realm, exception)
             },
         )
     }
@@ -845,9 +1120,9 @@ impl Operations for Entered<'_, '_, '_> {
     ) -> Result<Root, Error> {
         self.validate_root(new_target)?;
         let shared_roots = self.roots.clone();
-        let result = self.attempt(
+        let result = self.attempt_root(
             ExceptionPhase::Prototype,
-            |scope, roots, realm, intrinsics| {
+            |scope, roots, realm, intrinsics, outcome| {
                 let target = v8::Local::<v8::Object>::try_from(roots.local(scope, new_target)?)
                     .map_err(|_| Error::ExpectedFunction)?;
                 // The one original Get occurs only when the typed handler requests
@@ -858,7 +1133,7 @@ impl Operations for Entered<'_, '_, '_> {
                     .ok_or(Error::BackendUnavailable)?;
                 roots.available()?;
                 if prototype.is_object() {
-                    return roots.retain(scope, realm, prototype);
+                    return outcome.retain(scope, realm, prototype);
                 }
                 let context = constructor_realm(scope, roots, intrinsics, target)?;
                 roots.available()?;
@@ -886,8 +1161,9 @@ impl Operations for Entered<'_, '_, '_> {
                 })
                 .map(|value| value.root);
                 let result = match entered.check_active() {
-                    Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_))
-                    | Ok(()) => roots.owner.operation_result(result),
+                    Err(Error::ConversionCleanup(_) | Error::PreparationCleanup(_)) | Ok(()) => {
+                        roots.owner.operation_result(result)
+                    }
                     Err(error) => Err(error),
                 };
                 let root = result?;
@@ -918,12 +1194,12 @@ impl Operations for Entered<'_, '_, '_> {
             },
         )
         .and_then(|script| {
-            self.attempt(
+            self.attempt_root(
                 ExceptionPhase::Evaluate,
-                |scope, roots, realm, _intrinsics| {
+                |scope, _roots, realm, _intrinsics, outcome| {
                     let script = v8::Local::new(scope, &script);
                     let value = script.run(scope).ok_or(Error::BackendUnavailable)?;
-                    roots.retain(scope, realm, value)
+                    outcome.retain(scope, realm, value)
                 },
             )
         })
@@ -933,34 +1209,60 @@ impl Operations for Entered<'_, '_, '_> {
         validate_string_length(units)
     }
 
+    fn root_storage_bytes(&self) -> usize {
+        Roots::root_storage_bytes()
+    }
+
+    fn string_funded(
+        &mut self,
+        units: &[u16],
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error> {
+        self.check_active()?;
+        validate_string_length(units.len())?;
+        let mut outcome = self
+            .roots
+            .prepare_admitted_root(self.realm, Some(backing))?;
+        let value = string(self.scope, units)?;
+        outcome.retain(self.scope, self.realm, value.into())
+    }
+
+    fn primitive_funded(
+        &mut self,
+        primitive: Primitive,
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error> {
+        self.check_active()?;
+        let mut outcome = self
+            .roots
+            .prepare_admitted_root(self.realm, Some(backing))?;
+        let value = primitive_value(self.scope, primitive);
+        outcome.retain(self.scope, self.realm, value)
+    }
+
     fn string(&mut self, units: &[u16]) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Coerce,
-            |scope, roots, realm, _intrinsics| {
+            |scope, _roots, realm, _intrinsics, outcome| {
                 let value = string(scope, units)?;
-                roots.retain(scope, realm, value.into())
+                outcome.retain(scope, realm, value.into())
             },
         )
     }
 
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Coerce,
-            |scope, roots, realm, _intrinsics| {
-                let value = match primitive {
-                    Primitive::Undefined => v8::undefined(scope).into(),
-                    Primitive::Null => v8::null(scope).into(),
-                    Primitive::Boolean(value) => v8::Boolean::new(scope, value).into(),
-                    Primitive::Number(value) => v8::Number::new(scope, value).into(),
-                };
-                roots.retain(scope, realm, value)
+            |scope, _roots, realm, _intrinsics, outcome| {
+                let value = primitive_value(scope, primitive);
+                outcome.retain(scope, realm, value)
             },
         )
     }
 
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error> {
         self.validate_root(value)?;
-        self.attempt(
+        self.observe(
             ExceptionPhase::Coerce,
             |scope, roots, _realm, _intrinsics| {
                 let value = roots.local(scope, value)?;
@@ -990,7 +1292,7 @@ impl Operations for Entered<'_, '_, '_> {
 
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error> {
         self.validate_root(value)?;
-        self.attempt(
+        self.observe(
             ExceptionPhase::Coerce,
             |scope, roots, _realm, _intrinsics| {
                 // In the pinned SDK, Value::is_function delegates Value::IsFunction
@@ -1003,7 +1305,7 @@ impl Operations for Entered<'_, '_, '_> {
 
     fn is_constructor(&mut self, value: &Root) -> Result<bool, Error> {
         self.validate_root(value)?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, _, _| {
+        self.observe(ExceptionPhase::Coerce, |scope, roots, _, _| {
             let value = roots.local(scope, value)?;
             Ok(
                 v8::Local::<v8::Object>::try_from(value)
@@ -1044,28 +1346,60 @@ impl Operations for Entered<'_, '_, '_> {
         self.roots.callback_objects.release(&self.roots, holder)
     }
 
-    fn argument_locals_storage_bytes(&self, count: usize) -> Option<usize> {
-        std::mem::size_of::<v8::Local<'_, v8::Value>>().checked_mul(count)
+    fn open_callback_object_funded(
+        &mut self,
+        holder: &Rc<CallbackObjectIdentity>,
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error> {
+        self.validate_pinned_callback_object(holder)?;
+        let mut outcome = self
+            .roots
+            .prepare_admitted_root(self.realm, Some(backing))?;
+        let object = self
+            .roots
+            .callback_objects
+            .local(self.scope, &self.roots, holder)?;
+        outcome.retain(self.scope, self.realm, object.into())
+    }
+
+    fn resolver_promise_funded(
+        &mut self,
+        resolver: &Root,
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error> {
+        self.validate_root(resolver)?;
+        let mut outcome = self
+            .roots
+            .prepare_admitted_root(self.realm, Some(backing))?;
+        let resolver = self.roots.promise_resolver(self.scope, resolver)?;
+        let promise = resolver.get_promise(self.scope);
+        outcome.retain(self.scope, self.realm, promise.into())
     }
 
     fn new_promise_resolver(&mut self) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {
-            let resolver = v8::PromiseResolver::new(scope).ok_or(Error::BackendUnavailable)?;
-            roots.retain_handle(realm, || {
-                RootHandle::PromiseResolver(v8::Global::new(scope, resolver))
-            })
-        })
+        self.attempt_root(
+            ExceptionPhase::Invoke,
+            |scope, _roots, _realm, _, outcome| {
+                let resolver = v8::PromiseResolver::new(scope).ok_or(Error::BackendUnavailable)?;
+                outcome.finish(RootHandle::PromiseResolver(v8::Global::new(
+                    scope, resolver,
+                )))
+            },
+        )
     }
 
     fn resolver_promise(&mut self, resolver: &Root) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {
+        self.validate_root(resolver)?;
+        self.attempt_root(ExceptionPhase::Invoke, |scope, roots, realm, _, outcome| {
             let resolver = roots.promise_resolver(scope, resolver)?;
             let promise = resolver.get_promise(scope);
-            roots.retain(scope, realm, promise.into())
+            outcome.retain(scope, realm, promise.into())
         })
     }
 
     fn settle_promise(&mut self, resolver: &Root, value: &Root, reject: bool) -> Result<(), Error> {
+        self.validate_root(resolver)?;
+        self.validate_root(value)?;
         self.attempt(ExceptionPhase::Invoke, |scope, roots, _, _| {
             let original_realm = resolver.0.realm;
             let resolver = roots.promise_resolver(scope, resolver)?;
@@ -1092,16 +1426,19 @@ impl Operations for Entered<'_, '_, '_> {
     }
 
     fn native_error(&mut self) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
-            let error = pristine_error(scope, intrinsics)?;
-            roots.retain(scope, realm, error.into())
-        })
+        self.attempt_root(
+            ExceptionPhase::Invoke,
+            |scope, _roots, realm, intrinsics, outcome| {
+                let error = pristine_error(scope, intrinsics)?;
+                outcome.retain(scope, realm, error.into())
+            },
+        )
     }
 
     fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Prototype,
-            |scope, roots, realm, intrinsics| {
+            |scope, roots, realm, intrinsics, outcome| {
                 let profile = captured_value(scope, intrinsics, DOM_EXCEPTION_PROFILE_FIELD)?;
                 let account = scope
                     .get_current_context()
@@ -1118,7 +1455,7 @@ impl Operations for Entered<'_, '_, '_> {
                     .get_index(scope, 0)
                     .filter(|prototype| prototype.is_native_error())
                     .ok_or_else(|| roots.fail(Error::BackendUnavailable))?;
-                let prototype = roots.retain(scope, realm, prototype)?;
+                let prototype = outcome.retain(scope, realm, prototype)?;
                 Ok(Some(DomExceptionProfile { prototype, account }))
             },
         )
@@ -1191,21 +1528,24 @@ impl Operations for Entered<'_, '_, '_> {
         code: u16,
     ) -> Result<Root, Error> {
         self.validate_root(prototype)?;
-        let error = self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
-            let name = roots.local(scope, name)?;
-            let message = roots.local(scope, message)?;
-            if !name.is_string() || !message.is_string() {
-                return Err(Error::BackendUnavailable);
-            }
-            let code = v8::Integer::new_from_unsigned(scope, u32::from(code));
-            let error = pristine_error(scope, intrinsics)?;
-            let slots = v8::Array::new_with_elements(scope, &[name, message, code.into()]);
-            let key = v8::Local::new(scope, &roots.dom_exception_key);
-            if error.set_private(scope, key, slots.into()) != Some(true) {
-                return Err(Error::BackendUnavailable);
-            }
-            roots.retain(scope, realm, error.into())
-        })?;
+        let error = self.attempt_root(
+            ExceptionPhase::Invoke,
+            |scope, roots, realm, intrinsics, outcome| {
+                let name = roots.local(scope, name)?;
+                let message = roots.local(scope, message)?;
+                if !name.is_string() || !message.is_string() {
+                    return Err(Error::BackendUnavailable);
+                }
+                let code = v8::Integer::new_from_unsigned(scope, u32::from(code));
+                let error = pristine_error(scope, intrinsics)?;
+                let slots = v8::Array::new_with_elements(scope, &[name, message, code.into()]);
+                let key = v8::Local::new(scope, &roots.dom_exception_key);
+                if error.set_private(scope, key, slots.into()) != Some(true) {
+                    return Err(Error::BackendUnavailable);
+                }
+                outcome.retain(scope, realm, error.into())
+            },
+        )?;
         // The receiver is a fresh ordinary JSError. Only its proposed
         // prototype can be a Proxy; SetPrototypeOf does not call its traps.
         self.set_prototype(&error, ObjectPrototype::Object(prototype))?;
@@ -1218,50 +1558,53 @@ impl Operations for Entered<'_, '_, '_> {
         slot: crate::dom_exception::Slot,
     ) -> Result<Option<Root>, Error> {
         self.validate_root(receiver)?;
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
-            let receiver = roots.local(scope, receiver)?;
-            // The SDK's native error predicate rejects proxies, including
-            // proxies around branded objects before inspecting private data.
-            if !receiver.is_native_error() {
-                return Ok(None);
-            }
-            let receiver = v8::Local::<v8::Object>::try_from(receiver)
-                .map_err(|_| Error::BackendUnavailable)?;
-            let key = v8::Local::new(scope, &roots.dom_exception_key);
-            if !receiver
-                .has_private(scope, key)
-                .ok_or(Error::BackendUnavailable)?
-            {
-                return Ok(None);
-            }
-            let slots = receiver
-                .get_private(scope, key)
-                .ok_or(Error::BackendUnavailable)?;
-            let slots =
-                v8::Local::<v8::Array>::try_from(slots).map_err(|_| Error::BackendUnavailable)?;
-            let value = slots
-                .get_index(scope, slot as u32)
-                .ok_or(Error::BackendUnavailable)?;
-            roots.retain(scope, realm, value).map(Some)
-        })
+        self.attempt_root(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, _, outcome| {
+                let receiver = roots.local(scope, receiver)?;
+                // The SDK's native error predicate rejects proxies, including
+                // proxies around branded objects before inspecting private data.
+                if !receiver.is_native_error() {
+                    return Ok(None);
+                }
+                let receiver = v8::Local::<v8::Object>::try_from(receiver)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                let key = v8::Local::new(scope, &roots.dom_exception_key);
+                if !receiver
+                    .has_private(scope, key)
+                    .ok_or(Error::BackendUnavailable)?
+                {
+                    return Ok(None);
+                }
+                let slots = receiver
+                    .get_private(scope, key)
+                    .ok_or(Error::BackendUnavailable)?;
+                let slots = v8::Local::<v8::Array>::try_from(slots)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                let value = slots
+                    .get_index(scope, slot as u32)
+                    .ok_or(Error::BackendUnavailable)?;
+                outcome.retain(scope, realm, value).map(Some)
+            },
+        )
     }
 
     fn global(&mut self) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::PropertyRead,
-            |scope, roots, realm, _intrinsics| {
+            |scope, _roots, realm, _intrinsics, outcome| {
                 let context = scope.get_current_context();
                 let value = context.global(scope);
-                roots.retain(scope, realm, value.into())
+                outcome.retain(scope, realm, value.into())
             },
         )
     }
 
     fn get(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<Root, Error> {
         self.validate_root(object)?;
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::PropertyRead,
-            |scope, roots, realm, _intrinsics| {
+            |scope, roots, realm, _intrinsics, outcome| {
                 let value = roots.local(scope, object)?;
                 let object =
                     v8::Local::<v8::Object>::try_from(value).map_err(|_| Error::ExpectedObject)?;
@@ -1269,7 +1612,7 @@ impl Operations for Entered<'_, '_, '_> {
                 let value = object
                     .get(scope, name.into())
                     .ok_or(Error::BackendUnavailable)?;
-                roots.retain(scope, realm, value)
+                outcome.retain(scope, realm, value)
             },
         )
     }
@@ -1356,20 +1699,20 @@ impl Operations for Entered<'_, '_, '_> {
     }
 
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Prototype,
-            |scope, roots, realm, _intrinsics| {
+            |scope, roots, realm, _intrinsics, outcome| {
                 let prototype = prototype_value(scope, roots, prototype)?;
                 let object = v8::Object::with_prototype_and_properties(scope, prototype, &[], &[]);
-                roots.retain(scope, realm, object.into())
+                outcome.retain(scope, realm, object.into())
             },
         )
     }
 
     fn managed_object(&mut self) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Prototype,
-            |scope, roots, realm, intrinsics| {
+            |scope, _roots, realm, intrinsics, outcome| {
                 let template = v8::ObjectTemplate::new(scope);
                 if !template.set_internal_field_count(3) {
                     return Err(Error::BackendUnavailable);
@@ -1385,7 +1728,7 @@ impl Operations for Entered<'_, '_, '_> {
                 {
                     return Err(Error::BackendUnavailable);
                 }
-                roots.retain(scope, realm, holder.into())
+                outcome.retain(scope, realm, holder.into())
             },
         )
     }
@@ -1408,8 +1751,9 @@ impl Operations for Entered<'_, '_, '_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn std::any::Any>,
         backing: Box<dyn std::any::Any>,
-    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
-        self.project_pinned_payload(prototype, payload, backing)
+        funding: Option<crate::preparation::Guard>,
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
+        self.project_pinned_payload(prototype, payload, backing, funding)
     }
 
     fn project_retained_native_object_in_prototype_realm(
@@ -1418,18 +1762,20 @@ impl Operations for Entered<'_, '_, '_> {
         realm: RealmKey,
         payload: Rc<dyn std::any::Any>,
         backing: Box<dyn std::any::Any>,
-    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error> {
-        self.project_pinned_payload_in_prototype_realm(prototype, realm, payload, backing)
+        funding: Option<crate::preparation::Guard>,
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
+        self.project_pinned_payload_in_prototype_realm(prototype, realm, payload, backing, funding)
     }
 
     fn discard_unpublished_native_object(
         &mut self,
         index: u32,
         holder: &Rc<CallbackObjectIdentity>,
+        root: &Root,
     ) {
         let roots = &self.roots;
         let _ = roots.callback_objects.release(roots, holder);
-        roots.native_objects.discard_unpublished(roots, index);
+        roots.native_objects.discard_unpublished(roots, index, root);
     }
 
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {
@@ -1461,6 +1807,15 @@ impl Operations for Entered<'_, '_, '_> {
         self.read_native_reference(object, brand, slot)
     }
 
+    fn clear_native_object_reference(
+        &mut self,
+        index: u32,
+        brand: std::any::TypeId,
+        slot: u32,
+    ) -> Result<(), Error> {
+        self.clear_native_reference(index, brand, slot)
+    }
+
     fn set_native_object_reference(
         &mut self,
         object: &Root,
@@ -1471,31 +1826,23 @@ impl Operations for Entered<'_, '_, '_> {
         self.write_native_reference(object, brand, slot, reference)
     }
 
-    fn retain_root_backing(
-        &mut self,
-        root: &Root,
-        backing: Box<dyn std::any::Any>,
-    ) -> Result<(), Error> {
-        let entry = self.roots.entry(root)?;
-        entry
-            .backing
-            .set(backing)
-            .map_err(|_| Error::RegistryConflict)
-    }
-
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
-            let holder = roots.local(scope, holder).map_err(|error| match error {
-                Error::ExpiredIdentity => roots.conflict(),
-                error => error,
-            })?;
-            let holder = v8::Local::<v8::Object>::try_from(holder).map_err(|_| roots.conflict())?;
-            let object = holder
-                .get_internal_field(scope, 0)
-                .and_then(|value| v8::Local::<v8::Value>::try_from(value).ok())
-                .ok_or_else(|| roots.conflict())?;
-            roots.retain(scope, realm, object)
-        })
+        self.attempt_root(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, _, outcome| {
+                let holder = roots.local(scope, holder).map_err(|error| match error {
+                    Error::ExpiredIdentity => roots.conflict(),
+                    error => error,
+                })?;
+                let holder =
+                    v8::Local::<v8::Object>::try_from(holder).map_err(|_| roots.conflict())?;
+                let object = holder
+                    .get_internal_field(scope, 0)
+                    .and_then(|value| v8::Local::<v8::Value>::try_from(value).ok())
+                    .ok_or_else(|| roots.conflict())?;
+                outcome.retain(scope, realm, object)
+            },
+        )
     }
 
     fn set_prototype(
@@ -1528,48 +1875,52 @@ impl Operations for Entered<'_, '_, '_> {
     fn array(&mut self, values: &[Root]) -> Result<Root, Error> {
         self.check_active()?;
         super::validate_array_length(values.len())?;
-        for value in values {
-            self.validate_root(value)?;
-        }
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Coerce,
-            |scope, roots, realm, _intrinsics| {
-                let mut elements = Vec::new();
-                elements
-                    .try_reserve_exact(values.len())
-                    .map_err(|_| Error::Allocation)?;
+            |scope, roots, realm, _intrinsics, outcome| {
+                let mut elements = crate::preparation::buffer::<v8::Local<'_, v8::Value>>(
+                    &roots.owner,
+                    crate::preparation::BufferKind::OutboundLocals,
+                    values.len(),
+                )?;
                 for value in values {
-                    elements.push(roots.local(scope, value)?);
+                    crate::preparation::charge(
+                        &roots.owner,
+                        crate::preparation::Work::BufferElement(
+                            crate::preparation::BufferKind::OutboundLocals,
+                        ),
+                    )?;
+                    elements.value.push(roots.local(scope, value)?);
                 }
                 let array = v8::Array::new_with_elements(scope, &elements);
-                roots.retain(scope, realm, array.into())
+                outcome.retain(scope, realm, array.into())
             },
         )
     }
 
     fn well_known_symbol(&mut self, symbol: WellKnownSymbol) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Coerce,
-            |scope, roots, realm, _intrinsics| {
+            |scope, _roots, realm, _intrinsics, outcome| {
                 let symbol = match symbol {
                     WellKnownSymbol::Iterator => v8::Symbol::get_iterator(scope),
                     WellKnownSymbol::ToStringTag => v8::Symbol::get_to_string_tag(scope),
                     WellKnownSymbol::Unscopables => v8::Symbol::get_unscopables(scope),
                 };
-                roots.retain(scope, realm, symbol.into())
+                outcome.retain(scope, realm, symbol.into())
             },
         )
     }
 
     fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error> {
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::PropertyRead,
-            |scope, roots, realm, intrinsics| {
+            |scope, _roots, realm, intrinsics, outcome| {
                 let index = match intrinsic {
                     Intrinsic::ArrayValues => 1,
                 };
                 let method = captured_method(scope, intrinsics, index)?;
-                roots.retain(scope, realm, method.into())
+                outcome.retain(scope, realm, method.into())
             },
         )
     }
@@ -1587,28 +1938,32 @@ impl Operations for Entered<'_, '_, '_> {
         }
         self.validate_root(function)?;
         self.validate_root(receiver)?;
-        for argument in arguments {
-            self.validate_root(argument)?;
-        }
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Invoke,
-            |scope, roots, realm, _intrinsics| {
+            |scope, roots, realm, _intrinsics, outcome| {
                 let function = roots.local(scope, function)?;
                 let function = v8::Local::<v8::Function>::try_from(function)
                     .map_err(|_| Error::ExpectedFunction)?;
                 let receiver = roots.local(scope, receiver)?;
-                let mut values = Vec::new();
-                values
-                    .try_reserve_exact(arguments.len())
-                    .map_err(|_| Error::Allocation)?;
+                let mut values = crate::preparation::buffer::<v8::Local<'_, v8::Value>>(
+                    &roots.owner,
+                    crate::preparation::BufferKind::OutboundLocals,
+                    arguments.len(),
+                )?;
                 for argument in arguments {
-                    values.push(roots.local(scope, argument)?);
+                    crate::preparation::charge(
+                        &roots.owner,
+                        crate::preparation::Work::BufferElement(
+                            crate::preparation::BufferKind::OutboundLocals,
+                        ),
+                    )?;
+                    values.value.push(roots.local(scope, argument)?);
                 }
                 enter()?;
                 let value = function
                     .call(scope, receiver, &values)
                     .ok_or(Error::BackendUnavailable)?;
-                roots.retain(scope, realm, value)
+                outcome.retain(scope, realm, value)
             },
         )
     }
@@ -1626,7 +1981,7 @@ impl Operations for Entered<'_, '_, '_> {
 
     fn construct_without_arguments(&mut self, constructor: &Root) -> Result<Root, Error> {
         self.validate_root(constructor)?;
-        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _| {
+        self.attempt_root(ExceptionPhase::Invoke, |scope, roots, realm, _, outcome| {
             let value = roots.local(scope, constructor)?;
             let constructor =
                 v8::Local::<v8::Object>::try_from(value).map_err(|_| Error::ExpectedConstructor)?;
@@ -1636,21 +1991,21 @@ impl Operations for Entered<'_, '_, '_> {
             let result = constructor
                 .call_as_constructor(scope, &[])
                 .ok_or(Error::BackendUnavailable)?;
-            roots.retain(scope, realm, result)
+            outcome.retain(scope, realm, result)
         })
     }
 
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error> {
         self.validate_root(value)?;
-        self.attempt(
+        self.attempt_root(
             ExceptionPhase::Coerce,
-            |scope, roots, realm, _intrinsics| {
+            |scope, roots, realm, _intrinsics, outcome| {
                 let value = roots.local(scope, value)?;
                 let string = value.to_string(scope).ok_or(Error::BackendUnavailable)?;
                 roots.available()?;
                 Ok(CoercedString {
                     length: string.length(),
-                    value: roots.retain(scope, realm, string.into())?,
+                    value: outcome.retain(scope, realm, string.into())?,
                 })
             },
         )
@@ -1661,7 +2016,7 @@ impl Operations for Entered<'_, '_, '_> {
         if units.len() != string.len() {
             return Err(Error::BackendUnavailable);
         }
-        self.attempt(
+        self.observe(
             ExceptionPhase::Coerce,
             |scope, roots, _realm, _intrinsics| {
                 let string = roots.local(scope, &string.value)?;
@@ -1675,7 +2030,7 @@ impl Operations for Entered<'_, '_, '_> {
 
     fn to_boolean(&mut self, value: &Root) -> Result<bool, Error> {
         self.validate_root(value)?;
-        self.attempt(
+        self.observe(
             ExceptionPhase::Coerce,
             |scope, roots, _realm, _intrinsics| Ok(roots.local(scope, value)?.boolean_value(scope)),
         )
@@ -1697,7 +2052,7 @@ impl Operations for Entered<'_, '_, '_> {
     fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error> {
         self.validate_root(left)?;
         self.validate_root(right)?;
-        self.attempt(
+        self.observe(
             ExceptionPhase::Coerce,
             |scope, roots, _realm, _intrinsics| {
                 let left = roots.local(scope, left)?;
@@ -1705,6 +2060,18 @@ impl Operations for Entered<'_, '_, '_> {
                 Ok(left.strict_equals(right))
             },
         )
+    }
+}
+
+fn primitive_value<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    primitive: Primitive,
+) -> v8::Local<'s, v8::Value> {
+    match primitive {
+        Primitive::Undefined => v8::undefined(scope).into(),
+        Primitive::Null => v8::null(scope).into(),
+        Primitive::Boolean(value) => v8::Boolean::new(scope, value).into(),
+        Primitive::Number(value) => v8::Number::new(scope, value).into(),
     }
 }
 
@@ -1726,10 +2093,34 @@ fn callback_trampoline<'s>(
     if roots.available().is_err() {
         return;
     }
+    let Some(emergency) = roots.panic_emergency.take() else {
+        // Frame-admission reentry has no second unplaced panic payload: stop
+        // before invoking its funder or any host handler.
+        roots.conflict();
+        return;
+    };
+    // The record remains outside catch_unwind so an admission or handler panic
+    // cannot destroy its only custody while unwinding through the SDK frame.
+    let mut frame = CallbackFrame::Emergency(emergency);
     // This is the public Rust callback boundary. A panic must never unwind
     // through the SDK ABI. Arbitrary capture destructors and SDK fatal errors
     // are not promised to be recoverable or universally panic free.
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let backing = match roots.admit_preparation(crate::preparation::Request::CallbackFrame {
+            bytes: size_of::<PanicRecord>(),
+        }) {
+            Ok(backing) => backing,
+            Err(error) => {
+                roots.fail(error);
+                return None;
+            }
+        };
+        let admitted = CallbackFrame::Admitted(Box::new(PanicRecord {
+            next: None,
+            payload: None,
+            _backing: backing,
+        }));
+        std::mem::replace(&mut frame, admitted).finish(&roots);
         match invoke_callback(scope, &arguments, &roots) {
             Ok(outcome) => Some(outcome),
             Err(error) => {
@@ -1741,19 +2132,17 @@ fn callback_trampoline<'s>(
         }
     }));
     let outcome = match outcome {
-        Ok(Some(outcome)) => outcome,
-        Ok(None) => return,
+        Ok(outcome) => {
+            frame.finish(&roots);
+            let Some(outcome) = outcome else { return };
+            outcome
+        }
         Err(payload) => {
+            frame.retain_panic(&roots, payload);
             let selected = roots.owner.finalize::<()>(Err(Error::CallbackPanicked));
             if let Err(error) = selected {
                 roots.fail(error);
             }
-            // Disposal happens when this owner drops, after all callback frames
-            // have returned. Nested callback panics can contribute several
-            // payloads while the first typed host failure stays unchanged.
-            let mut payloads = roots.panic_payloads.take();
-            payloads.push(payload);
-            roots.panic_payloads.set(payloads);
             return;
         }
     };
@@ -1863,11 +2252,7 @@ fn invoke_callback<'s>(
             }
         }
         (NativeCallback::Constructor(_), 1) => {
-            let error = entered.type_error(
-                &"Constructor requires 'new'"
-                    .encode_utf16()
-                    .collect::<Vec<_>>(),
-            )?;
+            let error = entered.type_error(&b"Constructor requires 'new'".map(u16::from))?;
             Ok(OwnedCompletion::Throw(error))
         }
         (NativeCallback::Constructor(callback), 2) => {
@@ -1929,7 +2314,7 @@ fn invoke_callback<'s>(
         other => other,
     };
     let outcome = match entered.check_active() {
-        Err(Error::ConversionCleanup(_) | Error::CallbackCaptureCleanup(_)) | Ok(()) => outcome,
+        Err(Error::ConversionCleanup(_) | Error::PreparationCleanup(_)) | Ok(()) => outcome,
         Err(error) => Err(error),
     };
     match boundary.finish(outcome) {

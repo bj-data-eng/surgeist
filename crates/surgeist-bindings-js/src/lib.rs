@@ -75,7 +75,6 @@
 
 mod backend;
 mod callback_object;
-pub mod capture;
 pub mod conversion;
 pub mod css;
 mod custom_elements;
@@ -86,6 +85,7 @@ mod host;
 mod idl;
 mod native_object;
 mod owner;
+pub mod preparation;
 mod promise;
 mod trusted_types;
 
@@ -93,14 +93,15 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub use callback_object::{CallbackObject, RetainedCallbackObject};
-pub use capture::{ArgumentValues, ArgumentValuesIntoIter};
 pub use custom_elements::{CustomElementRegistryIdentity, PublishedCustomElementRegistry};
 pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
 pub use native_object::{
-    NativeObject, NativeObjectToken, NativeProjectionPrototype, PreparedNativeProjection,
+    NativeObject, NativeObjectToken, NativeProjectionFunding, NativeProjectionPrototype,
+    PreparedNativeProjection,
 };
+pub use preparation::{Admitted, ArgumentValues, ArgumentValuesIntoIter};
 pub use promise::PromiseResolver;
 pub use trusted_types::{
     TrustedAttributeValue, TrustedPolicyCallback, TrustedType, TrustedTypeData, TrustedTypeKind,
@@ -160,6 +161,8 @@ pub enum ValueKind {
 /// heap, roots and pending jobs, while the platform remains process-lived.
 pub struct Process {
     engine: Box<dyn backend::Engine>,
+    // Engine records and SDK slots are destroyed before their setup backing.
+    _setup_backing: Option<Box<dyn std::any::Any>>,
     thread_affinity: PhantomData<Rc<()>>,
 }
 
@@ -171,6 +174,28 @@ impl Process {
         };
         Ok(Self {
             engine,
+            _setup_backing: None,
+            thread_affinity: PhantomData,
+        })
+    }
+
+    /// Admit this process's Rust setup before constructing its backend records.
+    /// Thread and singleton validation precede funding. The supplied ordinary
+    /// backing is destroyed after the backend; allocator and SDK storage are
+    /// excluded. This does not install a subsequent preparation policy.
+    pub fn bootstrap_funded<B: 'static, E: From<Error>>(
+        kind: EngineKind,
+        fund: impl FnOnce(preparation::Request) -> Result<B, E>,
+    ) -> Result<Self, E> {
+        let (engine, backing): (Box<dyn backend::Engine>, B) = match kind {
+            EngineKind::V8 => {
+                let (engine, backing) = backend::v8::Engine::bootstrap_funded(fund)?;
+                (Box::new(engine), backing)
+            }
+        };
+        Ok(Self {
+            engine,
+            _setup_backing: Some(Box::new(backing)),
             thread_affinity: PhantomData,
         })
     }
@@ -183,10 +208,10 @@ impl Process {
         }
     }
 
-    /// Whether incoming callbacks have a caller admission policy. Without one,
-    /// Rust capture is explicitly unaccounted. Profiling remains caller-owned.
-    pub fn has_callback_capture_admission(&self) -> bool {
-        self.engine.owner_state().capture.get().is_some()
+    /// Whether Rust preparation has a caller admission policy. Without one,
+    /// preparation is explicitly unaccounted. Profiling remains caller-owned.
+    pub fn has_preparation_admission(&self) -> bool {
+        self.engine.owner_state().preparation.get().is_some()
     }
 
     /// Secondary conversion cleanup observations, including after terminal
@@ -196,14 +221,16 @@ impl Process {
         self.engine.owner_state().cleanup_status()
     }
 
-    /// Requested Rust identity and context records for one realm, excluding
-    /// allocator and SDK storage. Admit this before creating a realm.
+    /// Requested Rust identity, context and shared custody records for one
+    /// realm, excluding allocator/SDK storage and the supplied backing body.
+    /// Funded creation adds that body's size before calling the funder.
     pub fn realm_storage_bytes(&self) -> usize {
         self.engine.realm_storage_bytes()
     }
 
-    /// Requested Rust root record backing for one managed object, excluding
-    /// allocator and SDK storage. Admit this before allocating a holder.
+    /// Requested Rust root record bodies for one managed object, excluding
+    /// allocator and SDK storage. An installed preparation policy admits these
+    /// bodies and its retention value before materialization.
     pub fn managed_object_storage_bytes(&self) -> usize {
         self.engine.managed_object_storage_bytes()
     }
@@ -230,6 +257,29 @@ impl Execution<'_> {
     /// Creates a distinct global environment in this heap.
     pub fn create_realm(&mut self) -> Result<Realm, Error> {
         self.engine.create_realm()
+    }
+
+    /// Admit initial realm setup using ordinary owned backing before a policy
+    /// is installed. Existing policies are refused before the funder is called;
+    /// later realms use [`Self::create_realm`] and its installed admission.
+    /// Backing follows both external realm tokens and guest-retained contexts.
+    pub fn create_realm_funded<B: 'static, E: From<Error>>(
+        &mut self,
+        fund: impl FnOnce(preparation::Request) -> Result<B, E>,
+    ) -> Result<Realm, E> {
+        self.engine.prepare_realm()?;
+        if self.engine.owner_state().preparation.get().is_some() {
+            return Err(Error::PreparationAlreadyAdmitted.into());
+        }
+        let bytes = self
+            .engine
+            .realm_storage_bytes()
+            .checked_add(size_of::<B>())
+            .ok_or(Error::Allocation)?;
+        let backing = fund(preparation::Request::Realm { bytes })?;
+        Ok(self
+            .engine
+            .create_realm_with_backing(Some(RealmBacking::new(backing)))?)
     }
 
     /// Runs fallible Rust binding operations in a validated realm. The chosen
@@ -289,6 +339,29 @@ pub(crate) struct RealmKey {
 #[derive(Debug)]
 pub(crate) struct RealmIdentity {
     key: RealmKey,
+    _backing: Option<Rc<RealmBacking>>,
+}
+
+/// Shared by external tokens, backend context records and the SDK context slot.
+/// It deliberately retains no realm identity or execution authority.
+pub(crate) struct RealmBacking {
+    _backing: Box<dyn std::any::Any>,
+}
+
+impl RealmBacking {
+    fn new<B: 'static>(backing: B) -> Rc<Self> {
+        Rc::new(Self {
+            _backing: Box::new(backing),
+        })
+    }
+}
+
+impl std::fmt::Debug for RealmBacking {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RealmBacking")
+            .finish_non_exhaustive()
+    }
 }
 
 /// Identity of a global environment. Clones denote the same realm.
@@ -304,6 +377,28 @@ pub struct Realm(Rc<RealmIdentity>);
 pub(crate) struct RootIdentity {
     realm: RealmKey,
     index: u64,
+    _backing: Option<Rc<RootBacking>>,
+}
+
+/// Shared Rust custody, without an SDK handle, identity or admission policy.
+pub(crate) struct RootBacking {
+    _preparation: preparation::Guard,
+}
+
+impl RootBacking {
+    fn new(preparation: preparation::Guard) -> Rc<Self> {
+        Rc::new(Self {
+            _preparation: preparation,
+        })
+    }
+}
+
+impl std::fmt::Debug for RootBacking {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RootBacking")
+            .finish_non_exhaustive()
+    }
 }
 
 /// Explicitly retained heap value. Cloning retains the same root identity.
@@ -311,7 +406,9 @@ pub(crate) struct RootIdentity {
 /// Only the backend owns the actual heap root. Dropping the last token makes
 /// that root eligible for release at the next boundary; dropping the process
 /// releases it immediately, even if this token survives. Import checks owner
-/// identity before accessing the engine. This token is neither Send nor Sync.
+/// identity before accessing the engine. Accepted Rust preparation backing stays
+/// live until both this identity and the backend record retire. Clones share one
+/// admission. This token is neither Send nor Sync.
 #[derive(Clone, Debug)]
 pub struct Root(Rc<RootIdentity>);
 
@@ -399,6 +496,12 @@ struct ConstructorBehavior {
 pub struct ConstructorCallback(Rc<ConstructorBehavior>);
 
 impl ConstructorCallback {
+    /// Requested Rust body for the shared bounded-constructor behavior wrapper.
+    /// Caller action/fallback closure bodies are accounted by their own owner.
+    pub const fn behavior_storage_bytes() -> usize {
+        size_of::<ConstructorBehavior>()
+    }
+
     /// The handler runs in the constructor's creation realm. It converts its
     /// arguments, then consumes [`ConstructorArguments::select_prototype`] before
     /// native action. If NewTarget.prototype is not an object, `fallback` runs
@@ -1060,6 +1163,48 @@ impl<'scope> Scope<'scope> {
             .set_prototype(&object.root, prototype.input())
     }
 
+    /// Creates a scalar with backing supplied from the caller's current native
+    /// context. Funding completes before construction, which runs no guest code.
+    pub fn primitive_funded<T: preparation::Retention>(
+        &mut self,
+        primitive: Primitive,
+        controller: &preparation::Controller<T>,
+        fund: impl FnOnce(preparation::Request) -> Result<T, Error>,
+    ) -> Result<Value<'scope>, Error> {
+        let backing = self.fund_root(controller, fund)?;
+        let root = self.operations.primitive_funded(primitive, backing)?;
+        Ok(self.value(root))
+    }
+
+    /// Copies a known UTF-16 payload without guest entry, using owned backing
+    /// supplied from the caller's current native context.
+    pub fn string_funded<T: preparation::Retention>(
+        &mut self,
+        units: &[u16],
+        controller: &preparation::Controller<T>,
+        fund: impl FnOnce(preparation::Request) -> Result<T, Error>,
+    ) -> Result<Value<'scope>, Error> {
+        self.operations.validate_string_length(units.len())?;
+        let backing = self.fund_root(controller, fund)?;
+        let root = self.operations.string_funded(units, backing)?;
+        Ok(self.value(root))
+    }
+
+    fn fund_root<T: preparation::Retention>(
+        &self,
+        controller: &preparation::Controller<T>,
+        fund: impl FnOnce(preparation::Request) -> Result<T, Error>,
+    ) -> Result<preparation::Guard, Error> {
+        let owner = self.operations.owner_state();
+        controller.check_owner(&owner)?;
+        controller.fund(
+            preparation::Request::RootRecord {
+                bytes: self.operations.root_storage_bytes(),
+            },
+            fund,
+        )
+    }
+
     /// Creates a dense array in this realm, preserving value identity and order.
     /// Every supplied value creates an own index, including explicit undefined.
     /// The embedding policy allows at most 16,777,216 elements, the minimum
@@ -1067,11 +1212,20 @@ impl<'scope> Scope<'scope> {
     pub fn array(&mut self, values: &[Value<'scope>]) -> Result<Value<'scope>, Error> {
         self.check_active()?;
         backend::validate_array_length(values.len())?;
-        let mut roots = Vec::new();
-        roots
-            .try_reserve_exact(values.len())
-            .map_err(|_| Error::Allocation)?;
-        roots.extend(values.iter().map(|value| value.root.clone()));
+        let owner = self.operations.owner_state();
+        let mut roots = preparation::buffer::<Root>(
+            &owner,
+            preparation::BufferKind::OutboundRoots,
+            values.len(),
+        )?;
+        for value in values {
+            preparation::charge(
+                &owner,
+                preparation::Work::BufferElement(preparation::BufferKind::OutboundRoots),
+            )?;
+            self.operations.validate_root(&value.root)?;
+            roots.value.push(value.root.clone());
+        }
         let root = self.operations.array(&roots)?;
         Ok(self.value(root))
     }
@@ -1086,17 +1240,6 @@ impl<'scope> Scope<'scope> {
     pub fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Value<'scope>, Error> {
         let root = self.operations.intrinsic(intrinsic)?;
         Ok(self.value(root))
-    }
-
-    /// Temporary Rust vector backing used by `array` or `call` for this
-    /// many values, excluding the caller's values, allocator and engine storage.
-    pub fn argument_copy_storage_bytes(&self, count: usize) -> Result<usize, Error> {
-        count
-            .checked_mul(size_of::<Root>())
-            .and_then(|bytes| {
-                bytes.checked_add(self.operations.argument_locals_storage_bytes(count)?)
-            })
-            .ok_or(Error::Allocation)
     }
 
     /// Calls a function with an explicit receiver and arguments. Callability,
@@ -1154,16 +1297,19 @@ impl<'scope> Scope<'scope> {
         if length > i32::MAX as usize {
             return Err(Error::TooManyArguments);
         }
-        let mut roots = Vec::new();
-        roots
-            .try_reserve_exact(length)
-            .map_err(|_| Error::Allocation)?;
-        roots.extend(
-            prefix
-                .iter()
-                .chain(arguments)
-                .map(|value| value.root.clone()),
-        );
+        self.operations.validate_root(&function.root)?;
+        self.operations.validate_root(&receiver.root)?;
+        let owner = self.operations.owner_state();
+        let mut roots =
+            preparation::buffer::<Root>(&owner, preparation::BufferKind::OutboundRoots, length)?;
+        for value in prefix.iter().chain(arguments) {
+            preparation::charge(
+                &owner,
+                preparation::Work::BufferElement(preparation::BufferKind::OutboundRoots),
+            )?;
+            self.operations.validate_root(&value.root)?;
+            roots.value.push(value.root.clone());
+        }
         let root = self
             .operations
             .call(&function.root, &receiver.root, &roots, enter)?;
@@ -1172,7 +1318,7 @@ impl<'scope> Scope<'scope> {
 
     /// Performs JavaScript ToString, returning exact UTF-16 code units. Unlike
     /// exception capture, this explicit conversion may run guest code.
-    pub fn to_utf16(&mut self, value: &Value<'scope>) -> Result<Vec<u16>, Error> {
+    pub fn to_utf16(&mut self, value: &Value<'scope>) -> Result<Admitted<Vec<u16>>, Error> {
         self.operations.to_utf16(&value.root)
     }
 
@@ -1185,21 +1331,55 @@ impl<'scope> Scope<'scope> {
     /// Converts to ordinary Web IDL DOMString through one ECMAScript ToString.
     /// Preserves exact UTF-16, including unmatched surrogates. Null becomes
     /// `"null"`; no LegacyNullToEmptyString extended attribute is applied.
-    pub fn dom_string(&mut self, value: &Value<'scope>) -> Result<DomString, Error> {
-        self.to_utf16(value).map(DomString::new)
+    pub fn dom_string(&mut self, value: &Value<'scope>) -> Result<Admitted<DomString>, Error> {
+        self.to_utf16(value).map(|units| units.map(DomString::new))
     }
 
     /// Converts to Web IDL USVString through one ToString, replacing each
     /// unmatched surrogate with U+FFFD and retaining valid surrogate pairs.
-    pub fn usv_string(&mut self, value: &Value<'scope>) -> Result<UsvString, Error> {
-        self.to_utf16(value).map(UsvString::normalize)
+    pub fn usv_string(&mut self, value: &Value<'scope>) -> Result<Admitted<UsvString>, Error> {
+        let units = self.to_utf16(value)?;
+        preparation::charge(
+            &self.operations.owner_state(),
+            preparation::Work::CodeUnits { units: units.len() },
+        )?;
+        Ok(units.map(UsvString::normalize))
     }
 
     /// Converts to Web IDL ByteString through one ToString. Code units above
     /// 255 produce [`Error::ByteStringOutOfRange`], corresponding to TypeError
     /// in an installed interface; no UTF-8 encoding or byte truncation occurs.
-    pub fn byte_string(&mut self, value: &Value<'scope>) -> Result<ByteString, Error> {
-        ByteString::convert(self.to_utf16(value)?)
+    pub fn byte_string(&mut self, value: &Value<'scope>) -> Result<Admitted<ByteString>, Error> {
+        let units = self.to_utf16(value)?;
+        let owner = self.operations.owner_state();
+        let mut backing = None;
+        let result = ByteString::convert_with(units.value, |step| match step {
+            idl::string::ByteStringStep::Inspect => preparation::charge(
+                &owner,
+                preparation::Work::BufferElement(preparation::BufferKind::Utf16),
+            ),
+            idl::string::ByteStringStep::Allocate(elements) => {
+                backing = owner
+                    .preparation
+                    .get()
+                    .filter(|_| elements != 0)
+                    .map(|account| {
+                        account.admit(preparation::Request::Buffer {
+                            kind: preparation::BufferKind::Bytes,
+                            bytes: elements,
+                            elements,
+                        })
+                    })
+                    .transpose()?;
+                Ok(())
+            }
+            idl::string::ByteStringStep::Copy(units) => {
+                preparation::charge(&owner, preparation::Work::CodeUnits { units })
+            }
+        });
+        drop(units.backing);
+        let value = result?;
+        Ok(Admitted { value, backing })
     }
 
     /// Converts to finite Web IDL float through one ECMAScript ToNumber and
@@ -1274,30 +1454,5 @@ impl<'scope> Scope<'scope> {
             value: self.retain(value),
             rule: None,
         }
-    }
-
-    /// Transfer already admitted backing to a retained invocation result.
-    /// The guard must contain no engine custody. A root accepts one guard.
-    pub fn retain_invocation_result_backing(
-        &mut self,
-        value: &Value<'scope>,
-        backing: Box<dyn std::any::Any>,
-    ) -> Result<(), Error> {
-        self.check_active()?;
-        self.operations.retain_root_backing(&value.root, backing)
-    }
-
-    /// Transfer already admitted backing to the exact original exception
-    /// root. The engine releases it after the persistent handle is destroyed.
-    /// The guard covers the managed-root extent and its own boxed storage,
-    /// and must contain no engine custody. A root accepts one guard.
-    pub fn retain_exception_backing(
-        &mut self,
-        exception: &Exception,
-        backing: Box<dyn std::any::Any>,
-    ) -> Result<(), Error> {
-        self.check_active()?;
-        self.operations
-            .retain_root_backing(exception.value(), backing)
     }
 }

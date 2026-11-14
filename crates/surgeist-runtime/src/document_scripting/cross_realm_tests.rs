@@ -39,7 +39,7 @@ use crate::{
     DomSourceExecutionScope, DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
     DomStyleRuntimeLimits, NativeDomEvent,
 };
-use surgeist_bindings_js::{Root, Value};
+use surgeist_bindings_js::{Root, Value, ValueKind};
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_dom::{
     Dom, DomBatch, DomDispatchCustodyLimits, DomHostedLimits, DomHostedRecordLimits, DomLimits,
@@ -252,7 +252,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     drop(session);
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
-    rejected_comment_requires_each_diagnostic_utf16_work_unit();
+    rejected_comment_requires_diagnostic_and_preparation_work();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();
     super::guest::tests::adopted_element_uses_its_registered_creation_realm();
     super::guest::tests::registered_origin::native_document_and_fragment_use_their_registered_realm(
@@ -434,7 +434,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
     let read = child_count_callback(Rc::downgrade(&probe.native), permit.clone());
     let detach = source::detach_callback(Rc::downgrade(&probe.native), permit);
 
-    // Independent layout oracle for the native budget. The Bindings native
+    // Independent static-body lower bound for the native budget. The Bindings native
     // qualification checks these account field shapes against the actual
     // retained Rc<Account> targets. The hosted budget counts requested Rust
     // payload bytes and excludes allocator and V8 overhead.
@@ -457,7 +457,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         DocumentScriptPermit,
         DomHostedRuntimeRetention,
     )>() + 7 * size_of::<(Rc<()>, &'static ())>();
-    let exact = size_of::<NativeOwner>()
+    let static_bodies = size_of::<NativeOwner>()
         + size_of_val(&read)
         + size_of_val(&detach)
         + FailureSlot::storage_bytes()
@@ -471,6 +471,17 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + window_event;
     drop(read);
     drop(detach);
+    // Backend-private process, realm, root and registration bodies are qualified
+    // independently by Bindings. Probe the accepted setup peak before semantic
+    // use, then replay the exact and one-short native cap. The test counter's own
+    // body is included by the actual setup size in this build.
+    let exact = probe
+        .engine
+        .as_ref()
+        .unwrap()
+        .preparation
+        .peak_storage_bytes();
+    assert!(exact > static_bodies);
 
     let policy = HtmlScriptingPolicy {
         user_allows: true,
@@ -507,6 +518,14 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         .unwrap()
         .enable(target, policy, hooks())
         .unwrap();
+    assert_eq!(
+        host.engine
+            .as_ref()
+            .unwrap()
+            .preparation
+            .peak_storage_bytes(),
+        exact
+    );
     native_bindings_are_live(&mut host);
     let session = host.stop().into_session().unwrap();
     let original = session.snapshot().stamp();
@@ -518,15 +537,28 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         Err(refused) => refused,
         Ok(mut host) => {
             native_bindings_are_live(&mut host);
-            let charged = host.engine.as_ref().unwrap().retained_bytes;
+            let charged = host
+                .engine
+                .as_ref()
+                .unwrap()
+                .preparation
+                .total_with(0)
+                .unwrap();
             panic!(
                 "one-byte-short native Window published bindings: limit={one_short}, required={exact}, charged={charged}, account={account}"
             );
         }
     };
+    let cause = match &refused.error {
+        DocumentScriptError::Native(error) => Some(error),
+        DocumentScriptError::Script(Error::HostFailure(failure)) => {
+            failure.cause::<DocumentScriptNativeError>()
+        }
+        _ => None,
+    };
     assert!(matches!(
-        refused.error,
-        DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+        cause,
+        Some(DocumentScriptNativeError::StorageLimit)
     ));
     let session = refused.owner.into_session().unwrap();
     let snapshot = session.snapshot();
@@ -539,7 +571,15 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         .unwrap()
         .enable(target, policy, hooks())
         .unwrap();
-    assert_eq!(restored.engine.as_ref().unwrap().retained_bytes, exact);
+    assert_eq!(
+        restored
+            .engine
+            .as_ref()
+            .unwrap()
+            .preparation
+            .peak_storage_bytes(),
+        exact
+    );
     native_bindings_are_live(&mut restored);
     restored.stop().into_session().unwrap();
 }
@@ -1707,6 +1747,7 @@ fn projected_comment_custody_outlives_collection_and_the_origin_realm_token() {
         global,
         realm,
         _backing: creation_backing,
+        _cap: creation_cap,
     } = *engine.creations.0.take().unwrap();
     assert!(next.is_none());
     assert_eq!(global, origin.global());
@@ -1753,7 +1794,7 @@ fn projected_comment_custody_outlives_collection_and_the_origin_realm_token() {
     let engine = projection.host.engine.as_ref().unwrap();
     assert!(engine.comments.object(key).is_none());
     collect(&mut projection, &marker, 1, "native retirement");
-    drop(creation_backing);
+    drop((creation_backing, creation_cap));
     projection
         .host
         .in_document(&projection.permit, |scope| {
@@ -1818,26 +1859,31 @@ fn install_brand_work_control(
     hits
 }
 
-fn rejected_comment_requires_each_diagnostic_utf16_work_unit() {
+fn rejected_comment_requires_diagnostic_and_preparation_work() {
     const LIMIT: DomSourceLimits =
         DomSourceLimits::new(32_000_000, 1_000_000, 8_192, 128, 4096, 4096, 8);
     const MESSAGE: &str = "Delegated Comment required";
     const HANDLER: &str = "(comment) => {
         const forged = Object.create(Object.getPrototypeOf(comment));
+        globalThis.brandDiagnosticCompleted = false;
         limitBrandWork();
         try {
             detachIf({ valueOf() { recordBrandResult(false); return 1; } }, forged);
         } catch (error) {
             if (!(error instanceof TypeError) || error.message !== 'Delegated Comment required')
                 throw error;
-            recordBrandResult(true);
+            globalThis.brandDiagnosticCompleted = true;
             return;
         }
         throw Error('forged Comment accepted');
     }";
-    // The existing entry spends one step. The diagnostic's authored UTF-16
-    // code units each need a step before the V8 TypeError can be allocated.
-    let exact = 1 + u64::try_from(MESSAGE.encode_utf16().count()).unwrap();
+    // The original detach entry and each diagnostic code unit spend a step.
+    // After the burn, detachIf also admits one callback frame, its receiver,
+    // argument buffer and two roots, then the TypeError's result record. Each
+    // canonical retention visits the Source payload, its existing dispatch
+    // custody ledger and final admission: three original observer work steps.
+    // There is no native success recorder after consuming this budget.
+    let exact = 1 + u64::try_from(MESSAGE.encode_utf16().count()).unwrap() + 3 * (1 + 4 + 1);
     let cancel = Arc::new(AtomicBool::new(false));
     for remaining in [exact, exact - 1] {
         let (mut projection, _) = native_projection(cancel.clone());
@@ -1851,20 +1897,24 @@ fn rejected_comment_requires_each_diagnostic_utf16_work_unit() {
                 return None;
             }
             let DocumentScriptGuestResult::Refused(Error::HostFailure(failure)) = outcome else {
-                panic!("one diagnostic UTF-16 unit short must refuse before throwing: {outcome:?}");
+                panic!(
+                    "one diagnostic preparation unit short must refuse before throwing: {outcome:?}"
+                );
             };
             let cause = failure.cause::<DocumentScriptNativeError>().unwrap();
             assert!(
                 matches!(
                     cause,
-                    DocumentScriptNativeError::Dom(DomError::SourceWorkLimit { limit })
+                    DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(
+                        DomHostedError::Dom(DomError::SourceWorkLimit { limit })
+                    ))
                         if *limit == LIMIT.work()
                 ),
                 "{cause:?}"
             );
             Some(failure.clone())
         });
-        assert_eq!(hits.get(), (usize::from(remaining == exact), 0));
+        assert_eq!(hits.get(), (0, 0), "the forged operand must not be coerced");
         assert!(projection.host.native.active_source().is_none());
         let document = projection.permit.document();
         assert_eq!(projection.parent(), Some(document.node()));
@@ -1942,6 +1992,17 @@ fn rejected_comment_requires_each_diagnostic_utf16_work_unit() {
         } else {
             projection.finish(&request, &cancel);
             assert_eq!(projection.parent(), Some(document.node()));
+            // Observe only after raising the original Source limits and
+            // completing its tail, so the probe cannot consume exact headroom.
+            projection
+                .host
+                .in_document(&projection.permit, |scope| {
+                    let completed = evaluate(scope, "globalThis.brandDiagnosticCompleted")?;
+                    assert_eq!(scope.kind(&completed)?, ValueKind::Boolean);
+                    assert!(scope.boolean(&completed)?);
+                    Ok(())
+                })
+                .unwrap();
         }
     }
 }
