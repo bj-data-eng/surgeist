@@ -208,6 +208,30 @@ impl Renderer {
         })
     }
 
+    pub(crate) fn override_default_device_displacement_map_upload_for_test(
+        &mut self,
+        available: bool,
+    ) -> bool {
+        let Some(identity) = self.default_device else {
+            return false;
+        };
+        self.backend.as_mut().is_some_and(|backend| {
+            backend.override_device_displacement_map_upload_for_test(identity, available)
+        })
+    }
+
+    pub(crate) fn override_default_device_displacement_buffer_limits_for_test(
+        &mut self,
+        limits: &wgpu::Limits,
+    ) -> bool {
+        let Some(identity) = self.default_device else {
+            return false;
+        };
+        self.backend.as_mut().is_some_and(|backend| {
+            backend.override_device_displacement_buffer_limits_for_test(identity, limits)
+        })
+    }
+
     pub(crate) fn override_default_device_effect_precision_facts_for_test(
         &mut self,
         effect_precisions: EffectPrecisionCapabilities,

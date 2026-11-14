@@ -17,9 +17,9 @@ use super::{
     validate::{
         BlurAxis, BlurInput, BlurPassDescription, ColorFilterPassDescription,
         CompositePassDescription, ConvolutionPassDescription, CopyBackdropPassDescription,
-        CorePassDescription, CorePassProgram, DropShadowColorizePassDescription,
-        GaussianPassDescription, MorphologyPassDescription, NativeShadowPassDescription,
-        OffsetPassDescription,
+        CorePassDescription, CorePassProgram, DisplacementPassDescription,
+        DropShadowColorizePassDescription, GaussianPassDescription, MorphologyPassDescription,
+        NativeShadowPassDescription, OffsetPassDescription,
     },
 };
 
@@ -48,6 +48,10 @@ pub(super) const NATIVE_SHADOW_WGSL: &str = concat!(
 const OFFSET_WGSL: &str = concat!(
     include_str!("../shaders/cubic.wgsl"),
     include_str!("../shaders/offset.wgsl"),
+);
+pub(super) const DISPLACEMENT_WGSL: &str = concat!(
+    include_str!("../shaders/native_periodic.wgsl"),
+    include_str!("../shaders/displacement.wgsl")
 );
 const COLOR_FILTER_WGSL: &str = include_str!("../shaders/color_filter.wgsl");
 pub(super) const BLUR_WGSL: &str = include_str!("../shaders/blur.wgsl");
@@ -1558,12 +1562,154 @@ pub(super) const fn span_source_over_blend() -> wgpu::BlendState {
     }
 }
 
+pub(super) fn create_displacement_bind_group_layout(
+    generation: &Generation,
+    cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: DisplacementPassDescription,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    use super::{ShaderDisplacementSourceKey as Source, ShaderDisplacementStageKey as Stage};
+    let texture = |binding| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    let buffer = |binding, uniform, minimum| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: if uniform {
+                wgpu::BufferBindingType::Uniform
+            } else {
+                wgpu::BufferBindingType::Storage { read_only: true }
+            },
+            has_dynamic_offset: false,
+            min_binding_size: wgpu::BufferSize::new(minimum),
+        },
+        count: None,
+    };
+    let storage = StorageAccount::Renderer(cpu.clone());
+    let mut entries = AccountedVec::new_in(&storage, 5, RenderResource::ScratchCpuBytes)?;
+    if description.stage == Stage::Displace
+        || (description.stage != Stage::Transparent && description.source != Source::Constant)
+    {
+        entries.append_slot()?.write(texture(0));
+    }
+    if description.raw_map {
+        entries.append_slot()?.write(texture(1));
+    }
+    entries.append_slot()?.write(buffer(2, true, 256));
+    if description.stage == Stage::Displace {
+        entries.append_slot()?.write(buffer(3, false, 4096));
+    }
+    if description.raw_map {
+        entries.append_slot()?.write(buffer(4, false, 16));
+    }
+    super::key::shader_work(
+        cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist displacement exact bindings"),
+            entries: &entries,
+        })
+    })
+}
+pub(super) fn create_displacement_shader_module(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist integer-address displacement"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(DISPLACEMENT_WGSL)),
+        })
+    })
+}
+pub(super) fn create_displacement_render_pipeline(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: DisplacementPassDescription,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    use super::{ShaderDisplacementSourceKey as Source, ShaderDisplacementStageKey as Stage};
+    let entry = match (description.stage, description.source) {
+        (Stage::RealizeSource, Source::Image) => "realize_image_main",
+        (Stage::RealizeSource, Source::Periodic) => "realize_periodic_main",
+        (Stage::RealizeSource, Source::Constant) => "realize_constant_main",
+        (Stage::PassThrough, Source::Image) => "passthrough_image_main",
+        (Stage::PassThrough, Source::Periodic) => "passthrough_periodic_main",
+        (Stage::PassThrough, Source::Constant) => "passthrough_constant_main",
+        (Stage::Displace, _) => {
+            if description.raw_map {
+                "displace_raw_main"
+            } else {
+                "displace_zero_main"
+            }
+        }
+        (Stage::Transparent, _) => "transparent_main",
+    };
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Surgeist displacement pipeline layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
+        })
+    })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist displacement checked stage"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vertex_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(entry),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
 const fn texture_format(format: ShaderTextureFormatKey) -> Result<wgpu::TextureFormat> {
     match format {
         ShaderTextureFormatKey::VelloCaptureRgba8Unorm
         | ShaderTextureFormatKey::ClipCoverageRgba8Unorm
         | ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm
         | ShaderTextureFormatKey::ResolvedMaskRgba8Unorm
+        | ShaderTextureFormatKey::RawImageRgba8Unorm
         | ShaderTextureFormatKey::OutputRgba8Unorm => Ok(wgpu::TextureFormat::Rgba8Unorm),
         ShaderTextureFormatKey::FilterRgba32Float => Ok(wgpu::TextureFormat::Rgba32Float),
         ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float => {

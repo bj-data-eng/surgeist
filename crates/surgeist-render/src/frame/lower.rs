@@ -1,6 +1,7 @@
 use super::CompositeSourceSpace;
 use super::NativeShadowPassFacts;
 use super::convolution::{ConvolutionMapping, ConvolutionStage};
+use super::displacement::DisplacementPassFacts;
 use super::gaussian::{GaussianPassFacts, GaussianStage};
 use super::morphology::MorphologyPassFacts;
 use super::offset::{OffsetMapping, OffsetPurpose, OffsetStage};
@@ -936,6 +937,7 @@ pub(crate) enum GraphLoweringPassKind {
     Offset(GraphLoweringOffset),
     Gaussian(GaussianPassFacts),
     Morphology(MorphologyPassFacts),
+    Displacement(DisplacementPassFacts),
     NativeShadowMerge(NativeShadowPassFacts),
     BlurHorizontal(Option<GraphLoweringBlur>),
     BlurVertical(Option<GraphLoweringBlur>),
@@ -956,6 +958,7 @@ pub(crate) enum GraphLoweringReadRole {
     GaussianAuxiliary,
     MorphologySource,
     MorphologyPreviousQuery,
+    DisplacementSource,
     NativeShadowOriginal,
     NativeShadowAlpha,
     BlurredSourceAlpha,
@@ -1240,6 +1243,25 @@ fn graph_lowering_pass_kind(
                 .filter(|entry| entry.pass == pass.id && entry.facts.stage() == stage)
                 .ok_or(GraphValidationError::InvalidPassArity)?;
             Ok(GraphLoweringPassKind::Morphology(entry.facts.clone()))
+        }
+        SemanticPassIntent::Displacement(stage) => {
+            let mut low = 0;
+            let mut high = graph.displacements.len();
+            while low < high {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let middle = low + (high - low) / 2;
+                if graph.displacements[middle].pass.index.0 < pass.id.index.0 {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let entry = graph
+                .displacements
+                .get(low)
+                .filter(|entry| entry.pass == pass.id && entry.facts.stage() == stage)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            Ok(GraphLoweringPassKind::Displacement(entry.facts.clone()))
         }
         SemanticPassIntent::NativeShadowMerge => {
             let mut low = 0;
@@ -1923,6 +1945,22 @@ fn graph_lowering_read_bindings(
                     } else {
                         GraphLoweringReadRole::MorphologyPreviousQuery
                     },
+                    GraphLoweringSamplingFilter::Nearest,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?);
+            }
+            reads
+        }
+        GraphLoweringPassKind::Displacement(facts) => {
+            let count = facts.stage().read_count(facts.mapping().source_kind());
+            if pass.reads.len() != count {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let mut reads = account.temporary(count)?;
+            if count != 0 {
+                reads.append_slot()?.write(make(
+                    0,
+                    GraphLoweringReadRole::DisplacementSource,
                     GraphLoweringSamplingFilter::Nearest,
                     GraphLoweringSamplingEdge::TransparentBlack,
                 )?);

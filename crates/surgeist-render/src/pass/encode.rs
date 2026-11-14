@@ -7,6 +7,10 @@ use std::sync::Arc;
 
 #[path = "encode/convolution.rs"]
 mod convolution;
+mod displacement;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "finish_custody_tests.rs"]
+mod finish_custody_tests;
 #[path = "encode/gaussian.rs"]
 mod gaussian;
 mod morphology;
@@ -71,6 +75,7 @@ pub(super) fn filter_step_passes<'a>(
             ExecutableFilterStepFacts::Convolution { passes, .. }
             | ExecutableFilterStepFacts::Gaussian { passes, .. }
             | ExecutableFilterStepFacts::Morphology { passes, .. }
+            | ExecutableFilterStepFacts::Displacement { passes, .. }
             | ExecutableFilterStepFacts::NativeShadow { passes, .. } => passes.len().max(1),
         };
         (0..count).map(move |index| {
@@ -101,6 +106,7 @@ pub(super) fn filter_step_passes<'a>(
                 ExecutableFilterStepFacts::Convolution { passes, .. }
                 | ExecutableFilterStepFacts::Gaussian { passes, .. }
                 | ExecutableFilterStepFacts::Morphology { passes, .. }
+                | ExecutableFilterStepFacts::Displacement { passes, .. }
                 | ExecutableFilterStepFacts::NativeShadow { passes, .. } => {
                     passes.get(index).copied()
                 }
@@ -242,6 +248,7 @@ pub(super) enum GraphScheduledEncodingKind {
     Convolution,
     Gaussian,
     Morphology,
+    Displacement,
     NativeShadow,
     Offset,
     BlurHorizontalRgba,
@@ -262,6 +269,7 @@ pub(crate) enum ScheduledFilterRawFact {
     Convolution,
     Gaussian,
     Morphology,
+    Displacement,
     NativeShadow,
     Offset,
     BlurHorizontalRgba,
@@ -682,6 +690,7 @@ fn scheduled_filter_raw_facts(
             GraphScheduledEncodingKind::Convolution => Some(ScheduledFilterRawFact::Convolution),
             GraphScheduledEncodingKind::Gaussian => Some(ScheduledFilterRawFact::Gaussian),
             GraphScheduledEncodingKind::Morphology => Some(ScheduledFilterRawFact::Morphology),
+            GraphScheduledEncodingKind::Displacement => Some(ScheduledFilterRawFact::Displacement),
             GraphScheduledEncodingKind::NativeShadow => Some(ScheduledFilterRawFact::NativeShadow),
             GraphScheduledEncodingKind::Offset => Some(ScheduledFilterRawFact::Offset),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
@@ -1023,6 +1032,8 @@ pub(crate) struct PendingGraphEncoding {
 pub(crate) struct PendingPreparedFrameCommit {
     pub(super) frame_scope: FrameResourceScope,
     pass_cache_update: ProvisionalDevicePassCacheUpdate,
+    displacement_custody:
+        Option<crate::accounting::OwnedBox<super::prepare::AcquiredGraphBindings>>,
 }
 
 /// Owns the checked cache reservation and prepared frame between graph
@@ -1031,9 +1042,22 @@ pub(crate) struct PendingPreparedFrameCommit {
 pub(crate) struct AccountingReadyPreparedFrameCommit<'cache> {
     frame_scope: FrameResourceScope,
     pass_cache_update: ReadyPassCacheUpdate<'cache>,
+    displacement_custody:
+        Option<crate::accounting::OwnedBox<super::prepare::AcquiredGraphBindings>>,
 }
 
 impl PendingPreparedFrameCommit {
+    #[cfg(test)]
+    pub(crate) fn observe_displacement_uniforms_for_test(
+        &self,
+        stage: super::DisplacementUniformStageForTest,
+    ) {
+        super::displacement_observation::record(
+            self.displacement_custody.as_deref(),
+            self.frame_scope.generation(),
+            stage,
+        );
+    }
     pub(crate) fn into_accounting_ready<'cache>(
         self,
         pass_cache: &'cache mut DevicePassCache,
@@ -1042,12 +1066,14 @@ impl PendingPreparedFrameCommit {
         let Self {
             frame_scope,
             pass_cache_update,
+            displacement_custody,
         } = self;
         let pass_cache_update = match pass_cache_update.prepare_commit(pass_cache, account) {
             PassCacheCommitPreparation::Ready(update) => update,
             PassCacheCommitPreparation::Rejected { update, error } => {
                 // The frame scope releases before the provisional cache handles.
                 drop(frame_scope);
+                drop(displacement_custody);
                 drop(update);
                 return Err(error);
             }
@@ -1055,7 +1081,9 @@ impl PendingPreparedFrameCommit {
         let ready = AccountingReadyPreparedFrameCommit {
             frame_scope,
             pass_cache_update,
+            displacement_custody,
         };
+        validate_displacement_custody(ready.displacement_custody.as_deref(), account)?;
         ready.frame_scope.ensure_commit_ready(&[])?;
         Ok(ready)
     }
@@ -1063,15 +1091,53 @@ impl PendingPreparedFrameCommit {
 
 impl AccountingReadyPreparedFrameCommit<'_> {
     pub(crate) fn ensure_commit_ready(&mut self, account: &Account) -> Result<()> {
+        validate_displacement_custody(self.displacement_custody.as_deref(), account)?;
         self.pass_cache_update.recheck(account)?;
         self.frame_scope.ensure_commit_ready(&[])
     }
 
     pub(crate) fn commit(self) -> Result<FrameCleanup> {
-        let frame_cleanup = self.frame_scope.finish_checked()?;
-        self.pass_cache_update.commit();
+        let Self {
+            frame_scope,
+            pass_cache_update,
+            displacement_custody,
+        } = self;
+        let frame_cleanup = frame_scope.finish_checked()?;
+        pass_cache_update.commit();
+        drop(displacement_custody);
         Ok(frame_cleanup)
     }
+}
+
+fn validate_displacement_custody(
+    custody: Option<&super::prepare::AcquiredGraphBindings>,
+    account: &Account,
+) -> Result<()> {
+    if let Some(custody) = custody {
+        for binding in custody.displacement_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if !binding.consumed
+                || binding.uniform.size() != 256
+                || !binding
+                    .uniform
+                    .usage()
+                    .contains(wgpu::BufferUsages::UNIFORM)
+            {
+                return Err(preparation_error(
+                    "pending displacement uniform custody is incomplete",
+                ));
+            }
+            for resource in &binding.resources {
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if resource.lease.is_some() {
+                    return Err(preparation_error(
+                        "pending displacement resource lease is unresolved",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[must_use = "graph submission state must remain owned by one transaction payload"]
@@ -1083,6 +1149,108 @@ pub(crate) struct PreparedGraphSubmission {
 impl PreparedGraphSubmission {
     pub(crate) fn into_parts(self) -> (PendingVelloResourceCommit, PendingPreparedFrameCommit) {
         (self.capture_resources, self.prepared_frame)
+    }
+}
+
+/// Finished commands and their exact graph owners cannot be separated before
+/// entering the transaction payload. Commands always dispose before those owners.
+pub(crate) struct EncodedPreparedGraphSubmission {
+    command_buffer: OwnedGpu<wgpu::CommandBuffer>,
+    prepared: PreparedGraphSubmission,
+}
+impl EncodedPreparedGraphSubmission {
+    pub(crate) fn into_parts(self) -> (OwnedGpu<wgpu::CommandBuffer>, PreparedGraphSubmission) {
+        (self.command_buffer, self.prepared)
+    }
+}
+
+struct GraphSubmissionDraft<'device> {
+    encoder: OwnedGpu<wgpu::CommandEncoder>,
+    pending: PendingGraphEncoding,
+    prepared: PreparedGraph<'device>,
+}
+impl GraphSubmissionDraft<'_> {
+    fn validate(&self, account: &Account) -> Result<()> {
+        self.prepared
+            .validate_graph_submission(&self.pending, account)
+    }
+    fn finish(self, account: &Account) -> Result<EncodedPreparedGraphSubmission> {
+        self.validate(account)?;
+        let Self {
+            encoder,
+            pending,
+            prepared,
+        } = self;
+        // A refused finish drops the consumed encoder before either graph owner.
+        let encode_account = account.at(RenderPhase::Encode);
+        let command_buffer = account.phase(RenderPhase::Encode, || {
+            encoder.finish(Some(&encode_account))
+        })?;
+        FinishedGraphSubmissionDraft {
+            command_buffer,
+            pending,
+            prepared,
+        }
+        .into_submission()
+    }
+}
+
+struct FinishedGraphSubmissionDraft<'device> {
+    command_buffer: OwnedGpu<wgpu::CommandBuffer>,
+    pending: PendingGraphEncoding,
+    prepared: PreparedGraph<'device>,
+}
+impl FinishedGraphSubmissionDraft<'_> {
+    fn into_submission(self) -> Result<EncodedPreparedGraphSubmission> {
+        // Keep the complete command owner armed across every rejectable check.
+        if self.prepared.frame_scope.is_none() || self.prepared.pass_cache_update.is_none() {
+            return Err(preparation_error(
+                "completed graph submission lost a required native owner",
+            ));
+        }
+        let Self {
+            command_buffer,
+            pending,
+            mut prepared,
+        } = self;
+        let frame_scope = prepared.frame_scope.take();
+        let pass_cache_update = prepared.pass_cache_update.take();
+        let (frame_scope, pass_cache_update) = match (frame_scope, pass_cache_update) {
+            (Some(frame_scope), Some(pass_cache_update)) => (frame_scope, pass_cache_update),
+            (frame_scope, pass_cache_update) => {
+                // Extraction errors must not rely on the former aggregate's
+                // field order: its owners are now independent locals.
+                drop(command_buffer);
+                drop(pending);
+                drop(frame_scope);
+                drop(pass_cache_update);
+                drop(prepared);
+                return Err(preparation_error(
+                    "completed graph submission owner extraction failed",
+                ));
+            }
+        };
+        let displacement_custody = if prepared.acquired_bindings.displacement_bindings.is_empty() {
+            None
+        } else {
+            Some(prepared.acquired_bindings)
+        };
+        let PendingGraphEncoding {
+            summary: _,
+            resources: capture_resources,
+            session: _,
+        } = pending;
+        Ok(EncodedPreparedGraphSubmission {
+            command_buffer,
+            prepared: PreparedGraphSubmission {
+                capture_resources,
+                prepared_frame: PendingPreparedFrameCommit {
+                    frame_scope,
+                    pass_cache_update,
+                    displacement_custody,
+                },
+            },
+        })
     }
 }
 
@@ -1106,6 +1274,7 @@ struct PreparedPassEncodingRequest {
     offset_parameters: Option<OffsetParameterBytes>,
     native_shadow_parameters: Option<NativeShadowParameterBytes>,
     convolution_weights: Option<RuntimePassId>,
+    displacement: Option<SharedValue<super::displacement::DisplacementPreparation>>,
 }
 
 /// Created only after dedicated leases resolve and scratch logical occupants
@@ -1122,6 +1291,7 @@ struct CompletedPassReleases {
     gaussian_buffer_taken: bool,
     morphology_buffer_taken: bool,
     native_shadow_buffer_taken: bool,
+    displacement_consumed: bool,
 }
 
 /// Scheduled bindings from the graph whose frame resolved their exact leases.
@@ -1152,6 +1322,9 @@ struct ResolvedPassReleases<'graph> {
     convolution_weight_bindings:
         &'graph mut PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
     convolution_release: Option<RuntimePassId>,
+    displacement_bindings:
+        &'graph mut PassMap<RuntimePassId, super::displacement::PreparedDisplacementBinding>,
+    releases_displacement: bool,
 }
 
 impl<'graph> ResolvedPassReleases<'graph> {
@@ -1169,6 +1342,8 @@ impl<'graph> ResolvedPassReleases<'graph> {
         let releases_gaussian_parameters = request.gaussian_parameters.is_some();
         let releases_morphology_parameters = request.morphology_parameters.is_some();
         let releases_native_shadow_parameters = request.native_shadow_parameters.is_some();
+        let releases_displacement = request.displacement.is_some();
+        let displacement_preparation = request.displacement.clone();
         let convolution_release = request
             .convolution_weights
             .map(|owner| -> Result<Option<RuntimePassId>> {
@@ -1188,6 +1363,37 @@ impl<'graph> ResolvedPassReleases<'graph> {
             })
             .transpose()?
             .flatten();
+        let displacement_count = if releases_displacement {
+            let binding = graph
+                .acquired_bindings
+                .displacement_bindings
+                .get(&pass, account)?
+                .ok_or_else(|| preparation_error("displacement release custody is missing"))?;
+            if binding.consumed
+                || !displacement_preparation
+                    .as_ref()
+                    .is_some_and(|preparation| preparation.same_allocation(&binding.preparation))
+            {
+                return Err(preparation_error(
+                    "displacement release custody is stale or changed",
+                ));
+            }
+            for resource in &binding.resources {
+                account.work(RenderWork::GraphEdgeVisits, 1)?;
+                if resource.read.read.id.owner != pass
+                    || resource.read.read.last_use != pass
+                    || resource.read.read.expected_reads != 1
+                    || resource.lease.is_none()
+                {
+                    return Err(preparation_error(
+                        "displacement resource last-use facts changed",
+                    ));
+                }
+            }
+            binding.resources.len()
+        } else {
+            0
+        };
 
         for resource in &resource_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
@@ -1297,11 +1503,13 @@ impl<'graph> ResolvedPassReleases<'graph> {
             morphology_scratch_bindings: scratch_bindings,
             gaussian_kernel_bindings: kernel_bindings,
             convolution_weight_bindings,
+            displacement_bindings,
         } = &mut **acquired_bindings;
         let mut leases = account.temporary(
             resource_releases.len()
                 + kernel_releases.len()
-                + usize::from(convolution_release.is_some()),
+                + usize::from(convolution_release.is_some())
+                + displacement_count,
         )?;
         for resource in &resource_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
@@ -1336,6 +1544,18 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 .ok_or_else(|| preparation_error("convolution release became unavailable"))?;
             leases.append_slot()?.write(lease);
         }
+        if releases_displacement {
+            let binding = displacement_bindings.get(&pass, account)?.ok_or_else(|| {
+                preparation_error("displacement release custody became unavailable")
+            })?;
+            for resource in &binding.resources {
+                leases.append_slot()?.write(
+                    resource.lease.as_ref().ok_or_else(|| {
+                        preparation_error("displacement lease became unavailable")
+                    })?,
+                );
+            }
+        }
         frame_scope
             .as_mut()
             .ok_or_else(|| preparation_error("prepared frame resource scope is closed"))?
@@ -1363,11 +1583,31 @@ impl<'graph> ResolvedPassReleases<'graph> {
             color_filter_operation_bindings,
             convolution_weight_bindings,
             convolution_release,
+            displacement_bindings,
+            releases_displacement,
         })
     }
 
     fn take_bindings(self) -> Result<CompletedPassReleases> {
         let mut first_missing = None;
+        if self.releases_displacement {
+            match self.displacement_bindings.maintenance_get_mut(&self.pass) {
+                Some(binding) if !binding.consumed => {
+                    for resource in binding.resources.iter_mut() {
+                        Self::drop_required_binding(
+                            resource.lease.take(),
+                            "displacement lease missing after atomic resolution",
+                            &mut first_missing,
+                        );
+                    }
+                    binding.consumed = true;
+                }
+                _ => {
+                    first_missing
+                        .get_or_insert("displacement custody missing after atomic resolution");
+                }
+            }
+        }
         for resource in self.resources.iter() {
             let binding = self.resource_bindings.maintenance_get_mut(resource);
             match binding {
@@ -1496,6 +1736,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
             gaussian_buffer_taken: self.releases_gaussian_parameters,
             morphology_buffer_taken: self.releases_morphology_parameters,
             native_shadow_buffer_taken: self.releases_native_shadow_parameters,
+            displacement_consumed: self.releases_displacement,
         })
     }
 
@@ -1521,6 +1762,7 @@ struct CompletedReleaseFacts {
     gaussian_buffer: bool,
     morphology_buffer: bool,
     native_shadow_buffer: bool,
+    displacement: bool,
 }
 
 impl CompletedPassReleases {
@@ -1536,6 +1778,7 @@ impl CompletedPassReleases {
             gaussian_buffer: exact_source && self.gaussian_buffer_taken,
             morphology_buffer: exact_source && self.morphology_buffer_taken,
             native_shadow_buffer: exact_source && self.native_shadow_buffer_taken,
+            displacement: exact_source && self.displacement_consumed,
         }
     }
 }
@@ -1561,6 +1804,7 @@ impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
             offset_parameters: request.offset_parameters.clone(),
             native_shadow_parameters: request.native_shadow_parameters.clone(),
             convolution_weights: request.convolution_weights,
+            displacement: request.displacement.clone(),
         }
     }
 }
@@ -2002,6 +2246,7 @@ fn graph_scheduled_encoding_order_is_exact(
             RuntimePassKind::Convolution(_) => GraphScheduledEncodingKind::Convolution,
             RuntimePassKind::Gaussian(_) => GraphScheduledEncodingKind::Gaussian,
             RuntimePassKind::Morphology(_) => GraphScheduledEncodingKind::Morphology,
+            RuntimePassKind::Displacement(_) => GraphScheduledEncodingKind::Displacement,
             RuntimePassKind::NativeShadowMerge(_) => GraphScheduledEncodingKind::NativeShadow,
             RuntimePassKind::Offset(_) => GraphScheduledEncodingKind::Offset,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
@@ -2502,6 +2747,18 @@ impl<'device> PreparedGraph<'device> {
                     released.resources && released.morphology_buffer;
                 progress.morphology_pass_count = progress.morphology_pass_count.saturating_add(1);
                 progress.record_custom_completion(GraphScheduledEncodingKind::Morphology)
+            }
+            RuntimePassKind::Displacement(_) => {
+                self.encode_displacement(encoder, request, account)?;
+                let released = self
+                    .complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                if !released.resources || !released.displacement {
+                    return Err(preparation_error(
+                        "displacement completion did not resolve exact read custody",
+                    ));
+                }
+                progress.record_custom_completion(GraphScheduledEncodingKind::Displacement)
             }
             RuntimePassKind::NativeShadowMerge(_) => {
                 self.encode_native_shadow(encoder, request, account)?;
@@ -4863,15 +5120,32 @@ impl<'device> PreparedGraph<'device> {
     }
 
     pub(crate) fn finish_graph_submission(
-        mut self,
+        self,
         pending: PendingGraphEncoding,
+        encoder: OwnedGpu<wgpu::CommandEncoder>,
         account: &Account,
-    ) -> Result<PreparedGraphSubmission> {
-        let completed_session = self.custom_spine_completed_session.take().ok_or_else(|| {
-            preparation_error("the prepared graph has no completed encoding session")
-        })?;
+    ) -> Result<EncodedPreparedGraphSubmission> {
+        GraphSubmissionDraft {
+            encoder,
+            pending,
+            prepared: self,
+        }
+        .finish(account)
+    }
+
+    fn validate_graph_submission(
+        &self,
+        pending: &PendingGraphEncoding,
+        account: &Account,
+    ) -> Result<()> {
+        let completed_session = self
+            .custom_spine_completed_session
+            .as_ref()
+            .ok_or_else(|| {
+                preparation_error("the prepared graph has no completed encoding session")
+            })?;
         if self.custom_spine_encoding_state != Some(CustomSpineEncodingState::Complete)
-            || !Arc::ptr_eq(&completed_session, &pending.session)
+            || !Arc::ptr_eq(completed_session, &pending.session)
             || !pending.summary.proves_complete_submission()
             || self.next_pass != self.plan.passes.len()
         {
@@ -4911,6 +5185,7 @@ impl<'device> PreparedGraph<'device> {
                 ));
             }
         }
+        validate_displacement_custody(Some(&self.acquired_bindings), account)?;
         for binding in self.gaussian_parameter_bindings.values() {
             account.work(RenderWork::ResourceProbes, 1)?;
             if binding.buffer.is_some() {
@@ -4951,24 +5226,12 @@ impl<'device> PreparedGraph<'device> {
                 ));
             }
         }
-        let pass_cache_update = self.pass_cache_update.take().ok_or_else(|| {
-            preparation_error("the completed graph lost its provisional pass-cache update")
-        })?;
-        let frame_scope = self.frame_scope.take().ok_or_else(|| {
-            preparation_error("the completed graph lost its prepared frame scope")
-        })?;
-        let PendingGraphEncoding {
-            summary: _,
-            resources: capture_resources,
-            session: _,
-        } = pending;
-        Ok(PreparedGraphSubmission {
-            capture_resources,
-            prepared_frame: PendingPreparedFrameCommit {
-                frame_scope,
-                pass_cache_update,
-            },
-        })
+        if self.pass_cache_update.is_none() || self.frame_scope.is_none() {
+            return Err(preparation_error(
+                "the completed graph lost a required native submission owner",
+            ));
+        }
+        Ok(())
     }
 
     #[cfg_attr(

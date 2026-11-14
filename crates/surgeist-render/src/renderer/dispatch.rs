@@ -390,6 +390,7 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
     let mut has_gaussian = false;
     let mut has_native_shadow = false;
     let mut has_morphology = false;
+    let mut has_displacement = false;
 
     for pass in graph.lowering_view(account)?.passes(account)?.iter() {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -405,6 +406,7 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
             GraphLoweringPassKind::Gaussian(_) => has_gaussian = true,
             GraphLoweringPassKind::NativeShadowMerge(_) => has_native_shadow = true,
             GraphLoweringPassKind::Morphology(_) => has_morphology = true,
+            GraphLoweringPassKind::Displacement(_) => has_displacement = true,
             GraphLoweringPassKind::BlurHorizontal(Some(_))
             | GraphLoweringPassKind::BlurVertical(Some(_)) => has_blur = true,
             GraphLoweringPassKind::DropShadowColorize(Some(_)) => has_drop_shadow = true,
@@ -441,6 +443,11 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
         Some((
             PrimitiveFamily::Filters,
             PrimitiveOperation::GpuConvolutionFilterExecution,
+        ))
+    } else if has_displacement {
+        Some((
+            PrimitiveFamily::Filters,
+            PrimitiveOperation::GpuDisplacementFilterExecution,
         ))
     } else if has_morphology {
         Some((

@@ -1333,6 +1333,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::Convolution(_)
             | RuntimePassKind::Gaussian(_)
             | RuntimePassKind::Morphology(_)
+            | RuntimePassKind::Displacement(_)
             | RuntimePassKind::Offset(_)
             | RuntimePassKind::NativeShadowMerge(_)
             | RuntimePassKind::BlurHorizontal(_)
@@ -3180,6 +3181,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         | RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
         | RuntimePassKind::Morphology(_)
+        | RuntimePassKind::Displacement(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_)
         | RuntimePassKind::ColorFilter(_)
@@ -4931,6 +4933,12 @@ fn spatial_filter_pass_tags(
                     passes.len(),
                 ));
             }
+            ExecutableFilterStepFacts::Displacement { passes, .. } => {
+                tags.extend(std::iter::repeat_n(
+                    SpatialFilterPassTagForTest::Displacement,
+                    passes.len(),
+                ));
+            }
             ExecutableFilterStepFacts::Gaussian { passes, .. } => {
                 tags.extend(std::iter::repeat_n(
                     SpatialFilterPassTagForTest::Gaussian,
@@ -5359,6 +5367,7 @@ fn observe_layer_composition(
             | RuntimeReadRole::GaussianSource
             | RuntimeReadRole::GaussianAuxiliary
             | RuntimeReadRole::MorphologySource
+            | RuntimeReadRole::DisplacementSource
             | RuntimeReadRole::MorphologyPreviousQuery
             | RuntimeReadRole::ConvolutionAuxiliary
             | RuntimeReadRole::BlurredSourceAlpha
@@ -6195,7 +6204,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 15];
+    let mut vocabulary = [false; 16];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6209,6 +6218,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && !vocabulary[12]
         && !vocabulary[13]
         && !vocabulary[14]
+        && !vocabulary[15]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6595,7 +6605,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 15];
+    let mut vocabulary = [false; 16];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6967,6 +6977,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::Gaussian(_) => 12,
         RuntimePassKind::NativeShadowMerge(_) => 13,
         RuntimePassKind::Morphology(_) => 14,
+        RuntimePassKind::Displacement(_) => 15,
     }
 }
 

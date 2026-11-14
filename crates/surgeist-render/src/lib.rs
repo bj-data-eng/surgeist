@@ -39,6 +39,7 @@ mod color_mapping;
 mod color_reduction;
 mod command;
 mod convolution;
+mod displacement;
 mod encode;
 mod error;
 mod filter;
@@ -101,6 +102,11 @@ pub use color_mapping::prepare_sdr_srgb_color;
 pub use convolution::{
     ConvolutionInput, ConvolutionNumericPhase, ConvolutionParameter, ConvolutionPreparationError,
     PreparedConvolution, prepare_convolution,
+};
+pub use displacement::{
+    DisplacementChannel, DisplacementInput, DisplacementNumericPhase, DisplacementParameter,
+    DisplacementPreparationError, DisplacementSource, PreparedDisplacement,
+    PreparedDisplacementMap, prepare_displacement, prepare_native_displacement_map,
 };
 pub use error::{
     DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,

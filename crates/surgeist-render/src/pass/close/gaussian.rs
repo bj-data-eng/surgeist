@@ -511,6 +511,16 @@ pub(super) fn composite_footprint_is_exact(
             ))
         }
         RuntimePassKind::Morphology(_) => return None,
+        RuntimePassKind::Displacement(runtime)
+            if runtime.work.route_len().checked_sub(1) == Some(runtime.work.route_index())
+                && proof.capture(runtime.proves_exact(source_pass.id, proof.account))? =>
+        {
+            Some((
+                runtime.work.mapping().target_spatial(),
+                runtime.work.mapping().output_clip(),
+            ))
+        }
+        RuntimePassKind::Displacement(_) => return None,
         RuntimePassKind::Gaussian(_) => return None,
         RuntimePassKind::NativeShadowMerge(work) => Some((
             work.mapping().target_spatial(),

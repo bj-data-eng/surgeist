@@ -233,6 +233,7 @@ fn core_pass_program_sampling(
         | ShaderProgramKey::GaussianSource
         | ShaderProgramKey::GaussianConstant
         | ShaderProgramKey::Morphology { .. }
+        | ShaderProgramKey::Displacement { .. }
         | ShaderProgramKey::Offset
         | ShaderProgramKey::NativeShadow { .. }
         | ShaderProgramKey::ColorFilter
@@ -823,6 +824,104 @@ pub(super) fn validate_native_shadow_pass_keys(
 
 pub(super) fn native_shadow_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DisplacementPassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+    pub(super) stage: super::ShaderDisplacementStageKey,
+    pub(super) source: super::ShaderDisplacementSourceKey,
+    pub(super) raw_map: bool,
+}
+#[derive(Clone, Copy)]
+pub(crate) struct DisplacementPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+pub(super) fn displacement_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+pub(super) fn validate_displacement_pass_keys(
+    keys: DisplacementPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<DisplacementPassDescription> {
+    use super::{ShaderDisplacementSourceKey as Source, ShaderDisplacementStageKey as Stage};
+    let ShaderProgramKey::Displacement {
+        stage,
+        source,
+        raw_map,
+    } = keys.layout.program
+    else {
+        return Err(displacement_cache_error(
+            "displacement requires its exact stage program",
+        ));
+    };
+    let source_read =
+        stage == Stage::Displace || (stage != Stage::Transparent && source != Source::Constant);
+    let target = keys.pipeline.target_format;
+    let expected_count = usize::from(source_read) + usize::from(raw_map);
+    if keys.layout.sampled_textures.len() != expected_count || (raw_map && stage != Stage::Displace)
+    {
+        return Err(displacement_cache_error(
+            "displacement texture bindings differ from reached resources",
+        ));
+    }
+    for (index, texture) in keys.layout.sampled_textures.iter().enumerate() {
+        binding_visit(observer)?;
+        let expected = if source_read && index == 0 {
+            (ShaderBindingRoleKey::DisplacementSource, target)
+        } else {
+            (
+                ShaderBindingRoleKey::DisplacementMap,
+                ShaderTextureFormatKey::RawImageRgba8Unorm,
+            )
+        };
+        if (texture.binding_role, texture.source_format) != expected {
+            return Err(displacement_cache_error(
+                "displacement input role or physical format changed",
+            ));
+        }
+    }
+    let data: &[ShaderDataBindingKey] = if stage == Stage::Displace {
+        if raw_map {
+            &[
+                ShaderDataBindingKey::DisplacementParameters,
+                ShaderDataBindingKey::DisplacementTables,
+                ShaderDataBindingKey::DisplacementMapRecords,
+            ]
+        } else {
+            &[
+                ShaderDataBindingKey::DisplacementParameters,
+                ShaderDataBindingKey::DisplacementTables,
+            ]
+        }
+    } else {
+        &[ShaderDataBindingKey::DisplacementParameters]
+    };
+    if keys.shader.program != keys.layout.program
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(keys.layout.data_bindings.as_slice(), data, observer)?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || keys.shader.working_format != Some(target)
+        || keys.shader.output_format != Some(target)
+        || !is_working_format(target)
+    {
+        return Err(displacement_cache_error(
+            "displacement program, storage, and working format keys disagree",
+        ));
+    }
+    Ok(DisplacementPassDescription {
+        target_format: target,
+        stage,
+        source,
+        raw_map,
+    })
 }
 
 pub(super) fn validate_color_filter_pass_keys(

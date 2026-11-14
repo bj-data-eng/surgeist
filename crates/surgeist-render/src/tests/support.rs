@@ -392,6 +392,38 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
             ),
         )
         .unwrap();
+    let displacement_bounds = Rect::new(6.0, 8.0, 2.0, 1.0);
+    let mut displacement_source = Scene::new();
+    displacement_source.fill(displacement_bounds, Color::BLACK);
+    let displacement = crate::prepare_displacement(
+        crate::DisplacementInput::new().with_scale(2.0),
+        crate::FilterColorSpace::Srgb,
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
+    let displacement_map = crate::prepare_native_displacement_map(
+        Size::new(1.0, 1.0),
+        std::sync::Arc::<[u8]>::from([128, 128, 128, 128]),
+        displacement_bounds,
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
+    scene
+        .displacement_layer(
+            Layer::new(),
+            displacement,
+            crate::DisplacementSource::finite(
+                displacement_source,
+                crate::FilterDomains::try_new(
+                    displacement_bounds,
+                    displacement_bounds,
+                    displacement_bounds,
+                )
+                .unwrap(),
+            ),
+            displacement_map,
+        )
+        .unwrap();
     scene
         .normalize(
             Capabilities::CURRENT,

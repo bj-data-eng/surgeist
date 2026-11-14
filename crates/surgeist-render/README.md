@@ -36,6 +36,11 @@ erosion and dilation with independent radii, transparent finite exterior and
 authentic constant or periodic sources. Exact GPU range-extrema tables preserve
 independent domains, color phases and bounded outer composition.
 
+Prepared [native displacement](docs/displacement.md) copies source texels using
+independent straight-byte map channels, explicit domains and checked integer
+addresses. Native-authored map values remain separate from document input and
+taint qualification.
+
 Prepared [native drop shadow](docs/native-shadow.md) preserves a single original
 capture above an alpha-only Gaussian, finite displacement and colored flood. It
 keeps independent stage domains, working color, bounded outer composition and
@@ -135,6 +140,7 @@ and the full first-success walkthrough.
 | [Reference](docs/reference.md) | Find public interfaces, features, diagnostics, and verification commands. |
 | [Native convolution](docs/convolution.md) | Prepare and execute resolved convolution with explicit domains, grids and numeric policy. |
 | [Native morphology](docs/morphology.md) | Erode or dilate premultiplied components with resolved radii, independent domains and authentic source declarations. |
+| [Native displacement](docs/displacement.md) | Displace authentic first inputs with native straight-byte maps, independent domains and explicit numeric policy. |
 | [Native resolved drop shadow](docs/native-shadow.md) | Blur alpha, displace its finite result and merge the unchanged original above a colored shadow. |
 | [Native offset](docs/offset.md) | Translate finite captured images with independent clipping and resolved reconstruction intent. |
 | [Explanation](docs/explanation.md) | Understand execution routes, publication, precision, and ownership. |

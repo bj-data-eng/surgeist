@@ -3,7 +3,8 @@ use crate::accounting::{Account, RenderPhase};
 use crate::{
     Result, RuntimeOperation,
     pass::{
-        AccountingReadyPreparedFrameCommit, PendingPreparedFrameCommit, PreparedGraphSubmission,
+        AccountingReadyPreparedFrameCommit, EncodedPreparedGraphSubmission,
+        PendingPreparedFrameCommit,
     },
     resource::FrameCleanup,
     shader::DevicePassCache,
@@ -111,10 +112,10 @@ pub(crate) enum GraphOutputCommit {
 
 impl GraphSubmissionPayload {
     pub(crate) fn new(
-        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
-        prepared: PreparedGraphSubmission,
+        encoded: EncodedPreparedGraphSubmission,
         headless_draft: HeadlessPublication,
     ) -> Self {
+        let (command_buffer, prepared) = encoded.into_parts();
         let (capture_resources, prepared_frame) = prepared.into_parts();
         Self {
             command_buffer,
@@ -129,10 +130,10 @@ impl GraphSubmissionPayload {
         all(feature = "render-web", target_arch = "wasm32")
     ))]
     pub(crate) fn presented(
-        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
-        prepared: PreparedGraphSubmission,
+        encoded: EncodedPreparedGraphSubmission,
         acquired: AcquiredPresentedSurfaceTexture,
     ) -> Self {
+        let (command_buffer, prepared) = encoded.into_parts();
         let (capture_resources, prepared_frame) = prepared.into_parts();
         Self {
             command_buffer,
@@ -248,8 +249,16 @@ impl GpuOperationTransaction {
             prepared_frame,
             output,
         } = payload;
+        #[cfg(test)]
+        prepared_frame.observe_displacement_uniforms_for_test(
+            crate::pass::DisplacementUniformStageForTest::BeforeSubmit,
+        );
         self.submit_graph_command(queue, command_buffer, account)
             .await?;
+        #[cfg(test)]
+        prepared_frame.observe_displacement_uniforms_for_test(
+            crate::pass::DisplacementUniformStageForTest::Submitted,
+        );
         #[cfg(all(test, not(target_arch = "wasm32")))]
         super::test_support::after_graph_submit_for_test(&self.lease).await;
         let resources = GraphSubmittedResources {

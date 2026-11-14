@@ -697,6 +697,24 @@ public enum and is source-breaking for downstream exhaustive matches. The new
 required `RenderWorkTable<T>::ScheduledMorphologySamples` field also requires
 updates to exhaustive struct literals and patterns.
 
+
+### Native straight-byte displacement
+
+`Scene::displacement_layer` consumes an authentic first source and an admitted
+map, replacing the exclusive foreground effect. `DisplacementInput` defaults to
+scale0/A/A. Native maps are prepared from immutable straight RGBA8 bytes and M;
+closed SourceGraphic/SourceAlpha references and `suppressed()` bypass map work.
+Valid zero-sized maps instead supply active byte0 data. No Image/Scene conversion
+or caller-issued document qualification is provided.
+
+The [displacement contract](displacement.md) specifies independent S/M/F/P,
+ordered binary64 address tables, map-only conversion, integer map records,
+coverage, resource custody and the seven work dimensions. The semantic capability
+is `FilterCapabilities::supports_gpu_displacement_filter_execution()`; a raw-map
+format refusal identifies `RuntimeOperation::DisplacementRendering`.
+The exhaustive `PrimitiveOperation` variant and required `RenderWorkTable<T>`
+fields require downstream exhaustive match/struct updates.
+
 ## Image sampling
 
 `Image::rendering` accepts an `ImageRendering` hint already selected by the

@@ -151,13 +151,15 @@ fn lower_runtime_resources(
 
 fn lower_runtime_passes(
     pass_views: &[GraphLoweringPassView<'_>],
-    resources: &[RuntimeResourceRequest],
-    resource_index: &PassMap<RuntimeResourceId, usize>,
+    resource_set: &LoweredResourceSet,
     releases: &mut PassMap<RuntimePassId, AccountedVec<RuntimeResourceId>>,
     working_format: WorkingFormat,
     output_format: Format,
+    capability_validation: GraphLoweringCapabilityValidation<'_>,
     account: &Account,
 ) -> Result<SharedValue<Vec<RuntimePass>>> {
+    let resources = &resource_set.values;
+    let resource_index = &resource_set.index;
     let mut passes = account.retained::<RuntimePass>(pass_views.len())?;
     let mut seen = PassMap::temporary(account, pass_views.len())?;
     for pass in pass_views {
@@ -180,7 +182,7 @@ fn lower_runtime_passes(
             dependencies.append_slot()?.write(dependency);
         }
         let (kind, input_reads) = pass.project(account, |kind| {
-            runtime_pass_kind(kind, working_format, account)
+            runtime_pass_kind(kind, id, working_format, capability_validation, account)
         })?;
         let reads = lower_read_bindings(&input_reads, resources, resource_index, account)?;
         drop(input_reads);
@@ -317,10 +319,7 @@ impl LoweredGraphPlan {
                 account.work(RenderWork::GraphNodeVisits, 1)?;
                 pass_ids.insert_with(RuntimePassId(pass.id()), (), account)?;
             }
-            let LoweredResourceSet {
-                values: resources,
-                index: resource_index,
-            } = lower_runtime_resources(
+            let resource_set = lower_runtime_resources(
                 &resource_views,
                 &pass_ids,
                 working_format,
@@ -330,9 +329,9 @@ impl LoweredGraphPlan {
             let mut releases =
                 PassMap::<RuntimePassId, AccountedVec<RuntimeResourceId>>::temporary(
                     account,
-                    resources.len(),
+                    resource_set.values.len(),
                 )?;
-            for resource in resources.iter() {
+            for resource in resource_set.values.iter() {
                 account.work(RenderWork::GraphEdgeVisits, 1)?;
                 match releases.position(&resource.last_use, account)? {
                     Ok(index) => releases.entries[index].1.push(resource.id)?,
@@ -345,11 +344,11 @@ impl LoweredGraphPlan {
             }
             let passes = lower_runtime_passes(
                 &pass_views,
-                &resources,
-                &resource_index,
+                &resource_set,
                 &mut releases,
                 working_format,
                 output_format,
+                capability_validation,
                 account,
             )?;
             if !releases.is_empty() {
@@ -358,8 +357,13 @@ impl LoweredGraphPlan {
                 ));
             }
             let root_working_image = RuntimeResourceId(view.root_working_image());
-            if resource_by_id(&resources, &resource_index, root_working_image, account)?
-                .map(|r| r.format)
+            if resource_by_id(
+                &resource_set.values,
+                &resource_set.index,
+                root_working_image,
+                account,
+            )?
+            .map(|r| r.format)
                 != Some(RuntimeResourceFormat::Working(working_format))
             {
                 return Err(lowering_error(
@@ -383,7 +387,7 @@ impl LoweredGraphPlan {
                 generation: RuntimeGraphGeneration(view.generation()),
                 working_format,
                 output_format,
-                resources,
+                resources: resource_set.values,
                 passes,
                 root_working_image,
                 final_present,
@@ -433,7 +437,9 @@ pub(super) const fn runtime_resource_format(
 
 fn runtime_pass_kind(
     kind: &GraphLoweringPassKind,
+    owner: RuntimePassId,
     working_format: WorkingFormat,
+    capability_validation: GraphLoweringCapabilityValidation<'_>,
     account: &Account,
 ) -> Result<RuntimePassKind> {
     Ok(match kind {
@@ -468,6 +474,22 @@ fn runtime_pass_kind(
         }
         GraphLoweringPassKind::Gaussian(gaussian) => RuntimePassKind::Gaussian(gaussian.clone()),
         GraphLoweringPassKind::Morphology(work) => RuntimePassKind::Morphology(work.clone()),
+        GraphLoweringPassKind::Displacement(work) => {
+            if let GraphLoweringCapabilityValidation::Required(capabilities) = capability_validation
+            {
+                super::displacement::validate_device(
+                    work,
+                    capabilities,
+                    capabilities.displacement_buffer_limits(),
+                    account,
+                )?;
+            }
+            RuntimePassKind::Displacement(super::displacement::RuntimeDisplacement::new(
+                work.clone(),
+                owner,
+                account,
+            )?)
+        }
         GraphLoweringPassKind::Convolution(convolution) => {
             RuntimePassKind::Convolution(convolution.clone())
         }
@@ -812,6 +834,7 @@ const fn runtime_read_role(role: GraphLoweringReadRole) -> RuntimeReadRole {
         GraphLoweringReadRole::GaussianSource => RuntimeReadRole::GaussianSource,
         GraphLoweringReadRole::GaussianAuxiliary => RuntimeReadRole::GaussianAuxiliary,
         GraphLoweringReadRole::MorphologySource => RuntimeReadRole::MorphologySource,
+        GraphLoweringReadRole::DisplacementSource => RuntimeReadRole::DisplacementSource,
         GraphLoweringReadRole::MorphologyPreviousQuery => RuntimeReadRole::MorphologyPreviousQuery,
         GraphLoweringReadRole::OffsetSource => RuntimeReadRole::OffsetSource,
         GraphLoweringReadRole::NativeShadowOriginal => RuntimeReadRole::NativeShadowOriginal,
@@ -846,6 +869,7 @@ pub(super) const fn shader_binding_role(role: RuntimeReadRole) -> ShaderBindingR
         RuntimeReadRole::GaussianSource => ShaderBindingRoleKey::GaussianSource,
         RuntimeReadRole::GaussianAuxiliary => ShaderBindingRoleKey::GaussianAuxiliary,
         RuntimeReadRole::MorphologySource => ShaderBindingRoleKey::MorphologySource,
+        RuntimeReadRole::DisplacementSource => ShaderBindingRoleKey::DisplacementSource,
         RuntimeReadRole::MorphologyPreviousQuery => ShaderBindingRoleKey::MorphologyPreviousQuery,
         RuntimeReadRole::OffsetSource => ShaderBindingRoleKey::OffsetSource,
         RuntimeReadRole::NativeShadowOriginal => ShaderBindingRoleKey::NativeShadowOriginal,
@@ -874,6 +898,7 @@ const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeR
         RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
         | RuntimePassKind::Morphology(_)
+        | RuntimePassKind::Displacement(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
@@ -952,6 +977,12 @@ pub(super) fn runtime_pass_cache_keys(
             format.shader_key(),
         ));
     }
+    if matches!(kind, RuntimePassKind::Displacement(work) if work.work.map_upload().is_some()) {
+        sampled_textures.append_slot()?.write((
+            ShaderBindingRoleKey::DisplacementMap,
+            ShaderTextureFormatKey::RawImageRgba8Unorm,
+        ));
+    }
     if matches!(kind, RuntimePassKind::Gaussian(work) if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { .. }))
         && reads.len() == 1
     {
@@ -999,6 +1030,7 @@ pub(super) fn runtime_pass_cache_keys(
                 | RuntimePassKind::Morphology(_)
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::NativeShadowMerge(_)
+                | RuntimePassKind::Displacement(_)
         ) {
             Some(match result {
                 RuntimeResultBinding::Resource(resource) => resource_format(resource)?
@@ -1047,6 +1079,7 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::Convolution(_) => Ok(ShaderProgramKey::Convolution),
         RuntimePassKind::Gaussian(operation) => Ok(super::gaussian::shader_program(operation)),
         RuntimePassKind::Morphology(work) => Ok(super::morphology::shader_program(work)),
+        RuntimePassKind::Displacement(work) => Ok(super::displacement::shader_program(&work.work)),
         RuntimePassKind::Offset(_) => Ok(ShaderProgramKey::Offset),
         RuntimePassKind::NativeShadowMerge(work) => Ok(super::native_shadow::shader_program(work)),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
@@ -1108,6 +1141,22 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         RuntimePassKind::NativeShadowMerge(_) => &[ShaderDataBindingKey::NativeShadowParameters],
         RuntimePassKind::Gaussian(operation) => super::gaussian::data_bindings(operation),
         RuntimePassKind::Morphology(_) => &[ShaderDataBindingKey::MorphologyParameters],
+        RuntimePassKind::Displacement(work) => {
+            if work.work.stage() != crate::frame::DisplacementStage::Displace {
+                &[ShaderDataBindingKey::DisplacementParameters]
+            } else if work.work.map_is_zero() {
+                &[
+                    ShaderDataBindingKey::DisplacementParameters,
+                    ShaderDataBindingKey::DisplacementTables,
+                ]
+            } else {
+                &[
+                    ShaderDataBindingKey::DisplacementParameters,
+                    ShaderDataBindingKey::DisplacementTables,
+                    ShaderDataBindingKey::DisplacementMapRecords,
+                ]
+            }
+        }
         RuntimePassKind::Convolution(_) => &[
             ShaderDataBindingKey::ConvolutionParameters,
             ShaderDataBindingKey::ConvolutionWeights,

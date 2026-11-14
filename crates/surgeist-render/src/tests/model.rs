@@ -4704,6 +4704,12 @@ fn runtime_pair_is_listed(
                 | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
                 | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
         ),
+        RuntimeOperation::DisplacementRendering => matches!(
+            reason,
+            RuntimeCapabilityUnavailableReason::DisplacementMapFormatUnavailable
+                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
+                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
+        ),
         RuntimeOperation::EffectTextureAllocation => matches!(
             reason,
             RuntimeCapabilityUnavailableReason::TextureDimensionExceeded { .. }

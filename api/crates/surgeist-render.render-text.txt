@@ -130,6 +130,39 @@ pub const fn surgeist_render::DegradedQualityKind::label(self) -> &'static str
 pub enum surgeist_render::DeviceLossReason
 pub surgeist_render::DeviceLossReason::Destroyed
 pub surgeist_render::DeviceLossReason::Unknown
+pub enum surgeist_render::DisplacementChannel
+pub surgeist_render::DisplacementChannel::A
+pub surgeist_render::DisplacementChannel::B
+pub surgeist_render::DisplacementChannel::G
+pub surgeist_render::DisplacementChannel::R
+pub enum surgeist_render::DisplacementNumericPhase
+pub surgeist_render::DisplacementNumericPhase::GridIndex
+pub surgeist_render::DisplacementNumericPhase::GridMapping
+pub surgeist_render::DisplacementNumericPhase::MapMapping
+pub surgeist_render::DisplacementNumericPhase::Sampling
+pub surgeist_render::DisplacementNumericPhase::TableLayout
+pub enum surgeist_render::DisplacementParameter
+pub surgeist_render::DisplacementParameter::Scale
+pub enum surgeist_render::DisplacementPreparationError
+pub surgeist_render::DisplacementPreparationError::EmptyPeriod
+pub surgeist_render::DisplacementPreparationError::InfiniteSourceBackdrop
+pub surgeist_render::DisplacementPreparationError::InvalidMapDimensions
+pub surgeist_render::DisplacementPreparationError::InvalidMapDimensions::size: surgeist_render::Size
+pub surgeist_render::DisplacementPreparationError::InvalidMapDomain
+pub surgeist_render::DisplacementPreparationError::InvalidMapDomain::map: surgeist_render::Rect
+pub surgeist_render::DisplacementPreparationError::InvalidMapPayload
+pub surgeist_render::DisplacementPreparationError::InvalidMapPayload::actual: u64
+pub surgeist_render::DisplacementPreparationError::InvalidMapPayload::expected: u64
+pub surgeist_render::DisplacementPreparationError::InvalidParameter
+pub surgeist_render::DisplacementPreparationError::InvalidParameter::parameter: surgeist_render::DisplacementParameter
+pub surgeist_render::DisplacementPreparationError::InvalidParameter::value: f64
+pub surgeist_render::DisplacementPreparationError::MapPayloadOverflow
+pub surgeist_render::DisplacementPreparationError::MapPayloadOverflow::size: surgeist_render::Size
+pub surgeist_render::DisplacementPreparationError::Numeric
+pub surgeist_render::DisplacementPreparationError::Numeric::phase: surgeist_render::DisplacementNumericPhase
+pub surgeist_render::DisplacementPreparationError::Numeric::value: f64
+impl core::convert::From<surgeist_render::DisplacementPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::DisplacementPreparationError) -> Self
 pub enum surgeist_render::DropShadowNumericPhase
 pub surgeist_render::DropShadowNumericPhase::GridIndex
 pub surgeist_render::DropShadowNumericPhase::MergeMapping
@@ -528,6 +561,7 @@ pub surgeist_render::PrimitiveOperation::GeometryOffsetOperation
 pub surgeist_render::PrimitiveOperation::GpuBlurFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuColorFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuConvolutionFilterExecution
+pub surgeist_render::PrimitiveOperation::GpuDisplacementFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuDropShadowFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuGaussianFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuMorphologyFilterExecution
@@ -614,6 +648,8 @@ pub surgeist_render::RenderAttemptKind::BoxDecoration
 pub surgeist_render::RenderAttemptKind::Clip
 pub surgeist_render::RenderAttemptKind::ColorFilterProjection
 pub surgeist_render::RenderAttemptKind::Convolution
+pub surgeist_render::RenderAttemptKind::Displacement
+pub surgeist_render::RenderAttemptKind::DisplacementMap
 pub surgeist_render::RenderAttemptKind::DropShadow
 pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::Gaussian
@@ -833,6 +869,9 @@ pub surgeist_render::RenderWork::CoordinateVisits
 pub surgeist_render::RenderWork::CopyOperations
 pub surgeist_render::RenderWork::CustomPresentPasses
 pub surgeist_render::RenderWork::DashInitializations
+pub surgeist_render::RenderWork::DisplacementMapByteVisits
+pub surgeist_render::RenderWork::DisplacementMapRecordVisits
+pub surgeist_render::RenderWork::DisplacementTableVisits
 pub surgeist_render::RenderWork::EncodingStreamCopies
 pub surgeist_render::RenderWork::FillsEmitted
 pub surgeist_render::RenderWork::FilterOperationVisits
@@ -886,6 +925,10 @@ pub surgeist_render::RenderWork::ResourceProbes
 pub surgeist_render::RenderWork::ResourceRetirements
 pub surgeist_render::RenderWork::ResourceReuses
 pub surgeist_render::RenderWork::ScheduledConvolutionTaps
+pub surgeist_render::RenderWork::ScheduledDisplacementAddressReads
+pub surgeist_render::RenderWork::ScheduledDisplacementMapRecordReads
+pub surgeist_render::RenderWork::ScheduledDisplacementMapSamples
+pub surgeist_render::RenderWork::ScheduledDisplacementSourceSamples
 pub surgeist_render::RenderWork::ScheduledFilterTexels
 pub surgeist_render::RenderWork::ScheduledGaussianSamples
 pub surgeist_render::RenderWork::ScheduledMorphologySamples
@@ -933,6 +976,7 @@ pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceFaulted
 pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceFaulted::kind: surgeist_render::GpuFaultKind
 pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceLost
 pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceLost::reason: surgeist_render::DeviceLossReason
+pub surgeist_render::RuntimeCapabilityUnavailableReason::DisplacementMapFormatUnavailable
 pub surgeist_render::RuntimeCapabilityUnavailableReason::EffectFormatUnavailable
 pub surgeist_render::RuntimeCapabilityUnavailableReason::EffectFormatUnavailable::policy: surgeist_render::EffectQualityPolicy
 pub surgeist_render::RuntimeCapabilityUnavailableReason::FilterFloat32Unavailable
@@ -948,6 +992,7 @@ pub surgeist_render::RuntimeCapabilityUnavailableReason::TextureDimensionExceede
 #[non_exhaustive] pub enum surgeist_render::RuntimeOperation
 pub surgeist_render::RuntimeOperation::AdapterSelection
 pub surgeist_render::RuntimeOperation::ConvolutionRendering
+pub surgeist_render::RuntimeOperation::DisplacementRendering
 pub surgeist_render::RuntimeOperation::EffectPresentation
 pub surgeist_render::RuntimeOperation::EffectRendering
 pub surgeist_render::RuntimeOperation::EffectTextureAllocation
@@ -1254,6 +1299,18 @@ impl surgeist_render::DegradedQuality
 pub const fn surgeist_render::DegradedQuality::kind(&self) -> surgeist_render::DegradedQualityKind
 pub fn surgeist_render::DegradedQuality::new(kind: surgeist_render::DegradedQualityKind, value: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn surgeist_render::DegradedQuality::value(&self) -> &str
+pub struct surgeist_render::DisplacementInput
+impl surgeist_render::DisplacementInput
+pub const fn surgeist_render::DisplacementInput::new() -> Self
+pub const fn surgeist_render::DisplacementInput::with_channels(self, x: surgeist_render::DisplacementChannel, y: surgeist_render::DisplacementChannel) -> Self
+pub const fn surgeist_render::DisplacementInput::with_scale(self, scale: f64) -> Self
+impl core::default::Default for surgeist_render::DisplacementInput
+pub fn surgeist_render::DisplacementInput::default() -> Self
+pub struct surgeist_render::DisplacementSource(_)
+impl surgeist_render::DisplacementSource
+pub fn surgeist_render::DisplacementSource::constant(color: surgeist_render::Color, filter: surgeist_render::Rect, result: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub fn surgeist_render::DisplacementSource::finite(scene: surgeist_render::Scene, domains: surgeist_render::FilterDomains) -> Self
+pub fn surgeist_render::DisplacementSource::periodic(scene: surgeist_render::Scene, period: surgeist_render::Rect, filter: surgeist_render::Rect, result: surgeist_render::Rect) -> surgeist_render::Result<Self>
 pub struct surgeist_render::DropShadowInput
 impl surgeist_render::DropShadowInput
 pub const fn surgeist_render::DropShadowInput::new() -> Self
@@ -1283,6 +1340,7 @@ pub const fn surgeist_render::Error::code(&self) -> surgeist_render::ErrorCode
 pub const fn surgeist_render::Error::convolution_diagnostic(&self) -> core::option::Option<&surgeist_render::ConvolutionPreparationError>
 pub fn surgeist_render::Error::degraded_quality(diagnostic: surgeist_render::DegradedQuality) -> Self
 pub const fn surgeist_render::Error::degraded_quality_diagnostic(&self) -> core::option::Option<&surgeist_render::DegradedQuality>
+pub const fn surgeist_render::Error::displacement_diagnostic(&self) -> core::option::Option<&surgeist_render::DisplacementPreparationError>
 pub const fn surgeist_render::Error::drop_shadow_diagnostic(&self) -> core::option::Option<&surgeist_render::DropShadowPreparationError>
 pub fn surgeist_render::Error::from_invalid_value(invalid_value: surgeist_render::InvalidValue) -> Self
 pub const fn surgeist_render::Error::gaussian_diagnostic(&self) -> core::option::Option<&surgeist_render::GaussianPreparationError>
@@ -1305,6 +1363,8 @@ pub const fn surgeist_render::Error::unsupported_primitive(&self) -> core::optio
 pub fn surgeist_render::Error::unsupported_render_primitive(primitive: surgeist_render::UnsupportedPrimitive) -> Self
 impl core::convert::From<surgeist_render::ConvolutionPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::ConvolutionPreparationError) -> Self
+impl core::convert::From<surgeist_render::DisplacementPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::DisplacementPreparationError) -> Self
 impl core::convert::From<surgeist_render::DropShadowPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::DropShadowPreparationError) -> Self
 impl core::convert::From<surgeist_render::GaussianPreparationError> for surgeist_render::Error
@@ -1358,6 +1418,7 @@ pub const fn surgeist_render::FilterCapabilities::supports_filter_region_plannin
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_blur_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_color_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_convolution_filter_execution(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_gpu_displacement_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_drop_shadow_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_gaussian_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_morphology_filter_execution(self) -> bool
@@ -1830,6 +1891,12 @@ pub fn surgeist_render::PositionEdgeOffset::start(offset: f64) -> surgeist_rende
 pub struct surgeist_render::PreparedConvolution
 impl core::cmp::PartialEq for surgeist_render::PreparedConvolution
 pub fn surgeist_render::PreparedConvolution::eq(&self, other: &Self) -> bool
+pub struct surgeist_render::PreparedDisplacement
+pub struct surgeist_render::PreparedDisplacementMap
+impl surgeist_render::PreparedDisplacementMap
+pub const fn surgeist_render::PreparedDisplacementMap::source_alpha() -> Self
+pub const fn surgeist_render::PreparedDisplacementMap::source_graphic() -> Self
+pub const fn surgeist_render::PreparedDisplacementMap::suppressed() -> Self
 pub struct surgeist_render::PreparedDropShadow
 pub struct surgeist_render::PreparedGaussian
 pub struct surgeist_render::PreparedGlyphDraw<'scene>
@@ -2092,6 +2159,9 @@ pub surgeist_render::RenderWorkTable::CoordinateVisits: T
 pub surgeist_render::RenderWorkTable::CopyOperations: T
 pub surgeist_render::RenderWorkTable::CustomPresentPasses: T
 pub surgeist_render::RenderWorkTable::DashInitializations: T
+pub surgeist_render::RenderWorkTable::DisplacementMapByteVisits: T
+pub surgeist_render::RenderWorkTable::DisplacementMapRecordVisits: T
+pub surgeist_render::RenderWorkTable::DisplacementTableVisits: T
 pub surgeist_render::RenderWorkTable::EncodingStreamCopies: T
 pub surgeist_render::RenderWorkTable::FillsEmitted: T
 pub surgeist_render::RenderWorkTable::FilterOperationVisits: T
@@ -2145,6 +2215,10 @@ pub surgeist_render::RenderWorkTable::ResourceProbes: T
 pub surgeist_render::RenderWorkTable::ResourceRetirements: T
 pub surgeist_render::RenderWorkTable::ResourceReuses: T
 pub surgeist_render::RenderWorkTable::ScheduledConvolutionTaps: T
+pub surgeist_render::RenderWorkTable::ScheduledDisplacementAddressReads: T
+pub surgeist_render::RenderWorkTable::ScheduledDisplacementMapRecordReads: T
+pub surgeist_render::RenderWorkTable::ScheduledDisplacementMapSamples: T
+pub surgeist_render::RenderWorkTable::ScheduledDisplacementSourceSamples: T
 pub surgeist_render::RenderWorkTable::ScheduledFilterTexels: T
 pub surgeist_render::RenderWorkTable::ScheduledGaussianSamples: T
 pub surgeist_render::RenderWorkTable::ScheduledMorphologySamples: T
@@ -2245,6 +2319,7 @@ pub struct surgeist_render::Scene
 impl surgeist_render::Scene
 pub fn surgeist_render::Scene::clear(&mut self)
 pub fn surgeist_render::Scene::clip(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
+pub fn surgeist_render::Scene::displacement_layer(&mut self, layer: surgeist_render::Layer, operation: surgeist_render::PreparedDisplacement, source: surgeist_render::DisplacementSource, map: surgeist_render::PreparedDisplacementMap) -> surgeist_render::Result<&mut Self>
 pub fn surgeist_render::Scene::drop_shadow_layer(&mut self, layer: surgeist_render::Layer, operation: surgeist_render::PreparedDropShadow, source: surgeist_render::DropShadowSource) -> surgeist_render::Result<&mut Self>
 pub fn surgeist_render::Scene::fill(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, paint: impl core::convert::Into<surgeist_render::Paint>) -> &mut Self
 pub fn surgeist_render::Scene::gaussian_layer(&mut self, layer: surgeist_render::Layer, operation: surgeist_render::PreparedGaussian, source: surgeist_render::GaussianSource) -> surgeist_render::Result<&mut Self>
@@ -2511,10 +2586,12 @@ impl surgeist_render::WebCanvas
 pub fn surgeist_render::WebCanvas::id(&self) -> &str
 pub fn surgeist_render::WebCanvas::new(id: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn surgeist_render::prepare_convolution(input: surgeist_render::ConvolutionInput<'_>, domains: surgeist_render::FilterDomains, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedConvolution>
+pub fn surgeist_render::prepare_displacement(input: surgeist_render::DisplacementInput, map_color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedDisplacement>
 pub fn surgeist_render::prepare_drop_shadow(input: surgeist_render::DropShadowInput, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedDropShadow>
 pub fn surgeist_render::prepare_gaussian(input: surgeist_render::GaussianInput, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedGaussian>
 pub fn surgeist_render::prepare_leader_pattern<'text>(pattern: &'text surgeist_text::engine::leader::FinalizedLeaderPattern, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedLeaderPattern<'text>>
 pub fn surgeist_render::prepare_morphology(input: surgeist_render::MorphologyInput, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedMorphology>
+pub fn surgeist_render::prepare_native_displacement_map(size: surgeist_render::Size, bytes: alloc::sync::Arc<[u8]>, map: surgeist_render::Rect, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedDisplacementMap>
 pub fn surgeist_render::prepare_offset(input: surgeist_render::OffsetInput, domains: surgeist_render::FilterDomains, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedOffset>
 pub fn surgeist_render::prepare_sdr_srgb_color(resolved: surgeist_color::value::Color, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Color>
 pub fn surgeist_render::prepare_text_layout<'a>(layout: &'a surgeist_text::layout::Layout, placement: surgeist_render::Transform, limits: surgeist_render::TextLayoutLimits, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedTextScene<'a>>

@@ -1,6 +1,7 @@
 use super::{
     active_frames::ActiveFrames,
     convolution::{ConvolutionWeightsKey, ConvolutionWeightsPlan},
+    displacement::{DisplacementBufferKey, DisplacementBufferPlan},
     entries::ResourceEntries,
     gaussian::{GaussianKernelKey, GaussianKernelPlan},
 };
@@ -11,7 +12,10 @@ use crate::{
         Account, AccountedVec, CacheRegistration, CpuAccount, Generation, GenerationClass,
         OwnedGpu, StorageAccount,
     },
-    image::{ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey},
+    image::{
+        RawImageUploadDescriptor, RawImageUploadKey, ResolvedMaskUploadDescriptor,
+        ResolvedMaskUploadKey,
+    },
     texture::{EffectTextureDescriptor, EffectTextureKey},
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
 };
@@ -68,6 +72,8 @@ pub(crate) enum ResourceCacheKey {
     VelloImage(VelloImageKey),
     EffectTexture(EffectTextureKey),
     ResolvedMaskUpload(ResolvedMaskUploadKey),
+    RawImageUpload(RawImageUploadKey),
+    DisplacementBuffer(DisplacementBufferKey),
     GaussianKernelBuffer(GaussianKernelKey),
     ConvolutionWeightsBuffer(ConvolutionWeightsKey),
 }
@@ -76,6 +82,8 @@ impl ResourceCacheKey {
     pub(super) fn matches_in(&self, other: &Self, observer: Option<&Account>) -> Result<bool> {
         match (self, other) {
             (Self::ResolvedMaskUpload(a), Self::ResolvedMaskUpload(b)) => a.matches_in(b, observer),
+            (Self::RawImageUpload(a), Self::RawImageUpload(b)) => a.matches_in(b, observer),
+            (Self::DisplacementBuffer(a), Self::DisplacementBuffer(b)) => a.matches_in(b, observer),
             (Self::ConvolutionWeightsBuffer(a), Self::ConvolutionWeightsBuffer(b)) => {
                 a.matches_in(b, observer)
             }
@@ -87,7 +95,9 @@ impl ResourceCacheKey {
             #[cfg(test)]
             Self::VelloAtlas => GenerationClass::CacheVello,
             Self::VelloBuffer(_) | Self::VelloImage(_) => GenerationClass::CacheVello,
-            Self::EffectTexture(_) => GenerationClass::CacheEffects,
+            Self::EffectTexture(_) | Self::RawImageUpload(_) | Self::DisplacementBuffer(_) => {
+                GenerationClass::CacheEffects
+            }
             Self::ResolvedMaskUpload(_) => GenerationClass::CacheMasks,
             Self::GaussianKernelBuffer(_) | Self::ConvolutionWeightsBuffer(_) => {
                 GenerationClass::CacheKernels
@@ -104,6 +114,8 @@ impl ResourceCacheKey {
             self,
             Self::EffectTexture(_)
                 | Self::ResolvedMaskUpload(_)
+                | Self::RawImageUpload(_)
+                | Self::DisplacementBuffer(_)
                 | Self::GaussianKernelBuffer(_)
                 | Self::ConvolutionWeightsBuffer(_)
         )
@@ -119,6 +131,28 @@ pub(crate) struct ResourceAllocationPreflight {
 }
 
 impl ResourceAllocationPreflight {
+    pub(crate) fn raw_image(
+        descriptor: &RawImageUploadDescriptor,
+        account: &Account,
+    ) -> Result<Self> {
+        if descriptor.physical_size().width() == 0 || descriptor.physical_size().height() == 0 {
+            return Err(crate::RenderAccountingError::Invariant.into());
+        }
+        descriptor.validate_upload_byte_len(descriptor.bytes().len())?;
+        Ok(Self {
+            key: ResourceCacheKey::RawImageUpload(descriptor.cache_key_in(account)?),
+            byte_len: descriptor.byte_len(),
+        })
+    }
+
+    pub(crate) fn displacement_buffer(plan: &DisplacementBufferPlan) -> Result<Self> {
+        plan.validate_upload_byte_len(plan.upload_bytes().len())?;
+        Ok(Self {
+            key: ResourceCacheKey::DisplacementBuffer(plan.key()),
+            byte_len: plan.byte_len(),
+        })
+    }
+
     pub(crate) fn effect_texture(descriptor: EffectTextureDescriptor) -> Result<Self> {
         Ok(Self {
             key: ResourceCacheKey::EffectTexture(descriptor.cache_key()),
@@ -205,6 +239,13 @@ pub(super) enum ResourcePayload {
         texture: OwnedGpu<wgpu::Texture>,
         view: OwnedGpu<wgpu::TextureView>,
     },
+    RawImageUpload {
+        texture: OwnedGpu<wgpu::Texture>,
+        view: OwnedGpu<wgpu::TextureView>,
+    },
+    DisplacementBuffer {
+        buffer: OwnedGpu<wgpu::Buffer>,
+    },
     GaussianKernelBuffer {
         buffer: OwnedGpu<wgpu::Buffer>,
     },
@@ -225,6 +266,8 @@ impl ResourcePayload {
             | (Self::VelloImage { .. }, ResourceCacheKey::VelloImage(_))
             | (Self::EffectTexture { .. }, ResourceCacheKey::EffectTexture(_))
             | (Self::ResolvedMaskUpload { .. }, ResourceCacheKey::ResolvedMaskUpload(_))
+            | (Self::RawImageUpload { .. }, ResourceCacheKey::RawImageUpload(_))
+            | (Self::DisplacementBuffer { .. }, ResourceCacheKey::DisplacementBuffer(_))
             | (Self::GaussianKernelBuffer { .. }, ResourceCacheKey::GaussianKernelBuffer(_))
             | (
                 Self::ConvolutionWeightsBuffer { .. },
@@ -242,6 +285,8 @@ impl ResourcePayload {
             Self::VelloImage { .. } => "VelloImage",
             Self::EffectTexture { .. } => "EffectTexture",
             Self::ResolvedMaskUpload { .. } => "ResolvedMaskUpload",
+            Self::RawImageUpload { .. } => "RawImageUpload",
+            Self::DisplacementBuffer { .. } => "DisplacementBuffer",
             Self::GaussianKernelBuffer { .. } => "GaussianKernelBuffer",
             Self::ConvolutionWeightsBuffer { .. } => "ConvolutionWeightsBuffer",
         }
@@ -418,6 +463,7 @@ impl ResourceManagerState {
     pub(super) fn preflight_graph_acquisitions(
         &mut self,
         requests: &[ResourceAllocationPreflight],
+        pass_buffer_bytes: &[u64],
         observer: Option<&Account>,
     ) -> Result<()> {
         self.cpu.ensure_healthy()?;
@@ -439,7 +485,7 @@ impl ResourceManagerState {
                 return Err(Error::invalid_value(
                     "graph resource preflight key",
                     format!("{:?}", request.key),
-                    "must use an effect texture, resolved mask, Gaussian kernel, or convolution weights namespace",
+                    "must use a graph texture, resolved-mask, raw-image, Gaussian-kernel, convolution-weight, or displacement-buffer namespace",
                 ));
             }
             if request.byte_len == 0 {
@@ -489,7 +535,7 @@ impl ResourceManagerState {
         }
 
         self.generation
-            .preview_classified_cache_allocations(allocation_bytes.iter().copied(), observer)
+            .preview_graph_allocations(&allocation_bytes, pass_buffer_bytes, observer)
             .map_err(Self::allocation_preflight_error)?;
         self.entries.reserve(allocation_bytes.len(), &self.cpu)
     }

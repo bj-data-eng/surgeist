@@ -564,6 +564,7 @@ impl SemanticSourceContribution {
                     Some(
                         crate::command::NormalizedForegroundEffect::Gaussian(_)
                             | crate::command::NormalizedForegroundEffect::Morphology(_)
+                            | crate::command::NormalizedForegroundEffect::Displacement(_)
                             | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                     )
                 ))
@@ -839,6 +840,13 @@ impl SemanticSourceContribution {
                     SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
                         super::filter_grid::result_domain(foreground.source),
                         "morphology primitive result",
+                    )?);
+            }
+            Some(crate::command::NormalizedForegroundEffect::Displacement(foreground)) => {
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::filter_grid::result_domain(foreground.source),
+                        "displacement primitive result",
                     )?);
             }
             Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) => {

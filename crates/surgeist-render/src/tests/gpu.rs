@@ -7857,7 +7857,7 @@ fn discard_accounting_mismatch_faults_resource_manager_without_clamping() {
         Err(error) => error,
     };
     let preflight_error = manager
-        .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+        .preflight_graph_acquisitions(&[], &[], Some(&crate::accounting::Account::for_test()))
         .expect_err("faulted resource accounting must block graph preflight");
     let acquire_error = unrelated_frame
         .acquire(modeled_resource_key_for_test(45), 4)
@@ -8003,7 +8003,7 @@ fn terminal_generation_cleanup_preserves_first_accounting_fault_with_surviving_h
     );
     assert!(
         manager
-            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .preflight_graph_acquisitions(&[], &[], Some(&crate::accounting::Account::for_test()))
             .is_err()
     );
 }
@@ -8192,7 +8192,7 @@ fn per_lease_discard_after_accounting_fault_removes_exact_lease_without_panickin
         Err(error) => error,
     };
     let preflight_error = manager
-        .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+        .preflight_graph_acquisitions(&[], &[], Some(&crate::accounting::Account::for_test()))
         .expect_err("faulted per-lease cleanup reenabled graph preflight");
     let acquire_error = unrelated_frame
         .acquire(modeled_resource_key_for_test(52), 4)
@@ -12338,7 +12338,7 @@ fn assert_per_lease_mismatch_fault() {
     );
     assert!(
         mismatch_manager
-            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .preflight_graph_acquisitions(&[], &[], Some(&crate::accounting::Account::for_test()))
             .is_err()
     );
     assert!(
@@ -12402,7 +12402,7 @@ fn assert_per_lease_underflow_fault() {
     );
     assert!(
         underflow_manager
-            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .preflight_graph_acquisitions(&[], &[], Some(&crate::accounting::Account::for_test()))
             .is_err()
     );
     assert!(
@@ -12474,7 +12474,7 @@ fn assert_per_lease_overflow_fault() {
     );
     assert!(
         overflow_manager
-            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .preflight_graph_acquisitions(&[], &[], Some(&crate::accounting::Account::for_test()))
             .is_err()
     );
     assert!(

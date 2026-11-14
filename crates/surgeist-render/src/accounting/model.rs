@@ -100,6 +100,26 @@ dimensions! {
         /// refinements three, point copies/preparation/direct resolve one,
         /// wrapped periodic resolve four and analytic constants zero.
         ScheduledMorphologySamples,
+        /// Native raw-map pixel bytes visited by the admission identity/hash scan.
+        DisplacementMapByteVisits,
+        /// Native map per-axis records visited during construction, one per output column or row.
+        DisplacementMapRecordVisits,
+        /// Actual displacement address-table entries (512 for two full axes) and
+        /// optional reached RGB conversion-LUT entries (256) constructed.
+        DisplacementTableVisits,
+        /// Scheduled map-record read opportunities: two per raw-map output cell,
+        /// zero for the active zero-map route. Includes conditional/exterior opportunities.
+        ScheduledDisplacementMapRecordReads,
+        /// Scheduled address-table read opportunities: two per active output cell,
+        /// including zero-map and exterior cases; zero for pass-through or source realization.
+        ScheduledDisplacementAddressReads,
+        /// Scheduled raw-map texel-load opportunities: one per raw-map output cell,
+        /// including conditional/exterior cases; zero for zero-map and pass-through.
+        ScheduledDisplacementMapSamples,
+        /// Scheduled source texel-load opportunities: one per active output cell,
+        /// including conditional/exterior cases; zero for pass-through or source realization.
+        /// These counters describe issued work, not GPU hardware observations.
+        ScheduledDisplacementSourceSamples,
         /// Nonempty native compute dispatch calls issued by the internal raster engine.
         RasterDispatches,
         /// Logical internal Vello raster passes actually encoded.
@@ -234,6 +254,8 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Offset)
             || self.supported_for(RenderAttemptKind::Gaussian)
             || self.supported_for(RenderAttemptKind::Morphology)
+            || self.supported_for(RenderAttemptKind::Displacement)
+            || self.supported_for(RenderAttemptKind::DisplacementMap)
             || self.supported_for(RenderAttemptKind::DropShadow)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
@@ -241,9 +263,18 @@ impl RenderWork {
             RenderAttemptKind::Offset
             | RenderAttemptKind::Gaussian
             | RenderAttemptKind::Morphology
+            | RenderAttemptKind::Displacement
             | RenderAttemptKind::DropShadow => {
                 matches!(self, Self::FilterOperationVisits | Self::CoordinateVisits)
             }
+            RenderAttemptKind::DisplacementMap => matches!(
+                self,
+                Self::CoordinateVisits
+                    | Self::DisplacementMapByteVisits
+                    | Self::ResourceProbes
+                    | Self::ImageIdentityCopies
+                    | Self::ImageIdentityByteComparisons
+            ),
             RenderAttemptKind::Convolution => matches!(
                 self,
                 Self::FilterOperationVisits
@@ -337,6 +368,13 @@ impl RenderWork {
                         | Self::ScheduledOffsetSamples
                         | Self::ScheduledGaussianSamples
                         | Self::ScheduledMorphologySamples
+                        | Self::DisplacementMapByteVisits
+                        | Self::DisplacementMapRecordVisits
+                        | Self::DisplacementTableVisits
+                        | Self::ScheduledDisplacementMapRecordReads
+                        | Self::ScheduledDisplacementAddressReads
+                        | Self::ScheduledDisplacementMapSamples
+                        | Self::ScheduledDisplacementSourceSamples
                         | Self::ScheduledShadowSamples
                         | Self::RasterDispatches
                         | Self::VelloPasses
@@ -964,6 +1002,10 @@ pub enum RenderAttemptKind {
     Offset,
     /// Standalone resolved native Gaussian admission.
     Gaussian,
+    /// Standalone resolved native displacement parameter admission.
+    Displacement,
+    /// Standalone immutable native straight-RGBA8 displacement-map admission.
+    DisplacementMap,
     /// Standalone resolved native morphology admission.
     Morphology,
     /// Standalone resolved native drop-shadow admission.

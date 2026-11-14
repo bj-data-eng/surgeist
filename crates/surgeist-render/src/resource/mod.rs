@@ -1,5 +1,6 @@
 mod active_frames;
 mod convolution;
+mod displacement;
 mod entries;
 mod gaussian;
 mod lease;
@@ -8,6 +9,9 @@ mod manager;
 mod test_support;
 
 pub(crate) use convolution::ConvolutionWeightsPlan;
+pub(crate) use displacement::{
+    DisplacementBufferKind, DisplacementBufferLimits, DisplacementBufferPlan,
+};
 pub(crate) use gaussian::{
     GaussianKernelBufferLimits, GaussianKernelGeometry, GaussianKernelKey, GaussianKernelPlan,
     GaussianKernelSamplingForm,
@@ -19,6 +23,8 @@ pub(crate) use manager::{
     AllocationGeneration, FrameIdentity, ManagerIdentity, ResourceAccountingFault,
     ResourceAllocationPreflight, ResourceCacheKey, ResourceIdentity,
 };
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) use test_support::DisplacementResourceDescriptorForTest;
 #[cfg(test)]
 pub(crate) use test_support::{ResourceLeaseTokenForTest, ResourceManagerObservationForTest};
 
@@ -131,9 +137,10 @@ impl ResourceManager {
     pub(crate) fn preflight_graph_acquisitions(
         &self,
         requests: &[ResourceAllocationPreflight],
+        pass_buffer_bytes: &[u64],
         observer: Option<&Account>,
     ) -> Result<()> {
-        lock_state(&self.state).preflight_graph_acquisitions(requests, observer)
+        lock_state(&self.state).preflight_graph_acquisitions(requests, pass_buffer_bytes, observer)
     }
 }
 

@@ -184,6 +184,39 @@ fn warm_image_registry(cpu: &RendererCpu) {
 }
 
 #[test]
+fn native_raw_map_and_source_image_imports_share_only_the_actual_pixel_allocation() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    warm_image_registry(&cpu);
+    let background = retained(&cpu);
+    let account = cpu.at(RenderCpuScope::ImagePayloads);
+    let pixels = Arc::<[u8]>::from([255, 128, 64, 1]);
+    let source = Image::from_rgba(crate::Size::new(1.0, 1.0), pixels.clone()).unwrap();
+    let raw = crate::image::RawImageUploadDescriptor::prepare_native_in(
+        crate::Size::new(1.0, 1.0),
+        pixels,
+        &super::super::Account::for_test(),
+    )
+    .unwrap();
+    let source_import = account.import_image(&source, None).unwrap();
+    let first_map = account.import_image_pixels(raw.identity(), None).unwrap();
+    let second_map = account.import_image_pixels(raw.identity(), None).unwrap();
+    // The source Image has its own real Arc<[u8]> adapter allocation; both raw
+    // map imports refer only to the same four pixel bytes, not that adapter.
+    assert_eq!(
+        retained(&cpu),
+        background + 4 + size_of::<Arc<[u8]>>() as u64
+    );
+    drop(source_import);
+    assert_eq!(retained(&cpu), background + 4);
+    drop(first_map);
+    assert_eq!(retained(&cpu), background + 4);
+    drop(second_map);
+    assert_eq!(retained(&cpu), background);
+    assert_eq!(raw.bytes(), &[255, 128, 64, 1]);
+    assert_eq!(cpu.snapshot().unwrap().fault(), None);
+}
+
+#[test]
 fn image_adapter_clones_and_blob_leases_share_one_typed_payload() {
     let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
     warm_image_registry(&cpu);
