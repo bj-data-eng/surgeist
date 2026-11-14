@@ -304,6 +304,19 @@ fn backing_exact_cap_one_under_and_count_recovery_have_truthful_work() {
 }
 
 #[test]
+fn domain_failures_use_filter_invalid_value_diagnostics() {
+    let valid = Rect::default();
+    let error = ConvolutionDomains::try_new(Rect::new(f64::INFINITY, 0.0, 1.0, 1.0), valid, valid)
+        .unwrap_err();
+    assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+    let diagnostic = error
+        .invalid_value_diagnostic()
+        .expect("shared filter domains must use InvalidValue diagnostics");
+    assert!(diagnostic.field().starts_with("filter domain"));
+    assert!(error.convolution_diagnostic().is_none());
+}
+
+#[test]
 fn independent_domains_remain_resolved_and_empty_regions_are_valid() {
     let source = Rect::try_new(-2.0, 1.0, 7.0, 4.0).unwrap();
     let filter = Rect::try_new(-1.5, 1.25, 4.0, 2.0).unwrap();
