@@ -53,6 +53,7 @@ enum PreparationDiagnostic {
     Convolution(crate::ConvolutionPreparationError),
     Offset(crate::OffsetPreparationError),
     Gaussian(crate::GaussianPreparationError),
+    DropShadow(crate::DropShadowPreparationError),
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
     GeometryRealization(GeometryRealizationError),
@@ -450,6 +451,18 @@ impl Error {
         }
     }
 
+    /// Returns the typed native drop-shadow diagnostic, when present.
+    #[must_use]
+    pub const fn drop_shadow_diagnostic(&self) -> Option<&crate::DropShadowPreparationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::DropShadow(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns the typed native Gaussian diagnostic, if present.
     #[must_use]
     pub const fn gaussian_diagnostic(&self) -> Option<&crate::GaussianPreparationError> {
@@ -621,6 +634,26 @@ impl From<crate::ConvolutionPreparationError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: Some(PreparationDiagnostic::Convolution(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
+        })
+    }
+}
+
+impl From<crate::DropShadowPreparationError> for Error {
+    fn from(value: crate::DropShadowPreparationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::InvalidInput,
+            message: format!("native drop-shadow preparation refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::DropShadow(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
             #[cfg(feature = "render-text")]
@@ -1146,6 +1179,8 @@ pub enum RuntimeOperation {
     ConvolutionRendering,
     /// Executing native Gaussian accumulation.
     GaussianRendering,
+    /// Executing native alpha-blur, displacement, flood and original-source merge.
+    NativeDropShadowRendering,
     /// Allocating an effect texture.
     EffectTextureAllocation,
     /// Presenting an effect result to a surface.
@@ -1507,6 +1542,8 @@ pub enum PrimitiveOperation {
     GpuOffsetFilterExecution,
     /// Executing admitted native Gaussian filtering on the GPU.
     GpuGaussianFilterExecution,
+    /// Executing admitted native alpha-blur, displacement, flood and merge.
+    GpuNativeDropShadowFilterExecution,
     /// Planning filter execution regions and outsets.
     FilterRegionPlanning,
     /// Executing an unbounded or root/nested backdrop form.
@@ -1590,6 +1627,7 @@ impl PrimitiveOperation {
             Self::GpuConvolutionFilterExecution => "GPU convolution filter execution",
             Self::GpuOffsetFilterExecution => "GPU offset filter execution",
             Self::GpuGaussianFilterExecution => "GPU Gaussian filter execution",
+            Self::GpuNativeDropShadowFilterExecution => "GPU native drop-shadow filter execution",
             Self::FilterRegionPlanning => "filter-region planning",
             Self::BroadBackdropExecution => "broad backdrop execution",
             Self::BoundedBackdropCapture => "bounded backdrop capture",

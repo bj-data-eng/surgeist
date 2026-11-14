@@ -344,6 +344,28 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
             ),
         )
         .unwrap();
+    let shadow_bounds = Rect::new(14.0, 0.0, 2.0, 2.0);
+    let mut shadow_source = Scene::new();
+    shadow_source.fill(shadow_bounds, Color::BLACK);
+    let shadow = crate::prepare_drop_shadow(
+        crate::DropShadowInput::new()
+            .with_dx(0.0)
+            .with_dy(0.0)
+            .with_standard_deviation(0.5),
+        crate::FilterColorSpace::Srgb,
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
+    scene
+        .drop_shadow_layer(
+            Layer::new(),
+            shadow,
+            crate::DropShadowSource::finite(
+                shadow_source,
+                crate::FilterDomains::try_new(shadow_bounds, shadow_bounds, shadow_bounds).unwrap(),
+            ),
+        )
+        .unwrap();
     scene
         .normalize(
             Capabilities::CURRENT,

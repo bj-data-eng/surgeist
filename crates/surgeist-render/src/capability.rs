@@ -234,6 +234,7 @@ impl Capabilities {
             gpu_convolution_filter_execution: true,
             gpu_offset_filter_execution: true,
             gpu_gaussian_filter_execution: true,
+            gpu_native_drop_shadow_filter_execution: true,
             filter_region_planning: true,
         },
         masks_clips: MaskClipCapabilities {
@@ -500,6 +501,9 @@ impl Capabilities {
             PrimitiveOperation::GpuConvolutionFilterExecution => {
                 self.filters.supports_gpu_convolution_filter_execution()
             }
+            PrimitiveOperation::GpuNativeDropShadowFilterExecution => self
+                .filters
+                .supports_gpu_native_drop_shadow_filter_execution(),
             PrimitiveOperation::GpuGaussianFilterExecution => {
                 self.filters.supports_gpu_gaussian_filter_execution()
             }
@@ -984,6 +988,7 @@ pub struct FilterCapabilities {
     gpu_convolution_filter_execution: bool,
     gpu_offset_filter_execution: bool,
     gpu_gaussian_filter_execution: bool,
+    gpu_native_drop_shadow_filter_execution: bool,
     filter_region_planning: bool,
 }
 
@@ -1026,6 +1031,15 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_convolution_filter_execution(self) -> bool {
         self.gpu_convolution_filter_execution
+    }
+
+    /// Returns whether admitted native alpha-blur, offset, flood and source merge execute on GPU.
+    ///
+    /// Includes independent axes and finite, constant and periodic sources.
+    /// Selected-device float32 availability is reported separately at runtime.
+    #[must_use]
+    pub const fn supports_gpu_native_drop_shadow_filter_execution(self) -> bool {
+        self.gpu_native_drop_shadow_filter_execution
     }
 
     /// Returns whether admitted native Gaussian filtering executes through a Layer on the GPU.

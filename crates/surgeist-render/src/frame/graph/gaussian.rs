@@ -1,6 +1,6 @@
 use super::*;
 use crate::frame::gaussian::{
-    self as grid, GaussianAxis, GaussianMapping, GaussianStage, PeriodCapture,
+    self as grid, GaussianAxis, GaussianMapping, GaussianPurpose, GaussianStage, PeriodCapture,
 };
 use crate::gaussian::{GaussianForeground, GaussianSourceDescriptor};
 
@@ -63,9 +63,24 @@ impl SemanticFrameGraphPlanner<'_> {
 
     pub(super) fn apply_gaussian(
         &mut self,
+        source: Option<PlannedGraphResource>,
+        foreground: GaussianForeground,
+        raster_transform: Transform,
+    ) -> Result<Option<PlannedGraphResource>> {
+        self.apply_gaussian_for_purpose(
+            source,
+            foreground,
+            raster_transform,
+            GaussianPurpose::Standalone,
+        )
+    }
+
+    pub(super) fn apply_gaussian_for_purpose(
+        &mut self,
         mut source: Option<PlannedGraphResource>,
         foreground: GaussianForeground,
         raster_transform: Transform,
+        purpose: GaussianPurpose,
     ) -> Result<Option<PlannedGraphResource>> {
         self.account.work(RenderWork::FilterOperationVisits, 1)?;
         let output_domain = grid::result_domain(foreground.source);
@@ -85,7 +100,13 @@ impl SemanticFrameGraphPlanner<'_> {
                 .with_color(color)
                 .with_output_clip(output_domain, result, self.account)?;
             return self
-                .declare_gaussian_pass(&[], foreground, mapping, GaussianStage::Constant)
+                .declare_gaussian_pass_for_purpose(
+                    &[],
+                    foreground,
+                    mapping,
+                    GaussianStage::Constant,
+                    purpose,
+                )
                 .map(Some);
         }
         let mut captured = source.take().ok_or_else(|| {
@@ -129,11 +150,12 @@ impl SemanticFrameGraphPlanner<'_> {
                     [0; 2],
                     self.account,
                 )?;
-            captured = self.declare_gaussian_pass(
+            captured = self.declare_gaussian_pass_for_purpose(
                 &[captured],
                 foreground,
                 mapping,
                 GaussianStage::RebaseSource,
+                purpose,
             )?;
         }
         if foreground.operation.is_passthrough() {
@@ -157,7 +179,13 @@ impl SemanticFrameGraphPlanner<'_> {
                     )?
             };
             return self
-                .declare_gaussian_pass(&[captured], foreground, mapping, GaussianStage::PassThrough)
+                .declare_gaussian_pass_for_purpose(
+                    &[captured],
+                    foreground,
+                    mapping,
+                    GaussianStage::PassThrough,
+                    purpose,
+                )
                 .map(Some);
         }
         let density = period
@@ -171,8 +199,13 @@ impl SemanticFrameGraphPlanner<'_> {
         if let Some(domain) = grid::finite_domain(foreground.source) {
             prepare = prepare.with_source_clip(domain, required, self.account)?;
         }
-        let prepared =
-            self.declare_gaussian_pass(&[captured], foreground, prepare, GaussianStage::Prepare)?;
+        let prepared = self.declare_gaussian_pass_for_purpose(
+            &[captured],
+            foreground,
+            prepare,
+            GaussianStage::Prepare,
+            purpose,
+        )?;
         let final_grid = if period.is_some() {
             required
         } else {
@@ -234,7 +267,7 @@ impl SemanticFrameGraphPlanner<'_> {
                 } else {
                     &inputs[..]
                 };
-                previous = Some(self.declare_gaussian_pass(
+                previous = Some(self.declare_gaussian_pass_for_purpose(
                     reads,
                     foreground,
                     mapping,
@@ -244,6 +277,7 @@ impl SemanticFrameGraphPlanner<'_> {
                         tap_count,
                         first: previous.is_none(),
                     },
+                    purpose,
                 )?);
                 first_tap += tap_count;
             }
@@ -261,8 +295,14 @@ impl SemanticFrameGraphPlanner<'_> {
         if let Some(period) = period {
             resolve = resolve.with_periodic_resolve(period, result, self.account)?;
         }
-        self.declare_gaussian_pass(&[current], foreground, resolve, GaussianStage::Resolve)
-            .map(Some)
+        self.declare_gaussian_pass_for_purpose(
+            &[current],
+            foreground,
+            resolve,
+            GaussianStage::Resolve,
+            purpose,
+        )
+        .map(Some)
     }
 
     pub(super) fn declare_gaussian_pass(
@@ -272,15 +312,41 @@ impl SemanticFrameGraphPlanner<'_> {
         mapping: GaussianMapping,
         stage: GaussianStage,
     ) -> Result<PlannedGraphResource> {
-        // Admit this immutable payload exactly once before publishing any
-        // resource or pass record. Lowering and runtime retain its existing
-        // owner; the last clone refunds the actual shared allocation.
-        let facts = crate::frame::GaussianPassFacts::try_new(
+        self.declare_gaussian_pass_for_purpose(
+            reads,
             foreground,
             mapping,
             stage,
-            &self.account.storage(),
-        )?;
+            GaussianPurpose::Standalone,
+        )
+    }
+
+    pub(super) fn declare_gaussian_pass_for_purpose(
+        &mut self,
+        reads: &[PlannedGraphResource],
+        foreground: GaussianForeground,
+        mapping: GaussianMapping,
+        stage: GaussianStage,
+        purpose: GaussianPurpose,
+    ) -> Result<PlannedGraphResource> {
+        // Admit this immutable payload exactly once before publishing any
+        // resource or pass record. Lowering and runtime retain its existing
+        // owner; the last clone refunds the actual shared allocation.
+        let facts = match purpose {
+            GaussianPurpose::Standalone => crate::frame::GaussianPassFacts::try_new(
+                foreground,
+                mapping,
+                stage,
+                &self.account.storage(),
+            ),
+            GaussianPurpose::ConsumedAlpha => crate::frame::GaussianPassFacts::try_new_for_purpose(
+                foreground,
+                mapping,
+                stage,
+                purpose,
+                &self.account.storage(),
+            ),
+        }?;
         self.gaussians.grow(1)?;
         let spatial = mapping.target_plan();
         let role = if matches!(

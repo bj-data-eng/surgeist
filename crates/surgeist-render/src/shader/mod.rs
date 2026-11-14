@@ -16,20 +16,22 @@ pub(crate) use cache::{
     DevicePassCache, PassCacheCommitPreparation, ProvisionalColorFilterPassObjects,
     ProvisionalCompositePassObjects, ProvisionalConvolutionPassObjects,
     ProvisionalCopyBackdropPassObjects, ProvisionalCorePassObjects,
-    ProvisionalDevicePassCacheUpdate, ProvisionalOffsetPassObjects, ReadyPassCacheUpdate,
+    ProvisionalDevicePassCacheUpdate, ProvisionalNativeShadowPassObjects,
+    ProvisionalOffsetPassObjects, ReadyPassCacheUpdate,
 };
 #[cfg(test)]
 pub(crate) use cache::{ProvisionalBlurPassObjects, ProvisionalDropShadowColorizePassObjects};
 pub(crate) use key::{
     BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderBindingRoleKey, ShaderCompositeKey,
     ShaderCompositePathKey, ShaderDataBindingKey, ShaderMaskExtendKey, ShaderMaskQualityKey,
-    ShaderMaskSamplingKey, ShaderModuleKey, ShaderProgramKey, ShaderSamplingEdgeKey,
-    ShaderSamplingFilterKey, ShaderTextureFormatKey,
+    ShaderMaskSamplingKey, ShaderModuleKey, ShaderNativeShadowSourceKey, ShaderProgramKey,
+    ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
 };
 pub(crate) use parameters::{
     BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
     CompositeParameterBytes, ConvolutionParameterBytes, ConvolutionParameterFacts,
-    DropShadowParameterBytes, GaussianParameterBytes, GaussianParameterFacts, OffsetParameterBytes,
+    DropShadowParameterBytes, GaussianParameterBytes, GaussianParameterFacts,
+    NativeShadowParameterBytes, NativeShadowParameterFacts, OffsetParameterBytes,
     OffsetParameterFacts, PassSpatialUniformBytes,
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -56,5 +58,5 @@ pub(crate) use test_support::{
 pub(crate) use validate::{
     BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, ConvolutionPassKeyRefs,
     CopyBackdropPassKeyRefs, CorePassKeyRefs, DropShadowColorizePassKeyRefs, GaussianPassKeyRefs,
-    OffsetPassKeyRefs,
+    NativeShadowPassKeyRefs, OffsetPassKeyRefs,
 };

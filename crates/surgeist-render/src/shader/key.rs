@@ -25,6 +25,13 @@ pub(crate) enum ShaderCompositeKey {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ShaderNativeShadowSourceKey {
+    Finite,
+    Periodic,
+    Constant,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ShaderProgramKey {
     CanonicalizeCapture,
     CopyBackdrop,
@@ -33,6 +40,10 @@ pub(crate) enum ShaderProgramKey {
     Gaussian,
     GaussianSource,
     GaussianConstant,
+    NativeShadow {
+        original: ShaderNativeShadowSourceKey,
+        shifted_alpha: bool,
+    },
     Offset,
     BlurHorizontal {
         source_alpha: bool,
@@ -84,6 +95,8 @@ pub(crate) enum ShaderBindingRoleKey {
     GaussianSource,
     GaussianAuxiliary,
     OffsetSource,
+    NativeShadowOriginal,
+    NativeShadowAlpha,
     ConvolutionAuxiliary,
     CompletedParent,
     FilterSource,
@@ -203,6 +216,7 @@ pub(crate) enum ShaderDataBindingKey {
     ConvolutionParameters,
     GaussianParameters,
     OffsetParameters,
+    NativeShadowParameters,
     ConvolutionWeights,
     ColorFilterOperations,
     GaussianKernel,

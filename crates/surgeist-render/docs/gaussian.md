@@ -175,5 +175,6 @@ The [Gaussian clause](https://drafts.csswg.org/filter-effects-1/#feGaussianBlurE
 [primitive subregions](https://drafts.csswg.org/filter-effects-1/#FilterPrimitiveSubRegion)
 and [filter color interpolation](https://drafts.csswg.org/filter-effects-1/#color-interpolation-filters-property)
 provide the semantic sources. The retained [Filter Effects edition](../../../references/filter-effects-1--WD-filter-effects-1-20181218--b73408da4068.md)
-records the matching clauses. Complete SVG shadow equivalence still needs its
-separate source, flood, composite and merge orchestration.
+records the matching clauses. [Native resolved drop shadow](native-shadow.md)
+reuses this Gaussian owner in a private alpha-only route, retaining the original
+for its final colored merge. SVG document adaptation remains separate.

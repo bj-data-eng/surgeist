@@ -43,6 +43,14 @@ pub(crate) struct GaussianParameterBytes([u8; 256]);
 
 impl GaussianParameterBytes {
     pub(crate) fn try_new(facts: GaussianParameterFacts, account: &Account) -> Result<Self> {
+        Self::try_new_for_channels(facts, crate::frame::GaussianChannels::Rgba, account)
+    }
+
+    pub(crate) fn try_new_for_channels(
+        facts: GaussianParameterFacts,
+        channels: crate::frame::GaussianChannels,
+        account: &Account,
+    ) -> Result<Self> {
         let invalid = |value| {
             Error::from(crate::GaussianPreparationError::Numeric {
                 phase: crate::GaussianNumericPhase::GridMapping,
@@ -136,7 +144,12 @@ impl GaussianParameterBytes {
             u32::from(facts.direct),
             u32::from(facts.first),
         ];
-        words[7] = [u32::from(facts.converted), u32::from(facts.linear), 0, 0];
+        words[7] = [
+            u32::from(facts.converted),
+            u32::from(facts.linear),
+            u32::from(channels == crate::frame::GaussianChannels::Alpha),
+            0,
+        ];
         if facts.stage == 5 {
             for value in facts.color {
                 if !value.is_finite() || value < 0.0 || value > 1.0 {
@@ -179,6 +192,21 @@ pub(crate) struct OffsetParameterBytes([u8; 256]);
 
 impl OffsetParameterBytes {
     pub(crate) fn try_new(facts: OffsetParameterFacts, account: &Account) -> Result<Self> {
+        Self::serialize(facts, false, account)
+    }
+
+    pub(crate) fn try_new_covered_alpha(
+        facts: OffsetParameterFacts,
+        account: &Account,
+    ) -> Result<Self> {
+        Self::serialize(facts, true, account)
+    }
+
+    fn serialize(
+        facts: OffsetParameterFacts,
+        covered_alpha: bool,
+        account: &Account,
+    ) -> Result<Self> {
         let invalid = || {
             Error::invalid_value(
                 "offset parameters",
@@ -186,7 +214,8 @@ impl OffsetParameterBytes {
                 "must fit the qualified shader coordinate and sampling domains",
             )
         };
-        if facts.sampling > 3
+        if (covered_alpha && facts.rebase)
+            || facts.sampling > 3
             || facts.ratio.into_iter().any(|value| value <= 0.0)
             || facts
                 .source_extent
@@ -254,7 +283,175 @@ impl OffsetParameterBytes {
             facts.result_extent[0],
             facts.result_extent[1],
         ];
-        words[4] = [facts.sampling, u32::from(facts.rebase), 0, 0];
+        words[4] = [
+            facts.sampling,
+            u32::from(facts.rebase),
+            u32::from(covered_alpha),
+            0,
+        ];
+        account.work(RenderWork::SerializedBytes, 256)?;
+        let mut bytes = [0; 256];
+        for (index, word) in words.into_iter().flatten().enumerate() {
+            bytes[index * 4..index * 4 + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        Ok(Self(bytes))
+    }
+
+    pub(crate) const fn as_bytes(&self) -> &[u8; 256] {
+        &self.0
+    }
+}
+
+/// Qualified concrete merge maps. Constant originals have no texture binding.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct NativeShadowParameterFacts {
+    pub(crate) original: super::ShaderNativeShadowSourceKey,
+    pub(crate) shifted_alpha: bool,
+    pub(crate) source_size: [u32; 2],
+    pub(crate) target_size: [u32; 2],
+    pub(crate) source_base: [i32; 2],
+    pub(crate) source_clip: [f64; 4],
+    pub(crate) original_filter_clip: [f64; 4],
+    pub(crate) output_clip: [f64; 4],
+    pub(crate) periodic_base: [f64; 2],
+    pub(crate) periodic_step: [f64; 2],
+    pub(crate) original_color: [f32; 4],
+    pub(crate) flood_color: [f32; 4],
+    pub(crate) flood_opacity: f64,
+    pub(crate) linear: bool,
+}
+
+/// Exact 256-byte wire shared by all six concrete merge programs.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NativeShadowParameterBytes([u8; 256]);
+
+impl NativeShadowParameterBytes {
+    pub(crate) fn try_new(facts: NativeShadowParameterFacts, account: &Account) -> Result<Self> {
+        use super::ShaderNativeShadowSourceKey;
+        let invalid = |value| {
+            Error::from(crate::DropShadowPreparationError::Numeric {
+                phase: crate::DropShadowNumericPhase::MergeMapping,
+                value,
+            })
+        };
+        let constant = facts.original == ShaderNativeShadowSourceKey::Constant;
+        for size in
+            facts
+                .target_size
+                .into_iter()
+                .chain(if constant { [0; 2] } else { facts.source_size })
+        {
+            if size > 8_388_608 {
+                return Err(invalid(f64::from(size)));
+            }
+        }
+        if !constant && facts.source_size.contains(&0) {
+            return Err(invalid(0.0));
+        }
+        if !facts.flood_opacity.is_finite() || !(0.0..=1.0).contains(&facts.flood_opacity) {
+            return Err(invalid(facts.flood_opacity));
+        }
+        for value in facts.flood_color.into_iter().chain(if constant {
+            facts.original_color
+        } else {
+            [0.0; 4]
+        }) {
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(invalid(f64::from(value)));
+            }
+        }
+        if constant
+            && facts.original_color[..3]
+                .iter()
+                .any(|v| *v > facts.original_color[3])
+        {
+            return Err(invalid(f64::from(facts.original_color[3])));
+        }
+        let mut words = [[0_u32; 4]; 16];
+        words[0] = [
+            facts.source_size[0],
+            facts.source_size[1],
+            facts.target_size[0],
+            facts.target_size[1],
+        ];
+        if facts.original == ShaderNativeShadowSourceKey::Finite {
+            words[1] = [
+                u32::from_ne_bytes(facts.source_base[0].to_ne_bytes()),
+                u32::from_ne_bytes(facts.source_base[1].to_ne_bytes()),
+                0,
+                0,
+            ];
+        }
+        let mut write_floats = |row: usize, values: [f64; 4]| -> Result<()> {
+            for (slot, value) in words[row].iter_mut().zip(values) {
+                let narrowed = account.coordinate(|| value as f32)?;
+                if !value.is_finite()
+                    || !(narrowed == 0.0 || narrowed.is_normal())
+                    || (value != 0.0 && narrowed == 0.0)
+                {
+                    return Err(invalid(value));
+                }
+                *slot = narrowed.to_bits();
+            }
+            Ok(())
+        };
+        for (needed, row, clip, size) in [
+            (
+                facts.original == ShaderNativeShadowSourceKey::Finite,
+                2,
+                facts.source_clip,
+                facts.source_size,
+            ),
+            (
+                facts.original != ShaderNativeShadowSourceKey::Finite,
+                3,
+                facts.original_filter_clip,
+                facts.target_size,
+            ),
+            (true, 4, facts.output_clip, facts.target_size),
+        ] {
+            if needed {
+                if clip[0] < 0.0
+                    || clip[1] < 0.0
+                    || clip[2] < clip[0]
+                    || clip[3] < clip[1]
+                    || clip[2] > f64::from(size[0])
+                    || clip[3] > f64::from(size[1])
+                {
+                    return Err(invalid(clip[0]));
+                }
+                write_floats(row, clip)?;
+            }
+        }
+        if facts.original == ShaderNativeShadowSourceKey::Periodic {
+            if facts.periodic_step.into_iter().any(|v| v <= 0.0) {
+                return Err(invalid(facts.periodic_step[0]));
+            }
+            write_floats(
+                5,
+                [
+                    facts.periodic_base[0],
+                    facts.periodic_base[1],
+                    facts.periodic_step[0],
+                    facts.periodic_step[1],
+                ],
+            )?;
+        }
+        write_floats(9, [facts.flood_opacity, 0.0, 0.0, 0.0])?;
+        words[6] = [
+            match facts.original {
+                ShaderNativeShadowSourceKey::Finite => 0,
+                ShaderNativeShadowSourceKey::Periodic => 1,
+                ShaderNativeShadowSourceKey::Constant => 2,
+            },
+            u32::from(facts.linear),
+            u32::from(facts.shifted_alpha),
+            0,
+        ];
+        words[7] = facts.flood_color.map(f32::to_bits);
+        if constant {
+            words[8] = facts.original_color.map(f32::to_bits);
+        }
         account.work(RenderWork::SerializedBytes, 256)?;
         let mut bytes = [0; 256];
         for (index, word) in words.into_iter().flatten().enumerate() {
@@ -1390,7 +1587,7 @@ impl CompositeParameterBytes {
                 affine: parameters.destination_to_layer_local().affine().as_array(),
                 source_space: parameters.source_space(),
                 source_operation_clip: parameters
-                    .gaussian_footprint()
+                    .filter_footprint()
                     .map(|footprint| footprint.output_clip()),
                 opacity: parameters.opacity(),
                 composition: parameters.composition(),
@@ -2618,6 +2815,22 @@ mod gaussian_parameter_tests {
     }
 
     #[test]
+    fn alpha_gaussian_wire_selects_projection_without_changing_rgba_or_kernel_payload() {
+        let input = facts();
+        let rgba = GaussianParameterBytes::try_new(input, &Account::for_test()).unwrap();
+        let alpha = GaussianParameterBytes::try_new_for_channels(
+            input,
+            crate::frame::GaussianChannels::Alpha,
+            &Account::for_test(),
+        )
+        .unwrap();
+        assert_eq!(&rgba.0[..120], &alpha.0[..120]);
+        assert_eq!(&rgba.0[120..124], &0_u32.to_le_bytes());
+        assert_eq!(&alpha.0[120..124], &1_u32.to_le_bytes());
+        assert_eq!(&rgba.0[124..], &alpha.0[124..]);
+    }
+
+    #[test]
     fn gaussian_wire_refuses_reached_coordinate_narrowing_and_oversized_batches() {
         for bad in [f64::INFINITY, f64::NAN, f64::MAX, f64::MIN_POSITIVE] {
             let mut input = facts();
@@ -2733,5 +2946,106 @@ mod gaussian_composite_parameter_tests {
                 .is_err()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod native_shadow_parameter_tests {
+    use super::*;
+    use crate::shader::ShaderNativeShadowSourceKey;
+
+    fn facts() -> NativeShadowParameterFacts {
+        NativeShadowParameterFacts {
+            original: ShaderNativeShadowSourceKey::Finite,
+            shifted_alpha: true,
+            source_size: [4, 2],
+            target_size: [3, 2],
+            source_base: [-1, 0],
+            source_clip: [0.5, 0.0, 4.0, 2.0],
+            original_filter_clip: [0.0, 0.0, 3.0, 2.0],
+            output_clip: [0.25, 0.0, 2.75, 2.0],
+            periodic_base: [0.5, 0.25],
+            periodic_step: [1.2, 1.6],
+            original_color: [0.0, 0.0, 0.5, 0.5],
+            flood_color: [1.0, 0.0, 0.0, 0.5],
+            flood_opacity: 0.5,
+            linear: true,
+        }
+    }
+
+    #[test]
+    fn native_shadow_wire_preserves_straight_flood_and_raw_opacity_separately() {
+        let bytes = NativeShadowParameterBytes::try_new(facts(), &Account::for_test()).unwrap();
+        let word =
+            |offset: usize| u32::from_le_bytes(bytes.0[offset..offset + 4].try_into().unwrap());
+        assert_eq!(word(16), u32::MAX);
+        assert_eq!(f32::from_bits(word(32)), 0.5);
+        assert_eq!(f32::from_bits(word(64)), 0.25);
+        assert_eq!([word(96), word(100), word(104), word(108)], [0, 1, 1, 0]);
+        assert_eq!(f32::from_bits(word(112)), 1.0);
+        assert_eq!(f32::from_bits(word(124)), 0.5);
+        assert_eq!(f32::from_bits(word(144)), 0.5);
+        assert!(bytes.0[148..].iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn native_shadow_constant_does_not_reach_texture_or_period_coordinates() {
+        let mut input = facts();
+        input.original = ShaderNativeShadowSourceKey::Constant;
+        input.shifted_alpha = false;
+        input.source_size = [u32::MAX; 2];
+        input.source_clip = [f64::NAN; 4];
+        input.periodic_base = [f64::NAN; 2];
+        input.periodic_step = [f64::NAN; 2];
+        let bytes = NativeShadowParameterBytes::try_new(input, &Account::for_test()).unwrap();
+        assert_eq!(
+            &bytes.0[128..144],
+            bytemuck::cast_slice(&input.original_color)
+        );
+    }
+
+    #[test]
+    fn native_shadow_wire_refuses_reached_nonfinite_maps_and_invalid_flood() {
+        for bad in [f64::NAN, f64::INFINITY, f64::MAX, f64::MIN_POSITIVE] {
+            let mut input = facts();
+            input.output_clip[0] = bad;
+            let error =
+                NativeShadowParameterBytes::try_new(input, &Account::for_test()).unwrap_err();
+            assert!(error.drop_shadow_diagnostic().is_some());
+        }
+        for bad in [-0.01, 1.01, f64::NAN] {
+            let mut input = facts();
+            input.flood_opacity = bad;
+            assert!(NativeShadowParameterBytes::try_new(input, &Account::for_test()).is_err());
+        }
+        let mut input = facts();
+        input.original = ShaderNativeShadowSourceKey::Periodic;
+        input.periodic_step[0] = 0.0;
+        assert!(NativeShadowParameterBytes::try_new(input, &Account::for_test()).is_err());
+    }
+
+    #[test]
+    fn alpha_offset_wire_keeps_covered_source_and_destination_deferred_as_one_purpose() {
+        let facts = || OffsetParameterFacts {
+            translation: [-0.5, 0.0],
+            ratio: [1.0; 2],
+            source_clip: [0.5, 0.0, 2.0, 1.0],
+            result_clip: [0.0, 0.0, 1.5, 1.0],
+            source_extent: [2, 1],
+            result_extent: [2, 1],
+            sampling: 2,
+            rebase: false,
+        };
+        let ordinary = OffsetParameterBytes::try_new(facts(), &Account::for_test()).unwrap();
+        let covered =
+            OffsetParameterBytes::try_new_covered_alpha(facts(), &Account::for_test()).unwrap();
+        assert_eq!(&ordinary.0[0..72], &covered.0[0..72]);
+        assert_eq!(&ordinary.0[72..76], &0_u32.to_le_bytes());
+        assert_eq!(&covered.0[72..76], &1_u32.to_le_bytes());
+        let mut bad = facts();
+        bad.rebase = true;
+        bad.sampling = 0;
+        bad.translation = [0.0; 2];
+        assert!(OffsetParameterBytes::try_new_covered_alpha(bad, &Account::for_test()).is_err());
     }
 }

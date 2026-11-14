@@ -233,6 +233,7 @@ fn core_pass_program_sampling(
         | ShaderProgramKey::GaussianSource
         | ShaderProgramKey::GaussianConstant
         | ShaderProgramKey::Offset
+        | ShaderProgramKey::NativeShadow { .. }
         | ShaderProgramKey::ColorFilter
         | ShaderProgramKey::BlurHorizontal { .. }
         | ShaderProgramKey::BlurVertical { .. }
@@ -507,6 +508,89 @@ pub(super) fn validate_offset_pass_keys(
 }
 
 pub(super) fn offset_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct NativeShadowPassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+    pub(super) original: super::ShaderNativeShadowSourceKey,
+    pub(super) shifted_alpha: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct NativeShadowPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_native_shadow_pass_keys(
+    keys: NativeShadowPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<NativeShadowPassDescription> {
+    use super::ShaderNativeShadowSourceKey;
+    let ShaderProgramKey::NativeShadow {
+        original,
+        shifted_alpha,
+    } = keys.layout.program
+    else {
+        return Err(native_shadow_cache_error(
+            "native shadow requires its concrete merge program",
+        ));
+    };
+    let expected: &[ShaderBindingRoleKey] = match (original, shifted_alpha) {
+        (ShaderNativeShadowSourceKey::Constant, false) => &[],
+        (ShaderNativeShadowSourceKey::Constant, true) => &[ShaderBindingRoleKey::NativeShadowAlpha],
+        (_, false) => &[ShaderBindingRoleKey::NativeShadowOriginal],
+        (_, true) => &[
+            ShaderBindingRoleKey::NativeShadowOriginal,
+            ShaderBindingRoleKey::NativeShadowAlpha,
+        ],
+    };
+    let target_format = keys.pipeline.target_format;
+    if keys.layout.sampled_textures.len() != expected.len() {
+        return Err(native_shadow_cache_error(
+            "native shadow texture count disagrees with its reached branches",
+        ));
+    }
+    for (texture, role) in keys.layout.sampled_textures.iter().zip(expected) {
+        binding_visit(observer)?;
+        if texture.binding_role != *role || texture.source_format != target_format {
+            return Err(native_shadow_cache_error(
+                "native shadow branch role or working format is invalid",
+            ));
+        }
+    }
+    if keys.shader.program != keys.layout.program
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[ShaderDataBindingKey::NativeShadowParameters],
+            observer,
+        )?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(target_format)
+        || keys.shader.output_format != Some(target_format)
+        || !is_working_format(target_format)
+    {
+        return Err(native_shadow_cache_error(
+            "native shadow keys disagree across programs, bindings, or working formats",
+        ));
+    }
+    Ok(NativeShadowPassDescription {
+        target_format,
+        original,
+        shifted_alpha,
+    })
+}
+
+pub(super) fn native_shadow_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
 }
 
@@ -1587,6 +1671,104 @@ mod gaussian_key_tests {
                 )
                 .is_err()
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod native_shadow_key_tests {
+    use super::*;
+    use crate::accounting::RendererCpu;
+    use crate::shader::ShaderNativeShadowSourceKey;
+
+    #[test]
+    fn native_shadow_keys_require_exact_real_branch_roles_in_each_working_format() {
+        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        for format in [
+            ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+            ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
+        ] {
+            for original in [
+                ShaderNativeShadowSourceKey::Finite,
+                ShaderNativeShadowSourceKey::Periodic,
+                ShaderNativeShadowSourceKey::Constant,
+            ] {
+                for shifted_alpha in [false, true] {
+                    let program = ShaderProgramKey::NativeShadow {
+                        original,
+                        shifted_alpha,
+                    };
+                    let mut textures = Vec::new();
+                    if original != ShaderNativeShadowSourceKey::Constant {
+                        textures.push((ShaderBindingRoleKey::NativeShadowOriginal, format));
+                    }
+                    if shifted_alpha {
+                        textures.push((ShaderBindingRoleKey::NativeShadowAlpha, format));
+                    }
+                    let make = |textures: &[(ShaderBindingRoleKey, ShaderTextureFormatKey)]| {
+                        let layout = BindGroupLayoutKey::new(
+                            &cpu,
+                            None,
+                            program,
+                            textures,
+                            &[ShaderDataBindingKey::NativeShadowParameters],
+                        )
+                        .unwrap();
+                        let shader = ShaderModuleKey::new(
+                            &cpu,
+                            None,
+                            program,
+                            layout.clone(),
+                            &[],
+                            Some(format),
+                            Some(format),
+                        )
+                        .unwrap();
+                        let pipeline = RenderPipelineKey::new(
+                            &cpu,
+                            None,
+                            shader.clone(),
+                            layout.clone(),
+                            &[],
+                            format,
+                        )
+                        .unwrap();
+                        (layout, shader, pipeline)
+                    };
+                    let validate = |(layout, shader, pipeline): &(
+                        BindGroupLayoutKey,
+                        ShaderModuleKey,
+                        RenderPipelineKey,
+                    )| {
+                        validate_native_shadow_pass_keys(
+                            NativeShadowPassKeyRefs {
+                                samplers: &[],
+                                layout,
+                                shader,
+                                pipeline,
+                            },
+                            None,
+                        )
+                    };
+                    assert!(validate(&make(&textures)).is_ok());
+                    let mut wrong = textures.clone();
+                    wrong.push((ShaderBindingRoleKey::NativeShadowOriginal, format));
+                    assert!(validate(&make(&wrong)).is_err());
+                    if let Some((role, source_format)) = wrong.first_mut() {
+                        *role = ShaderBindingRoleKey::OffsetSource;
+                        *source_format = ShaderTextureFormatKey::FilterRgba32Float;
+                    }
+                    wrong.pop();
+                    if !wrong.is_empty() {
+                        assert!(validate(&make(&wrong)).is_err());
+                    }
+                    if textures.len() == 2 {
+                        textures.swap(0, 1);
+                        assert!(validate(&make(&textures)).is_err());
+                    }
+                }
+            }
         }
     }
 }

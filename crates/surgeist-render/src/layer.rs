@@ -165,6 +165,14 @@ impl Layer {
         }
     }
 
+    pub(crate) fn with_native_shadow(
+        mut self,
+        shadow: crate::native_shadow::DropShadowForeground,
+    ) -> Self {
+        self.filter = Some(LayerFilter::NativeShadow(shadow));
+        self
+    }
+
     pub(crate) fn with_gaussian(mut self, gaussian: crate::gaussian::GaussianForeground) -> Self {
         self.filter = Some(LayerFilter::Gaussian(gaussian));
         self
@@ -306,7 +314,8 @@ impl Layer {
                 LayerFilter::List(_)
                 | LayerFilter::Convolution(_)
                 | LayerFilter::Offset(_)
-                | LayerFilter::Gaussian(_),
+                | LayerFilter::Gaussian(_)
+                | LayerFilter::NativeShadow(_),
             )
             | None => None,
         }
@@ -321,7 +330,8 @@ impl Layer {
                 LayerFilter::Blur(_)
                 | LayerFilter::Convolution(_)
                 | LayerFilter::Offset(_)
-                | LayerFilter::Gaussian(_),
+                | LayerFilter::Gaussian(_)
+                | LayerFilter::NativeShadow(_),
             )
             | None => None,
         }
@@ -366,6 +376,7 @@ pub(crate) enum LayerFilter {
     Convolution(crate::PreparedConvolution),
     Offset(crate::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
+    NativeShadow(crate::native_shadow::DropShadowForeground),
 }
 
 #[derive(Clone, Debug, PartialEq)]

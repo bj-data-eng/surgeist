@@ -2,9 +2,11 @@ use crate::accounting::{Account, AccountedVec, OwnedBox, RenderPhase, RenderWork
 mod bounds;
 mod convolution;
 mod filter;
+mod filter_footprint;
 mod gaussian;
 mod graph;
 mod lower;
+mod native_shadow;
 mod offset;
 #[cfg(all(test, not(target_family = "wasm")))]
 mod selection_stack_tests;
@@ -26,8 +28,9 @@ pub(crate) use filter::{
     OrderedFilterEdgeObservation, OrderedFilterIntentObservation, OrderedFilterPlanObservation,
     OrderedFilterStepObservation, ordered_filter_plan_for_test,
 };
+pub(crate) use filter_footprint::FilterOutputFootprint;
 pub(crate) use gaussian::{
-    GaussianAxis, GaussianOutputFootprint, GaussianPassFacts, GaussianStage,
+    GaussianAxis, GaussianChannels, GaussianPassFacts, GaussianPurpose, GaussianStage,
 };
 pub(crate) use lower::{
     GraphLoweringBlur, GraphLoweringBlurInput, GraphLoweringClipCoverage, GraphLoweringColorFilter,
@@ -49,7 +52,8 @@ pub(crate) use lower::{
     GraphLoweringDestinationToLayerLocal, GraphLoweringOuterClip,
     GraphLoweringResolvedAlphaMaskComposition, GraphLoweringView,
 };
-pub(crate) use offset::{OffsetSampling, OffsetStage};
+pub(crate) use native_shadow::{NativeShadowOriginal, NativeShadowPassFacts};
+pub(crate) use offset::{OffsetPurpose, OffsetSampling, OffsetStage};
 #[cfg(test)]
 #[expect(
     unused_imports,
@@ -336,5 +340,15 @@ fn require_graph_text_bounds(
             | RenderCommand::PreparedGlyphRun { .. } => {}
         }
         path.pop();
+    }
+}
+
+fn bounded_filter_source(
+    effect: &crate::command::NormalizedForegroundEffect,
+) -> Option<crate::gaussian::GaussianSourceDescriptor> {
+    match effect {
+        crate::command::NormalizedForegroundEffect::Gaussian(value) => Some(value.source),
+        crate::command::NormalizedForegroundEffect::NativeShadow(value) => Some(value.source),
+        _ => None,
     }
 }

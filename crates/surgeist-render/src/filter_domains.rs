@@ -31,6 +31,14 @@ impl FilterDomains {
         })
     }
 
+    /// Reuses the already admitted filter rectangle as the internal result.
+    pub(crate) const fn for_filter_output(self) -> Self {
+        Self {
+            result: self.filter,
+            ..self
+        }
+    }
+
     /// Returns the semantic primary-input domain.
     #[must_use]
     pub const fn source(self) -> Rect {

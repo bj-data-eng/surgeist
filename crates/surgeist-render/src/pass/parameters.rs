@@ -87,6 +87,7 @@ pub(super) fn prepared_pass_spatial_uniform(
             RuntimePassKind::Convolution(_)
                 | RuntimePassKind::Gaussian(_)
                 | RuntimePassKind::Offset(_)
+                | RuntimePassKind::NativeShadowMerge(_)
         )
     {
         return Ok(None);
@@ -118,7 +119,8 @@ pub(super) fn prepared_pass_spatial_uniform(
         }
         RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
-        | RuntimePassKind::Offset(_) => return Ok(None),
+        | RuntimePassKind::Offset(_)
+        | RuntimePassKind::NativeShadowMerge(_) => return Ok(None),
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {
             (blur.spatial.source, blur.spatial.result)
         }
@@ -204,7 +206,7 @@ pub(super) fn prepared_pass_composite_parameters(
                 RuntimeReadRole::CompositeSource,
                 account,
             )?;
-            if let Some(footprint) = parameters.gaussian_footprint() {
+            if let Some(footprint) = parameters.filter_footprint() {
                 account.work(RenderWork::GraphNodeVisits, 1)?;
                 if RuntimeSpatialDescriptor::from_graph(footprint.source_spatial()) != source {
                     return Err(preparation_error(

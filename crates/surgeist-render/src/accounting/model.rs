@@ -93,6 +93,8 @@ dimensions! {
         /// Native Gaussian scheduled cells times actual coefficient/fetch opportunities,
         /// including exterior transparent samples and periodic reconstruction.
         ScheduledGaussianSamples,
+        /// Native shadow merge cells times actual original/shifted-alpha fetch opportunities.
+        ScheduledShadowSamples,
         /// Nonempty native compute dispatch calls issued by the internal raster engine.
         RasterDispatches,
         /// Logical internal Vello raster passes actually encoded.
@@ -226,10 +228,13 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Convolution)
             || self.supported_for(RenderAttemptKind::Offset)
             || self.supported_for(RenderAttemptKind::Gaussian)
+            || self.supported_for(RenderAttemptKind::DropShadow)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
-            RenderAttemptKind::Offset | RenderAttemptKind::Gaussian => {
+            RenderAttemptKind::Offset
+            | RenderAttemptKind::Gaussian
+            | RenderAttemptKind::DropShadow => {
                 matches!(self, Self::FilterOperationVisits | Self::CoordinateVisits)
             }
             RenderAttemptKind::Convolution => matches!(
@@ -324,6 +329,7 @@ impl RenderWork {
                         | Self::ScheduledConvolutionTaps
                         | Self::ScheduledOffsetSamples
                         | Self::ScheduledGaussianSamples
+                        | Self::ScheduledShadowSamples
                         | Self::RasterDispatches
                         | Self::VelloPasses
                         | Self::ImagePasses
@@ -950,6 +956,8 @@ pub enum RenderAttemptKind {
     Offset,
     /// Standalone resolved native Gaussian admission.
     Gaussian,
+    /// Standalone resolved native drop-shadow admission.
+    DropShadow,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

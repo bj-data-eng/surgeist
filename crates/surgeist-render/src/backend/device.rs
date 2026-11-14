@@ -810,6 +810,7 @@ mod error_context_tests {
         for operation in [
             RuntimeOperation::GaussianRendering,
             RuntimeOperation::ConvolutionRendering,
+            RuntimeOperation::NativeDropShadowRendering,
         ] {
             let error = capabilities.validate_filter_float32(operation).unwrap_err();
             let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();

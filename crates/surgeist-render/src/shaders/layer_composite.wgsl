@@ -108,7 +108,7 @@ fn sample_source(destination_position: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(min(bounded.rgb, vec3<f32>(alpha)), alpha);
 }
 
-// Reconstruct the authored Gaussian operation coverage with the exact source
+// Reconstruct the bounded native-filter operation coverage with the exact source
 // lattice, clamp-to-edge bilinear kernel, and center-inside allocation guard.
 // Source alpha cannot identify this geometric footprint (it may be transparent).
 fn operation_cell_coverage(index: vec2<i32>, extent: vec2<i32>) -> f32 {
@@ -118,7 +118,7 @@ fn operation_cell_coverage(index: vec2<i32>, extent: vec2<i32>) -> f32 {
     return overlap.x * overlap.y;
 }
 
-fn gaussian_operation_coverage(destination_position: vec2<f32>) -> f32 {
+fn filter_operation_coverage(destination_position: vec2<f32>) -> f32 {
     let texel = source_texel(destination_position);
     let extent = vec2<f32>(spatial.source_destination_extents.xy);
     if any(texel < vec2<f32>(0.0)) || any(texel >= extent) { return 0.0; }
@@ -461,7 +461,7 @@ fn operation_composite(source: vec4<f32>, backdrop: vec4<f32>, destination_posit
         || operation == 6u || operation == 7u || operation == 10u;
     if (parameters.presence.z & 2u) != 0u && destructive
         && parameters.blend != 6u && operation != PLUS_LIGHTER_OPERATOR {
-        let covered = complete + (1.0 - gaussian_operation_coverage(destination_position)) * backdrop;
+        let covered = complete + (1.0 - filter_operation_coverage(destination_position)) * backdrop;
         // Storage/interpolation rounding can make covered source alpha slightly
         // exceed its analytic coverage. Restore valid premultiplication here,
         // before the authored whole-operation clip interpolates this result.

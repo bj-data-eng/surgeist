@@ -516,3 +516,77 @@ fn render_window_public_gaussian_executes_through_renderer_and_presented_surface
     assert_eq!(observation.present_count_for_test(), 1);
     assert_eq!(observation.discarded_count_for_test(), 0);
 }
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+#[test]
+fn render_window_public_native_shadow_executes_through_renderer_and_presented_surface() {
+    use crate::{
+        DropShadowInput, DropShadowSource, FilterColorSpace, FilterDomains, Layer,
+        RenderAccountingContext, prepare_drop_shadow,
+    };
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = PhysicalSize::new(9, 3);
+    let mut surface = display_free_presented_surface_for_test(
+        &mut renderer,
+        SurfaceOptions {
+            size: Size::new(9.0, 3.0),
+            format: Format::Rgba8,
+            ..SurfaceOptions::default()
+        },
+    );
+    pollster::block_on(renderer.configure_presented_surface_for_test(&mut surface)).unwrap();
+    let domain = Rect::new(0.0, 0.0, 9.0, 3.0);
+    let mut input = Scene::new();
+    input.image(
+        super::convolution::image(1, 1, vec![0, 0, 255, 255]),
+        Rect::new(2.0, 1.0, 1.0, 1.0),
+        crate::ImageFit::Stretch,
+    );
+    let sigma = 1.0 / (2.0 * 2.0_f64.ln()).sqrt();
+    let operation = prepare_drop_shadow(
+        DropShadowInput::new()
+            .with_dx(2.0)
+            .with_dy(0.0)
+            .with_standard_deviations(sigma, 0.0)
+            .with_flood_color(Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap()),
+        FilterColorSpace::Srgb,
+        &mut RenderAccountingContext::default(),
+    )
+    .unwrap();
+    let mut scene = Scene::new();
+    scene
+        .drop_shadow_layer(
+            Layer::new(),
+            operation,
+            DropShadowSource::finite(
+                input,
+                FilterDomains::try_new(domain, domain, domain).unwrap(),
+            ),
+        )
+        .unwrap();
+    let observation = presented_observation_handle_for_test(&surface);
+    let stats =
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    assert_eq!(renderer.stats(), stats);
+    let texture = take_last_presented_texture_for_test(&mut surface).unwrap();
+    let pixels = pollster::block_on(renderer.read_render_texture_for_test(&texture, size)).unwrap();
+    super::convolution::assert_pixel(&pixels, 2, 1, [0, 0, 255, 255], 1);
+    for (x, weight) in [
+        (4, 65536.0 / 139522.0),
+        (5, 32768.0 / 139522.0),
+        (6, 4096.0 / 139522.0),
+    ] {
+        super::convolution::assert_pixel(
+            &pixels,
+            x,
+            1,
+            [255, 0, 0, (weight * 255.0_f64).round() as u8],
+            2,
+        );
+    }
+    let observed = observation.snapshot_for_test();
+    assert_eq!(observed.acquire_count_for_test(), 1);
+    assert_eq!(observed.present_count_for_test(), 1);
+    assert_eq!(observed.discarded_count_for_test(), 0);
+}

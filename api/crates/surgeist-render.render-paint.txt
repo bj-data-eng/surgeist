@@ -130,6 +130,20 @@ pub const fn surgeist_render::DegradedQualityKind::label(self) -> &'static str
 pub enum surgeist_render::DeviceLossReason
 pub surgeist_render::DeviceLossReason::Destroyed
 pub surgeist_render::DeviceLossReason::Unknown
+pub enum surgeist_render::DropShadowNumericPhase
+pub surgeist_render::DropShadowNumericPhase::GridIndex
+pub surgeist_render::DropShadowNumericPhase::MergeMapping
+pub surgeist_render::DropShadowNumericPhase::Sampling
+pub enum surgeist_render::DropShadowPreparationError
+pub surgeist_render::DropShadowPreparationError::EmptyPeriod
+pub surgeist_render::DropShadowPreparationError::InfiniteSourceBackdrop
+pub surgeist_render::DropShadowPreparationError::InvalidFloodOpacity
+pub surgeist_render::DropShadowPreparationError::InvalidFloodOpacity::value: f64
+pub surgeist_render::DropShadowPreparationError::Numeric
+pub surgeist_render::DropShadowPreparationError::Numeric::phase: surgeist_render::DropShadowNumericPhase
+pub surgeist_render::DropShadowPreparationError::Numeric::value: f64
+impl core::convert::From<surgeist_render::DropShadowPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::DropShadowPreparationError) -> Self
 pub enum surgeist_render::EffectPrecision
 pub surgeist_render::EffectPrecision::High
 pub surgeist_render::EffectPrecision::Reduced
@@ -502,6 +516,7 @@ pub surgeist_render::PrimitiveOperation::GpuColorFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuConvolutionFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuDropShadowFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuGaussianFilterExecution
+pub surgeist_render::PrimitiveOperation::GpuNativeDropShadowFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuOffsetFilterExecution
 pub surgeist_render::PrimitiveOperation::ImageColorProfileConversion
 pub surgeist_render::PrimitiveOperation::ImageOrientationConversion
@@ -584,6 +599,7 @@ pub surgeist_render::RenderAttemptKind::BoxDecoration
 pub surgeist_render::RenderAttemptKind::Clip
 pub surgeist_render::RenderAttemptKind::ColorFilterProjection
 pub surgeist_render::RenderAttemptKind::Convolution
+pub surgeist_render::RenderAttemptKind::DropShadow
 pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::Gaussian
 pub surgeist_render::RenderAttemptKind::GlyphRun
@@ -857,6 +873,7 @@ pub surgeist_render::RenderWork::ScheduledConvolutionTaps
 pub surgeist_render::RenderWork::ScheduledFilterTexels
 pub surgeist_render::RenderWork::ScheduledGaussianSamples
 pub surgeist_render::RenderWork::ScheduledOffsetSamples
+pub surgeist_render::RenderWork::ScheduledShadowSamples
 pub surgeist_render::RenderWork::SerializedBytes
 pub surgeist_render::RenderWork::ShaderBindingVisits
 pub surgeist_render::RenderWork::ShaderKeyCopies
@@ -918,6 +935,7 @@ pub surgeist_render::RuntimeOperation::EffectPresentation
 pub surgeist_render::RuntimeOperation::EffectRendering
 pub surgeist_render::RuntimeOperation::EffectTextureAllocation
 pub surgeist_render::RuntimeOperation::GaussianRendering
+pub surgeist_render::RuntimeOperation::NativeDropShadowRendering
 pub surgeist_render::RuntimeOperation::SurfaceReadback
 pub surgeist_render::RuntimeOperation::SurfaceRendering
 pub surgeist_render::RuntimeOperation::SurfaceResume
@@ -1188,6 +1206,23 @@ impl surgeist_render::DegradedQuality
 pub const fn surgeist_render::DegradedQuality::kind(&self) -> surgeist_render::DegradedQualityKind
 pub fn surgeist_render::DegradedQuality::new(kind: surgeist_render::DegradedQualityKind, value: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn surgeist_render::DegradedQuality::value(&self) -> &str
+pub struct surgeist_render::DropShadowInput
+impl surgeist_render::DropShadowInput
+pub const fn surgeist_render::DropShadowInput::new() -> Self
+pub const fn surgeist_render::DropShadowInput::with_dx(self, dx: f64) -> Self
+pub const fn surgeist_render::DropShadowInput::with_dy(self, dy: f64) -> Self
+pub const fn surgeist_render::DropShadowInput::with_flood_color(self, color: surgeist_render::Color) -> Self
+pub const fn surgeist_render::DropShadowInput::with_flood_opacity(self, opacity: f64) -> Self
+pub const fn surgeist_render::DropShadowInput::with_rendering(self, rendering: surgeist_render::ImageRendering) -> Self
+pub const fn surgeist_render::DropShadowInput::with_standard_deviation(self, sigma: f64) -> Self
+pub const fn surgeist_render::DropShadowInput::with_standard_deviations(self, x: f64, y: f64) -> Self
+impl core::default::Default for surgeist_render::DropShadowInput
+pub fn surgeist_render::DropShadowInput::default() -> Self
+pub struct surgeist_render::DropShadowSource(_)
+impl surgeist_render::DropShadowSource
+pub fn surgeist_render::DropShadowSource::constant(color: surgeist_render::Color, filter: surgeist_render::Rect, result: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub fn surgeist_render::DropShadowSource::finite(scene: surgeist_render::Scene, domains: surgeist_render::FilterDomains) -> Self
+pub fn surgeist_render::DropShadowSource::periodic(scene: surgeist_render::Scene, period: surgeist_render::Rect, filter: surgeist_render::Rect, result: surgeist_render::Rect) -> surgeist_render::Result<Self>
 pub struct surgeist_render::EffectPrecisionCapabilities
 impl surgeist_render::EffectPrecisionCapabilities
 pub const fn surgeist_render::EffectPrecisionCapabilities::supports_filter_float32(self) -> bool
@@ -1200,6 +1235,7 @@ pub const fn surgeist_render::Error::code(&self) -> surgeist_render::ErrorCode
 pub const fn surgeist_render::Error::convolution_diagnostic(&self) -> core::option::Option<&surgeist_render::ConvolutionPreparationError>
 pub fn surgeist_render::Error::degraded_quality(diagnostic: surgeist_render::DegradedQuality) -> Self
 pub const fn surgeist_render::Error::degraded_quality_diagnostic(&self) -> core::option::Option<&surgeist_render::DegradedQuality>
+pub const fn surgeist_render::Error::drop_shadow_diagnostic(&self) -> core::option::Option<&surgeist_render::DropShadowPreparationError>
 pub fn surgeist_render::Error::from_invalid_value(invalid_value: surgeist_render::InvalidValue) -> Self
 pub const fn surgeist_render::Error::gaussian_diagnostic(&self) -> core::option::Option<&surgeist_render::GaussianPreparationError>
 pub const fn surgeist_render::Error::geometry_realization_diagnostic(&self) -> core::option::Option<&surgeist_render::GeometryRealizationError>
@@ -1219,6 +1255,8 @@ pub const fn surgeist_render::Error::unsupported_primitive(&self) -> core::optio
 pub fn surgeist_render::Error::unsupported_render_primitive(primitive: surgeist_render::UnsupportedPrimitive) -> Self
 impl core::convert::From<surgeist_render::ConvolutionPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::ConvolutionPreparationError) -> Self
+impl core::convert::From<surgeist_render::DropShadowPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::DropShadowPreparationError) -> Self
 impl core::convert::From<surgeist_render::GaussianPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GaussianPreparationError) -> Self
 impl core::convert::From<surgeist_render::GeometryRealizationError> for surgeist_render::Error
@@ -1268,6 +1306,7 @@ pub const fn surgeist_render::FilterCapabilities::supports_gpu_color_filter_exec
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_convolution_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_drop_shadow_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_gaussian_filter_execution(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_gpu_native_drop_shadow_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_offset_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_layer_filters(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_ordered_filter_lists(self) -> bool
@@ -1723,6 +1762,7 @@ pub fn surgeist_render::PositionEdgeOffset::start(offset: f64) -> surgeist_rende
 pub struct surgeist_render::PreparedConvolution
 impl core::cmp::PartialEq for surgeist_render::PreparedConvolution
 pub fn surgeist_render::PreparedConvolution::eq(&self, other: &Self) -> bool
+pub struct surgeist_render::PreparedDropShadow
 pub struct surgeist_render::PreparedGaussian
 pub struct surgeist_render::PreparedGlyphRun(_)
 impl surgeist_render::PreparedGlyphRun
@@ -2003,6 +2043,7 @@ pub surgeist_render::RenderWorkTable::ScheduledConvolutionTaps: T
 pub surgeist_render::RenderWorkTable::ScheduledFilterTexels: T
 pub surgeist_render::RenderWorkTable::ScheduledGaussianSamples: T
 pub surgeist_render::RenderWorkTable::ScheduledOffsetSamples: T
+pub surgeist_render::RenderWorkTable::ScheduledShadowSamples: T
 pub surgeist_render::RenderWorkTable::SerializedBytes: T
 pub surgeist_render::RenderWorkTable::ShaderBindingVisits: T
 pub surgeist_render::RenderWorkTable::ShaderKeyCopies: T
@@ -2098,6 +2139,7 @@ pub struct surgeist_render::Scene
 impl surgeist_render::Scene
 pub fn surgeist_render::Scene::clear(&mut self)
 pub fn surgeist_render::Scene::clip(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
+pub fn surgeist_render::Scene::drop_shadow_layer(&mut self, layer: surgeist_render::Layer, operation: surgeist_render::PreparedDropShadow, source: surgeist_render::DropShadowSource) -> surgeist_render::Result<&mut Self>
 pub fn surgeist_render::Scene::fill(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, paint: impl core::convert::Into<surgeist_render::Paint>) -> &mut Self
 pub fn surgeist_render::Scene::gaussian_layer(&mut self, layer: surgeist_render::Layer, operation: surgeist_render::PreparedGaussian, source: surgeist_render::GaussianSource) -> surgeist_render::Result<&mut Self>
 pub fn surgeist_render::Scene::image(&mut self, image: surgeist_render::Image, rect: surgeist_render::Rect, fit: surgeist_render::ImageFit) -> &mut Self
@@ -2359,6 +2401,7 @@ impl surgeist_render::WebCanvas
 pub fn surgeist_render::WebCanvas::id(&self) -> &str
 pub fn surgeist_render::WebCanvas::new(id: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn surgeist_render::prepare_convolution(input: surgeist_render::ConvolutionInput<'_>, domains: surgeist_render::FilterDomains, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedConvolution>
+pub fn surgeist_render::prepare_drop_shadow(input: surgeist_render::DropShadowInput, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedDropShadow>
 pub fn surgeist_render::prepare_gaussian(input: surgeist_render::GaussianInput, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedGaussian>
 pub fn surgeist_render::prepare_linear_gradient(line: &surgeist_paint::gradient::LinearGradientLine, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Gradient>
 pub fn surgeist_render::prepare_offset(input: surgeist_render::OffsetInput, domains: surgeist_render::FilterDomains, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedOffset>

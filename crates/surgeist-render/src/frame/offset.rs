@@ -11,6 +11,12 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum OffsetPurpose {
+    Standalone,
+    CoveredAlphaDeferred,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum OffsetStage {
     RebaseSource,
     Sample,
@@ -98,6 +104,15 @@ impl OffsetMapping {
     }
     pub(crate) const fn sampling(self) -> OffsetSampling {
         self.sampling
+    }
+
+    pub(super) fn try_covered_alpha(
+        operation: &PreparedOffset,
+        source: NonEmptyFrameSpatialPlan,
+        result: NonEmptyFrameSpatialPlan,
+        account: &Account,
+    ) -> Result<Option<Self>> {
+        Self::try_from_parts(operation, source, result, OffsetStage::Sample, account)
     }
 
     /// None proves that every possible reconstruction tap is transparent.

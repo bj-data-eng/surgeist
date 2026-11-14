@@ -45,18 +45,15 @@ pub(crate) enum GaussianStage {
     Constant,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct GaussianOutputFootprint {
-    source_spatial: GraphLoweringSpatialDescriptor,
-    output_clip: [f64; 4],
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GaussianPurpose {
+    Standalone,
+    ConsumedAlpha,
 }
-impl GaussianOutputFootprint {
-    pub(crate) const fn source_spatial(self) -> GraphLoweringSpatialDescriptor {
-        self.source_spatial
-    }
-    pub(crate) const fn output_clip(self) -> [f64; 4] {
-        self.output_clip
-    }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GaussianChannels {
+    Rgba,
+    Alpha,
 }
 
 /// Immutable checked pass facts shared by semantic planning, lowering and
@@ -71,6 +68,7 @@ struct GaussianPassData {
     source: crate::gaussian::GaussianSourceDescriptor,
     mapping: GaussianMapping,
     stage: GaussianStage,
+    purpose: GaussianPurpose,
 }
 impl GaussianPassFacts {
     pub(super) fn try_new(
@@ -79,16 +77,55 @@ impl GaussianPassFacts {
         stage: GaussianStage,
         storage: &crate::accounting::StorageAccount,
     ) -> Result<Self> {
+        Self::try_new_for_purpose(
+            foreground,
+            mapping,
+            stage,
+            GaussianPurpose::Standalone,
+            storage,
+        )
+    }
+    pub(super) fn try_new_for_purpose(
+        foreground: crate::gaussian::GaussianForeground,
+        mapping: GaussianMapping,
+        stage: GaussianStage,
+        purpose: GaussianPurpose,
+        storage: &crate::accounting::StorageAccount,
+    ) -> Result<Self> {
         SharedValue::new(
             GaussianPassData {
                 operation: foreground.operation,
                 source: foreground.source,
                 mapping,
                 stage,
+                purpose,
             },
             storage,
         )
         .map(Self)
+    }
+    #[cfg(test)]
+    pub(crate) fn with_purpose_for_test(
+        &self,
+        purpose: GaussianPurpose,
+        account: &Account,
+    ) -> Result<Self> {
+        Self::try_new_for_purpose(
+            self.foreground(),
+            self.mapping(),
+            self.stage(),
+            purpose,
+            &account.storage(),
+        )
+    }
+    pub(crate) fn purpose(&self) -> GaussianPurpose {
+        self.0.purpose
+    }
+    pub(crate) fn channels(&self) -> GaussianChannels {
+        match self.0.purpose {
+            GaussianPurpose::Standalone => GaussianChannels::Rgba,
+            GaussianPurpose::ConsumedAlpha => GaussianChannels::Alpha,
+        }
     }
     pub(crate) fn operation(&self) -> &crate::PreparedGaussian {
         &self.0.operation
@@ -141,11 +178,8 @@ impl GaussianMapping {
     pub(crate) const fn target_extent(self) -> [u32; 2] {
         extent(self.target_spatial)
     }
-    pub(super) fn output_footprint(self) -> GaussianOutputFootprint {
-        GaussianOutputFootprint {
-            source_spatial: self.target_spatial(),
-            output_clip: self.output_clip,
-        }
+    pub(super) fn output_footprint(self) -> super::FilterOutputFootprint {
+        super::FilterOutputFootprint::from_qualified_grid(self.target_spatial(), self.output_clip)
     }
     pub(crate) const fn color(self) -> crate::Color {
         self.color

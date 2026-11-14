@@ -1,7 +1,8 @@
 use super::CompositeSourceSpace;
+use super::NativeShadowPassFacts;
 use super::convolution::{ConvolutionMapping, ConvolutionStage};
 use super::gaussian::{GaussianPassFacts, GaussianStage};
-use super::offset::{OffsetMapping, OffsetStage};
+use super::offset::{OffsetMapping, OffsetPurpose, OffsetStage};
 use super::{
     bounds::NonEmptyFrameSpatialPlan,
     filter::{
@@ -852,7 +853,7 @@ pub(crate) enum GraphLoweringCompositeKind {
 pub(crate) struct GraphLoweringComposite {
     kind: GraphLoweringCompositeKind,
     source_captured_before_outer_semantics: bool,
-    gaussian_footprint: Option<super::gaussian::GaussianOutputFootprint>,
+    filter_footprint: Option<super::FilterOutputFootprint>,
 }
 
 impl GraphLoweringComposite {
@@ -862,10 +863,8 @@ impl GraphLoweringComposite {
     }
 
     #[must_use]
-    pub(crate) const fn gaussian_footprint(
-        &self,
-    ) -> Option<super::gaussian::GaussianOutputFootprint> {
-        self.gaussian_footprint
+    pub(crate) const fn filter_footprint(&self) -> Option<super::FilterOutputFootprint> {
+        self.filter_footprint
     }
 
     pub(crate) const fn source_captured_before_outer_semantics(&self) -> bool {
@@ -897,9 +896,20 @@ pub(crate) struct GraphLoweringOffset {
     operation: crate::PreparedOffset,
     mapping: OffsetMapping,
     stage: OffsetStage,
+    purpose: OffsetPurpose,
 }
 
 impl GraphLoweringOffset {
+    #[cfg(test)]
+    pub(crate) fn with_purpose_for_test(&self, purpose: OffsetPurpose) -> Self {
+        Self {
+            purpose,
+            ..self.clone()
+        }
+    }
+    pub(crate) const fn purpose(&self) -> OffsetPurpose {
+        self.purpose
+    }
     pub(crate) fn operation(&self) -> &crate::PreparedOffset {
         &self.operation
     }
@@ -924,6 +934,7 @@ pub(crate) enum GraphLoweringPassKind {
     Convolution(GraphLoweringConvolution),
     Offset(GraphLoweringOffset),
     Gaussian(GaussianPassFacts),
+    NativeShadowMerge(NativeShadowPassFacts),
     BlurHorizontal(Option<GraphLoweringBlur>),
     BlurVertical(Option<GraphLoweringBlur>),
     DropShadowColorize(Option<GraphLoweringDropShadow>),
@@ -941,6 +952,8 @@ pub(crate) enum GraphLoweringReadRole {
     OffsetSource,
     GaussianSource,
     GaussianAuxiliary,
+    NativeShadowOriginal,
+    NativeShadowAlpha,
     BlurredSourceAlpha,
     CompositeParent,
     CompositeSource,
@@ -1205,6 +1218,27 @@ fn graph_lowering_pass_kind(
                 .ok_or(GraphValidationError::InvalidPassArity)?;
             Ok(GraphLoweringPassKind::Gaussian(entry.facts.clone()))
         }
+        SemanticPassIntent::NativeShadowMerge => {
+            let mut low = 0;
+            let mut high = graph.native_shadows.len();
+            while low < high {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let middle = low + (high - low) / 2;
+                if graph.native_shadows[middle].pass.index.0 < pass.id.index.0 {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let entry = graph
+                .native_shadows
+                .get(low)
+                .filter(|entry| entry.pass == pass.id)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            Ok(GraphLoweringPassKind::NativeShadowMerge(
+                entry.facts.clone(),
+            ))
+        }
         SemanticPassIntent::Offset(stage) => {
             let mut low = 0;
             let mut high = graph.offsets.len();
@@ -1229,6 +1263,7 @@ fn graph_lowering_pass_kind(
                 operation: entry.operation,
                 mapping: entry.mapping,
                 stage,
+                purpose: entry.purpose,
             }))
         }
         SemanticPassIntent::ColorFilter => {
@@ -1744,7 +1779,7 @@ fn graph_lowering_composite(
             SemanticCompositeKind::DropShadow => GraphLoweringCompositeKind::DropShadow,
         },
         source_captured_before_outer_semantics: composite.source_captured_before_outer_semantics,
-        gaussian_footprint: composite.gaussian_footprint,
+        filter_footprint: composite.filter_footprint,
     })
 }
 
@@ -1845,6 +1880,32 @@ fn graph_lowering_read_bindings(
                     } else {
                         GraphLoweringReadRole::GaussianAuxiliary
                     },
+                    GraphLoweringSamplingFilter::Nearest,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?);
+            }
+            reads
+        }
+        GraphLoweringPassKind::NativeShadowMerge(facts) => {
+            let map = facts.mapping();
+            let original = map.original_kind() != super::NativeShadowOriginal::Constant;
+            let count = usize::from(original) + usize::from(map.has_shifted_alpha());
+            if pass.reads.len() != count {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let mut reads = account.temporary(count)?;
+            if original {
+                reads.append_slot()?.write(make(
+                    0,
+                    GraphLoweringReadRole::NativeShadowOriginal,
+                    GraphLoweringSamplingFilter::Nearest,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?);
+            }
+            if map.has_shifted_alpha() {
+                reads.append_slot()?.write(make(
+                    usize::from(original),
+                    GraphLoweringReadRole::NativeShadowAlpha,
                     GraphLoweringSamplingFilter::Nearest,
                     GraphLoweringSamplingEdge::TransparentBlack,
                 )?);

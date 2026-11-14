@@ -1,5 +1,7 @@
 //! Admitted native Gaussian parameters and authentic source declarations.
-use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
+use crate::accounting::{
+    Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+};
 use crate::{Color, FilterColorSpace, FilterDomains, FilterEdgeMode, Rect, Result, Scene};
 
 /// Gaussian parameter whose resolved value is invalid.
@@ -126,33 +128,38 @@ pub fn prepare_gaussian(
         |account| {
             account.phase(RenderPhase::Preparation, || {
                 account.work(RenderWork::FilterOperationVisits, 1)?;
-                for (parameter, value) in [
-                    (GaussianParameter::StandardDeviationX, input.sigma[0]),
-                    (GaussianParameter::StandardDeviationY, input.sigma[1]),
-                ] {
-                    account.work(RenderWork::CoordinateVisits, 1)?;
-                    if !value.is_finite() {
-                        return Err(GaussianPreparationError::InvalidParameter {
-                            parameter,
-                            value,
-                        }
-                        .into());
-                    }
-                }
-                let operation = if input.sigma.iter().any(|s| *s < 0.0) {
-                    PreparedOperation::Disabled
-                } else if input.sigma == [0.0; 2] {
-                    PreparedOperation::Identity
-                } else {
-                    PreparedOperation::Active(input.sigma.map(|s| if s == 0.0 { 0.0 } else { s }))
-                };
-                Ok(PreparedGaussian {
-                    operation,
-                    color_space,
-                })
+                prepare_gaussian_in(input, color_space, account)
             })
         },
     )
+}
+
+/// Admits scalar deviations inside an already charged native operation.
+pub(crate) fn prepare_gaussian_in(
+    input: GaussianInput,
+    color_space: FilterColorSpace,
+    account: &Account,
+) -> Result<PreparedGaussian> {
+    for (parameter, value) in [
+        (GaussianParameter::StandardDeviationX, input.sigma[0]),
+        (GaussianParameter::StandardDeviationY, input.sigma[1]),
+    ] {
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        if !value.is_finite() {
+            return Err(GaussianPreparationError::InvalidParameter { parameter, value }.into());
+        }
+    }
+    let operation = if input.sigma.iter().any(|s| *s < 0.0) {
+        PreparedOperation::Disabled
+    } else if input.sigma == [0.0; 2] {
+        PreparedOperation::Identity
+    } else {
+        PreparedOperation::Active(input.sigma.map(|s| if s == 0.0 { 0.0 } else { s }))
+    };
+    Ok(PreparedGaussian {
+        operation,
+        color_space,
+    })
 }
 
 /// An owned finite scene, constant image or fundamental-period scene.
@@ -251,6 +258,25 @@ impl GaussianSourceDescriptor {
         match self {
             Self::Finite { domains, .. } => domains.result(),
             Self::Constant { result, .. } | Self::Periodic { result, .. } => result,
+        }
+    }
+    /// Preserves the admitted source and resolves the internal result into F.
+    pub(crate) const fn for_filter_output(self) -> Self {
+        match self {
+            Self::Finite { domains, edge } => Self::Finite {
+                domains: domains.for_filter_output(),
+                edge,
+            },
+            Self::Constant { color, filter, .. } => Self::Constant {
+                color,
+                filter,
+                result: filter,
+            },
+            Self::Periodic { period, filter, .. } => Self::Periodic {
+                period,
+                filter,
+                result: filter,
+            },
         }
     }
     pub(crate) const fn is_infinite(self) -> bool {
