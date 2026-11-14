@@ -578,6 +578,8 @@ pub(crate) async fn render_exact_headless_graph_surface(
     drop(graph);
     account.cpu()?.ensure_healthy()?;
     #[cfg(test)]
+    prepared.observe_displacement_uniforms_for_test();
+    #[cfg(test)]
     exact_preparation_wait_for_test().await;
     if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != surface.options.format
@@ -602,12 +604,10 @@ pub(crate) async fn render_exact_headless_graph_surface(
         )
         .await;
     let pending_encoding = pending_encoding?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
-    let payload = GraphSubmissionPayload::new(
-        finish_frame_encoder(encoder, account)?,
-        prepared_submission,
-        HeadlessPublication::new(draft_texture),
-    );
+    let prepared_submission =
+        prepared.finish_graph_submission(pending_encoding, encoder, account)?;
+    let payload =
+        GraphSubmissionPayload::new(prepared_submission, HeadlessPublication::new(draft_texture));
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,
@@ -746,6 +746,8 @@ pub(crate) async fn render_exact_presented_graph_surface(
     drop(graph);
     account.cpu()?.ensure_healthy()?;
     #[cfg(test)]
+    prepared.observe_displacement_uniforms_for_test();
+    #[cfg(test)]
     exact_preparation_wait_for_test().await;
     if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != output_format
@@ -778,13 +780,10 @@ pub(crate) async fn render_exact_presented_graph_surface(
         )
         .await;
     let pending_encoding = pending_encoding?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
+    let prepared_submission =
+        prepared.finish_graph_submission(pending_encoding, encoder, account)?;
     drop(output_view);
-    let payload = GraphSubmissionPayload::presented(
-        finish_frame_encoder(encoder, account)?,
-        prepared_submission,
-        acquired,
-    );
+    let payload = GraphSubmissionPayload::presented(prepared_submission, acquired);
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,

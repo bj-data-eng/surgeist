@@ -327,12 +327,10 @@ async fn render_exact_headless_filter_graph_surface(
         )
         .await
         .map_err(crate::pass::normalize_color_filter_shader_failure_for_test)?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
-    let payload = GraphSubmissionPayload::new(
-        execute::finish_frame_encoder(encoder, account)?,
-        prepared_submission,
-        HeadlessPublication::new(draft_texture),
-    );
+    let prepared_submission =
+        prepared.finish_graph_submission(pending_encoding, encoder, account)?;
+    let payload =
+        GraphSubmissionPayload::new(prepared_submission, HeadlessPublication::new(draft_texture));
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,
@@ -467,13 +465,10 @@ pub(crate) async fn render_exact_presented_graph_surface(
         )
         .await
         .map_err(crate::pass::normalize_color_filter_shader_failure_for_test)?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
+    let prepared_submission =
+        prepared.finish_graph_submission(pending_encoding, encoder, account)?;
     drop(output_view);
-    let payload = GraphSubmissionPayload::presented(
-        execute::finish_frame_encoder(encoder, account)?,
-        prepared_submission,
-        acquired,
-    );
+    let payload = GraphSubmissionPayload::presented(prepared_submission, acquired);
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,
@@ -1029,6 +1024,14 @@ impl ReadyDeviceState {
 }
 
 impl DeviceCapabilities {
+    pub(crate) fn with_displacement_buffer_limits_for_test(
+        mut self,
+        limits: &wgpu::Limits,
+    ) -> Self {
+        self.displacement_buffer_limits =
+            crate::resource::DisplacementBufferLimits::from_device_limits(limits);
+        self
+    }
     pub(crate) fn from_test_facts(
         high_precision: bool,
         reduced_precision: bool,
@@ -1053,6 +1056,11 @@ impl DeviceCapabilities {
             reduced_precision_features: complete_features(reduced_precision),
             filter_float32_features: complete_features(high_precision),
             max_effect_texture_dimension_2d,
+            displacement_buffer_limits:
+                crate::resource::DisplacementBufferLimits::from_device_limits(
+                    &wgpu::Limits::default(),
+                ),
+            displacement_map_upload_unavailable_for_test: false,
         }
     }
 }
@@ -1246,6 +1254,47 @@ impl Backend {
             effect_precisions.supports_reduced_precision(),
             state.capabilities.max_effect_texture_dimension_2d,
         );
+        true
+    }
+
+    pub(crate) fn override_device_displacement_map_upload_for_test(
+        &mut self,
+        identity: DeviceSlotIdentity,
+        available: bool,
+    ) -> bool {
+        let Some(state) = self.device_states.get_mut(identity.slot()) else {
+            return false;
+        };
+        if state.generation != identity.generation {
+            return false;
+        }
+        state.observe_terminal();
+        if state.terminal().is_some() {
+            return false;
+        }
+        state
+            .capabilities
+            .displacement_map_upload_unavailable_for_test = !available;
+        true
+    }
+
+    pub(crate) fn override_device_displacement_buffer_limits_for_test(
+        &mut self,
+        identity: DeviceSlotIdentity,
+        limits: &wgpu::Limits,
+    ) -> bool {
+        let Some(state) = self.device_states.get_mut(identity.slot()) else {
+            return false;
+        };
+        if state.generation != identity.generation {
+            return false;
+        }
+        state.observe_terminal();
+        if state.terminal().is_some() {
+            return false;
+        }
+        state.capabilities.displacement_buffer_limits =
+            crate::resource::DisplacementBufferLimits::from_device_limits(limits);
         true
     }
 
@@ -4161,10 +4210,9 @@ impl Backend {
             one_graph_command_encoder: summary.graph_work_shares_one_command_encoder,
             transaction_committed: false,
         };
-        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, encoder, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -4257,10 +4305,9 @@ impl Backend {
             .await?;
         let summary = pending.summary_for_test();
         let mut observed = spatial_filter_spatial_encoding_observation(summary);
-        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, encoder, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -4355,10 +4402,9 @@ impl Backend {
             )
             .await?;
         let mut observed = backdrop_encoding_observation(pending.summary_for_test());
-        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, encoder, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -4834,10 +4880,9 @@ impl Backend {
         };
         let summary = pending.summary_for_test();
         let mut observed = composition_ordered_encoding_observation(summary);
-        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, encoder, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );

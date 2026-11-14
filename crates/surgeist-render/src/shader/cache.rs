@@ -100,6 +100,9 @@ impl<K: Eq + Hash, V> CacheIndexSlot<'_, K, V> {
     }
 }
 
+mod displacement;
+pub(crate) use displacement::ProvisionalDisplacementPassObjects;
+
 use super::key::{
     BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderCompositePathKey, ShaderModuleKey,
 };

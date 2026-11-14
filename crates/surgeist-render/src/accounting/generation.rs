@@ -364,6 +364,92 @@ impl Generation {
         Ok(())
     }
 
+    /// Previews actual missing cache descriptors together with new frame-owned
+    /// pass buffers. Cache-only callers keep their existing inspection contract.
+    /// This does not reserve bytes or record native construction.
+    pub(crate) fn preview_graph_allocations(
+        &self,
+        cache_allocations: &[(GenerationClass, u64)],
+        pass_buffer_bytes: &[u64],
+        observer: Option<&Account>,
+    ) -> Result<()> {
+        if pass_buffer_bytes.is_empty() {
+            return self
+                .preview_classified_cache_allocations(cache_allocations.iter().copied(), observer);
+        }
+        let add_bytes = |current: u64, amount: u64| {
+            current.checked_add(amount).ok_or_else(|| {
+                Error::from(RenderAccountingError::GenerationRefused {
+                    quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                    current,
+                    amount,
+                    reason: RenderRefusalReason::Overflow,
+                })
+            })
+        };
+        let mut total_bytes = 0_u64;
+        let mut total_count = 0_u64;
+        for &(class, bytes) in cache_allocations {
+            self.probe(class, observer)?;
+            if !class.is_cache() {
+                return Err(RenderAccountingError::Invariant.into());
+            }
+            total_bytes = add_bytes(total_bytes, bytes)?;
+            total_count = total_count
+                .checked_add(1)
+                .ok_or(RenderAccountingError::Invariant)?;
+        }
+        let mut pass_bytes = 0_u64;
+        let mut pass_count = 0_u64;
+        for &bytes in pass_buffer_bytes {
+            self.probe(GenerationClass::PassBuffers, observer)?;
+            pass_bytes = add_bytes(pass_bytes, bytes)?;
+            total_bytes = add_bytes(total_bytes, bytes)?;
+            pass_count = pass_count
+                .checked_add(1)
+                .ok_or(RenderAccountingError::Invariant)?;
+            total_count = total_count
+                .checked_add(1)
+                .ok_or(RenderAccountingError::Invariant)?;
+        }
+        let changes = |bytes, count| {
+            [
+                Change::Acquire(RenderResource::GpuBytes, bytes),
+                Change::Work(RenderWork::ResourceAllocations, count),
+                Change::Work(
+                    RenderWork::ResourceAllocationRequests,
+                    if observer.is_none() { count } else { 0 },
+                ),
+            ]
+        };
+        // Each child alone may fit Root while the combined physical set does not.
+        // The subsequent existing cache traversal also meters its own grouping.
+        match observer {
+            Some(account) => {
+                self.ensure_healthy()?;
+                account.work(RenderWork::ResourceProbes, 1)?;
+            }
+            None => {
+                let _ = self.apply(
+                    RenderGenerationScope::Root,
+                    &[Change::Work(RenderWork::ResourceProbes, 1)],
+                    true,
+                );
+            }
+        }
+        self.preview(
+            RenderGenerationScope::Root,
+            &changes(total_bytes, total_count),
+        )?;
+        self.preview_classified_cache_allocations(cache_allocations.iter().copied(), observer)?;
+        self.probe(GenerationClass::PassBuffers, observer)?;
+        // This leaf preview also checks its real External and Root ancestors.
+        self.preview(
+            RenderGenerationScope::PassBuffers,
+            &changes(pass_bytes, pass_count),
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn set_effects_gpu_byte_limit_for_test(&self, limit: u64) -> Result<()> {
         self.ensure_healthy()?;
@@ -660,6 +746,10 @@ impl Generation {
     #[cfg(test)]
     pub(crate) fn class_usage(&self, class: GenerationClass) -> Result<GenerationUsage> {
         self.usage_at(class.scope())
+    }
+    #[cfg(test)]
+    pub(crate) fn object_usage_for_test(&self, kind: GpuObjectKind) -> Result<GenerationUsage> {
+        self.usage_at(kind.scope())
     }
     pub(crate) fn cache_bytes(&self) -> Result<u64> {
         Ok(self

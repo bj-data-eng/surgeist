@@ -1,4 +1,5 @@
 mod cache;
+mod displacement;
 mod key;
 mod morphology;
 mod parameters;
@@ -17,16 +18,18 @@ pub(crate) use cache::{
     DevicePassCache, PassCacheCommitPreparation, ProvisionalColorFilterPassObjects,
     ProvisionalCompositePassObjects, ProvisionalConvolutionPassObjects,
     ProvisionalCopyBackdropPassObjects, ProvisionalCorePassObjects,
-    ProvisionalDevicePassCacheUpdate, ProvisionalNativeShadowPassObjects,
-    ProvisionalOffsetPassObjects, ReadyPassCacheUpdate,
+    ProvisionalDevicePassCacheUpdate, ProvisionalDisplacementPassObjects,
+    ProvisionalNativeShadowPassObjects, ProvisionalOffsetPassObjects, ReadyPassCacheUpdate,
 };
 #[cfg(test)]
 pub(crate) use cache::{ProvisionalBlurPassObjects, ProvisionalDropShadowColorizePassObjects};
+pub(crate) use displacement::{DisplacementParameterBytes, DisplacementParameterFacts};
 pub(crate) use key::{
     BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderBindingRoleKey, ShaderCompositeKey,
-    ShaderCompositePathKey, ShaderDataBindingKey, ShaderMaskExtendKey, ShaderMaskQualityKey,
-    ShaderMaskSamplingKey, ShaderModuleKey, ShaderMorphologyStageKey, ShaderNativeShadowSourceKey,
-    ShaderProgramKey, ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
+    ShaderCompositePathKey, ShaderDataBindingKey, ShaderDisplacementSourceKey,
+    ShaderDisplacementStageKey, ShaderMaskExtendKey, ShaderMaskQualityKey, ShaderMaskSamplingKey,
+    ShaderModuleKey, ShaderMorphologyStageKey, ShaderNativeShadowSourceKey, ShaderProgramKey,
+    ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
 };
 pub(crate) use morphology::{MorphologyParameterBytes, MorphologyParameterFacts};
 pub(crate) use parameters::{
@@ -59,6 +62,7 @@ pub(crate) use test_support::{
 
 pub(crate) use validate::{
     BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, ConvolutionPassKeyRefs,
-    CopyBackdropPassKeyRefs, CorePassKeyRefs, DropShadowColorizePassKeyRefs, GaussianPassKeyRefs,
-    MorphologyPassKeyRefs, NativeShadowPassKeyRefs, OffsetPassKeyRefs,
+    CopyBackdropPassKeyRefs, CorePassKeyRefs, DisplacementPassKeyRefs,
+    DropShadowColorizePassKeyRefs, GaussianPassKeyRefs, MorphologyPassKeyRefs,
+    NativeShadowPassKeyRefs, OffsetPassKeyRefs,
 };

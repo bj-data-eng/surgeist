@@ -204,6 +204,36 @@ impl Scene {
         Ok(self)
     }
 
+    /// Appends native displacement, replacing the layer's exclusive foreground effect.
+    ///
+    /// Moves the authentic first-input Scene into this layer's iterative child
+    /// owner. Preserves outer affine placement, clip, mask, opacity and bounded
+    /// composition. Finite input includes supported same-layer backdrop;
+    /// constant and periodic input reject it before appending anything.
+    pub fn displacement_layer(
+        &mut self,
+        layer: Layer,
+        operation: PreparedDisplacement,
+        source: DisplacementSource,
+        map: PreparedDisplacementMap,
+    ) -> Result<&mut Self> {
+        if source.descriptor().is_infinite() && layer.backdrop_filter().is_some() {
+            return Err(DisplacementPreparationError::InfiniteSourceBackdrop.into());
+        }
+        let (child, source) = source.into_parts();
+        self.commands.push(Command::Layer {
+            layer: Box::new(
+                layer.with_displacement(crate::displacement::DisplacementForeground {
+                    operation,
+                    source,
+                    map,
+                }),
+            ),
+            children: child.commands.into(),
+        });
+        Ok(self)
+    }
+
     /// Appends native morphology, replacing the layer's exclusive foreground effect.
     ///
     /// Preserves outer transform, isolation, clip, mask, opacity and composition.

@@ -135,6 +135,7 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) offset_parameters: Option<OffsetParameterBytes>,
     pub(super) native_shadow_parameters: Option<NativeShadowParameterBytes>,
     pub(super) convolution_weights: Option<RuntimePassId>,
+    pub(super) displacement: Option<SharedValue<super::displacement::DisplacementPreparation>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -211,6 +212,7 @@ impl RuntimeGraphPreparationPlan {
             &pass_facts,
             color_filter_limits,
             &device.limits(),
+            capabilities,
             account,
         )?;
         let convolution_weights = prepare_convolution_weights(&mut passes, device, account)?;
@@ -254,6 +256,16 @@ impl RuntimeGraphPreparationPlan {
             prepared_resources.allocation_preflights.push(
                 ResourceAllocationPreflight::convolution_weights(&weights.plan)?,
             )?;
+        }
+        for pass in &passes {
+            if let Some(displacement) = &pass.displacement {
+                for read in displacement.reads.iter() {
+                    account.work(RenderWork::GraphEdgeVisits, 1)?;
+                    prepared_resources
+                        .allocation_preflights
+                        .push(read.allocation.preflight(account)?)?;
+                }
+            }
         }
 
         Ok(Self {
@@ -821,6 +833,7 @@ fn prepare_runtime_pass_requests(
     facts: &RuntimePassAnalysis,
     color_filter_limits: ColorFilterOperationBufferLimits,
     uniform_limits: &wgpu::Limits,
+    capabilities: &DeviceCapabilities,
     account: &Account,
 ) -> Result<AccountedVec<RuntimePassPreparationRequest>> {
     let mut requests = account.retained(lowered.passes.len())?;
@@ -863,6 +876,16 @@ fn prepare_runtime_pass_requests(
             }
             _ => None,
         };
+        let displacement = match &pass.kind {
+            RuntimePassKind::Displacement(work) => Some(super::displacement::prepare(
+                work,
+                pass.id,
+                capabilities,
+                uniform_limits,
+                account,
+            )?),
+            _ => None,
+        };
         if offset_parameters.is_some()
             || gaussian_parameters.is_some()
             || morphology_parameters.is_some()
@@ -875,7 +898,8 @@ fn prepare_runtime_pass_requests(
             || gaussian_parameters.is_some()
             || morphology_parameters.is_some()
             || offset_parameters.is_some()
-            || native_shadow_parameters.is_some())
+            || native_shadow_parameters.is_some()
+            || displacement.is_some())
             != pass.cache_keys.is_some()
         {
             return Err(preparation_error(
@@ -907,6 +931,7 @@ fn prepare_runtime_pass_requests(
                 offset_parameters,
                 native_shadow_parameters,
                 convolution_weights: None,
+                displacement,
             });
     }
     Ok(requests)
@@ -1415,6 +1440,8 @@ pub(super) struct AcquiredGraphBindings {
     pub(super) gaussian_kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
     pub(super) convolution_weight_bindings:
         PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+    pub(super) displacement_bindings:
+        PassMap<RuntimePassId, super::displacement::PreparedDisplacementBinding>,
 }
 
 impl AcquiredGraphBindings {
@@ -1499,6 +1526,11 @@ fn acquire_prepared_graph_resources(
         .len()
         .checked_sub(plan.morphology_scratch.assignments.len())
         .ok_or_else(|| preparation_error("scratch assignments exceed logical resource requests"))?;
+    let mut displacement_count = 0;
+    for pass in &plan.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        displacement_count += usize::from(pass.displacement.is_some());
+    }
     // One unique owner keeps all physical binding families together. Admit its
     // actual fixed backing and reserved maps before acquiring any native lease.
     let mut bindings = crate::accounting::OwnedBox::new(
@@ -1511,6 +1543,7 @@ fn acquire_prepared_graph_resources(
             )?,
             gaussian_kernel_bindings: PassMap::new(account, plan.kernels.len())?,
             convolution_weight_bindings: PassMap::new(account, plan.convolution_weights.len())?,
+            displacement_bindings: PassMap::new(account, displacement_count)?,
         },
         &account.storage(),
     )?;
@@ -1590,6 +1623,31 @@ fn acquire_prepared_graph_resources(
             },
             account,
         )?;
+    }
+    let generation = frame_scope.generation().clone();
+    for pass in &plan.passes {
+        let Some(preparation) = &pass.displacement else {
+            continue;
+        };
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let binding = super::displacement::PreparedDisplacementBinding::acquire(
+            preparation,
+            frame_scope,
+            device,
+            queue,
+            capabilities,
+            &generation,
+            account,
+        )?;
+        if bindings
+            .displacement_bindings
+            .insert_with(pass.runtime.id, binding, account)?
+            .is_some()
+        {
+            return Err(preparation_error(
+                "a displacement pass acquired duplicate concrete custody",
+            ));
+        }
     }
     Ok(bindings)
 }
@@ -2046,6 +2104,22 @@ fn realize_prepared_graph_pass(
                 .require_encoding_ready()?;
             Ok(None)
         }
+        RuntimePassKind::Displacement(_) => {
+            update
+                .realize_displacement_pass(
+                    device,
+                    pass_cache,
+                    account,
+                    crate::shader::DisplacementPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+                .require_encoding_ready()?;
+            Ok(None)
+        }
         RuntimePassKind::Convolution(_) => {
             update
                 .realize_convolution_pass(
@@ -2465,7 +2539,21 @@ impl<'device> PreparedGraph<'device> {
             // Admit their actual fixed backing before any native acquisition;
             // mutable leases and FrameResourceScope keep their existing owner.
             let plan = crate::accounting::OwnedBox::new(plan, &account.storage())?;
-            resources.preflight_graph_acquisitions(&plan.allocation_preflights, Some(account))?;
+            let mut pass_buffer_bytes = account.temporary(plan.passes.len())?;
+            for pass in &plan.passes {
+                if let Some(displacement) = &pass.displacement {
+                    account.work(RenderWork::GraphNodeVisits, 1)?;
+                    pass_buffer_bytes
+                        .append_slot()?
+                        .write(displacement.parameters.as_bytes().len() as u64);
+                }
+            }
+            resources.preflight_graph_acquisitions(
+                &plan.allocation_preflights,
+                &pass_buffer_bytes,
+                Some(account),
+            )?;
+            drop(pass_buffer_bytes);
 
             let mut frame_scope = resources.begin_frame(Some(account))?;
             frame_scope.abort_provisional_on_drop();

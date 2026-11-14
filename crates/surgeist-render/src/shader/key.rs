@@ -31,6 +31,30 @@ pub(crate) enum ShaderNativeShadowSourceKey {
     Constant,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ShaderDisplacementStageKey {
+    RealizeSource,
+    PassThrough,
+    Displace,
+    Transparent,
+}
+impl ShaderDisplacementStageKey {
+    pub(crate) const fn parameter_code(self) -> u32 {
+        match self {
+            Self::RealizeSource => 1,
+            Self::PassThrough => 2,
+            Self::Displace => 3,
+            Self::Transparent => 4,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ShaderDisplacementSourceKey {
+    Image,
+    Constant,
+    Periodic,
+}
+
 /// Concrete morphology entry points have exactly their reached texture bindings.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ShaderMorphologyStageKey {
@@ -73,6 +97,11 @@ pub(crate) enum ShaderProgramKey {
     Morphology {
         stage: ShaderMorphologyStageKey,
     },
+    Displacement {
+        stage: ShaderDisplacementStageKey,
+        source: ShaderDisplacementSourceKey,
+        raw_map: bool,
+    },
     NativeShadow {
         original: ShaderNativeShadowSourceKey,
         shifted_alpha: bool,
@@ -99,6 +128,7 @@ pub(crate) enum ShaderTextureFormatKey {
     WorkingHighPrecisionRgba16Float,
     WorkingReducedPrecisionRgba8Unorm,
     ResolvedMaskRgba8Unorm,
+    RawImageRgba8Unorm,
     OutputRgba8Unorm,
     OutputBgra8Unorm,
 }
@@ -125,6 +155,8 @@ impl ShaderTextureFormatKey {
 pub(crate) enum ShaderBindingRoleKey {
     CaptureSource,
     ConvolutionSource,
+    DisplacementSource,
+    DisplacementMap,
     GaussianSource,
     GaussianAuxiliary,
     MorphologySource,
@@ -247,6 +279,9 @@ impl ShaderMaskSamplingKey {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ShaderDataBindingKey {
+    DisplacementParameters,
+    DisplacementTables,
+    DisplacementMapRecords,
     SpatialUniform,
     ConvolutionParameters,
     GaussianParameters,

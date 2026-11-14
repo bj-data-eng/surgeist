@@ -41,6 +41,270 @@ pub(crate) struct ImageContentIdentity {
     bytes: Arc<[u8]>,
 }
 
+/// Native straight RGBA8 pixels without public Image sampling or extension policy.
+/// Both the descriptor and its device key retain the real immutable pixel import.
+#[derive(Clone, Debug)]
+pub(crate) struct RawImageUploadDescriptor {
+    payload: SharedValue<RawImagePayload>,
+}
+
+#[derive(Debug)]
+struct RawImagePayload {
+    identity: ImageContentIdentity,
+    physical_size: PhysicalSize,
+    byte_len: u64,
+    cpu: Option<CpuAccount>,
+}
+
+impl Drop for RawImagePayload {
+    fn drop(&mut self) {
+        if let Some(cpu) = &self.cpu {
+            cpu.at(RenderCpuScope::Cleanup)
+                .maintenance(RenderWork::ImageIdentityDrops, 1);
+        }
+    }
+}
+
+impl PartialEq for RawImageUploadDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        self.payload.identity == other.payload.identity
+    }
+}
+impl Eq for RawImageUploadDescriptor {}
+
+impl RawImageUploadDescriptor {
+    pub(crate) fn same_allocation(&self, other: &Self) -> bool {
+        self.payload.same_allocation(&other.payload)
+    }
+    pub(crate) fn prepare_native_in(
+        size: Size,
+        bytes: Arc<[u8]>,
+        account: &Account,
+    ) -> Result<Self> {
+        use crate::DisplacementPreparationError as Invalid;
+        let width = account
+            .coordinate(|| image_dimension(size.width(), "width"))?
+            .map_err(|_| Invalid::InvalidMapDimensions { size })?;
+        let height = account
+            .coordinate(|| image_dimension(size.height(), "height"))?
+            .map_err(|_| Invalid::InvalidMapDimensions { size })?;
+        let expected = if width == 0 || height == 0 {
+            0
+        } else {
+            u64::from(width)
+                .checked_mul(u64::from(height))
+                .and_then(|length| length.checked_mul(4))
+                .ok_or(Invalid::MapPayloadOverflow { size })?
+        };
+        let actual =
+            u64::try_from(bytes.len()).map_err(|_| Invalid::MapPayloadOverflow { size })?;
+        if actual != expected {
+            return Err(Invalid::InvalidMapPayload { expected, actual }.into());
+        }
+        let storage = account.storage();
+        let backing = match &storage {
+            StorageAccount::Preparation(account) => {
+                Some(account.acquire(crate::RenderResource::RetainedCpuBytes, bytes.len())?)
+            }
+            StorageAccount::Renderer(_) => None,
+        };
+        let import = account.import_pixel_bytes(&bytes)?;
+        // Bind the actual pixels after custody so a refused hash disposes the
+        // incoming value before releasing its real byte hold/import.
+        let pixels = bytes;
+        account.work(RenderWork::DisplacementMapByteVisits, pixels.len())?;
+        let content_hash = stable_hash(&(width, height, pixels.as_ref()));
+        let payload = RawImagePayload {
+            identity: ImageContentIdentity {
+                fingerprint: ImageId::new(content_hash),
+                content_hash,
+                width,
+                height,
+                bytes: pixels,
+            },
+            physical_size: PhysicalSize::new(width, height),
+            byte_len: expected,
+            cpu: match &storage {
+                StorageAccount::Renderer(cpu) => Some(cpu.clone()),
+                StorageAccount::Preparation(_) => None,
+            },
+        };
+        Ok(Self {
+            payload: SharedValue::with_parts(payload, backing, import, &storage)?,
+        })
+    }
+
+    fn with_identity(
+        identity: ImageContentIdentity,
+        physical_size: PhysicalSize,
+        byte_len: u64,
+        cpu: &CpuAccount,
+        observer: Option<&Account>,
+    ) -> Result<Self> {
+        let import = cpu.import_image_pixels(&identity, observer)?;
+        let payload = RawImagePayload {
+            identity,
+            physical_size,
+            byte_len,
+            cpu: Some(cpu.clone()),
+        };
+        Ok(Self {
+            payload: SharedValue::with_parts(
+                payload,
+                None,
+                Some(import),
+                &StorageAccount::Renderer(cpu.clone()),
+            )?,
+        })
+    }
+
+    pub(crate) fn imported_in(&self, account: &Account) -> Result<Self> {
+        let Some(import) = account.import_image_identity(self.identity())? else {
+            return Ok(self.clone());
+        };
+        account.work(RenderWork::ImageIdentityCopies, 1)?;
+        let cpu = account.cpu()?.clone();
+        let payload = RawImagePayload {
+            identity: self.identity().clone(),
+            physical_size: self.physical_size(),
+            byte_len: self.byte_len(),
+            cpu: Some(cpu.clone()),
+        };
+        Ok(Self {
+            payload: SharedValue::with_parts(
+                payload,
+                None,
+                Some(import),
+                &StorageAccount::Renderer(cpu),
+            )?,
+        })
+    }
+
+    fn imported_with_cpu(&self, cpu: &CpuAccount, observer: Option<&Account>) -> Result<Self> {
+        match observer {
+            Some(account) => account.work(RenderWork::ImageIdentityCopies, 1)?,
+            None => cpu.maintenance(RenderWork::ImageIdentityCopies, 1),
+        }
+        Self::with_identity(
+            self.payload.identity.clone(),
+            self.physical_size(),
+            self.byte_len(),
+            cpu,
+            observer,
+        )
+    }
+
+    pub(crate) fn physical_size(&self) -> PhysicalSize {
+        self.payload.physical_size
+    }
+    pub(crate) fn byte_len(&self) -> u64 {
+        self.payload.byte_len
+    }
+    pub(crate) fn bytes(&self) -> &[u8] {
+        self.payload.identity.source_bytes()
+    }
+    pub(crate) fn identity(&self) -> &ImageContentIdentity {
+        &self.payload.identity
+    }
+
+    pub(crate) fn upload_row_bytes(&self) -> Result<u32> {
+        self.physical_size().width().checked_mul(4).ok_or_else(|| {
+            crate::DisplacementPreparationError::Numeric {
+                phase: crate::DisplacementNumericPhase::Sampling,
+                value: f64::from(self.physical_size().width()) * 4.0,
+            }
+            .into()
+        })
+    }
+
+    pub(crate) fn validate_upload_byte_len(&self, actual: usize) -> Result<()> {
+        let actual = u64::try_from(actual).map_err(|_| crate::RenderAccountingError::Invariant)?;
+        if actual != self.byte_len() {
+            return Err(crate::DisplacementPreparationError::InvalidMapPayload {
+                expected: self.byte_len(),
+                actual,
+            }
+            .into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn cache_key_in(&self, account: &Account) -> Result<RawImageUploadKey> {
+        self.cache_key_with_cpu(account.cpu()?, Some(account))
+    }
+
+    pub(crate) fn cache_key_with_cpu(
+        &self,
+        cpu: &CpuAccount,
+        observer: Option<&Account>,
+    ) -> Result<RawImageUploadKey> {
+        Ok(RawImageUploadKey {
+            descriptor: self.imported_with_cpu(cpu, observer)?,
+        })
+    }
+}
+
+/// Raw pixel uploads have a separate namespace from masks and Vello images.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RawImageUploadKey {
+    descriptor: RawImageUploadDescriptor,
+}
+
+impl Hash for RawImageUploadKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.descriptor.identity().hash(state);
+    }
+}
+
+impl RawImageUploadKey {
+    pub(crate) fn matches_in(&self, other: &Self, observer: Option<&Account>) -> Result<bool> {
+        let compare = |visit: &mut dyn FnMut() -> Result<()>| -> Result<bool> {
+            let left = self.descriptor.identity();
+            let right = other.descriptor.identity();
+            if left.content_key() != right.content_key() {
+                return Ok(false);
+            }
+            let left = left.source_bytes();
+            let right = right.source_bytes();
+            if Arc::ptr_eq(left, right) {
+                return Ok(true);
+            }
+            if left.len() != right.len() {
+                return Ok(false);
+            }
+            for (left, right) in left.iter().zip(right.iter()) {
+                visit()?;
+                if left != right {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        };
+        match observer {
+            Some(account) => {
+                compare(&mut || account.work(RenderWork::ImageIdentityByteComparisons, 1))
+            }
+            None => {
+                let cpu = self
+                    .descriptor
+                    .payload
+                    .cpu
+                    .as_ref()
+                    .ok_or(crate::RenderAccountingError::Invariant)?
+                    .at(RenderCpuScope::Cleanup);
+                let mut result = Ok(false);
+                cpu.maintenance_phase(|| {
+                    result = compare(&mut || {
+                        cpu.maintenance(RenderWork::ImageIdentityByteComparisons, 1);
+                        Ok(())
+                    });
+                });
+                result
+            }
+        }
+    }
+}
+
 impl ImageContentIdentity {
     fn new(fingerprint: ImageId, width: u32, height: u32, bytes: Arc<[u8]>) -> Self {
         let content_hash = stable_hash(&(width, height, bytes.as_ref()));
@@ -954,6 +1218,188 @@ fn stable_hash<T: std::hash::Hash>(value: &T) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
+}
+
+#[cfg(test)]
+mod raw_upload_tests {
+    use super::*;
+    use crate::accounting::{RenderAccountingOptions, RendererCpu};
+
+    #[test]
+    fn native_pixel_byte_refusal_precedes_hashing_and_retains_no_failed_payload() {
+        let limits = crate::RenderLimits::new().with_retained_bytes(3);
+        let mut context =
+            crate::RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let pixels: Arc<[u8]> = Arc::from([255, 0, 0, 64]);
+        let weak = Arc::downgrade(&pixels);
+        let error = crate::prepare_native_displacement_map(
+            Size::new(1.0, 1.0),
+            pixels,
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            &mut context,
+        )
+        .unwrap_err();
+        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        else {
+            panic!("native bytes require a typed admission refusal");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            crate::RenderQuantity::Resource(crate::RenderResource::RetainedCpuBytes)
+        );
+        assert_eq!((refusal.current(), refusal.amount()), (0, 4));
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::DisplacementMapByteVisits), 0);
+        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
+        assert!(weak.upgrade().is_none());
+    }
+    #[test]
+    fn hash_refusal_releases_admitted_pixel_backing_without_a_cleanup_fault() {
+        let limits = crate::RenderLimits::new()
+            .with_work_limit(RenderWork::DisplacementMapByteVisits, 0)
+            .unwrap();
+        let mut context =
+            crate::RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let pixels: Arc<[u8]> = Arc::from([255, 0, 0, 64]);
+        let weak = Arc::downgrade(&pixels);
+        let error = crate::prepare_native_displacement_map(
+            Size::new(1.0, 1.0),
+            pixels,
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            &mut context,
+        )
+        .unwrap_err();
+        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        else {
+            panic!("native hashing requires a typed admission refusal");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            crate::RenderQuantity::Work(RenderWork::DisplacementMapByteVisits)
+        );
+        assert_eq!((refusal.current(), refusal.amount()), (0, 4));
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.peak(crate::RenderResource::RetainedCpuBytes), 4);
+        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
+        assert!(weak.upgrade().is_none());
+        assert_eq!(context.last_attempt().unwrap().cleanup_fault(), None);
+    }
+
+    #[test]
+    fn raw_upload_preserves_straight_low_alpha_and_hidden_rgb_bytes() {
+        let account = Account::for_test();
+        let bytes: Arc<[u8]> = Arc::from([255, 128, 16, 64, 255, 255, 255, 0]);
+        let upload = RawImageUploadDescriptor::prepare_native_in(
+            Size::new(2.0, 1.0),
+            Arc::clone(&bytes),
+            &account,
+        )
+        .unwrap();
+        assert_eq!(upload.bytes(), bytes.as_ref());
+        assert!(Arc::ptr_eq(upload.identity().source_bytes(), &bytes));
+        assert_eq!(upload.byte_len(), 8);
+        assert_eq!(
+            account
+                .work_count(RenderWork::DisplacementMapByteVisits)
+                .unwrap(),
+            8
+        );
+    }
+
+    #[test]
+    fn zero_axis_maps_accept_only_empty_pixels_without_qualifying_unused_row_bytes() {
+        let account = Account::for_test();
+        for size in [
+            Size::new(0.0, f64::from(u32::MAX)),
+            Size::new(f64::from(u32::MAX), 0.0),
+        ] {
+            let upload =
+                RawImageUploadDescriptor::prepare_native_in(size, Arc::from([]), &account).unwrap();
+            assert_eq!(upload.byte_len(), 0);
+            assert!(
+                RawImageUploadDescriptor::prepare_native_in(
+                    size,
+                    Arc::from([1, 2, 3, 4]),
+                    &account
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            RawImageUploadDescriptor::prepare_native_in(
+                Size::new(f64::from(u32::MAX), f64::from(u32::MAX)),
+                Arc::from([]),
+                &account
+            )
+            .is_err()
+        );
+        assert_eq!(
+            account
+                .work_count(RenderWork::DisplacementMapByteVisits)
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn raw_cache_keys_reject_hash_collisions_by_exact_metered_bytes() {
+        let account = Account::for_test();
+        let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let owner = cpu.at(RenderCpuScope::DeviceBacking);
+        let make = |pixels: [u8; 4]| {
+            let mut identity = ImageContentIdentity::new(ImageId::new(7), 1, 1, Arc::from(pixels));
+            identity.content_hash = 7;
+            RawImageUploadDescriptor::with_identity(
+                identity,
+                PhysicalSize::new(1, 1),
+                4,
+                &owner,
+                None,
+            )
+            .unwrap()
+            .cache_key_with_cpu(&owner, None)
+            .unwrap()
+        };
+        let left = make([10, 20, 30, 64]);
+        let equal = make([10, 20, 30, 64]);
+        let collision = make([10, 20, 31, 64]);
+        assert!(left.matches_in(&left.clone(), Some(&account)).unwrap());
+        assert_eq!(
+            account
+                .work_count(RenderWork::ImageIdentityByteComparisons)
+                .unwrap(),
+            0
+        );
+        assert!(left.matches_in(&equal, Some(&account)).unwrap());
+        assert!(!left.matches_in(&collision, Some(&account)).unwrap());
+        assert_eq!(
+            account
+                .work_count(RenderWork::ImageIdentityByteComparisons)
+                .unwrap(),
+            7
+        );
+    }
+
+    #[test]
+    fn raw_descriptor_and_device_key_keep_actual_pixels_until_the_last_owner() {
+        let account = Account::for_test();
+        let pixels: Arc<[u8]> = Arc::from([255, 0, 0, 64]);
+        let weak = Arc::downgrade(&pixels);
+        let descriptor =
+            RawImageUploadDescriptor::prepare_native_in(Size::new(1.0, 1.0), pixels, &account)
+                .unwrap();
+        let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let key = descriptor
+            .cache_key_with_cpu(&cpu.at(RenderCpuScope::DeviceBacking), None)
+            .unwrap();
+        let clone = key.clone();
+        drop(descriptor);
+        drop(key);
+        assert!(weak.upgrade().is_some());
+        drop(clone);
+        assert!(weak.upgrade().is_none());
+        assert_eq!(cpu.snapshot().unwrap().fault(), None);
+    }
 }
 
 #[cfg(test)]

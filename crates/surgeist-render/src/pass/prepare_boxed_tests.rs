@@ -877,6 +877,7 @@ fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acq
             gaussian_kernel_bindings: PassMap::new(&setup, plan.kernels.len()).unwrap(),
             convolution_weight_bindings: PassMap::new(&setup, plan.convolution_weights.len())
                 .unwrap(),
+            displacement_bindings: PassMap::new(&setup, 0).unwrap(),
         };
         assert!(!plan.morphology_scratch.slots.is_empty());
         assert!(bindings.morphology_scratch_bindings.slots.is_empty());

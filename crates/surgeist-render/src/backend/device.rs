@@ -150,9 +150,40 @@ pub(crate) struct DeviceCapabilities {
     pub(super) reduced_precision_features: wgpu::TextureFormatFeatures,
     pub(super) filter_float32_features: wgpu::TextureFormatFeatures,
     pub(super) max_effect_texture_dimension_2d: u32,
+    pub(super) displacement_buffer_limits: crate::resource::DisplacementBufferLimits,
+    #[cfg(test)]
+    pub(super) displacement_map_upload_unavailable_for_test: bool,
 }
 
 impl DeviceCapabilities {
+    pub(crate) const fn displacement_buffer_limits(
+        &self,
+    ) -> crate::resource::DisplacementBufferLimits {
+        self.displacement_buffer_limits
+    }
+    pub(crate) fn validate_displacement_map(&self, requested: PhysicalSize) -> Result<()> {
+        self.validate_effect_texture_extent(requested)?;
+        #[cfg(test)]
+        if self.displacement_map_upload_unavailable_for_test {
+            return Err(Error::runtime_unavailable(
+                RuntimeCapabilityUnavailable::displacement_map_format_unavailable(),
+                "test-selected raw displacement upload capability is unavailable",
+            ));
+        }
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        if self
+            .reduced_precision_features
+            .allowed_usages
+            .contains(usage)
+        {
+            return Ok(());
+        }
+        Err(Error::runtime_unavailable(
+            RuntimeCapabilityUnavailable::displacement_map_format_unavailable(),
+            "the selected GPU cannot upload and read native straight RGBA8 displacement maps",
+        ))
+    }
+
     pub(crate) fn from_device(adapter: &wgpu::Adapter, device: &wgpu::Device) -> Self {
         let high_precision = WorkingFormat::HighPrecision;
         let reduced_precision = WorkingFormat::ReducedPrecision;
@@ -171,6 +202,10 @@ impl DeviceCapabilities {
             filter_float32_features: adapter
                 .get_texture_format_features(wgpu::TextureFormat::Rgba32Float),
             max_effect_texture_dimension_2d: device.limits().max_texture_dimension_2d,
+            displacement_buffer_limits:
+                crate::resource::DisplacementBufferLimits::from_device_limits(&device.limits()),
+            #[cfg(test)]
+            displacement_map_upload_unavailable_for_test: false,
         }
     }
 

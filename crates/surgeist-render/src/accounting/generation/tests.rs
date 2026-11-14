@@ -1319,3 +1319,295 @@ fn classified_cache_preview_checks_each_actual_cache_class_scope() {
         generation.ensure_healthy().unwrap();
     }
 }
+
+#[test]
+fn displacement_graph_preview_checks_combined_root_external_and_pass_buffer_limits_then_retries() {
+    for scope in [
+        RenderGenerationScope::Root,
+        RenderGenerationScope::External,
+        RenderGenerationScope::PassBuffers,
+    ] {
+        let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+        let resident = generation
+            .allocation(GenerationClass::SurfaceTargets, 4, None, || ())
+            .unwrap();
+        let bound = if scope == RenderGenerationScope::Root {
+            12
+        } else if scope == RenderGenerationScope::External {
+            8
+        } else {
+            4
+        };
+        set_generation_resource_limit(&generation, scope, RenderResource::GpuBytes, bound - 1);
+        let creates = AtomicUsize::new(0);
+        let acquire = || -> Result<Vec<OwnedGpu<()>>> {
+            generation.preview_graph_allocations(
+                &[(GenerationClass::CacheEffects, 4)],
+                &[4],
+                None,
+            )?;
+            [GenerationClass::CacheEffects, GenerationClass::PassBuffers]
+                .into_iter()
+                .map(|class| {
+                    generation.allocation(class, 4, None, || {
+                        creates.fetch_add(1, Ordering::SeqCst);
+                    })
+                })
+                .collect()
+        };
+        let error = acquire().unwrap_err();
+        let current = if scope == RenderGenerationScope::PassBuffers {
+            0
+        } else {
+            4
+        };
+        let amount = if scope == RenderGenerationScope::Root {
+            8
+        } else {
+            4
+        };
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::GenerationRefused {
+                quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                current,
+                amount,
+                reason: RenderRefusalReason::Limit { limit: bound - 1 },
+            })
+        );
+        assert_eq!(creates.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            4
+        );
+        assert_eq!(
+            generation.usage().unwrap().peak(RenderResource::GpuBytes),
+            4
+        );
+        assert_eq!(generation.cache_bytes().unwrap(), 0);
+        generation.ensure_healthy().unwrap();
+        set_generation_resource_limit(&generation, scope, RenderResource::GpuBytes, bound);
+        let allocated = acquire().unwrap();
+        assert_eq!(creates.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            12
+        );
+        assert_eq!(generation.cache_bytes().unwrap(), 4);
+        assert_eq!(
+            generation
+                .class_usage(GenerationClass::PassBuffers)
+                .unwrap()
+                .live(RenderResource::GpuBytes),
+            4
+        );
+        drop(allocated);
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            4
+        );
+        drop(resident);
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            0
+        );
+    }
+}
+
+#[test]
+fn displacement_graph_preview_checks_combined_creation_work_without_recording_creations() {
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    let scope = generation.0.scopes[RenderGenerationScope::Root.index()];
+    let set_limit = |limit| {
+        let old = generation.0.ledger.limits(scope).unwrap();
+        generation
+            .0
+            .ledger
+            .set_limits(
+                scope,
+                Limits::from_fn(
+                    |work| {
+                        if work == RenderWork::ResourceAllocations {
+                            limit
+                        } else {
+                            old.work(work)
+                        }
+                    },
+                    |resource| old.live(resource),
+                ),
+            )
+            .unwrap();
+    };
+    set_limit(1);
+    let creates = AtomicUsize::new(0);
+    let acquire = || -> Result<Vec<OwnedGpu<()>>> {
+        generation.preview_graph_allocations(&[(GenerationClass::CacheEffects, 4)], &[4], None)?;
+        [GenerationClass::CacheEffects, GenerationClass::PassBuffers]
+            .into_iter()
+            .map(|class| {
+                generation.allocation(class, 4, None, || {
+                    creates.fetch_add(1, Ordering::SeqCst);
+                })
+            })
+            .collect()
+    };
+    let error = acquire().unwrap_err();
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::GenerationRefused {
+            quantity: RenderQuantity::Work(RenderWork::ResourceAllocations),
+            current: 0,
+            amount: 2,
+            reason: RenderRefusalReason::Limit { limit: 1 },
+        })
+    );
+    assert_eq!(creates.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        generation
+            .usage()
+            .unwrap()
+            .work(RenderWork::ResourceAllocations),
+        0
+    );
+    assert_eq!(
+        generation.usage().unwrap().live(RenderResource::GpuBytes),
+        0
+    );
+    generation.ensure_healthy().unwrap();
+    set_limit(2);
+    let allocated = acquire().unwrap();
+    assert_eq!(creates.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        generation
+            .usage()
+            .unwrap()
+            .work(RenderWork::ResourceAllocations),
+        2
+    );
+    drop(allocated);
+    assert_eq!(
+        generation.usage().unwrap().live(RenderResource::GpuBytes),
+        0
+    );
+}
+
+#[test]
+fn displacement_graph_preview_admits_every_new_inspection_before_atomic_preview() {
+    use crate::{RenderAccountingContext, RenderAttemptKind, RenderLimits, RenderPhase};
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    // Four descriptor visits, Root inspection, the cache grouping's two tuple
+    // visits plus Cache and two children, then the PassBuffers leaf:11.
+    for limit in 0..=11 {
+        let options = RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::ResourceProbes, limit)
+                .unwrap(),
+        );
+        let mut context = RenderAccountingContext::new(options);
+        let result = context.run(
+            RenderAttemptKind::Frame,
+            RenderPhase::GpuPrepare,
+            |account| {
+                generation.preview_graph_allocations(
+                    &[
+                        (GenerationClass::CacheEffects, 4),
+                        (GenerationClass::CacheMasks, 4),
+                    ],
+                    &[4, 4],
+                    Some(account),
+                )
+            },
+        );
+        if limit == 11 {
+            result.unwrap();
+        } else {
+            let error = result.unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("the first unadmitted inspection must refuse")
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::ResourceProbes)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+        }
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::ResourceProbes), limit);
+        assert_eq!(usage.work(RenderWork::ResourceAllocationRequests), 0);
+        assert_eq!(
+            generation
+                .usage()
+                .unwrap()
+                .work(RenderWork::ResourceAllocations),
+            0
+        );
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            0
+        );
+    }
+}
+
+#[test]
+fn displacement_graph_preview_rejects_descriptor_sum_overflow_and_preserves_cache_only_work() {
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    let error = generation
+        .preview_graph_allocations(&[(GenerationClass::CacheEffects, u64::MAX)], &[1], None)
+        .unwrap_err();
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::GenerationRefused {
+            quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+            current: u64::MAX,
+            amount: 1,
+            reason: RenderRefusalReason::Overflow,
+        })
+    );
+    assert_eq!(
+        generation.usage().unwrap().live(RenderResource::GpuBytes),
+        0
+    );
+    assert_eq!(
+        generation
+            .usage()
+            .unwrap()
+            .work(RenderWork::ResourceAllocations),
+        0
+    );
+    generation.ensure_healthy().unwrap();
+    use crate::{RenderAccountingContext, RenderAttemptKind, RenderLimits, RenderPhase};
+    let mut context = RenderAccountingContext::new(
+        RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::ResourceProbes, 4)
+                .unwrap(),
+        ),
+    );
+    context
+        .run(
+            RenderAttemptKind::Frame,
+            RenderPhase::GpuPrepare,
+            |account| {
+                generation.preview_graph_allocations(
+                    &[
+                        (GenerationClass::CacheEffects, 4),
+                        (GenerationClass::CacheEffects, 4),
+                    ],
+                    &[],
+                    Some(account),
+                )
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::ResourceProbes),
+        4
+    );
+}

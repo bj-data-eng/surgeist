@@ -190,7 +190,7 @@ fn graph_preflight_reserves_all_fresh_entry_slots_before_creation() {
     );
     let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
     manager
-        .preflight_graph_acquisitions(&[request.clone(), request], None)
+        .preflight_graph_acquisitions(&[request.clone(), request], &[], None)
         .unwrap();
     assert_eq!(registry_facts(&manager), (0, 0, 0, 0));
     assert_eq!(manager.observation_for_test().payload_creation_attempts, 0);
@@ -675,7 +675,7 @@ fn repeated_preflight_requests_require_each_distinct_idle_reservation_lookup() {
     for limit in [11, 12] {
         let mut context = context(limit);
         let result = context.run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
-            manager.preflight_graph_acquisitions(&requests, Some(account))
+            manager.preflight_graph_acquisitions(&requests, &[], Some(account))
         });
         if limit == 11 {
             let error = result.unwrap_err();
@@ -758,7 +758,7 @@ fn preflight_reserves_distinct_idle_entries_before_previewing_fresh_bytes_at_cap
     for (count, probes) in [(2, 12), (3, 18)] {
         let mut context = context(u64::MAX);
         let result = context.run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
-            manager.preflight_graph_acquisitions(&requests[..count], Some(account))
+            manager.preflight_graph_acquisitions(&requests[..count], &[], Some(account))
         });
         if count == 2 {
             result.unwrap();
@@ -808,7 +808,7 @@ fn registry_preflight_audits_even_an_empty_request_batch_before_any_mutation() {
     let mut refused = context(1);
     refused
         .run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
-            manager.preflight_graph_acquisitions(&[], Some(account))
+            manager.preflight_graph_acquisitions(&[], &[], Some(account))
         })
         .expect_err("the second retained entry must exceed one probe");
     assert_eq!(
@@ -825,7 +825,7 @@ fn registry_preflight_audits_even_an_empty_request_batch_before_any_mutation() {
     let mut retry = context(2);
     retry
         .run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
-            manager.preflight_graph_acquisitions(&[], Some(account))
+            manager.preflight_graph_acquisitions(&[], &[], Some(account))
         })
         .unwrap();
     assert_eq!(
@@ -1083,10 +1083,10 @@ fn repeated_physical_requests_cannot_reserve_one_idle_texture_twice_at_the_effec
         .unwrap();
     let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
     manager
-        .preflight_graph_acquisitions(std::slice::from_ref(&request), None)
+        .preflight_graph_acquisitions(std::slice::from_ref(&request), &[], None)
         .unwrap();
     let error = manager
-        .preflight_graph_acquisitions(&[request.clone(), request], None)
+        .preflight_graph_acquisitions(&[request.clone(), request], &[], None)
         .unwrap_err();
     assert_eq!(
         error.accounting_diagnostic(),
@@ -1107,7 +1107,7 @@ fn repeated_physical_requests_cannot_reserve_one_idle_texture_twice_at_the_effec
         .unwrap();
     let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
     manager
-        .preflight_graph_acquisitions(&[request.clone(), request], None)
+        .preflight_graph_acquisitions(&[request.clone(), request], &[], None)
         .unwrap();
     assert_eq!(manager.observation_for_test(), before);
     assert_eq!(registry_facts(&manager), facts);
@@ -1125,7 +1125,7 @@ fn complete_physical_preflight_refuses_effects_child_before_first_payload_and_pr
     let before = manager.observation_for_test();
     let facts = registry_facts(&manager);
     let error = manager
-        .preflight_graph_acquisitions(&requests, None)
+        .preflight_graph_acquisitions(&requests, &[], None)
         .unwrap_err();
     assert_eq!(
         error.accounting_diagnostic(),
@@ -1145,7 +1145,7 @@ fn complete_physical_preflight_refuses_effects_child_before_first_payload_and_pr
         .set_effects_gpu_byte_limit_for_test(8)
         .unwrap();
     manager
-        .preflight_graph_acquisitions(&requests, None)
+        .preflight_graph_acquisitions(&requests, &[], None)
         .unwrap();
     assert_eq!(manager.observation_for_test().payload_creation_attempts, 0);
     let mut frame = manager.begin_frame(None).unwrap();

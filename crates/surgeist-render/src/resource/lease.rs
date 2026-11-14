@@ -2,6 +2,7 @@ use super::{
     AllocationGeneration, FrameIdentity, ManagerIdentity, ResourceAccountingFault,
     ResourceCacheKey, ResourceIdentity,
     convolution::ConvolutionWeightsPlan,
+    displacement::DisplacementBufferPlan,
     entries::ResourceEntries,
     gaussian::{GaussianKernelBufferLimits, GaussianKernelPlan},
     lock_state,
@@ -16,7 +17,7 @@ use crate::{
         RenderCpuScope, RenderResource, RenderWork, StorageAccount,
     },
     backend::DeviceCapabilities,
-    image::ResolvedMaskUploadDescriptor,
+    image::{RawImageUploadDescriptor, ResolvedMaskUploadDescriptor},
     texture::EffectTextureDescriptor,
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
 };
@@ -911,6 +912,182 @@ enum FrameResourceDisposition {
 }
 
 impl FrameResourceScope {
+    pub(crate) fn raw_image_texture<'scope>(
+        &'scope self,
+        lease: &'scope ResourceLease,
+        descriptor: &RawImageUploadDescriptor,
+    ) -> Result<(&'scope wgpu::Texture, &'scope wgpu::TextureView)> {
+        let key = ResourceCacheKey::RawImageUpload(
+            descriptor.cache_key_with_cpu(&lock_state(&self.state).cpu, self.observer.as_ref())?,
+        );
+        self.validate_displacement_key(lease, &key)?;
+        match self.validated_payload(lease)? {
+            ResourcePayload::RawImageUpload { texture, view } => Ok((texture, view)),
+            _ => Err(Error::invalid_value(
+                "resource lease payload",
+                lease.resource_identity().get(),
+                "must contain a native raw image texture",
+            )),
+        }
+    }
+
+    pub(crate) fn displacement_buffer<'scope>(
+        &'scope self,
+        lease: &'scope ResourceLease,
+        plan: &DisplacementBufferPlan,
+    ) -> Result<&'scope wgpu::Buffer> {
+        self.validate_displacement_key(lease, &ResourceCacheKey::DisplacementBuffer(plan.key()))?;
+        match self.validated_payload(lease)? {
+            ResourcePayload::DisplacementBuffer { buffer } => Ok(buffer),
+            _ => Err(Error::invalid_value(
+                "resource lease payload",
+                lease.resource_identity().get(),
+                "must contain a displacement storage buffer",
+            )),
+        }
+    }
+
+    fn validate_displacement_key(
+        &self,
+        lease: &ResourceLease,
+        expected: &ResourceCacheKey,
+    ) -> Result<()> {
+        let state = lock_state(&self.state);
+        state.validate_lease(
+            &self.manager_identity,
+            self.frame,
+            &lease.token,
+            self.observer.as_ref(),
+        )?;
+        let actual = state
+            .entries
+            .get(&lease.resource_identity())
+            .ok_or(RenderAccountingError::Invariant)?;
+        if !actual.key.matches_in(expected, self.observer.as_ref())? {
+            return Err(Error::invalid_value(
+                "displacement resource lease",
+                lease.resource_identity().get(),
+                "must retain the exact admitted upload payload",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn acquire_raw_image_upload(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        capabilities: &DeviceCapabilities,
+        descriptor: &RawImageUploadDescriptor,
+    ) -> Result<ResourceLease> {
+        let size = descriptor.physical_size();
+        if size.width() == 0 || size.height() == 0 {
+            return Err(RenderAccountingError::Invariant.into());
+        }
+        capabilities.validate_displacement_map(size)?;
+        descriptor.validate_upload_byte_len(descriptor.bytes().len())?;
+        let row_bytes = descriptor.upload_row_bytes()?;
+        let key = ResourceCacheKey::RawImageUpload(
+            descriptor.cache_key_with_cpu(&lock_state(&self.state).cpu, self.observer.as_ref())?,
+        );
+        lock_state(&self.state).acquire_with_payload(
+            self.lease_owner(),
+            key,
+            descriptor.byte_len(),
+            IdleReuse::Allowed,
+            self.observer.as_ref(),
+            |generation| {
+                let texture = generation.allocation(
+                    GenerationClass::CacheEffects,
+                    descriptor.byte_len(),
+                    self.observer.as_ref(),
+                    || {
+                        device.create_texture(&wgpu::TextureDescriptor {
+                            label: Some("Surgeist native straight RGBA8 displacement map"),
+                            size: wgpu::Extent3d {
+                                width: size.width(),
+                                height: size.height(),
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                                | wgpu::TextureUsages::COPY_DST,
+                            view_formats: &[],
+                        })
+                    },
+                )?;
+                generation.upload(
+                    GenerationClass::CacheEffects,
+                    self.observer.as_ref(),
+                    descriptor.bytes().len(),
+                )?;
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    descriptor.bytes(),
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(row_bytes),
+                        rows_per_image: None,
+                    },
+                    wgpu::Extent3d {
+                        width: size.width(),
+                        height: size.height(),
+                        depth_or_array_layers: 1,
+                    },
+                );
+                let view = texture.create_view(
+                    &wgpu::TextureViewDescriptor::default(),
+                    self.observer.as_ref(),
+                )?;
+                Ok(ResourcePayload::RawImageUpload { texture, view })
+            },
+        )
+    }
+
+    pub(crate) fn acquire_displacement_buffer(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        plan: &DisplacementBufferPlan,
+    ) -> Result<ResourceLease> {
+        plan.validate_upload_byte_len(plan.upload_bytes().len())?;
+        plan.validate_buffer_limits(&device.limits())?;
+        lock_state(&self.state).acquire_with_payload(
+            self.lease_owner(),
+            ResourceCacheKey::DisplacementBuffer(plan.key()),
+            plan.byte_len(),
+            IdleReuse::Allowed,
+            self.observer.as_ref(),
+            |generation| {
+                let buffer = generation.allocation_with_upload(
+                    GenerationClass::CacheEffects,
+                    plan.byte_len(),
+                    plan.upload_bytes().len(),
+                    self.observer.as_ref(),
+                    || {
+                        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                            label: Some("Surgeist checked displacement storage buffer"),
+                            size: plan.byte_len(),
+                            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                            mapped_at_creation: false,
+                        });
+                        queue.write_buffer(&buffer, 0, plan.upload_bytes());
+                        buffer
+                    },
+                )?;
+                Ok(ResourcePayload::DisplacementBuffer { buffer })
+            },
+        )
+    }
+
     pub(super) fn new(
         state: Arc<Mutex<ResourceManagerState>>,
         manager_identity: ManagerIdentity,
@@ -1890,7 +2067,7 @@ mod tests {
         )
         .unwrap();
         manager
-            .preflight_graph_acquisitions(&[request.clone(), request], None)
+            .preflight_graph_acquisitions(&[request.clone(), request], &[], None)
             .unwrap();
         // Preflight first audits both entries, then each independent request
         // scans both candidates: three more visits per class. Selecting one
@@ -1938,7 +2115,7 @@ mod tests {
         )
         .unwrap();
         let error = manager
-            .preflight_graph_acquisitions(&[request.clone(), request], None)
+            .preflight_graph_acquisitions(&[request.clone(), request], &[], None)
             .expect_err("two four-byte requests exceed the four remaining byte units");
         assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
         assert_eq!(

@@ -1,8 +1,17 @@
 mod close;
 mod convolution;
-mod encode;
+mod displacement;
+#[cfg(test)]
+mod displacement_observation;
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod finish_custody_tests;
+pub(crate) use displacement_observation::{
+    DisplacementAcquiredReadRoleForTest, DisplacementUniformProbeForTest,
+};
+#[cfg(test)]
+pub(crate) use displacement_observation::{
+    DisplacementUniformSnapshotForTest, DisplacementUniformStageForTest,
+};
+mod encode;
 mod gaussian;
 mod lower;
 mod model;
@@ -272,8 +281,9 @@ pub(crate) use close::{
     reason = "the pass front door preserves its crate-visible encoding contract"
 )]
 pub(crate) use encode::{
-    AccountingReadyPreparedFrameCommit, CustomSpineEncodingSummary, GraphExternalOutputView,
-    PendingGraphEncoding, PendingPreparedFrameCommit, PreparedGraphSubmission,
+    AccountingReadyPreparedFrameCommit, CustomSpineEncodingSummary, EncodedPreparedGraphSubmission,
+    GraphExternalOutputView, PendingGraphEncoding, PendingPreparedFrameCommit,
+    PreparedGraphSubmission,
 };
 #[expect(
     unused_imports,

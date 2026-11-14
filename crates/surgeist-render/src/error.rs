@@ -54,6 +54,7 @@ enum PreparationDiagnostic {
     Offset(crate::OffsetPreparationError),
     Gaussian(crate::GaussianPreparationError),
     Morphology(crate::MorphologyPreparationError),
+    Displacement(crate::DisplacementPreparationError),
     DropShadow(crate::DropShadowPreparationError),
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
@@ -476,6 +477,18 @@ impl Error {
         }
     }
 
+    /// Returns the typed native displacement diagnostic, if present.
+    #[must_use]
+    pub const fn displacement_diagnostic(&self) -> Option<&crate::DisplacementPreparationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::Displacement(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns the typed native morphology diagnostic, if present.
     #[must_use]
     pub const fn morphology_diagnostic(&self) -> Option<&crate::MorphologyPreparationError> {
@@ -687,6 +700,26 @@ impl From<crate::GaussianPreparationError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: Some(PreparationDiagnostic::Gaussian(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
+        })
+    }
+}
+
+impl From<crate::DisplacementPreparationError> for Error {
+    fn from(value: crate::DisplacementPreparationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::InvalidInput,
+            message: format!("displacement preparation refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::Displacement(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
             #[cfg(feature = "render-text")]
@@ -1067,6 +1100,13 @@ impl RuntimeCapabilityUnavailable {
         }
     }
 
+    pub(crate) const fn displacement_map_format_unavailable() -> Self {
+        Self {
+            operation: RuntimeOperation::DisplacementRendering,
+            reason: RuntimeCapabilityUnavailableReason::DisplacementMapFormatUnavailable,
+        }
+    }
+
     pub(crate) const fn filter_float32_unavailable(operation: RuntimeOperation) -> Self {
         Self {
             operation,
@@ -1212,6 +1252,8 @@ pub enum RuntimeOperation {
     ConvolutionRendering,
     /// Executing native Gaussian accumulation.
     GaussianRendering,
+    /// Executing native straight-byte map displacement.
+    DisplacementRendering,
     /// Executing native rectangular component erosion or dilation.
     MorphologyRendering,
     /// Executing native alpha-blur, displacement, flood and original-source merge.
@@ -1256,6 +1298,8 @@ pub enum RuntimeCapabilityUnavailableReason {
         /// Effect precision policy that could not be met.
         policy: EffectQualityPolicy,
     },
+    /// Raw RGBA8 displacement maps lack texture-load or copy-destination usage.
+    DisplacementMapFormatUnavailable,
     /// Float32 native-filter textures lack required render/sample/copy usages.
     FilterFloat32Unavailable,
     /// The requested effect texture exceeds the selected device limit.
@@ -1577,6 +1621,8 @@ pub enum PrimitiveOperation {
     GpuOffsetFilterExecution,
     /// Executing admitted native Gaussian filtering on the GPU.
     GpuGaussianFilterExecution,
+    /// Executing admitted native straight-byte map displacement on the GPU.
+    GpuDisplacementFilterExecution,
     /// Executing admitted rectangular component erosion and dilation on the GPU.
     GpuMorphologyFilterExecution,
     /// Executing admitted native alpha-blur, displacement, flood and merge.
@@ -1665,6 +1711,7 @@ impl PrimitiveOperation {
             Self::GpuOffsetFilterExecution => "GPU offset filter execution",
             Self::GpuGaussianFilterExecution => "GPU Gaussian filter execution",
             Self::GpuMorphologyFilterExecution => "GPU morphology filter execution",
+            Self::GpuDisplacementFilterExecution => "GPU displacement filter execution",
             Self::GpuNativeDropShadowFilterExecution => "GPU native drop-shadow filter execution",
             Self::FilterRegionPlanning => "filter-region planning",
             Self::BroadBackdropExecution => "broad backdrop execution",

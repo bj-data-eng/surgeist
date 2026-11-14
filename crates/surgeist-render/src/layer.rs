@@ -178,6 +178,14 @@ impl Layer {
         self
     }
 
+    pub(crate) fn with_displacement(
+        mut self,
+        displacement: crate::displacement::DisplacementForeground,
+    ) -> Self {
+        self.filter = Some(LayerFilter::Displacement(displacement));
+        self
+    }
+
     pub(crate) fn with_morphology(
         mut self,
         morphology: crate::morphology::MorphologyForeground,
@@ -324,6 +332,7 @@ impl Layer {
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
                 | LayerFilter::Morphology(_)
+                | LayerFilter::Displacement(_)
                 | LayerFilter::NativeShadow(_),
             )
             | None => None,
@@ -341,6 +350,7 @@ impl Layer {
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
                 | LayerFilter::Morphology(_)
+                | LayerFilter::Displacement(_)
                 | LayerFilter::NativeShadow(_),
             )
             | None => None,
@@ -387,6 +397,7 @@ pub(crate) enum LayerFilter {
     Offset(crate::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
     Morphology(crate::morphology::MorphologyForeground),
+    Displacement(crate::displacement::DisplacementForeground),
     NativeShadow(crate::native_shadow::DropShadowForeground),
 }
 

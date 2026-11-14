@@ -16,10 +16,16 @@ use crate::{
 pub(super) enum FilterGridOwner {
     Gaussian,
     Morphology,
+    Displacement,
 }
 impl FilterGridOwner {
     fn mapping_error(self, value: f64) -> Error {
         match self {
+            Self::Displacement => crate::DisplacementPreparationError::Numeric {
+                phase: crate::DisplacementNumericPhase::GridMapping,
+                value,
+            }
+            .into(),
             Self::Gaussian => crate::GaussianPreparationError::Numeric {
                 phase: crate::GaussianNumericPhase::GridMapping,
                 value,
@@ -34,6 +40,11 @@ impl FilterGridOwner {
     }
     fn index_error(self, value: f64) -> Error {
         match self {
+            Self::Displacement => crate::DisplacementPreparationError::Numeric {
+                phase: crate::DisplacementNumericPhase::GridIndex,
+                value,
+            }
+            .into(),
             Self::Gaussian => crate::GaussianPreparationError::Numeric {
                 phase: crate::GaussianNumericPhase::GridIndex,
                 value,
@@ -48,6 +59,11 @@ impl FilterGridOwner {
     }
     fn sampling_error(self, value: f64) -> Error {
         match self {
+            Self::Displacement => crate::DisplacementPreparationError::Numeric {
+                phase: crate::DisplacementNumericPhase::Sampling,
+                value,
+            }
+            .into(),
             Self::Gaussian => self.mapping_error(value),
             Self::Morphology => crate::MorphologyPreparationError::Numeric {
                 phase: crate::MorphologyNumericPhase::Sampling,

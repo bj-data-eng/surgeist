@@ -19,6 +19,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_offset_metadata(graph, account)?;
     validate_gaussian_metadata(graph, account)?;
     validate_morphology_metadata(graph, account)?;
+    validate_displacement_metadata(graph, account)?;
     validate_native_shadow_metadata(graph, account)?;
     if any_node(&graph.passes, account, |pass| {
         Ok(
@@ -591,6 +592,27 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
                             super::MorphologyStage::Constant
                                 | super::MorphologyStage::Copy
                                 | super::MorphologyStage::Resolve
+                        )
+                })
+                .map(|entry| entry.facts.mapping().output_footprint())
+        });
+        let index = ordered_metadata_index(
+            &graph.displacements,
+            producer.index.0,
+            |entry| entry.pass.index.0,
+            account,
+        )?;
+        let expected = expected.or_else(|| {
+            graph
+                .displacements
+                .get(index)
+                .filter(|entry| {
+                    entry.pass == producer
+                        && matches!(
+                            entry.facts.stage(),
+                            super::DisplacementStage::Displace
+                                | super::DisplacementStage::PassThrough
+                                | super::DisplacementStage::Transparent
                         )
                 })
                 .map(|entry| entry.facts.mapping().output_footprint())
@@ -1602,6 +1624,213 @@ fn validate_morphology_metadata(graph: &GpuRenderGraph, account: &Account) -> Gr
         }
     }
     Ok(())
+}
+
+/// Authenticates every concrete stage and its actual source image before the
+/// runtime owner attaches non-image reads to this same graph pass identity.
+fn validate_displacement_metadata(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> GraphBuildResult<()> {
+    use super::DisplacementStage;
+    let mut cursor = 0;
+    while let Some(first) = graph.displacements.get(cursor) {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if first.facts.route_index() != 0 || first.facts.route_len() == 0 {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        let start = first.pass.index.0;
+        let first_pass = graph
+            .passes
+            .get(first.pass.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownPass(first.pass))?;
+        let mut previous = first_pass.reads.first().copied();
+        for index in 0..first.facts.route_len() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let entry = graph
+                .displacements
+                .get(cursor)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            let facts = &entry.facts;
+            let count = facts.stage().read_count(facts.mapping().source_kind());
+            if facts.route_index() != index
+                || !facts.same_route_in(&first.facts, account)?
+                || !facts.proves_exact(account)?
+                || entry.pass.index.0
+                    != start
+                        .checked_add(
+                            u32::try_from(index)
+                                .map_err(|_| GraphValidationError::InvalidPassArity)?,
+                        )
+                        .ok_or(GraphValidationError::InvalidPassArity)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let pass = graph
+                .passes
+                .get(entry.pass.index.as_usize()?)
+                .filter(|pass| pass.id == entry.pass)
+                .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+            if pass.intent != SemanticPassIntent::Displacement(facts.stage())
+                || pass.reads.len() != count
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            if count != 0 {
+                let read = previous.ok_or(GraphValidationError::InvalidPassArity)?;
+                if !edges_equal(&pass.reads, &[read], account)? {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
+                let resource = graph
+                    .resources
+                    .get(read.index.as_usize()?)
+                    .ok_or(GraphValidationError::UnknownResource(read))?;
+                if Some(super::GraphLoweringSpatialDescriptor::from_semantic(
+                    resource.descriptor,
+                )) != facts.mapping().source_spatial()
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+            } else if facts.mapping().source_spatial().is_some() {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let SemanticPassResult::Resource(result) = pass.result else {
+                return Err(GraphValidationError::InvalidPassArity);
+            };
+            let descriptor = graph
+                .resources
+                .get(result.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(result))?
+                .descriptor;
+            if descriptor.role != SemanticResourceRole::FilterIntermediate
+                || super::GraphLoweringSpatialDescriptor::from_semantic(descriptor)
+                    != facts.mapping().target_spatial()
+            {
+                return Err(GraphValidationError::InvalidPassResultRole);
+            }
+            let active = facts.stage() == DisplacementStage::Displace;
+            if active != facts.address_entries().is_some()
+                || (active && !facts.map_is_zero()) != facts.map_upload().is_some()
+                || (active && !facts.map_is_zero()) != facts.map_records().is_some()
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            previous = Some(result);
+            cursor += 1;
+        }
+    }
+    // Reject orphaned pass intents rather than accepting an unauthenticated tag.
+    for pass in &graph.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if let SemanticPassIntent::Displacement(_) = pass.intent {
+            let index = ordered_metadata_index(
+                &graph.displacements,
+                pass.id.index.0,
+                |entry| entry.pass.index.0,
+                account,
+            )?;
+            if graph
+                .displacements
+                .get(index)
+                .is_none_or(|entry| entry.pass != pass.id)
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod displacement_footprint_tests {
+    use super::*;
+    use crate::frame::{FrameContext, FramePlan};
+    use crate::{
+        Antialiasing, Capabilities, Color, DisplacementInput, DisplacementSource, FilterColorSpace,
+        Layer, Rect, RenderAccountingContext, Scene, Size,
+    };
+
+    #[test]
+    fn displacement_final_composites_authenticate_their_own_output_footprint() {
+        let mut preparation = RenderAccountingContext::default();
+        let mut scene = Scene::new();
+        for (x, scale, color) in [
+            (0.0, 4.0, Color::BLACK),
+            (8.0, 0.0, Color::BLACK),
+            (16.0, 4.0, Color::TRANSPARENT),
+        ] {
+            let filter = Rect::new(x, 0.0, 6.0, 2.0);
+            let output = Rect::new(x + 2.0, 0.0, 2.0, 2.0);
+            let operation = crate::prepare_displacement(
+                DisplacementInput::new().with_scale(scale),
+                FilterColorSpace::Srgb,
+                &mut preparation,
+            )
+            .unwrap();
+            let map = crate::prepare_native_displacement_map(
+                Size::new(0.0, 0.0),
+                std::sync::Arc::from([]),
+                filter,
+                &mut preparation,
+            )
+            .unwrap();
+            scene
+                .displacement_layer(
+                    Layer::new(),
+                    operation,
+                    DisplacementSource::constant(color, filter, output).unwrap(),
+                    map,
+                )
+                .unwrap();
+        }
+        let account = Account::for_test();
+        let commands = scene.normalize(Capabilities::CURRENT, &account).unwrap();
+        let context = FrameContext::try_new(
+            Size::new(24.0, 2.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        let FramePlan::GpuGraph(mut graph) = commands.plan_for(context, &account).unwrap() else {
+            panic!("displacement must plan its native graph");
+        };
+        validate_semantic_frame_graph(&graph, &account).unwrap();
+        let composites: Vec<_> = graph
+            .composites
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.filter_footprint.is_some())
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(composites.len(), 3);
+        let index = composites[0];
+        let original = graph.composites[index].filter_footprint;
+        let other_output = graph.composites[composites[1]].filter_footprint;
+        graph.composites[index].filter_footprint = None;
+        assert!(matches!(
+            validate_semantic_frame_graph(&graph, &account),
+            Err(GraphValidationError::InvalidPassResultRole)
+        ));
+        graph.composites[index].filter_footprint = other_output;
+        assert!(matches!(
+            validate_semantic_frame_graph(&graph, &account),
+            Err(GraphValidationError::InvalidPassResultRole)
+        ));
+        let realization = graph
+            .displacements
+            .iter()
+            .find(|entry| entry.facts.stage() == super::super::DisplacementStage::RealizeSource)
+            .unwrap();
+        graph.composites[index].filter_footprint =
+            Some(realization.facts.mapping().output_footprint());
+        assert!(matches!(
+            validate_semantic_frame_graph(&graph, &account),
+            Err(GraphValidationError::InvalidPassResultRole)
+        ));
+        graph.composites[index].filter_footprint = original;
+        validate_semantic_frame_graph(&graph, &account).unwrap();
+    }
 }
 
 #[cfg(test)]

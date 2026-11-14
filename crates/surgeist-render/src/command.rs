@@ -333,6 +333,7 @@ pub(crate) enum NormalizedForegroundEffect {
     Offset(crate::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
     Morphology(crate::morphology::MorphologyForeground),
+    Displacement(crate::displacement::NormalizedDisplacementForeground),
     NativeShadow(crate::native_shadow::DropShadowForeground),
 }
 
@@ -1348,6 +1349,16 @@ impl NormalizedLayer {
                         PrimitiveOperation::GpuNativeDropShadowFilterExecution,
                     ))?;
                     NormalizedForegroundEffect::NativeShadow(*shadow)
+                }
+                LayerFilter::Displacement(displacement) => {
+                    capabilities.ensure_supported(UnsupportedPrimitive::new(
+                        PrimitiveFamily::Filters,
+                        PrimitiveOperation::GpuDisplacementFilterExecution,
+                    ))?;
+                    NormalizedForegroundEffect::Displacement(displacement.normalized_in(
+                        account,
+                        !children.is_empty() || layer.backdrop_filter().is_some(),
+                    )?)
                 }
                 LayerFilter::Morphology(morphology) => {
                     capabilities.ensure_supported(UnsupportedPrimitive::new(

@@ -1,6 +1,7 @@
 use crate::accounting::{Account, AccountedVec, OwnedBox, RenderPhase, RenderWork};
 mod bounds;
 mod convolution;
+mod displacement;
 mod filter;
 mod filter_footprint;
 mod filter_grid;
@@ -25,6 +26,10 @@ pub(crate) use bounds::{
     SpatialPrimitivesForTest, spatial_primitives_for_test, transformed_logical_bounds_for_test,
 };
 pub(crate) use convolution::{ConvolutionMapping, ConvolutionStage};
+pub(crate) use displacement::{
+    DisplacementAddressEntry, DisplacementMapRecord, DisplacementPassFacts, DisplacementSourceKind,
+    DisplacementStage,
+};
 #[cfg(test)]
 pub(crate) use filter::{
     OrderedFilterEdgeObservation, OrderedFilterIntentObservation, OrderedFilterPlanObservation,
@@ -353,6 +358,7 @@ fn bounded_filter_source(
         crate::command::NormalizedForegroundEffect::Gaussian(value) => Some(value.source),
         crate::command::NormalizedForegroundEffect::NativeShadow(value) => Some(value.source),
         crate::command::NormalizedForegroundEffect::Morphology(value) => Some(value.source),
+        crate::command::NormalizedForegroundEffect::Displacement(value) => Some(value.source),
         _ => None,
     }
 }
@@ -361,6 +367,9 @@ fn filter_grid_owner(
     effect: &crate::command::NormalizedForegroundEffect,
 ) -> filter_grid::FilterGridOwner {
     match effect {
+        crate::command::NormalizedForegroundEffect::Displacement(_) => {
+            filter_grid::FilterGridOwner::Displacement
+        }
         crate::command::NormalizedForegroundEffect::Morphology(_) => {
             filter_grid::FilterGridOwner::Morphology
         }

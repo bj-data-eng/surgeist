@@ -1,3 +1,4 @@
+mod displacement;
 mod filter_source;
 mod gaussian;
 mod morphology;
@@ -6,6 +7,7 @@ use super::convolution::{
     ConvolutionMapping, ConvolutionStage, empty_source_spatial, intersection, require_spatial,
     source_domain_is_empty,
 };
+use super::displacement::{DisplacementPassFacts, DisplacementRoute, DisplacementStage};
 use super::gaussian::{GaussianMapping, GaussianStage};
 use super::morphology::{MorphologyPassFacts, MorphologyStage};
 use super::offset::{OffsetMapping, OffsetStage};
@@ -188,6 +190,7 @@ pub(super) enum SemanticPassIntent {
     Offset(OffsetStage),
     Gaussian(GaussianStage),
     Morphology(MorphologyStage),
+    Displacement(DisplacementStage),
     NativeShadowMerge,
     Composite,
     Present,
@@ -512,6 +515,12 @@ pub(super) struct SemanticMorphologyPlan {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(super) struct SemanticDisplacementPlan {
+    pub(super) pass: SemanticPassId,
+    pub(super) facts: DisplacementPassFacts,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticNativeShadowPlan {
     pub(super) pass: SemanticPassId,
     pub(super) facts: super::NativeShadowPassFacts,
@@ -561,6 +570,7 @@ pub(crate) struct GpuRenderGraph {
     pub(super) offsets: AccountedVec<SemanticOffsetPlan>,
     pub(super) gaussians: AccountedVec<SemanticGaussianPlan>,
     pub(super) morphologies: AccountedVec<SemanticMorphologyPlan>,
+    pub(super) displacements: AccountedVec<SemanticDisplacementPlan>,
     pub(super) native_shadows: AccountedVec<SemanticNativeShadowPlan>,
     pub(super) backdrop_reads: AccountedVec<SemanticBackdropRead>,
     pub(super) imports: AccountedVec<SemanticImportPlan>,
@@ -845,6 +855,7 @@ impl SemanticGraphBuilder {
             | SemanticPassIntent::Offset(_)
             | SemanticPassIntent::Gaussian(_)
             | SemanticPassIntent::Morphology(_)
+            | SemanticPassIntent::Displacement(_)
             | SemanticPassIntent::NativeShadowMerge
             | SemanticPassIntent::Composite => {
                 self.validate_transform_pass_shape(intent, reads, result)?;
@@ -954,6 +965,14 @@ impl SemanticGraphBuilder {
                 }
         } else if let SemanticPassIntent::Morphology(stage) = intent {
             reads.len() == stage.read_count()
+        } else if let SemanticPassIntent::Displacement(stage) = intent {
+            match stage {
+                DisplacementStage::Transparent => reads.is_empty(),
+                DisplacementStage::RealizeSource | DisplacementStage::PassThrough => {
+                    reads.len() <= 1
+                }
+                DisplacementStage::Displace => reads.len() == 1,
+            }
         } else if intent == SemanticPassIntent::NativeShadowMerge {
             reads.len() <= 2
         } else if intent == SemanticPassIntent::Composite {
@@ -981,9 +1000,9 @@ impl SemanticGraphBuilder {
                     SemanticResourceRole::FilterIntermediate
                 }
             }
-            SemanticPassIntent::Gaussian(_) | SemanticPassIntent::NativeShadowMerge => {
-                SemanticResourceRole::FilterIntermediate
-            }
+            SemanticPassIntent::Gaussian(_)
+            | SemanticPassIntent::Displacement(_)
+            | SemanticPassIntent::NativeShadowMerge => SemanticResourceRole::FilterIntermediate,
             SemanticPassIntent::CopyBackdrop => SemanticResourceRole::BackdropCopy,
             SemanticPassIntent::DropShadowColorize => SemanticResourceRole::ShadowImage,
             SemanticPassIntent::Composite => SemanticResourceRole::CompositeResult,
@@ -1272,6 +1291,7 @@ impl SemanticGraphBuilder {
             offsets: self.account.retained(0)?,
             gaussians: self.account.retained(0)?,
             morphologies: self.account.retained(0)?,
+            displacements: self.account.retained(0)?,
             native_shadows: self.account.retained(0)?,
             backdrop_reads: self.account.retained(0)?,
             imports: self.account.retained(0)?,
@@ -1444,6 +1464,7 @@ struct GroupSourceCompletion {
     capture_space: CaptureBoundsCoordinateSpace,
     source_forced_empty: bool,
     source_is_coverage: bool,
+    displacement: Option<DisplacementRoute>,
 }
 
 type PreparedLayerSource = ControlFlow<Option<PlannedGraphResource>, CommandPlanningFrame>;
@@ -1461,6 +1482,7 @@ pub(super) struct SemanticFrameGraphPlanner<'a> {
     offsets: AccountedVec<SemanticOffsetPlan>,
     gaussians: AccountedVec<SemanticGaussianPlan>,
     morphologies: AccountedVec<SemanticMorphologyPlan>,
+    displacements: AccountedVec<SemanticDisplacementPlan>,
     native_shadows: AccountedVec<SemanticNativeShadowPlan>,
     backdrop_reads: AccountedVec<SemanticBackdropRead>,
     imports: AccountedVec<SemanticImportPlan>,
@@ -1515,6 +1537,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             offsets: account.retained(0)?,
             gaussians: account.retained(0)?,
             morphologies: account.retained(0)?,
+            displacements: account.retained(0)?,
             native_shadows: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
@@ -1581,6 +1604,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.offsets = planner.offsets;
         graph.gaussians = planner.gaussians;
         graph.morphologies = planner.morphologies;
+        graph.displacements = planner.displacements;
         graph.native_shadows = planner.native_shadows;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
@@ -1624,6 +1648,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             offsets: account.retained(0)?,
             gaussians: account.retained(0)?,
             morphologies: account.retained(0)?,
+            displacements: account.retained(0)?,
             native_shadows: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
@@ -1830,6 +1855,15 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     CaptureBoundsCoordinateSpace::ForcedMappedForTest => layer_to_surface,
                 };
                 let inverse = destination_to_layer_local_mapping(layer_to_destination)?;
+                if let Some(crate::command::NormalizedForegroundEffect::Displacement(foreground)) =
+                    &layer.foreground_filters
+                    && super::filter_grid::empty(super::filter_grid::result_domain(
+                        foreground.source,
+                    ))
+                {
+                    frame.state.parent_locality = CaptureParentLocality::External;
+                    continue;
+                }
                 // A singular own geometric clip has no operation coverage. A singular
                 // source without that clip remains a transparent source operation.
                 if inverse.is_none()
@@ -1839,6 +1873,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             Some(
                                 crate::command::NormalizedForegroundEffect::Gaussian(_)
                                     | crate::command::NormalizedForegroundEffect::Morphology(_)
+                                    | crate::command::NormalizedForegroundEffect::Displacement(_)
                                     | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                             )
                         ))
@@ -1921,6 +1956,19 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     .as_ref()
                     .is_some_and(RenderLayerMask::supplies_coverage);
                 // The compositor requires a source binding even when mask sampling supplies the source.
+                let displacement = match &layer.foreground_filters {
+                    Some(crate::command::NormalizedForegroundEffect::Displacement(foreground)) => {
+                        Some(DisplacementRoute::try_new(
+                            frame.state.context,
+                            foreground.clone(),
+                            layer_to_surface,
+                            !children.is_empty() || layer.backdrop.is_some(),
+                            source_forced_empty,
+                            self.account,
+                        )?)
+                    }
+                    _ => None,
+                };
                 let completion = GroupSourceCompletion {
                     layer,
                     layer_transform,
@@ -1929,6 +1977,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     capture_space,
                     source_forced_empty,
                     source_is_coverage,
+                    displacement,
                 };
                 let source = if source_forced_empty
                     && matches!(
@@ -1936,6 +1985,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         Some(
                             crate::command::NormalizedForegroundEffect::Gaussian(_)
                                 | crate::command::NormalizedForegroundEffect::Morphology(_)
+                                | crate::command::NormalizedForegroundEffect::Displacement(_)
                                 | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                         )
                     ) {
@@ -1947,6 +1997,18 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     )
                 } else {
                     let prepared = match completion.layer.foreground_filters.as_ref() {
+                        Some(crate::command::NormalizedForegroundEffect::Displacement(_)) => self
+                            .prepare_displacement_source(
+                            children,
+                            completion.displacement.as_ref().ok_or_else(|| {
+                                Error::new(
+                                    BackendErrorCode::RenderFailed,
+                                    "displacement capture lost its route",
+                                )
+                            })?,
+                            frame.state.context,
+                            layer_to_surface,
+                        )?,
                         Some(crate::command::NormalizedForegroundEffect::Convolution(
                             operation,
                         )) => {
@@ -2173,6 +2235,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             capture_space,
             source_forced_empty,
             source_is_coverage,
+            displacement,
         } = completion;
         let empty_filter_source =
             layer
@@ -2188,6 +2251,10 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     crate::command::NormalizedForegroundEffect::Morphology(foreground) => {
                         super::filter_grid::source_is_empty(foreground.source)
                     }
+                    crate::command::NormalizedForegroundEffect::Displacement(foreground) => {
+                        foreground.map.is_empty()
+                            || super::filter_grid::source_is_empty(foreground.source)
+                    }
                     crate::command::NormalizedForegroundEffect::Gaussian(foreground) => {
                         super::gaussian::source_is_empty(foreground.source)
                     }
@@ -2201,13 +2268,21 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             .as_ref()
             .filter(|_| !source_forced_empty && !empty_filter_source)
         {
-            source = self.plan_backdrop_group(
+            source = self.plan_backdrop_group_in(
+                if displacement.is_some() {
+                    state.context
+                } else {
+                    self.context
+                },
                 backdrop,
                 source,
                 parent,
                 layer_to_surface,
                 capture_space.source_space(),
             )?;
+        }
+        if let Some(route) = displacement {
+            source = Some(self.apply_displacement(source, route)?);
         }
         if let Some(crate::command::NormalizedForegroundEffect::Morphology(foreground)) =
             &layer.foreground_filters
@@ -2234,6 +2309,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 effect,
                 crate::command::NormalizedForegroundEffect::Gaussian(_)
                     | crate::command::NormalizedForegroundEffect::Morphology(_)
+                    | crate::command::NormalizedForegroundEffect::Displacement(_)
                     | crate::command::NormalizedForegroundEffect::NativeShadow(_)
             )
         {
@@ -2254,6 +2330,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 }
                 crate::command::NormalizedForegroundEffect::Gaussian(_)
                 | crate::command::NormalizedForegroundEffect::Morphology(_)
+                | crate::command::NormalizedForegroundEffect::Displacement(_)
                 | crate::command::NormalizedForegroundEffect::NativeShadow(_) => Some(group),
             };
         }
@@ -2351,6 +2428,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             Some(
                 crate::command::NormalizedForegroundEffect::Gaussian(_)
                     | crate::command::NormalizedForegroundEffect::Morphology(_)
+                    | crate::command::NormalizedForegroundEffect::Displacement(_)
                     | crate::command::NormalizedForegroundEffect::NativeShadow(_)
             )
         );
@@ -2382,6 +2460,14 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         )?;
         if source_bounds_operation {
             let footprint = if matches!(
+                layer.foreground_filters,
+                Some(crate::command::NormalizedForegroundEffect::Displacement(_))
+            ) {
+                self.displacements
+                    .last()
+                    .filter(|entry| Some(entry.pass) == source.producer)
+                    .map(|entry| entry.facts.mapping().output_footprint())
+            } else if matches!(
                 layer.foreground_filters,
                 Some(crate::command::NormalizedForegroundEffect::NativeShadow(_))
             ) {
@@ -2882,8 +2968,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         Ok(ControlFlow::Continue(frame))
     }
 
-    fn plan_backdrop_group(
+    fn plan_backdrop_group_in(
         &mut self,
+        context: FrameContext,
         backdrop: &crate::command::RenderBackdropCapture,
         foreground: Option<PlannedGraphResource>,
         parent: PlannedGraphParent,
@@ -2894,10 +2981,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             backdrop.capture_bounds().rect(),
             "backdrop capture bounds",
         )?;
-        let capture_spatial = match self
-            .context
-            .plan_local_bounds(capture_bounds, raster_transform)?
-        {
+        let capture_spatial = match context.plan_local_bounds(capture_bounds, raster_transform)? {
             FrameSpatialPlan::Empty(_) => return Ok(foreground),
             FrameSpatialPlan::NonEmpty(spatial) => spatial,
         };
@@ -2920,7 +3004,8 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             logical_bounds: capture_spatial.logical_bounds,
             spatial: capture_spatial,
         };
-        let filtered = self.apply_filter_operations(
+        let filtered = self.apply_filter_operations_in(
+            context,
             copied,
             backdrop.filters().ops(),
             FilterSourceRole::Backdrop,
@@ -2949,8 +3034,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             )?,
             None => backdrop_bounds,
         };
-        let group_spatial = match self
-            .context
+        let group_spatial = match context
             .plan_local_bounds(LogicalBounds::NonEmpty(group_bounds), raster_transform)?
         {
             FrameSpatialPlan::Empty(_) => return Ok(None),
@@ -2995,12 +3079,29 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
 
     fn apply_filter_operations(
         &mut self,
+        source: PlannedGraphResource,
+        operations: &[FilterOp],
+        source_role: FilterSourceRole,
+        raster_transform: Transform,
+    ) -> Result<PlannedGraphResource> {
+        self.apply_filter_operations_in(
+            self.context,
+            source,
+            operations,
+            source_role,
+            raster_transform,
+        )
+    }
+
+    fn apply_filter_operations_in(
+        &mut self,
+        context: FrameContext,
         mut source: PlannedGraphResource,
         operations: &[FilterOp],
         source_role: FilterSourceRole,
         raster_transform: Transform,
     ) -> Result<PlannedGraphResource> {
-        let plan = self.context.plan_filter_operations(
+        let plan = context.plan_filter_operations(
             LogicalBounds::NonEmpty(source.logical_bounds),
             raster_transform,
             operations,

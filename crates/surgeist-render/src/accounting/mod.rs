@@ -651,6 +651,22 @@ impl Account {
             .map(|cpu| cpu.import_image(image, Some(self)))
             .transpose()
     }
+    pub(crate) fn import_image_identity(
+        &self,
+        identity: &crate::image::ImageContentIdentity,
+    ) -> Result<Option<CpuImport>> {
+        self.cpu
+            .as_ref()
+            .map(|cpu| cpu.import_image_pixels(identity, Some(self)))
+            .transpose()
+    }
+
+    pub(crate) fn import_pixel_bytes(&self, bytes: &Arc<[u8]>) -> Result<Option<CpuImport>> {
+        self.cpu
+            .as_ref()
+            .map(|cpu| cpu.import_pixel_bytes(bytes, Some(self)))
+            .transpose()
+    }
     pub(crate) fn import_image_data(&self, image: &peniko::ImageData) -> Result<Option<CpuImport>> {
         self.cpu
             .as_ref()

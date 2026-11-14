@@ -469,11 +469,20 @@ impl CpuAccount {
         identity: &ImageContentIdentity,
         forward: Option<&Account>,
     ) -> Result<CpuImport> {
+        self.import_pixel_bytes(identity.source_bytes(), forward)
+    }
+    /// Admits the actual immutable pixel allocation before an identity scan.
+    /// Image identities and native-byte admission share this registry owner.
+    pub(crate) fn import_pixel_bytes(
+        &self,
+        bytes: &Arc<[u8]>,
+        forward: Option<&Account>,
+    ) -> Result<CpuImport> {
         let account = self.at(RenderCpuScope::ImagePayloads);
         account.phase(|| {
             let owner = account.owner()?;
             let mut registry = owner.lock();
-            let key = registry.pixels(&account, identity.source_bytes(), forward)?;
+            let key = registry.pixels(&account, bytes, forward)?;
             Ok(CpuImport {
                 owner: owner.clone(),
                 key,

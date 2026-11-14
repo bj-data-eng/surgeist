@@ -252,6 +252,11 @@ fn observe_resource_manager_state_for_test(
         .iter()
         .filter_map(|(resource, entry)| observe_effect_texture_for_test(*resource, entry))
         .collect();
+    let displacement_resources = state
+        .entries
+        .iter()
+        .filter_map(|(resource, entry)| observe_displacement_resource_for_test(*resource, entry))
+        .collect();
     let idle_count = state
         .entries
         .values()
@@ -323,6 +328,8 @@ fn observe_resource_manager_state_for_test(
             | ResourceCacheKey::VelloBuffer(_)
             | ResourceCacheKey::VelloImage(_)
             | ResourceCacheKey::EffectTexture(_)
+            | ResourceCacheKey::RawImageUpload(_)
+            | ResourceCacheKey::DisplacementBuffer(_)
             | ResourceCacheKey::GaussianKernelBuffer(_)
             | ResourceCacheKey::ConvolutionWeightsBuffer(_) => None,
         })
@@ -334,6 +341,7 @@ fn observe_resource_manager_state_for_test(
         .count();
     ResourceManagerObservationForTest {
         effect_textures,
+        displacement_resources,
         effects_gpu_bytes: effects.live(crate::RenderResource::GpuBytes),
         effects_registered_bytes: effects.live(crate::RenderResource::RegisteredCacheGpuBytes),
         effects_idle_bytes: effects.live(crate::RenderResource::IdleCacheGpuBytes),
@@ -381,6 +389,82 @@ pub(crate) struct EffectTextureObservationForTest {
     pub(crate) bytes: u64,
     pub(crate) resolved: bool,
     pub(crate) leased: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum DisplacementResourceDescriptorForTest {
+    RawMap {
+        extent: PhysicalSize,
+        format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
+    },
+    AddressTables {
+        size: u64,
+        usage: wgpu::BufferUsages,
+    },
+    MapRecords {
+        size: u64,
+        usage: wgpu::BufferUsages,
+    },
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DisplacementResourceObservationForTest {
+    pub(crate) resource: ResourceIdentity,
+    pub(crate) allocation_generation: u64,
+    pub(crate) native_identity: u64,
+    pub(crate) descriptor: DisplacementResourceDescriptorForTest,
+    pub(crate) class: crate::accounting::GenerationClass,
+    pub(crate) bytes: u64,
+    pub(crate) leased: bool,
+    pub(crate) resolved: bool,
+}
+fn observe_displacement_resource_for_test(
+    resource: ResourceIdentity,
+    entry: &super::manager::ResourceEntry,
+) -> Option<DisplacementResourceObservationForTest> {
+    use std::hash::{Hash, Hasher};
+    let mut native = std::collections::hash_map::DefaultHasher::new();
+    let descriptor = match (&entry.key, &entry.payload) {
+        (ResourceCacheKey::RawImageUpload(_), ResourcePayload::RawImageUpload { texture, .. }) => {
+            std::ops::Deref::deref(texture).hash(&mut native);
+            DisplacementResourceDescriptorForTest::RawMap {
+                extent: PhysicalSize::new(texture.width(), texture.height()),
+                format: texture.format(),
+                usage: texture.usage(),
+            }
+        }
+        (
+            ResourceCacheKey::DisplacementBuffer(key),
+            ResourcePayload::DisplacementBuffer { buffer },
+        ) => {
+            std::ops::Deref::deref(buffer).hash(&mut native);
+            match key.kind() {
+                super::DisplacementBufferKind::AddressTables => {
+                    DisplacementResourceDescriptorForTest::AddressTables {
+                        size: buffer.size(),
+                        usage: buffer.usage(),
+                    }
+                }
+                super::DisplacementBufferKind::MapRecords => {
+                    DisplacementResourceDescriptorForTest::MapRecords {
+                        size: buffer.size(),
+                        usage: buffer.usage(),
+                    }
+                }
+            }
+        }
+        _ => return None,
+    };
+    Some(DisplacementResourceObservationForTest {
+        resource,
+        allocation_generation: entry.allocation_generation.get_for_test(),
+        native_identity: native.finish(),
+        descriptor,
+        class: entry.key.generation_class(),
+        bytes: entry.byte_len,
+        leased: matches!(entry.state, ResourceEntryState::Leased { .. }),
+        resolved: entry.resolved,
+    })
 }
 
 fn observe_effect_texture_for_test(
@@ -570,6 +654,7 @@ impl ResourceLeaseTokenForTest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ResourceManagerObservationForTest {
     pub(crate) effect_textures: Vec<EffectTextureObservationForTest>,
+    pub(crate) displacement_resources: Vec<DisplacementResourceObservationForTest>,
     pub(crate) effects_gpu_bytes: u64,
     pub(crate) effects_registered_bytes: u64,
     pub(crate) effects_idle_bytes: u64,

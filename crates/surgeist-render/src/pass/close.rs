@@ -1,4 +1,5 @@
 mod convolution;
+mod displacement;
 mod gaussian;
 mod morphology;
 mod native_shadow;
@@ -486,6 +487,11 @@ pub(super) enum ExecutableFilterStepFacts {
         source: Option<RuntimeResourceId>,
         result: RuntimeResourceId,
     },
+    Displacement {
+        passes: SharedValue<Vec<RuntimePassId>>,
+        source: Option<RuntimeResourceId>,
+        result: RuntimeResourceId,
+    },
     Convolution {
         passes: SharedValue<Vec<RuntimePassId>>,
         source: RuntimeResourceId,
@@ -514,6 +520,7 @@ impl ExecutableFilterStepFacts {
             Self::Convolution { passes, .. }
             | Self::Gaussian { passes, .. }
             | Self::Morphology { passes, .. }
+            | Self::Displacement { passes, .. }
             | Self::NativeShadow { passes, .. } => passes.first().copied(),
         }
     }
@@ -527,6 +534,7 @@ impl ExecutableFilterStepFacts {
             Self::Convolution { passes, .. }
             | Self::Gaussian { passes, .. }
             | Self::Morphology { passes, .. }
+            | Self::Displacement { passes, .. }
             | Self::NativeShadow { passes, .. } => passes.last().copied(),
         }
     }
@@ -547,6 +555,7 @@ pub(super) struct ClosedExecutableGraphFacts {
     has_convolution: bool,
     has_gaussian: bool,
     has_morphology: bool,
+    has_displacement: bool,
     has_native_shadow: bool,
     has_offset: bool,
     pub(super) backdrops: SharedValue<Vec<ExecutableBackdropFacts>>,
@@ -594,6 +603,7 @@ impl ClosedExecutableGraph {
             || self.facts.has_convolution
             || self.facts.has_gaussian
             || self.facts.has_morphology
+            || self.facts.has_displacement
             || self.facts.has_native_shadow
             || self.facts.has_offset
     }
@@ -653,6 +663,7 @@ impl ClosedExecutableGraphFacts {
                 };
                 (self.has_gaussian
                     || self.has_morphology
+                    || self.has_displacement
                     || self.has_native_shadow
                     || !filter_footprint_present)
                     && same_source_composite(composite, &layer.composite)
@@ -723,6 +734,12 @@ impl ClosedExecutableGraphFacts {
                     &proof,
                 )
                 && offset::steps_are_exact(plan, &self.filter_steps, self.has_offset, &proof)
+                && displacement::steps_are_exact(
+                    plan,
+                    &self.filter_steps,
+                    self.has_displacement,
+                    &proof,
+                )
                 && native_shadow::steps_are_exact(
                     plan,
                     &self.filter_steps,
@@ -1084,6 +1101,18 @@ fn filter_steps_match(
                     source: b_source,
                     result: b_result,
                 },
+            )
+            | (
+                ExecutableFilterStepFacts::Displacement {
+                    passes: a,
+                    source: a_source,
+                    result: a_result,
+                },
+                ExecutableFilterStepFacts::Displacement {
+                    passes: b,
+                    source: b_source,
+                    result: b_result,
+                },
             ) => {
                 if a_source != b_source || a_result != b_result || a.len() != b.len() {
                     false
@@ -1247,6 +1276,27 @@ fn filter_step_order_is_exact(
                     let end = cursor.checked_add(passes.len())?;
                     if !proof_relationships_equal(
                         plan.passes.get(cursor..end)?.iter().map(|p| p.id),
+                        passes.iter().copied(),
+                        proof,
+                        |a, b| a == b,
+                    ) {
+                        return None;
+                    }
+                    step_index += 1;
+                    cursor = end;
+                }
+                RuntimePassKind::Displacement(_) => {
+                    let ExecutableFilterStepFacts::Displacement { passes, .. } =
+                        expected.get(step_index)?
+                    else {
+                        return None;
+                    };
+                    if passes.is_empty() {
+                        return None;
+                    }
+                    let end = cursor.checked_add(passes.len())?;
+                    if !proof_relationships_equal(
+                        plan.passes.get(cursor..end)?.iter().map(|pass| pass.id),
                         passes.iter().copied(),
                         proof,
                         |a, b| a == b,
@@ -2050,6 +2100,12 @@ impl ProofBounds {
                         bounds.contexts += 1;
                     }
                 }
+                RuntimePassKind::Displacement(work) if work.work.route_index() == 0 => {
+                    bounds.steps += 1;
+                    if work.work.mapping().source_spatial().is_none() {
+                        bounds.contexts += 1;
+                    }
+                }
                 RuntimePassKind::Convolution(work)
                     if matches!(
                         work.stage(),
@@ -2099,6 +2155,7 @@ struct ClosedGraphTraversal<'plan, 'proof> {
     has_convolution: bool,
     has_gaussian: bool,
     has_morphology: bool,
+    has_displacement: bool,
     has_native_shadow: bool,
     has_offset: bool,
     backdrops: ProofVec<ExecutableBackdropFacts>,
@@ -2169,6 +2226,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             has_convolution: false,
             has_gaussian: false,
             has_morphology: false,
+            has_displacement: false,
             has_native_shadow: false,
             has_offset: false,
             backdrops: ProofVec::new(
@@ -2224,6 +2282,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             has_convolution: self.has_convolution,
             has_gaussian: self.has_gaussian,
             has_morphology: self.has_morphology,
+            has_displacement: self.has_displacement,
             has_native_shadow: self.has_native_shadow,
             has_offset: self.has_offset,
             backdrops: self.backdrops.into_shared(self.proof.account)?,
@@ -2256,6 +2315,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
             RuntimePassKind::Gaussian(_) => self.visit_gaussian(),
             RuntimePassKind::Morphology(_) => self.visit_morphology(),
+            RuntimePassKind::Displacement(_) => self.visit_displacement(),
             RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::NativeShadowMerge(_) => self.visit_native_shadow(),
             RuntimePassKind::CopyBackdrop => self.visit_backdrop(pass),
@@ -2551,6 +2611,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
             RuntimePassKind::Gaussian(_) => self.visit_gaussian(),
             RuntimePassKind::Morphology(_) => self.visit_morphology(),
+            RuntimePassKind::Displacement(_) => self.visit_displacement(),
             RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::NativeShadowMerge(_) => self.visit_native_shadow(),
             RuntimePassKind::ColorFilter(Some(filter)) => self.visit_color_filter(pass, filter),
@@ -2697,6 +2758,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                     | RuntimePassKind::Convolution(_)
                     | RuntimePassKind::Gaussian(_)
                     | RuntimePassKind::Morphology(_)
+                    | RuntimePassKind::Displacement(_)
                     | RuntimePassKind::Offset(_)
                     | RuntimePassKind::NativeShadowMerge(_)
             ) {
@@ -5681,6 +5743,7 @@ fn dispatch_pass_semantics(
         RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
         | RuntimePassKind::Morphology(_)
+        | RuntimePassKind::Displacement(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_) => Some(DispatchPassSemantics::ClosedExecutable),
         RuntimePassKind::CopyBackdrop

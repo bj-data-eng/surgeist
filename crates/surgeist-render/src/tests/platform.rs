@@ -3,6 +3,61 @@ use crate::{
     PrimitiveOperation, Renderer, Scene, Size, SurfaceOptions, UnsupportedPrimitive,
 };
 
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+#[test]
+fn render_window_public_displacement_executes_through_renderer_and_presented_surface() {
+    use super::displacement::{active, finite_scene, native_map, source_scene};
+    use crate::{DisplacementChannel as Channel, FilterDomains, Layer};
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = PhysicalSize::new(4, 1);
+    let mut surface = display_free_presented_surface_for_test(
+        &mut renderer,
+        SurfaceOptions {
+            size: Size::new(4.0, 1.0),
+            format: Format::Rgba8,
+            ..SurfaceOptions::default()
+        },
+    );
+    pollster::block_on(renderer.configure_presented_surface_for_test(&mut surface)).unwrap();
+    let full = Rect::new(0.0, 0.0, 4.0, 1.0);
+    let output = Rect::new(1.0, 0.0, 2.0, 1.0);
+    let scene = finite_scene(
+        source_scene(
+            super::convolution::image(
+                4,
+                1,
+                vec![
+                    255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
+                ],
+            ),
+            full,
+        ),
+        FilterDomains::try_new(full, full, output).unwrap(),
+        active(2.0, Channel::A, Channel::R),
+        native_map(1, 1, vec![128, 0, 0, 255], full),
+        Layer::new(),
+    );
+    let observation = presented_observation_handle_for_test(&surface);
+    let stats =
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    assert_eq!(stats, renderer.stats());
+    let texture = take_last_presented_texture_for_test(&mut surface).unwrap();
+    let pixels = pollster::block_on(renderer.read_render_texture_for_test(&texture, size)).unwrap();
+    for (x, expected) in [
+        (0, [0; 4]),
+        (1, [0, 0, 255, 255]),
+        (2, [255, 255, 0, 255]),
+        (3, [0; 4]),
+    ] {
+        super::convolution::assert_pixel(&pixels, x, 0, expected, 1);
+    }
+    let observed = observation.snapshot_for_test();
+    assert_eq!(observed.acquire_count_for_test(), 1);
+    assert_eq!(observed.present_count_for_test(), 1);
+    assert_eq!(observed.discarded_count_for_test(), 0);
+}
+
 #[cfg(not(all(feature = "render-web", target_arch = "wasm32")))]
 use crate::WebCanvas;
 

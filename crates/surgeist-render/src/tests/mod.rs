@@ -8,6 +8,16 @@ mod convolution_empty_domain;
 mod convolution_spatial;
 #[cfg(not(target_arch = "wasm32"))]
 mod convolution_transactions;
+#[cfg(not(target_arch = "wasm32"))]
+mod displacement;
+#[cfg(not(target_arch = "wasm32"))]
+mod displacement_accounting;
+#[cfg(not(target_arch = "wasm32"))]
+mod displacement_composition;
+#[cfg(not(target_arch = "wasm32"))]
+mod displacement_custody;
+#[cfg(not(target_arch = "wasm32"))]
+mod displacement_transactions;
 mod frame;
 #[cfg(not(target_arch = "wasm32"))]
 mod gaussian;
