@@ -31,7 +31,7 @@ PRIMITIVES = {"undefined", "boolean", "byte", "octet", "short", "unsigned short"
 ATTRIBUTES = {"Exposed", "Serializable", "SameObject", "NewObject", "CEReactions", "Unscopable",
               "PutForwards", "LegacyNullToEmptyString", "LegacyUnenumerableNamedProperties",
               "LegacyUnforgeable", "LegacyOverrideBuiltIns", "LegacyLenientThis",
-              "HTMLConstructor", "Reflect", "ReflectSetter", "ReflectRange"}
+              "HTMLConstructor", "Reflect", "ReflectSetter", "ReflectRange", "ReflectDefault"}
 TOKEN = re.compile(r'\s+|//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|'
                    r'0[xX][0-9A-Fa-f]+|[A-Za-z_][A-Za-z_0-9]*|[0-9]+|\.\.\.|[^\w\s]', re.ASCII)
 
@@ -122,6 +122,8 @@ def attributes_shape(items):
             require(len(item["value"]) == 2, "reflection range needs two integers")
             for number in item["value"]:
                 integer(number, "reflection range bound")
+        elif item["name"] == "ReflectDefault":
+            integer(item.get("value"), "reflection default", -(2**31), 2**31 - 1)
         else:
             require("value" not in item, "valueless extended attribute cannot have a value field")
 
@@ -347,7 +349,7 @@ def attributes(items):
         require(name in ATTRIBUTES and name not in seen, f"unknown/duplicate extended attribute: {name}")
         seen.add(name)
         value = item.get("value")
-        if name in {"Exposed", "PutForwards", "ReflectRange"}:
+        if name in {"Exposed", "PutForwards", "ReflectRange", "ReflectDefault"}:
             require(value is not None, f"{name} requires a value")
         elif name != "Reflect":
             require(value is None, f"{name} takes no value")
@@ -364,6 +366,8 @@ def attributes(items):
         suffix = ""
         if isinstance(value, list):
             suffix = "=(" + ", ".join(map(str, value)) + ")"
+        elif name == "ReflectDefault":
+            suffix = "=" + str(value)
         elif value is not None:
             suffix = "=" + value
         values.append(name + suffix)
@@ -461,6 +465,13 @@ def render_member(member, names):
     required, optional = fields[kind]
     keys(member, {"id", "kind", "attributes"} | required, optional)
     annotations = {x["name"] for x in member["attributes"]}
+    if "ReflectDefault" in annotations:
+        # Validate the selected signed-long reflection default contract.
+        value_type = member.get("type", {})
+        require(kind == "attribute" and "Reflect" in annotations
+                and value_type.get("kind") == "named" and value_type.get("name") == "long"
+                and not value_type.get("attributes"),
+                "ReflectDefault requires a reflected long attribute")
     if "SameObject" in annotations or "PutForwards" in annotations:
         require(kind == "attribute" and member.get("readonly"), "SameObject/PutForwards requires a readonly attribute")
     require("NewObject" not in annotations or kind == "operation", "NewObject requires an operation")

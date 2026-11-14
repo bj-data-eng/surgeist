@@ -26,7 +26,9 @@ pub(super) enum Reflection {
     Direction,
     Popover,
     HeadingOffset,
-    SignedLong,
+    // Unit policies keep frequently captured reflection metadata compact.
+    SignedLongZero,
+    SignedLongOne,
 }
 
 #[derive(Clone, Copy)]
@@ -45,6 +47,9 @@ pub(super) enum Receiver {
     Directory,
     Font,
     Li,
+    OList,
+    UList,
+    Menu,
     Meta,
     Param,
     Pre,
@@ -77,6 +82,9 @@ impl Receiver {
             Self::Directory => super::list_compact::is_directory(node),
             Self::Font => super::font::is_font(node),
             Self::Li => html_element_is(node, "HTMLLIElement"),
+            Self::OList => html_element_is(node, "HTMLOListElement"),
+            Self::UList => html_element_is(node, "HTMLUListElement"),
+            Self::Menu => html_element_is(node, "HTMLMenuElement"),
             Self::Meta => html_element_is(node, "HTMLMetaElement"),
             Self::Param => super::param::is_param(node),
             Self::Pre => return super::pre::is_pre(node, step),
@@ -100,6 +108,9 @@ impl Receiver {
             Self::Directory => const { &ascii(b"HTMLDirectoryElement required") },
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Li => const { &ascii(b"HTMLLIElement required") },
+            Self::OList => const { &ascii(b"HTMLOListElement required") },
+            Self::UList => const { &ascii(b"HTMLUListElement required") },
+            Self::Menu => const { &ascii(b"HTMLMenuElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
             Self::Param => const { &ascii(b"HTMLParamElement required") },
             Self::Pre => const { &ascii(b"HTMLPreElement required") },
@@ -216,24 +227,16 @@ impl Capture {
                     Reflection::HeadingOffset => {
                         Reflected::Unsigned(heading_offset_reflection_with(units, |_| read.step())?)
                     }
-                    Reflection::SignedLong => {
-                        let value = if let Some(stored) = stored {
-                            let raw = stored.value();
-                            let work = integer_long_work_bound(raw.len())
-                                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-                            for _ in 0..work {
-                                read.step()?;
-                            }
-                            match parse_integer_long(raw) {
-                                Ok(Some(value)) => value,
-                                Ok(None) | Err(HtmlNumericParseError::InvalidSyntax) => 0,
-                                Err(_) => return Err(Error::BackendUnavailable.into()),
-                            }
-                        } else {
-                            0
-                        };
-                        Reflected::Signed(value)
-                    }
+                    Reflection::SignedLongZero => Reflected::Signed(signed_long_value(
+                        stored.map(|value| value.value()),
+                        0,
+                        || read.step(),
+                    )?),
+                    Reflection::SignedLongOne => Reflected::Signed(signed_long_value(
+                        stored.map(|value| value.value()),
+                        1,
+                        || read.step(),
+                    )?),
                 }))
             })?;
             let Some(value) = value else {
@@ -322,7 +325,10 @@ impl Capture {
                     &events,
                     NumericAttribute::HeadingOffset(value),
                 )?)
-            } else if matches!(reflection, Reflection::SignedLong) {
+            } else if matches!(
+                reflection,
+                Reflection::SignedLongZero | Reflection::SignedLongOne
+            ) {
                 let converted = self
                     .callbacks
                     .conversion
@@ -395,6 +401,26 @@ enum Reflected {
 enum NumericAttribute {
     HeadingOffset(u32),
     SignedLong(i32),
+}
+
+fn signed_long_value(
+    raw: Option<&DocumentString>,
+    fallback: i32,
+    mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+) -> Result<i32, DocumentGuestEventError> {
+    let Some(raw) = raw else {
+        return Ok(fallback);
+    };
+    let work = integer_long_work_bound(raw.len())
+        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+    for _ in 0..work {
+        step()?;
+    }
+    match parse_integer_long(raw) {
+        Ok(Some(value)) => Ok(value),
+        Ok(None) | Err(HtmlNumericParseError::InvalidSyntax) => Ok(fallback),
+        Err(_) => Err(Error::BackendUnavailable.into()),
+    }
 }
 
 fn copy_numeric_attribute(
