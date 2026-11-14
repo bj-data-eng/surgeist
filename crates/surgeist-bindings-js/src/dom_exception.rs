@@ -310,3 +310,22 @@ fn create<'scope>(
         .create_dom_exception(prototype, &name.root, &message.root, code)?;
     Ok(scope.value(root))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::conversion::Resource;
+    use surgeist_ledger::SharedOperation;
+
+    #[test]
+    fn constructor_storage_includes_behavior_and_shared_ledger_with_two_reserved_scopes() {
+        let ledger = SharedOperation::<Work, Resource>::reserved_backing_bytes(2).unwrap();
+        let expected = size_of::<ConstructorState<[u8; 3]>>()
+            + size_of::<ConversionAccount>()
+            + size_of::<Weak<ConversionAccount>>()
+            + ConversionAccount::retained_body_bytes()
+            + size_of::<crate::ConstructorBehavior>()
+            + ledger;
+        assert_eq!(constructor_storage_bytes::<[u8; 3]>(), expected);
+    }
+}

@@ -174,3 +174,19 @@ pub fn install_window_css<Storage: 'static>(
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::conversion::Resource;
+    use surgeist_ledger::SharedOperation;
+
+    #[test]
+    fn callback_storage_includes_its_shared_ledger_and_two_reserved_scopes() {
+        let ledger = SharedOperation::<Work, Resource>::reserved_backing_bytes(2).unwrap();
+        let expected = size_of::<Escape<[u8; 3]>>()
+            + ConversionAccount::retained_body_bytes()
+            + ledger;
+        assert_eq!(callback_storage_bytes::<[u8; 3]>(), expected);
+    }
+}
