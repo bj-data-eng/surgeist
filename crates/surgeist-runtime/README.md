@@ -354,6 +354,9 @@ setting an empty attribute for true and removing it for false through that
 adapter. HTMLElement.dir supplies their inherited direction-string reflection.
 HTMLParamElement reflects name, value, type and valueType as raw DOMStrings
 through that adapter. The valueType member reflects the valuetype attribute.
+HTMLDataElement.value and HTMLTimeElement.dateTime reflect raw value and datetime
+attribute strings. An absent attribute returns an empty string, including when
+the Time element's child text contains a date.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous
