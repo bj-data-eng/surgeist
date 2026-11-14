@@ -1,3 +1,4 @@
+mod filter_source;
 mod gaussian;
 mod native_shadow;
 use super::convolution::{
@@ -1927,13 +1928,17 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             self.prepare_offset_source(children, operation, layer_to_surface)?
                         }
                         Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) => {
-                            self.prepare_gaussian_source(children, *foreground, layer_to_surface)?
+                            self.prepare_filter_source(
+                                children,
+                                foreground.source,
+                                layer_to_surface,
+                            )?
                         }
                         Some(crate::command::NormalizedForegroundEffect::NativeShadow(
                             foreground,
-                        )) => self.prepare_native_shadow_source(
+                        )) => self.prepare_filter_source(
                             children,
-                            *foreground,
+                            foreground.source,
                             layer_to_surface,
                         )?,
                         _ => self.prepare_layer_source(
@@ -2203,7 +2208,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     None,
                     crate::native_shadow::DropShadowForeground {
                         operation: foreground.operation,
-                        source: crate::gaussian::GaussianSourceDescriptor::Constant {
+                        source: crate::filter_source::FilterSourceDescriptor::Constant {
                             color: crate::Color::TRANSPARENT,
                             filter: foreground.source.filter(),
                             result: foreground.source.result(),
@@ -2227,7 +2232,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         &[],
                         crate::gaussian::GaussianForeground {
                             operation: foreground.operation,
-                            source: crate::gaussian::GaussianSourceDescriptor::Constant {
+                            source: crate::filter_source::FilterSourceDescriptor::Constant {
                                 color: crate::Color::TRANSPARENT,
                                 filter: foreground.source.filter(),
                                 result: foreground.source.result(),

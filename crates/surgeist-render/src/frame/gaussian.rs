@@ -10,7 +10,7 @@ use crate::{
     Rect, Transform,
     accounting::{Account, RenderWork, SharedValue},
     error::{Error, Result},
-    gaussian::GaussianSourceDescriptor,
+    filter_source::FilterSourceDescriptor,
     resource::{GaussianKernelGeometry, GaussianKernelSamplingForm},
 };
 
@@ -65,7 +65,7 @@ pub(crate) struct GaussianPassFacts(SharedValue<GaussianPassData>);
 #[derive(Debug, PartialEq)]
 struct GaussianPassData {
     operation: crate::PreparedGaussian,
-    source: crate::gaussian::GaussianSourceDescriptor,
+    source: crate::filter_source::FilterSourceDescriptor,
     mapping: GaussianMapping,
     stage: GaussianStage,
     purpose: GaussianPurpose,
@@ -130,7 +130,7 @@ impl GaussianPassFacts {
     pub(crate) fn operation(&self) -> &crate::PreparedGaussian {
         &self.0.operation
     }
-    pub(crate) fn source(&self) -> crate::gaussian::GaussianSourceDescriptor {
+    pub(crate) fn source(&self) -> crate::filter_source::FilterSourceDescriptor {
         self.0.source
     }
     pub(crate) fn mapping(&self) -> GaussianMapping {
@@ -364,7 +364,7 @@ impl GaussianMapping {
     pub(crate) fn proves_exact(
         self,
         operation: &crate::PreparedGaussian,
-        source: GaussianSourceDescriptor,
+        source: FilterSourceDescriptor,
         stage: GaussianStage,
         account: &Account,
     ) -> Result<bool> {
@@ -384,7 +384,7 @@ impl GaussianMapping {
         }
         if stage == GaussianStage::Constant {
             let color = match source {
-                GaussianSourceDescriptor::Constant { color, .. } => color,
+                FilterSourceDescriptor::Constant { color, .. } => color,
                 _ => crate::Color::TRANSPARENT,
             };
             let expected = Self::new(None, self.result, [None; 2])
@@ -396,14 +396,14 @@ impl GaussianMapping {
             return Ok(false);
         };
         let expected_period = match source {
-            GaussianSourceDescriptor::Periodic { period, .. } => Some(PeriodCapture::try_new(
+            FilterSourceDescriptor::Periodic { period, .. } => Some(PeriodCapture::try_new(
                 context,
                 period,
                 Transform::identity(),
                 account,
             )?),
-            GaussianSourceDescriptor::Finite { .. } => None,
-            GaussianSourceDescriptor::Constant { .. } => return Ok(false),
+            FilterSourceDescriptor::Finite { .. } => None,
+            FilterSourceDescriptor::Constant { .. } => return Ok(false),
         };
         // The context's antialiasing is irrelevant to the grid. Preserve its
         // actual captured value in the equality witness rather than fabricate it.
@@ -696,18 +696,18 @@ pub(super) fn kernel_geometries(
     }
     Ok(geometries)
 }
-pub(super) fn result_domain(source: GaussianSourceDescriptor) -> Rect {
+pub(super) fn result_domain(source: FilterSourceDescriptor) -> Rect {
     intersection(source.filter(), source.result())
 }
-pub(super) fn finite_domain(source: GaussianSourceDescriptor) -> Option<Rect> {
+pub(super) fn finite_domain(source: FilterSourceDescriptor) -> Option<Rect> {
     match source {
-        GaussianSourceDescriptor::Finite { domains, .. } => {
+        FilterSourceDescriptor::Finite { domains, .. } => {
             Some(intersection(domains.source(), domains.filter()))
         }
         _ => None,
     }
 }
-pub(super) fn source_is_empty(source: GaussianSourceDescriptor) -> bool {
+pub(super) fn source_is_empty(source: FilterSourceDescriptor) -> bool {
     finite_domain(source).is_some_and(empty)
 }
 pub(super) fn empty(rect: Rect) -> bool {
@@ -994,7 +994,7 @@ mod tests {
         let account = Account::for_test();
         let domain = Rect::new(0.0, 0.0, 1.0, 1.0);
         let result = require_spatial(context(1.0), domain, Transform::identity()).unwrap();
-        let source = GaussianSourceDescriptor::Constant {
+        let source = FilterSourceDescriptor::Constant {
             color: Color::BLACK,
             filter: domain,
             result: domain,
@@ -1158,7 +1158,7 @@ mod pass_storage_tests {
         (
             crate::gaussian::GaussianForeground {
                 operation,
-                source: crate::gaussian::GaussianSourceDescriptor::Constant {
+                source: crate::filter_source::FilterSourceDescriptor::Constant {
                     color: Color::BLACK,
                     filter: domain,
                     result: domain,

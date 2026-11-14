@@ -9,7 +9,7 @@ use crate::{
     Color, PreparedDropShadow, Transform,
     accounting::{Account, SharedValue},
     error::Result,
-    gaussian::GaussianSourceDescriptor,
+    filter_source::FilterSourceDescriptor,
     native_shadow::DropShadowForeground,
 };
 
@@ -56,7 +56,7 @@ impl NativeShadowMapping {
     }
     pub(super) fn try_new(
         context: FrameContext,
-        source: GaussianSourceDescriptor,
+        source: FilterSourceDescriptor,
         original: Option<NonEmptyFrameSpatialPlan>,
         target: NonEmptyFrameSpatialPlan,
         transform: Transform,
@@ -76,7 +76,7 @@ impl NativeShadowMapping {
     }
     fn try_new_inner(
         context: FrameContext,
-        source: GaussianSourceDescriptor,
+        source: FilterSourceDescriptor,
         original: Option<NonEmptyFrameSpatialPlan>,
         target: NonEmptyFrameSpatialPlan,
         transform: Transform,
@@ -97,7 +97,7 @@ impl NativeShadowMapping {
         }
         let base = GaussianMapping::new(original, target, [None; 2]);
         let (kind, mapping) = match (source, original) {
-            (GaussianSourceDescriptor::Finite { .. }, Some(raw)) => {
+            (FilterSourceDescriptor::Finite { .. }, Some(raw)) => {
                 let domain = grid::finite_domain(source).ok_or_else(|| numeric(0.0))?;
                 (
                     NativeShadowOriginal::Finite,
@@ -105,7 +105,7 @@ impl NativeShadowMapping {
                         .with_source_clip(domain, raw, account)?,
                 )
             }
-            (GaussianSourceDescriptor::Periodic { period, .. }, Some(raw)) => {
+            (FilterSourceDescriptor::Periodic { period, .. }, Some(raw)) => {
                 let period = PeriodCapture::try_new(context, period, transform, account)?;
                 if raw != period.spatial {
                     return Err(numeric(0.0));
@@ -115,7 +115,7 @@ impl NativeShadowMapping {
                     base.with_periodic_resolve(period, target, account)?,
                 )
             }
-            (GaussianSourceDescriptor::Constant { color, .. }, None) => {
+            (FilterSourceDescriptor::Constant { color, .. }, None) => {
                 (NativeShadowOriginal::Constant, base.with_color(color))
             }
             (_, None) => (
@@ -142,7 +142,7 @@ impl NativeShadowMapping {
     pub(crate) fn proves_exact(
         self,
         operation: &PreparedDropShadow,
-        source: GaussianSourceDescriptor,
+        source: FilterSourceDescriptor,
         account: &Account,
     ) -> Result<bool> {
         self.proves_exact_inner(operation, source, account)
@@ -151,7 +151,7 @@ impl NativeShadowMapping {
     fn proves_exact_inner(
         self,
         operation: &PreparedDropShadow,
-        source: GaussianSourceDescriptor,
+        source: FilterSourceDescriptor,
         account: &Account,
     ) -> Result<bool> {
         let context = FrameContext {
@@ -173,7 +173,7 @@ impl NativeShadowMapping {
                 Transform::identity(),
             )?),
             NativeShadowOriginal::Periodic => match source {
-                GaussianSourceDescriptor::Periodic { period, .. } => Some(
+                FilterSourceDescriptor::Periodic { period, .. } => Some(
                     PeriodCapture::try_new(context, period, Transform::identity(), account)?
                         .spatial,
                 ),
@@ -182,7 +182,7 @@ impl NativeShadowMapping {
             NativeShadowOriginal::Constant => None,
         };
         let nonempty = original.is_some()
-            || matches!(source, GaussianSourceDescriptor::Constant { color, .. } if color.a() > 0.0);
+            || matches!(source, FilterSourceDescriptor::Constant { color, .. } if color.a() > 0.0);
         let mut shifted = false;
         if nonempty && operation.flood_color().a() > 0.0 && operation.flood_opacity() > 0.0 {
             let filter = source.filter();
@@ -239,7 +239,7 @@ impl NativeShadowPassFacts {
     pub(crate) fn operation(&self) -> &PreparedDropShadow {
         &self.0.foreground.operation
     }
-    pub(crate) fn source(&self) -> GaussianSourceDescriptor {
+    pub(crate) fn source(&self) -> FilterSourceDescriptor {
         self.0.foreground.source
     }
     pub(crate) fn mapping(&self) -> NativeShadowMapping {

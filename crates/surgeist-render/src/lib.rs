@@ -44,6 +44,7 @@ mod error;
 mod filter;
 mod filter_domains;
 mod filter_model;
+mod filter_source;
 mod frame;
 mod gaussian;
 mod geometry;

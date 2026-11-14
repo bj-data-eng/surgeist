@@ -632,7 +632,7 @@ impl SemanticSourceContribution {
             .and_then(super::bounded_filter_source)
         {
             match source {
-                crate::gaussian::GaussianSourceDescriptor::Periodic { period, .. }
+                crate::filter_source::FilterSourceDescriptor::Periodic { period, .. }
                     if !super::gaussian::empty(super::gaussian::result_domain(source))
                         && !children.is_empty()
                         && layer.opacity > 0.0
@@ -655,7 +655,7 @@ impl SemanticSourceContribution {
                         "Gaussian period domain",
                     )?)
                 }
-                crate::gaussian::GaussianSourceDescriptor::Finite { .. } => {
+                crate::filter_source::FilterSourceDescriptor::Finite { .. } => {
                     SemanticContributionDomain::RootOutputBounded(LogicalBounds::try_from_rect(
                         super::gaussian::finite_domain(source)
                             .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0)),

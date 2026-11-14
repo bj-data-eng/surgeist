@@ -345,7 +345,7 @@ fn require_graph_text_bounds(
 
 fn bounded_filter_source(
     effect: &crate::command::NormalizedForegroundEffect,
-) -> Option<crate::gaussian::GaussianSourceDescriptor> {
+) -> Option<crate::filter_source::FilterSourceDescriptor> {
     match effect {
         crate::command::NormalizedForegroundEffect::Gaussian(value) => Some(value.source),
         crate::command::NormalizedForegroundEffect::NativeShadow(value) => Some(value.source),

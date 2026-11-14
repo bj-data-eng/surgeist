@@ -2,6 +2,7 @@
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };
+use crate::filter_source::FilterSourceDescriptor;
 use crate::{Color, FilterColorSpace, FilterDomains, FilterEdgeMode, Rect, Result, Scene};
 
 /// Gaussian parameter whose resolved value is invalid.
@@ -171,7 +172,7 @@ pub(crate) fn prepare_gaussian_in(
 #[derive(Clone, Debug, PartialEq)]
 pub struct GaussianSource {
     scene: Scene,
-    descriptor: GaussianSourceDescriptor,
+    descriptor: FilterSourceDescriptor,
 }
 impl GaussianSource {
     /// Owns a finite scene with transparent extension outside its input domain.
@@ -184,7 +185,7 @@ impl GaussianSource {
     pub fn finite_with_edge(scene: Scene, domains: FilterDomains, edge: FilterEdgeMode) -> Self {
         Self {
             scene,
-            descriptor: GaussianSourceDescriptor::Finite { domains, edge },
+            descriptor: FilterSourceDescriptor::Finite { domains, edge },
         }
     }
     /// Declares a constant unbounded image with independent finite output clips.
@@ -192,7 +193,7 @@ impl GaussianSource {
         FilterDomains::try_new(Rect::default(), filter, result)?;
         Ok(Self {
             scene: Scene::new(),
-            descriptor: GaussianSourceDescriptor::Constant {
+            descriptor: FilterSourceDescriptor::Constant {
                 color,
                 filter,
                 result,
@@ -210,17 +211,17 @@ impl GaussianSource {
         }
         Ok(Self {
             scene,
-            descriptor: GaussianSourceDescriptor::Periodic {
+            descriptor: FilterSourceDescriptor::Periodic {
                 period,
                 filter,
                 result,
             },
         })
     }
-    pub(crate) fn into_parts(self) -> (Scene, GaussianSourceDescriptor) {
+    pub(crate) fn into_parts(self) -> (Scene, FilterSourceDescriptor) {
         (self.scene, self.descriptor)
     }
-    pub(crate) const fn descriptor(&self) -> GaussianSourceDescriptor {
+    pub(crate) const fn descriptor(&self) -> FilterSourceDescriptor {
         self.descriptor
     }
 }
@@ -228,60 +229,7 @@ impl GaussianSource {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct GaussianForeground {
     pub(crate) operation: PreparedGaussian,
-    pub(crate) source: GaussianSourceDescriptor,
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum GaussianSourceDescriptor {
-    Finite {
-        domains: FilterDomains,
-        edge: FilterEdgeMode,
-    },
-    Constant {
-        color: Color,
-        filter: Rect,
-        result: Rect,
-    },
-    Periodic {
-        period: Rect,
-        filter: Rect,
-        result: Rect,
-    },
-}
-impl GaussianSourceDescriptor {
-    pub(crate) const fn filter(self) -> Rect {
-        match self {
-            Self::Finite { domains, .. } => domains.filter(),
-            Self::Constant { filter, .. } | Self::Periodic { filter, .. } => filter,
-        }
-    }
-    pub(crate) const fn result(self) -> Rect {
-        match self {
-            Self::Finite { domains, .. } => domains.result(),
-            Self::Constant { result, .. } | Self::Periodic { result, .. } => result,
-        }
-    }
-    /// Preserves the admitted source and resolves the internal result into F.
-    pub(crate) const fn for_filter_output(self) -> Self {
-        match self {
-            Self::Finite { domains, edge } => Self::Finite {
-                domains: domains.for_filter_output(),
-                edge,
-            },
-            Self::Constant { color, filter, .. } => Self::Constant {
-                color,
-                filter,
-                result: filter,
-            },
-            Self::Periodic { period, filter, .. } => Self::Periodic {
-                period,
-                filter,
-                result: filter,
-            },
-        }
-    }
-    pub(crate) const fn is_infinite(self) -> bool {
-        !matches!(self, Self::Finite { .. })
-    }
+    pub(crate) source: FilterSourceDescriptor,
 }
 
 #[cfg(test)]
@@ -489,7 +437,7 @@ mod tests {
         let finite = GaussianSource::finite(ink(), domains());
         assert_eq!(
             finite.descriptor(),
-            GaussianSourceDescriptor::Finite {
+            FilterSourceDescriptor::Finite {
                 domains: domains(),
                 edge: FilterEdgeMode::None
             }
@@ -503,7 +451,7 @@ mod tests {
             let source = GaussianSource::finite_with_edge(ink(), domains(), edge);
             assert_eq!(
                 source.descriptor(),
-                GaussianSourceDescriptor::Finite {
+                FilterSourceDescriptor::Finite {
                     domains: domains(),
                     edge
                 }
@@ -515,7 +463,7 @@ mod tests {
         assert!(constant.scene.is_empty());
         assert_eq!(
             constant.descriptor(),
-            GaussianSourceDescriptor::Constant {
+            FilterSourceDescriptor::Constant {
                 color: Color::BLACK,
                 filter,
                 result
@@ -526,7 +474,7 @@ mod tests {
         assert_eq!(periodic.scene, ink());
         assert_eq!(
             periodic.descriptor(),
-            GaussianSourceDescriptor::Periodic {
+            FilterSourceDescriptor::Periodic {
                 period,
                 filter,
                 result
