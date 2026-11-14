@@ -1,9 +1,9 @@
 //! Independent fixtures through the public admitted-convolution receiver and real GPU readback.
 //! Readback pixels are straight RGBA8; comments distinguish premultiplied equations.
 use crate::{
-    Color, ConvolutionDomains, ConvolutionEdgeMode, ConvolutionInput, FilterAmount,
-    FilterColorSpace, FilterList, FilterOp, Image, ImageBuffer, ImageFit, ImageQuality, Layer,
-    Options, Parameters, PreparedConvolution, Rect, RenderAccountingContext, RenderRoute, Renderer,
+    Color, ConvolutionEdgeMode, ConvolutionInput, FilterAmount, FilterColorSpace, FilterDomains,
+    FilterList, FilterOp, Image, ImageBuffer, ImageFit, ImageQuality, Layer, Options, Parameters,
+    PreparedConvolution, Rect, RenderAccountingContext, RenderRoute, Renderer,
     ResolvedLayerAlphaMask, Scene, Size, Surface, prepare_convolution,
 };
 
@@ -18,7 +18,7 @@ pub(super) fn operation(
 ) -> PreparedConvolution {
     prepare_convolution(
         input,
-        ConvolutionDomains::try_new(domain, domain, domain).unwrap(),
+        FilterDomains::try_new(domain, domain, domain).unwrap(),
         color_space,
         &mut RenderAccountingContext::default(),
     )
@@ -491,7 +491,7 @@ fn public_convolution_gpu_negative_multiple_periods_and_empty_domains_are_define
                 .with_divisor(1.0)
                 .with_preserve_alpha(true)
                 .with_edge_mode(edge),
-            ConvolutionDomains::try_new(singleton, domain, singleton).unwrap(),
+            FilterDomains::try_new(singleton, domain, singleton).unwrap(),
             FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
         )
@@ -513,7 +513,7 @@ fn public_convolution_gpu_negative_multiple_periods_and_empty_domains_are_define
                 .with_order(1.0, None)
                 .with_bias(0.5)
                 .with_edge_mode(edge),
-            ConvolutionDomains::try_new(Rect::new(0.0, 0.0, 0.0, 1.0), domain, domain).unwrap(),
+            FilterDomains::try_new(Rect::new(0.0, 0.0, 0.0, 1.0), domain, domain).unwrap(),
             FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
         )

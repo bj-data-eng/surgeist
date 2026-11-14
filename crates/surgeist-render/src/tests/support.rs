@@ -290,12 +290,8 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
     let convolution_bounds = Rect::new(8.0, 0.0, 2.0, 2.0);
     let convolution = crate::prepare_convolution(
         crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
-        crate::ConvolutionDomains::try_new(
-            convolution_bounds,
-            convolution_bounds,
-            convolution_bounds,
-        )
-        .unwrap(),
+        crate::FilterDomains::try_new(convolution_bounds, convolution_bounds, convolution_bounds)
+            .unwrap(),
         crate::FilterColorSpace::Srgb,
         &mut crate::RenderAccountingContext::default(),
     )

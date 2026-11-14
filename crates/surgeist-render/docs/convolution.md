@@ -16,13 +16,13 @@ a generic filter graph.
 
 ```rust
 use surgeist_render::{
-    Color, ConvolutionDomains, ConvolutionInput, FilterColorSpace, Layer, Rect,
+    Color, FilterDomains, ConvolutionInput, FilterColorSpace, Layer, Rect,
     RenderAccountingContext, Result, Scene, prepare_convolution,
 };
 
 fn sharpened_scene(accounting: &mut RenderAccountingContext) -> Result<Scene> {
     let domain = Rect::try_new(0.0, 0.0, 32.0, 32.0)?;
-    let domains = ConvolutionDomains::try_new(domain, domain, domain)?;
+    let domains = FilterDomains::try_new(domain, domain, domain)?;
     let kernel = [0.0, -1.0, 0.0, -1.0, 5.0, -1.0, 0.0, -1.0, 0.0];
     let operation = prepare_convolution(
         ConvolutionInput::new(&kernel).with_preserve_alpha(true),
@@ -86,10 +86,14 @@ refusal instead of falling back to another effect.
 
 ## Domains and the two resampling stages
 
-`ConvolutionDomains::try_new(source, filter, result)` keeps three rectangles:
+`FilterDomains::try_new(source, filter, result)` keeps three rectangles:
 source image domain **S**, hard filter region **F**, and primitive result **P**.
 Their origins, extents and maxima must be finite; extents may be zero and cannot
 be negative. Allocation padding and the final Surface viewport are separate.
+Convolution domain arguments use this shared filter value, with the same
+three-rectangle constructor and independent `source()`, `filter()` and `result()`
+accessors. Invalid domain rectangles produce filter-labelled `InvalidValue`
+diagnostics through `Error::invalid_value_diagnostic()`.
 
 The captured input image is clipped to **D = S ∩ F** before resampling. Pixels
 whose footprints partially intersect D retain fractional boundary coverage,

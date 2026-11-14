@@ -42,6 +42,7 @@ mod convolution;
 mod encode;
 mod error;
 mod filter;
+mod filter_domains;
 mod frame;
 mod geometry;
 mod gpu_transaction;
@@ -92,9 +93,8 @@ pub use capability::{
 };
 pub use color_mapping::prepare_sdr_srgb_color;
 pub use convolution::{
-    ConvolutionDomains, ConvolutionEdgeMode, ConvolutionInput, ConvolutionNumericPhase,
-    ConvolutionParameter, ConvolutionPreparationError, FilterColorSpace, PreparedConvolution,
-    prepare_convolution,
+    ConvolutionEdgeMode, ConvolutionInput, ConvolutionNumericPhase, ConvolutionParameter,
+    ConvolutionPreparationError, FilterColorSpace, PreparedConvolution, prepare_convolution,
 };
 pub use error::{
     DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,
@@ -103,6 +103,7 @@ pub use error::{
     SurfaceIdentityMismatchKind, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
 };
 pub use error::{GeometryRealizationError, GradientHintError, GradientRealizationError};
+pub use filter_domains::FilterDomains;
 pub use geometry::{
     CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag, PhysicalSize, Point, Radii, Rect,
     Size, Transform,

@@ -1,7 +1,7 @@
 //! Hand-derived image-domain and two-stage lattice witnesses.
 use super::convolution::*;
 use crate::{
-    Color, ConvolutionDomains, ConvolutionEdgeMode, ConvolutionInput, FilterColorSpace, Layer,
+    Color, ConvolutionEdgeMode, ConvolutionInput, FilterColorSpace, FilterDomains, Layer,
     Parameters, Rect, RenderAccountingContext, Scene, Transform, prepare_convolution,
 };
 
@@ -128,7 +128,7 @@ fn source_filter_and_result_domains_clip_different_image_cells() {
     ] {
         let op = prepare_convolution(
             request,
-            ConvolutionDomains::try_new(full, filter, middle).unwrap(),
+            FilterDomains::try_new(full, filter, middle).unwrap(),
             FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
         )
@@ -148,7 +148,7 @@ fn source_filter_and_result_domains_clip_different_image_cells() {
         ConvolutionInput::new(&[f64::NAN])
             .with_bias(f64::NAN)
             .with_unit_length(f64::MIN_POSITIVE, None),
-        ConvolutionDomains::try_new(full, full, middle).unwrap(),
+        FilterDomains::try_new(full, full, middle).unwrap(),
         FilterColorSpace::LinearSrgb,
         &mut RenderAccountingContext::default(),
     )
@@ -164,7 +164,7 @@ fn fractional_source_cells_receive_coverage_once_before_sampling() {
     let full = bounds(2, 1);
     let op = prepare_convolution(
         ConvolutionInput::new(&[1.0]).with_order(1.0, None),
-        ConvolutionDomains::try_new(Rect::new(0.0, 0.0, 1.5, 1.0), full, full).unwrap(),
+        FilterDomains::try_new(Rect::new(0.0, 0.0, 1.5, 1.0), full, full).unwrap(),
         FilterColorSpace::Srgb,
         &mut RenderAccountingContext::default(),
     )
@@ -310,7 +310,7 @@ fn empty_result_region_publishes_transparent_frame() {
         ConvolutionInput::new(&[1.0])
             .with_order(1.0, None)
             .with_bias(0.5),
-        ConvolutionDomains::try_new(full, full, Rect::new(0.0, 0.0, 0.0, 1.0)).unwrap(),
+        FilterDomains::try_new(full, full, Rect::new(0.0, 0.0, 0.0, 1.0)).unwrap(),
         FilterColorSpace::Srgb,
         &mut RenderAccountingContext::default(),
     )
@@ -366,7 +366,7 @@ fn same_layer_backdrop_outside_source_does_not_shift_explicit_kernel_origin() {
         ConvolutionInput::new(&[f64::NAN])
             .with_bias(f64::NAN)
             .with_unit_length(f64::MIN_POSITIVE, None),
-        ConvolutionDomains::try_new(finite, finite, finite).unwrap(),
+        FilterDomains::try_new(finite, finite, finite).unwrap(),
         FilterColorSpace::LinearSrgb,
         &mut RenderAccountingContext::default(),
     )

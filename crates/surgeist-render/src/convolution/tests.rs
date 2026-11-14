@@ -1,9 +1,9 @@
 use super::*;
-use crate::{Layer, RenderAccountingOptions, RenderLimits, RenderProfile, RenderQuantity};
+use crate::{Layer, Rect, RenderAccountingOptions, RenderLimits, RenderProfile, RenderQuantity};
 
-fn domains() -> ConvolutionDomains {
+fn domains() -> FilterDomains {
     let rect = Rect::try_new(0.0, 0.0, 4.0, 3.0).unwrap();
-    ConvolutionDomains::try_new(rect, rect, rect).unwrap()
+    FilterDomains::try_new(rect, rect, rect).unwrap()
 }
 fn prepare(input: ConvolutionInput<'_>) -> Result<PreparedConvolution> {
     prepare_convolution(
@@ -306,8 +306,8 @@ fn backing_exact_cap_one_under_and_count_recovery_have_truthful_work() {
 #[test]
 fn domain_failures_use_filter_invalid_value_diagnostics() {
     let valid = Rect::default();
-    let error = ConvolutionDomains::try_new(Rect::new(f64::INFINITY, 0.0, 1.0, 1.0), valid, valid)
-        .unwrap_err();
+    let error =
+        FilterDomains::try_new(Rect::new(f64::INFINITY, 0.0, 1.0, 1.0), valid, valid).unwrap_err();
     assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
     let diagnostic = error
         .invalid_value_diagnostic()
@@ -321,7 +321,7 @@ fn independent_domains_remain_resolved_and_empty_regions_are_valid() {
     let source = Rect::try_new(-2.0, 1.0, 7.0, 4.0).unwrap();
     let filter = Rect::try_new(-1.5, 1.25, 4.0, 2.0).unwrap();
     let result = Rect::try_new(0.5, 1.5, 0.0, 1.0).unwrap();
-    let domains = ConvolutionDomains::try_new(source, filter, result).unwrap();
+    let domains = FilterDomains::try_new(source, filter, result).unwrap();
     assert_eq!(domains.source(), source);
     assert_eq!(domains.filter(), filter);
     assert_eq!(domains.result(), result);

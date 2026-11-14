@@ -1,7 +1,7 @@
 use super::convolution::*;
 use crate::{
-    Color, ConvolutionDomains, ConvolutionEdgeMode, ConvolutionInput, FilterColorSpace, Layer,
-    Rect, RenderAccountingContext, Scene, prepare_convolution,
+    Color, ConvolutionEdgeMode, ConvolutionInput, FilterColorSpace, FilterDomains, Layer, Rect,
+    RenderAccountingContext, Scene, prepare_convolution,
 };
 
 #[test]
@@ -25,7 +25,7 @@ fn zero_axis_source_does_not_qualify_the_unused_large_axis() {
                         .with_order(1.0, None)
                         .with_bias(0.5)
                         .with_edge_mode(edge),
-                    ConvolutionDomains::try_new(source, filter, result).unwrap(),
+                    FilterDomains::try_new(source, filter, result).unwrap(),
                     FilterColorSpace::Srgb,
                     &mut RenderAccountingContext::default(),
                 )
@@ -54,7 +54,7 @@ fn empty_source_excludes_backdrop_before_bias_generates_the_result() {
         ConvolutionInput::new(&[1.0])
             .with_order(1.0, None)
             .with_bias(0.5),
-        ConvolutionDomains::try_new(
+        FilterDomains::try_new(
             Rect::new(0.0, 0.0, 0.0, 1.0e12),
             Rect::new(0.0, 0.0, 1.0e12, 1.0e12),
             result,

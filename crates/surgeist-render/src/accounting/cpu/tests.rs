@@ -1182,7 +1182,7 @@ fn native_import_registry_growth_charges_existing_entries_once_to_actual_cpu_own
 #[test]
 fn convolution_import_deduplicates_shared_backing_and_releases_last_lease() {
     let rect = crate::Rect::try_new(0.0, 0.0, 2.0, 2.0).unwrap();
-    let domains = crate::ConvolutionDomains::try_new(rect, rect, rect).unwrap();
+    let domains = crate::FilterDomains::try_new(rect, rect, rect).unwrap();
     let mut context = super::super::RenderAccountingContext::default();
     let first = crate::prepare_convolution(
         crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
