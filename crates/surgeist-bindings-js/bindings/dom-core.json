@@ -409,6 +409,78 @@
       ]
     },
     {
+      "id": "HTMLDivElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmldivelement",
+      "block": 0,
+      "sha256": "81663bcf03c7fa73e4b985e49ecdd2f7263a71d9debd1aac26128e658a334d9c",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldivelement",
+      "entries": [
+        "HTMLDivElement"
+      ]
+    },
+    {
+      "id": "HTMLDivElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLDivElement&#45;partial",
+      "block": 0,
+      "sha256": "8f8f1507a4da9903bb9a632ebbc9b331478a014fc83fcb304d2769bce3cc5fea",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-div-align",
+      "entries": [
+        "HTMLDivElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLParagraphElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlparagraphelement",
+      "block": 0,
+      "sha256": "2fb54c567366e66de2359e492eafea1155ca7d2604153f2ad5ed272327730930",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlparagraphelement",
+      "entries": [
+        "HTMLParagraphElement"
+      ]
+    },
+    {
+      "id": "HTMLParagraphElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLParagraphElement&#45;partial",
+      "block": 0,
+      "sha256": "04a6428216f73249ef08e280e2ddaa063415a6b0688bb986c542e3d60b89e22e",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-p-align",
+      "entries": [
+        "HTMLParagraphElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLHeadingElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlheadingelement",
+      "block": 0,
+      "sha256": "0287e895f137b8a2ffdcb15d0aa6c8a2be452d2d2ef96f2dd7f42c44fda40ab2",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlheadingelement",
+      "entries": [
+        "HTMLHeadingElement"
+      ]
+    },
+    {
+      "id": "HTMLHeadingElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLHeadingElement&#45;partial",
+      "block": 0,
+      "sha256": "ace09761ecf0e79d7bfb6b7c46d5c9f8884357edf75807ea709c912f53480df8",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-hx-align",
+      "entries": [
+        "HTMLHeadingElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLFontElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlfontelement",
@@ -4212,6 +4284,159 @@
           "name": "width",
           "readonly": false,
           "id": "HTMLHRElement.obsolete.width"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLDivElement",
+      "kind": "interface",
+      "name": "HTMLDivElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLDivElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLDivElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLDivElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLDivElement.obsolete.align"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLParagraphElement",
+      "kind": "interface",
+      "name": "HTMLParagraphElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLParagraphElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLParagraphElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLParagraphElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLParagraphElement.obsolete.align"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLHeadingElement",
+      "kind": "interface",
+      "name": "HTMLHeadingElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLHeadingElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLHeadingElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLHeadingElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLHeadingElement.obsolete.align"
         }
       ],
       "partial": true
@@ -8337,6 +8562,114 @@
     "HTMLHRElement.obsolete.width/set": {
       "kind": "native",
       "adapter": "htmlhrelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDivElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmldivelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDivElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmldivelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDivElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmldivelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLParagraphElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlparagraphelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLParagraphElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmlparagraphelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLParagraphElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmlparagraphelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHeadingElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlheadingelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHeadingElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmlheadingelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHeadingElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmlheadingelement.align.set",
       "producers": [
         {
           "owner": "surgeist-dom",

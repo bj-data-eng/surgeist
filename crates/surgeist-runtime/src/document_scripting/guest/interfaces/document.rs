@@ -29,6 +29,7 @@ mod processing_instruction;
 mod reflection;
 mod shadow;
 mod slot;
+mod structural_alignment;
 mod style_policy;
 mod template;
 mod text;

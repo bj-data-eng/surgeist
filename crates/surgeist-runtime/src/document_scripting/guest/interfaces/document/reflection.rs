@@ -32,6 +32,9 @@ pub(super) enum Receiver {
     Template,
     Br,
     Hr,
+    Div,
+    Paragraph,
+    Heading,
     Font,
     Meta,
     Slot,
@@ -48,10 +51,13 @@ impl Receiver {
                     .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
             }),
             Self::Template => node.as_template().is_some(),
-            Self::Br => html_element_is(node, KnownHtmlElement::Br),
-            Self::Hr => html_element_is(node, KnownHtmlElement::Hr),
+            Self::Br => html_element_is(node, "HTMLBRElement"),
+            Self::Hr => html_element_is(node, "HTMLHRElement"),
+            Self::Div => html_element_is(node, "HTMLDivElement"),
+            Self::Paragraph => html_element_is(node, "HTMLParagraphElement"),
+            Self::Heading => html_element_is(node, "HTMLHeadingElement"),
             Self::Font => super::font::is_font(node),
-            Self::Meta => html_element_is(node, KnownHtmlElement::Meta),
+            Self::Meta => html_element_is(node, "HTMLMetaElement"),
             Self::Slot => super::slot::is_slot(node),
         }
     }
@@ -63,6 +69,9 @@ impl Receiver {
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Br => const { &ascii(b"HTMLBRElement required") },
             Self::Hr => const { &ascii(b"HTMLHRElement required") },
+            Self::Div => const { &ascii(b"HTMLDivElement required") },
+            Self::Paragraph => const { &ascii(b"HTMLParagraphElement required") },
+            Self::Heading => const { &ascii(b"HTMLHeadingElement required") },
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
@@ -70,10 +79,11 @@ impl Receiver {
     }
 }
 
-fn html_element_is(node: DomNode<'_>, expected: KnownHtmlElement) -> bool {
+fn html_element_is(node: DomNode<'_>, interface: &str) -> bool {
     node.as_element().is_some_and(|element| {
         !element.has_failed_construction_interface()
-            && KnownHtmlElement::from_name(element.name()) == Some(expected)
+            && KnownHtmlElement::from_name(element.name())
+                .is_some_and(|known| known.inventory_row().interface() == interface)
     })
 }
 
