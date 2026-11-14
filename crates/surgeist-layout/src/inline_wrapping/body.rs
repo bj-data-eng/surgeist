@@ -118,32 +118,77 @@ pub(crate) fn choose_body<T, E>(
     reference: BodyScore,
     mut run: impl FnMut(BodyGoal) -> Result<Option<BodyTrial<T>>, E>,
 ) -> Result<Option<BodyWinner<T>>, E> {
-    let mut winner: Option<BodyWinner<T>> = None;
-    let mut previous = None;
-    for value in (0..=16)
-        .map(|step| {
-            let fraction = f64::from(step) / 16.0;
-            (1.0 - fraction) * reference.minimum + fraction * reference.maximum
-        })
-        .chain(std::iter::once(reference.mean_fullness))
-    {
-        let goal = BodyGoal(value);
-        if previous == Some(goal) {
-            continue;
+    let mut selection = BodySelection::new(reference);
+    while let Some(goal) = selection.next_goal() {
+        selection.accept(run(goal)?);
+    }
+    Ok(selection.finish())
+}
+
+/// One fixed post-Tail guard and finite Body portfolio, independent of its owner.
+pub(crate) struct BodySelection<T> {
+    reference: BodyScore,
+    step: u8,
+    previous: Option<BodyGoal>,
+    pending: Option<BodyGoal>,
+    winner: Option<BodyWinner<T>>,
+}
+
+impl<T> BodySelection<T> {
+    pub(crate) fn new(reference: BodyScore) -> Self {
+        Self {
+            reference,
+            step: 0,
+            previous: None,
+            pending: None,
+            winner: None,
         }
-        previous = Some(goal);
-        let Some(trial) = run(goal)? else { continue };
-        // All guards use the same post-Tail phase reference. The incumbent is
-        // used only to rank the Q of an already-admitted alternative.
-        if trial.score.admission(reference) == BodyAdmission::Improved
-            && winner
+    }
+    pub(crate) fn next_goal(&mut self) -> Option<BodyGoal> {
+        assert!(
+            self.pending.is_none(),
+            "the previous Body goal owns a trial receipt"
+        );
+        while self.step <= 17 {
+            let value = if self.step == 17 {
+                self.reference.mean_fullness
+            } else {
+                let fraction = f64::from(self.step) / 16.0;
+                (1.0 - fraction) * self.reference.minimum + fraction * self.reference.maximum
+            };
+            self.step += 1;
+            let goal = BodyGoal(value);
+            if self.previous == Some(goal) {
+                continue;
+            }
+            self.previous = Some(goal);
+            self.pending = Some(goal);
+            return Some(goal);
+        }
+        None
+    }
+    pub(crate) fn accept(&mut self, trial: Option<BodyTrial<T>>) {
+        let goal = self
+            .pending
+            .take()
+            .expect("a Body trial answers the pending goal");
+        let Some(trial) = trial else { return };
+        if trial.score.admission(self.reference) == BodyAdmission::Improved
+            && self
+                .winner
                 .as_ref()
                 .is_none_or(|prior| trial.score.mean() < prior.trial.score.mean())
         {
-            winner = Some(BodyWinner { goal, trial });
+            self.winner = Some(BodyWinner { goal, trial });
         }
     }
-    Ok(winner)
+    pub(crate) fn finish(self) -> Option<BodyWinner<T>> {
+        assert!(
+            self.pending.is_none() && self.step > 17,
+            "all Body goals were answered"
+        );
+        self.winner
+    }
 }
 
 #[cfg(test)]

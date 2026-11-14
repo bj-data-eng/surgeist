@@ -3343,25 +3343,13 @@ fn numeric_line_boundaries<S: LayoutScalar>(
     .collect()
 }
 
-pub(super) fn numeric_fit_supports_continuation<S: LayoutScalar>(
-    style: crate::TextWrapStyle,
-    available: AxisSizingRequestOf<S>,
-) -> bool {
-    matches!(
-        style,
-        crate::TextWrapStyle::Auto
-            | crate::TextWrapStyle::Stable
-            | crate::TextWrapStyle::Balance
-            | crate::TextWrapStyle::AvoidShortLastLine
-    ) || crate::layout_math::normal_available_size(available).is_none()
-}
-
 enum NumericRunOwner<S: LayoutScalar> {
     Ordinary(NumericWalk),
     // Quality owners retain reference groups and finite portfolios. Keep that
     // state off the common request frame; ordinary runs need no allocation.
     Balance(Box<balance::NumericBalance<S>>),
     Tail(Box<tail::NumericTail<S>>),
+    Pretty(Box<pretty::NumericPretty<S>>),
 }
 
 pub(super) struct NumericRun<S: LayoutScalar> {
@@ -3395,11 +3383,15 @@ impl<S: LayoutScalar> NumericRun<S> {
             && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
         let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
             && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
-        let sequence = NumericSequence::new(&input, observe || balanced || repair_tail);
+        let pretty = input.text_wrap_style == crate::TextWrapStyle::Pretty
+            && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
+        let sequence = NumericSequence::new(&input, observe || balanced || repair_tail || pretty);
         let owner = if balanced {
             NumericRunOwner::Balance(Box::new(balance::NumericBalance::new(&sequence)))
         } else if repair_tail {
             NumericRunOwner::Tail(Box::new(tail::NumericTail::new(&sequence)))
+        } else if pretty {
+            NumericRunOwner::Pretty(Box::new(pretty::NumericPretty::new(&sequence)))
         } else {
             NumericRunOwner::Ordinary(NumericWalk::new(&sequence, NumericWalkControl::auto()))
         };
@@ -3431,6 +3423,9 @@ impl<S: LayoutScalar> NumericRun<S> {
             receiver_source: ReceiverSourceMode::Deferred,
         };
         let step = match &mut self.owner {
+            NumericRunOwner::Pretty(pretty) => {
+                pretty.advance(request, &mut self.sequence, &self.boundaries, band, clear)?
+            }
             NumericRunOwner::Tail(tail) => {
                 tail.advance(request, &mut self.sequence, &self.boundaries, band, clear)?
             }
@@ -3502,7 +3497,9 @@ where
 {
     if matches!(
         input.text_wrap_style,
-        crate::TextWrapStyle::Balance | crate::TextWrapStyle::AvoidShortLastLine
+        crate::TextWrapStyle::Balance
+            | crate::TextWrapStyle::AvoidShortLastLine
+            | crate::TextWrapStyle::Pretty
     ) && crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
     {
         let mut run = NumericRun::from_resolved(input, supplied, available, observe_formatted);
@@ -3512,9 +3509,7 @@ where
         return run.finish();
     }
     let mut line_boundaries = numeric_line_boundaries(&input).into_iter().peekable();
-    let pretty = input.text_wrap_style == crate::TextWrapStyle::Pretty
-        && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
-    let mut sequence = NumericSequence::new(&input, observe_formatted || pretty);
+    let mut sequence = NumericSequence::new(&input, observe_formatted);
     let receiver_source = std::cell::RefCell::new(receiver_source);
     let request = NumericWalkInput {
         input: &input,
@@ -3522,25 +3517,14 @@ where
         available,
         receiver_source: ReceiverSourceMode::Immediate(&receiver_source),
     };
-    if pretty {
-        let boundaries = line_boundaries.collect::<Vec<_>>();
-        pretty::layout_pretty_sequence(
-            request,
-            &boundaries,
-            &mut sequence,
-            &mut band_source,
-            &mut clear_source,
-        )?;
-    } else {
-        walk_numeric_sequence(
-            request,
-            &mut sequence,
-            &mut line_boundaries,
-            NumericWalkControl::auto(),
-            &mut band_source,
-            &mut clear_source,
-        )?;
-    }
+    walk_numeric_sequence(
+        request,
+        &mut sequence,
+        &mut line_boundaries,
+        NumericWalkControl::auto(),
+        &mut band_source,
+        &mut clear_source,
+    )?;
     finish_numeric_run(input, supplied, sequence)
 }
 

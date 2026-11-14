@@ -1,6 +1,6 @@
 //! Streaming native group references and replay for Pretty.
 use super::*;
-use crate::inline_wrapping::body::{BodyGoal, BodyScore, BodyTrial, choose_body};
+use crate::inline_wrapping::body::{BodyGoal, BodyScore, BodySelection, BodyTrial, BodyWinner};
 use crate::inline_wrapping::tail::TailGoal;
 
 #[derive(Clone, PartialEq)]
@@ -83,232 +83,58 @@ fn reference<S: LayoutScalar>(basis: &GroupBasis<S>) -> Option<GroupReference<S>
     })
 }
 
-fn ordinary_group<S, B, C, BandError>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
+fn finish_ordinary_group<S: LayoutScalar>(
+    sequence: &NumericSequence<S>,
     entry: NumericGroupEntry<S>,
-    band: &mut B,
-    clear: &mut C,
-) -> Result<Option<GroupBasis<S>>, NumericRunError<BandError>>
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    let mut remaining = boundaries[entry.state.boundary_index..]
-        .iter()
-        .copied()
-        .peekable();
-    let outcome = walk_numeric_sequence(
-        request,
-        sequence,
-        &mut remaining,
-        NumericWalkControl::group(None, None),
-        band,
-        clear,
-    )?;
+    outcome: NumericWalkOutcome,
+) -> Result<Option<GroupBasis<S>>, NumericWrappingError> {
     if sequence.selected_lines.len() == entry.selected_len {
         return if outcome == NumericWalkOutcome::Exhausted {
             Ok(None)
         } else {
-            Err(crate::inline_wrapping::NumericWrappingError::InvalidPrettyBasis.into())
+            Err(crate::inline_wrapping::NumericWrappingError::InvalidPrettyBasis)
         };
     }
     if outcome != NumericWalkOutcome::GroupComplete {
-        return Err(crate::inline_wrapping::NumericWrappingError::InvalidPrettyBasis.into());
+        return Err(crate::inline_wrapping::NumericWrappingError::InvalidPrettyBasis);
     }
     Ok(Some(basis(sequence, entry)))
 }
 
-fn body_trial<S, B, C, BandError>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
-    target: (NumericGroupEntry<S>, GroupReference<S>, BodyGoal),
-    band: &mut B,
-    clear: &mut C,
-) -> Result<Option<BodyTrial<GroupBasis<S>>>, NumericRunError<BandError>>
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    let (entry, reference, goal) = target;
-    sequence.restore(entry);
-    let mut remaining = boundaries[entry.state.boundary_index..]
-        .iter()
-        .copied()
-        .peekable();
+fn body_control<S: LayoutScalar>(
+    reference: GroupReference<S>,
+    goal: BodyGoal,
+) -> NumericWalkControl {
     let mut control =
         NumericWalkControl::group(Some(LineQualityGoal::Body(goal)), Some(reference.count));
-    // The actual terminal formatted line is ordinary; earlier nonformatted
-    // receipts do not consume a quality ordinal or become a score term.
+    // The actual terminal formatted line is ordinary, not a Body score term.
     control.goal_end = Some(reference.count.saturating_sub(1));
-    if walk_numeric_sequence(request, sequence, &mut remaining, control, band, clear)?
-        != NumericWalkOutcome::GroupComplete
-    {
-        return Ok(None);
+    control
+}
+
+fn finish_body_trial<S: LayoutScalar>(
+    sequence: &NumericSequence<S>,
+    entry: NumericGroupEntry<S>,
+    reference: GroupReference<S>,
+    outcome: NumericWalkOutcome,
+) -> Option<BodyTrial<GroupBasis<S>>> {
+    if outcome != NumericWalkOutcome::GroupComplete {
+        return None;
     }
     let candidate = basis(sequence, entry);
-    let Some(actual) = self::reference(&candidate) else {
-        return Ok(None);
-    };
+    let actual = self::reference(&candidate)?;
     if actual.terminal != reference.terminal || actual.count != reference.count {
-        return Ok(None);
+        return None;
     }
-    let Some(score) = score(&candidate) else {
-        return Ok(None);
-    };
-    Ok(Some(BodyTrial {
+    let score = score(&candidate)?;
+    Some(BodyTrial {
         score,
         value: candidate,
-    }))
+    })
 }
 
-pub(super) fn layout_pretty_sequence<S, B, C, BandError>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
-    band: &mut B,
-    clear: &mut C,
-) -> Result<(), NumericRunError<BandError>>
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    let invalid = crate::inline_wrapping::NumericWrappingError::InvalidPrettyBasis;
-    if request.input.text_wrap_style != crate::TextWrapStyle::Pretty {
-        return Err(invalid.into());
-    }
-    let initial = sequence.checkpoint();
-    let mut program = Vec::new();
-    loop {
-        // This is the PREVIOUS WINNER'S real outgoing frame. There is no
-        // original whole-Auto count or suffix whose geometry could be stale.
-        let entry = sequence.checkpoint();
-        let Some(ordinary) = ordinary_group(request, boundaries, sequence, entry, band, clear)?
-        else {
-            break;
-        };
-        let reference = self::reference(&ordinary).ok_or(invalid)?;
-        let tail_goal =
-            tail::repair_group_from_auto(request, boundaries, sequence, entry, band, clear)?;
-        let phase = basis(sequence, entry);
-        let guards = score(&phase);
-        let mut body_goal = None;
-        let selected = if let Some(guards) = guards {
-            // Every callback restores the SAME entry and uses these immutable
-            // post-Tail guards. Only Q ranks already-admissible incumbents.
-            let winner = choose_body(guards, |goal| {
-                let trial = body_trial(
-                    request,
-                    boundaries,
-                    sequence,
-                    (entry, reference, goal),
-                    band,
-                    clear,
-                )?;
-                #[cfg(test)]
-                if let Some(trial) = &trial {
-                    tests::observe_trial(entry, guards, trial);
-                }
-                Ok::<_, NumericRunError<BandError>>(trial)
-            })?;
-            if let Some(winner) = winner {
-                let replay = body_trial(
-                    request,
-                    boundaries,
-                    sequence,
-                    (entry, reference, winner.goal),
-                    band,
-                    clear,
-                )?
-                .ok_or(invalid)?;
-                if replay.value != winner.trial.value || replay.score != winner.trial.score {
-                    return Err(invalid.into());
-                }
-                body_goal = Some(winner.goal);
-                replay.value
-            } else {
-                install(sequence, entry, &phase);
-                phase.clone()
-            }
-        } else {
-            phase.clone()
-        };
-        let group = PrettyGroupProgram {
-            entry,
-            ordinary,
-            reference,
-            tail_goal,
-            phase,
-            guards,
-            body_goal,
-            selected,
-        };
-        #[cfg(test)]
-        tests::observe_group(&group);
-        program.push(group);
-    }
-
-    // One complete native program validation. Each group reestablishes its
-    // ordinary reference under the replayed selected prefix. Rejected work's
-    // provider/dependency side channels are never erased or caught here.
-    sequence.restore(initial);
-    for group in &program {
-        let entry = sequence.checkpoint();
-        if entry.state != group.entry.state
-            || entry.selected_len != group.entry.selected_len
-            || entry.formatted_len != group.entry.formatted_len
-        {
-            return Err(invalid.into());
-        }
-        let actual =
-            ordinary_group(request, boundaries, sequence, entry, band, clear)?.ok_or(invalid)?;
-        if actual != group.ordinary {
-            return Err(invalid.into());
-        }
-        if let Some(goal) = group.tail_goal
-            && !tail::replay_group_from_auto(
-                request,
-                boundaries,
-                sequence,
-                (entry, goal),
-                band,
-                clear,
-            )?
-        {
-            return Err(invalid.into());
-        }
-        let phase = basis(sequence, entry);
-        if phase != group.phase || score(&phase) != group.guards {
-            return Err(invalid.into());
-        }
-        if let Some(goal) = group.body_goal {
-            let replay = body_trial(
-                request,
-                boundaries,
-                sequence,
-                (entry, group.reference, goal),
-                band,
-                clear,
-            )?
-            .ok_or(invalid)?;
-            if replay.value != group.selected {
-                return Err(invalid.into());
-            }
-        } else if phase != group.selected {
-            return Err(invalid.into());
-        }
-    }
-    let end = sequence.checkpoint();
-    if ordinary_group(request, boundaries, sequence, end, band, clear)?.is_some() {
-        return Err(invalid.into());
-    }
-    Ok(())
-}
+mod continuation;
+pub(super) use continuation::NumericPretty;
 
 #[cfg(test)]
 mod tests;

@@ -40,7 +40,7 @@ impl<S: LayoutScalar> NumericTail<S> {
         }
     }
 
-    pub(super) fn from_auto(
+    pub(in crate::inline) fn from_auto(
         sequence: &mut NumericSequence<S>,
         entry: NumericGroupEntry<S>,
         replay: Option<TailGoal>,
@@ -213,23 +213,8 @@ impl<S: LayoutScalar> NumericTail<S> {
         }
     }
 
-    pub(super) fn drain<B, C, E>(
-        mut self,
-        request: NumericWalkInput<'_, S>,
-        sequence: &mut NumericSequence<S>,
-        boundaries: &[InlineSourceCursor],
-        band: B,
-        clear: C,
-    ) -> Result<Option<TailGoal>, NumericRunError<E>>
-    where
-        B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, E>,
-        C: FnMut(S, PostLineClearIntent) -> S,
-    {
-        match self.advance(request, sequence, boundaries, band, clear)? {
-            NumericWalkStep::Complete(_) => Ok(self.result),
-            NumericWalkStep::Receiver(_) => {
-                unreachable!("synchronous receiver callback resolves its demand")
-            }
-        }
+    /// Outer None means the Tail is active; a completed Tail may have no goal.
+    pub(in crate::inline) fn completed_goal(&self) -> Option<Option<TailGoal>> {
+        matches!(self.phase, Phase::Complete).then_some(self.result)
     }
 }

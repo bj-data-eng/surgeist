@@ -2,6 +2,9 @@ use super::*;
 use std::cell::RefCell;
 use std::convert::Infallible;
 
+#[path = "receiver_pretty_tests.rs"]
+mod pretty;
+
 #[derive(Debug, PartialEq)]
 enum Event<S> {
     Band(S, S),

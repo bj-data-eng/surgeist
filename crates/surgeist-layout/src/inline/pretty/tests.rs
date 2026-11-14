@@ -739,3 +739,80 @@ fn pretty_triangle_differs_from_real_balance_and_keeps_losing_trial_provider_err
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn actual_body_walk_receipts_reject_count_terminal_and_optional_domain_changes() {
+    fn walk(
+        query: &MixedInlineRunInputOf<f64>,
+        limit: Option<usize>,
+        mut width: impl FnMut(f64) -> f64,
+    ) -> (NumericSequence<f64>, NumericWalkOutcome) {
+        let supplied = project_inline_participants(&query.participants);
+        let mut sequence = NumericSequence::new(query, true);
+        let boundaries = numeric_line_boundaries(query);
+        let outcome = walk_numeric_sequence(
+            NumericWalkInput {
+                input: query,
+                supplied: &supplied,
+                available: 60.0,
+                receiver_source: ReceiverSourceMode::Deferred,
+            },
+            &mut sequence,
+            &mut boundaries.into_iter().peekable(),
+            NumericWalkControl::group(None, limit),
+            |start, _| {
+                Ok::<_, std::convert::Infallible>(LogicalLineBandQueryResultOf {
+                    inline_start: 0.0,
+                    inline_end: width(start),
+                    next_transition: None,
+                })
+            },
+            |block, _| block,
+        )
+        .unwrap();
+        (sequence, outcome)
+    }
+    let query = input::<f64>(
+        &[30.0, 30.0, 20.0, 50.0],
+        &[],
+        Direction::Ltr,
+        crate::TextWrapStyle::Pretty,
+    );
+    let entry = NumericSequence::new(&query, true).checkpoint();
+    let (ordinary, outcome) = walk(&query, None, |_| 60.0);
+    let ordinary = finish_ordinary_group(&ordinary, entry, outcome)
+        .unwrap()
+        .unwrap();
+    let reference = reference(&ordinary).unwrap();
+    assert_eq!(reference.count, 3);
+    let (count, outcome) = walk(&query, Some(3), |_| 30.0);
+    assert!(outcome == NumericWalkOutcome::CountExceeded);
+    assert_eq!(count.selected_lines.len(), 4);
+    assert!(finish_body_trial(&count, entry, reference, outcome).is_none());
+    // Same actual source count and geometry, independently authored Forced end.
+    let forced = input::<f64>(
+        &[30.0, 30.0, 20.0, 50.0],
+        &[3],
+        Direction::Ltr,
+        crate::TextWrapStyle::Pretty,
+    );
+    let (terminal, outcome) = walk(&forced, Some(3), |_| 60.0);
+    assert!(outcome == NumericWalkOutcome::GroupComplete);
+    assert_eq!(terminal.selected_lines.len(), 3);
+    assert_eq!(
+        terminal.selected_lines.last().unwrap().ending,
+        surgeist_text::LineEnd::Forced
+    );
+    assert!(finish_body_trial(&terminal, entry, reference, outcome).is_none());
+    // A real required-progress overflow remains valid ordinary layout, but
+    // has no optional natural Body score and cannot become a quality trial.
+    let (domain, outcome) = walk(
+        &query,
+        Some(3),
+        |start| if start >= 20.0 { 40.0 } else { 60.0 },
+    );
+    assert!(outcome == NumericWalkOutcome::GroupComplete);
+    assert_eq!(domain.selected_lines.len(), 3);
+    assert!(score(&basis(&domain, entry)).is_none());
+    assert!(finish_body_trial(&domain, entry, reference, outcome).is_none());
+}
