@@ -24,6 +24,12 @@ if RUSTC:
 
 
 class DescriptionTests(unittest.TestCase):
+    def test_reflected_integer_default_preserves_the_pinned_literal(self):
+        self.assertEqual(
+            g.attributes([{"name": "ReflectDefault", "value": 1}]),
+            "[ReflectDefault=1] ",
+        )
+
     def test_named_reflection_preserves_the_source_attribute(self):
         self.assertEqual(g.attributes([{"name": "Reflect", "value": "for"}]), '[Reflect="for"] ')
         with self.assertRaisesRegex(g.DescriptionError, "invalid reflected attribute name"):
