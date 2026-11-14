@@ -478,7 +478,7 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
             .get(composite.pass.index.as_usize()?)
             .ok_or(GraphValidationError::UnknownPass(composite.pass))?;
         let Some(source) = pass.reads.get(1) else {
-            if composite.gaussian_footprint.is_some() {
+            if composite.filter_footprint.is_some() {
                 return Err(GraphValidationError::InvalidPassArity);
             }
             continue;
@@ -514,7 +514,7 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
                     )
             })
             .map(|entry| entry.facts.mapping().output_footprint());
-        if composite.gaussian_footprint != expected
+        if composite.filter_footprint != expected
             || (expected.is_some()
                 && !matches!(composite.kind, SemanticCompositeKind::Layer { .. }))
         {

@@ -204,7 +204,7 @@ pub(super) fn prepared_pass_composite_parameters(
                 RuntimeReadRole::CompositeSource,
                 account,
             )?;
-            if let Some(footprint) = parameters.gaussian_footprint() {
+            if let Some(footprint) = parameters.filter_footprint() {
                 account.work(RenderWork::GraphNodeVisits, 1)?;
                 if RuntimeSpatialDescriptor::from_graph(footprint.source_spatial()) != source {
                     return Err(preparation_error(

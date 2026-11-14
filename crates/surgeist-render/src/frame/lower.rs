@@ -852,7 +852,7 @@ pub(crate) enum GraphLoweringCompositeKind {
 pub(crate) struct GraphLoweringComposite {
     kind: GraphLoweringCompositeKind,
     source_captured_before_outer_semantics: bool,
-    gaussian_footprint: Option<super::gaussian::GaussianOutputFootprint>,
+    filter_footprint: Option<super::FilterOutputFootprint>,
 }
 
 impl GraphLoweringComposite {
@@ -862,10 +862,8 @@ impl GraphLoweringComposite {
     }
 
     #[must_use]
-    pub(crate) const fn gaussian_footprint(
-        &self,
-    ) -> Option<super::gaussian::GaussianOutputFootprint> {
-        self.gaussian_footprint
+    pub(crate) const fn filter_footprint(&self) -> Option<super::FilterOutputFootprint> {
+        self.filter_footprint
     }
 
     pub(crate) const fn source_captured_before_outer_semantics(&self) -> bool {
@@ -1744,7 +1742,7 @@ fn graph_lowering_composite(
             SemanticCompositeKind::DropShadow => GraphLoweringCompositeKind::DropShadow,
         },
         source_captured_before_outer_semantics: composite.source_captured_before_outer_semantics,
-        gaussian_footprint: composite.gaussian_footprint,
+        filter_footprint: composite.filter_footprint,
     })
 }
 

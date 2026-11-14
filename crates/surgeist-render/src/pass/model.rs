@@ -454,7 +454,7 @@ pub(crate) struct RuntimeLayerCompositeParameters {
     pub(super) composition: LayerComposition,
     pub(super) has_clip: bool,
     pub(super) alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
-    gaussian_footprint: Option<crate::frame::GaussianOutputFootprint>,
+    filter_footprint: Option<crate::frame::FilterOutputFootprint>,
 }
 
 impl RuntimeLayerCompositeParameters {
@@ -465,7 +465,7 @@ impl RuntimeLayerCompositeParameters {
         composition: LayerComposition,
         has_clip: bool,
         alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
-        gaussian_footprint: Option<crate::frame::GaussianOutputFootprint>,
+        filter_footprint: Option<crate::frame::FilterOutputFootprint>,
     ) -> Result<Self> {
         if !opacity.is_finite() {
             return Err(Error::invalid_value(
@@ -483,7 +483,7 @@ impl RuntimeLayerCompositeParameters {
             composition,
             has_clip,
             alpha_mask,
-            gaussian_footprint,
+            filter_footprint,
         })
     }
 
@@ -517,8 +517,8 @@ impl RuntimeLayerCompositeParameters {
         self.alpha_mask
     }
 
-    pub(crate) const fn gaussian_footprint(self) -> Option<crate::frame::GaussianOutputFootprint> {
-        self.gaussian_footprint
+    pub(crate) const fn filter_footprint(self) -> Option<crate::frame::FilterOutputFootprint> {
+        self.filter_footprint
     }
 }
 

@@ -476,7 +476,7 @@ pub(super) struct SemanticCompositePlan {
     pub(super) pass: SemanticPassId,
     pub(super) kind: SemanticCompositeKind,
     pub(super) source_captured_before_outer_semantics: bool,
-    pub(super) gaussian_footprint: Option<super::gaussian::GaussianOutputFootprint>,
+    pub(super) filter_footprint: Option<super::FilterOutputFootprint>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -2256,7 +2256,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     )
                 })?;
             if let Some(plan) = self.composites.last_mut() {
-                plan.gaussian_footprint = Some(footprint);
+                plan.filter_footprint = Some(footprint);
             }
         }
         Ok(result)
@@ -2915,7 +2915,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         pass: merge,
                         kind: SemanticCompositeKind::DropShadow,
                         source_captured_before_outer_semantics: true,
-                        gaussian_footprint: None,
+                        filter_footprint: None,
                     })?;
                     source = PlannedGraphResource {
                         id: result_id,
@@ -3135,7 +3135,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             pass,
             kind,
             source_captured_before_outer_semantics,
-            gaussian_footprint: None,
+            filter_footprint: None,
         })?;
         Ok(PlannedGraphParent {
             current: PlannedGraphResource {

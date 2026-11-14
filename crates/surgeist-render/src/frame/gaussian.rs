@@ -45,20 +45,6 @@ pub(crate) enum GaussianStage {
     Constant,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct GaussianOutputFootprint {
-    source_spatial: GraphLoweringSpatialDescriptor,
-    output_clip: [f64; 4],
-}
-impl GaussianOutputFootprint {
-    pub(crate) const fn source_spatial(self) -> GraphLoweringSpatialDescriptor {
-        self.source_spatial
-    }
-    pub(crate) const fn output_clip(self) -> [f64; 4] {
-        self.output_clip
-    }
-}
-
 /// Immutable checked pass facts shared by semantic planning, lowering and
 /// runtime. One admitted payload retains the accounting custody until its final
 /// graph or runtime reference is released. Cloning only shares that payload.
@@ -141,11 +127,8 @@ impl GaussianMapping {
     pub(crate) const fn target_extent(self) -> [u32; 2] {
         extent(self.target_spatial)
     }
-    pub(super) fn output_footprint(self) -> GaussianOutputFootprint {
-        GaussianOutputFootprint {
-            source_spatial: self.target_spatial(),
-            output_clip: self.output_clip,
-        }
+    pub(super) fn output_footprint(self) -> super::FilterOutputFootprint {
+        super::FilterOutputFootprint::from_qualified_grid(self.target_spatial(), self.output_clip)
     }
     pub(crate) const fn color(self) -> crate::Color {
         self.color

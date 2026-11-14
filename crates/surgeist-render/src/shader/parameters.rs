@@ -1390,7 +1390,7 @@ impl CompositeParameterBytes {
                 affine: parameters.destination_to_layer_local().affine().as_array(),
                 source_space: parameters.source_space(),
                 source_operation_clip: parameters
-                    .gaussian_footprint()
+                    .filter_footprint()
                     .map(|footprint| footprint.output_clip()),
                 opacity: parameters.opacity(),
                 composition: parameters.composition(),

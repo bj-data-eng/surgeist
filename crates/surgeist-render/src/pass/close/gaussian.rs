@@ -494,7 +494,7 @@ pub(super) fn composite_footprint_is_exact(
             }
         }
     }
-    match (parameters.gaussian_footprint(), expected) {
+    match (parameters.filter_footprint(), expected) {
         (None, None) => Some(()),
         (Some(footprint), Some(mapping))
             if source.expected_reads == 1
@@ -676,14 +676,14 @@ mod tests {
         }
     }
     #[test]
-    fn closure_authenticates_gaussian_footprint_presence_at_the_actual_source_consumer() {
+    fn closure_authenticates_filter_footprint_presence_at_the_actual_source_consumer() {
         let original = plan(3, [0.5; 2]);
         let account = Account::for_test();
         let closed = ClosedExecutableGraph::try_from_lowered(original.clone(), &account)
             .unwrap()
             .expect("nested native and ordinary layers close");
-        let native=original.passes.iter().position(|pass|matches!(&pass.kind,RuntimePassKind::Composite(Some(RuntimeComposite {kind:RuntimeCompositeKind::Layer {parameters,..},..})) if parameters.gaussian_footprint().is_some())).unwrap();
-        let ordinary=original.passes.iter().rposition(|pass|matches!(&pass.kind,RuntimePassKind::Composite(Some(RuntimeComposite {kind:RuntimeCompositeKind::Layer {parameters,..},..})) if parameters.gaussian_footprint().is_none())).unwrap();
+        let native=original.passes.iter().position(|pass|matches!(&pass.kind,RuntimePassKind::Composite(Some(RuntimeComposite {kind:RuntimeCompositeKind::Layer {parameters,..},..})) if parameters.filter_footprint().is_some())).unwrap();
+        let ordinary=original.passes.iter().rposition(|pass|matches!(&pass.kind,RuntimePassKind::Composite(Some(RuntimeComposite {kind:RuntimeCompositeKind::Layer {parameters,..},..})) if parameters.filter_footprint().is_none())).unwrap();
         let RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { parameters, .. },
             ..
@@ -691,7 +691,7 @@ mod tests {
         else {
             panic!();
         };
-        let footprint = parameters.gaussian_footprint().unwrap();
+        let footprint = parameters.filter_footprint().unwrap();
         for (index, footprint) in [(native, None), (ordinary, Some(footprint))] {
             let mut changed = original.clone();
             let mut passes = changed.passes.to_vec();

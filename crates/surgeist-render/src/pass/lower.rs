@@ -695,7 +695,7 @@ fn runtime_composite(
                         *composition,
                         clip.is_some() || !outer_clips.is_empty(),
                         alpha_mask,
-                        composite.gaussian_footprint(),
+                        composite.filter_footprint(),
                     )?,
                     &account.storage(),
                 )?,

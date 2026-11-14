@@ -627,13 +627,13 @@ impl ClosedExecutableGraphFacts {
                 ]
                 .into_iter()
                 .flatten();
-                let gaussian_footprint_present = match &composite.kind {
+                let filter_footprint_present = match &composite.kind {
                     RuntimeCompositeKind::Layer { parameters, .. } => {
-                        parameters.gaussian_footprint().is_some()
+                        parameters.filter_footprint().is_some()
                     }
                     _ => false,
                 };
-                (self.has_gaussian || !gaussian_footprint_present)
+                (self.has_gaussian || !filter_footprint_present)
                     && same_source_composite(composite, &layer.composite)
                     && proof_reads(pass, &proof)
                         .map(|read| read.resource)
