@@ -601,6 +601,18 @@
       ]
     },
     {
+      "id": "HTMLDetailsElement.source",
+      "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
+      "anchor": "htmldetailselement",
+      "block": 0,
+      "sha256": "6edfce50777e641f80f6230babe632663d7d758de8c8e7157f863635d14cc3ee",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldetailselement",
+      "entries": [
+        "HTMLDetailsElement"
+      ]
+    },
+    {
       "id": "HTMLFontElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlfontelement",
@@ -5025,6 +5037,66 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLDetailsElement",
+      "kind": "interface",
+      "name": "HTMLDetailsElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLDetailsElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLDetailsElement.name"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "open",
+          "readonly": false,
+          "id": "HTMLDetailsElement.open"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "HTMLFontElement",
@@ -9867,6 +9939,71 @@
           "owner": "surgeist-dom",
           "path": "crates/surgeist-dom/src/source.rs",
           "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDetailsElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmldetailselement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDetailsElement.name/get": {
+      "kind": "native",
+      "adapter": "htmldetailselement.name.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDetailsElement.name/set": {
+      "kind": "native",
+      "adapter": "htmldetailselement.name.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDetailsElement.open/get": {
+      "kind": "native",
+      "adapter": "htmldetailselement.open.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDetailsElement.open/set": {
+      "kind": "native",
+      "adapter": "htmldetailselement.open.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
         }
       ],
       "requirements": []
