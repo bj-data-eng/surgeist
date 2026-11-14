@@ -251,6 +251,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
         2
     );
     drop(session);
+    super::guest::tests::conversion_admission::conversion_work_precedes_guest_coercion();
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
     rejected_comment_requires_diagnostic_and_preparation_work();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();

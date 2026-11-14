@@ -14,6 +14,7 @@ pub(in crate::document_scripting) fn projected_node_id<'scope>(
 }
 
 pub(in crate::document_scripting) mod attributes;
+pub(in crate::document_scripting) mod conversion_admission;
 pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod projection_accounting;
 pub(in crate::document_scripting) mod registered_origin;
