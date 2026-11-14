@@ -3,7 +3,7 @@
 use super::{element::HTML_NAMESPACE, *};
 use std::fmt::Write;
 use surgeist_bindings_js::conversion::IntegerType;
-use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING};
+use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING, DOM_STRING_NULL_TO_EMPTY};
 use surgeist_bindings_js::{IntegerKind, IntegerMode, IntegerValue};
 use surgeist_dom::{DomNode, DomSourceEdit, Namespace};
 use surgeist_html::bounded::attributes::{
@@ -16,6 +16,7 @@ use surgeist_html::vocabulary::KnownHtmlElement;
 #[derive(Clone, Copy)]
 pub(super) enum Reflection {
     String,
+    StringNullToEmpty,
     Boolean,
     Mode,
     SlotAssignment,
@@ -31,6 +32,7 @@ pub(super) enum Receiver {
     Template,
     Br,
     Hr,
+    Font,
     Meta,
     Slot,
 }
@@ -48,6 +50,7 @@ impl Receiver {
             Self::Template => node.as_template().is_some(),
             Self::Br => html_element_is(node, KnownHtmlElement::Br),
             Self::Hr => html_element_is(node, KnownHtmlElement::Hr),
+            Self::Font => super::font::is_font(node),
             Self::Meta => html_element_is(node, KnownHtmlElement::Meta),
             Self::Slot => super::slot::is_slot(node),
         }
@@ -60,6 +63,7 @@ impl Receiver {
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Br => const { &ascii(b"HTMLBRElement required") },
             Self::Hr => const { &ascii(b"HTMLHRElement required") },
+            Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
         }
@@ -155,7 +159,7 @@ impl Capture {
                 let units = stored.map(|value| value.value().code_units());
                 Ok(Some(match reflection {
                     Reflection::Boolean => Reflected::Boolean(stored.is_some()),
-                    Reflection::String => {
+                    Reflection::String | Reflection::StringNullToEmpty => {
                         Reflected::String(stored.map(|value| value.value().clone()))
                     }
                     Reflection::Mode => Reflected::Keyword(Some(
@@ -271,10 +275,15 @@ impl Capture {
                     .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
                 Some(copy_native_data(&owner, &events, units)?)
             } else {
+                let descriptor = if matches!(reflection, Reflection::StringNullToEmpty) {
+                    &DOM_STRING_NULL_TO_EMPTY
+                } else {
+                    &DOM_STRING
+                };
                 let converted = self
                     .callbacks
                     .conversion
-                    .run(scope, |cx| cx.value(&DOM_STRING, input))
+                    .run(scope, |cx| cx.value(descriptor, input))
                     .map_err(Error::from)?;
                 scope.check_active()?;
                 Some(copy_native_data(

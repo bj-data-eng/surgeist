@@ -9,7 +9,8 @@ use crate::document_scripting::guest::tests::{
 // receiver rules. Each case runs through the existing real-V8 entry thread.
 pub(super) fn break_element_families_preserve_native_and_web_idl_contracts() {
     break_element_brands_precede_value_conversion();
-    break_strings_and_boolean_use_exact_reflection_semantics();
+    break_strings_use_exact_reflection_semantics();
+    break_boolean_uses_presence_and_to_boolean();
     break_reflections_deliver_original_customized_reactions();
     break_reflections_observe_native_edits_and_retirement();
     break_reflections_keep_registered_creation_realms_after_adoption();
@@ -71,7 +72,7 @@ fn break_element_brands_precede_value_conversion() {
     );
 }
 
-fn break_strings_and_boolean_use_exact_reflection_semantics() {
+fn break_strings_use_exact_reflection_semantics() {
     check_break_script(
         r#"
         (() => {
@@ -108,6 +109,16 @@ fn break_strings_and_boolean_use_exact_reflection_semantics() {
                         return 'expanded name removal ' + member;
                 }
             }
+            return 'ok';
+        })()
+    "#,
+    );
+}
+
+fn break_boolean_uses_presence_and_to_boolean() {
+    check_break_script(
+        r#"
+        (() => {
             const hr = document.createElement('hr');
             hr.setAttributeNS('urn:foreign', 'noshade', 'foreign');
             if (hr.noShade) return 'foreign Boolean ignored';

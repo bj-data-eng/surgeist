@@ -20,6 +20,7 @@ mod dom_implementation;
 pub(super) use character_data::copy_native_data;
 pub(super) mod element;
 mod element_factory;
+mod font;
 mod fragment;
 mod meta;
 mod ordinary;

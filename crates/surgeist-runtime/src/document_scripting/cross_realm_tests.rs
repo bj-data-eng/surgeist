@@ -9,6 +9,7 @@ mod dom_implementation;
 mod element_attributes;
 mod element_reflection;
 mod element_tasks;
+mod font_element;
 mod html_reflection;
 mod inline_style;
 mod meta_reflection;
@@ -372,6 +373,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     slot::slot_members_read_the_canonical_named_assignment();
     break_elements::break_elements_reflect_canonical_attributes();
+    font_element::font_members_reflect_canonical_attributes();
+    font_element::font_family_preserves_native_and_web_idl_contracts();
     break_elements::break_element_families_preserve_native_and_web_idl_contracts();
     super::guest::tests::slot_admission::slot_sequences_admit_exact_work_and_backing();
     super::guest::tests::slot_admission::slot_queries_and_assign_preserve_native_refusal();
