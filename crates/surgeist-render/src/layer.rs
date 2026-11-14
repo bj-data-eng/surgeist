@@ -178,6 +178,14 @@ impl Layer {
         self
     }
 
+    pub(crate) fn with_morphology(
+        mut self,
+        morphology: crate::morphology::MorphologyForeground,
+    ) -> Self {
+        self.filter = Some(LayerFilter::Morphology(morphology));
+        self
+    }
+
     /// Returns this layer with the supplied validated backdrop-filter input.
     ///
     /// The new input replaces any previous backdrop-filter input. This builder
@@ -315,6 +323,7 @@ impl Layer {
                 | LayerFilter::Convolution(_)
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
+                | LayerFilter::Morphology(_)
                 | LayerFilter::NativeShadow(_),
             )
             | None => None,
@@ -331,6 +340,7 @@ impl Layer {
                 | LayerFilter::Convolution(_)
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
+                | LayerFilter::Morphology(_)
                 | LayerFilter::NativeShadow(_),
             )
             | None => None,
@@ -376,6 +386,7 @@ pub(crate) enum LayerFilter {
     Convolution(crate::PreparedConvolution),
     Offset(crate::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
+    Morphology(crate::morphology::MorphologyForeground),
     NativeShadow(crate::native_shadow::DropShadowForeground),
 }
 

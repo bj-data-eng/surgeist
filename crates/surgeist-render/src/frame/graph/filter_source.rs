@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     filter_source::FilterSourceDescriptor,
-    frame::gaussian::{self as grid, PeriodCapture},
+    frame::filter_grid::{self as grid, FilterGridOwner, PeriodCapture},
 };
 
 impl SemanticFrameGraphPlanner<'_> {
@@ -10,6 +10,7 @@ impl SemanticFrameGraphPlanner<'_> {
         children: RenderCommands,
         source: FilterSourceDescriptor,
         raster_transform: Transform,
+        owner: FilterGridOwner,
     ) -> Result<PreparedLayerSource> {
         if grid::empty(grid::result_domain(source))
             || grid::source_is_empty(source)
@@ -29,14 +30,20 @@ impl SemanticFrameGraphPlanner<'_> {
                         )
                     })?,
                     raster_transform,
+                    owner,
                 )?,
                 self.context,
                 Transform::identity(),
                 raster_transform,
             ),
             FilterSourceDescriptor::Periodic { period, .. } => {
-                let period =
-                    PeriodCapture::try_new(self.context, period, raster_transform, self.account)?;
+                let period = PeriodCapture::try_new_for(
+                    self.context,
+                    period,
+                    raster_transform,
+                    self.account,
+                    owner,
+                )?;
                 (
                     period.spatial,
                     period.context,

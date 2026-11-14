@@ -366,6 +366,32 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
             ),
         )
         .unwrap();
+    let morphology_bounds = Rect::new(0.0, 8.0, 5.0, 1.0);
+    let mut morphology_source = Scene::new();
+    morphology_source.fill(morphology_bounds, Color::BLACK);
+    let morphology = crate::prepare_morphology(
+        crate::MorphologyInput::new()
+            .with_operator(crate::MorphologyOperator::Dilate)
+            .with_radii(1.0, 1.0),
+        crate::FilterColorSpace::Srgb,
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
+    scene
+        .morphology_layer(
+            Layer::new(),
+            morphology,
+            crate::MorphologySource::finite(
+                morphology_source,
+                crate::FilterDomains::try_new(
+                    morphology_bounds,
+                    morphology_bounds,
+                    morphology_bounds,
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
     scene
         .normalize(
             Capabilities::CURRENT,

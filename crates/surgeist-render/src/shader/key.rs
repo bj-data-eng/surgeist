@@ -31,6 +31,36 @@ pub(crate) enum ShaderNativeShadowSourceKey {
     Constant,
 }
 
+/// Concrete morphology entry points have exactly their reached texture bindings.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ShaderMorphologyStageKey {
+    RebaseSource,
+    Copy,
+    Prepare,
+    Table,
+    FirstQuery,
+    RefineQuery,
+    Query,
+    Resolve,
+    Constant,
+}
+
+impl ShaderMorphologyStageKey {
+    pub(crate) const fn parameter_code(self) -> u32 {
+        match self {
+            Self::RebaseSource => 0,
+            Self::Copy => 1,
+            Self::Prepare => 2,
+            Self::Table => 3,
+            Self::FirstQuery => 4,
+            Self::RefineQuery => 5,
+            Self::Query => 6,
+            Self::Resolve => 7,
+            Self::Constant => 8,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ShaderProgramKey {
     CanonicalizeCapture,
@@ -40,6 +70,9 @@ pub(crate) enum ShaderProgramKey {
     Gaussian,
     GaussianSource,
     GaussianConstant,
+    Morphology {
+        stage: ShaderMorphologyStageKey,
+    },
     NativeShadow {
         original: ShaderNativeShadowSourceKey,
         shifted_alpha: bool,
@@ -94,6 +127,8 @@ pub(crate) enum ShaderBindingRoleKey {
     ConvolutionSource,
     GaussianSource,
     GaussianAuxiliary,
+    MorphologySource,
+    MorphologyPreviousQuery,
     OffsetSource,
     NativeShadowOriginal,
     NativeShadowAlpha,
@@ -215,6 +250,7 @@ pub(crate) enum ShaderDataBindingKey {
     SpatialUniform,
     ConvolutionParameters,
     GaussianParameters,
+    MorphologyParameters,
     OffsetParameters,
     NativeShadowParameters,
     ConvolutionWeights,

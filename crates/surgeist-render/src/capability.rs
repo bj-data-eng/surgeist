@@ -234,6 +234,7 @@ impl Capabilities {
             gpu_convolution_filter_execution: true,
             gpu_offset_filter_execution: true,
             gpu_gaussian_filter_execution: true,
+            gpu_morphology_filter_execution: true,
             gpu_native_drop_shadow_filter_execution: true,
             filter_region_planning: true,
         },
@@ -506,6 +507,9 @@ impl Capabilities {
                 .supports_gpu_native_drop_shadow_filter_execution(),
             PrimitiveOperation::GpuGaussianFilterExecution => {
                 self.filters.supports_gpu_gaussian_filter_execution()
+            }
+            PrimitiveOperation::GpuMorphologyFilterExecution => {
+                self.filters.supports_gpu_morphology_filter_execution()
             }
             PrimitiveOperation::GpuOffsetFilterExecution => {
                 self.filters.supports_gpu_offset_filter_execution()
@@ -988,6 +992,7 @@ pub struct FilterCapabilities {
     gpu_convolution_filter_execution: bool,
     gpu_offset_filter_execution: bool,
     gpu_gaussian_filter_execution: bool,
+    gpu_morphology_filter_execution: bool,
     gpu_native_drop_shadow_filter_execution: bool,
     filter_region_planning: bool,
 }
@@ -1049,6 +1054,15 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_gaussian_filter_execution(self) -> bool {
         self.gpu_gaussian_filter_execution
+    }
+
+    /// Returns whether admitted rectangular component erosion and dilation execute on GPU.
+    ///
+    /// Includes finite, constant and authentic periodic sources. Selected-device
+    /// float32 availability is reported separately at runtime.
+    #[must_use]
+    pub const fn supports_gpu_morphology_filter_execution(self) -> bool {
+        self.gpu_morphology_filter_execution
     }
 
     /// Returns whether an admitted image-space offset executes through a native Layer on the GPU.

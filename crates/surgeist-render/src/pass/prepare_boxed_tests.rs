@@ -12,7 +12,28 @@ use crate::{
 fn source(kind: usize, caps: &DeviceCapabilities, account: &Account) -> OwnedBox<ExactGraph> {
     let mut scene = Scene::new();
     let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
-    if kind == 3 {
+    if kind == 4 {
+        let mut input = Scene::new();
+        input.fill(bounds, Color::BLACK);
+        let operation = crate::prepare_morphology(
+            crate::MorphologyInput::new()
+                .with_operator(crate::MorphologyOperator::Dilate)
+                .with_radius(1.0),
+            crate::FilterColorSpace::Srgb,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
+        scene
+            .morphology_layer(
+                Layer::new(),
+                operation,
+                crate::MorphologySource::finite(
+                    input,
+                    crate::FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
+                ),
+            )
+            .unwrap();
+    } else if kind == 3 {
         let mut input = Scene::new();
         input.fill(bounds, Color::BLACK);
         let operation = crate::prepare_drop_shadow(
@@ -104,7 +125,7 @@ fn source(kind: usize, caps: &DeviceCapabilities, account: &Account) -> OwnedBox
         PrePreparationGraphClassification::ExactBackdrop(backdrop) if kind == 2 => {
             ExactGraph::Backdrop(backdrop)
         }
-        PrePreparationGraphClassification::ExactSpatialFilter(spatial) if kind == 3 => {
+        PrePreparationGraphClassification::ExactSpatialFilter(spatial) if kind >= 3 => {
             ExactGraph::ForegroundFilters(ForegroundFilterPreparableGraph::Spatial(spatial))
         }
         _ => panic!("fixture must retain its selected exact family"),
@@ -302,7 +323,7 @@ fn exact_execution_disposes_source_before_downstream_wait_and_cancellation() {
     let caps = backend.device_capabilities(identity).unwrap();
     let mut pending_count = 0;
     let mut completed = Vec::new();
-    for kind in 0..4 {
+    for kind in 0..5 {
         let cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
         let baseline = cpu
             .snapshot()
@@ -375,7 +396,7 @@ fn exact_execution_disposes_source_before_downstream_wait_and_cancellation() {
     }
     eprintln!("prepared native resource cancellations at explicit test wait={pending_count}");
     assert_eq!(
-        pending_count, 4,
+        pending_count, 5,
         "each exact family must cancel with real prepared resources live"
     );
 }
@@ -494,7 +515,7 @@ fn borrowed_exact_sources_retain_fact_identity_and_release_lists_before_prepared
         resources.generation().clone(),
         device_cpu.at(RenderCpuScope::DeviceBacking),
     );
-    for kind in 0..4 {
+    for kind in 0..5 {
         let cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
         let baseline = cpu
             .snapshot()
@@ -628,7 +649,7 @@ fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_sou
     let ready = backend
         .ready_device_state_borrow_for_test(identity)
         .unwrap();
-    for kind in 0..4 {
+    for kind in 0..5 {
         let measure = |limit: u64, block: bool| {
             let options = RenderAccountingOptions::new()
                 .with_limits(RenderLimits::new().with_retained_bytes(limit));

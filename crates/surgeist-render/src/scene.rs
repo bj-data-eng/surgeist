@@ -204,6 +204,31 @@ impl Scene {
         Ok(self)
     }
 
+    /// Appends native morphology, replacing the layer's exclusive foreground effect.
+    ///
+    /// Preserves outer transform, isolation, clip, mask, opacity and composition.
+    /// Finite input includes supported same-layer backdrop. Constant and periodic
+    /// input reject same-layer backdrop before anything is appended.
+    pub fn morphology_layer(
+        &mut self,
+        layer: Layer,
+        operation: PreparedMorphology,
+        source: MorphologySource,
+    ) -> Result<&mut Self> {
+        if source.descriptor().is_infinite() && layer.backdrop_filter().is_some() {
+            return Err(MorphologyPreparationError::InfiniteSourceBackdrop.into());
+        }
+        let (child, source) = source.into_parts();
+        self.commands.push(Command::Layer {
+            layer: Box::new(
+                layer
+                    .with_morphology(crate::morphology::MorphologyForeground { operation, source }),
+            ),
+            children: child.commands.into(),
+        });
+        Ok(self)
+    }
+
     /// Appends a native shadow, replacing the layer's exclusive foreground effect.
     ///
     /// Preserves outer transform, isolation, clip, mask, opacity and composition.

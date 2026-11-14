@@ -51,6 +51,7 @@ mod geometry;
 mod gpu_transaction;
 mod image;
 mod layer;
+mod morphology;
 mod native_shadow;
 mod offset;
 mod paint;
@@ -123,6 +124,10 @@ pub use layer::{
     BlendMode, Filter, Layer, LayerComposition, MaskLuminanceSpace, PorterDuffOperator,
     ResolvedLayerAlphaMask, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
     Shadow, ShadowKind, ShadowList,
+};
+pub use morphology::{
+    MorphologyInput, MorphologyNumericPhase, MorphologyOperator, MorphologyParameter,
+    MorphologyPreparationError, MorphologySource, PreparedMorphology, prepare_morphology,
 };
 pub use native_shadow::{
     DropShadowInput, DropShadowNumericPhase, DropShadowPreparationError, DropShadowSource,

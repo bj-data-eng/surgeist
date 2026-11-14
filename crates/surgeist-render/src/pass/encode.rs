@@ -9,6 +9,7 @@ use std::sync::Arc;
 mod convolution;
 #[path = "encode/gaussian.rs"]
 mod gaussian;
+mod morphology;
 mod native_shadow;
 #[path = "encode/offset.rs"]
 mod offset;
@@ -24,11 +25,11 @@ use super::super::{
     shader::{
         BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
         CompositeParameterBytes, ConvolutionParameterBytes, DevicePassCache,
-        DropShadowParameterBytes, GaussianParameterBytes, NativeShadowParameterBytes,
-        OffsetParameterBytes, PassCacheCommitPreparation, PassSpatialUniformBytes,
-        ProvisionalColorFilterPassObjects, ProvisionalCompositePassObjects,
-        ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
-        ShaderCompositePathKey,
+        DropShadowParameterBytes, GaussianParameterBytes, MorphologyParameterBytes,
+        NativeShadowParameterBytes, OffsetParameterBytes, PassCacheCommitPreparation,
+        PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
+        ProvisionalCompositePassObjects, ProvisionalCorePassObjects,
+        ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate, ShaderCompositePathKey,
     },
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloCaptureProof, PendingVelloResourceCommit,
@@ -50,9 +51,9 @@ use super::{
     prepare::{
         PreparedColorFilterOperationBinding, PreparedConvolutionWeightsBinding,
         PreparedGaussianParameterBinding, PreparedGraph, PreparedKernelBinding,
-        PreparedNativeShadowParameterBinding, PreparedOffsetParameterBinding,
-        PreparedResourceBinding, PreparedSpatialFilterPassObjects, PreparedTextureBinding,
-        RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
+        PreparedMorphologyParameterBinding, PreparedNativeShadowParameterBinding,
+        PreparedOffsetParameterBinding, PreparedResourceBinding, PreparedSpatialFilterPassObjects,
+        PreparedTextureBinding, RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
     },
 };
 
@@ -68,6 +69,7 @@ pub(super) fn filter_step_passes<'a>(
             ExecutableFilterStepFacts::DropShadow { .. } => 4,
             ExecutableFilterStepFacts::Convolution { passes, .. }
             | ExecutableFilterStepFacts::Gaussian { passes, .. }
+            | ExecutableFilterStepFacts::Morphology { passes, .. }
             | ExecutableFilterStepFacts::NativeShadow { passes, .. } => passes.len().max(1),
         };
         (0..count).map(move |index| {
@@ -97,6 +99,7 @@ pub(super) fn filter_step_passes<'a>(
                     .copied(),
                 ExecutableFilterStepFacts::Convolution { passes, .. }
                 | ExecutableFilterStepFacts::Gaussian { passes, .. }
+                | ExecutableFilterStepFacts::Morphology { passes, .. }
                 | ExecutableFilterStepFacts::NativeShadow { passes, .. } => {
                     passes.get(index).copied()
                 }
@@ -237,6 +240,7 @@ pub(super) enum GraphScheduledEncodingKind {
     ColorFilter,
     Convolution,
     Gaussian,
+    Morphology,
     NativeShadow,
     Offset,
     BlurHorizontalRgba,
@@ -256,6 +260,7 @@ pub(crate) enum ScheduledFilterRawFact {
     Color,
     Convolution,
     Gaussian,
+    Morphology,
     NativeShadow,
     Offset,
     BlurHorizontalRgba,
@@ -278,6 +283,8 @@ pub(crate) struct CustomSpineEncodingSummary {
     pub(crate) offset_pass_count: usize,
     pub(crate) offset_parameters_and_resources_are_exact: bool,
     pub(crate) gaussian_pass_count: usize,
+    pub(crate) morphology_pass_count: usize,
+    pub(crate) morphology_parameters_and_resources_are_exact: bool,
     pub(crate) native_shadow_pass_count: usize,
     pub(crate) native_shadow_parameters_and_resources_are_exact: bool,
     pub(crate) gaussian_parameters_and_resources_are_exact: bool,
@@ -350,6 +357,8 @@ struct CustomSpineEncodingProgress {
     offset_pass_count: usize,
     offset_parameters_and_resources_are_exact: bool,
     gaussian_pass_count: usize,
+    morphology_pass_count: usize,
+    morphology_parameters_and_resources_are_exact: bool,
     native_shadow_pass_count: usize,
     native_shadow_parameters_and_resources_are_exact: bool,
     gaussian_parameters_and_resources_are_exact: bool,
@@ -420,6 +429,8 @@ impl CustomSpineEncodingProgress {
             offset_pass_count: 0,
             offset_parameters_and_resources_are_exact: true,
             gaussian_pass_count: 0,
+            morphology_pass_count: 0,
+            morphology_parameters_and_resources_are_exact: true,
             native_shadow_pass_count: 0,
             native_shadow_parameters_and_resources_are_exact: true,
             gaussian_parameters_and_resources_are_exact: true,
@@ -513,6 +524,9 @@ impl CustomSpineEncodingProgress {
             offset_parameters_and_resources_are_exact: self
                 .offset_parameters_and_resources_are_exact,
             gaussian_pass_count: self.gaussian_pass_count,
+            morphology_pass_count: self.morphology_pass_count,
+            morphology_parameters_and_resources_are_exact: self
+                .morphology_parameters_and_resources_are_exact,
             native_shadow_pass_count: self.native_shadow_pass_count,
             native_shadow_parameters_and_resources_are_exact: self
                 .native_shadow_parameters_and_resources_are_exact,
@@ -666,6 +680,7 @@ fn scheduled_filter_raw_facts(
             GraphScheduledEncodingKind::ColorFilter => Some(ScheduledFilterRawFact::Color),
             GraphScheduledEncodingKind::Convolution => Some(ScheduledFilterRawFact::Convolution),
             GraphScheduledEncodingKind::Gaussian => Some(ScheduledFilterRawFact::Gaussian),
+            GraphScheduledEncodingKind::Morphology => Some(ScheduledFilterRawFact::Morphology),
             GraphScheduledEncodingKind::NativeShadow => Some(ScheduledFilterRawFact::NativeShadow),
             GraphScheduledEncodingKind::Offset => Some(ScheduledFilterRawFact::Offset),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
@@ -828,6 +843,8 @@ impl CustomSpineEncodingSummary {
         let common = (self.offset_pass_count == 0
             || self.offset_parameters_and_resources_are_exact)
             && (self.gaussian_pass_count == 0 || self.gaussian_parameters_and_resources_are_exact)
+            && (self.morphology_pass_count == 0
+                || self.morphology_parameters_and_resources_are_exact)
             && (self.native_shadow_pass_count == 0
                 || self.native_shadow_parameters_and_resources_are_exact)
             && self.encodes_custom_passes_in_order
@@ -865,6 +882,7 @@ impl CustomSpineEncodingSummary {
         let spatial_pass_count = spatial_pass_count
             .saturating_add(self.convolution_pass_count)
             .saturating_add(self.gaussian_pass_count)
+            .saturating_add(self.morphology_pass_count)
             .saturating_add(self.native_shadow_pass_count)
             .saturating_add(self.offset_pass_count);
         let exact_base = self.layer_composite_count == 0
@@ -924,6 +942,7 @@ impl CustomSpineEncodingSummary {
             && (self.blur_pass_count > 0
                 || self.convolution_pass_count > 0
                 || self.gaussian_pass_count > 0
+                || self.morphology_pass_count > 0
                 || self.native_shadow_pass_count > 0
                 || self.offset_pass_count > 0)
             && exact_layers
@@ -1075,6 +1094,7 @@ struct PreparedPassEncodingRequest {
     kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     convolution_parameters: Option<ConvolutionParameterBytes>,
     gaussian_parameters: Option<GaussianParameterBytes>,
+    morphology_parameters: Option<MorphologyParameterBytes>,
     offset_parameters: Option<OffsetParameterBytes>,
     native_shadow_parameters: Option<NativeShadowParameterBytes>,
     convolution_weights: Option<RuntimePassId>,
@@ -1092,6 +1112,7 @@ struct CompletedPassReleases {
     color_buffer_taken: bool,
     offset_buffer_taken: bool,
     gaussian_buffer_taken: bool,
+    morphology_buffer_taken: bool,
     native_shadow_buffer_taken: bool,
 }
 
@@ -1103,11 +1124,14 @@ struct ResolvedPassReleases<'graph> {
     releases_color_filter_operation: bool,
     releases_offset_parameters: bool,
     releases_gaussian_parameters: bool,
+    releases_morphology_parameters: bool,
     releases_native_shadow_parameters: bool,
     native_shadow_parameter_bindings:
         &'graph mut PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     gaussian_parameter_bindings:
         &'graph mut PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
+    morphology_parameter_bindings:
+        &'graph mut PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
     offset_parameter_bindings: &'graph mut PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     resource_bindings: &'graph mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
     kernel_bindings: &'graph mut PassMap<GaussianKernelKey, PreparedKernelBinding>,
@@ -1130,6 +1154,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
         let releases_color_filter_operation = request.color_filter_operations.is_some();
         let releases_offset_parameters = request.offset_parameters.is_some();
         let releases_gaussian_parameters = request.gaussian_parameters.is_some();
+        let releases_morphology_parameters = request.morphology_parameters.is_some();
         let releases_native_shadow_parameters = request.native_shadow_parameters.is_some();
         let convolution_release = request
             .convolution_weights
@@ -1206,6 +1231,16 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 "prepared Gaussian uniform release is stale or missing",
             ));
         }
+        if releases_morphology_parameters
+            && graph
+                .morphology_parameter_bindings
+                .get(&pass, account)?
+                .is_none_or(|binding| binding.buffer.is_none())
+        {
+            return Err(preparation_error(
+                "prepared Morphology uniform release is stale or missing",
+            ));
+        }
         if releases_native_shadow_parameters
             && graph
                 .native_shadow_parameter_bindings
@@ -1218,6 +1253,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
         }
         let PreparedGraph {
             gaussian_parameter_bindings,
+            morphology_parameter_bindings,
             native_shadow_parameter_bindings,
             offset_parameter_bindings,
             resource_bindings,
@@ -1271,8 +1307,10 @@ impl<'graph> ResolvedPassReleases<'graph> {
             releases_color_filter_operation,
             releases_offset_parameters,
             releases_gaussian_parameters,
+            releases_morphology_parameters,
             releases_native_shadow_parameters,
             gaussian_parameter_bindings,
+            morphology_parameter_bindings,
             native_shadow_parameter_bindings,
             offset_parameter_bindings,
             resource_bindings,
@@ -1329,6 +1367,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 &mut first_missing,
             );
         }
+        if self.releases_morphology_parameters {
+            let binding = self
+                .morphology_parameter_bindings
+                .maintenance_get_mut(&self.pass)
+                .and_then(|binding| binding.buffer.take());
+            Self::drop_required_binding(
+                binding,
+                "Morphology uniform missing after atomic resource release",
+                &mut first_missing,
+            );
+        }
         if self.releases_native_shadow_parameters {
             let binding = self
                 .native_shadow_parameter_bindings
@@ -1372,6 +1421,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
             color_buffer_taken: self.releases_color_filter_operation,
             offset_buffer_taken: self.releases_offset_parameters,
             gaussian_buffer_taken: self.releases_gaussian_parameters,
+            morphology_buffer_taken: self.releases_morphology_parameters,
             native_shadow_buffer_taken: self.releases_native_shadow_parameters,
         })
     }
@@ -1396,6 +1446,7 @@ struct CompletedReleaseFacts {
     color_buffer: bool,
     offset_buffer: bool,
     gaussian_buffer: bool,
+    morphology_buffer: bool,
     native_shadow_buffer: bool,
 }
 
@@ -1410,6 +1461,7 @@ impl CompletedPassReleases {
             color_buffer: exact_source && self.color_buffer_taken,
             offset_buffer: exact_source && self.offset_buffer_taken,
             gaussian_buffer: exact_source && self.gaussian_buffer_taken,
+            morphology_buffer: exact_source && self.morphology_buffer_taken,
             native_shadow_buffer: exact_source && self.native_shadow_buffer_taken,
         }
     }
@@ -1432,6 +1484,7 @@ impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
             kernel_releases: request.kernel_releases.clone(),
             convolution_parameters: request.convolution_parameters.clone(),
             gaussian_parameters: request.gaussian_parameters.clone(),
+            morphology_parameters: request.morphology_parameters.clone(),
             offset_parameters: request.offset_parameters.clone(),
             native_shadow_parameters: request.native_shadow_parameters.clone(),
             convolution_weights: request.convolution_weights,
@@ -1866,6 +1919,7 @@ fn graph_scheduled_encoding_order_is_exact(
             RuntimePassKind::ColorFilter(Some(_)) => GraphScheduledEncodingKind::ColorFilter,
             RuntimePassKind::Convolution(_) => GraphScheduledEncodingKind::Convolution,
             RuntimePassKind::Gaussian(_) => GraphScheduledEncodingKind::Gaussian,
+            RuntimePassKind::Morphology(_) => GraphScheduledEncodingKind::Morphology,
             RuntimePassKind::NativeShadowMerge(_) => GraphScheduledEncodingKind::NativeShadow,
             RuntimePassKind::Offset(_) => GraphScheduledEncodingKind::Offset,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
@@ -2355,6 +2409,16 @@ impl<'device> PreparedGraph<'device> {
                     released.resources && released.kernels && released.gaussian_buffer;
                 progress.gaussian_pass_count = progress.gaussian_pass_count.saturating_add(1);
                 progress.record_custom_completion(GraphScheduledEncodingKind::Gaussian)
+            }
+            RuntimePassKind::Morphology(_) => {
+                self.encode_morphology(encoder, request, account)?;
+                let released = self
+                    .complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                progress.morphology_parameters_and_resources_are_exact &=
+                    released.resources && released.morphology_buffer;
+                progress.morphology_pass_count = progress.morphology_pass_count.saturating_add(1);
+                progress.record_custom_completion(GraphScheduledEncodingKind::Morphology)
             }
             RuntimePassKind::NativeShadowMerge(_) => {
                 self.encode_native_shadow(encoder, request, account)?;
@@ -4720,6 +4784,14 @@ impl<'device> PreparedGraph<'device> {
             if binding.buffer.is_some() {
                 return Err(preparation_error(
                     "graph submission retains an unresolved Gaussian uniform",
+                ));
+            }
+        }
+        for binding in self.morphology_parameter_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.buffer.is_some() {
+                return Err(preparation_error(
+                    "graph submission retains an unresolved Morphology uniform",
                 ));
             }
         }

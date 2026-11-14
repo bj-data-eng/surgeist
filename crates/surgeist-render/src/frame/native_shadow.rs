@@ -3,7 +3,7 @@
 use super::{
     FilterOutputFootprint, FrameContext, GraphLoweringSpatialDescriptor,
     bounds::{LogicalBounds, NonEmptyFrameSpatialPlan},
-    gaussian::{self as grid, GaussianMapping, PeriodCapture},
+    filter_grid::{self as grid, FilterGridMapping, FilterGridOwner, PeriodCapture},
 };
 use crate::{
     Color, PreparedDropShadow, Transform,
@@ -22,7 +22,7 @@ pub(crate) enum NativeShadowOriginal {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NativeShadowMapping {
-    original: GaussianMapping,
+    original: FilterGridMapping,
     kind: NativeShadowOriginal,
     filter_clip: [f64; 4],
     output_clip: [f64; 4],
@@ -30,7 +30,7 @@ pub(crate) struct NativeShadowMapping {
     shifted_alpha: bool,
 }
 impl NativeShadowMapping {
-    pub(crate) const fn original_mapping(self) -> GaussianMapping {
+    pub(crate) const fn original_mapping(self) -> FilterGridMapping {
         self.original
     }
     pub(crate) const fn original_kind(self) -> NativeShadowOriginal {
@@ -95,14 +95,18 @@ impl NativeShadowMapping {
                 }
             }
         }
-        let base = GaussianMapping::new(original, target, [None; 2]);
+        let base = FilterGridMapping::new(original, target, FilterGridOwner::Gaussian);
         let (kind, mapping) = match (source, original) {
             (FilterSourceDescriptor::Finite { .. }, Some(raw)) => {
                 let domain = grid::finite_domain(source).ok_or_else(|| numeric(0.0))?;
                 (
                     NativeShadowOriginal::Finite,
-                    base.with_base(grid::base_between(raw, target)?, [0; 2], account)?
-                        .with_source_clip(domain, raw, account)?,
+                    base.with_base(
+                        grid::base_between(raw, target, FilterGridOwner::Gaussian)?,
+                        [0; 2],
+                        account,
+                    )?
+                    .with_source_clip(domain, raw, account)?,
                 )
             }
             (FilterSourceDescriptor::Periodic { period, .. }, Some(raw)) => {
@@ -124,10 +128,10 @@ impl NativeShadowMapping {
             ),
             _ => return Err(numeric(0.0)),
         };
-        let filter_clip = GaussianMapping::new(None, target, [None; 2])
+        let filter_clip = FilterGridMapping::new(None, target, FilterGridOwner::Gaussian)
             .with_output_clip(source.filter(), target, account)?
             .output_clip();
-        let output_clip = GaussianMapping::new(None, target, [None; 2])
+        let output_clip = FilterGridMapping::new(None, target, FilterGridOwner::Gaussian)
             .with_output_clip(grid::result_domain(source), target, account)?
             .output_clip();
         Ok(Self {
@@ -161,8 +165,12 @@ impl NativeShadowMapping {
             base_color: Color::TRANSPARENT,
         };
         if self.target.logical_bounds.rect() != grid::result_domain(source)
-            || grid::require_spatial(context, grid::result_domain(source), Transform::identity())?
-                != self.target
+            || grid::require_spatial(
+                context,
+                grid::result_domain(source),
+                Transform::identity(),
+                FilterGridOwner::Gaussian,
+            )? != self.target
         {
             return Ok(false);
         }
@@ -171,6 +179,7 @@ impl NativeShadowMapping {
                 context,
                 grid::finite_domain(source).ok_or_else(|| numeric(0.0))?,
                 Transform::identity(),
+                FilterGridOwner::Gaussian,
             )?),
             NativeShadowOriginal::Periodic => match source {
                 FilterSourceDescriptor::Periodic { period, .. } => Some(
@@ -186,7 +195,12 @@ impl NativeShadowMapping {
         let mut shifted = false;
         if nonempty && operation.flood_color().a() > 0.0 && operation.flood_opacity() > 0.0 {
             let filter = source.filter();
-            let alpha = grid::require_spatial(context, filter, Transform::identity())?;
+            let alpha = grid::require_spatial(
+                context,
+                filter,
+                Transform::identity(),
+                FilterGridOwner::Gaussian,
+            )?;
             let offset = operation.offset(crate::FilterDomains::try_new(
                 filter,
                 filter,

@@ -590,3 +590,85 @@ fn render_window_public_native_shadow_executes_through_renderer_and_presented_su
     assert_eq!(observed.present_count_for_test(), 1);
     assert_eq!(observed.discarded_count_for_test(), 0);
 }
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+#[test]
+fn render_window_public_morphology_executes_through_renderer_and_presented_surface() {
+    use crate::{
+        FilterColorSpace, FilterDomains, Layer, MorphologyInput, MorphologyOperator,
+        MorphologySource, RenderAccountingContext, prepare_morphology,
+    };
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = PhysicalSize::new(9, 3);
+    let mut surface = display_free_presented_surface_for_test(
+        &mut renderer,
+        SurfaceOptions {
+            size: Size::new(9.0, 3.0),
+            format: Format::Rgba8,
+            ..SurfaceOptions::default()
+        },
+    );
+    pollster::block_on(renderer.configure_presented_surface_for_test(&mut surface)).unwrap();
+    let domain = Rect::new(0.0, 0.0, 9.0, 3.0);
+    let mut input = Scene::new();
+    input.image(
+        super::convolution::image(
+            9,
+            3,
+            (0..27)
+                .flat_map(|i| match i {
+                    12 => [255, 0, 0, 128],
+                    14 => [0, 0, 255, 255],
+                    _ => [0; 4],
+                })
+                .collect(),
+        ),
+        domain,
+        crate::ImageFit::Stretch,
+    );
+    let operation = prepare_morphology(
+        MorphologyInput::new()
+            .with_operator(MorphologyOperator::Dilate)
+            .with_radii(1.0, 0.25),
+        FilterColorSpace::Srgb,
+        &mut RenderAccountingContext::default(),
+    )
+    .unwrap();
+    let mut scene = Scene::new();
+    scene
+        .morphology_layer(
+            Layer::new(),
+            operation,
+            MorphologySource::finite(
+                input,
+                FilterDomains::try_new(domain, domain, domain).unwrap(),
+            ),
+        )
+        .unwrap();
+    let observation = presented_observation_handle_for_test(&surface);
+    let stats =
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    assert_eq!(renderer.stats(), stats);
+    let texture = take_last_presented_texture_for_test(&mut surface).unwrap();
+    let pixels = pollster::block_on(renderer.read_render_texture_for_test(&texture, size)).unwrap();
+    // Closed X radius1 and positive Y radius quantized0. At x4 the
+    // independent component maxima select red from x3 and blue/alpha from x5.
+    for (x, expected) in [
+        (1, [0; 4]),
+        (2, [255, 0, 0, 128]),
+        (3, [255, 0, 0, 128]),
+        (4, [128, 0, 255, 255]),
+        (5, [0, 0, 255, 255]),
+        (6, [0, 0, 255, 255]),
+        (7, [0; 4]),
+    ] {
+        super::convolution::assert_pixel(&pixels, x, 1, expected, 2);
+    }
+    super::convolution::assert_pixel(&pixels, 4, 0, [0; 4], 1);
+    super::convolution::assert_pixel(&pixels, 4, 2, [0; 4], 1);
+    let observed = observation.snapshot_for_test();
+    assert_eq!(observed.acquire_count_for_test(), 1);
+    assert_eq!(observed.present_count_for_test(), 1);
+    assert_eq!(observed.discarded_count_for_test(), 0);
+}

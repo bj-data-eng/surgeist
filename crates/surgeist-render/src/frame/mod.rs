@@ -3,9 +3,11 @@ mod bounds;
 mod convolution;
 mod filter;
 mod filter_footprint;
+mod filter_grid;
 mod gaussian;
 mod graph;
 mod lower;
+mod morphology;
 mod native_shadow;
 mod offset;
 #[cfg(all(test, not(target_family = "wasm")))]
@@ -52,6 +54,7 @@ pub(crate) use lower::{
     GraphLoweringDestinationToLayerLocal, GraphLoweringOuterClip,
     GraphLoweringResolvedAlphaMaskComposition, GraphLoweringView,
 };
+pub(crate) use morphology::{MorphologyAxis, MorphologyPassFacts, MorphologyStage};
 pub(crate) use native_shadow::{NativeShadowOriginal, NativeShadowPassFacts};
 pub(crate) use offset::{OffsetPurpose, OffsetSampling, OffsetStage};
 #[cfg(test)]
@@ -349,6 +352,18 @@ fn bounded_filter_source(
     match effect {
         crate::command::NormalizedForegroundEffect::Gaussian(value) => Some(value.source),
         crate::command::NormalizedForegroundEffect::NativeShadow(value) => Some(value.source),
+        crate::command::NormalizedForegroundEffect::Morphology(value) => Some(value.source),
         _ => None,
+    }
+}
+
+fn filter_grid_owner(
+    effect: &crate::command::NormalizedForegroundEffect,
+) -> filter_grid::FilterGridOwner {
+    match effect {
+        crate::command::NormalizedForegroundEffect::Morphology(_) => {
+            filter_grid::FilterGridOwner::Morphology
+        }
+        _ => filter_grid::FilterGridOwner::Gaussian,
     }
 }

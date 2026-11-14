@@ -1,5 +1,6 @@
 mod cache;
 mod key;
+mod morphology;
 mod parameters;
 mod pipeline;
 #[cfg(test)]
@@ -24,9 +25,10 @@ pub(crate) use cache::{ProvisionalBlurPassObjects, ProvisionalDropShadowColorize
 pub(crate) use key::{
     BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderBindingRoleKey, ShaderCompositeKey,
     ShaderCompositePathKey, ShaderDataBindingKey, ShaderMaskExtendKey, ShaderMaskQualityKey,
-    ShaderMaskSamplingKey, ShaderModuleKey, ShaderNativeShadowSourceKey, ShaderProgramKey,
-    ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
+    ShaderMaskSamplingKey, ShaderModuleKey, ShaderMorphologyStageKey, ShaderNativeShadowSourceKey,
+    ShaderProgramKey, ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
 };
+pub(crate) use morphology::{MorphologyParameterBytes, MorphologyParameterFacts};
 pub(crate) use parameters::{
     BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
     CompositeParameterBytes, ConvolutionParameterBytes, ConvolutionParameterFacts,
@@ -58,5 +60,5 @@ pub(crate) use test_support::{
 pub(crate) use validate::{
     BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, ConvolutionPassKeyRefs,
     CopyBackdropPassKeyRefs, CorePassKeyRefs, DropShadowColorizePassKeyRefs, GaussianPassKeyRefs,
-    NativeShadowPassKeyRefs, OffsetPassKeyRefs,
+    MorphologyPassKeyRefs, NativeShadowPassKeyRefs, OffsetPassKeyRefs,
 };

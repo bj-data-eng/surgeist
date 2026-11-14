@@ -27,9 +27,9 @@ use super::super::{
         CompositePassKeyRefs, ConvolutionParameterBytes, ConvolutionPassKeyRefs,
         CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache, DropShadowColorizePassKeyRefs,
         DropShadowParameterBytes, GaussianParameterBytes, GaussianPassKeyRefs,
-        NativeShadowParameterBytes, NativeShadowPassKeyRefs, OffsetParameterBytes,
-        OffsetPassKeyRefs, PassSpatialUniformBytes, ProvisionalCopyBackdropPassObjects,
-        ProvisionalDevicePassCacheUpdate,
+        MorphologyParameterBytes, MorphologyPassKeyRefs, NativeShadowParameterBytes,
+        NativeShadowPassKeyRefs, OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
+        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -128,6 +128,7 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     pub(super) convolution_parameters: Option<ConvolutionParameterBytes>,
     pub(super) gaussian_parameters: Option<GaussianParameterBytes>,
+    pub(super) morphology_parameters: Option<MorphologyParameterBytes>,
     pub(super) offset_parameters: Option<OffsetParameterBytes>,
     pub(super) native_shadow_parameters: Option<NativeShadowParameterBytes>,
     pub(super) convolution_weights: Option<RuntimePassId>,
@@ -468,6 +469,10 @@ fn analyze_runtime_passes(
                         crate::RuntimeOperation::NativeDropShadowRendering
                     }
                 })?;
+            }
+            RuntimePassKind::Morphology(work) if work.needs_float32() => {
+                capabilities
+                    .validate_filter_float32(crate::RuntimeOperation::MorphologyRendering)?;
             }
             RuntimePassKind::Convolution(work) if !work.operation().is_passthrough() => {
                 capabilities
@@ -814,6 +819,12 @@ fn prepare_runtime_pass_requests(
             }
             _ => None,
         };
+        let morphology_parameters = match &pass.kind {
+            RuntimePassKind::Morphology(work) => {
+                Some(super::morphology::parameters(work, account)?)
+            }
+            _ => None,
+        };
         let offset_parameters = match &pass.kind {
             RuntimePassKind::Offset(operation) => {
                 Some(super::offset::parameters(operation, account)?)
@@ -828,6 +839,7 @@ fn prepare_runtime_pass_requests(
         };
         if offset_parameters.is_some()
             || gaussian_parameters.is_some()
+            || morphology_parameters.is_some()
             || native_shadow_parameters.is_some()
         {
             validate_offset_uniform_limits(uniform_limits)?;
@@ -835,6 +847,7 @@ fn prepare_runtime_pass_requests(
         if (spatial_uniform.is_some()
             || convolution_parameters.is_some()
             || gaussian_parameters.is_some()
+            || morphology_parameters.is_some()
             || offset_parameters.is_some()
             || native_shadow_parameters.is_some())
             != pass.cache_keys.is_some()
@@ -864,6 +877,7 @@ fn prepare_runtime_pass_requests(
                 kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
                 convolution_parameters,
                 gaussian_parameters,
+                morphology_parameters,
                 offset_parameters,
                 native_shadow_parameters,
                 convolution_weights: None,
@@ -989,6 +1003,11 @@ pub(super) struct PreparedOffsetParameterBinding {
 
 pub(super) struct PreparedNativeShadowParameterBinding {
     pub(super) bytes: NativeShadowParameterBytes,
+    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
+}
+
+pub(super) struct PreparedMorphologyParameterBinding {
+    pub(super) bytes: MorphologyParameterBytes,
     pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
 }
 
@@ -1329,6 +1348,8 @@ pub(crate) struct PreparedGraph<'device> {
         PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     pub(super) gaussian_parameter_bindings:
         PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
+    pub(super) morphology_parameter_bindings:
+        PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
     pub(super) color_filter_operation_bindings:
         PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     pub(super) spatial_filter_pass_objects:
@@ -1501,11 +1522,40 @@ fn create_gaussian_parameter_binding(
     })
 }
 
+fn create_morphology_parameter_binding(
+    generation: &Generation,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bytes: &MorphologyParameterBytes,
+    account: &Account,
+) -> Result<PreparedMorphologyParameterBinding> {
+    let buffer = generation.allocation_with_upload(
+        GenerationClass::PassBuffers,
+        256,
+        256,
+        Some(account),
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist Morphology checked texel uniform"),
+                size: 256,
+                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        },
+    )?;
+    queue.write_buffer(&buffer, 0, bytes.as_bytes());
+    Ok(PreparedMorphologyParameterBinding {
+        bytes: bytes.clone(),
+        buffer: Some(buffer),
+    })
+}
+
 struct PreparedOperationParameterBindings {
     color_filters: PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     offsets: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     native_shadows: PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     gaussians: PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
+    morphologies: PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
 }
 
 fn create_operation_parameter_bindings(
@@ -1519,8 +1569,14 @@ fn create_operation_parameter_bindings(
     let mut offset_count = 0usize;
     let mut native_shadow_count = 0usize;
     let mut gaussian_count = 0usize;
+    let mut morphology_count = 0usize;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
+        if request.morphology_parameters.is_some() {
+            morphology_count = morphology_count
+                .checked_add(1)
+                .ok_or(crate::RenderAccountingError::Invariant)?;
+        }
         if request.gaussian_parameters.is_some() {
             gaussian_count = gaussian_count
                 .checked_add(1)
@@ -1546,6 +1602,7 @@ fn create_operation_parameter_bindings(
     let mut offset_bindings = PassMap::new(account, offset_count)?;
     let mut native_shadow_bindings = PassMap::new(account, native_shadow_count)?;
     let mut gaussian_bindings = PassMap::new(account, gaussian_count)?;
+    let mut morphology_bindings = PassMap::new(account, morphology_count)?;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if let Some(bytes) = request.gaussian_parameters.as_ref() {
@@ -1562,6 +1619,21 @@ fn create_operation_parameter_bindings(
             let binding =
                 create_gaussian_parameter_binding(generation, device, queue, bytes, account)?;
             gaussian_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
+        }
+        if let Some(bytes) = request.morphology_parameters.as_ref() {
+            if !matches!(request.runtime.kind, RuntimePassKind::Morphology(_)) {
+                return Err(preparation_error(
+                    "prepared Morphology bytes have no exact runtime pass",
+                ));
+            }
+            let Err(slot) = morphology_bindings.position(&request.runtime.id, account)? else {
+                return Err(preparation_error(
+                    "one Morphology pass acquired duplicate uniforms",
+                ));
+            };
+            let binding =
+                create_morphology_parameter_binding(generation, device, queue, bytes, account)?;
+            morphology_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
         }
         if let Some(bytes) = request.offset_parameters.as_ref() {
             if !matches!(request.runtime.kind, RuntimePassKind::Offset(_)) {
@@ -1640,6 +1712,7 @@ fn create_operation_parameter_bindings(
         offsets: offset_bindings,
         native_shadows: native_shadow_bindings,
         gaussians: gaussian_bindings,
+        morphologies: morphology_bindings,
     })
 }
 
@@ -1792,6 +1865,22 @@ fn realize_prepared_graph_pass(
                     pass_cache,
                     account,
                     GaussianPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+                .require_encoding_ready()?;
+            Ok(None)
+        }
+        RuntimePassKind::Morphology(_) => {
+            update
+                .realize_morphology_pass(
+                    device,
+                    pass_cache,
+                    account,
+                    MorphologyPassKeyRefs {
                         samplers: keys.samplers(),
                         layout: keys.layout(),
                         shader: keys.shader(),
@@ -2244,6 +2333,7 @@ impl<'device> PreparedGraph<'device> {
                 color_filters: color_filter_operation_bindings,
                 offsets: offset_parameter_bindings,
                 gaussians: gaussian_parameter_bindings,
+                morphologies: morphology_parameter_bindings,
                 native_shadows: native_shadow_parameter_bindings,
             } = create_operation_parameter_bindings(
                 frame_scope.generation(),
@@ -2279,6 +2369,7 @@ impl<'device> PreparedGraph<'device> {
                 color_filter_operation_bindings,
                 offset_parameter_bindings,
                 gaussian_parameter_bindings,
+                morphology_parameter_bindings,
                 native_shadow_parameter_bindings,
                 spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
                 pass_cache_update: pass_realization.update,
