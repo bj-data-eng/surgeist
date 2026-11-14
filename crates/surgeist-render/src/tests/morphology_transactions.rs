@@ -824,3 +824,130 @@ fn public_morphology_float32_refusal_is_typed_and_bypassed_only_by_unused_extrem
     assert_sample_pixels(&render(&mut renderer, &mut surface, &active));
     assert_frame_leases_released(&mut renderer);
 }
+
+fn bounded_morphology_peak_witness(periodic: bool, retention: ResourceCacheBudget) {
+    use crate::{EffectPrecision, EffectQualityPolicy, RenderGenerationScope};
+    let width = if periodic { 64 } else { 65 };
+    let domain = bounds(width, 1);
+    let alpha: Vec<u8> = (0..width).map(|x| (32 + (37 * x) % 224) as u8).collect();
+    let source = source_scene(
+        image(
+            width,
+            1,
+            alpha.iter().flat_map(|a| [255, 255, 255, *a]).collect(),
+        ),
+        domain,
+    );
+    let effect = operation(
+        MorphologyInput::new()
+            .with_operator(MorphologyOperator::Dilate)
+            .with_radii(32.0, 0.25),
+        FilterColorSpace::Srgb,
+    );
+    let source = if periodic {
+        MorphologySource::periodic(source, domain, domain, domain).unwrap()
+    } else {
+        MorphologySource::finite(
+            source,
+            FilterDomains::try_new(domain, domain, domain).unwrap(),
+        )
+    };
+    let mut scene = Scene::new();
+    scene
+        .morphology_layer(Layer::new(), effect, source)
+        .unwrap();
+    let mut renderer = pollster::block_on(Renderer::new(
+        Options::default()
+            .with_effect_quality_policy(EffectQualityPolicy::RequireHighPrecision)
+            .with_resource_cache_budget(retention)
+            .with_accounting(
+                RenderAccountingOptions::new()
+                    .with_profile(RenderProfile::Summary { timing: false }),
+            ),
+    ))
+    .unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(f64::from(width), 1.0), 1.0))
+            .unwrap();
+    let stats =
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    assert_eq!(stats.effect_precision, Some(EffectPrecision::High));
+    assert_eq!(stats, renderer.stats());
+    let report = renderer.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+    assert_eq!(report.cleanup_fault(), None);
+    let generation = report.generation().unwrap().unwrap();
+    let scope = RenderGenerationScope::Effects;
+    assert_eq!(generation.scope_opening(scope, RenderResource::GpuBytes), 0);
+    assert_eq!(
+        generation.scope_opening(scope, RenderResource::RegisteredCacheGpuBytes),
+        0
+    );
+    let effects = generation.scope_usage(scope);
+    let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    for x in 0..width {
+        // Literal inclusive-center maximum, independent of range tables and
+        // resource assignment. A full periodic window visits every tile cell;
+        // finite windows include only the nonnegative in-domain candidates.
+        let expected = if periodic {
+            *alpha.iter().max().unwrap()
+        } else {
+            alpha
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| (i64::from(x) - *i as i64).abs() <= 32)
+                .map(|(_, a)| *a)
+                .max()
+                .unwrap()
+        };
+        assert_pixel(&pixels, x, 0, [255, 255, 255, expected], 2);
+    }
+    // Both source and result are width×1. Current/next table and current/next
+    // query require at most four width×1 RGBA32Float physical capacities.
+    // Separately owned non-float Effects backing is six RGBA16Float images:
+    // root clear, isolated-source clear, capture canonicalization, source
+    // composite, morphology resolve, and final layer composite; plus one
+    // RGBA8 source capture. Vello workspaces, uniforms and headless targets
+    // have distinct generation scopes and are excluded, not estimated here.
+    // Therefore the complete Effects bound is width*(4*16+6*8+4):7424/7540.
+    // Period64 reaches six table levels; finite65 has clipped lengths33..65
+    // and six table/refinement levels. Neither may retain every level's image.
+    let bound = u64::from(width) * (4 * 16 + 6 * 8 + 4);
+    let gpu_peak = effects.peak(RenderResource::GpuBytes);
+    let registered_peak = effects.peak(RenderResource::RegisteredCacheGpuBytes);
+    let gpu_live = effects.live(RenderResource::GpuBytes);
+    let registered_live = effects.live(RenderResource::RegisteredCacheGpuBytes);
+    if retention == ResourceCacheBudget::DISABLED {
+        assert_eq!(gpu_live, 0);
+        assert_eq!(registered_live, 0);
+    }
+    assert!(
+        gpu_peak <= bound
+            && registered_peak <= bound
+            && gpu_live <= bound
+            && registered_live <= bound,
+        "periodic={periodic}, retention={}bytes: Effects peak GPU={gpu_peak}, registered={registered_peak}; closing GPU={gpu_live}, registered={registered_live}; independently bounded backing={bound}",
+        retention.bytes(),
+    );
+}
+
+#[test]
+fn public_morphology_many_level_period_peak_is_bounded_with_default_retention() {
+    bounded_morphology_peak_witness(true, ResourceCacheBudget::DEFAULT);
+}
+
+#[test]
+fn public_morphology_many_level_period_peak_is_bounded_with_disabled_retention() {
+    bounded_morphology_peak_witness(true, ResourceCacheBudget::DISABLED);
+}
+
+#[test]
+fn public_morphology_variable_finite_peak_is_bounded_with_default_retention() {
+    bounded_morphology_peak_witness(false, ResourceCacheBudget::DEFAULT);
+}
+
+#[test]
+fn public_morphology_variable_finite_peak_is_bounded_with_disabled_retention() {
+    bounded_morphology_peak_witness(false, ResourceCacheBudget::DISABLED);
+}
