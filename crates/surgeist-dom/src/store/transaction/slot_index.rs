@@ -131,7 +131,7 @@ impl SlotIndex {
         observed()?;
         self.members.first(
             self.roots
-                .get(root)
+                .get_with(root, &mut || observed())?
                 .map_or_else(RootHeader::default, |r| r.member),
             &mut observed,
         )
@@ -153,7 +153,7 @@ impl SlotIndex {
         work()?;
         self.members.after(
             self.roots
-                .get(root)
+                .get_with(root, &mut || work())?
                 .map_or_else(RootHeader::default, |r| r.member),
             key,
             OrderView::positions(self),

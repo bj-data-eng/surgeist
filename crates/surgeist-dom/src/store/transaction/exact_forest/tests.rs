@@ -486,3 +486,82 @@ fn cancellation_after_candidate_allocation_preserves_original_and_allows_retry()
         Some(1)
     );
 }
+
+#[test]
+fn qualified_utf16_equality_admits_each_word_symbol_and_terminator_before_comparison() {
+    // Three scope words plus six UTF-16 code units and their terminator. Lone
+    // surrogates remain code units; no Unicode decoding or normalization occurs.
+    let value = [0x0061, 0xD83D, 0xDE00, 0x0000, 0xD800, 0xFFFF];
+    let key = KeyView {
+        words: [0, 7, 0],
+        used: 3,
+        suffix: Suffix::Utf16(&value),
+    };
+    let required = 3 + value.len() + 1;
+    for allowance in [required, required - 1] {
+        let mut accepted = 0;
+        let mut refusals = 0;
+        let result = key.difference(&key, &mut || {
+            if accepted == allowance {
+                refusals += 1;
+                return Err(DomError::Cancelled);
+            }
+            accepted += 1;
+            Ok(())
+        });
+        if allowance == required {
+            assert_eq!(result, Ok(None));
+            assert_eq!(refusals, 0);
+        } else {
+            assert_eq!(result, Err(DomError::Cancelled));
+            assert_eq!(refusals, 1);
+        }
+        assert_eq!(accepted, allowance);
+    }
+}
+
+#[test]
+fn missing_owned_trie_relations_return_errors_without_installing_a_prefix() {
+    // Deliberately invalid private ownership links exercise the native owner's
+    // typed rejection boundary; ordinary public edits cannot construct them.
+    let registry = registry();
+    let mut working = Working::<u8> {
+        forest: Forest::default(),
+        custody: Custody::default(),
+    };
+    let mut root = Some(0);
+    let mut edit = Edit {
+        registry: &registry,
+        admit: &mut |_| Ok(()),
+        step: &mut || Ok(()),
+    };
+    let key = bytes(b"slot");
+    assert_eq!(
+        working.insert(&mut root, &key, 0, 1, &mut edit),
+        Err(DomError::StaleNode)
+    );
+    assert_eq!(
+        working.delete(&mut root, &key, &mut edit),
+        Err(DomError::StaleNode)
+    );
+    assert_eq!(
+        working.link(Some((0, 0)), 1, &mut root, &mut edit),
+        Err(DomError::StaleNode)
+    );
+    assert_eq!(
+        working.replace_representatives(0, 1, &key, 0, 1, &mut edit),
+        Err(DomError::StaleNode)
+    );
+    assert_eq!(root, Some(0));
+    assert!(working.forest.nodes.is_empty());
+    assert_eq!(
+        working.forest.first(root, &mut || Ok(())),
+        Err(DomError::StaleNode)
+    );
+    assert_eq!(
+        working
+            .forest
+            .lookup(root, &key, |_| Ok(bytes(b"slot")), &mut || Ok(())),
+        Err(DomError::StaleNode)
+    );
+}

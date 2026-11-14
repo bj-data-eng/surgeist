@@ -152,13 +152,13 @@ impl<'a> DomEventDom<'a> {
     pub(crate) fn raw(&self) -> &Dom {
         self.dom
     }
-    pub(crate) fn begin_source_edit(
+    pub(crate) fn begin_source_edit<Backing>(
         &mut self,
-        edit: surgeist_dom::DomSourceEdit,
+        input: impl Into<surgeist_dom::DomSourceInput<Backing>>,
         limits: surgeist_dom::DomSourceLimits,
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<surgeist_dom::DomSourceLease<'_>, DomError> {
-        self.dom.begin_source_edit(edit, limits, cancel)
+        self.dom.begin_source_edit(input, limits, cancel)
     }
     pub(crate) fn resume_source_edit(
         &mut self,

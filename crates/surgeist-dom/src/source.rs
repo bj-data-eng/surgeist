@@ -491,6 +491,45 @@ pub struct DomSourceEdit {
     pub(crate) command: crate::batch::Command,
 }
 
+/// One Slot assignment whose operand bank and original admission stay owned
+/// together until the canonical Source either adopts or releases the input.
+/// Successful adoption releases adapter backing after Source installation;
+/// failure releases the operand bank before either backing receipt.
+#[derive(Debug)]
+pub struct DomPreparedSlotAssignment<Backing> {
+    pub(crate) command: crate::batch::Command,
+    pub(crate) backing: Option<(crate::DomHostedRuntimeRetention, Backing)>,
+}
+
+/// Owned input to the original Source entry. Ordinary edits and preallocated
+/// Slot assignments use the same admission, installation and continuation.
+#[derive(Debug)]
+pub struct DomSourceInput<Backing = ()> {
+    pub(crate) kind: SourceInputKind<Backing>,
+}
+
+#[derive(Debug)]
+pub(crate) enum SourceInputKind<Backing> {
+    Edit(DomSourceEdit),
+    PreparedSlot(DomPreparedSlotAssignment<Backing>),
+}
+
+impl From<DomSourceEdit> for DomSourceInput {
+    fn from(edit: DomSourceEdit) -> Self {
+        Self {
+            kind: SourceInputKind::Edit(edit),
+        }
+    }
+}
+
+impl<Backing> From<DomPreparedSlotAssignment<Backing>> for DomSourceInput<Backing> {
+    fn from(prepared: DomPreparedSlotAssignment<Backing>) -> Self {
+        Self {
+            kind: SourceInputKind::PreparedSlot(prepared),
+        }
+    }
+}
+
 /// Name input for one detached Element in its receiving Document.
 #[derive(Clone, Debug)]
 pub enum DomElementCreationName {
@@ -1277,6 +1316,50 @@ impl DomSourceEdit {
                 incoming,
             },
         }
+    }
+    /// Prepare an ordered Slot assignment with its original native admission
+    /// and adapter backing. Both remain coupled to the operand bank through
+    /// copying and Source installation. Duplicates are preserved. The input
+    /// remains borrowed throughout the copy, preserving its owner's backing
+    /// during overlap with the new bank.
+    pub fn assign_slot_with<E: From<DomError>, Backing>(
+        slot: NodeId,
+        incoming: &[NodeId],
+        mut step: impl FnMut() -> Result<(), E>,
+        mut reserve: impl FnMut(usize) -> Result<(crate::DomHostedRuntimeRetention, Backing), E>,
+    ) -> Result<DomPreparedSlotAssignment<Backing>, E> {
+        step()?;
+        let backing = if incoming.is_empty() {
+            None
+        } else {
+            let bytes = incoming
+                .len()
+                .checked_mul(size_of::<crate::NodeOperand>())
+                .ok_or(DomError::RepresentationExhausted)?;
+            let backing = reserve(bytes)?;
+            if backing.0.retained_bytes() != bytes {
+                return Err(DomError::RepresentationExhausted.into());
+            }
+            Some(backing)
+        };
+        let mut operands = Vec::new();
+        operands
+            .try_reserve_exact(incoming.len())
+            .map_err(|_| DomError::AllocationFailed)?;
+        if operands.capacity() != incoming.len() {
+            return Err(DomError::AllocationFailed.into());
+        }
+        for &id in incoming {
+            step()?;
+            operands.push(crate::NodeOperand::Existing(id));
+        }
+        Ok(DomPreparedSlotAssignment {
+            command: Command::AssignSlot {
+                slot: slot.into(),
+                incoming: operands,
+            },
+            backing,
+        })
     }
     /// Request one `set_dialog_return_value` operation on the canonical owner.
     pub fn set_dialog_return_value(node: NodeId, value: impl Into<DocumentString>) -> Self {

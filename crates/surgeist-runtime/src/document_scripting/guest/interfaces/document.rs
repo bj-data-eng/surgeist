@@ -26,6 +26,7 @@ mod parent_node;
 mod processing_instruction;
 mod reflection;
 mod shadow;
+mod slot;
 mod style_policy;
 mod template;
 mod text;

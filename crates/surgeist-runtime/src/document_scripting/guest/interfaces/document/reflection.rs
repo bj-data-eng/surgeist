@@ -29,6 +29,7 @@ pub(super) enum Receiver {
     Html,
     Template,
     Meta,
+    Slot,
 }
 
 impl Receiver {
@@ -50,6 +51,7 @@ impl Receiver {
                         .namespace_uri()
                         .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
             }),
+            Self::Slot => super::slot::is_slot(node),
         }
     }
 
@@ -59,6 +61,7 @@ impl Receiver {
             Self::Html => const { &ascii(b"HTMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
+            Self::Slot => const { &ascii(b"HTMLSlotElement required") },
         }
     }
 }

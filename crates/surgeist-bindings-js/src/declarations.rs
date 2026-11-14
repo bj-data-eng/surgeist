@@ -182,6 +182,13 @@ pub struct EventListenerOptions {
     pub capture: bool,
 }
 
+/// Complete brand-free `AssignedNodesOptions` dictionary value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AssignedNodesOptions {
+    /// The declared `flatten` member.
+    pub flatten: bool,
+}
+
 /// The declared string or dictionary input to the Document element factories.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ElementCreationArgument {

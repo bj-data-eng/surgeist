@@ -381,6 +381,19 @@
       "entries": ["HTMLMetaElement.obsolete"]
     },
     {
+      "id": "HTMLSlotElement.source",
+      "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
+      "anchor": "htmlslotelement",
+      "block": 0,
+      "sha256": "7d591ae4a50bc536bedee4d37e71350d5abcd50d1b7f0667bfe88ded175b13ac",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-slot-element",
+      "entries": [
+        "HTMLSlotElement",
+        "AssignedNodesOptions"
+      ]
+    },
+    {
       "id": "HTMLTemplateElement.source",
       "path": "references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md",
       "anchor": "htmltemplateelement",
@@ -4034,6 +4047,152 @@
       "partial": true
     },
     {
+      "id": "HTMLSlotElement",
+      "kind": "interface",
+      "name": "HTMLSlotElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLSlotElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLSlotElement.name"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "sequence",
+            "inner": {
+              "kind": "named",
+              "name": "Node"
+            }
+          },
+          "name": "assignedNodes",
+          "arguments": [
+            {
+              "name": "options",
+              "type": {
+                "kind": "named",
+                "name": "AssignedNodesOptions"
+              },
+              "presence": "optional",
+              "default": {
+                "kind": "empty_dictionary"
+              }
+            }
+          ],
+          "id": "HTMLSlotElement.assignedNodes:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "sequence",
+            "inner": {
+              "kind": "named",
+              "name": "Element"
+            }
+          },
+          "name": "assignedElements",
+          "arguments": [
+            {
+              "name": "options",
+              "type": {
+                "kind": "named",
+                "name": "AssignedNodesOptions"
+              },
+              "presence": "optional",
+              "default": {
+                "kind": "empty_dictionary"
+              }
+            }
+          ],
+          "id": "HTMLSlotElement.assignedElements:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "name": "assign",
+          "arguments": [
+            {
+              "name": "nodes",
+              "type": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "named",
+                    "name": "Element"
+                  },
+                  {
+                    "kind": "named",
+                    "name": "Text"
+                  }
+                ]
+              },
+              "presence": "variadic"
+            }
+          ],
+          "id": "HTMLSlotElement.assign:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "AssignedNodesOptions",
+      "kind": "dictionary",
+      "name": "AssignedNodesOptions",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "dictionary_member",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "flatten",
+          "required": false,
+          "default": {
+            "kind": "boolean",
+            "value": false
+          },
+          "id": "AssignedNodesOptions.flatten"
+        }
+      ]
+    },
+    {
       "id": "HTMLTemplateElement",
       "kind": "interface",
       "name": "HTMLTemplateElement",
@@ -4401,13 +4560,6 @@
       "requirement": "Source-qualified HTMLScriptElement definition and its owning native/binding family; not an empty installed interface."
     },
     {
-      "name": "HTMLSlotElement",
-      "kind": "interface",
-      "owner": "surgeist-dom",
-      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlslotelement",
-      "requirement": "Source-qualified HTMLSlotElement definition and its owning native/binding family; not an empty installed interface."
-    },
-    {
       "name": "Location",
       "kind": "interface",
       "owner": "surgeist-runtime",
@@ -4667,7 +4819,7 @@
     "Slottable.assignedSlot/get": {
       "kind": "native",
       "adapter": "slottable.assignedslot.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/slot.rs", "symbol": "assigned_slot"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/slot/read.rs", "symbol": "assigned_slot_with"}],
       "requirements": []
     },
     "NodeList.item:0/call": {
@@ -7768,6 +7920,88 @@
       "kind": "native",
       "adapter": "htmlmetaelement.scheme.set",
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "requirements": []
+    },
+    "HTMLSlotElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlslotelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSlotElement.name/get": {
+      "kind": "native",
+      "adapter": "htmlslotelement.name.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSlotElement.name/set": {
+      "kind": "native",
+      "adapter": "htmlslotelement.name.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSlotElement.assignedNodes:0/call": {
+      "kind": "native",
+      "adapter": "htmlslotelement.assignednodes.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "symbol": "visit_assigned_nodes_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "symbol": "visit_flattened_slottables_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSlotElement.assignedElements:0/call": {
+      "kind": "native",
+      "adapter": "htmlslotelement.assignedelements.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "symbol": "visit_assigned_nodes_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "symbol": "visit_flattened_slottables_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSlotElement.assign:0/call": {
+      "kind": "native",
+      "adapter": "htmlslotelement.assign.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "assign_slot_with"
+        }
+      ],
       "requirements": []
     },
     "HTMLTemplateElement.constructor:0/construct": {

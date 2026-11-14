@@ -6,6 +6,8 @@ use crate::{
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_html::values::DocumentString;
 
+mod read;
+
 /// Language facts actually needed by the shared slot queries.
 #[derive(Clone, Copy)]
 pub(crate) enum TreeKind<'a> {
@@ -51,13 +53,6 @@ pub(crate) enum TreeRelations<'a, K> {
     ),
 }
 impl<K: Copy> TreeRelations<'_, K> {
-    pub fn len(self) -> usize {
-        match self {
-            Self::Direct(values) => values.len(),
-            Self::Canonical(values, _) | Self::AliasedCanonical(values, ..) => values.len(),
-            Self::AliasedStaged(values, ..) => values.len(),
-        }
-    }
     pub fn get(self, index: usize) -> Option<K> {
         match self {
             Self::Direct(values) => values.get(index).copied(),
@@ -75,8 +70,33 @@ impl<K: Copy> TreeRelations<'_, K> {
     pub fn first(self) -> Option<K> {
         self.get(0)
     }
-    pub fn iter(self) -> impl DoubleEndedIterator<Item = K> + ExactSizeIterator {
-        (0..self.len()).map(move |index| self.get(index).expect("relation extent"))
+    pub fn iter(self) -> impl DoubleEndedIterator<Item = K> {
+        let direct = match self {
+            Self::Direct(values) | Self::AliasedStaged(values, ..) => Some(values),
+            _ => None,
+        };
+        let canonical = match self {
+            Self::Canonical(values, map) => Some((values, map, None)),
+            Self::AliasedCanonical(values, map, aliases, alias) => {
+                Some((values, map, Some((aliases, alias))))
+            }
+            _ => None,
+        };
+        let staged = direct
+            .into_iter()
+            .flatten()
+            .copied()
+            .map(move |value| match self {
+                Self::AliasedStaged(_, aliases, alias) => alias(value, aliases),
+                _ => value,
+            });
+        let published = canonical.into_iter().flat_map(|(values, map, alias)| {
+            values.iter().copied().map(move |value| {
+                let key = map(value);
+                alias.map_or(key, |(aliases, alias)| alias(key, aliases))
+            })
+        });
+        staged.chain(published)
     }
 }
 /// Two real phases of the same owner use one selected DOM query algorithm.
@@ -252,7 +272,7 @@ pub(crate) fn next_admitted<T: Tree>(
             return Ok(None);
         }
         let node = tree.get(key)?;
-        let parent = node.parent.expect("ordinary descendant parent");
+        let parent = node.parent.ok_or(DomError::StaleNode)?;
         let children = tree.get(parent)?.children;
         let ordinal = node.ordinal.ok_or(DomError::StaleNode)?;
         #[cfg(test)]
@@ -287,7 +307,7 @@ pub(crate) fn find_slot<T: Tree>(
         return Ok(None);
     };
     let TreeKind::ShadowRoot(state) = tree.get(root)?.kind else {
-        unreachable!("hosted root")
+        return Err(DomError::StaleNode);
     };
     if open && state.mode() == surgeist_html::construction::HtmlShadowRootMode::Closed {
         return Ok(None);
@@ -351,7 +371,7 @@ pub(crate) fn visit_slottables<T: Tree>(
     let TreeKind::ShadowRoot(state) = rn.kind else {
         return Ok(());
     };
-    let host = rn.host.expect("shadow host");
+    let host = rn.host.ok_or(DomError::StaleNode)?;
     if state.slot_assignment() == surgeist_html::construction::HtmlSlotAssignment::Manual {
         for node in tree.get(slot)?.manual.iter() {
             tree.step(cancel)?;
@@ -421,16 +441,13 @@ impl<'a> DomSlot<'a> {
     pub fn assigned_nodes(self) -> &'a [NodeId] {
         self.node.node.assigned_nodes()
     }
-    pub fn assigned_elements(self) -> impl Iterator<Item = NodeId> + 'a {
-        self.assigned_nodes().iter().copied().filter(move |id| {
-            matches!(
-                self.node
-                    .snapshot
-                    .node(*id)
-                    .expect("captured stored assignment")
-                    .kind(),
-                DomNodeKind::Element(_)
-            )
+    pub fn assigned_elements(self) -> impl Iterator<Item = Result<NodeId, DomError>> + 'a {
+        self.assigned_nodes().iter().copied().filter_map(move |id| {
+            match self.node.snapshot.node(id) {
+                Ok(node) if matches!(node.kind(), DomNodeKind::Element(_)) => Some(Ok(id)),
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            }
         })
     }
     pub fn find_slottables(
@@ -451,88 +468,20 @@ impl<'a> DomSlot<'a> {
         limits: DomSlotQueryLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSlotNodes, DomError> {
-        if !matches!(
-            self.node
-                .snapshot
-                .get(root(self.node.snapshot, self.id(), cancel)?)?
-                .kind,
-            TreeKind::ShadowRoot(_)
-        ) {
-            check_cancel(cancel)?;
-            return Ok(DomSlotNodes {
-                source: self.node.snapshot.clone(),
-                nodes: Vec::new().into(),
-            });
-        }
-        let mut frames: Vec<(std::vec::IntoIter<NodeId>, usize)> = Vec::new();
-        let mut pending = Some(self.id());
-        let mut retained = 0usize;
         let mut result = Vec::new();
-        loop {
-            check_cancel(cancel)?;
-            if let Some(slot) = pending.take() {
-                let available =
-                    limits
-                        .scratch
-                        .checked_sub(retained)
-                        .ok_or(DomError::ResourceLimit {
-                            resource: DomResource::SlotQueryScratch,
-                            limit: limits.scratch,
-                        })?;
-                let mut nodes = slottables(self.node.snapshot, slot, available, cancel)
-                    .map_err(|e| scratch_error(e, limits.scratch))?;
-                if nodes.is_empty() {
-                    for child in self.node.snapshot.get(slot)?.children.iter() {
-                        check_cancel(cancel)?;
-                        if is_slottable(self.node.snapshot.get(child)?.kind) {
-                            push(&mut nodes, child, available, DomResource::SlotQueryScratch)?;
-                        }
-                    }
-                }
-                // A frame itself retains one logical traversal reference.
-                let required = retained
-                    .checked_add(nodes.len())
-                    .and_then(|n| n.checked_add(1))
-                    .ok_or(DomError::RepresentationExhausted)?;
-                if required > limits.scratch {
-                    return Err(DomError::ResourceLimit {
-                        resource: DomResource::SlotQueryScratch,
-                        limit: limits.scratch,
-                    });
-                }
-                let charge = nodes.len() + 1;
-                retained = required;
-                reserve(&mut frames, 1)?;
-                frames.push((nodes.into_iter(), charge));
-            }
-            let Some(frame) = frames.last_mut() else {
-                break;
-            };
-            if let Some(node) = frame.0.next() {
-                // The frame's allocation remains retained until its pop.
-                if is_slot(self.node.snapshot.get(node)?.kind)
-                    && matches!(
-                        self.node
-                            .snapshot
-                            .get(root(self.node.snapshot, node, cancel)?)?
-                            .kind,
-                        TreeKind::ShadowRoot(_)
-                    )
-                {
-                    pending = Some(node);
-                } else {
-                    push(
-                        &mut result,
-                        node,
-                        limits.output,
-                        DomResource::SlotQueryOutput,
-                    )?;
-                }
-            } else {
-                let (_, charge) = frames.pop().expect("present frame");
-                retained -= charge;
-            }
-        }
+        self.visit_flattened_slottables_with(
+            limits,
+            || check_cancel(cancel),
+            |_| Ok(()),
+            |node| {
+                push(
+                    &mut result,
+                    node.id(),
+                    limits.output,
+                    DomResource::SlotQueryOutput,
+                )
+            },
+        )?;
         Ok(DomSlotNodes {
             source: self.node.snapshot.clone(),
             nodes: result.into(),
@@ -585,10 +534,10 @@ impl<'a> DomNode<'a> {
         Ok(self.node.assigned_slot())
     }
     pub fn assigned_slot(self, cancel: &AtomicBool) -> Result<Option<NodeId>, DomError> {
-        find_slot(self.snapshot, self.id(), true, cancel)
+        self.assigned_slot_with(|| check_cancel(cancel))
     }
     pub fn find_slot(self, open: bool, cancel: &AtomicBool) -> Result<Option<NodeId>, DomError> {
-        find_slot(self.snapshot, self.id(), open, cancel)
+        self.find_slot_with(open, || check_cancel(cancel))
     }
 }
 impl DomSnapshot {

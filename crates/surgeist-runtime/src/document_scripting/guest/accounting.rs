@@ -346,8 +346,11 @@ impl GuestBudget {
         let canonical = retain()?;
         self.0.apply(scope, change)?;
         Ok(GuestBacking {
-            account: self.0.clone(),
-            scope,
+            local: GuestSourceInputBacking {
+                account: self.0.clone(),
+                scope,
+                bytes,
+            },
             canonical,
         })
     }
@@ -364,8 +367,11 @@ impl GuestBudget {
             Change::Acquire(DocumentGuestResource::BackingBytes, units),
         )?;
         Ok(GuestBacking {
-            account: self.0.clone(),
-            scope,
+            local: GuestSourceInputBacking {
+                account: self.0.clone(),
+                scope,
+                bytes: canonical.retained_bytes(),
+            },
             canonical,
         })
     }
@@ -580,14 +586,21 @@ impl surgeist_bindings_js::preparation::Retention for CaptureBacking {
 }
 
 pub(crate) struct GuestBacking {
+    local: GuestSourceInputBacking,
+    canonical: DomHostedRuntimeRetention,
+}
+
+/// Original guest-adapter accounting, released when its actual input becomes
+/// native Source storage. It carries no native or Source execution authority.
+pub(in crate::document_scripting) struct GuestSourceInputBacking {
     account: Rc<Accounting>,
     scope: AccountScope,
-    canonical: DomHostedRuntimeRetention,
+    bytes: usize,
 }
 
 impl GuestBacking {
     pub(in crate::document_scripting) fn release(self) -> Result<(), AccountingError> {
-        let account = self.account.clone();
+        let account = self.local.account.clone();
         drop(self);
         match account.cleanup_error.get() {
             Some(error) => Err(error),
@@ -599,10 +612,23 @@ impl GuestBacking {
         self.canonical.retained_bytes()
     }
 
+    /// Transfer both existing receipts without reserving or releasing storage.
+    /// The prepared native input keeps them together until Source installation.
+    pub(in crate::document_scripting) fn into_source_input(
+        self,
+    ) -> (DomHostedRuntimeRetention, GuestSourceInputBacking) {
+        (self.canonical, self.local)
+    }
+
     pub(in crate::document_scripting) fn split_off(
         &mut self,
         bytes: usize,
     ) -> Result<Self, DocumentScriptNativeError> {
+        let remaining = self
+            .local
+            .bytes
+            .checked_sub(bytes)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let canonical = self
             .canonical
             .split_off(bytes)
@@ -612,17 +638,21 @@ impl GuestBacking {
                 }
                 other => other.into(),
             })?;
+        self.local.bytes = remaining;
         Ok(Self {
-            account: self.account.clone(),
-            scope: self.scope,
+            local: GuestSourceInputBacking {
+                account: self.local.account.clone(),
+                scope: self.local.scope,
+                bytes,
+            },
             canonical,
         })
     }
 }
 
-impl Drop for GuestBacking {
+impl Drop for GuestSourceInputBacking {
     fn drop(&mut self) {
-        if let Ok(units) = u64::try_from(self.retained_bytes())
+        if let Ok(units) = u64::try_from(self.bytes)
             && let Err(error) = self.account.ledger.apply(
                 self.account.scope(self.scope),
                 Change::Release(DocumentGuestResource::BackingBytes, units),
@@ -706,6 +736,33 @@ mod tests {
         )
         .unwrap();
         (budget, session, cancellation)
+    }
+
+    #[test]
+    fn source_input_transfer_keeps_both_original_receipts_without_another_admission() {
+        let (budget, mut session, cancellation) = budget();
+        let backing = budget
+            .reserve_with(AccountScope::Adapter, 10, || {
+                session
+                    .hosted_execution()
+                    .retain_script_payload(&mut session.dom(), 10, &cancellation)
+                    .map_err(DocumentScriptNativeError::from)
+            })
+            .unwrap();
+        let work = budget.work().unwrap();
+        let (canonical, local) = backing.into_source_input();
+        assert_eq!(budget.used(), 10);
+        assert_eq!(canonical.retained_bytes(), 10);
+        assert_eq!(budget.work().unwrap(), work);
+
+        // Adoption ends adapter ownership; the native receipt independently
+        // survives until the consuming Source performs its equal-size move.
+        drop(local);
+        assert_eq!(budget.used(), 0);
+        assert_eq!(canonical.retained_bytes(), 10);
+        assert_eq!(budget.work().unwrap(), work);
+        drop(canonical);
+        assert_eq!(budget.used(), 0);
     }
 
     #[test]

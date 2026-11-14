@@ -6,6 +6,7 @@ use super::{
     Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,
 };
 use crate::TrustedAttributeValue;
+use crate::declarations::AssignedNodesOptions;
 use crate::declarations::DocumentReadyState;
 use crate::declarations::DocumentVisibilityState;
 use crate::declarations::ElementCreationArgument;
@@ -247,6 +248,23 @@ fn convert_event_listener_options<'s>(
         None => false,
     };
     Ok(cx.plain(EventListenerOptions { capture }))
+}
+
+/// Complete dictionary conversion for `AssignedNodesOptions`.
+pub fn assigned_nodes_options() -> Type<AssignedNodesOptions> {
+    Type::scalar(convert_assigned_nodes_options)
+}
+
+fn convert_assigned_nodes_options<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<AssignedNodesOptions>, Failure> {
+    let object = cx.dictionary("AssignedNodesOptions", input)?;
+    let flatten = match cx.member(input, object, &[102, 108, 97, 116, 116, 101, 110])? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    Ok(cx.plain(AssignedNodesOptions { flatten }))
 }
 
 pub(crate) const WINDOW_CSS_NAME: &[u16] = &[67, 83, 83];
@@ -1697,6 +1715,40 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
         false,
         types::DOM_STRING,
         None,
+    )
+}
+
+fn default_html_slot_element_assigned_nodes_0_options(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<AssignedNodesOptions>, Failure> {
+    Ok(cx.plain(AssignedNodesOptions::default()))
+}
+
+/// Selected argument `HTMLSlotElement.assignedNodes:0/options` (not overload selection).
+pub fn html_slot_element_assigned_nodes_0_options() -> Argument<Type<AssignedNodesOptions>> {
+    Argument::new(
+        "HTMLSlotElement.assignedNodes:0/options",
+        0,
+        true,
+        assigned_nodes_options(),
+        Some(default_html_slot_element_assigned_nodes_0_options),
+    )
+}
+
+fn default_html_slot_element_assigned_elements_0_options(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<AssignedNodesOptions>, Failure> {
+    Ok(cx.plain(AssignedNodesOptions::default()))
+}
+
+/// Selected argument `HTMLSlotElement.assignedElements:0/options` (not overload selection).
+pub fn html_slot_element_assigned_elements_0_options() -> Argument<Type<AssignedNodesOptions>> {
+    Argument::new(
+        "HTMLSlotElement.assignedElements:0/options",
+        0,
+        true,
+        assigned_nodes_options(),
+        Some(default_html_slot_element_assigned_elements_0_options),
     )
 }
 

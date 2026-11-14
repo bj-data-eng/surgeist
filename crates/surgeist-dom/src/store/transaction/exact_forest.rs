@@ -190,7 +190,12 @@ impl<L: Copy + Eq> Forest<L> {
         let width = key.width()?;
         loop {
             step()?;
-            match self.node(root).expect("live exact-key trie path") {
+            match self
+                .nodes
+                .get_with(root, &mut || step())?
+                .copied()
+                .ok_or(DomError::StaleNode)?
+            {
                 Node::Branch {
                     bit,
                     children,
@@ -202,14 +207,16 @@ impl<L: Copy + Eq> Forest<L> {
                         // key. One retained representative proves absence.
                         step()?;
                         let Node::Leaf(value) = self
-                            .node(representative)
-                            .expect("live exact-key representative")
+                            .nodes
+                            .get_with(representative, &mut || step())?
+                            .copied()
+                            .ok_or(DomError::StaleNode)?
                         else {
-                            unreachable!()
+                            return Err(DomError::StaleNode);
                         };
                         return Ok((representative, value));
                     }
-                    root = children[key.bit(bit)?];
+                    root = *children.get(key.bit(bit)?).ok_or(DomError::StaleNode)?;
                 }
                 Node::Leaf(value) => return Ok((root, value)),
             }
@@ -222,10 +229,22 @@ impl<L: Copy + Eq> Forest<L> {
         mut resolve: impl FnMut(L) -> Result<KeyView<'a, W>, DomError>,
         step: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<L>, DomError> {
+        self.lookup_with(root, key, |value, _| resolve(value), step)
+    }
+    pub fn lookup_with<'a, const W: usize>(
+        &self,
+        root: Root,
+        key: &KeyView<'_, W>,
+        mut resolve: impl FnMut(
+            L,
+            &mut dyn FnMut() -> Result<(), DomError>,
+        ) -> Result<KeyView<'a, W>, DomError>,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<L>, DomError> {
         let Some(root) = root else { return Ok(None) };
         let (_, value) = self.leaf(root, key, step)?;
         Ok(key
-            .difference(&resolve(value)?, step)?
+            .difference(&resolve(value, step)?, step)?
             .is_none()
             .then_some(value))
     }
@@ -236,7 +255,12 @@ impl<L: Copy + Eq> Forest<L> {
     ) -> Result<Option<L>, DomError> {
         while let Some(index) = root {
             step()?;
-            match self.node(index).expect("live exact-key first path") {
+            match self
+                .nodes
+                .get_with(index, &mut || step())?
+                .copied()
+                .ok_or(DomError::StaleNode)?
+            {
                 Node::Branch { children, .. } => root = Some(children[0]),
                 Node::Leaf(value) => return Ok(Some(value)),
             }
@@ -253,7 +277,12 @@ impl<L: Copy + Eq> Forest<L> {
         let mut successor = None;
         while let Some(index) = current {
             step()?;
-            match self.node(index).expect("live exact-key successor path") {
+            match self
+                .nodes
+                .get_with(index, &mut || step())?
+                .copied()
+                .ok_or(DomError::StaleNode)?
+            {
                 Node::Branch { bit, children, .. } => {
                     if bit >= key.width()? {
                         return Err(DomError::RepresentationExhausted);
@@ -262,7 +291,7 @@ impl<L: Copy + Eq> Forest<L> {
                     if side == 0 {
                         successor = Some(children[1]);
                     }
-                    current = Some(children[side]);
+                    current = Some(*children.get(side).ok_or(DomError::StaleNode)?);
                 }
                 Node::Leaf(_) => break,
             }
@@ -439,11 +468,11 @@ impl<L: Copy + Eq> Working<L> {
                 bit,
                 mut children,
                 representative,
-            } = self.forest.node(index).expect("exact-key parent")
+            } = self.forest.node(index).ok_or(DomError::StaleNode)?
             else {
-                unreachable!()
+                return Err(DomError::StaleNode);
             };
-            children[side] = child;
+            *children.get_mut(side).ok_or(DomError::StaleNode)? = child;
             self.write(
                 index,
                 Node::Branch {
@@ -466,11 +495,11 @@ impl<L: Copy + Eq> Working<L> {
         value: L,
         edit: &mut Edit<'_>,
     ) -> Result<(), DomError> {
-        let mut current = root.expect("existing exact-key root");
+        let mut current = root.ok_or(DomError::StaleNode)?;
         let mut parent = None;
         loop {
             (edit.step)()?;
-            match self.forest.node(current).expect("exact-key insertion path") {
+            match self.forest.node(current).ok_or(DomError::StaleNode)? {
                 Node::Branch {
                     bit: previous,
                     children,
@@ -478,7 +507,7 @@ impl<L: Copy + Eq> Working<L> {
                 } if previous < bit => {
                     let side = key.bit(previous)?;
                     parent = Some((current, side));
-                    current = children[side];
+                    current = *children.get(side).ok_or(DomError::StaleNode)?;
                 }
                 _ => break,
             }
@@ -486,7 +515,7 @@ impl<L: Copy + Eq> Working<L> {
         let side = key.bit(bit)?;
         let leaf = self.allocate(Node::Leaf(value), edit)?;
         let mut children = [current; 2];
-        children[side] = leaf;
+        *children.get_mut(side).ok_or(DomError::StaleNode)? = leaf;
         let branch = self.allocate(
             Node::Branch {
                 bit,
@@ -503,45 +532,44 @@ impl<L: Copy + Eq> Working<L> {
         key: &KeyView<'_, W>,
         edit: &mut Edit<'_>,
     ) -> Result<(), DomError> {
-        let mut current = root.expect("existing exact-key deletion root");
+        let mut current = root.ok_or(DomError::StaleNode)?;
         let mut parent = None;
         let mut grandparent = None;
         loop {
             (edit.step)()?;
-            match self.forest.node(current).expect("exact-key deletion path") {
+            match self.forest.node(current).ok_or(DomError::StaleNode)? {
                 Node::Branch { bit, children, .. } => {
                     grandparent = parent;
                     let side = key.bit(bit)?;
                     parent = Some((current, side));
-                    current = children[side];
+                    current = *children.get(side).ok_or(DomError::StaleNode)?;
                 }
                 Node::Leaf(_) => break,
             }
         }
         if let Some((index, side)) = parent {
             let Node::Branch { children, .. } =
-                self.forest.node(index).expect("exact-key deletion parent")
+                self.forest.node(index).ok_or(DomError::StaleNode)?
             else {
-                unreachable!()
+                return Err(DomError::StaleNode);
             };
+            let sibling = *children
+                .get(1usize.checked_sub(side).ok_or(DomError::StaleNode)?)
+                .ok_or(DomError::StaleNode)?;
             (edit.step)()?;
-            let replacement = match self
-                .forest
-                .node(children[1 - side])
-                .expect("exact-key sibling")
-            {
+            let replacement = match self.forest.node(sibling).ok_or(DomError::StaleNode)? {
                 Node::Branch { representative, .. } => representative,
-                Node::Leaf(_) => children[1 - side],
+                Node::Leaf(_) => sibling,
             };
             self.replace_representatives(
-                root.expect("deletion root"),
+                root.ok_or(DomError::StaleNode)?,
                 index,
                 key,
                 current,
                 replacement,
                 edit,
             )?;
-            self.link(grandparent, children[1 - side], root, edit)?;
+            self.link(grandparent, sibling, root, edit)?;
             self.remove(index, edit)?;
         } else {
             *root = None;
@@ -563,9 +591,9 @@ impl<L: Copy + Eq> Working<L> {
                 bit,
                 children,
                 representative,
-            } = self.forest.node(current).expect("representative ancestor")
+            } = self.forest.node(current).ok_or(DomError::StaleNode)?
             else {
-                unreachable!()
+                return Err(DomError::StaleNode);
             };
             if representative == old {
                 self.write(
@@ -578,7 +606,7 @@ impl<L: Copy + Eq> Working<L> {
                     edit,
                 )?;
             }
-            current = children[key.bit(bit)?];
+            current = *children.get(key.bit(bit)?).ok_or(DomError::StaleNode)?;
         }
         Ok(())
     }

@@ -44,6 +44,29 @@ children with its shadow-root children, and preserves explicit outside-document
 membership. Its node iterator is source breadth-first construction order.
 Both results retain the exact immutable source; neither changes canonical links.
 
+Native consumers use `visit_assigned_nodes_with` for stored assignments and
+`visit_flattened_slottables_with` for fresh flattened observations. Visitors
+receive canonical nodes resolved through the caller's work admission, so kind
+filtering needs no second lookup. `assigned_slot_with` and `find_slot_with` use
+the same fresh assignment owner, including open-root presentation. The caller's
+step supplies cancellation; its first work, reservation or visitor refusal is
+returned unchanged, with only the successful visitor prefix accepted.
+The stored assigned-element iterator returns typed errors for invalid captured links.
+
+Flattening admits the full new byte extent of every candidate/frame allocation
+before allocation and retains old backing through replacement and copying.
+Returned backing drops after its allocation; each copied reference/frame is
+metered. Logical query limits remain separate from these physical reservations.
+Visitors own output allocation, filtering and its admission. Keep the captured
+snapshot and output backing alive through consuming the observation; historical
+custody does not authorize execution against retired identities.
+
+`DomSourceEdit::assign_slot_with` borrows caller-owned NodeIds while admitting
+and copying the command's exact operand allocation, preserving duplicates. The
+prepared assignment owns that command and its canonical and local credits. Source
+installation adopts the same canonical allocation and ends the local credit at
+the installation fence. The original input remains funded throughout the copy.
+
 ## Signals and native checkpoints
 
 Source signals accumulate an ordered deduplicated set in the same transaction.

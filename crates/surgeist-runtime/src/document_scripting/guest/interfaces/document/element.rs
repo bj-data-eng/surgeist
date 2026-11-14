@@ -278,6 +278,7 @@ impl ElementBindings {
             )?;
             match interface {
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
+                "HTMLSlotElement" => super::slot::install(scope, &prototype, capture)?,
                 "HTMLTemplateElement" => super::template::install(scope, &prototype, capture)?,
                 "HTMLTitleElement" => super::title::install(scope, &prototype, capture)?,
                 _ => (),
@@ -332,6 +333,12 @@ impl ElementBindings {
             REFLECTIONS,
         )?;
         attribute::install(scope, &element, capture)?;
+        super::slot::install_slottable(
+            scope,
+            &element,
+            capture,
+            super::slot::SlottableReceiver::Element,
+        )?;
         super::shadow::install_attachment(scope, &element, capture)?;
         let handler = capture(size_of::<(Capture, ElementMember)>())?;
         install_getter(

@@ -63,7 +63,7 @@ fn hosted_session_with_details(
     hosted_session_with_dom_limits(cancel, source_jobs, details_intentions, |limits| limits)
 }
 
-fn hosted_session_with_dom_limits(
+pub(super) fn hosted_session_with_dom_limits(
     cancel: &AtomicBool,
     source_jobs: usize,
     details_intentions: usize,
@@ -370,6 +370,10 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     title_text::title_text_uses_direct_native_children_and_original_replacement();
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     slot::slot_members_read_the_canonical_named_assignment();
+    super::guest::tests::slot_admission::slot_sequences_admit_exact_work_and_backing();
+    super::guest::tests::slot_admission::slot_queries_and_assign_preserve_native_refusal();
+    super::guest::tests::slot_admission::slot_queries_consume_the_enclosing_attribute_source();
+    slot::slot_family_observes_native_assignment_and_web_idl_boundaries();
     element_reflection::element_reflections_use_the_exact_native_attributes();
     element_attributes::element_attribute_methods_observe_and_remove_canonical_attributes();
     toggle_attribute::element_toggle_attribute_uses_one_canonical_edit();

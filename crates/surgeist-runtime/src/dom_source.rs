@@ -429,10 +429,10 @@ impl DomSourceRuntime {
         clippy::result_large_err,
         reason = "the driving boundary retains the actual root and original producer failure without allocating"
     )]
-    pub fn apply(
+    pub fn apply<Backing>(
         &mut self,
         dom: &mut DomEventDom<'_>,
-        edit: DomSourceEdit,
+        input: impl Into<surgeist_dom::DomSourceInput<Backing>>,
         limits: DomSourceLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
@@ -444,7 +444,7 @@ impl DomSourceRuntime {
                 .map_err(DomSourceRuntimeError::Hosted)?;
         }
         let progress = {
-            let mut lease = dom.begin_source_edit(edit, limits, cancel)?;
+            let mut lease = dom.begin_source_edit(input, limits, cancel)?;
             if let Some(scope) = services.execution_scope {
                 self.hosted
                     .bind_execution_scope(&mut lease, scope, true, cancel)
