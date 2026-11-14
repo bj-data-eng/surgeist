@@ -1,5 +1,6 @@
 use crate::accounting::{Account, AccountedVec, OwnedBox, RenderPhase, RenderWork};
 mod bounds;
+mod convolution;
 mod filter;
 mod graph;
 mod lower;
@@ -17,6 +18,7 @@ mod validate;
 pub(crate) use bounds::{
     SpatialPrimitivesForTest, spatial_primitives_for_test, transformed_logical_bounds_for_test,
 };
+pub(crate) use convolution::{ConvolutionMapping, ConvolutionStage};
 #[cfg(test)]
 pub(crate) use filter::{
     OrderedFilterEdgeObservation, OrderedFilterIntentObservation, OrderedFilterPlanObservation,
@@ -25,13 +27,14 @@ pub(crate) use filter::{
 pub(crate) use lower::{
     GraphLoweringBlur, GraphLoweringBlurInput, GraphLoweringClipCoverage, GraphLoweringColorFilter,
     GraphLoweringColorOperation, GraphLoweringComposite, GraphLoweringCompositeKind,
-    GraphLoweringDropShadow, GraphLoweringEdgePolicy, GraphLoweringFilterSpatialMapping,
-    GraphLoweringGeneration, GraphLoweringImportView, GraphLoweringInitialization,
-    GraphLoweringPassId, GraphLoweringPassKind, GraphLoweringPassResult, GraphLoweringPassView,
-    GraphLoweringReadBinding, GraphLoweringReadRole, GraphLoweringResourceId,
-    GraphLoweringResourceProducer, GraphLoweringResourceRole, GraphLoweringResourceView,
-    GraphLoweringSamplingEdge, GraphLoweringSamplingFilter, GraphLoweringSpatialDescriptor,
-    GraphLoweringVelloCapture, GraphLoweringVelloSpan, GraphLoweringVelloSpanScope,
+    GraphLoweringConvolution, GraphLoweringDropShadow, GraphLoweringEdgePolicy,
+    GraphLoweringFilterSpatialMapping, GraphLoweringGeneration, GraphLoweringImportView,
+    GraphLoweringInitialization, GraphLoweringPassId, GraphLoweringPassKind,
+    GraphLoweringPassResult, GraphLoweringPassView, GraphLoweringReadBinding,
+    GraphLoweringReadRole, GraphLoweringResourceId, GraphLoweringResourceProducer,
+    GraphLoweringResourceRole, GraphLoweringResourceView, GraphLoweringSamplingEdge,
+    GraphLoweringSamplingFilter, GraphLoweringSpatialDescriptor, GraphLoweringVelloCapture,
+    GraphLoweringVelloSpan, GraphLoweringVelloSpanScope,
 };
 #[expect(
     unused_imports,

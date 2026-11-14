@@ -21,6 +21,11 @@ Plus operation remains distinct. [Layer blending](docs/reference.md#layer-blendi
 and [composition](docs/reference.md#layer-composition-and-isolation) describe the
 alpha, operation-domain and capability contracts.
 
+Prepared native convolution runs arbitrary layer children through the GPU graph.
+The [convolution contract](docs/convolution.md) describes parameter admission,
+source and result domains, anisotropic grids, edge modes, color and alpha math,
+precision, accounting and typed refusals.
+
 Ordinary linear and positive elliptical radial paints preserve ordered finite
 `f64` stop positions, exterior colors and coincident steps. Repeating fields
 share the stop primitive and choose a solid premultiplied-sRGBA average when
@@ -108,6 +113,7 @@ and the full first-success walkthrough.
 | [Getting started](docs/getting-started.md) | Render and read back your first headless frame. |
 | [How-to](docs/how-to.md) | Exercise native presentation and check the browser compilation boundary. |
 | [Reference](docs/reference.md) | Find public interfaces, features, diagnostics, and verification commands. |
+| [Native convolution](docs/convolution.md) | Prepare and execute resolved convolution with explicit domains, grids and numeric policy. |
 | [Explanation](docs/explanation.md) | Understand execution routes, publication, precision, and ownership. |
 
 ## License and attribution

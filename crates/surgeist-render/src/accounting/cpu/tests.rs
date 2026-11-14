@@ -1178,3 +1178,51 @@ fn native_import_registry_growth_charges_existing_entries_once_to_actual_cpu_own
     // Semantic imports are gone; the actual reusable registry backing remains.
     assert_eq!(retained(&cpu), baseline + backing_bytes);
 }
+
+#[test]
+fn convolution_import_deduplicates_shared_backing_and_releases_last_lease() {
+    let rect = crate::Rect::try_new(0.0, 0.0, 2.0, 2.0).unwrap();
+    let domains = crate::ConvolutionDomains::try_new(rect, rect, rect).unwrap();
+    let mut context = super::super::RenderAccountingContext::default();
+    let first = crate::prepare_convolution(
+        crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        domains,
+        crate::FilterColorSpace::Srgb,
+        &mut context,
+    )
+    .unwrap();
+    let second = crate::prepare_convolution(
+        crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        domains,
+        crate::FilterColorSpace::Srgb,
+        &mut context,
+    )
+    .unwrap();
+    let bytes = first.own_backing_bytes().unwrap() as u64;
+    // Per-scope snapshots are observable only with profiling enabled; Off retains
+    // exact root custody while deliberately omitting scope report backing.
+    let cpu = RendererCpu::new(
+        RenderAccountingOptions::default().with_profile(RenderProfile::Summary { timing: false }),
+    )
+    .unwrap();
+    let account = cpu.at(RenderCpuScope::PreparedValues);
+    let live = || {
+        cpu.snapshot()
+            .unwrap()
+            .scope_usage(RenderCpuScope::PreparedValues)
+            .unwrap()
+            .live(RenderResource::RetainedCpuBytes)
+    };
+    let one = account.import_convolution(&first, None).unwrap();
+    assert_eq!(live(), bytes);
+    let duplicate = account.import_convolution(&first.clone(), None).unwrap();
+    assert_eq!(live(), bytes);
+    let another = account.import_convolution(&second, None).unwrap();
+    assert_eq!(live(), bytes * 2);
+    drop(one);
+    assert_eq!(live(), bytes * 2);
+    drop(duplicate);
+    assert_eq!(live(), bytes);
+    drop(another);
+    assert_eq!(live(), 0);
+}

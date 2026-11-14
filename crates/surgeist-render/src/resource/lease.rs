@@ -1,6 +1,7 @@
 use super::{
     AllocationGeneration, FrameIdentity, ManagerIdentity, ResourceAccountingFault,
     ResourceCacheKey, ResourceIdentity,
+    convolution::ConvolutionWeightsPlan,
     entries::ResourceEntries,
     gaussian::{GaussianKernelBufferLimits, GaussianKernelPlan},
     lock_state,
@@ -1284,6 +1285,57 @@ impl FrameResourceScope {
                     self.observer.as_ref(),
                 )?;
                 Ok(ResourcePayload::ResolvedMaskUpload { texture, view })
+            },
+        )
+    }
+
+    pub(crate) fn convolution_weights_buffer<'scope>(
+        &'scope self,
+        lease: &'scope ResourceLease,
+    ) -> Result<&'scope wgpu::Buffer> {
+        match self.validated_payload(lease)? {
+            ResourcePayload::ConvolutionWeightsBuffer { buffer } => Ok(buffer),
+            _ => Err(Error::invalid_value(
+                "resource lease payload",
+                lease.resource_identity().get(),
+                "must contain a convolution weights buffer",
+            )),
+        }
+    }
+
+    pub(crate) fn acquire_convolution_weights(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        plan: &ConvolutionWeightsPlan,
+    ) -> Result<ResourceLease> {
+        plan.validate_upload_byte_len(plan.upload_bytes().len())?;
+        plan.validate_buffer_limits(&device.limits())?;
+        let byte_len = plan.byte_len();
+        lock_state(&self.state).acquire_with_payload(
+            self.lease_owner(),
+            ResourceCacheKey::ConvolutionWeightsBuffer(plan.key()),
+            byte_len,
+            IdleReuse::Allowed,
+            self.observer.as_ref(),
+            |generation| {
+                let buffer = generation.allocation_with_upload(
+                    GenerationClass::CacheKernels,
+                    byte_len,
+                    plan.upload_bytes().len(),
+                    self.observer.as_ref(),
+                    || {
+                        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                            label: Some("Surgeist immutable convolution weights buffer"),
+                            size: byte_len,
+                            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                            mapped_at_creation: false,
+                        });
+                        queue.write_buffer(&buffer, 0, plan.upload_bytes());
+                        buffer
+                    },
+                )?;
+                Ok(ResourcePayload::ConvolutionWeightsBuffer { buffer })
             },
         )
     }

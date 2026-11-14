@@ -1,5 +1,6 @@
 use super::{
     active_frames::ActiveFrames,
+    convolution::{ConvolutionWeightsKey, ConvolutionWeightsPlan},
     entries::ResourceEntries,
     gaussian::{GaussianKernelKey, GaussianKernelPlan},
 };
@@ -68,12 +69,16 @@ pub(crate) enum ResourceCacheKey {
     EffectTexture(EffectTextureKey),
     ResolvedMaskUpload(ResolvedMaskUploadKey),
     GaussianKernelBuffer(GaussianKernelKey),
+    ConvolutionWeightsBuffer(ConvolutionWeightsKey),
 }
 
 impl ResourceCacheKey {
     pub(super) fn matches_in(&self, other: &Self, observer: Option<&Account>) -> Result<bool> {
         match (self, other) {
             (Self::ResolvedMaskUpload(a), Self::ResolvedMaskUpload(b)) => a.matches_in(b, observer),
+            (Self::ConvolutionWeightsBuffer(a), Self::ConvolutionWeightsBuffer(b)) => {
+                a.matches_in(b, observer)
+            }
             _ => Ok(self == other),
         }
     }
@@ -84,7 +89,9 @@ impl ResourceCacheKey {
             Self::VelloBuffer(_) | Self::VelloImage(_) => GenerationClass::CacheVello,
             Self::EffectTexture(_) => GenerationClass::CacheEffects,
             Self::ResolvedMaskUpload(_) => GenerationClass::CacheMasks,
-            Self::GaussianKernelBuffer(_) => GenerationClass::CacheKernels,
+            Self::GaussianKernelBuffer(_) | Self::ConvolutionWeightsBuffer(_) => {
+                GenerationClass::CacheKernels
+            }
         }
     }
 
@@ -95,7 +102,10 @@ impl ResourceCacheKey {
     const fn accepts_graph_preparation(&self) -> bool {
         matches!(
             self,
-            Self::EffectTexture(_) | Self::ResolvedMaskUpload(_) | Self::GaussianKernelBuffer(_)
+            Self::EffectTexture(_)
+                | Self::ResolvedMaskUpload(_)
+                | Self::GaussianKernelBuffer(_)
+                | Self::ConvolutionWeightsBuffer(_)
         )
     }
 }
@@ -129,6 +139,14 @@ impl ResourceAllocationPreflight {
             key: ResourceCacheKey::ResolvedMaskUpload(descriptor.cache_key_in(account)?),
             byte_len: descriptor.byte_len(),
         }))
+    }
+
+    pub(crate) fn convolution_weights(plan: &ConvolutionWeightsPlan) -> Result<Self> {
+        plan.validate_upload_byte_len(plan.upload_bytes().len())?;
+        Ok(Self {
+            key: ResourceCacheKey::ConvolutionWeightsBuffer(plan.key()),
+            byte_len: plan.byte_len(),
+        })
     }
 
     pub(crate) fn gaussian_kernel(plan: &GaussianKernelPlan) -> Result<Self> {
@@ -190,6 +208,9 @@ pub(super) enum ResourcePayload {
     GaussianKernelBuffer {
         buffer: OwnedGpu<wgpu::Buffer>,
     },
+    ConvolutionWeightsBuffer {
+        buffer: OwnedGpu<wgpu::Buffer>,
+    },
 }
 
 impl ResourcePayload {
@@ -204,9 +225,11 @@ impl ResourcePayload {
             | (Self::VelloImage { .. }, ResourceCacheKey::VelloImage(_))
             | (Self::EffectTexture { .. }, ResourceCacheKey::EffectTexture(_))
             | (Self::ResolvedMaskUpload { .. }, ResourceCacheKey::ResolvedMaskUpload(_))
-            | (Self::GaussianKernelBuffer { .. }, ResourceCacheKey::GaussianKernelBuffer(_)) => {
-                true
-            }
+            | (Self::GaussianKernelBuffer { .. }, ResourceCacheKey::GaussianKernelBuffer(_))
+            | (
+                Self::ConvolutionWeightsBuffer { .. },
+                ResourceCacheKey::ConvolutionWeightsBuffer(_),
+            ) => true,
             _ => false,
         }
     }
@@ -220,6 +243,7 @@ impl ResourcePayload {
             Self::EffectTexture { .. } => "EffectTexture",
             Self::ResolvedMaskUpload { .. } => "ResolvedMaskUpload",
             Self::GaussianKernelBuffer { .. } => "GaussianKernelBuffer",
+            Self::ConvolutionWeightsBuffer { .. } => "ConvolutionWeightsBuffer",
         }
     }
 }
@@ -415,7 +439,7 @@ impl ResourceManagerState {
                 return Err(Error::invalid_value(
                     "graph resource preflight key",
                     format!("{:?}", request.key),
-                    "must use an effect texture, resolved mask, or Gaussian kernel namespace",
+                    "must use an effect texture, resolved mask, Gaussian kernel, or convolution weights namespace",
                 ));
             }
             if request.byte_len == 0 {

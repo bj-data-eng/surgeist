@@ -148,6 +148,7 @@ pub(crate) struct DeviceCapabilities {
     pub(super) reduced_precision: bool,
     pub(super) high_precision_features: wgpu::TextureFormatFeatures,
     pub(super) reduced_precision_features: wgpu::TextureFormatFeatures,
+    pub(super) convolution_float32_features: wgpu::TextureFormatFeatures,
     pub(super) max_effect_texture_dimension_2d: u32,
 }
 
@@ -167,6 +168,8 @@ impl DeviceCapabilities {
             ),
             high_precision_features,
             reduced_precision_features,
+            convolution_float32_features: adapter
+                .get_texture_format_features(wgpu::TextureFormat::Rgba32Float),
             max_effect_texture_dimension_2d: device.limits().max_texture_dimension_2d,
         }
     }
@@ -177,7 +180,13 @@ impl DeviceCapabilities {
     ) -> AvailableRuntimeCapabilities {
         AvailableRuntimeCapabilities::new(
             surface_format,
-            EffectPrecisionCapabilities::new(self.high_precision, self.reduced_precision),
+            EffectPrecisionCapabilities::new(
+                self.high_precision,
+                self.reduced_precision,
+                self.convolution_float32_features
+                    .allowed_usages
+                    .contains(WorkingFormat::HighPrecision.required_usages()),
+            ),
             self.max_effect_texture_dimension_2d,
         )
     }
@@ -250,6 +259,10 @@ impl DeviceCapabilities {
     ) -> Result<()> {
         self.validate_effect_texture_extent(requested)?;
         let (features, policy) = match texture_format {
+            wgpu::TextureFormat::Rgba32Float => (
+                self.convolution_float32_features,
+                EffectQualityPolicy::RequireHighPrecision,
+            ),
             wgpu::TextureFormat::Rgba16Float => (
                 self.high_precision_features,
                 EffectQualityPolicy::RequireHighPrecision,
@@ -262,7 +275,7 @@ impl DeviceCapabilities {
                 return Err(Error::invalid_value(
                     "effect texture format",
                     format!("{texture_format:?}"),
-                    "must be Rgba16Float or Rgba8Unorm",
+                    "must be Rgba16Float, Rgba8Unorm, or convolution Rgba32Float",
                 ));
             }
         };
@@ -280,17 +293,30 @@ impl DeviceCapabilities {
                     WorkingFormat::ReducedPrecision => self.reduced_precision,
                 }
         });
+        let convolution_support = texture_format != wgpu::TextureFormat::Rgba32Float
+            || features
+                .allowed_usages
+                .contains(WorkingFormat::HighPrecision.required_usages());
         let exact_usage_support = features.allowed_usages.contains(usage);
-        let filterable_support = !usage.contains(wgpu::TextureUsages::TEXTURE_BINDING)
+        let filterable_support = texture_format == wgpu::TextureFormat::Rgba32Float
+            || !usage.contains(wgpu::TextureUsages::TEXTURE_BINDING)
             || features
                 .flags
                 .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
-        if complete_working_support && exact_usage_support && filterable_support {
+        if complete_working_support
+            && convolution_support
+            && exact_usage_support
+            && filterable_support
+        {
             return Ok(());
         }
 
         Err(Error::runtime_unavailable(
-            RuntimeCapabilityUnavailable::effect_format_unavailable(policy),
+            if texture_format == wgpu::TextureFormat::Rgba32Float {
+                RuntimeCapabilityUnavailable::convolution_float32_unavailable()
+            } else {
+                RuntimeCapabilityUnavailable::effect_format_unavailable(policy)
+            },
             format!(
                 "the selected GPU does not support {texture_format:?} with exact usage {usage:?}"
             ),
@@ -749,6 +775,51 @@ impl super::Backend {
 #[cfg(test)]
 mod error_context_tests {
     use super::*;
+
+    #[test]
+    fn convolution_float32_accepts_nonfilterable_full_usages_and_rejects_missing_capability() {
+        let mut capabilities = DeviceCapabilities::from_test_facts(true, true, 64);
+        let usage = WorkingFormat::HighPrecision.required_usages();
+        capabilities.convolution_float32_features = wgpu::TextureFormatFeatures {
+            allowed_usages: usage,
+            flags: wgpu::TextureFormatFeatureFlags::empty(),
+        };
+        let check = |capabilities: &DeviceCapabilities, size, requested_usage| {
+            capabilities.validate_effect_texture_allocation(
+                size,
+                None,
+                wgpu::TextureFormat::Rgba32Float,
+                requested_usage,
+            )
+        };
+        assert!(check(&capabilities, PhysicalSize::new(64, 32), usage).is_ok());
+        let extent = check(&capabilities, PhysicalSize::new(65, 32), usage).unwrap_err();
+        assert_eq!(
+            extent.code(),
+            crate::ErrorCode::RuntimeCapabilityUnavailable
+        );
+        capabilities
+            .convolution_float32_features
+            .allowed_usages
+            .remove(wgpu::TextureUsages::COPY_SRC);
+        let unavailable = check(
+            &capabilities,
+            PhysicalSize::new(4, 4),
+            wgpu::TextureUsages::TEXTURE_BINDING,
+        )
+        .unwrap_err();
+        assert_eq!(
+            unavailable.code(),
+            crate::ErrorCode::RuntimeCapabilityUnavailable
+        );
+        // Ordinary working formats continue to require filtering support.
+        capabilities.high_precision_features.flags = wgpu::TextureFormatFeatureFlags::empty();
+        assert!(
+            capabilities
+                .validate_supported_working_format(WorkingFormat::HighPrecision)
+                .is_err()
+        );
+    }
 
     #[test]
     fn terminal_error_keeps_qualified_reason_and_literal_backend_suffix() {

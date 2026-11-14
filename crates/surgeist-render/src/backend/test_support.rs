@@ -1041,6 +1041,7 @@ impl DeviceCapabilities {
             reduced_precision,
             high_precision_features: complete_features(high_precision),
             reduced_precision_features: complete_features(reduced_precision),
+            convolution_float32_features: complete_features(high_precision),
             max_effect_texture_dimension_2d,
         }
     }

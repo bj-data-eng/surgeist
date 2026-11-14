@@ -5,6 +5,7 @@ pub(crate) enum EffectTextureRole {
     Capture,
     Working,
     Coverage,
+    ConvolutionFloat32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -65,6 +66,21 @@ impl EffectTextureDescriptor {
         )
     }
 
+    /// Signed convolution intermediates use non-filtering texture loads and
+    /// retain full f32 range independently of the ordinary working format.
+    pub(crate) fn try_convolution_float32(
+        physical_size: PhysicalSize,
+        usage: wgpu::TextureUsages,
+    ) -> Result<Self> {
+        Self::try_new(
+            EffectTextureRole::ConvolutionFloat32,
+            None,
+            wgpu::TextureFormat::Rgba32Float,
+            physical_size,
+            usage,
+        )
+    }
+
     pub(crate) fn try_coverage(
         physical_size: PhysicalSize,
         usage: wgpu::TextureUsages,
@@ -101,12 +117,14 @@ impl EffectTextureDescriptor {
         }
         if !matches!(
             texture_format,
-            wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba8Unorm
+            wgpu::TextureFormat::Rgba16Float
+                | wgpu::TextureFormat::Rgba8Unorm
+                | wgpu::TextureFormat::Rgba32Float
         ) {
             return Err(Error::invalid_value(
                 "effect texture format",
                 format!("{texture_format:?}"),
-                "must be Rgba16Float or Rgba8Unorm",
+                "must be Rgba16Float, Rgba8Unorm, or convolution Rgba32Float",
             ));
         }
 
@@ -142,13 +160,14 @@ impl EffectTextureDescriptor {
 
     pub(crate) fn checked_byte_len(self) -> Result<u64> {
         let bytes_per_pixel = match self.texture_format {
+            wgpu::TextureFormat::Rgba32Float => 16_u64,
             wgpu::TextureFormat::Rgba16Float => 8_u64,
             wgpu::TextureFormat::Rgba8Unorm => 4_u64,
             _ => {
                 return Err(Error::invalid_value(
                     "effect texture format",
                     format!("{:?}", self.texture_format),
-                    "must be Rgba16Float or Rgba8Unorm",
+                    "must be Rgba16Float, Rgba8Unorm, or convolution Rgba32Float",
                 ));
             }
         };
@@ -183,6 +202,7 @@ impl EffectTextureDescriptor {
             EffectTextureRole::Capture => "Surgeist retained capture texture",
             EffectTextureRole::Working => "Surgeist retained working texture",
             EffectTextureRole::Coverage => "Surgeist retained coverage texture",
+            EffectTextureRole::ConvolutionFloat32 => "Surgeist retained convolution f32 texture",
         }
     }
 }
@@ -305,5 +325,38 @@ impl TextureFormatExt for Format {
         match self {
             Self::Rgba8 | Self::Bgra8 => 4,
         }
+    }
+}
+
+#[cfg(test)]
+mod effect_texture_tests {
+    use super::*;
+    #[test]
+    fn convolution_float32_is_independent_and_accounts_sixteen_bytes_per_texel() {
+        let usage = WorkingFormat::HighPrecision.required_usages();
+        let size = PhysicalSize::new(3, 5);
+        let convolution = EffectTextureDescriptor::try_convolution_float32(size, usage).unwrap();
+        assert_eq!(convolution.role(), EffectTextureRole::ConvolutionFloat32);
+        assert_eq!(convolution.working_format(), None);
+        assert_eq!(
+            convolution.texture_format(),
+            wgpu::TextureFormat::Rgba32Float
+        );
+        assert_eq!(convolution.checked_byte_len().unwrap(), 240);
+        let ordinary =
+            EffectTextureDescriptor::try_working(WorkingFormat::HighPrecision, size, usage)
+                .unwrap();
+        assert_eq!(ordinary.texture_format(), wgpu::TextureFormat::Rgba16Float);
+        assert_ne!(convolution.cache_key(), ordinary.cache_key());
+        assert!(
+            EffectTextureDescriptor::try_convolution_float32(PhysicalSize::new(0, 1), usage)
+                .is_err()
+        );
+        let huge = EffectTextureDescriptor::try_convolution_float32(
+            PhysicalSize::new(u32::MAX, u32::MAX),
+            usage,
+        )
+        .unwrap();
+        assert!(huge.checked_byte_len().is_err());
     }
 }

@@ -287,6 +287,19 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
         .unwrap();
     let masked =
         Layer::new().with_resolved_alpha_mask(opaque_planning_mask(PhysicalSize::new(4, 4)));
+    let convolution_bounds = Rect::new(8.0, 0.0, 2.0, 2.0);
+    let convolution = crate::prepare_convolution(
+        crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        crate::ConvolutionDomains::try_new(
+            convolution_bounds,
+            convolution_bounds,
+            convolution_bounds,
+        )
+        .unwrap(),
+        crate::FilterColorSpace::Srgb,
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let mut scene = Scene::new();
     scene
         .fill(Rect::new(0.0, 0.0, 8.0, 6.0), Color::BLACK)
@@ -301,6 +314,9 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
                 Rect::new(0.0, 0.0, 4.0, 4.0),
                 Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap(),
             );
+        })
+        .layer(Layer::new().with_convolution(convolution), |scene| {
+            scene.fill(convolution_bounds, Color::BLACK);
         });
     scene
         .normalize(

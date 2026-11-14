@@ -228,6 +228,7 @@ fn core_pass_program_sampling(
             ShaderSamplingEdgeKey::ClampToExtent,
         ),
         ShaderProgramKey::CopyBackdrop
+        | ShaderProgramKey::Convolution
         | ShaderProgramKey::ColorFilter
         | ShaderProgramKey::BlurHorizontal { .. }
         | ShaderProgramKey::BlurVertical { .. }
@@ -288,6 +289,75 @@ fn core_pass_target_format(
         }
     };
     Ok(target_format)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ConvolutionPassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ConvolutionPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_convolution_pass_keys(
+    keys: ConvolutionPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<ConvolutionPassDescription> {
+    let [source, auxiliary] = keys.layout.sampled_textures.as_slice() else {
+        return Err(convolution_cache_error(
+            "convolution requires exactly two texture bindings",
+        ));
+    };
+    binding_visit(observer)?;
+    binding_visit(observer)?;
+    let valid_input = |format| {
+        is_working_format(format)
+            || matches!(
+                format,
+                ShaderTextureFormatKey::ConvolutionRgba32Float
+                    | ShaderTextureFormatKey::VelloCaptureRgba8Unorm
+            )
+    };
+    let target_format = keys.pipeline.target_format;
+    if keys.layout.program != ShaderProgramKey::Convolution
+        || keys.shader.program != ShaderProgramKey::Convolution
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[
+                ShaderDataBindingKey::ConvolutionParameters,
+                ShaderDataBindingKey::ConvolutionWeights,
+            ],
+            observer,
+        )?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(ShaderTextureFormatKey::ConvolutionRgba32Float)
+        || keys.shader.output_format != Some(target_format)
+        || source.binding_role != ShaderBindingRoleKey::ConvolutionSource
+        || auxiliary.binding_role != ShaderBindingRoleKey::ConvolutionAuxiliary
+        || !valid_input(source.source_format)
+        || !valid_input(auxiliary.source_format)
+        || !(is_working_format(target_format)
+            || target_format == ShaderTextureFormatKey::ConvolutionRgba32Float)
+    {
+        return Err(convolution_cache_error(
+            "convolution keys disagree across bindings, programs, or formats",
+        ));
+    }
+    Ok(ConvolutionPassDescription { target_format })
+}
+
+pub(super) fn convolution_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
 }
 
 pub(super) fn validate_color_filter_pass_keys(
@@ -1019,5 +1089,93 @@ mod accounting_tests {
                 .work(RenderWork::ShaderBindingVisits),
             2
         );
+    }
+}
+
+#[cfg(test)]
+mod convolution_key_tests {
+    use super::*;
+    use crate::accounting::RendererCpu;
+
+    fn fixture() -> (BindGroupLayoutKey, ShaderModuleKey, RenderPipelineKey) {
+        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let format = ShaderTextureFormatKey::ConvolutionRgba32Float;
+        let layout = BindGroupLayoutKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::Convolution,
+            &[
+                (ShaderBindingRoleKey::ConvolutionSource, format),
+                (ShaderBindingRoleKey::ConvolutionAuxiliary, format),
+            ],
+            &[
+                ShaderDataBindingKey::ConvolutionParameters,
+                ShaderDataBindingKey::ConvolutionWeights,
+            ],
+        )
+        .unwrap();
+        let shader = ShaderModuleKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::Convolution,
+            layout.clone(),
+            &[],
+            Some(format),
+            Some(format),
+        )
+        .unwrap();
+        let pipeline =
+            RenderPipelineKey::new(&cpu, None, shader.clone(), layout.clone(), &[], format)
+                .unwrap();
+        (layout, shader, pipeline)
+    }
+
+    #[test]
+    fn convolution_keys_require_exact_no_sampler_layout_and_output_identity() {
+        let (layout, shader, pipeline) = fixture();
+        let validate = |layout, shader, pipeline| {
+            validate_convolution_pass_keys(
+                ConvolutionPassKeyRefs {
+                    samplers: &[],
+                    layout,
+                    shader,
+                    pipeline,
+                },
+                None,
+            )
+        };
+        assert!(validate(&layout, &shader, &pipeline).is_ok());
+        let mut wrong = shader.clone();
+        wrong.output_format = None;
+        assert!(validate(&layout, &wrong, &pipeline).is_err());
+        let mut wrong = pipeline.clone();
+        wrong.target_format = ShaderTextureFormatKey::OutputBgra8Unorm;
+        assert!(validate(&layout, &shader, &wrong).is_err());
+        let sampler = SamplerKey::new(
+            ShaderBindingRoleKey::ConvolutionSource,
+            ShaderTextureFormatKey::ConvolutionRgba32Float,
+            ShaderSamplingFilterKey::Nearest,
+            ShaderSamplingEdgeKey::ClampToExtent,
+            None,
+        );
+        assert!(
+            validate_convolution_pass_keys(
+                ConvolutionPassKeyRefs {
+                    samplers: &[sampler],
+                    layout: &layout,
+                    shader: &shader,
+                    pipeline: &pipeline,
+                },
+                None
+            )
+            .is_err()
+        );
+        let (mut wrong_layout, mut wrong_shader, mut wrong_pipeline) = fixture();
+        wrong_layout.program = ShaderProgramKey::ColorFilter;
+        wrong_shader.layout = wrong_layout.clone();
+        wrong_pipeline.layout = wrong_layout.clone();
+        wrong_pipeline.shader = wrong_shader.clone();
+        assert!(validate(&wrong_layout, &wrong_shader, &wrong_pipeline).is_err());
     }
 }

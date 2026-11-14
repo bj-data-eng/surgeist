@@ -305,10 +305,16 @@ pub(crate) struct NormalizedLayer {
     pub(crate) composition: LayerComposition,
     pub(crate) explicit_isolation: bool,
     pub(crate) mask: Option<RenderLayerMask>,
-    pub(crate) foreground_filters: Option<SharedValue<FilterList>>,
+    pub(crate) foreground_filters: Option<NormalizedForegroundEffect>,
     pub(crate) backdrop: Option<SharedValue<RenderBackdropCapture>>,
     pub(crate) isolation: LayerIsolation,
     pub(crate) pass_plan: LayerPassPlan,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum NormalizedForegroundEffect {
+    Css(SharedValue<FilterList>),
+    Convolution(crate::PreparedConvolution),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1315,14 +1321,29 @@ impl NormalizedLayer {
                 PrimitiveFamily::Filters,
                 PrimitiveOperation::LayerFilter,
             ))?;
-            let (filters, hold) = match filter {
+            Some(match filter {
+                LayerFilter::Convolution(convolution) => {
+                    capabilities.ensure_supported(UnsupportedPrimitive::new(
+                        PrimitiveFamily::Filters,
+                        PrimitiveOperation::GpuConvolutionFilterExecution,
+                    ))?;
+                    // The wrapper owns an import lease for the shared admitted payload.
+                    let import = account.import_convolution(convolution)?;
+                    NormalizedForegroundEffect::Convolution(
+                        convolution.with_import(import, account)?,
+                    )
+                }
                 LayerFilter::Blur(filter) => {
                     let operation = FilterOp::blur(FilterBlur::try_new(filter.blur_radius())?);
-                    FilterList::copy_ops_in(std::slice::from_ref(&operation), account)?
+                    let (filters, hold) =
+                        FilterList::copy_ops_in(std::slice::from_ref(&operation), account)?;
+                    NormalizedForegroundEffect::Css(shared(filters, hold, None, account)?)
                 }
-                LayerFilter::List(filters) => filters.try_clone_in(account)?,
-            };
-            Some(shared(filters, hold, None, account)?)
+                LayerFilter::List(filters) => {
+                    let (filters, hold) = filters.try_clone_in(account)?;
+                    NormalizedForegroundEffect::Css(shared(filters, hold, None, account)?)
+                }
+            })
         } else {
             None
         };

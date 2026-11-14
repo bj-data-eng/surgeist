@@ -250,6 +250,8 @@ impl GpuOperationTransaction {
         } = payload;
         self.submit_graph_command(queue, command_buffer, account)
             .await?;
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        super::test_support::after_graph_submit_for_test(&self.lease).await;
         let resources = GraphSubmittedResources {
             capture_resources,
             prepared_frame,

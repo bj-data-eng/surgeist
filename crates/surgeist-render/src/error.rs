@@ -50,6 +50,7 @@ struct ErrorContext {
 
 #[derive(Debug)]
 enum PreparationDiagnostic {
+    Convolution(crate::ConvolutionPreparationError),
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
     GeometryRealization(GeometryRealizationError),
@@ -447,6 +448,18 @@ impl Error {
         }
     }
 
+    /// Returns a typed resolved convolution refusal, when applicable.
+    #[must_use]
+    pub const fn convolution_diagnostic(&self) -> Option<&crate::ConvolutionPreparationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::Convolution(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns an invalid outgoing-hint association or unsupported sweep hint.
     #[must_use]
     pub const fn gradient_hint_diagnostic(&self) -> Option<&GradientHintError> {
@@ -562,6 +575,26 @@ impl From<crate::GlyphPreparationError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: Some(PreparationDiagnostic::Glyph(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
+        })
+    }
+}
+
+impl From<crate::ConvolutionPreparationError> for Error {
+    fn from(value: crate::ConvolutionPreparationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::InvalidInput,
+            message: format!("convolution preparation refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::Convolution(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
             #[cfg(feature = "render-text")]
@@ -902,6 +935,13 @@ impl RuntimeCapabilityUnavailable {
         }
     }
 
+    pub(crate) const fn convolution_float32_unavailable() -> Self {
+        Self {
+            operation: RuntimeOperation::ConvolutionRendering,
+            reason: RuntimeCapabilityUnavailableReason::ConvolutionFloat32Unavailable,
+        }
+    }
+
     pub(crate) const fn texture_dimension_exceeded(requested: PhysicalSize, maximum: u32) -> Self {
         Self {
             operation: RuntimeOperation::EffectTextureAllocation,
@@ -1036,6 +1076,8 @@ pub enum RuntimeOperation {
     SurfaceResume,
     /// Rendering an effect graph.
     EffectRendering,
+    /// Executing signed float32 convolution accumulation.
+    ConvolutionRendering,
     /// Allocating an effect texture.
     EffectTextureAllocation,
     /// Presenting an effect result to a surface.
@@ -1076,6 +1118,8 @@ pub enum RuntimeCapabilityUnavailableReason {
         /// Effect precision policy that could not be met.
         policy: EffectQualityPolicy,
     },
+    /// Signed float32 convolution textures lack required render/sample/copy usages.
+    ConvolutionFloat32Unavailable,
     /// The requested effect texture exceeds the selected device limit.
     TextureDimensionExceeded {
         /// Requested physical texture dimensions.
@@ -1389,6 +1433,8 @@ pub enum PrimitiveOperation {
     GpuBlurFilterExecution,
     /// Executing a drop-shadow filter pass on the GPU.
     GpuDropShadowFilterExecution,
+    /// Executing an admitted resolved convolution through the native Layer GPU receiver.
+    GpuConvolutionFilterExecution,
     /// Planning filter execution regions and outsets.
     FilterRegionPlanning,
     /// Executing an unbounded or root/nested backdrop form.
@@ -1469,6 +1515,7 @@ impl PrimitiveOperation {
             Self::GpuColorFilterExecution => "GPU color-filter execution",
             Self::GpuBlurFilterExecution => "GPU blur filter execution",
             Self::GpuDropShadowFilterExecution => "GPU drop-shadow filter execution",
+            Self::GpuConvolutionFilterExecution => "GPU convolution filter execution",
             Self::FilterRegionPlanning => "filter-region planning",
             Self::BroadBackdropExecution => "broad backdrop execution",
             Self::BoundedBackdropCapture => "bounded backdrop capture",

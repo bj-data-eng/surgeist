@@ -1,3 +1,13 @@
+#[cfg(not(target_arch = "wasm32"))]
+mod convolution;
+#[cfg(not(target_arch = "wasm32"))]
+mod convolution_accounting;
+#[cfg(not(target_arch = "wasm32"))]
+mod convolution_empty_domain;
+#[cfg(not(target_arch = "wasm32"))]
+mod convolution_spatial;
+#[cfg(not(target_arch = "wasm32"))]
+mod convolution_transactions;
 mod frame;
 mod gpu;
 mod image_sampling;

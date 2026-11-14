@@ -1,4 +1,5 @@
 use super::CompositeSourceSpace;
+use super::convolution::{ConvolutionMapping, ConvolutionStage};
 use super::{
     bounds::NonEmptyFrameSpatialPlan,
     filter::{
@@ -285,6 +286,7 @@ pub(crate) enum GraphLoweringResourceRole {
     ImportedImage,
     BackdropCopy,
     FilterIntermediate,
+    ConvolutionFloat,
     ShadowImage,
     CompositeResult,
 }
@@ -299,6 +301,7 @@ impl GraphLoweringResourceRole {
             SemanticResourceRole::ImportedImage => Self::ImportedImage,
             SemanticResourceRole::BackdropCopy => Self::BackdropCopy,
             SemanticResourceRole::FilterIntermediate => Self::FilterIntermediate,
+            SemanticResourceRole::ConvolutionFloat => Self::ConvolutionFloat,
             SemanticResourceRole::ShadowImage => Self::ShadowImage,
             SemanticResourceRole::CompositeResult => Self::CompositeResult,
         }
@@ -862,6 +865,25 @@ impl GraphLoweringComposite {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) struct GraphLoweringConvolution {
+    operation: crate::PreparedConvolution,
+    mapping: ConvolutionMapping,
+    stage: ConvolutionStage,
+}
+
+impl GraphLoweringConvolution {
+    pub(crate) fn operation(&self) -> &crate::PreparedConvolution {
+        &self.operation
+    }
+    pub(crate) const fn mapping(&self) -> ConvolutionMapping {
+        self.mapping
+    }
+    pub(crate) const fn stage(&self) -> ConvolutionStage {
+        self.stage
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum GraphLoweringPassKind {
     ClearRoot {
         initialization: GraphLoweringInitialization,
@@ -871,6 +893,7 @@ pub(crate) enum GraphLoweringPassKind {
     CanonicalizeCapture,
     CopyBackdrop,
     ColorFilter(Option<GraphLoweringColorFilter>),
+    Convolution(GraphLoweringConvolution),
     BlurHorizontal(Option<GraphLoweringBlur>),
     BlurVertical(Option<GraphLoweringBlur>),
     DropShadowColorize(Option<GraphLoweringDropShadow>),
@@ -883,6 +906,8 @@ pub(crate) enum GraphLoweringReadRole {
     CaptureSource,
     CompletedParent,
     FilterSource,
+    ConvolutionSource,
+    ConvolutionAuxiliary,
     BlurredSourceAlpha,
     CompositeParent,
     CompositeSource,
@@ -1099,6 +1124,34 @@ fn graph_lowering_pass_kind(
                 _ => return Err(GraphValidationError::InvalidPassArity),
             }
             Ok(GraphLoweringPassKind::CopyBackdrop)
+        }
+        SemanticPassIntent::Convolution(stage) => {
+            let mut low = 0;
+            let mut high = graph.convolutions.len();
+            while low < high {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let middle = low + (high - low) / 2;
+                if graph.convolutions[middle].pass.index.0 < pass.id.index.0 {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let entry = graph
+                .convolutions
+                .get(low)
+                .filter(|entry| entry.pass == pass.id)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            if entry.stage != stage {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            Ok(GraphLoweringPassKind::Convolution(
+                GraphLoweringConvolution {
+                    operation: entry.operation.clone(),
+                    mapping: entry.mapping,
+                    stage,
+                },
+            ))
         }
         SemanticPassIntent::ColorFilter => {
             graph_lowering_color_filter(pass, filter_steps.find(pass.id, account)?, account)
@@ -1670,6 +1723,31 @@ fn graph_lowering_read_bindings(
             )?],
             account,
         )?,
+        GraphLoweringPassKind::Convolution(convolution) => {
+            let count = match convolution.stage() {
+                ConvolutionStage::Accumulate { first: false, .. } | ConvolutionStage::Finalize => 2,
+                _ => 1,
+            };
+            if pass.reads.len() != count {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let mut reads = account.temporary(count)?;
+            reads.append_slot()?.write(make(
+                0,
+                GraphLoweringReadRole::ConvolutionSource,
+                GraphLoweringSamplingFilter::Nearest,
+                GraphLoweringSamplingEdge::TransparentBlack,
+            )?);
+            if count == 2 {
+                reads.append_slot()?.write(make(
+                    1,
+                    GraphLoweringReadRole::ConvolutionAuxiliary,
+                    GraphLoweringSamplingFilter::Nearest,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?);
+            }
+            reads
+        }
         GraphLoweringPassKind::ColorFilter(Some(filter)) => temp_array(
             &[make(
                 0,

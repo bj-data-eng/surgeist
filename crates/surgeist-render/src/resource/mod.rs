@@ -1,4 +1,5 @@
 mod active_frames;
+mod convolution;
 mod entries;
 mod gaussian;
 mod lease;
@@ -6,6 +7,7 @@ mod manager;
 #[cfg(test)]
 mod test_support;
 
+pub(crate) use convolution::ConvolutionWeightsPlan;
 pub(crate) use gaussian::{
     GaussianKernelBufferLimits, GaussianKernelKey, GaussianKernelPlan, GaussianKernelSamplingForm,
 };

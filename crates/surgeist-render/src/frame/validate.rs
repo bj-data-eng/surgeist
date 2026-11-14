@@ -15,6 +15,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_clip_coverage_metadata(graph, account)?;
     validate_backdrop_metadata(graph, account)?;
     validate_import_metadata(graph, account)?;
+    validate_convolution_metadata(graph, account)?;
     if any_node(&graph.passes, account, |pass| {
         Ok(
             matches!(pass.intent, SemanticPassIntent::VelloCapture { .. })
@@ -22,6 +23,245 @@ pub(super) fn validate_semantic_frame_graph(
         )
     })? {
         return Err(GraphValidationError::InvalidCaptureResult);
+    }
+    Ok(())
+}
+
+/// Proves the complete concrete primitive, including exact batch coverage and
+/// the allocation-space descriptors of its independent two-axis lattices.
+fn validate_convolution_metadata(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> GraphBuildResult<()> {
+    use super::convolution::ConvolutionStage;
+    let mut cursor = 0;
+    while let Some(first) = graph.convolutions.get(cursor) {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let operation = &first.operation;
+        let mapping = first.mapping;
+        let start = first.pass.index.0;
+        let source_pass = graph
+            .passes
+            .get(first.pass.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownPass(first.pass))?;
+        let source = *source_pass
+            .reads
+            .first()
+            .ok_or(GraphValidationError::InvalidPassArity)?;
+        let source_descriptor = graph
+            .resources
+            .get(source.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownResource(source))?
+            .descriptor;
+        if mapping.capture_origin()
+            != [
+                source_descriptor.texel_center_mapping.origin.x(),
+                source_descriptor.texel_center_mapping.origin.y(),
+            ]
+            || mapping.capture_scale() != source_descriptor.texel_center_mapping.raster_scale.get()
+            || mapping.kernel_origin() != mapping.capture_origin()
+        {
+            return Err(GraphValidationError::InvalidPassResultRole);
+        }
+        if first.stage == ConvolutionStage::RebaseSource {
+            let domains = operation.domains();
+            let domain = super::convolution::intersection(domains.source(), domains.filter());
+            let source_bounds = source_descriptor.logical_bounds.rect();
+            if domain.width() <= 0.0
+                || domain.height() <= 0.0
+                || source_descriptor.role != SemanticResourceRole::CompositeResult
+                || source_bounds.x() > domain.x()
+                || source_bounds.y() > domain.y()
+                || source_bounds.max().x() < domain.max().x()
+                || source_bounds.max().y() < domain.max().y()
+                || mapping.source_domain() != domain
+                || mapping.result_domain() != domain
+                || mapping.capture_scale() != mapping.result_capture_scale()
+                || mapping.unit_length() != [1.0 / mapping.capture_scale(); 2]
+                || mapping.source_grid_origin() != [0; 2]
+                || mapping.source_grid_extent() != [0; 2]
+                || mapping.result_grid_origin() != [0; 2]
+                || mapping.result_grid_extent() != [0; 2]
+                || source_pass.intent
+                    != SemanticPassIntent::Convolution(ConvolutionStage::RebaseSource)
+                || !edges_equal(&source_pass.reads, &[source], account)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let SemanticPassResult::Resource(result) = source_pass.result else {
+                return Err(GraphValidationError::InvalidPassArity);
+            };
+            let descriptor = graph
+                .resources
+                .get(result.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(result))?
+                .descriptor;
+            if descriptor.role != SemanticResourceRole::FilterIntermediate
+                || descriptor.logical_bounds.rect() != domain
+                || [
+                    descriptor.texel_center_mapping.origin.x(),
+                    descriptor.texel_center_mapping.origin.y(),
+                ] != mapping.result_capture_origin()
+                || descriptor.texel_center_mapping.raster_scale.get()
+                    != mapping.result_capture_scale()
+                || descriptor == source_descriptor
+            {
+                return Err(GraphValidationError::InvalidPassResultRole);
+            }
+            let next = graph
+                .convolutions
+                .get(cursor + 1)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            let expected = if operation.is_passthrough() {
+                ConvolutionStage::PassThrough
+            } else {
+                ConvolutionStage::Prepare
+            };
+            if !next.operation.same_allocation(operation)
+                || next.stage != expected
+                || next.pass.index.0
+                    != first
+                        .pass
+                        .index
+                        .0
+                        .checked_add(1)
+                        .ok_or(GraphValidationError::InvalidPassArity)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let next_pass = graph
+                .passes
+                .get(next.pass.index.as_usize()?)
+                .filter(|pass| pass.id == next.pass)
+                .ok_or(GraphValidationError::UnknownPass(next.pass))?;
+            if !edges_equal(&next_pass.reads, &[result], account)? {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            cursor += 1;
+            continue;
+        }
+        let mut position = 0_u32;
+        let mut take = |stage: ConvolutionStage,
+                        reads: &[SemanticResourceId]|
+         -> GraphBuildResult<SemanticResourceId> {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let entry = graph
+                .convolutions
+                .get(cursor)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            if entry.stage != stage
+                || !entry.operation.same_allocation(operation)
+                || entry.mapping != mapping
+                || entry.pass.index.0
+                    != start
+                        .checked_add(position)
+                        .ok_or(GraphValidationError::InvalidPassArity)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let pass = graph
+                .passes
+                .get(entry.pass.index.as_usize()?)
+                .filter(|pass| pass.id == entry.pass)
+                .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+            if pass.intent != SemanticPassIntent::Convolution(stage)
+                || !edges_equal(&pass.reads, reads, account)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let SemanticPassResult::Resource(result) = pass.result else {
+                return Err(GraphValidationError::InvalidPassArity);
+            };
+            let descriptor = graph
+                .resources
+                .get(result.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(result))?
+                .descriptor;
+            match stage {
+                ConvolutionStage::Prepare
+                | ConvolutionStage::Accumulate { .. }
+                | ConvolutionStage::Finalize => {
+                    let extent = if stage == ConvolutionStage::Prepare {
+                        mapping.source_grid_extent()
+                    } else {
+                        mapping.result_grid_extent()
+                    };
+                    let width = extent[0].max(1);
+                    let height = extent[1].max(1);
+                    if descriptor.role != SemanticResourceRole::ConvolutionFloat
+                        || descriptor.device_origin.x != 0
+                        || descriptor.device_origin.y != 0
+                        || descriptor.device_extent.width != width
+                        || descriptor.device_extent.height != height
+                        || descriptor.logical_bounds.rect()
+                            != crate::Rect::new(0.0, 0.0, f64::from(width), f64::from(height))
+                        || descriptor.texel_center_mapping.origin != crate::Point::new(0.0, 0.0)
+                        || descriptor.texel_center_mapping.raster_scale.get() != 1.0
+                    {
+                        return Err(GraphValidationError::InvalidPassResultRole);
+                    }
+                }
+                ConvolutionStage::RebaseSource
+                | ConvolutionStage::PassThrough
+                | ConvolutionStage::Resolve => {
+                    if descriptor.role != SemanticResourceRole::FilterIntermediate
+                        || descriptor.logical_bounds.rect() != mapping.result_domain()
+                        || [
+                            descriptor.texel_center_mapping.origin.x(),
+                            descriptor.texel_center_mapping.origin.y(),
+                        ] != mapping.result_capture_origin()
+                        || descriptor.texel_center_mapping.raster_scale.get()
+                            != mapping.result_capture_scale()
+                    {
+                        return Err(GraphValidationError::InvalidPassResultRole);
+                    }
+                }
+            }
+            cursor += 1;
+            position += 1;
+            Ok(result)
+        };
+        if operation.is_passthrough() {
+            take(ConvolutionStage::PassThrough, &[source])?;
+        } else {
+            let prepared = take(ConvolutionStage::Prepare, &[source])?;
+            let total = u32::try_from(operation.weights().len())
+                .map_err(|_| GraphValidationError::InvalidPassArity)?;
+            let mut first_tap = 0;
+            let mut previous = None;
+            while first_tap < total {
+                let tap_count = (total - first_tap).min(32);
+                let inputs = [prepared, previous.unwrap_or(prepared)];
+                let reads = if previous.is_none() {
+                    &inputs[..1]
+                } else {
+                    &inputs[..]
+                };
+                previous = Some(take(
+                    ConvolutionStage::Accumulate {
+                        first_tap,
+                        tap_count,
+                        first: previous.is_none(),
+                    },
+                    reads,
+                )?);
+                first_tap += tap_count;
+            }
+            let sum = previous.ok_or(GraphValidationError::InvalidPassArity)?;
+            let final_grid = take(ConvolutionStage::Finalize, &[prepared, sum])?;
+            take(ConvolutionStage::Resolve, &[final_grid])?;
+        }
+    }
+    // Metadata cannot omit a pass with a convolution intent.
+    let mut count = 0_usize;
+    for pass in &graph.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if matches!(pass.intent, SemanticPassIntent::Convolution(_)) {
+            count += 1;
+        }
+    }
+    if count != graph.convolutions.len() {
+        return Err(GraphValidationError::InvalidPassArity);
     }
     Ok(())
 }

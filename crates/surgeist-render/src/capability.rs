@@ -106,13 +106,19 @@ impl AvailableRuntimeCapabilities {
 pub struct EffectPrecisionCapabilities {
     high_precision: bool,
     reduced_precision: bool,
+    convolution_float32: bool,
 }
 
 impl EffectPrecisionCapabilities {
-    pub(crate) const fn new(high_precision: bool, reduced_precision: bool) -> Self {
+    pub(crate) const fn new(
+        high_precision: bool,
+        reduced_precision: bool,
+        convolution_float32: bool,
+    ) -> Self {
         Self {
             high_precision,
             reduced_precision,
+            convolution_float32,
         }
     }
 
@@ -122,6 +128,15 @@ impl EffectPrecisionCapabilities {
     #[must_use]
     pub const fn supports_high_precision(self) -> bool {
         self.high_precision
+    }
+
+    /// Returns whether signed float32 convolution accumulation textures support all required usages.
+    ///
+    /// This requirement is independent of the ordinary effect precision policy;
+    /// convolution uses manual interpolation and does not require hardware filtering.
+    #[must_use]
+    pub const fn supports_convolution_float32(self) -> bool {
+        self.convolution_float32
     }
 
     /// Returns whether the selected runtime device supports reduced-precision effect textures.
@@ -216,6 +231,7 @@ impl Capabilities {
             gpu_color_filter_execution: true,
             gpu_blur_filter_execution: true,
             gpu_drop_shadow_filter_execution: true,
+            gpu_convolution_filter_execution: true,
             filter_region_planning: true,
         },
         masks_clips: MaskClipCapabilities {
@@ -478,6 +494,9 @@ impl Capabilities {
             }
             PrimitiveOperation::GpuDropShadowFilterExecution => {
                 self.filters.supports_gpu_drop_shadow_filter_execution()
+            }
+            PrimitiveOperation::GpuConvolutionFilterExecution => {
+                self.filters.supports_gpu_convolution_filter_execution()
             }
             PrimitiveOperation::FilterRegionPlanning => {
                 self.filters.supports_filter_region_planning()
@@ -942,7 +961,7 @@ impl ShadowCapabilities {
     }
 }
 
-/// Semantic support for authored filter lists and their GPU execution phases.
+/// Semantic support for authored filter lists, admitted native convolution and GPU execution phases.
 ///
 /// Each boolean distinguishes a supported operation from an unavailable one in
 /// the current rendering contract. The report is not a selected-device query or
@@ -954,6 +973,7 @@ pub struct FilterCapabilities {
     gpu_color_filter_execution: bool,
     gpu_blur_filter_execution: bool,
     gpu_drop_shadow_filter_execution: bool,
+    gpu_convolution_filter_execution: bool,
     filter_region_planning: bool,
 }
 
@@ -986,6 +1006,16 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_drop_shadow_filter_execution(self) -> bool {
         self.gpu_drop_shadow_filter_execution
+    }
+
+    /// Returns whether an admitted resolved convolution executes through a native Layer on the GPU.
+    ///
+    /// This includes duplicate, wrap, mirror and transparent edge modes. It does
+    /// not add convolution syntax to CSS filter lists. Actual float32 resource
+    /// availability is reported separately by runtime capabilities.
+    #[must_use]
+    pub const fn supports_gpu_convolution_filter_execution(self) -> bool {
+        self.gpu_convolution_filter_execution
     }
 
     /// Returns whether filter execution regions and outsets are planned before execution.
