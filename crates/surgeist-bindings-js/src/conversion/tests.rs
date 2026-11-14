@@ -43,21 +43,26 @@ fn setup() -> Result<(Process, Realm, Ledger, ConversionAccount), Box<dyn std::e
     Ok((process, realm, ledger, account))
 }
 
+fn shared(account: &ConversionAccount) -> (&Ledger, surgeist_ledger::Scope) {
+    match account.0.as_ref() {
+        super::account::Account::Ledger { ledger, scope, .. } => (ledger, *scope),
+        super::account::Account::Hosted(_) => panic!("shared fixture"),
+    }
+}
+
 fn sabotage_release(account: &ConversionAccount) {
     // Remove the existing charge while the actual payload is still owned.
     // Its later ordinary guard release must report Underflow, never disappear.
-    let live = account
+    let live = shared(account)
         .0
-        .ledger
-        .usage(account.0.scope)
+        .usage(shared(account).1)
         .expect("owned child")
         .live(Resource::BufferBytes);
     assert!(live > 0);
-    account
+    shared(account)
         .0
-        .ledger
         .apply_batch(
-            account.0.scope,
+            shared(account).1,
             &[Change::Release(Resource::BufferBytes, live)],
         )
         .expect("deliberate balance corruption");
@@ -199,11 +204,10 @@ fn earlier_host_stays_first() -> TestResult {
     let result = process.execution().in_realm(&realm, |scope| {
         let good = scope.string(&units("abc"))?;
         let retained = account.run(scope, |cx| cx.value(&types::DOM_STRING, &good))?;
-        account
+        shared(&account)
             .0
-            .ledger
             .set_limits(
-                account.0.scope,
+                shared(&account).1,
                 Limits::new(
                     WorkTable {
                         Value: 1,
@@ -288,7 +292,7 @@ fn expired_release_fault_does_not_touch_the_next_owner() -> TestResult {
         })?;
         (retained, account)
     };
-    assert!(account.0.owner.upgrade().is_none());
+    assert!(account.0.owner().upgrade().is_none());
     let mut next = Process::bootstrap(EngineKind::V8)?;
     let realm = next.execution().create_realm()?;
     sabotage_release(&account);
@@ -552,7 +556,7 @@ fn value_drops_before_its_charge() -> TestResult {
     let value = process.execution().in_realm(&realm, |_| {
         ledger
             .apply_batch(
-                account.0.scope,
+                shared(&account).1,
                 &[Change::Acquire(Resource::BufferBytes, 6)],
             )
             .expect("fixture storage admission");
@@ -561,7 +565,7 @@ fn value_drops_before_its_charge() -> TestResult {
                 ledger: ledger.clone(),
                 observed: observed.clone(),
             },
-            storage: super::account::Storage {
+            storage: super::account::Storage::Ledger {
                 account: account.0.clone(),
                 bytes: 6,
             },
@@ -606,7 +610,6 @@ fn nested_custody_preserves_selected_exception() -> TestResult {
 fn installed_dom_exception_charges_the_retained_account_body() -> TestResult {
     use std::mem::{size_of, size_of_val};
     use std::rc::Weak;
-    use std::sync::Arc;
 
     use crate::dom_exception::{self, DomExceptionLimits};
 
@@ -622,12 +625,6 @@ fn installed_dom_exception_charges_the_retained_account_body() -> TestResult {
         // Measure the actual allocation target. The two pointer wrappers are
         // separate retained bodies and cannot stand in for this measurement.
         let account = size_of_val(profile.account.0.as_ref());
-        let field_shapes =
-            size_of::<(Weak<()>, Arc<()>, (u64, usize), Cell<super::CleanupStatus>)>();
-        assert_eq!(
-            account, field_shapes,
-            "account field layout used by the Runtime oracle"
-        );
         let constructor_capture = size_of::<Rc<ConversionAccount>>();
         let profile_reference = size_of::<Weak<ConversionAccount>>();
         let account_wrapper = size_of::<ConversionAccount>();
@@ -644,6 +641,7 @@ fn installed_dom_exception_charges_the_retained_account_body() -> TestResult {
 }
 
 pub(crate) fn run() -> TestResult {
+    super::hosted_execution::run()?;
     installed_dom_exception_charges_the_retained_account_body()?;
     foreign_native_error_is_refused_during_cleanup()?;
     selected_native_error_survives_local_cleanup(false)?;

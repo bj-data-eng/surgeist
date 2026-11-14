@@ -6,7 +6,7 @@ use std::rc::{Rc, Weak};
 use surgeist_ledger::{Limits, Operation, SharedOperation, Tariffs};
 
 use crate::conversion::{
-    ArgumentValue, ConversionAccount, Resource, Work,
+    ArgumentValue, ConversionAccount, Host, Hosted, Resource, Work,
     declarations::{dom_exception_constructor_0_message, dom_exception_constructor_0_name},
 };
 use crate::{
@@ -41,6 +41,17 @@ impl DomExceptionLimits {
             copied_units,
             buffer_bytes,
         }
+    }
+
+    fn conversion_limits(self) -> Limits<Work, Resource> {
+        Limits::from_fn(
+            |work| match work {
+                Work::Argument | Work::Value => self.argument_decisions,
+                Work::CodeUnit => self.copied_units,
+                _ => 0,
+            },
+            |_| self.buffer_bytes,
+        )
     }
 }
 
@@ -101,14 +112,21 @@ impl<Storage> ConstructorState<Storage> {
 /// scopes. The native adapter keeps this backing admitted while the realm
 /// profile or constructor remains reachable. Returns `None` on size overflow.
 pub fn constructor_storage_bytes<Storage>() -> Option<usize> {
-    size_of::<ConstructorState<Storage>>()
-        .checked_add(ConstructorCallback::behavior_storage_bytes())?
-        .checked_add(size_of::<ConversionAccount>())?
-        .checked_add(size_of::<Weak<ConversionAccount>>())?
+    constructor_target_bytes::<Storage>()?
         .checked_add(ConversionAccount::retained_body_bytes())?
         .checked_add(SharedOperation::<Work, Resource>::reserved_backing_bytes(
             2,
         )?)
+}
+
+/// Requested constructor target, behavior and profile-reference bodies,
+/// excluding conversion-account setup. A hosted installation funds that setup
+/// independently using [`Hosted::storage_bytes`]. Returns `None` on overflow.
+pub fn constructor_target_bytes<Storage>() -> Option<usize> {
+    size_of::<ConstructorState<Storage>>()
+        .checked_add(ConstructorCallback::behavior_storage_bytes())?
+        .checked_add(size_of::<ConversionAccount>())?
+        .checked_add(size_of::<Weak<ConversionAccount>>())
 }
 
 /// Installs DOMException before a host exposes an authenticated realm to guest
@@ -130,25 +148,42 @@ pub fn install<Storage: 'static>(
     if scope.operations.dom_exception_profile()?.is_some() {
         return Err(Error::PropertyRejected);
     }
-    let limits = Limits::from_fn(
-        |work| match work {
-            Work::Argument | Work::Value => limits.argument_decisions,
-            Work::CodeUnit => limits.copied_units,
-            _ => 0,
-        },
-        |_| limits.buffer_bytes,
-    );
+    let limits = limits.conversion_limits();
     let ledger = Operation::with_reserved_scopes("dom-exception", limits, 2)
         .map_err(Error::ConversionLedger)?
         .share();
     let parent = ledger.root();
-    let conversion = Rc::new(ConversionAccount::new(
-        scope,
-        ledger,
-        parent,
-        limits,
-        Tariffs::identity(),
-    )?);
+    let conversion = ConversionAccount::new(scope, ledger, parent, limits, Tariffs::identity())?;
+    install_account(scope, conversion, backing)
+}
+
+/// Installs DOMException with producer-local caps and admission delegated to
+/// the supplied host. Conversion setup backing funds [`Hosted::storage_bytes`];
+/// constructor backing funds [`constructor_target_bytes`] independently.
+///
+/// # Errors
+/// Existing profile or global-property collisions, resource refusals and backend
+/// failures preserve the same behavior as [`install`].
+pub fn install_hosted<H: Host, B: 'static, Storage: 'static>(
+    scope: &mut Scope<'_>,
+    limits: DomExceptionLimits,
+    hosted: Hosted<H>,
+    conversion_backing: B,
+    constructor_backing: Storage,
+) -> Result<(), Error> {
+    if scope.operations.dom_exception_profile()?.is_some() {
+        return Err(Error::PropertyRejected);
+    }
+    let conversion = hosted.install(scope, limits.conversion_limits(), conversion_backing)?;
+    install_account(scope, conversion, constructor_backing)
+}
+
+fn install_account<Storage: 'static>(
+    scope: &mut Scope<'_>,
+    conversion: ConversionAccount,
+    backing: Storage,
+) -> Result<(), Error> {
+    let conversion = Rc::new(conversion);
     // The constructor owns the account and its debit together. Publication
     // only needs a weak reference, including on an early installation refusal.
     let account = Rc::downgrade(&conversion);
@@ -330,5 +365,32 @@ mod tests {
             + size_of::<crate::ConstructorBehavior>()
             + ledger;
         assert_eq!(constructor_storage_bytes::<[u8; 3]>(), Some(expected));
+    }
+
+    #[test]
+    fn hosted_constructor_target_includes_behavior_and_profile_reference_bodies() {
+        let expected = size_of::<ConstructorState<[u8; 3]>>()
+            + size_of::<crate::ConstructorBehavior>()
+            + size_of::<ConversionAccount>()
+            + size_of::<Weak<ConversionAccount>>();
+        assert_eq!(constructor_target_bytes::<[u8; 3]>(), Some(expected));
+    }
+
+    #[test]
+    fn conversion_caps_keep_arguments_units_and_live_buffers_independent() {
+        let limits = DomExceptionLimits::new(7, 11, 13).conversion_limits();
+        assert_eq!(limits.work(Work::Argument), 7);
+        assert_eq!(limits.work(Work::Value), 7);
+        assert_eq!(limits.work(Work::CodeUnit), 11);
+        for work in [
+            Work::EnumerationLookup,
+            Work::DictionaryMember,
+            Work::IteratorOperation,
+            Work::SequenceItem,
+            Work::SequenceMove,
+        ] {
+            assert_eq!(limits.work(work), 0);
+        }
+        assert_eq!(limits.live(Resource::BufferBytes), 13);
     }
 }

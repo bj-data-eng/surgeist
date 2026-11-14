@@ -52,6 +52,8 @@ pub enum Error {
     HostFailure(HostFailure),
     /// Binding-owned conversion work or storage was refused by Ledger.
     ConversionLedger(LedgerError),
+    /// Producer-local admission or reentrant hosted admission was refused.
+    ConversionAdmission(crate::conversion::AdmissionError),
     /// Fatal cleanup failed; its selected primary, if any, is retained exactly.
     ConversionCleanup(CleanupFailure),
     /// Preparation already has its process-wide caller policy.
@@ -122,6 +124,7 @@ impl fmt::Display for Error {
             Self::PreparationCleanup(_) => "binding preparation cleanup failed",
             Self::HostFailure(_) => "native host refused execution",
             Self::ConversionLedger(_) => "binding conversion admission failed",
+            Self::ConversionAdmission(_) => "binding local conversion admission failed",
             Self::ConversionCleanup(_) => "binding conversion cleanup failed",
             Self::OwnerAlreadyActive => "an execution owner is already active",
             Self::WrongThread => "the backend belongs to a different thread",
@@ -160,6 +163,9 @@ impl std::error::Error for Error {
         match self {
             Self::HostFailure(failure) => Some(failure),
             Self::PreparationCleanup(failure) => Some(failure),
+            Self::ConversionCleanup(failure) => Some(failure),
+            Self::ConversionAdmission(error) => Some(error),
+            Self::ConversionLedger(error) => Some(error),
             _ => None,
         }
     }
