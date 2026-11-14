@@ -502,6 +502,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
         let child_margin = resolve_atomic_inline_margin(unresolved_margin);
         let output = match result {
             BlockChildReceipt::Layout(output) => output,
+            BlockChildReceipt::Entry(_) => unreachable!("inline preparation awaits layout"),
             BlockChildReceipt::FloatTrial(packet) => {
                 let output = packet.output;
                 let pending = PendingFloat {

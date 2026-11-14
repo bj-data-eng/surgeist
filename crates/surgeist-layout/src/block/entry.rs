@@ -7,6 +7,7 @@ pub(super) use adjoining::AdjoiningFlow;
 pub(crate) mod canonical;
 mod driver;
 mod semantic;
+pub(crate) use driver::EntryFloat;
 use driver::PrefixDriver;
 
 #[cfg(test)]
@@ -442,6 +443,105 @@ where
 /// Resolve frontiers only after the executor installs disposable resident
 /// custody. Both native private executors and the publishing session use this
 /// same partial driver; their factories own output isolation.
+type FramedEntryStep<'input, Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<EntryObservation<Node, S>, EntryFloat<'input, Node, S>>, S, M>;
+
+/// Owns one framed prefix operation across actual source-float measurements.
+pub(crate) struct FramedEntry<Node, S: LayoutScalar> {
+    observation: EntryObservation<Node, S>,
+}
+impl<Node: Copy + Eq, S: LayoutScalar> FramedEntry<Node, S> {
+    pub(crate) fn begin<'input, Tree, M>(
+        tree: &mut Tree,
+        query: EntryQuery<Node, S>,
+    ) -> LayoutResultOf<Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Node: 'input,
+    {
+        let expected = query
+            .incoming
+            .as_ref()
+            .ok_or_else(|| float_context::missing(query.node))?;
+        let resident = tree
+            .block_float_state()
+            .and_then(|state| state.incoming(query.node, query.input))
+            .ok_or_else(|| float_context::missing(query.node))?;
+        if expected.node != query.node
+            || expected.request != query.input
+            || !std::sync::Arc::ptr_eq(&expected.frame, &resident.frame)
+            || match (expected.cut, resident.cut) {
+                (Some(expected), Some(actual)) => !expected.same_cut(actual),
+                (None, None) => false,
+                _ => true,
+            }
+        {
+            return Err(float_context::missing(query.node));
+        }
+        Ok(Self {
+            observation: observe(tree, query)?,
+        })
+    }
+
+    pub(crate) fn after_float<'input, Tree, M>(
+        tree: &mut Tree,
+        pending: EntryFloat<'input, Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Node: 'input,
+    {
+        let observation = pending.complete(tree, output)?;
+        if let EntryObservation::Demand(demand) = &observation {
+            demand.validate_window(tree)?;
+        }
+        Ok(Self { observation })
+    }
+
+    pub(crate) fn advance<'input, Tree, M>(
+        self,
+        tree: &mut Tree,
+    ) -> FramedEntryStep<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Node: 'input,
+    {
+        let mut observation = self.observation;
+        loop {
+            observation = match observation {
+                EntryObservation::Demand(demand) if demand.kind == EntryFrontier::Leaf => {
+                    demand.measure_leaf(tree)?
+                }
+                EntryObservation::Demand(demand)
+                    if demand.kind == EntryFrontier::Clearance && demand.is_component() =>
+                {
+                    demand.suppress_clear(tree)?
+                }
+                EntryObservation::Demand(demand)
+                    if demand.kind == EntryFrontier::NativeRun && demand.is_component() =>
+                {
+                    demand.observe_native(tree)?
+                }
+                EntryObservation::Demand(demand)
+                    if demand.kind == EntryFrontier::Float && demand.is_component() =>
+                {
+                    return Ok(ControlFlow::Continue(demand.prepare_float(tree)?));
+                }
+                EntryObservation::Summary(summary) => {
+                    summary.validate_separation(tree)?;
+                    return Ok(ControlFlow::Break(EntryObservation::Summary(summary)));
+                }
+                ready => return Ok(ControlFlow::Break(ready)),
+            };
+            if let EntryObservation::Demand(demand) = &observation {
+                demand.validate_window(tree)?;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn resolve_framed<'input, Tree, M>(
     tree: &mut Tree,
     query: EntryQuery<Tree::Node, Tree::Scalar>,
@@ -449,54 +549,15 @@ pub(crate) fn resolve_framed<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let expected = query
-        .incoming
-        .as_ref()
-        .ok_or_else(|| float_context::missing(query.node))?;
-    let resident = tree
-        .block_float_state()
-        .and_then(|state| state.incoming(query.node, query.input))
-        .ok_or_else(|| float_context::missing(query.node))?;
-    if expected.node != query.node
-        || expected.request != query.input
-        || !std::sync::Arc::ptr_eq(&expected.frame, &resident.frame)
-        || match (expected.cut, resident.cut) {
-            (Some(expected), Some(actual)) => !expected.same_cut(actual),
-            (None, None) => false,
-            _ => true,
-        }
-    {
-        return Err(float_context::missing(query.node));
-    }
-    let mut observation = observe(tree, query)?;
+    let mut state = FramedEntry::begin(tree, query)?;
     loop {
-        observation = match observation {
-            EntryObservation::Demand(demand) if demand.kind == EntryFrontier::Leaf => {
-                demand.measure_leaf(tree)?
+        match state.advance(tree)? {
+            ControlFlow::Break(observation) => return Ok(observation),
+            ControlFlow::Continue(pending) => {
+                let (node, input) = pending.request();
+                let output = tree.measure_entry_float(node, input)?;
+                state = FramedEntry::after_float(tree, pending, output)?;
             }
-            EntryObservation::Demand(demand)
-                if demand.kind == EntryFrontier::Clearance && demand.is_component() =>
-            {
-                demand.suppress_clear(tree)?
-            }
-            EntryObservation::Demand(demand)
-                if demand.kind == EntryFrontier::NativeRun && demand.is_component() =>
-            {
-                demand.observe_native(tree)?
-            }
-            EntryObservation::Demand(demand)
-                if demand.kind == EntryFrontier::Float && demand.is_component() =>
-            {
-                demand.observe_float(tree)?
-            }
-            EntryObservation::Summary(summary) => {
-                summary.validate_separation(tree)?;
-                return Ok(EntryObservation::Summary(summary));
-            }
-            ready => return Ok(ready),
-        };
-        if let EntryObservation::Demand(demand) = &observation {
-            demand.validate_window(tree)?;
         }
     }
 }

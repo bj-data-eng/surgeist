@@ -4,7 +4,8 @@ use super::memo::Capture;
 use super::{ChildAdmission, ChildCacheRequest, ComputeSession, FloatChildTrial, SessionResult};
 use crate::block::intrinsic::{BlockAxisDemand, InlineContentChild};
 use crate::block::{
-    BlockChildReceipt, BlockComputation, BlockResult, PendingBlockChild, begin_block_computation,
+    BlockChildReceipt, BlockChildRequest, BlockComputation, BlockResult, PendingBlockChild,
+    begin_block_computation,
 };
 use crate::engine::block_scope::ordinary;
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
@@ -31,8 +32,10 @@ enum Request<Node, S: LayoutScalar> {
     AdvanceBlock,
     AdvanceFlex,
     AdvanceGrid,
+    Qualify(crate::block::entry::EntryQuery<Node, S>),
+    Entry(Box<crate::block::entry::FramedEntry<Node, S>>),
     FloatTrial(FloatTrialRequest<Node, S>),
-    Complete(CompletedRequest<S>),
+    Complete(CompletedRequest<Node, S>),
 }
 
 struct FloatTrialRequest<Node, S: LayoutScalar> {
@@ -41,8 +44,10 @@ struct FloatTrialRequest<Node, S: LayoutScalar> {
     trial: FloatChildTrial,
 }
 
-enum RequestProgress<Node, S: LayoutScalar> {
-    Complete(CompletedRequest<S>),
+enum RequestProgress<'input, Node, S: LayoutScalar> {
+    Complete(CompletedRequest<Node, S>),
+    Qualification(crate::block::entry::EntryQuery<Node, S>),
+    SourceFloat(Box<crate::block::entry::EntryFloat<'input, Node, S>>),
     FloatTrial(FloatTrialRequest<Node, S>),
 }
 
@@ -63,23 +68,28 @@ impl OutputProjection {
     }
 }
 
-enum CompletedRequest<S: LayoutScalar> {
+enum CompletedRequest<Node, S: LayoutScalar> {
+    Entry(Box<crate::block::entry::EntryObservation<Node, S>>),
     Layout(ComputeOutputOf<S>),
     Axis(S),
 }
 
-impl<S: LayoutScalar> CompletedRequest<S> {
+impl<Node, S: LayoutScalar> CompletedRequest<Node, S> {
     fn layout(self) -> ComputeOutputOf<S> {
         match self {
             Self::Layout(output) => output,
-            Self::Axis(_) => unreachable!("a layout request completes with layout geometry"),
+            Self::Entry(_) | Self::Axis(_) => {
+                unreachable!("a layout request completes with layout geometry")
+            }
         }
     }
 
     fn axis(self) -> S {
         match self {
             Self::Axis(output) => output,
-            Self::Layout(_) => unreachable!("an axis request completes with a scalar"),
+            Self::Entry(_) | Self::Layout(_) => {
+                unreachable!("an axis request completes with a scalar")
+            }
         }
     }
 }
@@ -162,6 +172,14 @@ impl<Node, S: LayoutScalar> PendingRequests<'_, Node, S> {
 type SessionRequest<Tree> = Request<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
 type SessionPending<'input, Tree> =
     PendingRequests<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
+type StagedProgress<Tree> = ControlFlow<
+    CompletedRequest<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    SessionRequest<Tree>,
+>;
+type EntryProgress<'input, Tree> = ControlFlow<
+    RequestProgress<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    SessionRequest<Tree>,
+>;
 struct ChildCompletion<Node, S: LayoutScalar> {
     cache: Option<ChildCacheRequest<Node, S>>,
     capture: Option<Capture<S>>,
@@ -169,8 +187,18 @@ struct ChildCompletion<Node, S: LayoutScalar> {
 type SessionBlock<'input, Tree> =
     BlockRequest<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
 
+enum StagedDestination<'input, Node, S: LayoutScalar> {
+    Qualification,
+    FloatTrial(FloatTrialRequest<Node, S>),
+    SourceFloat {
+        request: FloatTrialRequest<Node, S>,
+        pending: Box<crate::block::entry::EntryFloat<'input, Node, S>>,
+        observation: Option<crate::engine::entry_sources::FloatReservation<Node, S>>,
+    },
+}
+
 struct StagedTrial<'input, Tree: LayoutTree> {
-    request: FloatTrialRequest<Tree::Node, Tree::Scalar>,
+    destination: StagedDestination<'input, Tree::Node, Tree::Scalar>,
     session: ComputeSession<'input, Tree>,
     pending: SessionPending<'input, Tree>,
 }
@@ -184,6 +212,16 @@ fn reserve_error<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S,
 }
 
 impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
+    pub(super) fn drive_entry(
+        &mut self,
+        query: crate::block::entry::EntryQuery<Tree::Node, Tree::Scalar>,
+    ) -> SessionResult<Tree, crate::block::entry::EntryObservation<Tree::Node, Tree::Scalar>> {
+        match self.drive_requests(Request::Qualify(query))? {
+            CompletedRequest::Entry(observation) => Ok(*observation),
+            _ => unreachable!("entry operation returns entry facts"),
+        }
+    }
+
     pub(super) fn drive_child(
         &mut self,
         node: Tree::Node,
@@ -218,7 +256,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     fn drive_requests(
         &mut self,
         request: SessionRequest<Tree>,
-    ) -> SessionResult<Tree, CompletedRequest<Tree::Scalar>> {
+    ) -> SessionResult<Tree, CompletedRequest<Tree::Node, Tree::Scalar>> {
         let mut pending = PendingRequests::new();
         let mut staged = Vec::new();
         let result = self.drive_staged_requests(request, &mut pending, &mut staged);
@@ -235,7 +273,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         mut request: SessionRequest<Tree>,
         pending: &mut SessionPending<'input, Tree>,
         staged: &mut Vec<StagedTrial<'input, Tree>>,
-    ) -> SessionResult<Tree, CompletedRequest<Tree::Scalar>> {
+    ) -> SessionResult<Tree, CompletedRequest<Tree::Node, Tree::Scalar>> {
         loop {
             let progress = if let Some(active) = staged.last_mut() {
                 active.session.run_requests(request, &mut active.pending)?
@@ -257,33 +295,163 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                         projection: OutputProjection::Layout,
                     };
                     staged.push(StagedTrial {
-                        request: trial,
+                        destination: StagedDestination::FloatTrial(trial),
                         session,
                         pending: PendingRequests::new(),
                     });
                 }
+                RequestProgress::Qualification(query) => {
+                    request = self.stage_qualification(query, staged)?;
+                }
+                RequestProgress::SourceFloat(source) => {
+                    request = self.stage_source_float(source, staged)?;
+                }
                 RequestProgress::Complete(output) => {
-                    let Some(finished) = staged.pop() else {
-                        return Ok(output);
-                    };
-                    let (parent, pending) = if let Some(active) = staged.last_mut() {
-                        (&mut active.session, &mut active.pending)
-                    } else {
-                        (&mut *self, &mut *pending)
-                    };
-                    let trial = finished.request;
-                    let packet = parent.seal_float_trial(
-                        trial.node,
-                        trial.input,
-                        trial.trial,
-                        finished.session,
-                        output.layout(),
-                    )?;
-                    assert!(matches!(pending.order.pop(), Some(PendingRequest::Block)));
-                    request =
-                        parent.resume_block(BlockChildReceipt::FloatTrial(packet), pending)?;
+                    match self.complete_staged(output, pending, staged)? {
+                        ControlFlow::Break(output) => return Ok(output),
+                        ControlFlow::Continue(next) => request = next,
+                    }
                 }
             }
+        }
+    }
+
+    // Phase-local construction finishes before the driver executes another
+    // child. Ordinary request frames do not retain inactive entry owners.
+    fn stage_qualification(
+        &mut self,
+        query: crate::block::entry::EntryQuery<Tree::Node, Tree::Scalar>,
+        staged: &mut Vec<StagedTrial<'input, Tree>>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        staged
+            .try_reserve(1)
+            .map_err(|_| reserve_error(query.node))?;
+        let parent = staged
+            .last_mut()
+            .map_or(&mut *self, |active| &mut active.session);
+        let mut session = parent.prepare_entry_trial(&query)?;
+        let entry = crate::block::entry::FramedEntry::begin(&mut session, query)?;
+        let request = Request::Entry(Box::new(entry));
+        staged.push(StagedTrial {
+            destination: StagedDestination::Qualification,
+            session,
+            pending: PendingRequests::new(),
+        });
+        Ok(request)
+    }
+
+    fn stage_source_float(
+        &mut self,
+        source: Box<crate::block::entry::EntryFloat<'input, Tree::Node, Tree::Scalar>>,
+        staged: &mut Vec<StagedTrial<'input, Tree>>,
+    ) -> SessionResult<Tree, SessionRequest<Tree>> {
+        let (node, input) = source.request();
+        staged.try_reserve(1).map_err(|_| reserve_error(node))?;
+        let parent = staged
+            .last_mut()
+            .map_or(&mut *self, |active| &mut active.session);
+        let observation = match parent.source_float_observation(node, input)? {
+            Some(crate::engine::entry_sources::FloatObservation::Hit(output)) => {
+                return Ok(Request::Entry(Box::new(
+                    crate::block::entry::FramedEntry::after_float(parent, *source, output)?,
+                )));
+            }
+            Some(crate::engine::entry_sources::FloatObservation::Miss(reservation)) => {
+                Some(reservation)
+            }
+            None => None,
+        };
+        let session = parent.child_staging(node, FloatChildTrial::Detached, None)?;
+        let request = Request::Child {
+            node,
+            input,
+            projection: OutputProjection::Layout,
+        };
+        staged.push(StagedTrial {
+            destination: StagedDestination::SourceFloat {
+                request: FloatTrialRequest {
+                    node,
+                    input,
+                    trial: FloatChildTrial::Detached,
+                },
+                pending: source,
+                observation,
+            },
+            session,
+            pending: PendingRequests::new(),
+        });
+        Ok(request)
+    }
+
+    fn complete_staged(
+        &mut self,
+        output: CompletedRequest<Tree::Node, Tree::Scalar>,
+        pending: &mut SessionPending<'input, Tree>,
+        staged: &mut Vec<StagedTrial<'input, Tree>>,
+    ) -> SessionResult<Tree, StagedProgress<Tree>> {
+        let Some(finished) = staged.pop() else {
+            return Ok(ControlFlow::Break(output));
+        };
+        let (parent, pending) = if let Some(active) = staged.last_mut() {
+            (&mut active.session, &mut active.pending)
+        } else {
+            (&mut *self, &mut *pending)
+        };
+        let request = match finished.destination {
+            StagedDestination::Qualification => {
+                drop(finished.session);
+                Request::Complete(output)
+            }
+            StagedDestination::FloatTrial(trial) => {
+                let packet = parent.seal_float_trial(
+                    trial.node,
+                    trial.input,
+                    trial.trial,
+                    finished.session,
+                    output.layout(),
+                )?;
+                assert!(matches!(pending.order.pop(), Some(PendingRequest::Block)));
+                parent.resume_block(BlockChildReceipt::FloatTrial(packet), pending)?
+            }
+            StagedDestination::SourceFloat {
+                request: trial,
+                pending: source,
+                observation,
+            } => {
+                let packet = parent.seal_float_trial(
+                    trial.node,
+                    trial.input,
+                    trial.trial,
+                    finished.session,
+                    output.layout(),
+                )?;
+                let output = packet.output;
+                drop(packet);
+                if let Some(reservation) = observation {
+                    reservation.complete(output);
+                }
+                Request::Entry(Box::new(crate::block::entry::FramedEntry::after_float(
+                    parent, *source, output,
+                )?))
+            }
+        };
+        Ok(ControlFlow::Continue(request))
+    }
+
+    fn advance_entry_request(
+        &mut self,
+        request: SessionRequest<Tree>,
+    ) -> SessionResult<Tree, EntryProgress<'input, Tree>> {
+        let Request::Entry(entry) = request else {
+            unreachable!("entry advancement receives the retained entry request");
+        };
+        match entry.advance(self)? {
+            ControlFlow::Break(observation) => Ok(ControlFlow::Continue(Request::Complete(
+                CompletedRequest::Entry(Box::new(observation)),
+            ))),
+            ControlFlow::Continue(source) => Ok(ControlFlow::Break(RequestProgress::SourceFloat(
+                Box::new(source),
+            ))),
         }
     }
 
@@ -310,7 +478,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         mut request: SessionRequest<Tree>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, RequestProgress<Tree::Node, Tree::Scalar>> {
+    ) -> SessionResult<Tree, RequestProgress<'input, Tree::Node, Tree::Scalar>> {
         loop {
             request = match request {
                 Request::Child {
@@ -358,6 +526,11 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 Request::AdvanceBlock => self.advance_block(pending)?,
                 Request::AdvanceFlex => self.advance_flex(pending)?,
                 Request::AdvanceGrid => self.advance_grid(pending)?,
+                Request::Qualify(query) => return Ok(RequestProgress::Qualification(query)),
+                entry @ Request::Entry(_) => match self.advance_entry_request(entry)? {
+                    ControlFlow::Break(progress) => return Ok(progress),
+                    ControlFlow::Continue(request) => request,
+                },
                 Request::FloatTrial(trial) => return Ok(RequestProgress::FloatTrial(trial)),
                 Request::Complete(output) => match pending.order.pop() {
                     None => return Ok(RequestProgress::Complete(output)),
@@ -376,9 +549,18 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                         parent.accept_child(child, output.axis());
                         self.advance_block_axis(parent, pending)?
                     }
-                    Some(PendingRequest::Block) => {
-                        self.resume_block(BlockChildReceipt::Layout(output.layout()), pending)?
-                    }
+                    Some(PendingRequest::Block) => self.resume_block(
+                        match output {
+                            CompletedRequest::Layout(output) => BlockChildReceipt::Layout(output),
+                            CompletedRequest::Entry(observation) => {
+                                BlockChildReceipt::Entry(observation)
+                            }
+                            CompletedRequest::Axis(_) => {
+                                unreachable!("Block child has layout or entry result")
+                            }
+                        },
+                        pending,
+                    )?,
                     Some(PendingRequest::Flex) => {
                         let parent = pending.flexes.last_mut().expect("active Flex request");
                         let child = parent.child.take().expect("pending Flex child request");
@@ -448,6 +630,18 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
             ControlFlow::Break(result) => self.complete_block(result, pending),
             ControlFlow::Continue(child) => {
                 let (request, child) = child.into_request();
+                if let BlockChildRequest::Entry(query) = request {
+                    parent.child = Some(child);
+                    pending
+                        .order
+                        .try_reserve(1)
+                        .map_err(|_| reserve_error(query.node))?;
+                    pending.order.push(PendingRequest::Block);
+                    return Ok(Request::Qualify(*query));
+                }
+                let BlockChildRequest::Layout(request) = request else {
+                    unreachable!()
+                };
                 debug_assert!(
                     request.entry.is_none(),
                     "ordinary request has no scope entry"

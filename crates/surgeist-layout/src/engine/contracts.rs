@@ -71,6 +71,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     /// Real used-box sizing of an independent source float in a disposable
     /// entry traversal. The packet producer retains its detached body policy;
     /// no complete packet or descendant publication escapes entry qualification.
+    #[cfg(test)]
     fn measure_entry_float(
         &mut self,
         node: Self::Node,
@@ -79,6 +80,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         self.probe_float_child(node, input, super::session::FloatChildTrial::Detached)
             .map(|packet| packet.output)
     }
+
     fn block_float_work(&self, node: Self::Node) -> bool {
         crate::block::float_context::discover_work(self, node)
     }

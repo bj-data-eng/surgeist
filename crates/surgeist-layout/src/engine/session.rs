@@ -3,6 +3,9 @@ mod memo;
 mod requests;
 
 #[cfg(test)]
+mod entry_observation_tests;
+
+#[cfg(test)]
 mod scope_resource_tests;
 
 use super::contracts::{
@@ -51,6 +54,15 @@ type CanonicalFrames<Tree> = Vec<
 type EntrySources<Tree> = std::sync::Arc<
     std::sync::Mutex<
         super::entry_sources::SourceMemo<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    >,
+>;
+type SourceFloatObservation<Tree> = SessionResult<
+    Tree,
+    Option<
+        super::entry_sources::FloatObservation<
+            <Tree as Traverse>::Node,
+            <Tree as Traverse>::Scalar,
+        >,
     >,
 >;
 type EntryFunding<Tree> =
@@ -1722,6 +1734,98 @@ where
         Ok(())
     }
 
+    /// Only this discarded source observation can reuse an entry result. The
+    /// actual float body and ordinary request memo keep their existing custody.
+    fn source_float_observation(
+        &self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> SourceFloatObservation<Tree> {
+        // Numeric, unfunded detached owners have no Text, wrapping, grouping or
+        // fragment receipts to retain. Shape and non-Box source closures remain
+        // excluded by the immutable graph proof in the operation-local memo.
+        if input.run_mode() != RunMode::ComputeSize
+            || self.tree.node_input(node).float.is_none()
+            || self.text.is_some()
+            || self.groups.is_some()
+            || self.wrapping.context.is_some()
+            || self.fragmentation.is_some()
+            || self.bound.is_some()
+            || self.entry_funding(node)?.is_some()
+        {
+            return Ok(None);
+        }
+        let (Some(sources), Some(graph)) = (&self.entry_sources, self.flow_graph) else {
+            return Ok(None);
+        };
+        super::entry_sources::SourceMemo::float_observation(
+            sources,
+            self.tree,
+            graph,
+            node,
+            input,
+            self.cache_context(),
+        )
+        .map_err(|_| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Allocation,
+            )
+        })
+    }
+
+    fn prepare_entry_trial(
+        &mut self,
+        query: &crate::block::entry::EntryQuery<Tree::Node, Tree::Scalar>,
+    ) -> SessionResult<Tree, Self> {
+        if let Some(memo) = &self.memo {
+            memo.barrier();
+        }
+        if !query
+            .incoming
+            .as_ref()
+            .is_some_and(|incoming| incoming.node == query.node && incoming.request == query.input)
+        {
+            return Err(crate::block::float_context::missing(query.node));
+        }
+        if let Some(text) = &mut self.text {
+            text.prepare_entry().map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(query.node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
+        }
+        if self.entry_sources.is_none() {
+            let header = self
+                .entry_funding(query.node)?
+                .as_ref()
+                .map(|funding| {
+                    funding.header::<(
+                        usize,
+                        usize,
+                        std::sync::Mutex<
+                            super::entry_sources::SourceMemo<Tree::Node, Tree::Scalar>,
+                        >,
+                    )>()
+                })
+                .transpose()
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(query.node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
+            self.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
+                super::entry_sources::SourceMemo::new(header),
+            )));
+        }
+        self.child_staging(query.node, FloatChildTrial::InFlow, query.incoming.clone())
+    }
+
     fn compute_child_uncached_scoped(
         &mut self,
         node: Tree::Node,
@@ -1909,57 +2013,10 @@ where
         &mut self,
         query: crate::block::entry::EntryQuery<Self::Node, Self::Scalar>,
     ) -> SessionResult<Tree, crate::block::entry::EntryObservation<Self::Node, Self::Scalar>> {
-        use crate::block::entry::EntryPurpose;
-        if query.purpose == EntryPurpose::StartOnly {
+        if query.purpose == crate::block::entry::EntryPurpose::StartOnly {
             return crate::block::entry::observe(self, query);
         }
-        if let Some(memo) = &self.memo {
-            memo.barrier();
-        }
-        if !query
-            .incoming
-            .as_ref()
-            .is_some_and(|incoming| incoming.node == query.node && incoming.request == query.input)
-        {
-            return Err(crate::block::float_context::missing(query.node));
-        }
-        if let Some(text) = &mut self.text {
-            text.prepare_entry().map_err(|error| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(query.node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
-                )
-            })?;
-        }
-        if self.entry_sources.is_none() {
-            let header = self
-                .entry_funding(query.node)?
-                .as_ref()
-                .map(|funding| {
-                    funding.header::<(
-                        usize,
-                        usize,
-                        std::sync::Mutex<
-                            super::entry_sources::SourceMemo<Tree::Node, Tree::Scalar>,
-                        >,
-                    )>()
-                })
-                .transpose()
-                .map_err(|error| {
-                    LayoutErrorOf::new(
-                        LayoutErrorSiteOf::Node(query.node),
-                        LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
-                    )
-                })?;
-            self.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
-                super::entry_sources::SourceMemo::new(header),
-            )));
-        }
-        let mut trial =
-            self.child_staging(query.node, FloatChildTrial::InFlow, query.incoming.clone())?;
-        crate::block::entry::resolve_framed(&mut trial, query)
+        self.drive_entry(query)
     }
     fn measure_entry_leaf(
         &mut self,

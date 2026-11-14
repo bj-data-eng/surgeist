@@ -549,3 +549,141 @@ fn exact_native_entry_sample_is_operation_local_f32() {
 fn exact_native_entry_sample_is_operation_local_f64() {
     native_samples::<f64>();
 }
+
+#[test]
+fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    use std::cell::RefCell;
+    thread_local! {
+        static FAIL_SECOND: Cell<bool> = const { Cell::new(false) };
+        static FAIL_FIRST: Cell<bool> = const { Cell::new(false) };
+        static ORDER: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+    }
+    fn first(input: crate::LeafMeasureInputOf<f64>) -> Size<f64> {
+        assert_eq!(input.known_content_size(), Size::new(Some(20.0), None));
+        ORDER.with(|order| order.borrow_mut().push(1));
+        Size::new(20.0, if FAIL_FIRST.get() { f64::NAN } else { 7.0 })
+    }
+    fn second(input: crate::LeafMeasureInputOf<f64>) -> Size<f64> {
+        assert_eq!(input.known_content_size(), Size::new(Some(20.0), None));
+        ORDER.with(|order| order.borrow_mut().push(2));
+        Size::new(20.0, if FAIL_SECOND.get() { f64::NAN } else { 9.0 })
+    }
+    // A real empty captured paragraph has no participating content. Its
+    // nonseparating issued run includes the two transparent float occurrences;
+    // the following ordinary Block ends that actual native source interval.
+    let paragraph = PreparedParagraph::at_boundary(
+        vec![ParagraphPart::text(
+            10,
+            surgeist_text::Source::new(""),
+            ahem_style(4.0, 4.0),
+        )],
+        ahem_style(4.0, 4.0),
+        surgeist_text::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+    );
+    let mut binding = paragraph.binding(0);
+    binding.nodes = vec![10, 1, 2];
+    let floated = || crate::NodeInputOf {
+        float: crate::Float::Left,
+        size: Size::new(
+            crate::PreferredSizeOf::px(20.0),
+            crate::PreferredSizeOf::AUTO,
+        ),
+        ..block(0.0, 0.0, None)
+    };
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [10, 1, 2, 3])
+        .style(0, block(0.0, 0.0, None))
+        .input(10, paragraph.text_input(10))
+        .style(1, floated())
+        .style(2, floated())
+        .style(3, block(0.0, 0.0, Some(10.0)))
+        .measure_with(1, first)
+        .measure_with(2, second);
+    let capture = crate::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
+    let mut owner = ComputeSession::with_flow(&capture, Vec::new());
+    let expected = owner
+        .text_computation()
+        .unwrap()
+        .run(0, &[10, 1, 2])
+        .unwrap()
+        .segment
+        .clone();
+    let request = || {
+        let mut request = query(EntryPurpose::FramedEntry);
+        request.purpose = EntryPurpose::Component;
+        request.position = Some(super::super::canonical::EntryPosition {
+            cursor: 0.0,
+            active: CollapsibleMarginOf::ZERO,
+            start_open: false,
+            collapses_start: false,
+            child_adjoins_parent: true,
+            own_start: CollapsibleMarginOf::ZERO,
+            inline_offset: 0.0,
+        });
+        request
+    };
+    FAIL_FIRST.set(false);
+    FAIL_SECOND.set(false);
+    ORDER.with(|order| order.borrow_mut().clear());
+    let EntryObservation::Summary(summary) = owner.qualify_entry(request()).unwrap() else {
+        panic!("empty native source and real floats complete the entry")
+    };
+    ORDER.with(|order| assert_eq!(&*order.borrow(), &[1, 2]));
+    assert_eq!(summary.floats.len(), 2);
+    assert_eq!(summary.native.len(), 1);
+    assert_eq!(summary.native[0].window.nodes, 0..3);
+    assert!(
+        summary.native[0]
+            .window
+            .segment
+            .as_ref()
+            .is_some_and(|segment| *segment == expected)
+    );
+    assert_eq!(summary.start_fact().margin.resolve(), 0.0);
+    for node in [0, 10, 1, 2, 3] {
+        assert!(owner.staged_unrounded(node).is_err());
+    }
+    drop(summary);
+    drop(owner);
+    let mut owner = ComputeSession::with_flow(&capture, Vec::new());
+    FAIL_FIRST.set(true);
+    ORDER.with(|order| order.borrow_mut().clear());
+    let error = owner
+        .qualify_entry(request())
+        .err()
+        .expect("first source producer refuses");
+    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(1));
+    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert!(
+        matches!(error.kind(),crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output)) if output.axis()==crate::PhysicalAxis::Vertical && matches!(output.error(),crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.is_nan()))
+    );
+    ORDER.with(|order| assert_eq!(&*order.borrow(), &[1], "later source producer must not run"));
+    FAIL_FIRST.set(false);
+    drop(owner);
+    let mut owner = ComputeSession::with_flow(&capture, Vec::new());
+    FAIL_SECOND.set(true);
+    ORDER.with(|order| order.borrow_mut().clear());
+    let error = owner
+        .qualify_entry(request())
+        .err()
+        .expect("later source producer refuses after first resume");
+    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(2));
+    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert!(
+        matches!(error.kind(),crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output)) if output.axis()==crate::PhysicalAxis::Vertical && matches!(output.error(),crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.is_nan()))
+    );
+    ORDER.with(|order| assert_eq!(&*order.borrow(), &[1, 2]));
+    for node in [0, 10, 1, 2, 3] {
+        assert!(owner.staged_unrounded(node).is_err());
+    }
+    FAIL_SECOND.set(false);
+}

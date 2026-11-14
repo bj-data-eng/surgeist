@@ -510,7 +510,13 @@ pub(crate) enum PendingBlockChild<'input, Node, S: LayoutScalar> {
     Positioned(AbsoluteChild<Node, S>),
 }
 
+pub(crate) enum BlockChildRequest<Node, S: LayoutScalar> {
+    Layout(scope::ChildRequest<Node, S>),
+    Entry(Box<entry::EntryQuery<Node, S>>),
+}
+
 pub(crate) enum BlockChildReceipt<Node, S: LayoutScalar> {
+    Entry(Box<entry::EntryObservation<Node, S>>),
     Layout(ComputeOutputOf<S>),
     FloatTrial(std::sync::Arc<crate::engine::FloatChildPacket<Node, S>>),
 }
@@ -519,7 +525,9 @@ impl<Node, S: LayoutScalar> BlockChildReceipt<Node, S> {
     fn layout(self) -> ComputeOutputOf<S> {
         match self {
             Self::Layout(output) => output,
-            Self::FloatTrial(_) => unreachable!("direct Block request has a layout receipt"),
+            Self::Entry(_) | Self::FloatTrial(_) => {
+                unreachable!("direct Block request has a layout receipt")
+            }
         }
     }
 }
@@ -549,7 +557,7 @@ impl<'input, Node: Copy, S: LayoutScalar> BlockChild<'input, Node, S> {
     pub(crate) fn into_request(
         self,
     ) -> (
-        scope::ChildRequest<Node, S>,
+        BlockChildRequest<Node, S>,
         PendingBlockChild<'input, Node, S>,
     ) {
         match self {
@@ -558,11 +566,11 @@ impl<'input, Node: Copy, S: LayoutScalar> BlockChild<'input, Node, S> {
                 (request, PendingBlockChild::InFlow(pending))
             }
             Self::Positioned(child) => (
-                scope::ChildRequest {
+                BlockChildRequest::Layout(scope::ChildRequest {
                     node: child.node,
                     input: child.input,
                     entry: None,
-                },
+                }),
                 PendingBlockChild::Positioned(child),
             ),
         }
