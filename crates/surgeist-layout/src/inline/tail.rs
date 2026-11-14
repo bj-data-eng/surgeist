@@ -168,40 +168,5 @@ fn restore_program<S: LayoutScalar>(
 mod continuation;
 pub(super) use continuation::NumericTail;
 
-/// Pretty retains its synchronous group ownership, draining the same Tail owner.
-pub(super) fn repair_group_from_auto<S, B, C, E>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
-    entry: NumericGroupEntry<S>,
-    band: &mut B,
-    clear: &mut C,
-) -> Result<Option<TailGoal>, NumericRunError<E>>
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, E>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    NumericTail::from_auto(sequence, entry, None).drain(request, sequence, boundaries, band, clear)
-}
-
-pub(super) fn replay_group_from_auto<S, B, C, E>(
-    request: NumericWalkInput<'_, S>,
-    boundaries: &[InlineSourceCursor],
-    sequence: &mut NumericSequence<S>,
-    phase: (NumericGroupEntry<S>, TailGoal),
-    band: &mut B,
-    clear: &mut C,
-) -> Result<bool, NumericRunError<E>>
-where
-    S: LayoutScalar,
-    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, E>,
-    C: FnMut(S, PostLineClearIntent) -> S,
-{
-    NumericTail::from_auto(sequence, phase.0, Some(phase.1))
-        .drain(request, sequence, boundaries, band, clear)
-        .map(|goal| goal.is_some())
-}
-
 #[cfg(test)]
 pub(super) mod tests;
