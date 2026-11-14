@@ -25,6 +25,13 @@ pub(crate) enum ConvolutionStage {
     Resolve,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum MappingUse {
+    Convolution,
+    PassThrough,
+    Rebase,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ConvolutionMapping {
     source_domain: Rect,
@@ -92,7 +99,11 @@ impl ConvolutionMapping {
             operation.unit_length(),
             source,
             result,
-            operation.is_passthrough(),
+            if operation.is_passthrough() {
+                MappingUse::PassThrough
+            } else {
+                MappingUse::Convolution
+            },
             account,
         )
     }
@@ -105,7 +116,15 @@ impl ConvolutionMapping {
     ) -> Result<Self> {
         let domains = operation.domains();
         let domain = intersection(domains.source(), domains.filter());
-        Self::try_from_parts(domain, domain, None, source, result, true, account)
+        Self::try_from_parts(
+            domain,
+            domain,
+            None,
+            source,
+            result,
+            MappingUse::Rebase,
+            account,
+        )
     }
 
     fn try_from_parts(
@@ -114,7 +133,7 @@ impl ConvolutionMapping {
         explicit_units: Option<[f64; 2]>,
         source: NonEmptyFrameSpatialPlan,
         result: NonEmptyFrameSpatialPlan,
-        passthrough: bool,
+        usage: MappingUse,
         account: &Account,
     ) -> Result<Self> {
         // Either zero axis makes the entire source image empty. Its other
@@ -135,7 +154,7 @@ impl ConvolutionMapping {
         let mut result_grid_origin = [0; 2];
         let mut result_grid_extent = [0; 2];
         for axis in 0..2 {
-            if passthrough {
+            if usage != MappingUse::Convolution {
                 continue;
             }
             account.work(RenderWork::CoordinateVisits, 1)?;
@@ -225,7 +244,7 @@ impl ConvolutionMapping {
                 }
             }
         }
-        if !passthrough {
+        if usage == MappingUse::Convolution {
             for axis in 0..2 {
                 account.work(RenderWork::CoordinateVisits, 1)?;
                 let origin = kernel_origin[axis] as f32;
@@ -255,6 +274,89 @@ impl ConvolutionMapping {
             }
         }
         let result_origin = result.texel_center_mapping.origin;
+        // Qualify the composed expressions reached by the shader, before its
+        // finite-raster clamp. Finite kernel centers alone do not prove that
+        // subtracting an origin, scaling, or narrowing their neighbors is safe.
+        for axis in 0..2 {
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            let capture_origin = kernel_origin[axis] as f32;
+            let capture_scale = scale as f32;
+            let result_scale = result.raster_scale.get() as f32;
+            let result_axis_origin = if axis == 0 {
+                result_origin.x()
+            } else {
+                result_origin.y()
+            } as f32;
+            let result_extent = if axis == 0 {
+                result.device_extent.width
+            } else {
+                result.device_extent.height
+            };
+            let output_points = capture_centers(result_axis_origin, result_scale, result_extent);
+            let source_extent = if axis == 0 {
+                source.device_extent.width
+            } else {
+                source.device_extent.height
+            };
+            let capture_points = capture_centers(capture_origin, capture_scale, source_extent);
+            let source_edges = if axis == 0 {
+                [source_domain.x(), source_domain.max().x()]
+            } else {
+                [source_domain.y(), source_domain.max().y()]
+            }
+            .map(|v| v as f32);
+            let result_edges = if axis == 0 {
+                [result_domain.x(), result_domain.max().x()]
+            } else {
+                [result_domain.y(), result_domain.max().y()]
+            }
+            .map(|v| v as f32);
+            if usage != MappingUse::Rebase {
+                qualify_coverage(output_points, result_scale, result_edges)?;
+                if !source_empty {
+                    let mut bounds = [0_i32; 2];
+                    for endpoint in 0..2 {
+                        let delta = finite(source_edges[endpoint] - capture_origin)?;
+                        let coordinate = finite(delta * capture_scale)?;
+                        bounds[endpoint] = qualify_index(coordinate, endpoint == 1, false)?;
+                    }
+                    if bounds[1].checked_sub(bounds[0]).is_none()
+                        || bounds[1].checked_sub(1).is_none()
+                    {
+                        return Err(mapping_error("kernel grid index", f64::from(bounds[1])));
+                    }
+                    qualify_coverage(capture_points, capture_scale, source_edges)?;
+                }
+            }
+            match usage {
+                MappingUse::Convolution => {
+                    if !source_empty {
+                        let start = source_grid_origin[axis] as f32;
+                        let end = start + source_grid_extent[axis] as f32 - 1.0;
+                        for index in [start, end] {
+                            let offset = finite((index + 0.5) * unit_length[axis] as f32)?;
+                            let point = finite(capture_origin + offset)?;
+                            qualify_capture_sample(point, capture_origin, capture_scale, true)?;
+                        }
+                    }
+                    for point in output_points {
+                        let delta = finite(point - capture_origin)?;
+                        let coordinate = finite(finite(delta / unit_length[axis] as f32)? - 0.5)?;
+                        qualify_index(coordinate, false, true)?;
+                    }
+                }
+                MappingUse::PassThrough | MappingUse::Rebase => {
+                    for point in output_points {
+                        qualify_capture_sample(
+                            point,
+                            capture_origin,
+                            capture_scale,
+                            usage == MappingUse::PassThrough,
+                        )?;
+                    }
+                }
+            }
+        }
         Ok(Self {
             source_domain,
             result_domain,
@@ -427,6 +529,60 @@ fn grid_range(min: f64, length: f64, origin: f64, step: f64, halo: bool) -> Resu
     Ok((start as i32, (end - start) as u32))
 }
 
+fn capture_centers(origin: f32, scale: f32, extent: u32) -> [f32; 2] {
+    [origin + 0.5 / scale, origin + (extent as f32 - 0.5) / scale]
+}
+
+fn finite(value: f32) -> Result<f32> {
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(mapping_error("composed coordinate", f64::from(value)))
+    }
+}
+
+fn qualify_index(coordinate: f32, ceil: bool, neighbor: bool) -> Result<i32> {
+    let rounded = if ceil {
+        coordinate.ceil()
+    } else {
+        coordinate.floor()
+    };
+    // Compare in f64: i32::MAX rounds upward to 2^31 when converted to f32.
+    let value = f64::from(rounded);
+    let maximum = i32::MAX - i32::from(neighbor);
+    if !value.is_finite() || value < f64::from(i32::MIN) || value > f64::from(maximum) {
+        return Err(mapping_error("kernel grid index", value));
+    }
+    Ok(rounded as i32)
+}
+
+fn qualify_capture_sample(point: f32, origin: f32, scale: f32, bilinear: bool) -> Result<()> {
+    let delta = finite(point - origin)?;
+    let scaled = finite(delta * scale)?;
+    let coordinate = if bilinear {
+        finite(scaled - 0.5)?
+    } else {
+        scaled
+    };
+    qualify_index(coordinate, false, bilinear)?;
+    Ok(())
+}
+
+fn qualify_coverage(points: [f32; 2], scale: f32, domain: [f32; 2]) -> Result<()> {
+    let step = finite(1.0 / scale)?;
+    if !step.is_normal() || step <= 0.0 {
+        return Err(mapping_error("coverage step", f64::from(step)));
+    }
+    for point in points {
+        let low = finite(point - step * 0.5)?;
+        let high = finite(point + step * 0.5)?;
+        finite(high.min(domain[1]) - low.max(domain[0]))?;
+    }
+    // Between the endpoints each clipped difference is bounded above by the
+    // finite footprint width and below by its smaller endpoint value.
+    Ok(())
+}
+
 fn mapping_error(name: &'static str, value: f64) -> Error {
     let phase = if name == "kernel grid index" {
         crate::ConvolutionNumericPhase::GridIndex
@@ -465,7 +621,7 @@ mod tests {
             Some([2.0, 4.0]),
             source,
             result,
-            false,
+            MappingUse::Convolution,
             &account,
         )
         .unwrap();
@@ -504,7 +660,7 @@ mod tests {
             Some([2.0, 0.5]),
             spatial,
             spatial,
-            false,
+            MappingUse::Convolution,
             &account,
         )
         .unwrap();
@@ -548,7 +704,13 @@ mod tests {
         let bounds = Rect::new(1_000_000_000.0, 0.0, 4.0, 4.0);
         let spatial = require_spatial(context(1.0), bounds, Transform::identity()).unwrap();
         let error = ConvolutionMapping::try_from_parts(
-            bounds, bounds, None, spatial, spatial, false, &account,
+            bounds,
+            bounds,
+            None,
+            spatial,
+            spatial,
+            MappingUse::Convolution,
+            &account,
         )
         .unwrap_err();
         assert!(matches!(
@@ -558,6 +720,138 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn composed_capture_mapping_qualifies_float_and_signed_neighbor_boundaries() {
+        let account = Account::for_test();
+        let bounds = Rect::new(0.0, 0.0, 2.0, 1.0);
+        let spatial = require_spatial(context(16.0), bounds, Transform::identity()).unwrap();
+        // For a single input cell, its x center is h/2 and the capture
+        // coordinate is 8h-.5. The predecessor of 2^28 is 268435440;
+        // multiplication by8 gives the last f32 integer below 2^31.
+        let valid = ConvolutionMapping::try_from_parts(
+            bounds,
+            bounds,
+            Some([268_435_440.0, 1.0]),
+            spatial,
+            spatial,
+            MappingUse::Convolution,
+            &account,
+        )
+        .unwrap();
+        assert_eq!(valid.source_grid_extent(), [1, 1]);
+        for (unit, phase) in [
+            (268_435_456.0, crate::ConvolutionNumericPhase::GridIndex),
+            (1.0e10, crate::ConvolutionNumericPhase::GridIndex),
+            (1.0e38, crate::ConvolutionNumericPhase::GridMapping),
+            (2.0e38, crate::ConvolutionNumericPhase::GridMapping),
+        ] {
+            let error = ConvolutionMapping::try_from_parts(
+                bounds,
+                bounds,
+                Some([unit, 1.0]),
+                spatial,
+                spatial,
+                MappingUse::Convolution,
+                &account,
+            )
+            .unwrap_err();
+            assert!(
+                matches!(error.convolution_diagnostic(),
+                Some(crate::ConvolutionPreparationError::Numeric { phase: actual, .. }) if *actual == phase),
+                "unit{unit}: {error:?}"
+            );
+        }
+        // Integer conversion itself and its +1 bilinear neighbor use signed
+        // bounds, including the negative boundary, independently of grid_size.
+        assert_eq!(
+            qualify_index(-2_147_483_648.0, false, true).unwrap(),
+            i32::MIN
+        );
+        assert_eq!(
+            qualify_index(2_147_483_520.0, false, true).unwrap(),
+            2_147_483_520
+        );
+        assert!(qualify_index(2_147_483_648.0, false, true).is_err());
+        assert!(
+            qualify_index(
+                f32::from_bits((-2_147_483_648.0_f32).to_bits() + 1),
+                false,
+                true
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn empty_input_pass_through_and_rebase_qualify_only_reached_mapping() {
+        let account = Account::for_test();
+        let domain = Rect::new(1.0, 0.0, 2.0, 1.0);
+        let context = context(16.0);
+        let spatial = require_spatial(context, domain, Transform::identity()).unwrap();
+        let dummy = empty_source_spatial(spatial).unwrap();
+        let empty = ConvolutionMapping::try_from_parts(
+            Rect::new(1.0, 0.0, 0.0, 1.0e12),
+            domain,
+            Some([2.0e38; 2]),
+            dummy,
+            spatial,
+            MappingUse::Convolution,
+            &account,
+        )
+        .unwrap();
+        assert_eq!(empty.source_grid_extent(), [0; 2]);
+        assert_eq!(dummy.device_extent.width, 1);
+        assert_eq!(dummy.device_extent.height, 1);
+        let mut accounting = crate::RenderAccountingContext::default();
+        let operation = |kernel: &[f64], accounting: &mut crate::RenderAccountingContext| {
+            crate::prepare_convolution(
+                crate::ConvolutionInput::new(kernel)
+                    .with_order(1.0, None)
+                    .with_unit_length(2.0e38, None),
+                crate::ConvolutionDomains::try_new(domain, domain, domain).unwrap(),
+                crate::FilterColorSpace::Srgb,
+                accounting,
+            )
+            .unwrap()
+        };
+        let passthrough = operation(&[], &mut accounting);
+        assert!(passthrough.is_passthrough());
+        assert_eq!(
+            ConvolutionMapping::try_new(&passthrough, spatial, spatial, &account)
+                .unwrap()
+                .unit_length(),
+            [1.0 / 16.0; 2]
+        );
+        let union = require_spatial(
+            context,
+            Rect::new(0.0, 0.0, 6.0, 1.0),
+            Transform::identity(),
+        )
+        .unwrap();
+        let executable = operation(&[1.0], &mut accounting);
+        let rebase = ConvolutionMapping::try_rebase(&executable, union, spatial, &account).unwrap();
+        assert_eq!(rebase.result_capture_origin(), [1.0, 0.0]);
+        assert_eq!(rebase.unit_length(), [1.0 / 16.0; 2]);
+        // Pass-through constructs a bilinear coordinate even for empty D;
+        // rebasing constructs a raw coordinate without a bilinear neighbor.
+        assert!(
+            ConvolutionMapping::try_from_parts(
+                Rect::new(0.0, 0.0, 0.0, 0.0),
+                domain,
+                None,
+                dummy,
+                spatial,
+                MappingUse::PassThrough,
+                &account
+            )
+            .is_ok()
+        );
+        assert!(qualify_capture_sample(1.0e10, 0.0, 16.0, false).is_err());
+        assert!(qualify_capture_sample(1.0e38, 0.0, 16.0, false).is_err());
+        assert!(qualify_capture_sample(-2.0e38, 2.0e38, 1.0, true).is_err());
+        assert!(qualify_coverage([-2.0e38, 0.0], 1.0, [2.0e38, 2.0e38]).is_err());
     }
     fn planned(
         operation: crate::PreparedConvolution,

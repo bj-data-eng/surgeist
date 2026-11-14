@@ -509,6 +509,9 @@ pub(super) struct ClosedExecutableGraphFacts {
     pub(super) blurs: SharedValue<Vec<ExecutableBlurFacts>>,
     pub(super) drop_shadows: SharedValue<Vec<ExecutableDropShadowFacts>>,
     pub(super) filter_steps: SharedValue<Vec<ExecutableFilterStepFacts>>,
+    // Derived while visiting validated convolution steps and checked by the
+    // accounted repeated proof; route predicates must not rescan their payload.
+    has_convolution: bool,
     pub(super) backdrops: SharedValue<Vec<ExecutableBackdropFacts>>,
 }
 
@@ -551,11 +554,7 @@ impl ClosedExecutableGraph {
     fn has_spatial_filters(&self) -> bool {
         !self.facts.blurs.is_empty()
             || !self.facts.drop_shadows.is_empty()
-            || self
-                .facts
-                .filter_steps
-                .iter()
-                .any(|step| matches!(step, ExecutableFilterStepFacts::Convolution { .. }))
+            || self.facts.has_convolution
     }
 
     fn has_backdrops(&self) -> bool {
@@ -659,7 +658,12 @@ impl ClosedExecutableGraphFacts {
                 && blurs_are_exact
                 && drop_shadows_are_exact
                 && filter_order_is_exact
-                && convolution::steps_are_exact(plan, &self.filter_steps, &proof)
+                && convolution::steps_are_exact(
+                    plan,
+                    &self.filter_steps,
+                    self.has_convolution,
+                    &proof,
+                )
                 && backdrops_are_exact
         })();
         proof.finish()?;
@@ -1820,6 +1824,7 @@ struct ClosedGraphTraversal<'plan, 'proof> {
     blurs: ProofVec<ExecutableBlurFacts>,
     drop_shadows: ProofVec<ExecutableDropShadowFacts>,
     filter_steps: ProofVec<ExecutableFilterStepFacts>,
+    has_convolution: bool,
     backdrops: ProofVec<ExecutableBackdropFacts>,
     expected_resources: ProofSet<'proof, RuntimeResourceId>,
     cursor: usize,
@@ -1885,6 +1890,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 bounds.steps,
                 RenderResource::RetainedCpuBytes,
             )?,
+            has_convolution: false,
             backdrops: ProofVec::new(
                 proof.account,
                 bounds.backdrops,
@@ -1935,6 +1941,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             blurs: self.blurs.into_shared(self.proof.account)?,
             drop_shadows: self.drop_shadows.into_shared(self.proof.account)?,
             filter_steps: self.filter_steps.into_shared(self.proof.account)?,
+            has_convolution: self.has_convolution,
             backdrops: self.backdrops.into_shared(self.proof.account)?,
         }))
     }

@@ -246,6 +246,10 @@ All bounds must be finite and at most `f32::MAX / 4`. This conservative margin
 can refuse a mathematically finite ill-conditioned kernel. Grid construction
 also checks signed addressing, finite f32 mapping, distinguishable neighboring
 coordinates, representable allocation extents and actual device capabilities.
+The mapping proof includes composed sampling coordinates before finite-input
+clamping and the signed neighboring indices used by bilinear reconstruction.
+Unrepresentable arithmetic refuses with `GridMapping` or `GridIndex`; empty
+input skips only expressions its execution branch does not evaluate.
 Required float attachment/sampling support and texture, buffer and binding limits
 must qualify before execution. There is no CPU production fallback.
 
@@ -257,6 +261,8 @@ input rebasing, preparation, accumulation, finalization and output-resampling ce
 halo and padding. `ScheduledConvolutionTaps` records actual scheduled result-grid
 cells × batch taps separately from CPU coefficient visits. Source and temporary
 resources remain leased through their validated last uses.
+Spatial-route classification reads a constant-size convolution-presence fact
+derived and validated during the existing accounted graph traversals.
 
 Invalid resolved parameters and numeric limitations expose
 `Error::convolution_diagnostic()` with `ConvolutionPreparationError` and the

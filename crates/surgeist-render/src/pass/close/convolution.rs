@@ -41,6 +41,7 @@ impl ClosedGraphTraversal<'_, '_> {
                 result: chain.result,
             },
         ))?;
+        self.has_convolution = true;
         let context = self.contexts.last_mut()?;
         context.current = chain.result;
         context.producer = producer;
@@ -53,12 +54,16 @@ impl ClosedGraphTraversal<'_, '_> {
 pub(super) fn steps_are_exact(
     plan: &LoweredGraphPlan,
     steps: &[ExecutableFilterStepFacts],
+    expected_convolution: bool,
     proof: &ProofContext<'_>,
 ) -> bool {
     let exact = (|| -> Option<()> {
-        if !proof_nodes(steps, proof)
-            .any(|step| matches!(step, ExecutableFilterStepFacts::Convolution { .. }))
-        {
+        let has_convolution = proof_nodes(steps, proof)
+            .any(|step| matches!(step, ExecutableFilterStepFacts::Convolution { .. }));
+        if has_convolution != expected_convolution {
+            return None;
+        }
+        if !has_convolution {
             return Some(());
         }
         let maps = proof.capture(ClosedGraphMaps::try_new(plan, proof))?;
@@ -635,6 +640,7 @@ mod tests {
         frame::{FrameContext, FramePlan},
         prepare_convolution,
     };
+    use surgeist_ledger::Dimension;
 
     fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {
         let account = Account::for_test();
@@ -977,6 +983,228 @@ mod tests {
                     .unwrap(),
                 "repeated proof alteration {alteration}"
             );
+        }
+    }
+
+    fn classification_chain(convolution: Option<bool>) -> LoweredGraphPlan {
+        use crate::{FilterAmount, FilterList, FilterOp};
+        fn colors(scene: &mut Scene, count: usize, domain: Rect) {
+            if count == 0 {
+                scene.fill(domain, Color::BLACK);
+            } else {
+                let filter = FilterList::try_ops(vec![FilterOp::brightness(
+                    FilterAmount::try_new(0.75).unwrap(),
+                )])
+                .unwrap();
+                scene.layer(Layer::new().with_filter_list(filter), |child| {
+                    colors(child, count - 1, domain);
+                });
+            }
+        }
+        let domain = Rect::new(0.0, 0.0, 2.0, 2.0);
+        let mut scene = Scene::new();
+        if let Some(mismatch) = convolution {
+            let kernel: &[f64] = if mismatch { &[] } else { &[1.0] };
+            let operation = prepare_convolution(
+                ConvolutionInput::new(kernel).with_order(1.0, None),
+                ConvolutionDomains::try_new(domain, domain, domain).unwrap(),
+                FilterColorSpace::Srgb,
+                &mut RenderAccountingContext::default(),
+            )
+            .unwrap();
+            scene.layer(Layer::new().with_convolution(operation), |child| {
+                colors(child, 4, domain)
+            });
+        } else {
+            colors(&mut scene, 4, domain);
+        }
+        lower_scene(&scene, Size::new(2.0, 2.0))
+    }
+
+    fn measured_proof<T>(
+        limit: Option<u64>,
+        run: impl FnOnce(&Account) -> Result<T>,
+    ) -> (Result<T>, crate::RenderStandaloneReport) {
+        use crate::{RenderAttemptKind, RenderLimits, RenderPhase};
+        let mut limits = RenderLimits::new();
+        if let Some(limit) = limit {
+            limits = limits
+                .with_work_limit(RenderWork::GraphNodeVisits, limit)
+                .unwrap();
+        }
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, run);
+        (result, context.take_last_attempt().unwrap())
+    }
+
+    /// Characterization of the retained proof/accounting contract. Replacing a
+    /// hidden scan with validated constant-size metadata changes neither the
+    /// public route nor reported work, so behavioral pre-correction RED does not
+    /// apply to that correction; these cases establish the existing boundaries.
+    #[test]
+    fn pure_color_and_late_convolution_routes_preserve_exact_accounted_proof_limits() {
+        use crate::{RenderQuantity, RenderWork};
+        for convolution in [None, Some(false), Some(true)] {
+            let plan = classification_chain(convolution);
+            let spatial = convolution.is_some();
+            let closed =
+                ClosedExecutableGraph::try_from_lowered(plan.clone(), &Account::for_test())
+                    .unwrap()
+                    .expect("the actual authored filter chain must close");
+            assert_eq!(closed.facts.filter_steps.len(), 4 + usize::from(spatial));
+            assert!(
+                closed.facts.filter_steps[..4]
+                    .iter()
+                    .all(|step| matches!(step, ExecutableFilterStepFacts::Color(_)))
+            );
+            if spatial {
+                assert!(matches!(
+                    closed.facts.filter_steps.last(),
+                    Some(ExecutableFilterStepFacts::Convolution { .. })
+                ));
+            }
+            let route =
+                PrePreparationGraphClassification::classify(plan, &Account::for_test()).unwrap();
+            assert!(matches!(
+                (spatial, route),
+                (
+                    false,
+                    PrePreparationGraphClassification::ExactColorFilter(_)
+                ) | (
+                    true,
+                    PrePreparationGraphClassification::ExactSpatialFilter(_)
+                )
+            ));
+
+            let (result, measured) = measured_proof(None, |account| {
+                closed
+                    .facts
+                    .proves_exact_facts_for(&closed.lowered, account)
+            });
+            assert!(result.unwrap());
+            let visits = measured
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::GraphNodeVisits);
+            assert!(visits >= u64::try_from(closed.facts.filter_steps.len()).unwrap());
+            for limit in [visits, visits - 1] {
+                let (result, report) = measured_proof(Some(limit), |account| {
+                    closed
+                        .facts
+                        .proves_exact_facts_for(&closed.lowered, account)
+                });
+                let attempt = report.attempt().unwrap();
+                assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), limit);
+                assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+                assert_eq!(report.cleanup_fault(), None);
+                if limit == visits {
+                    assert!(result.unwrap());
+                    assert!(attempt.refusal().is_none());
+                } else {
+                    assert!(result.is_err());
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity(),
+                        RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                    );
+                    assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn validated_filter_route_classifiers_add_no_accounted_work_or_custody() {
+        for convolution in [None, Some(false), Some(true)] {
+            let closed = ClosedExecutableGraph::try_from_lowered(
+                classification_chain(convolution),
+                &Account::for_test(),
+            )
+            .unwrap()
+            .expect("the actual authored chain must close before classification");
+            let spatial = convolution.is_some();
+            let (result, report) = measured_proof(Some(0), |_account| {
+                assert_eq!(closed.has_spatial_filters(), spatial);
+                match SpatialFilterPreparableGraph::try_from_closed(closed) {
+                    Ok(graph) => {
+                        assert!(spatial);
+                        assert!(graph.closed.has_spatial_filters());
+                    }
+                    Err(closed) => {
+                        assert!(!spatial);
+                        assert!(ColorFilterPreparableGraph::try_from_closed(closed).is_ok());
+                    }
+                }
+                Ok(())
+            });
+            result.unwrap();
+            let attempt = report.attempt().unwrap();
+            for &work in RenderWork::ALL {
+                assert_eq!(attempt.usage().work(work), 0, "post-proof {work:?}");
+            }
+            for resource in [
+                RenderResource::RetainedCpuBytes,
+                RenderResource::ScratchCpuBytes,
+            ] {
+                assert_eq!(attempt.usage().live(resource), 0, "post-proof {resource:?}");
+            }
+            assert_eq!(report.cleanup_fault(), None);
+        }
+    }
+
+    #[test]
+    fn retained_convolution_presence_is_checked_at_the_accounted_step_boundary() {
+        use crate::RenderQuantity;
+        for convolution in [None, Some(false), Some(true)] {
+            let closed = ClosedExecutableGraph::try_from_lowered(
+                classification_chain(convolution),
+                &Account::for_test(),
+            )
+            .unwrap()
+            .expect("the authored chain must close");
+            assert_eq!(closed.facts.has_convolution, convolution.is_some());
+            let mut forged = (*closed.facts).clone();
+            forged.has_convolution = !forged.has_convolution;
+            assert!(
+                !forged
+                    .proves_exact_facts_for(&closed.lowered, &Account::for_test())
+                    .unwrap()
+            );
+            let prefix_visits = if convolution.is_some() { 5 } else { 4 };
+            for limit in [prefix_visits, prefix_visits - 1] {
+                let (result, report) = measured_proof(Some(limit), |account| {
+                    let proof = ProofContext::new(account);
+                    let exact = super::steps_are_exact(
+                        &closed.lowered,
+                        &closed.facts.filter_steps,
+                        !closed.facts.has_convolution,
+                        &proof,
+                    );
+                    proof.finish()?;
+                    Ok(exact)
+                });
+                let attempt = report.attempt().unwrap();
+                assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), limit);
+                assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+                assert_eq!(report.cleanup_fault(), None);
+                if limit == prefix_visits {
+                    assert!(
+                        !result.unwrap(),
+                        "a flipped cached presence fact must fail proof"
+                    );
+                    assert!(attempt.refusal().is_none());
+                } else {
+                    assert!(result.is_err());
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity(),
+                        RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                    );
+                    assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                }
+            }
         }
     }
 }
