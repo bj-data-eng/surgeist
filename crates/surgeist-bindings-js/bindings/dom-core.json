@@ -577,6 +577,30 @@
       ]
     },
     {
+      "id": "HTMLLIElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmllielement",
+      "block": 0,
+      "sha256": "00d2a67eca3bcb16be2f955d38ea5493285e4d7e8de8c3036c4d8d74485a441f",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllielement",
+      "entries": [
+        "HTMLLIElement"
+      ]
+    },
+    {
+      "id": "HTMLLIElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLLIElement&#45;partial",
+      "block": 0,
+      "sha256": "464e1229202ff2d9090632420b1c02f92db4184dda30f1d71b2b7a5e3abb530d",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-li-type",
+      "entries": [
+        "HTMLLIElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLFontElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlfontelement",
@@ -4857,6 +4881,75 @@
           "name": "width",
           "readonly": false,
           "id": "HTMLPreElement.obsolete.width"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLLIElement",
+      "kind": "interface",
+      "name": "HTMLLIElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLLIElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLLIElement.value"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLLIElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLLIElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLLIElement.obsolete.type"
         }
       ],
       "partial": true
@@ -9398,6 +9491,76 @@
     "HTMLPreElement.obsolete.width/set": {
       "kind": "native",
       "adapter": "htmlpreelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLLIElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmllielement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLLIElement.value/get": {
+      "kind": "native",
+      "adapter": "htmllielement.value.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs",
+          "symbol": "integer_long_work_bound"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs",
+          "symbol": "parse_integer_long"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLLIElement.value/set": {
+      "kind": "native",
+      "adapter": "htmllielement.value.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLLIElement.obsolete.type/get": {
+      "kind": "native",
+      "adapter": "htmllielement.type.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLLIElement.obsolete.type/set": {
+      "kind": "native",
+      "adapter": "htmllielement.type.set",
       "producers": [
         {
           "owner": "surgeist-dom",
