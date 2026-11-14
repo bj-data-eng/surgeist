@@ -79,6 +79,54 @@ pub(super) fn assert_pixel(output: &ImageBuffer, x: u32, y: u32, expected: [u8; 
 }
 
 #[test]
+fn translated_nested_opacity_capture_uses_a_finite_native_layer_clip() {
+    let (mut renderer, mut surface) = renderer_and_surface(6, 6);
+    let source = Rect::new(1.0, 1.0, 3.0, 3.0);
+    let convolution = operation(
+        ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        source,
+        FilterColorSpace::Srgb,
+    );
+    let mut scene = Scene::new();
+    scene.layer(Layer::new().with_convolution(convolution), |children| {
+        children.layer(Layer::new().try_opacity(0.5).unwrap(), |nested| {
+            nested.fill(source, Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap());
+        });
+    });
+    let output = render(&mut renderer, &mut surface, &scene);
+    assert_pixel(&output, 2, 2, [255, 0, 0, 128], 2);
+    assert_pixel(&output, 0, 0, [0; 4], 1);
+}
+
+#[test]
+fn translated_nested_opacity_capture_preserves_an_authored_local_clip() {
+    let (mut renderer, mut surface) = renderer_and_surface(6, 6);
+    let source = Rect::new(1.0, 1.0, 3.0, 3.0);
+    let convolution = operation(
+        ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        source,
+        FilterColorSpace::Srgb,
+    );
+    let mut scene = Scene::new();
+    scene.layer(Layer::new().with_convolution(convolution), |children| {
+        children.layer(
+            Layer::new()
+                .try_opacity(0.5)
+                .unwrap()
+                .try_clip(crate::Shape::rect(Rect::new(2.0, 2.0, 1.0, 1.0)))
+                .unwrap(),
+            |nested| {
+                nested.fill(source, Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap());
+            },
+        );
+    });
+    let output = render(&mut renderer, &mut surface, &scene);
+    assert_pixel(&output, 2, 2, [255, 0, 0, 128], 2);
+    assert_pixel(&output, 1, 2, [0; 4], 1);
+    assert_pixel(&output, 2, 1, [0; 4], 1);
+}
+
+#[test]
 fn public_convolution_gpu_rotates_asymmetric_kernel_on_actual_image() {
     let (mut renderer, mut surface) = renderer_and_surface(5, 5);
     let domain = bounds(5, 5);
