@@ -55,6 +55,11 @@ pub fn surgeist_bindings_js::conversion::declarations::document_html_query_comma
 pub fn surgeist_bindings_js::conversion::declarations::document_html_query_command_supported_0_command_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::document_html_query_command_value_0_command_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::document_import_node_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ImportNodeArgument>>
+pub fn surgeist_bindings_js::conversion::declarations::document_obsolete_alink_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::document_obsolete_bg_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::document_obsolete_fg_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::document_obsolete_link_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::document_obsolete_vlink_color_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::document_ready_state() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::DocumentReadyState>
 pub fn surgeist_bindings_js::conversion::declarations::document_visibility_state() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::DocumentVisibilityState>
 pub fn surgeist_bindings_js::conversion::declarations::dom_exception_constructor_0_message() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>

@@ -771,6 +771,18 @@
       "entries": [
         "HTMLMenuElement.obsolete"
       ]
+    },
+    {
+      "id": "Document.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "Document&#45;partial",
+      "block": 0,
+      "sha256": "3f748ed020d96652def50e63acdfe63cda9a82aed91adb3824df0a4ec036e59c",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#Document-partial",
+      "entries": [
+        "Document.obsolete"
+      ]
     }
   ],
   "declarations": [
@@ -5885,6 +5897,193 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "Document.obsolete",
+      "kind": "interface",
+      "name": "Document",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "fgColor",
+          "readonly": false,
+          "id": "Document.obsolete.fgColor"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "linkColor",
+          "readonly": false,
+          "id": "Document.obsolete.linkColor"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "vlinkColor",
+          "readonly": false,
+          "id": "Document.obsolete.vlinkColor"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "alinkColor",
+          "readonly": false,
+          "id": "Document.obsolete.alinkColor"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "bgColor",
+          "readonly": false,
+          "id": "Document.obsolete.bgColor"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "anchors",
+          "readonly": true,
+          "id": "Document.obsolete.anchors"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "applets",
+          "readonly": true,
+          "id": "Document.obsolete.applets"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "clear",
+          "id": "Document.obsolete.clear:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "captureEvents",
+          "id": "Document.obsolete.captureEvents:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [],
+          "name": "releaseEvents",
+          "id": "Document.obsolete.releaseEvents:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLAllCollection"
+          },
+          "name": "all",
+          "readonly": true,
+          "id": "Document.obsolete.all"
+        }
+      ],
+      "partial": true
     }
   ],
   "includes": [
@@ -6077,6 +6276,13 @@
       "owner": "surgeist-runtime",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#windowproxy",
       "requirement": "The HTML-defined WindowProxy exotic-object type and its delegated conversion/realm routing; no ordinary interface brand is assumed."
+    },
+    {
+      "name": "HTMLAllCollection",
+      "kind": "interface",
+      "owner": "surgeist-bindings-js",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlallcollection",
+      "requirement": "Source-qualified HTMLAllCollection legacy platform-object behavior and its native collection provider remain prerequisites; this external type is not installed by declaration retention."
     }
   ],
   "access_mappings": {
@@ -8188,7 +8394,7 @@
       "requirements": [
         {
           "owner": "surgeist-dom",
-          "contract": "The Document title setter selects the source HTML/SVG title target, creates required head/title structure only in its prescribed branch, and performs string replacement through one original native operation.",
+          "contract": "The Document title setter selects the prescribed HTML/SVG target, creates a title under the SVG document element or an existing HTML head only when that branch requires it, never creates a head, and performs string replacement through one original native operation.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-title"
         },
         {
@@ -8200,68 +8406,157 @@
       ]
     },
     "Document.html.dir/get": {
-      "kind": "derived",
-      "algorithm": "document.html.dir.get",
-      "owner": "surgeist-html",
-      "contract": "Select the actual document Element for the source Document.dir get forwarding rule, with the prescribed non-HTML-root empty/no-op branch, then use the HTML dir reflection algorithm on that same live Element.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-dir",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "document_element"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlDir"}
+      "kind": "native",
+      "adapter": "document.dir.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes.rs",
+          "symbol": "dir_keyword_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
       ],
       "requirements": []
     },
     "Document.html.dir/set": {
-      "kind": "derived",
-      "algorithm": "document.html.dir.set",
-      "owner": "surgeist-html",
-      "contract": "Select the actual document Element for the source Document.dir set forwarding rule, with the prescribed non-HTML-root empty/no-op branch, then use the HTML dir reflection algorithm on that same live Element.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-dir",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "document_element"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlDir"}
+      "kind": "native",
+      "adapter": "document.dir.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
       ],
       "requirements": []
     },
     "Document.html.body/get": {
-      "kind": "derived",
-      "algorithm": "document.html.body.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Select the source Document body from the actual HTML document Element and its immediate HTML children (body includes its prescribed frameset branch); return null when absent, not the first arbitrary descendant.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-body",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "document_element"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}
+      "kind": "native",
+      "adapter": "document.body.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
       ],
       "requirements": []
     },
     "Document.html.body/set": {
-      "kind": "derived",
-      "algorithm": "document.body.set",
-      "owner": "surgeist-html",
-      "contract": "Apply Document.body source input/root validation and current body/frameset selection, then invoke exactly the selected native replace_child or insert_before operation. Null, wrong-kind and missing-root errors are source validation branches, not new native storage requirements.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-body",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "document_element"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_child"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "insert_before"}
+      "kind": "native",
+      "adapter": "document.body.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "replace_child"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "insert_before"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
       ],
       "requirements": []
     },
     "Document.html.head/get": {
-      "kind": "derived",
-      "algorithm": "document.html.head.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Select the source Document head from the actual HTML document Element and its immediate HTML children (body includes its prescribed frameset branch); return null when absent, not the first arbitrary descendant.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-head",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "document_element"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}
+      "kind": "native",
+      "adapter": "document.head.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
       ],
       "requirements": []
     },
@@ -10782,6 +11077,448 @@
         }
       ],
       "requirements": []
+    },
+    "Document.obsolete.fgColor/get": {
+      "kind": "native",
+      "adapter": "document.fgcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.fgColor/set": {
+      "kind": "native",
+      "adapter": "document.fgcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.linkColor/get": {
+      "kind": "native",
+      "adapter": "document.linkcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.linkColor/set": {
+      "kind": "native",
+      "adapter": "document.linkcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.vlinkColor/get": {
+      "kind": "native",
+      "adapter": "document.vlinkcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.vlinkColor/set": {
+      "kind": "native",
+      "adapter": "document.vlinkcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.alinkColor/get": {
+      "kind": "native",
+      "adapter": "document.alinkcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.alinkColor/set": {
+      "kind": "native",
+      "adapter": "document.alinkcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.bgColor/get": {
+      "kind": "native",
+      "adapter": "document.bgcolor.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.bgColor/set": {
+      "kind": "native",
+      "adapter": "document.bgcolor.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "document_element_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "symbol": "children"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/style.rs",
+          "symbol": "document_body_role_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/vocabulary.rs",
+          "symbol": "from_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs",
+          "symbol": "select_target"
+        }
+      ],
+      "requirements": []
+    },
+    "Document.obsolete.anchors/get": {
+      "kind": "native",
+      "adapter": "document.anchors.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "An admitted same-object live HTMLCollection with the source-selected Document filter and canonical identity is required.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-anchors"
+        }
+      ]
+    },
+    "Document.obsolete.applets/get": {
+      "kind": "native",
+      "adapter": "document.applets.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "An admitted same-object live HTMLCollection with the source-selected Document filter and canonical identity is required.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-applets"
+        }
+      ]
+    },
+    "Document.obsolete.all/get": {
+      "kind": "native",
+      "adapter": "document.all.get",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "An admitted same-object HTMLAllCollection and its source-qualified legacy platform-object behavior over the actual canonical Document are required.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-all"
+        }
+      ]
+    },
+    "Document.obsolete.clear:0/call": {
+      "kind": "native",
+      "adapter": "document.clear.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "The source-defined no-op method needs its authenticated Document receiver adapter; the tree-property accessors do not install this method.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-clear"
+        }
+      ]
+    },
+    "Document.obsolete.captureEvents:0/call": {
+      "kind": "native",
+      "adapter": "document.captureevents.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "The source-defined no-op method needs its authenticated Document receiver adapter; the tree-property accessors do not install this method.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-captureevents"
+        }
+      ]
+    },
+    "Document.obsolete.releaseEvents:0/call": {
+      "kind": "native",
+      "adapter": "document.releaseevents.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "The source-defined no-op method needs its authenticated Document receiver adapter; the tree-property accessors do not install this method.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-releaseevents"
+        }
+      ]
     }
   },
   "semantics": {

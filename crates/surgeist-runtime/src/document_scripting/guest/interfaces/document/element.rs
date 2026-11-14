@@ -484,6 +484,22 @@ fn element_interface(
     }
 }
 
+pub(super) fn is_html_element(
+    node: surgeist_dom::DomNode<'_>,
+    step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+) -> Result<bool, DocumentGuestEventError> {
+    let Some(element) = node.as_element() else {
+        return Ok(false);
+    };
+    if element.has_failed_construction_interface() {
+        return Ok(true);
+    }
+    Ok(matches!(
+        element_interface(element.name(), step)?,
+        ElementInterface::Html(_)
+    ))
+}
+
 pub(in crate::document_scripting::guest::interfaces) fn html_interface(
     local: &DocumentString,
     mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
