@@ -462,6 +462,7 @@ fn runtime_pass_kind(
                 .map(|filter| runtime_color_filter(filter, account))
                 .transpose()?,
         ),
+        GraphLoweringPassKind::Offset(offset) => RuntimePassKind::Offset(offset.clone()),
         GraphLoweringPassKind::Convolution(convolution) => {
             RuntimePassKind::Convolution(convolution.clone())
         }
@@ -802,6 +803,7 @@ const fn runtime_read_role(role: GraphLoweringReadRole) -> RuntimeReadRole {
         GraphLoweringReadRole::CompletedParent => RuntimeReadRole::CompletedParent,
         GraphLoweringReadRole::FilterSource => RuntimeReadRole::FilterSource,
         GraphLoweringReadRole::ConvolutionSource => RuntimeReadRole::ConvolutionSource,
+        GraphLoweringReadRole::OffsetSource => RuntimeReadRole::OffsetSource,
         GraphLoweringReadRole::ConvolutionAuxiliary => RuntimeReadRole::ConvolutionAuxiliary,
         GraphLoweringReadRole::BlurredSourceAlpha => RuntimeReadRole::BlurredSourceAlpha,
         GraphLoweringReadRole::CompositeParent => RuntimeReadRole::CompositeParent,
@@ -829,6 +831,7 @@ pub(super) const fn shader_binding_role(role: RuntimeReadRole) -> ShaderBindingR
         RuntimeReadRole::CompletedParent => ShaderBindingRoleKey::CompletedParent,
         RuntimeReadRole::FilterSource => ShaderBindingRoleKey::FilterSource,
         RuntimeReadRole::ConvolutionSource => ShaderBindingRoleKey::ConvolutionSource,
+        RuntimeReadRole::OffsetSource => ShaderBindingRoleKey::OffsetSource,
         RuntimeReadRole::ConvolutionAuxiliary => ShaderBindingRoleKey::ConvolutionAuxiliary,
         RuntimeReadRole::BlurredSourceAlpha => ShaderBindingRoleKey::BlurredSourceAlpha,
         RuntimeReadRole::CompositeParent => ShaderBindingRoleKey::CompositeParent,
@@ -850,7 +853,7 @@ pub(super) const fn shader_sampling_edge(edge: RuntimeSamplingEdge) -> ShaderSam
 
 const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeReadRole) -> bool {
     match kind {
-        RuntimePassKind::Convolution(_) => false,
+        RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { .. },
             ..
@@ -951,7 +954,10 @@ pub(super) fn runtime_pass_cache_keys(
         } else {
             ShaderTextureFormatKey::working(working_format)
         }),
-        if matches!(kind, RuntimePassKind::Convolution(_)) {
+        if matches!(
+            kind,
+            RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_)
+        ) {
             Some(match result {
                 RuntimeResultBinding::Resource(resource) => resource_format(resource)?
                     .ok_or_else(|| lowering_error("convolution target format is missing"))?
@@ -997,6 +1003,7 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::CopyBackdrop => Ok(ShaderProgramKey::CopyBackdrop),
         RuntimePassKind::ColorFilter(Some(_)) => Ok(ShaderProgramKey::ColorFilter),
         RuntimePassKind::Convolution(_) => Ok(ShaderProgramKey::Convolution),
+        RuntimePassKind::Offset(_) => Ok(ShaderProgramKey::Offset),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
             source_alpha: blur.input == RuntimeBlurInput::SourceAlpha,
             edge: shader_sampling_edge(blur.edge),
@@ -1052,6 +1059,7 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         | RuntimePassKind::CopyBackdrop
         | RuntimePassKind::Present => &[SpatialUniform],
         RuntimePassKind::ColorFilter(Some(_)) => &[SpatialUniform, ColorFilterOperations],
+        RuntimePassKind::Offset(_) => &[ShaderDataBindingKey::OffsetParameters],
         RuntimePassKind::Convolution(_) => &[
             ShaderDataBindingKey::ConvolutionParameters,
             ShaderDataBindingKey::ConvolutionWeights,

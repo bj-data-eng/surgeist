@@ -18,6 +18,7 @@ use super::{
         BlurAxis, BlurInput, BlurPassDescription, ColorFilterPassDescription,
         CompositePassDescription, ConvolutionPassDescription, CopyBackdropPassDescription,
         CorePassDescription, CorePassProgram, DropShadowColorizePassDescription,
+        OffsetPassDescription,
     },
 };
 
@@ -25,6 +26,10 @@ const CANONICALIZE_CAPTURE_WGSL: &str = include_str!("../shaders/canonicalize_ca
 const SPAN_SOURCE_OVER_WGSL: &str = include_str!("../shaders/span_source_over.wgsl");
 const PRESENT_WGSL: &str = include_str!("../shaders/present.wgsl");
 pub(super) const CONVOLUTION_WGSL: &str = include_str!("../shaders/convolution.wgsl");
+const OFFSET_WGSL: &str = concat!(
+    include_str!("../shaders/cubic.wgsl"),
+    include_str!("../shaders/offset.wgsl"),
+);
 const COLOR_FILTER_WGSL: &str = include_str!("../shaders/color_filter.wgsl");
 pub(super) const BLUR_WGSL: &str = include_str!("../shaders/blur.wgsl");
 const DROP_SHADOW_WGSL: &str = include_str!("../shaders/drop_shadow.wgsl");
@@ -532,6 +537,112 @@ pub(super) fn create_convolution_render_pipeline(
     generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Surgeist convolution pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vertex_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some("fragment_main"),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
+pub(super) fn create_offset_bind_group_layout(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    let texture = |binding| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    let entries = [
+        texture(0),
+        wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(256),
+            },
+            count: None,
+        },
+    ];
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist offset bindings"),
+            entries: &entries,
+        })
+    })
+}
+
+pub(super) fn create_offset_shader_module(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist offset shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(OFFSET_WGSL)),
+        })
+    })
+}
+
+pub(super) fn create_offset_render_pipeline(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: OffsetPassDescription,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Surgeist offset pipeline layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
+        })
+    })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist offset pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: shader,
@@ -1377,5 +1488,82 @@ mod convolution_alpha_gpu_tests {
                 .iter()
                 .all(|value| (0.0..=finalized[2][3]).contains(value))
         );
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod offset_shader_tests {
+    use super::*;
+
+    #[test]
+    fn offset_shader_validates_with_one_texture_and_exact_sampler_free_uniform() {
+        let module = wgpu::naga::front::wgsl::parse_str(OFFSET_WGSL)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(OFFSET_WGSL)));
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
+        let bindings: Vec<_> = module
+            .global_variables
+            .iter()
+            .filter_map(|(_, variable)| {
+                variable
+                    .binding
+                    .as_ref()
+                    .map(|binding| (binding.group, binding.binding, variable))
+            })
+            .collect();
+        assert_eq!(bindings.len(), 2);
+        let (_, _, source) = bindings
+            .iter()
+            .find(|(group, binding, _)| *group == 0 && *binding == 0)
+            .unwrap();
+        assert!(matches!(
+            module.types[source.ty].inner,
+            wgpu::naga::TypeInner::Image { .. }
+        ));
+        let (_, _, uniform) = bindings
+            .iter()
+            .find(|(group, binding, _)| *group == 0 && *binding == 1)
+            .unwrap();
+        assert_eq!(uniform.space, wgpu::naga::AddressSpace::Uniform);
+        let wgpu::naga::TypeInner::Struct { span, ref members } = module.types[uniform.ty].inner
+        else {
+            panic!("offset binding 1 must contain the exact wire structure");
+        };
+        assert_eq!(span, 256);
+        assert_eq!(
+            members
+                .iter()
+                .map(|member| member.offset)
+                .collect::<Vec<_>>(),
+            [0, 16, 32, 48, 64, 80]
+        );
+        for (format, expected) in [
+            (
+                ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+                wgpu::TextureFormat::Rgba16Float,
+            ),
+            (
+                ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
+                wgpu::TextureFormat::Rgba8Unorm,
+            ),
+        ] {
+            assert_eq!(texture_format(format).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn alpha_mask_shader_retains_valid_composition_after_shared_cubic_extraction() {
+        let module = wgpu::naga::front::wgsl::parse_str(LAYER_COMPOSITE_WGSL)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(LAYER_COMPOSITE_WGSL)));
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
     }
 }

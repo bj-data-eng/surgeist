@@ -42,11 +42,13 @@ mod convolution;
 mod encode;
 mod error;
 mod filter;
+mod filter_domains;
 mod frame;
 mod geometry;
 mod gpu_transaction;
 mod image;
 mod layer;
+mod offset;
 mod paint;
 #[cfg(feature = "render-paint")]
 mod paint_gradient;
@@ -92,9 +94,8 @@ pub use capability::{
 };
 pub use color_mapping::prepare_sdr_srgb_color;
 pub use convolution::{
-    ConvolutionDomains, ConvolutionEdgeMode, ConvolutionInput, ConvolutionNumericPhase,
-    ConvolutionParameter, ConvolutionPreparationError, FilterColorSpace, PreparedConvolution,
-    prepare_convolution,
+    ConvolutionEdgeMode, ConvolutionInput, ConvolutionNumericPhase, ConvolutionParameter,
+    ConvolutionPreparationError, FilterColorSpace, PreparedConvolution, prepare_convolution,
 };
 pub use error::{
     DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,
@@ -103,6 +104,7 @@ pub use error::{
     SurfaceIdentityMismatchKind, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
 };
 pub use error::{GeometryRealizationError, GradientHintError, GradientRealizationError};
+pub use filter_domains::FilterDomains;
 pub use geometry::{
     CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag, PhysicalSize, Point, Radii, Rect,
     Size, Transform,
@@ -112,6 +114,10 @@ pub use layer::{
     BlendMode, Filter, Layer, LayerComposition, MaskLuminanceSpace, PorterDuffOperator,
     ResolvedLayerAlphaMask, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
     Shadow, ShadowKind, ShadowList,
+};
+pub use offset::{
+    OffsetInput, OffsetNumericPhase, OffsetParameter, OffsetPreparationError, PreparedOffset,
+    prepare_offset,
 };
 pub use paint::{
     Color, Gradient, GradientHint, GradientStop, NormalizedPaintLayer, Paint, PaintColor,

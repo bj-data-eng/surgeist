@@ -401,7 +401,7 @@ fn encode_vello_commands(
             RenderCommand::Layer { layer, children } => {
                 let layer_transform = affine_product(transform, layer.transform.into(), account)?;
                 let continuation = if layer.isolation != LayerIsolation::None {
-                    encode_layer_start(scene, layer, layer_transform, account)?;
+                    encode_layer_start(scene, layer, layer_transform, target_extent, account)?;
                     if children.is_empty() {
                         scene.pop_layer(account)?;
                         continue;
@@ -894,9 +894,10 @@ fn encode_layer_start(
     scene: &mut VelloScene,
     layer: &NormalizedLayer,
     transform: kurbo::Affine,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<()> {
-    let default_clip = RenderClipGeometry::Rect(Rect::new(-1.0e9, -1.0e9, 2.0e9, 2.0e9));
+    let default_clip;
     let (clip, clip_transform) = match &layer.clip {
         Some(clip) => {
             let clip_transform = match clip.coordinate_space() {
@@ -905,7 +906,18 @@ fn encode_layer_start(
             };
             (clip.geometry(), clip_transform)
         }
-        None => (&default_clip, transform),
+        None => {
+            // A clipless group covers the actual raster target in device
+            // coordinates. Transforming arbitrary huge local bounds can lose
+            // capture translations before any child geometry is encoded.
+            default_clip = RenderClipGeometry::Rect(Rect::new(
+                0.0,
+                0.0,
+                account.coordinate(|| f64::from(target_extent.width()))?,
+                account.coordinate(|| f64::from(target_extent.height()))?,
+            ));
+            (&default_clip, kurbo::Affine::IDENTITY)
+        }
     };
     match clip {
         RenderClipGeometry::Rect(rect) => push_vello_layer(

@@ -3,6 +3,7 @@ mod convolution;
 mod encode;
 mod lower;
 mod model;
+mod offset;
 mod parameters;
 mod prepare;
 #[cfg(test)]

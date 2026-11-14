@@ -634,7 +634,7 @@ fn capture_spatial_is_exact(spatial: RuntimeSpatialDescriptor) -> bool {
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, Color, ConvolutionDomains, ConvolutionInput, FilterColorSpace, Layer,
+        Capabilities, Color, ConvolutionInput, FilterColorSpace, FilterDomains, Layer,
         RenderAccountingContext, RenderAccountingOptions, Scene, Size,
         backend::DeviceCapabilities,
         frame::{FrameContext, FramePlan},
@@ -656,7 +656,7 @@ mod tests {
             kernel,
             order,
             empty,
-            ConvolutionDomains::try_new(bounds, bounds, bounds).unwrap(),
+            FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
         )
     }
 
@@ -664,7 +664,7 @@ mod tests {
         kernel: &[f64],
         order: f64,
         empty: bool,
-        domains: ConvolutionDomains,
+        domains: FilterDomains,
     ) -> LoweredGraphPlan {
         let bounds = domains.result();
         let mut accounting = RenderAccountingContext::new(RenderAccountingOptions::new());
@@ -747,7 +747,7 @@ mod tests {
                 &[1.0],
                 1.0,
                 false,
-                ConvolutionDomains::try_new(source, filter, result).unwrap(),
+                FilterDomains::try_new(source, filter, result).unwrap(),
             );
             let account = Account::for_test();
             let closed = ClosedExecutableGraph::try_from_lowered(original.clone(), &account)
@@ -829,7 +829,7 @@ mod tests {
             ConvolutionInput::new(&[1.0])
                 .with_order(1.0, None)
                 .with_unit_length(2.0, None),
-            ConvolutionDomains::try_new(domain, root, domain).unwrap(),
+            FilterDomains::try_new(domain, root, domain).unwrap(),
             FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
         )
@@ -1007,7 +1007,7 @@ mod tests {
             let kernel: &[f64] = if mismatch { &[] } else { &[1.0] };
             let operation = prepare_convolution(
                 ConvolutionInput::new(kernel).with_order(1.0, None),
-                ConvolutionDomains::try_new(domain, domain, domain).unwrap(),
+                FilterDomains::try_new(domain, domain, domain).unwrap(),
                 FilterColorSpace::Srgb,
                 &mut RenderAccountingContext::default(),
             )

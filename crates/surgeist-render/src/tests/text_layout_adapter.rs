@@ -371,6 +371,38 @@ fn actual_run_origin_is_outer_and_placement_order_preserves_decorations() {
 }
 
 #[test]
+fn transformed_decoration_transfers_its_actual_layer_metadata_box() {
+    let input = system(AHEM.to_vec())
+        .layout(text::Source::new("X"), decorated_style(), options())
+        .unwrap();
+    let mut transferred = Vec::new();
+    for (placement, root_count) in [
+        (Transform::identity(), 3),
+        (Transform::translation(1.0, 2.0).unwrap(), 2),
+    ] {
+        let mut context = crate::RenderAccountingContext::default();
+        let prepared = prepare_text_layout(&input, placement, limits(), &mut context).unwrap();
+        assert_eq!(prepared.scene().commands.len(), root_count);
+        transferred.push(
+            context
+                .last_attempt()
+                .unwrap()
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(crate::RenderWork::PreparedTransferredBytes),
+        );
+    }
+    // Both scenes have identical glyph backing and two decoration commands.
+    // The transformed scene additionally owns a Layer command slot and its
+    // actual boxed metadata; the two fills move into the child vector.
+    assert_eq!(
+        transferred[1] - transferred[0],
+        (std::mem::size_of::<Command>() + std::mem::size_of::<crate::Layer>()) as u64
+    );
+}
+
+#[test]
 fn actual_large_run_origin_never_enters_canonical_outline_points() {
     let origin = 16_777_217.0_f64;
     let input = system(AHEM.to_vec())

@@ -50,7 +50,7 @@ use surgeist_ledger::{Change, Checkpoint, Limits, Operation, Scope, SharedOperat
 pub(crate) type RenderLedger = SharedOperation<RenderWork, RenderResource>;
 type LedgerError = surgeist_ledger::Error<RenderWork, RenderResource>;
 
-/// Configuration and one latest terminal record for standalone allocating operations.
+/// Configuration and one latest terminal record for standalone accounted operations.
 /// Glyph preparation, scene inspection, repeat and style normalization borrow the
 /// context exclusively. Renderer frames use their renderer-owned authorities.
 /// Setup failure preserves
@@ -802,6 +802,7 @@ impl Account {
             RenderAttemptKind::ColorFilterProjection
                 | RenderAttemptKind::LeaderPattern
                 | RenderAttemptKind::Convolution
+                | RenderAttemptKind::Offset
         ) {
             return RenderAccountingError::StandaloneAllocation { resource }.into();
         }
@@ -835,6 +836,7 @@ impl Account {
             RenderAttemptKind::ColorFilterProjection
                 | RenderAttemptKind::LeaderPattern
                 | RenderAttemptKind::Convolution
+                | RenderAttemptKind::Offset
         ) {
             return RenderAccountingError::StandaloneCapacityOverflow { resource }.into();
         }
@@ -905,6 +907,7 @@ impl Account {
         if !self.is_paint_gradient()
             && self.kind != RenderAttemptKind::LeaderPattern
             && self.kind != RenderAttemptKind::Convolution
+            && self.kind != RenderAttemptKind::Offset
             && refusal.phase != RenderPhase::Attempt
             && let RenderRefusalReason::Limit { limit } = refusal.reason
             && let Some(required) = refusal

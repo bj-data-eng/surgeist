@@ -15,6 +15,113 @@ use crate::{
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::image::{Extend, ImageQuality};
 
+/// Qualified rebased texel coordinates for the exact offset uniform block.
+pub(crate) struct OffsetParameterFacts {
+    pub(crate) translation: [f64; 2],
+    pub(crate) ratio: [f64; 2],
+    pub(crate) source_clip: [f64; 4],
+    pub(crate) result_clip: [f64; 4],
+    pub(crate) source_extent: [u32; 2],
+    pub(crate) result_extent: [u32; 2],
+    pub(crate) sampling: u32,
+    pub(crate) rebase: bool,
+}
+
+/// Fixed inline bytes: map, source clip, result clip, extents, modes, reserved.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct OffsetParameterBytes([u8; 256]);
+
+impl OffsetParameterBytes {
+    pub(crate) fn try_new(facts: OffsetParameterFacts, account: &Account) -> Result<Self> {
+        let invalid = || {
+            Error::invalid_value(
+                "offset parameters",
+                "runtime offset",
+                "must fit the qualified shader coordinate and sampling domains",
+            )
+        };
+        if facts.sampling > 3
+            || facts.ratio.into_iter().any(|value| value <= 0.0)
+            || facts
+                .source_extent
+                .into_iter()
+                .chain(facts.result_extent)
+                .any(|value| value > 8_388_608)
+            || (facts.rebase && facts.sampling != 0)
+        {
+            return Err(invalid());
+        }
+        let mut words = [[0_u32; 4]; 16];
+        for (row, values) in [
+            [
+                facts.translation[0],
+                facts.translation[1],
+                facts.ratio[0],
+                facts.ratio[1],
+            ],
+            facts.source_clip,
+            facts.result_clip,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for (slot, value) in words[row].iter_mut().zip(values) {
+                let uploaded = account.coordinate(|| value as f32)?;
+                if !value.is_finite()
+                    || !(uploaded == 0.0 || uploaded.is_normal())
+                    || (value != 0.0 && uploaded == 0.0)
+                {
+                    return Err(invalid());
+                }
+                *slot = uploaded.to_bits();
+            }
+        }
+        // Copy modes are admitted only after the frame owner proves an aligned
+        // lattice. Check that the actual uploaded map retains integer copying.
+        if facts.sampling == 0
+            && (words[0][2..] != [1.0_f32.to_bits(); 2]
+                || words[0][..2]
+                    .iter()
+                    .any(|value| f32::from_bits(*value).fract() != 0.0))
+        {
+            return Err(invalid());
+        }
+        for (clip, extent, row) in [
+            (facts.source_clip, facts.source_extent, 1),
+            (facts.result_clip, facts.result_extent, 2),
+        ] {
+            if clip[0] < 0.0
+                || clip[1] < 0.0
+                || clip[2] < clip[0]
+                || clip[3] < clip[1]
+                || clip[2] > f64::from(extent[0])
+                || clip[3] > f64::from(extent[1])
+                || f32::from_bits(words[row][2]) < f32::from_bits(words[row][0])
+                || f32::from_bits(words[row][3]) < f32::from_bits(words[row][1])
+            {
+                return Err(invalid());
+            }
+        }
+        words[3] = [
+            facts.source_extent[0],
+            facts.source_extent[1],
+            facts.result_extent[0],
+            facts.result_extent[1],
+        ];
+        words[4] = [facts.sampling, u32::from(facts.rebase), 0, 0];
+        account.work(RenderWork::SerializedBytes, 256)?;
+        let mut bytes = [0; 256];
+        for (index, word) in words.into_iter().flatten().enumerate() {
+            bytes[index * 4..index * 4 + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        Ok(Self(bytes))
+    }
+
+    pub(crate) const fn as_bytes(&self) -> &[u8; 256] {
+        &self.0
+    }
+}
+
 /// Validated runtime facts for the exact 256-byte convolution uniform block.
 pub(crate) struct ConvolutionParameterFacts {
     pub(crate) capture_origin: [f64; 2],
@@ -708,9 +815,9 @@ impl BlurEdgeParameterBytes {
 
 /// Exact 112-byte WGSL composite parameter block.
 ///
-/// The byte ranges are fixed as follows: affine linear coefficients `0..16`,
-/// affine translation plus zero alignment bytes `16..32`, mask rectangle
-/// `32..48`, image dimensions and pixelated lattice factors `48..64`, normalized
+/// The byte ranges are fixed as follows: source-texel linear coefficients `0..16`,
+/// source-texel and mask-normalized translations `16..32`, mask-normalized
+/// linear coefficients `32..48`, image dimensions and pixelated lattice factors `48..64`, normalized
 /// texel-center facts `64..80`, opacity/blend/quality/extend `80..96`, and
 /// clip presence, mask value and application bits, source coordinate space and basic operator code `96..112`.
 /// SourceOver is operator code zero; the separate local Plus mix code ignores it.
@@ -727,6 +834,40 @@ struct CompositeMaskParameterFacts {
     application: crate::layer::MaskApplication,
 }
 
+#[derive(Clone, Copy)]
+struct CompositeGridFacts {
+    origin: [f64; 2],
+    scale: f64,
+    extent: [u32; 2],
+}
+
+impl CompositeGridFacts {
+    fn from_runtime(spatial: RuntimeSpatialDescriptor) -> Self {
+        let origin = spatial.texel_origin();
+        let extent = spatial.device_extent();
+        Self {
+            origin: [origin.x(), origin.y()],
+            scale: spatial.raster_scale(),
+            extent: [extent.width(), extent.height()],
+        }
+    }
+
+    #[cfg(test)]
+    const fn unit() -> Self {
+        Self {
+            origin: [0.0; 2],
+            scale: 1.0,
+            extent: [1; 2],
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct CompositeMap {
+    linear: [f32; 4],
+    translation: [f32; 2],
+}
+
 struct CompositeParameterFacts {
     affine: [f64; 6],
     source_space: CompositeSourceSpace,
@@ -734,11 +875,12 @@ struct CompositeParameterFacts {
     composition: LayerComposition,
     has_clip: bool,
     mask: Option<CompositeMaskParameterFacts>,
-    raster_scale: f64,
+    source: CompositeGridFacts,
+    destination: CompositeGridFacts,
 }
 
 struct NarrowedCompositeMask {
-    bounds: [f32; 4],
+    mapping: CompositeMap,
     dimensions: [u32; 2],
     pixelated: Option<[u32; 2]>,
     texel_centers: [f32; 4],
@@ -804,9 +946,278 @@ fn linear_product(left: [f64; 4], right: [f64; 4], account: &Account) -> Result<
     ])
 }
 
+#[derive(Clone, Copy)]
+struct CompositeLocalMap {
+    linear: [f64; 4],
+    translation: [f64; 2],
+}
+
+fn composite_mapping_error(invariant: &'static str) -> Error {
+    Error::invalid_value("composite mapping", "resolved composite", invariant)
+}
+
+fn validate_composite_grid(
+    grid: CompositeGridFacts,
+    destination: bool,
+    account: &Account,
+) -> Result<()> {
+    for value in grid.origin {
+        if !account.coordinate(|| value)?.is_finite() {
+            return Err(composite_mapping_error("grid origins must be finite"));
+        }
+    }
+    let scale = account.coordinate(|| grid.scale as f32)?;
+    let reciprocal = account.coordinate(|| scale.recip())?;
+    if !grid.scale.is_finite()
+        || grid.scale <= 0.0
+        || !scale.is_normal()
+        || scale <= 0.0
+        || !reciprocal.is_normal()
+        || reciprocal <= 0.0
+    {
+        return Err(composite_mapping_error(
+            "grid scales and their uploaded reciprocals must be positive normal values",
+        ));
+    }
+    for extent in grid.extent {
+        if extent == 0 || extent > i32::MAX as u32 {
+            return Err(composite_mapping_error(
+                "grid extents must fit positive signed texture coordinates",
+            ));
+        }
+        if destination {
+            let maximum = account.coordinate(|| f64::from(extent) - 0.5)?;
+            let uploaded = account.coordinate(|| maximum as f32)?;
+            if f64::from(uploaded) > f64::from(i32::MAX) {
+                return Err(composite_mapping_error(
+                    "destination pixel centers must fit signed texture coordinates",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn composite_local_map(
+    affine: [f64; 6],
+    destination: CompositeGridFacts,
+    account: &Account,
+) -> Result<CompositeLocalMap> {
+    let [a, b, c, d, e, f] = affine;
+    let mut linear = [0.0; 4];
+    for (output, value) in linear.iter_mut().zip([a, b, c, d]) {
+        *output = account.coordinate(|| value / destination.scale)?;
+    }
+    let mut translation = [0.0; 2];
+    for (axis, (x, y, offset)) in [(a, c, e), (b, d, f)].into_iter().enumerate() {
+        let x = account.coordinate(|| x * destination.origin[0])?;
+        let y = account.coordinate(|| y * destination.origin[1])?;
+        let sum = account.coordinate(|| x + y)?;
+        translation[axis] = account.coordinate(|| sum + offset)?;
+    }
+    Ok(CompositeLocalMap {
+        linear,
+        translation,
+    })
+}
+
+fn narrow_composite_map(mapping: CompositeLocalMap, account: &Account) -> Result<CompositeMap> {
+    let narrow = |value: f64| -> Result<f32> {
+        let uploaded = account.coordinate(|| value as f32)?;
+        if !value.is_finite()
+            || !(uploaded == 0.0 || uploaded.is_normal())
+            || (value != 0.0 && uploaded == 0.0)
+        {
+            return Err(composite_mapping_error(
+                "rebased mapping scalars must narrow to zero or normal finite values without nonzero underflow",
+            ));
+        }
+        Ok(uploaded)
+    };
+    let mut linear = [0.0; 4];
+    let mut translation = [0.0; 2];
+    for (output, value) in linear.iter_mut().zip(mapping.linear) {
+        *output = narrow(value)?;
+    }
+    for (output, value) in translation.iter_mut().zip(mapping.translation) {
+        *output = narrow(value)?;
+    }
+    Ok(CompositeMap {
+        linear,
+        translation,
+    })
+}
+
+fn composite_source_map(
+    space: CompositeSourceSpace,
+    local: Option<CompositeLocalMap>,
+    source: CompositeGridFacts,
+    destination: CompositeGridFacts,
+    account: &Account,
+) -> Result<CompositeMap> {
+    let mut mapping = match space {
+        CompositeSourceSpace::LayerLocal => {
+            local.ok_or_else(|| composite_mapping_error("source mapping has no local transform"))?
+        }
+        CompositeSourceSpace::SurfaceGrid => {
+            let ratio = account.coordinate(|| 1.0 / destination.scale)?;
+            CompositeLocalMap {
+                linear: [ratio, 0.0, 0.0, ratio],
+                translation: destination.origin,
+            }
+        }
+    };
+    for value in &mut mapping.linear {
+        *value = account.coordinate(|| *value * source.scale)?;
+    }
+    for (value, origin) in mapping.translation.iter_mut().zip(source.origin) {
+        let difference = account.coordinate(|| *value - origin)?;
+        *value = account.coordinate(|| difference * source.scale)?;
+    }
+    narrow_composite_map(mapping, account)
+}
+
+fn composite_mask_map(
+    local: CompositeLocalMap,
+    mask: &CompositeMaskParameterFacts,
+    account: &Account,
+) -> Result<CompositeMap> {
+    let mut mapping = local;
+    for (index, value) in mapping.linear.iter_mut().enumerate() {
+        let dimension = mask.bounds[2 + index % 2];
+        *value = account.coordinate(|| *value / dimension)?;
+    }
+    for (axis, value) in mapping.translation.iter_mut().enumerate() {
+        let relative = account.coordinate(|| *value - mask.bounds[axis])?;
+        *value = account.coordinate(|| relative / mask.bounds[2 + axis])?;
+    }
+    narrow_composite_map(mapping, account)
+}
+
+fn qualify_composite_map(mapping: CompositeMap, extent: [u32; 2], account: &Account) -> Result<()> {
+    let [a, b, c, d] = mapping.linear;
+    // Scaling the determinant avoids introducing overflow solely in the proof.
+    let scale = account.coordinate(|| a.abs().max(b.abs()).max(c.abs()).max(d.abs()))?;
+    if scale == 0.0 {
+        return Err(composite_mapping_error(
+            "uploaded mapping must remain nonsingular",
+        ));
+    }
+    let a = account.coordinate(|| a / scale)?;
+    let b = account.coordinate(|| b / scale)?;
+    let c = account.coordinate(|| c / scale)?;
+    let d = account.coordinate(|| d / scale)?;
+    let ad = account.coordinate(|| a * d)?;
+    let bc = account.coordinate(|| b * c)?;
+    let determinant = account.coordinate(|| ad - bc)?;
+    if !determinant.is_normal() {
+        return Err(composite_mapping_error(
+            "uploaded mapping must retain a finite nonzero normalized determinant",
+        ));
+    }
+    let maximum_x = account.coordinate(|| f64::from(extent[0]) - 0.5)?;
+    let maximum_y = account.coordinate(|| f64::from(extent[1]) - 0.5)?;
+    let maximum_x = account.coordinate(|| maximum_x as f32)?;
+    let maximum_y = account.coordinate(|| maximum_y as f32)?;
+    // Each scalar product and partial addition in WGSL is monotone on this
+    // rectangle. Its four corners bound every reached pixel-center operation.
+    for x in [0.5, maximum_x] {
+        for y in [0.5, maximum_y] {
+            for axis in 0..2 {
+                let product_x = account.coordinate(|| mapping.linear[axis] * x)?;
+                let product_y = account.coordinate(|| mapping.linear[axis + 2] * y)?;
+                let sum = account.coordinate(|| product_x + product_y)?;
+                let result = account.coordinate(|| sum + mapping.translation[axis])?;
+                if !product_x.is_finite()
+                    || !product_y.is_finite()
+                    || !sum.is_finite()
+                    || !result.is_finite()
+                {
+                    return Err(composite_mapping_error(
+                        "every uploaded mapping product and partial addition must remain finite over destination pixels",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn qualify_mask_sampling(
+    texel_facts: [f32; 4],
+    quality: ShaderMaskQualityKey,
+    pixelated: Option<[u32; 2]>,
+    account: &Account,
+) -> Result<()> {
+    if texel_facts
+        .into_iter()
+        .any(|value| !value.is_normal() || value <= 0.0)
+    {
+        return Err(composite_mapping_error(
+            "mask texel-center facts must be positive normal values",
+        ));
+    }
+    let finite = |value: f32| -> Result<f32> {
+        if !value.is_finite() {
+            return Err(composite_mapping_error(
+                "reachable mask sampling arithmetic must remain finite",
+            ));
+        }
+        Ok(value)
+    };
+    let index = |value: f32| -> Result<()> {
+        let floored = account.coordinate(|| value.floor())?;
+        // The cubic neighbors and reflected indexing period are signed values.
+        if !floored.is_finite()
+            || f64::from(floored) < f64::from(i32::MIN) + 4.0
+            || f64::from(floored) > f64::from(i32::MAX) - 4.0
+        {
+            return Err(composite_mapping_error(
+                "reachable mask sampling neighbors must fit signed texture coordinates",
+            ));
+        }
+        Ok(())
+    };
+    for axis in 0..2 {
+        for normalized in [0.0_f32, 1.0] {
+            // The shader guard restricts normalized coordinates to [0,1].
+            let relative = finite(account.coordinate(|| normalized - texel_facts[axis])?)?;
+            let sample = finite(account.coordinate(|| relative / texel_facts[axis + 2])?)?;
+            match quality {
+                ShaderMaskQualityKey::Low => index(finite(account.coordinate(|| sample + 0.5)?)?)?,
+                ShaderMaskQualityKey::Medium | ShaderMaskQualityKey::High => index(sample)?,
+                ShaderMaskQualityKey::Pixelated => {
+                    let factors = pixelated.ok_or_else(|| {
+                        composite_mapping_error(
+                            "pixelated mask sampling requires its measured lattice factors",
+                        )
+                    })?;
+                    let factor = account.coordinate(|| factors[axis] as f32)?;
+                    if !factor.is_normal() || factor <= 0.0 {
+                        return Err(composite_mapping_error(
+                            "pixelated mask factors must be positive normal values",
+                        ));
+                    }
+                    let centered = finite(account.coordinate(|| sample + 0.5)?)?;
+                    let scaled = finite(account.coordinate(|| centered * factor)?)?;
+                    let enlarged = finite(account.coordinate(|| scaled - 0.5)?)?;
+                    let base = account.coordinate(|| enlarged.floor())?;
+                    let first = finite(account.coordinate(|| base / factor)?)?;
+                    index(first)?;
+                    let next = finite(account.coordinate(|| base + 1.0)?)?;
+                    let second = finite(account.coordinate(|| next / factor)?)?;
+                    index(second)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 impl CompositeParameterBytes {
     pub(crate) fn try_from_runtime_layer(
         parameters: &RuntimeLayerCompositeParameters,
+        source: RuntimeSpatialDescriptor,
         destination: RuntimeSpatialDescriptor,
         account: &Account,
     ) -> Result<Self> {
@@ -833,7 +1244,8 @@ impl CompositeParameterBytes {
                 composition: parameters.composition(),
                 has_clip: parameters.has_clip(),
                 mask,
-                raster_scale: destination.raster_scale(),
+                source: CompositeGridFacts::from_runtime(source),
+                destination: CompositeGridFacts::from_runtime(destination),
             },
             account,
         )
@@ -847,18 +1259,23 @@ impl CompositeParameterBytes {
             composition,
             has_clip,
             mask,
-            raster_scale,
+            source,
+            destination,
         } = facts;
-        let [a, b, c, d, e, f] = destination_to_local;
-        let affine = [
-            narrow_composite_scalar("composite affine coefficient a", a)?,
-            narrow_composite_scalar("composite affine coefficient b", b)?,
-            narrow_composite_scalar("composite affine coefficient c", c)?,
-            narrow_composite_scalar("composite affine coefficient d", d)?,
-            narrow_composite_scalar("composite affine translation x", e)?,
-            narrow_composite_scalar("composite affine translation y", f)?,
-        ];
-        validate_narrowed_composite_affine(affine)?;
+        validate_composite_grid(source, false, account)?;
+        validate_composite_grid(destination, true, account)?;
+        let local_mapping = if source_space == CompositeSourceSpace::LayerLocal || mask.is_some() {
+            Some(composite_local_map(
+                destination_to_local,
+                destination,
+                account,
+            )?)
+        } else {
+            None
+        };
+        let source_mapping =
+            composite_source_map(source_space, local_mapping, source, destination, account)?;
+        qualify_composite_map(source_mapping, destination.extent, account)?;
 
         if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
             return Err(Error::invalid_value(
@@ -870,31 +1287,39 @@ impl CompositeParameterBytes {
 
         let mask = mask
             .map(|mask| -> Result<NarrowedCompositeMask> {
-                let bounds = [
-                    narrow_composite_scalar("composite mask bounds x", mask.bounds[0])?,
-                    narrow_composite_scalar("composite mask bounds y", mask.bounds[1])?,
-                    narrow_positive_composite_scalar(
-                        "composite mask bounds width",
-                        mask.bounds[2],
-                    )?,
-                    narrow_positive_composite_scalar(
-                        "composite mask bounds height",
-                        mask.bounds[3],
-                    )?,
-                ];
+                if mask.bounds.into_iter().any(|value| !value.is_finite())
+                    || mask.bounds[2] <= 0.0
+                    || mask.bounds[3] <= 0.0
+                {
+                    return Err(composite_mapping_error(
+                        "mask bounds must be finite with positive dimensions",
+                    ));
+                }
+                let mapping = composite_mask_map(
+                    local_mapping.ok_or_else(|| {
+                        composite_mapping_error("mask mapping has no local transform")
+                    })?,
+                    &mask,
+                    account,
+                )?;
+                qualify_composite_map(mapping, destination.extent, account)?;
                 let [width, height] = mask.dimensions;
-                if width == 0 || height == 0 {
+                if width == 0
+                    || height == 0
+                    || width > (i32::MAX / 2) as u32
+                    || height > (i32::MAX / 2) as u32
+                {
                     return Err(Error::invalid_value(
                         "composite mask image dimensions",
                         format!("{width}x{height}"),
-                        "must be positive before parameter serialization",
+                        "must be positive and retain signed sampling neighbors and reflection periods",
                     ));
                 }
                 let pixelated = if mask.sampling.quality() == ShaderMaskQualityKey::Pixelated {
                     Some(pixelated_mask_multipliers(
                         destination_to_local,
                         &mask,
-                        raster_scale,
+                        destination.scale,
                         account,
                     )?)
                 } else {
@@ -907,8 +1332,9 @@ impl CompositeParameterBytes {
                     narrow_positive_composite_scalar("composite mask texel fact", c)?,
                     narrow_positive_composite_scalar("composite mask texel fact", d)?,
                 ];
+                qualify_mask_sampling(texel_centers, mask.sampling.quality(), pixelated, account)?;
                 Ok(NarrowedCompositeMask {
-                    bounds,
+                    mapping,
                     dimensions: [width, height],
                     pixelated,
                     texel_centers,
@@ -920,12 +1346,18 @@ impl CompositeParameterBytes {
             .transpose()?;
         account.work(RenderWork::SerializedBytes, 112)?;
         let mut bytes = [0_u8; 112];
-        for (index, value) in affine.into_iter().enumerate() {
+        for (index, value) in source_mapping.linear.into_iter().enumerate() {
             write_f32(&mut bytes, index * 4, value);
         }
+        for (index, value) in source_mapping.translation.into_iter().enumerate() {
+            write_f32(&mut bytes, 16 + index * 4, value);
+        }
         if let Some(mask) = mask {
-            for (index, value) in mask.bounds.into_iter().enumerate() {
+            for (index, value) in mask.mapping.linear.into_iter().enumerate() {
                 write_f32(&mut bytes, 32 + index * 4, value);
+            }
+            for (index, value) in mask.mapping.translation.into_iter().enumerate() {
+                write_f32(&mut bytes, 24 + index * 4, value);
             }
             write_u32(&mut bytes, 48, mask.dimensions[0]);
             write_u32(&mut bytes, 52, mask.dimensions[1]);
@@ -1041,39 +1473,16 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
             composition: facts.composition,
             has_clip: facts.has_clip,
             mask,
-            raster_scale: 1.0,
+            source: CompositeGridFacts {
+                origin: [-1.0; 2],
+                scale: 1.0,
+                extent: [7, 4],
+            },
+            destination: CompositeGridFacts::unit(),
         },
         &Account::for_test(),
     )
     .map(CompositeParameterBytes::into_bytes_for_test)
-}
-
-fn validate_narrowed_composite_affine(affine: [f32; 6]) -> Result<()> {
-    let scale = affine[0]
-        .abs()
-        .max(affine[1].abs())
-        .max(affine[2].abs())
-        .max(affine[3].abs());
-    if scale == 0.0 {
-        return Err(Error::invalid_value(
-            "composite affine mapping",
-            "zero linear transform",
-            "must remain non-singular after f64-to-f32 narrowing",
-        ));
-    }
-    let a = affine[0] / scale;
-    let b = affine[1] / scale;
-    let c = affine[2] / scale;
-    let d = affine[3] / scale;
-    let determinant = a * d - b * c;
-    if !determinant.is_finite() || determinant == 0.0 {
-        return Err(Error::invalid_value(
-            "composite affine mapping",
-            determinant,
-            "must remain finite and non-singular after f64-to-f32 narrowing",
-        ));
-    }
-    Ok(())
 }
 
 const fn blend_parameter_code(blend: BlendMode) -> u32 {
@@ -1206,7 +1615,8 @@ mod surface_grid_parameter_tests {
                     composition: LayerComposition::from_blend(blend),
                     has_clip: false,
                     mask: None,
-                    raster_scale: 1.0,
+                    source: CompositeGridFacts::unit(),
+                    destination: CompositeGridFacts::unit(),
                 },
                 &Account::for_test(),
             )
@@ -1243,7 +1653,8 @@ mod surface_grid_parameter_tests {
                         .unwrap(),
                     has_clip: true,
                     mask: None,
-                    raster_scale: 1.0,
+                    source: CompositeGridFacts::unit(),
+                    destination: CompositeGridFacts::unit(),
                 },
                 &Account::for_test(),
             )
@@ -1280,7 +1691,8 @@ mod surface_grid_parameter_tests {
                 composition: LayerComposition::from_blend(BlendMode::Normal),
                 has_clip: false,
                 mask: Some(mask),
-                raster_scale: 1.0,
+                source: CompositeGridFacts::unit(),
+                destination: CompositeGridFacts::unit(),
             },
             &Account::for_test(),
         )
@@ -1288,8 +1700,10 @@ mod surface_grid_parameter_tests {
         .into_bytes_for_test();
         let word =
             |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
-        assert_eq!(word(0), 0.4_f32.to_bits());
-        assert_eq!(word(12), 0.5_f32.to_bits());
+        assert_eq!(word(0), 1.0_f32.to_bits());
+        assert_eq!(word(12), 1.0_f32.to_bits());
+        assert_eq!(word(32), 0.2_f32.to_bits());
+        assert_eq!(word(44), (1.0_f32 / 6.0).to_bits());
         assert_eq!((word(56), word(60)), (3, 2));
         assert_eq!((word(96), word(100), word(104), word(108)), (0, 1, 1, 0));
     }
@@ -1630,7 +2044,8 @@ mod accounting_tests {
                                 crate::image::Extend::Pad,
                             ),
                         }),
-                        raster_scale: 1.0,
+                        source: CompositeGridFacts::unit(),
+                        destination: CompositeGridFacts::unit(),
                     },
                     account,
                 )
@@ -1714,5 +2129,263 @@ mod convolution_parameter_tests {
         let mut input = facts();
         input.tap_count = 33;
         assert!(ConvolutionParameterBytes::try_new(input, &account).is_err());
+    }
+}
+
+#[cfg(test)]
+mod offset_parameter_tests {
+    use super::*;
+
+    fn facts() -> OffsetParameterFacts {
+        OffsetParameterFacts {
+            translation: [-0.5, 1.25],
+            ratio: [1.0, 0.5],
+            source_clip: [0.25, 0.5, 6.75, 7.5],
+            result_clip: [0.0, 0.25, 10.5, 11.75],
+            source_extent: [7, 8],
+            result_extent: [11, 12],
+            sampling: 3,
+            rebase: false,
+        }
+    }
+
+    #[test]
+    fn offset_wire_preserves_rebased_map_clips_modes_and_zero_reserved_words() {
+        let bytes = OffsetParameterBytes::try_new(facts(), &Account::for_test()).unwrap();
+        let words: Vec<_> = bytes
+            .as_bytes()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
+            .collect();
+        let floats = |values: &[f32]| values.iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+        assert_eq!(&words[0..4], floats(&[-0.5, 1.25, 1.0, 0.5]));
+        assert_eq!(&words[4..8], floats(&[0.25, 0.5, 6.75, 7.5]));
+        assert_eq!(&words[8..12], floats(&[0.0, 0.25, 10.5, 11.75]));
+        assert_eq!(&words[12..16], &[7, 8, 11, 12]);
+        assert_eq!(&words[16..20], &[3, 0, 0, 0]);
+        assert!(words[20..].iter().all(|value| *value == 0));
+    }
+
+    #[test]
+    fn offset_wire_accepts_each_sampling_policy_and_only_integral_raw_rebases() {
+        for sampling in 0..=3 {
+            let mut input = facts();
+            input.sampling = sampling;
+            input.translation = [-1.0, 2.0];
+            input.ratio = [1.0; 2];
+            assert!(OffsetParameterBytes::try_new(input, &Account::for_test()).is_ok());
+        }
+        let mut input = facts();
+        input.sampling = 0;
+        input.translation = [-1.0, 2.0];
+        input.ratio = [1.0; 2];
+        input.rebase = true;
+        let bytes = OffsetParameterBytes::try_new(input, &Account::for_test()).unwrap();
+        assert_eq!(&bytes.as_bytes()[64..72], &[0, 0, 0, 0, 1, 0, 0, 0]);
+        for (translation, ratio, sampling) in [
+            ([0.5, 1.0], [1.0; 2], 0),
+            ([0.0; 2], [0.5, 1.0], 0),
+            ([0.0; 2], [1.0; 2], 1),
+        ] {
+            let mut input = facts();
+            input.translation = translation;
+            input.ratio = ratio;
+            input.sampling = sampling;
+            input.rebase = true;
+            assert!(OffsetParameterBytes::try_new(input, &Account::for_test()).is_err());
+        }
+    }
+
+    #[test]
+    fn offset_wire_refuses_invalid_narrowing_and_domains_before_serialization() {
+        for invalid in 0..9 {
+            let mut input = facts();
+            match invalid {
+                0 => input.translation[0] = f64::INFINITY,
+                1 => input.translation[0] = f64::MIN_POSITIVE,
+                2 => input.translation[0] = f64::from(f32::MIN_POSITIVE) / 2.0,
+                3 => input.ratio[1] = 0.0,
+                4 => input.source_clip[2] = 8.0,
+                5 => input.result_clip[0] = -0.25,
+                6 => input.result_clip[3] = input.result_clip[1] - 0.125,
+                7 => input.source_extent[0] = 8_388_609,
+                _ => input.sampling = 4,
+            }
+            let mut context = crate::RenderAccountingContext::default();
+            let result = context.run(
+                crate::RenderAttemptKind::Frame,
+                crate::RenderPhase::GpuPrepare,
+                |account| OffsetParameterBytes::try_new(input, account),
+            );
+            assert!(result.is_err(), "case {invalid}");
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::SerializedBytes),
+                0,
+                "case {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn offset_wire_admits_exactly_one_fixed_block_with_no_coefficient_work() {
+        for (limit, succeeds) in [(255, false), (256, true)] {
+            let limits = crate::RenderLimits::new()
+                .with_work_limit(RenderWork::SerializedBytes, limit)
+                .unwrap();
+            let mut context = crate::RenderAccountingContext::new(
+                crate::RenderAccountingOptions::default().with_limits(limits),
+            );
+            let result = context.run(
+                crate::RenderAttemptKind::Frame,
+                crate::RenderPhase::GpuPrepare,
+                |account| OffsetParameterBytes::try_new(facts(), account),
+            );
+            assert_eq!(result.is_ok(), succeeds);
+            let report = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(
+                report.usage().work(RenderWork::SerializedBytes),
+                if succeeds { 256 } else { 0 }
+            );
+            assert_eq!(report.usage().work(RenderWork::KernelSampleVisits), 0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod rebased_composite_parameter_tests {
+    use super::*;
+
+    fn facts(origin: f64) -> CompositeParameterFacts {
+        CompositeParameterFacts {
+            affine: [1.0, 0.0, 0.0, 1.0, origin, 0.0],
+            source_space: CompositeSourceSpace::LayerLocal,
+            opacity: 1.0,
+            composition: LayerComposition::from_blend(BlendMode::Normal),
+            has_clip: false,
+            mask: Some(CompositeMaskParameterFacts {
+                bounds: [origin, 0.0, 2.0, 1.0],
+                dimensions: [2, 1],
+                texel_center_facts: [0.25, 0.5, 0.5, 1.0],
+                sampling: ShaderMaskSamplingKey::with_rendering(
+                    crate::ImageQuality::Medium,
+                    None,
+                    crate::Extend::Reflect,
+                ),
+                value: crate::layer::MaskValue::Alpha,
+                application: crate::layer::MaskApplication::Attenuate,
+            }),
+            source: CompositeGridFacts {
+                origin: [origin, 0.0],
+                scale: 1.0,
+                extent: [2, 1],
+            },
+            destination: CompositeGridFacts {
+                origin: [0.0; 2],
+                scale: 1.0,
+                extent: [2, 1],
+            },
+        }
+    }
+
+    #[test]
+    fn composite_wire_rebases_both_source_and_mask_before_large_origins_narrow() {
+        for origin in [0.0, 100_000_000.0, -100_000_000.0, 1.0e100] {
+            let bytes =
+                CompositeParameterBytes::try_from_facts(facts(origin), &Account::for_test())
+                    .unwrap();
+            let words = bytes
+                .as_bytes()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|word| u32::from_le_bytes(*word))
+                .collect::<Vec<_>>();
+            let expected = [
+                1.0_f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 1.0,
+            ]
+            .map(f32::to_bits);
+            assert_eq!(&words[..12], expected, "origin {origin}");
+            assert_eq!(&words[12..16], &[2, 1, 0, 0]);
+            assert_eq!(&words[16..20], [0.25_f32, 0.5, 0.5, 1.0].map(f32::to_bits));
+        }
+    }
+
+    #[test]
+    fn composite_wire_composes_destination_origin_scale_and_source_grid_independently() {
+        let mut input = facts(100_000_000.0);
+        input.affine = [2.0, 0.0, 0.0, 3.0, 100_000_000.0, 0.0];
+        input.source.scale = 4.0;
+        input.destination.origin = [1.5, 2.0];
+        input.destination.scale = 2.0;
+        let bytes = CompositeParameterBytes::try_from_facts(input, &Account::for_test()).unwrap();
+        let float = |offset: usize| {
+            f32::from_le_bytes(bytes.as_bytes()[offset..offset + 4].try_into().unwrap())
+        };
+        // Source: ((2*x+origin,3*y)-source_origin)*4 at destination O+p/2.
+        assert_eq!(
+            [float(0), float(12), float(16), float(20)],
+            [4.0, 6.0, 12.0, 24.0]
+        );
+        // Mask normalization uses width2 and height1 rather than source scale4.
+        assert_eq!(
+            [float(32), float(44), float(24), float(28)],
+            [0.5, 1.5, 1.5, 6.0]
+        );
+    }
+
+    #[test]
+    fn composite_wire_refuses_reachable_overflow_singular_narrowing_and_invalid_grid_before_bytes()
+    {
+        for invalid in 0..7 {
+            let mut input = facts(0.0);
+            match invalid {
+                0 => input.source.scale = f64::from(f32::MIN_POSITIVE) / 2.0,
+                1 => input.destination.scale = f64::from(f32::MAX),
+                2 => {
+                    input.affine = [
+                        f64::from(f32::MAX) / 4.0,
+                        0.0,
+                        -f64::from(f32::MAX) / 4.0,
+                        f64::from(f32::MAX) / 8.0,
+                        0.0,
+                        0.0,
+                    ];
+                    input.destination.extent = [16; 2];
+                }
+                3 => input.affine = [1.0, 1.0, 1.0, 1.0 + 1.0e-10, 0.0, 0.0],
+                4 => input.mask.as_mut().unwrap().dimensions[0] = (i32::MAX / 2) as u32 + 1,
+                5 => {
+                    input.mask.as_mut().unwrap().texel_center_facts[2] =
+                        f64::from(f32::MIN_POSITIVE)
+                }
+                _ => input.destination.extent[0] = i32::MAX as u32,
+            }
+            let mut context = crate::RenderAccountingContext::default();
+            let result = context.run(
+                crate::RenderAttemptKind::Frame,
+                crate::RenderPhase::GpuPrepare,
+                |account| CompositeParameterBytes::try_from_facts(input, account),
+            );
+            assert!(result.is_err(), "case {invalid}");
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::SerializedBytes),
+                0,
+                "case {invalid}"
+            );
+        }
     }
 }

@@ -810,7 +810,7 @@ mod tests {
                 crate::ConvolutionInput::new(kernel)
                     .with_order(1.0, None)
                     .with_unit_length(2.0e38, None),
-                crate::ConvolutionDomains::try_new(domain, domain, domain).unwrap(),
+                crate::FilterDomains::try_new(domain, domain, domain).unwrap(),
                 crate::FilterColorSpace::Srgb,
                 accounting,
             )
@@ -883,8 +883,7 @@ mod tests {
                 .with_order(kernel.len() as f64, Some(1.0))
                 .with_divisor(1.0)
                 .with_bias(0.25),
-            crate::ConvolutionDomains::try_new(source, Rect::new(0.0, 0.0, 16.0, 16.0), result)
-                .unwrap(),
+            crate::FilterDomains::try_new(source, Rect::new(0.0, 0.0, 16.0, 16.0), result).unwrap(),
             crate::FilterColorSpace::Srgb,
             &mut accounting,
         )
@@ -940,7 +939,7 @@ mod tests {
                 crate::ConvolutionInput::new(&[1.0])
                     .with_order(1.0, None)
                     .with_bias(0.5),
-                crate::ConvolutionDomains::try_new(source, filter, result).unwrap(),
+                crate::FilterDomains::try_new(source, filter, result).unwrap(),
                 crate::FilterColorSpace::Srgb,
                 &mut accounting,
             )
@@ -976,7 +975,7 @@ mod tests {
             crate::ConvolutionInput::new(&[1.0])
                 .with_order(1.0, None)
                 .with_unit_length(2.0, Some(1.0)),
-            crate::ConvolutionDomains::try_new(domain, union, domain).unwrap(),
+            crate::FilterDomains::try_new(domain, union, domain).unwrap(),
             crate::FilterColorSpace::Srgb,
             &mut accounting,
         )

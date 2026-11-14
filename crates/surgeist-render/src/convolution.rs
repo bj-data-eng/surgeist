@@ -3,7 +3,7 @@ use crate::accounting::{
     Account, AccountedVec, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
     SharedValue,
 };
-use crate::{Error, Rect, Result};
+use crate::{Error, FilterDomains, Result};
 
 /// Numeric working space selected by the resolved filter consumer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,8 +30,6 @@ pub enum ConvolutionEdgeMode {
 /// Parameter whose resolved value is invalid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConvolutionParameter {
-    /// A source, filter or result rectangle coordinate.
-    DomainCoordinate,
     /// Numeric horizontal order before truncation.
     OrderX,
     /// Numeric vertical order before truncation.
@@ -84,42 +82,6 @@ pub enum ConvolutionPreparationError {
         /// Supplied or intermediate value at that boundary.
         value: f64,
     },
-}
-
-/// Independent source, hard filter and primitive-result domains in layer-local units.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ConvolutionDomains {
-    source: Rect,
-    filter: Rect,
-    result: Rect,
-}
-impl ConvolutionDomains {
-    /// Checks finite origins, nonnegative extents and representable maxima. Empty domains are valid.
-    pub fn try_new(source: Rect, filter: Rect, result: Rect) -> Result<Self> {
-        for rect in [source, filter, result] {
-            validate_domain(rect)?;
-        }
-        Ok(Self {
-            source,
-            filter,
-            result,
-        })
-    }
-    /// Returns the semantic primary-input domain.
-    #[must_use]
-    pub const fn source(self) -> Rect {
-        self.source
-    }
-    /// Returns the hard filter region applied before neighborhood sampling.
-    #[must_use]
-    pub const fn filter(self) -> Rect {
-        self.filter
-    }
-    /// Returns the independently clipped primitive-result region.
-    #[must_use]
-    pub const fn result(self) -> Rect {
-        self.result
-    }
 }
 
 /// Borrowed untrusted numeric attributes. Builders retain no coefficient allocation.
@@ -206,7 +168,7 @@ impl PartialEq for PreparedConvolution {
 }
 #[derive(Debug, PartialEq)]
 struct ConvolutionData {
-    domains: ConvolutionDomains,
+    domains: FilterDomains,
     order: [u32; 2],
     operation: PreparedOperation,
 }
@@ -245,7 +207,7 @@ impl PreparedConvolution {
             )?),
         })
     }
-    pub(crate) fn domains(&self) -> ConvolutionDomains {
+    pub(crate) fn domains(&self) -> FilterDomains {
         self.data.domains
     }
     pub(crate) fn order(&self) -> [u32; 2] {
@@ -323,7 +285,7 @@ impl PreparedConvolution {
 /// error bound against real arithmetic. No device identity is retained here.
 pub fn prepare_convolution(
     input: ConvolutionInput<'_>,
-    domains: ConvolutionDomains,
+    domains: FilterDomains,
     color_space: FilterColorSpace,
     accounting: &mut RenderAccountingContext,
 ) -> Result<PreparedConvolution> {
@@ -333,7 +295,7 @@ pub fn prepare_convolution(
         |account| {
             account.phase(RenderPhase::Preparation, || {
                 account.work(RenderWork::FilterOperationVisits, 1)?;
-                for rect in [domains.source, domains.filter, domains.result] {
+                for rect in [domains.source(), domains.filter(), domains.result()] {
                     for value in [
                         rect.origin().x(),
                         rect.origin().y(),
@@ -344,7 +306,11 @@ pub fn prepare_convolution(
                     ] {
                         account.work(RenderWork::CoordinateVisits, 1)?;
                         if !value.is_finite() {
-                            return Err(invalid(ConvolutionParameter::DomainCoordinate, value));
+                            return Err(Error::invalid_value(
+                                "filter domain coordinate",
+                                value,
+                                "must be finite",
+                            ));
                         }
                     }
                 }
@@ -461,24 +427,6 @@ pub fn prepare_convolution(
             })
         },
     )
-}
-fn validate_domain(rect: Rect) -> Result<()> {
-    for value in [
-        rect.origin().x(),
-        rect.origin().y(),
-        rect.max().x(),
-        rect.max().y(),
-    ] {
-        if !value.is_finite() {
-            return Err(invalid(ConvolutionParameter::DomainCoordinate, value));
-        }
-    }
-    for value in [rect.width(), rect.height()] {
-        if !value.is_finite() || value < 0.0 {
-            return Err(invalid(ConvolutionParameter::DomainCoordinate, value));
-        }
-    }
-    Ok(())
 }
 fn order(value: f64, parameter: ConvolutionParameter, account: &Account) -> Result<u32> {
     account.work(RenderWork::CoordinateVisits, 1)?;

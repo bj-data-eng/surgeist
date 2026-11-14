@@ -114,6 +114,7 @@ use super::pipeline::{
     create_core_pass_bind_group_layout, create_core_pass_render_pipeline,
     create_core_pass_shader_module, create_drop_shadow_colorize_bind_group_layout,
     create_drop_shadow_colorize_render_pipeline, create_drop_shadow_colorize_shader_module,
+    create_offset_bind_group_layout, create_offset_render_pipeline, create_offset_shader_module,
     create_sampler,
 };
 use super::validate::{
@@ -121,11 +122,12 @@ use super::validate::{
     CompositePassDescription, CompositePassKeyRefs, ConvolutionPassDescription,
     ConvolutionPassKeyRefs, CopyBackdropPassDescription, CopyBackdropPassKeyRefs, CorePassKeyRefs,
     CorePassProgram, DropShadowColorizePassDescription, DropShadowColorizePassKeyRefs,
-    blur_cache_error, color_filter_cache_error, convolution_cache_error, copy_backdrop_cache_error,
-    core_pass_cache_error, drop_shadow_cache_error, validate_blur_pass_keys,
+    OffsetPassDescription, OffsetPassKeyRefs, blur_cache_error, color_filter_cache_error,
+    convolution_cache_error, copy_backdrop_cache_error, core_pass_cache_error,
+    drop_shadow_cache_error, offset_cache_error, validate_blur_pass_keys,
     validate_color_filter_pass_keys, validate_composite_pass_keys, validate_convolution_pass_keys,
     validate_copy_backdrop_pass_keys, validate_core_pass_keys,
-    validate_drop_shadow_colorize_pass_keys,
+    validate_drop_shadow_colorize_pass_keys, validate_offset_pass_keys,
 };
 
 /// Non-clone handles created inside one checked GPU-operation scope. New entries
@@ -180,6 +182,14 @@ pub(crate) struct ProvisionalCompositePassObjects<'a> {
 /// Provisional convolution objects; all textures use explicit textureLoad.
 pub(crate) struct ProvisionalConvolutionPassObjects<'a> {
     description: ConvolutionPassDescription,
+    layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
+    shader: &'a OwnedGpu<wgpu::ShaderModule>,
+    pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
+}
+
+/// Provisional offset objects; all textures use explicit textureLoad.
+pub(crate) struct ProvisionalOffsetPassObjects<'a> {
+    description: OffsetPassDescription,
     layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
     shader: &'a OwnedGpu<wgpu::ShaderModule>,
     pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
@@ -626,6 +636,89 @@ impl ProvisionalDevicePassCacheUpdate {
         )
     }
 
+    pub(crate) fn realize_offset_pass<'a>(
+        &'a mut self,
+        device: &wgpu::Device,
+        cache: &'a DevicePassCache,
+        account: &Account,
+        keys: OffsetPassKeyRefs<'_>,
+    ) -> Result<ProvisionalOffsetPassObjects<'a>> {
+        if !Arc::ptr_eq(&self.cache_identity, &cache.identity) {
+            return Err(offset_cache_error(
+                "provisional offset objects belong to another device cache",
+            ));
+        }
+        let description = validate_offset_pass_keys(keys, Some(account))?;
+        if !contains(&cache.layouts, keys.layout, account)?
+            && !contains(&self.layouts, keys.layout, account)?
+        {
+            let slot = self.layouts.slot(&cache.cpu)?;
+            slot.write(
+                keys.layout.clone(),
+                create_offset_bind_group_layout(
+                    &cache.generation,
+                    &cache.cpu,
+                    Some(account),
+                    device,
+                )?,
+            );
+        }
+        if !contains(&cache.shaders, keys.shader, account)?
+            && !contains(&self.shaders, keys.shader, account)?
+        {
+            let slot = self.shaders.slot(&cache.cpu)?;
+            slot.write(
+                keys.shader.clone(),
+                create_offset_shader_module(&cache.generation, &cache.cpu, Some(account), device)?,
+            );
+        }
+        if !contains(&cache.pipelines, keys.pipeline, account)?
+            && !contains(&self.pipelines, keys.pipeline, account)?
+        {
+            let slot = self.pipelines.slot(&cache.cpu)?;
+            let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
+                .ok_or_else(|| {
+                offset_cache_error("offset bind-group layout realization was lost")
+            })?;
+            let shader_handle = lookup_pair(&self.shaders, &cache.shaders, keys.shader, account)?
+                .ok_or_else(|| {
+                offset_cache_error("offset shader-module realization was lost")
+            })?;
+            let created = create_offset_render_pipeline(
+                &cache.generation,
+                &cache.cpu,
+                Some(account),
+                device,
+                description,
+                layout_handle,
+                shader_handle,
+            )?;
+            slot.write(keys.pipeline.clone(), created);
+        }
+        self.offset_pass_objects(cache, account, keys)
+    }
+
+    pub(crate) fn offset_encoding_objects<'a>(
+        &'a self,
+        cache: &'a DevicePassCache,
+        account: &Account,
+        samplers: &[SamplerKey],
+        layout: &BindGroupLayoutKey,
+        shader: &ShaderModuleKey,
+        pipeline: &RenderPipelineKey,
+    ) -> Result<ProvisionalOffsetPassObjects<'a>> {
+        self.offset_pass_objects(
+            cache,
+            account,
+            OffsetPassKeyRefs {
+                samplers,
+                layout,
+                shader,
+                pipeline,
+            },
+        )
+    }
+
     pub(crate) fn realize_color_filter_pass<'a>(
         &'a mut self,
         device: &wgpu::Device,
@@ -981,6 +1074,26 @@ impl ProvisionalDevicePassCacheUpdate {
             })?;
         Ok(ProvisionalConvolutionPassObjects {
             description: validate_convolution_pass_keys(keys, Some(account))?,
+            layout,
+            shader,
+            pipeline,
+        })
+    }
+
+    fn offset_pass_objects<'a>(
+        &'a self,
+        cache: &'a DevicePassCache,
+        account: &Account,
+        keys: OffsetPassKeyRefs<'_>,
+    ) -> Result<ProvisionalOffsetPassObjects<'a>> {
+        let layout = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
+            .ok_or_else(|| offset_cache_error("offset bind-group layout realization was lost"))?;
+        let shader = lookup_pair(&self.shaders, &cache.shaders, keys.shader, account)?
+            .ok_or_else(|| offset_cache_error("offset shader-module realization was lost"))?;
+        let pipeline = lookup_pair(&self.pipelines, &cache.pipelines, keys.pipeline, account)?
+            .ok_or_else(|| offset_cache_error("offset render-pipeline realization was lost"))?;
+        Ok(ProvisionalOffsetPassObjects {
+            description: validate_offset_pass_keys(keys, Some(account))?,
             layout,
             shader,
             pipeline,
@@ -1354,6 +1467,21 @@ impl ProvisionalCompositePassObjects<'_> {
 }
 
 impl ProvisionalConvolutionPassObjects<'_> {
+    pub(crate) fn require_encoding_ready(&self) -> Result<()> {
+        let _ = (self.description, self.layout, self.shader, self.pipeline);
+        Ok(())
+    }
+
+    pub(crate) const fn bind_group_layout(&self) -> &OwnedGpu<wgpu::BindGroupLayout> {
+        self.layout
+    }
+
+    pub(crate) const fn render_pipeline(&self) -> &OwnedGpu<wgpu::RenderPipeline> {
+        self.pipeline
+    }
+}
+
+impl ProvisionalOffsetPassObjects<'_> {
     pub(crate) fn require_encoding_ready(&self) -> Result<()> {
         let _ = (self.description, self.layout, self.shader, self.pipeline);
         Ok(())

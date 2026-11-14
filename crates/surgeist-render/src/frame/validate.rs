@@ -16,6 +16,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_backdrop_metadata(graph, account)?;
     validate_import_metadata(graph, account)?;
     validate_convolution_metadata(graph, account)?;
+    validate_offset_metadata(graph, account)?;
     if any_node(&graph.passes, account, |pass| {
         Ok(
             matches!(pass.intent, SemanticPassIntent::VelloCapture { .. })
@@ -254,14 +255,135 @@ fn validate_convolution_metadata(
     }
     // Metadata cannot omit a pass with a convolution intent.
     let mut count = 0_usize;
+    let mut offset_count = 0_usize;
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if matches!(pass.intent, SemanticPassIntent::Convolution(_)) {
             count += 1;
         }
+        if matches!(pass.intent, SemanticPassIntent::Offset(_)) {
+            offset_count += 1;
+        }
     }
     if count != graph.convolutions.len() {
         return Err(GraphValidationError::InvalidPassArity);
+    }
+    if offset_count != graph.offsets.len() {
+        return Err(GraphValidationError::InvalidPassArity);
+    }
+    Ok(())
+}
+
+fn validate_offset_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
+    use super::{
+        bounds::NonEmptyFrameSpatialPlan,
+        offset::{OffsetMapping, OffsetStage},
+    };
+    let mut previous = None;
+    for (index, entry) in graph.offsets.iter().enumerate() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if previous.is_some_and(|pass| pass >= entry.pass.index.0) {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        previous = Some(entry.pass.index.0);
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let pass = graph
+            .passes
+            .get(entry.pass.index.as_usize()?)
+            .filter(|pass| pass.id == entry.pass)
+            .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+        if pass.intent != SemanticPassIntent::Offset(entry.stage) || pass.reads.len() != 1 {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        let source = pass.reads[0];
+        let SemanticPassResult::Resource(result) = pass.result else {
+            return Err(GraphValidationError::InvalidPassArity);
+        };
+        account.work(RenderWork::GraphNodeVisits, 2)?;
+        let source_descriptor = graph
+            .resources
+            .get(source.index.as_usize()?)
+            .filter(|resource| resource.id == source)
+            .ok_or(GraphValidationError::UnknownResource(source))?
+            .descriptor;
+        let result_descriptor = graph
+            .resources
+            .get(result.index.as_usize()?)
+            .filter(|resource| resource.id == result)
+            .ok_or(GraphValidationError::UnknownResource(result))?
+            .descriptor;
+        let spatial =
+            |descriptor: super::graph::SemanticResourceDescriptor| NonEmptyFrameSpatialPlan {
+                logical_bounds: descriptor.logical_bounds,
+                device_origin: descriptor.device_origin,
+                device_extent: descriptor.device_extent,
+                raster_scale: descriptor.texel_center_mapping.raster_scale,
+                texel_center_mapping: descriptor.texel_center_mapping,
+            };
+        let domains = entry.operation.domains();
+        let d = super::convolution::intersection(domains.source(), domains.filter());
+        let o = super::convolution::intersection(domains.result(), domains.filter());
+        if source == result || result_descriptor.role != SemanticResourceRole::FilterIntermediate {
+            return Err(GraphValidationError::InvalidPassResultRole);
+        }
+        let expected = match entry.stage {
+            OffsetStage::Sample => {
+                if source_descriptor.logical_bounds.rect() != d
+                    || result_descriptor.logical_bounds.rect() != o
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+                OffsetMapping::try_new(
+                    &entry.operation,
+                    spatial(source_descriptor),
+                    spatial(result_descriptor),
+                    account,
+                )?
+                .ok_or(GraphValidationError::InvalidPassArity)?
+            }
+            OffsetStage::RebaseSource => {
+                let source_bounds = source_descriptor.logical_bounds.rect();
+                if source_descriptor.role != SemanticResourceRole::CompositeResult
+                    || result_descriptor.logical_bounds.rect() != d
+                    || source_bounds.x() > d.x()
+                    || source_bounds.y() > d.y()
+                    || source_bounds.max().x() < d.max().x()
+                    || source_bounds.max().y() < d.max().y()
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let next = graph
+                    .offsets
+                    .get(index + 1)
+                    .ok_or(GraphValidationError::InvalidPassArity)?;
+                if next.operation != entry.operation
+                    || next.stage != OffsetStage::Sample
+                    || Some(next.pass.index.0) != entry.pass.index.0.checked_add(1)
+                {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let next_pass = graph
+                    .passes
+                    .get(next.pass.index.as_usize()?)
+                    .filter(|pass| pass.id == next.pass)
+                    .ok_or(GraphValidationError::UnknownPass(next.pass))?;
+                if !edges_equal(&next_pass.reads, &[result], account)? {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
+                OffsetMapping::try_rebase(
+                    &entry.operation,
+                    spatial(source_descriptor),
+                    spatial(result_descriptor),
+                    account,
+                )?
+            }
+        };
+        if expected != entry.mapping {
+            return Err(GraphValidationError::InvalidPassResultRole);
+        }
     }
     Ok(())
 }

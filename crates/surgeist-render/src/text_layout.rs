@@ -7,7 +7,7 @@ pub use leader::{
 };
 
 use crate::accounting::{
-    Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+    Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderResource, RenderWork,
 };
 use std::mem::size_of;
 
@@ -363,13 +363,19 @@ fn prepare_inner<'a>(
     }
     if layered {
         let layer = Layer::new().with_transform(placement);
+        // This authored metadata box is part of the prepared scene's actual
+        // transferred backing, independently of its command-vector storage.
+        let layer_hold = account
+            .acquire(RenderResource::RetainedCpuBytes, size_of::<Layer>())?
+            .into_preparation()?;
         commands.push(Command::Layer {
-            layer,
+            layer: Box::new(layer),
             children: decoration_commands
                 .into_preparation()?
                 .into_retained()
                 .into(),
         })?;
+        layer_hold.retain();
     }
     // These actual buffers are disposed before their custody can leave the builder.
     drop(glyphs);

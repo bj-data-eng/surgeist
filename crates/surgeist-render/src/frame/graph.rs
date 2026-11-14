@@ -2,6 +2,7 @@ use super::convolution::{
     ConvolutionMapping, ConvolutionStage, empty_source_spatial, intersection, require_spatial,
     source_domain_is_empty,
 };
+use super::offset::{OffsetMapping, OffsetStage};
 use crate::accounting::{Account, AccountedVec, RenderWork, SharedValue};
 use std::ops::ControlFlow;
 #[cfg(test)]
@@ -178,6 +179,7 @@ pub(super) enum SemanticPassIntent {
     },
     DropShadowColorize,
     Convolution(ConvolutionStage),
+    Offset(OffsetStage),
     Composite,
     Present,
 }
@@ -487,6 +489,14 @@ pub(super) struct SemanticConvolutionPlan {
     pub(super) stage: ConvolutionStage,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SemanticOffsetPlan {
+    pub(super) pass: SemanticPassId,
+    pub(super) operation: crate::PreparedOffset,
+    pub(super) mapping: OffsetMapping,
+    pub(super) stage: OffsetStage,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SemanticBackdropRead {
     pub(super) pass: SemanticPassId,
@@ -519,6 +529,7 @@ pub(crate) struct GpuRenderGraph {
     pub(super) composites: AccountedVec<SemanticCompositePlan>,
     pub(super) filter_steps: AccountedVec<SemanticFilterStepPlan>,
     pub(super) convolutions: AccountedVec<SemanticConvolutionPlan>,
+    pub(super) offsets: AccountedVec<SemanticOffsetPlan>,
     pub(super) backdrop_reads: AccountedVec<SemanticBackdropRead>,
     pub(super) imports: AccountedVec<SemanticImportPlan>,
 }
@@ -799,6 +810,7 @@ impl SemanticGraphBuilder {
             | SemanticPassIntent::BlurVertical { .. }
             | SemanticPassIntent::DropShadowColorize
             | SemanticPassIntent::Convolution(_)
+            | SemanticPassIntent::Offset(_)
             | SemanticPassIntent::Composite => {
                 self.validate_transform_pass_shape(intent, reads, result)?;
             }
@@ -917,6 +929,7 @@ impl SemanticGraphBuilder {
             SemanticPassIntent::DropShadowColorize => SemanticResourceRole::ShadowImage,
             SemanticPassIntent::Composite => SemanticResourceRole::CompositeResult,
             SemanticPassIntent::CanonicalizeCapture
+            | SemanticPassIntent::Offset(_)
             | SemanticPassIntent::ColorFilter
             | SemanticPassIntent::BlurHorizontal { .. }
             | SemanticPassIntent::BlurVertical { .. } => SemanticResourceRole::FilterIntermediate,
@@ -1197,6 +1210,7 @@ impl SemanticGraphBuilder {
             composites: self.account.retained(0)?,
             filter_steps: self.account.retained(0)?,
             convolutions: self.account.retained(0)?,
+            offsets: self.account.retained(0)?,
             backdrop_reads: self.account.retained(0)?,
             imports: self.account.retained(0)?,
         })
@@ -1381,6 +1395,7 @@ pub(super) struct SemanticFrameGraphPlanner<'a> {
     composites: AccountedVec<SemanticCompositePlan>,
     filter_steps: AccountedVec<SemanticFilterStepPlan>,
     convolutions: AccountedVec<SemanticConvolutionPlan>,
+    offsets: AccountedVec<SemanticOffsetPlan>,
     backdrop_reads: AccountedVec<SemanticBackdropRead>,
     imports: AccountedVec<SemanticImportPlan>,
     resolved_mask_imports: AccountedVec<(ResolvedMaskUploadKey, PlannedGraphResource)>,
@@ -1431,6 +1446,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             composites: account.retained(0)?,
             filter_steps: account.retained(0)?,
             convolutions: account.retained(0)?,
+            offsets: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1492,6 +1508,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.composites = planner.composites;
         graph.filter_steps = planner.filter_steps;
         graph.convolutions = planner.convolutions;
+        graph.offsets = planner.offsets;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1531,6 +1548,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             composites: account.retained(0)?,
             filter_steps: account.retained(0)?,
             convolutions: account.retained(0)?,
+            offsets: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1632,6 +1650,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.composites = planner.composites;
         graph.filter_steps = planner.filter_steps;
         graph.convolutions = planner.convolutions;
+        graph.offsets = planner.offsets;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1714,6 +1733,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         "frame partition classified a non-layer command as a custom boundary",
                     ));
                 };
+                // Qualification and group completion own their metadata copy;
+                // another normalized scene may still share the sealed payload.
+                let layer = (*layer).clone();
                 let layer_transform = layer
                     .transform
                     .then_in(frame.state.capture_transform, self.account)?;
@@ -1829,6 +1851,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             operation,
                         )) => {
                             self.prepare_convolution_source(children, operation, layer_to_surface)?
+                        }
+                        Some(crate::command::NormalizedForegroundEffect::Offset(operation)) => {
+                            self.prepare_offset_source(children, operation, layer_to_surface)?
                         }
                         _ => self.prepare_layer_source(
                             children,
@@ -2013,14 +2038,23 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             source_forced_empty,
             source_is_coverage,
         } = completion;
-        let empty_convolution_source = layer.foreground_filters.as_ref().is_some_and(|effect| {
-            matches!(effect, crate::command::NormalizedForegroundEffect::Convolution(operation)
-                if source_domain_is_empty(operation))
-        });
+        let empty_filter_source =
+            layer
+                .foreground_filters
+                .as_ref()
+                .is_some_and(|effect| match effect {
+                    crate::command::NormalizedForegroundEffect::Convolution(operation) => {
+                        source_domain_is_empty(operation)
+                    }
+                    crate::command::NormalizedForegroundEffect::Offset(operation) => {
+                        super::offset::domains_are_empty(operation)
+                    }
+                    crate::command::NormalizedForegroundEffect::Css(_) => false,
+                });
         if let Some(backdrop) = layer
             .backdrop
             .as_ref()
-            .filter(|_| !source_forced_empty && !empty_convolution_source)
+            .filter(|_| !source_forced_empty && !empty_filter_source)
         {
             source = self.plan_backdrop_group(
                 backdrop,
@@ -2045,6 +2079,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 }
                 crate::command::NormalizedForegroundEffect::Convolution(operation) => {
                     self.apply_convolution(group, operation, layer_to_surface)?
+                }
+                crate::command::NormalizedForegroundEffect::Offset(operation) => {
+                    self.apply_offset(group, operation, layer_to_surface)?
                 }
             };
         }
@@ -2157,6 +2194,134 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             },
         )?;
         Ok(ControlFlow::Continue(frame))
+    }
+
+    fn prepare_offset_source(
+        &mut self,
+        children: RenderCommands,
+        operation: &crate::PreparedOffset,
+        raster_transform: Transform,
+    ) -> Result<PreparedLayerSource> {
+        if super::offset::domains_are_empty(operation) {
+            return Ok(ControlFlow::Break(None));
+        }
+        let domains = operation.domains();
+        let spatial = super::offset::require_spatial(
+            self.context,
+            intersection(domains.source(), domains.filter()),
+            raster_transform,
+        )?;
+        let result = super::offset::require_spatial(
+            self.context,
+            intersection(domains.result(), domains.filter()),
+            raster_transform,
+        )?;
+        if OffsetMapping::try_new(operation, spatial, result, self.account)?.is_none() {
+            return Ok(ControlFlow::Break(None));
+        }
+        let parent = self.declare_transparent_parent(spatial)?;
+        let frame = self.command_frame(
+            children,
+            parent,
+            SemanticCommandPlanningState {
+                parent_locality: CaptureParentLocality::CaptureLocal,
+                span_scope: SemanticVelloSpanScope::LayerSource,
+                capture_transform: Transform::identity(),
+                parent_to_surface: raster_transform,
+                capture_space: CaptureBoundsCoordinateSpace::Local,
+                outer_clips: shared_copy(&[], self.account)?,
+            },
+        )?;
+        Ok(ControlFlow::Continue(frame))
+    }
+
+    fn apply_offset(
+        &mut self,
+        mut source: PlannedGraphResource,
+        operation: &crate::PreparedOffset,
+        raster_transform: Transform,
+    ) -> Result<Option<PlannedGraphResource>> {
+        self.account.work(RenderWork::FilterOperationVisits, 1)?;
+        if super::offset::domains_are_empty(operation) {
+            return Ok(None);
+        }
+        let domains = operation.domains();
+        let required_source = super::offset::require_spatial(
+            self.context,
+            intersection(domains.source(), domains.filter()),
+            raster_transform,
+        )?;
+        let result_spatial = super::offset::require_spatial(
+            self.context,
+            intersection(domains.result(), domains.filter()),
+            raster_transform,
+        )?;
+        let Some(mapping) =
+            OffsetMapping::try_new(operation, required_source, result_spatial, self.account)?
+        else {
+            return Ok(None);
+        };
+        if source.spatial != required_source {
+            let mapping = OffsetMapping::try_rebase(
+                operation,
+                source.spatial,
+                required_source,
+                self.account,
+            )?;
+            source = self.declare_offset_pass(
+                source,
+                required_source,
+                operation,
+                mapping,
+                OffsetStage::RebaseSource,
+            )?;
+        }
+        self.declare_offset_pass(
+            source,
+            result_spatial,
+            operation,
+            mapping,
+            OffsetStage::Sample,
+        )
+        .map(Some)
+    }
+
+    fn declare_offset_pass(
+        &mut self,
+        source: PlannedGraphResource,
+        spatial: NonEmptyFrameSpatialPlan,
+        operation: &crate::PreparedOffset,
+        mapping: OffsetMapping,
+        stage: OffsetStage,
+    ) -> Result<PlannedGraphResource> {
+        // Admit the actual metadata slot before declaring its graph effects.
+        self.offsets.grow(1)?;
+        let result = graph_build(
+            self.builder
+                .declare_resource(SemanticResourceDescriptor::new(
+                    SemanticResourceRole::FilterIntermediate,
+                    spatial,
+                    0,
+                )),
+        )?;
+        let pass = graph_build(self.builder.declare_pass(
+            SemanticPassIntent::Offset(stage),
+            &dependencies_for(&[source], self.account)?,
+            &[source.id],
+            SemanticPassResult::Resource(result),
+        ))?;
+        self.offsets.push(SemanticOffsetPlan {
+            pass,
+            operation: *operation,
+            mapping,
+            stage,
+        })?;
+        Ok(PlannedGraphResource {
+            id: result,
+            producer: Some(pass),
+            logical_bounds: spatial.logical_bounds,
+            spatial,
+        })
     }
 
     fn apply_convolution(

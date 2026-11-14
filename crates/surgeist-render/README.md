@@ -26,6 +26,11 @@ The [convolution contract](docs/convolution.md) describes parameter admission,
 source and result domains, anisotropic grids, edge modes, color and alpha math,
 precision, accounting and typed refusals.
 
+Prepared [native offset](docs/offset.md) translates the captured input inside
+independent source, filter and result domains. It preserves numeric
+premultiplied color and the full outer affine, with exact aligned copies and
+explicit fractional reconstruction for each ImageRendering hint.
+
 Ordinary linear and positive elliptical radial paints preserve ordered finite
 `f64` stop positions, exterior colors and coincident steps. Repeating fields
 share the stop primitive and choose a solid premultiplied-sRGBA average when
@@ -114,6 +119,7 @@ and the full first-success walkthrough.
 | [How-to](docs/how-to.md) | Exercise native presentation and check the browser compilation boundary. |
 | [Reference](docs/reference.md) | Find public interfaces, features, diagnostics, and verification commands. |
 | [Native convolution](docs/convolution.md) | Prepare and execute resolved convolution with explicit domains, grids and numeric policy. |
+| [Native offset](docs/offset.md) | Translate finite captured images with independent clipping and resolved reconstruction intent. |
 | [Explanation](docs/explanation.md) | Understand execution routes, publication, precision, and ownership. |
 
 ## License and attribution

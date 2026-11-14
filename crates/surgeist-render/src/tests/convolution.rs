@@ -1,9 +1,9 @@
 //! Independent fixtures through the public admitted-convolution receiver and real GPU readback.
 //! Readback pixels are straight RGBA8; comments distinguish premultiplied equations.
 use crate::{
-    Color, ConvolutionDomains, ConvolutionEdgeMode, ConvolutionInput, FilterAmount,
-    FilterColorSpace, FilterList, FilterOp, Image, ImageBuffer, ImageFit, ImageQuality, Layer,
-    Options, Parameters, PreparedConvolution, Rect, RenderAccountingContext, RenderRoute, Renderer,
+    Color, ConvolutionEdgeMode, ConvolutionInput, FilterAmount, FilterColorSpace, FilterDomains,
+    FilterList, FilterOp, Image, ImageBuffer, ImageFit, ImageQuality, Layer, Options, Parameters,
+    PreparedConvolution, Rect, RenderAccountingContext, RenderRoute, Renderer,
     ResolvedLayerAlphaMask, Scene, Size, Surface, prepare_convolution,
 };
 
@@ -18,7 +18,7 @@ pub(super) fn operation(
 ) -> PreparedConvolution {
     prepare_convolution(
         input,
-        ConvolutionDomains::try_new(domain, domain, domain).unwrap(),
+        FilterDomains::try_new(domain, domain, domain).unwrap(),
         color_space,
         &mut RenderAccountingContext::default(),
     )
@@ -76,6 +76,54 @@ pub(super) fn assert_pixel(output: &ImageBuffer, x: u32, y: u32, expected: [u8; 
             .all(|(a, e)| a.abs_diff(e) <= tolerance),
         "pixel ({x},{y}): {actual:?}, expected {expected:?} within {tolerance}"
     );
+}
+
+#[test]
+fn translated_nested_opacity_capture_uses_a_finite_native_layer_clip() {
+    let (mut renderer, mut surface) = renderer_and_surface(6, 6);
+    let source = Rect::new(1.0, 1.0, 3.0, 3.0);
+    let convolution = operation(
+        ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        source,
+        FilterColorSpace::Srgb,
+    );
+    let mut scene = Scene::new();
+    scene.layer(Layer::new().with_convolution(convolution), |children| {
+        children.layer(Layer::new().try_opacity(0.5).unwrap(), |nested| {
+            nested.fill(source, Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap());
+        });
+    });
+    let output = render(&mut renderer, &mut surface, &scene);
+    assert_pixel(&output, 2, 2, [255, 0, 0, 128], 2);
+    assert_pixel(&output, 0, 0, [0; 4], 1);
+}
+
+#[test]
+fn translated_nested_opacity_capture_preserves_an_authored_local_clip() {
+    let (mut renderer, mut surface) = renderer_and_surface(6, 6);
+    let source = Rect::new(1.0, 1.0, 3.0, 3.0);
+    let convolution = operation(
+        ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        source,
+        FilterColorSpace::Srgb,
+    );
+    let mut scene = Scene::new();
+    scene.layer(Layer::new().with_convolution(convolution), |children| {
+        children.layer(
+            Layer::new()
+                .try_opacity(0.5)
+                .unwrap()
+                .try_clip(crate::Shape::rect(Rect::new(2.0, 2.0, 1.0, 1.0)))
+                .unwrap(),
+            |nested| {
+                nested.fill(source, Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap());
+            },
+        );
+    });
+    let output = render(&mut renderer, &mut surface, &scene);
+    assert_pixel(&output, 2, 2, [255, 0, 0, 128], 2);
+    assert_pixel(&output, 1, 2, [0; 4], 1);
+    assert_pixel(&output, 2, 1, [0; 4], 1);
 }
 
 #[test]
@@ -491,7 +539,7 @@ fn public_convolution_gpu_negative_multiple_periods_and_empty_domains_are_define
                 .with_divisor(1.0)
                 .with_preserve_alpha(true)
                 .with_edge_mode(edge),
-            ConvolutionDomains::try_new(singleton, domain, singleton).unwrap(),
+            FilterDomains::try_new(singleton, domain, singleton).unwrap(),
             FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
         )
@@ -513,7 +561,7 @@ fn public_convolution_gpu_negative_multiple_periods_and_empty_domains_are_define
                 .with_order(1.0, None)
                 .with_bias(0.5)
                 .with_edge_mode(edge),
-            ConvolutionDomains::try_new(Rect::new(0.0, 0.0, 0.0, 1.0), domain, domain).unwrap(),
+            FilterDomains::try_new(Rect::new(0.0, 0.0, 0.0, 1.0), domain, domain).unwrap(),
             FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
         )

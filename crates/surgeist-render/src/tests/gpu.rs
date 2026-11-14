@@ -997,13 +997,27 @@ fn expected_composite_parameter_bytes_for_test() -> [u8; 112] {
     }
 
     let mut bytes = [0_u8; 112];
-    for (offset, value) in [0.48_f32, -0.16, 0.08, 0.64].into_iter().enumerate() {
-        write_f32(&mut bytes, offset * 4, value);
+    // A=[2,.5,-.25,1.5] has A^T A trace6.5625 and eigenvalue
+    // discriminant4.00390625. The captured child bounds[-1,.5,6,3]
+    // therefore start at device(-3,1) at densityrho; destination is origin0.
+    let rho = ((6.5625_f64 + 4.00390625_f64.sqrt()) / 2.0).sqrt();
+    for (offset, value) in [0.48 * rho, -0.16 * rho, 0.08 * rho, 0.64 * rho]
+        .into_iter()
+        .enumerate()
+    {
+        write_f32(&mut bytes, offset * 4, value as f32);
     }
-    write_f32(&mut bytes, 16, -1.12);
-    write_f32(&mut bytes, 20, 3.04);
-    for (offset, value) in [-2.5_f32, 1.25, 7.5, 3.75].into_iter().enumerate() {
-        write_f32(&mut bytes, 32 + offset * 4, value);
+    write_f32(&mut bytes, 16, (-1.12 * rho + 3.0) as f32);
+    write_f32(&mut bytes, 20, (3.04 * rho - 1.0) as f32);
+    // Mask normalization owns its separate origin and extents; it does not
+    // reuse the source-capture map or depend on source sampling space.
+    write_f32(&mut bytes, 24, (1.38_f64 / 7.5) as f32);
+    write_f32(&mut bytes, 28, (1.79_f64 / 3.75) as f32);
+    for (offset, value) in [0.48_f64 / 7.5, -0.16 / 3.75, 0.08 / 7.5, 0.64 / 3.75]
+        .into_iter()
+        .enumerate()
+    {
+        write_f32(&mut bytes, 32 + offset * 4, value as f32);
     }
     write_u32(&mut bytes, 48, 3);
     write_u32(&mut bytes, 52, 2);

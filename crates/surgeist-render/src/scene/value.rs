@@ -40,7 +40,7 @@ impl Clone for LayerCommands {
                         return Self(output);
                     };
                     parent.push(Command::Layer {
-                        layer: layer.clone(),
+                        layer: Box::new(layer.clone()),
                         children: Self(output),
                     });
                     output = parent;

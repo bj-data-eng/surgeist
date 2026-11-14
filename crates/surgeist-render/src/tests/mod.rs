@@ -15,6 +15,12 @@ mod image_sampling_graph;
 mod image_sampling_mask;
 mod model;
 mod nonseparable;
+#[cfg(not(target_arch = "wasm32"))]
+mod offset;
+#[cfg(not(target_arch = "wasm32"))]
+mod offset_accounting;
+#[cfg(not(target_arch = "wasm32"))]
+mod offset_transactions;
 mod outline;
 mod platform;
 mod porter_duff;

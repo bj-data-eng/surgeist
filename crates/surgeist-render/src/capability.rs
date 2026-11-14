@@ -232,6 +232,7 @@ impl Capabilities {
             gpu_blur_filter_execution: true,
             gpu_drop_shadow_filter_execution: true,
             gpu_convolution_filter_execution: true,
+            gpu_offset_filter_execution: true,
             filter_region_planning: true,
         },
         masks_clips: MaskClipCapabilities {
@@ -497,6 +498,9 @@ impl Capabilities {
             }
             PrimitiveOperation::GpuConvolutionFilterExecution => {
                 self.filters.supports_gpu_convolution_filter_execution()
+            }
+            PrimitiveOperation::GpuOffsetFilterExecution => {
+                self.filters.supports_gpu_offset_filter_execution()
             }
             PrimitiveOperation::FilterRegionPlanning => {
                 self.filters.supports_filter_region_planning()
@@ -961,7 +965,7 @@ impl ShadowCapabilities {
     }
 }
 
-/// Semantic support for authored filter lists, admitted native convolution and GPU execution phases.
+/// Semantic support for authored filter lists, admitted native filters and GPU execution phases.
 ///
 /// Each boolean distinguishes a supported operation from an unavailable one in
 /// the current rendering contract. The report is not a selected-device query or
@@ -974,6 +978,7 @@ pub struct FilterCapabilities {
     gpu_blur_filter_execution: bool,
     gpu_drop_shadow_filter_execution: bool,
     gpu_convolution_filter_execution: bool,
+    gpu_offset_filter_execution: bool,
     filter_region_planning: bool,
 }
 
@@ -1016,6 +1021,15 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_convolution_filter_execution(self) -> bool {
         self.gpu_convolution_filter_execution
+    }
+
+    /// Returns whether an admitted image-space offset executes through a native Layer on the GPU.
+    ///
+    /// Reconstruction preserves captured premultiplied color and follows the
+    /// resolved image-rendering hint. Actual device resources are checked at execution.
+    #[must_use]
+    pub const fn supports_gpu_offset_filter_execution(self) -> bool {
+        self.gpu_offset_filter_execution
     }
 
     /// Returns whether filter execution regions and outsets are planned before execution.

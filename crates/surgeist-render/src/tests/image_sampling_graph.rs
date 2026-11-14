@@ -335,3 +335,37 @@ fn graph_backdrop_filters_only_its_clip_before_crisp_foreground_and_later_siblin
         assert_pixel(&output, x as u32, 1, expected);
     }
 }
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn graph_image_and_nonconstant_mask_preserve_large_origin_texel_phase() {
+    use super::convolution::{assert_pixel, image, renderer_and_surface};
+    use crate::{ImageFit, Layer, Rect, ResolvedLayerAlphaMask, Scene, Transform};
+    let (mut renderer, mut surface) = renderer_and_surface(2, 1);
+    let domain = Rect::try_new(100_000_000.0, 0.0, 2.0, 1.0).unwrap();
+    for alpha in [255_u8, 128] {
+        let mask = ResolvedLayerAlphaMask::try_new(
+            image(2, 1, vec![255, 255, 255, 255, 255, 255, 255, alpha]),
+            domain,
+        )
+        .unwrap();
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new()
+                .with_resolved_alpha_mask(mask)
+                .with_transform(Transform::translation(-100_000_000.0, 0.0).unwrap()),
+            |child| {
+                child.image(
+                    image(2, 1, vec![255, 0, 0, 255, 0, 0, 255, 255]),
+                    domain,
+                    ImageFit::Stretch,
+                );
+            },
+        );
+        let output = super::convolution::render(&mut renderer, &mut surface, &scene);
+        // Translation cancels the shared logical origin on the host. The
+        // opaque first source cell is red; the second is blue and receives
+        // its independently authored mask alpha, without losing either phase.
+        assert_pixel(&output, 0, 0, [255, 0, 0, 255], 1);
+        assert_pixel(&output, 1, 0, [0, 0, 255, alpha], 2);
+    }
+}

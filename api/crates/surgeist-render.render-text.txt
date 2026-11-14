@@ -109,7 +109,6 @@ pub enum surgeist_render::ConvolutionParameter
 pub surgeist_render::ConvolutionParameter::Bias
 pub surgeist_render::ConvolutionParameter::Coefficient
 pub surgeist_render::ConvolutionParameter::Divisor
-pub surgeist_render::ConvolutionParameter::DomainCoordinate
 pub surgeist_render::ConvolutionParameter::OrderX
 pub surgeist_render::ConvolutionParameter::OrderY
 pub surgeist_render::ConvolutionParameter::TargetX
@@ -372,6 +371,21 @@ pub enum surgeist_render::NormalizedOutlineStyle
 pub surgeist_render::NormalizedOutlineStyle::Dashed
 pub surgeist_render::NormalizedOutlineStyle::Dotted
 pub surgeist_render::NormalizedOutlineStyle::Solid
+pub enum surgeist_render::OffsetNumericPhase
+pub surgeist_render::OffsetNumericPhase::GridIndex
+pub surgeist_render::OffsetNumericPhase::GridMapping
+pub enum surgeist_render::OffsetParameter
+pub surgeist_render::OffsetParameter::Dx
+pub surgeist_render::OffsetParameter::Dy
+pub enum surgeist_render::OffsetPreparationError
+pub surgeist_render::OffsetPreparationError::InvalidParameter
+pub surgeist_render::OffsetPreparationError::InvalidParameter::parameter: surgeist_render::OffsetParameter
+pub surgeist_render::OffsetPreparationError::InvalidParameter::value: f64
+pub surgeist_render::OffsetPreparationError::Numeric
+pub surgeist_render::OffsetPreparationError::Numeric::phase: surgeist_render::OffsetNumericPhase
+pub surgeist_render::OffsetPreparationError::Numeric::value: f64
+impl core::convert::From<surgeist_render::OffsetPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::OffsetPreparationError) -> Self
 pub enum surgeist_render::OutlineStyle
 pub surgeist_render::OutlineStyle::Auto
 pub surgeist_render::OutlineStyle::Dashed
@@ -459,6 +473,7 @@ pub surgeist_render::PrimitiveOperation::GpuBlurFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuColorFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuConvolutionFilterExecution
 pub surgeist_render::PrimitiveOperation::GpuDropShadowFilterExecution
+pub surgeist_render::PrimitiveOperation::GpuOffsetFilterExecution
 pub surgeist_render::PrimitiveOperation::ImageColorProfileConversion
 pub surgeist_render::PrimitiveOperation::ImageOrientationConversion
 pub surgeist_render::PrimitiveOperation::ImagePassExecution
@@ -544,6 +559,7 @@ pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::GlyphRun
 pub surgeist_render::RenderAttemptKind::ImageRepeat
 pub surgeist_render::RenderAttemptKind::LeaderPattern
+pub surgeist_render::RenderAttemptKind::Offset
 pub surgeist_render::RenderAttemptKind::PaintGradient
 pub surgeist_render::RenderAttemptKind::Readback
 pub surgeist_render::RenderAttemptKind::SceneInspection
@@ -809,6 +825,7 @@ pub surgeist_render::RenderWork::ResourceRetirements
 pub surgeist_render::RenderWork::ResourceReuses
 pub surgeist_render::RenderWork::ScheduledConvolutionTaps
 pub surgeist_render::RenderWork::ScheduledFilterTexels
+pub surgeist_render::RenderWork::ScheduledOffsetSamples
 pub surgeist_render::RenderWork::SerializedBytes
 pub surgeist_render::RenderWork::ShaderBindingVisits
 pub surgeist_render::RenderWork::ShaderKeyCopies
@@ -1137,12 +1154,6 @@ pub const fn surgeist_render::CompositingCapabilities::supports_layer_opacity(se
 pub const fn surgeist_render::CompositingCapabilities::supports_plus_lighter(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_porter_duff_composite_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_root_backdrop_policy(self) -> bool
-pub struct surgeist_render::ConvolutionDomains
-impl surgeist_render::ConvolutionDomains
-pub const fn surgeist_render::ConvolutionDomains::filter(self) -> surgeist_render::Rect
-pub const fn surgeist_render::ConvolutionDomains::result(self) -> surgeist_render::Rect
-pub const fn surgeist_render::ConvolutionDomains::source(self) -> surgeist_render::Rect
-pub fn surgeist_render::ConvolutionDomains::try_new(source: surgeist_render::Rect, filter: surgeist_render::Rect, result: surgeist_render::Rect) -> surgeist_render::Result<Self>
 pub struct surgeist_render::ConvolutionInput<'a>
 impl<'a> surgeist_render::ConvolutionInput<'a>
 pub const fn surgeist_render::ConvolutionInput<'a>::new(kernel: &'a [f64]) -> Self
@@ -1196,6 +1207,7 @@ pub fn surgeist_render::Error::invalid_value(name: impl core::convert::Into<allo
 pub const fn surgeist_render::Error::invalid_value_diagnostic(&self) -> core::option::Option<&surgeist_render::InvalidValue>
 pub fn surgeist_render::Error::leader_pattern_diagnostic(&self) -> core::option::Option<&surgeist_render::LeaderPatternError>
 pub fn surgeist_render::Error::message(&self) -> &str
+pub const fn surgeist_render::Error::offset_diagnostic(&self) -> core::option::Option<&surgeist_render::OffsetPreparationError>
 pub fn surgeist_render::Error::runtime_capability_unavailable(value: surgeist_render::RuntimeCapabilityUnavailable) -> Self
 pub const fn surgeist_render::Error::runtime_capability_unavailable_diagnostic(&self) -> core::option::Option<&surgeist_render::RuntimeCapabilityUnavailable>
 pub fn surgeist_render::Error::text_layout_diagnostic(&self) -> core::option::Option<&surgeist_render::TextLayoutError>
@@ -1215,6 +1227,8 @@ impl core::convert::From<surgeist_render::GradientRealizationError> for surgeist
 pub fn surgeist_render::Error::from(value: surgeist_render::GradientRealizationError) -> Self
 impl core::convert::From<surgeist_render::LeaderPatternError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::LeaderPatternError) -> Self
+impl core::convert::From<surgeist_render::OffsetPreparationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::OffsetPreparationError) -> Self
 impl core::convert::From<surgeist_render::RenderAccountingError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::RenderAccountingError) -> Self
 impl core::convert::From<surgeist_render::TextLayoutError> for surgeist_render::Error
@@ -1251,8 +1265,15 @@ pub const fn surgeist_render::FilterCapabilities::supports_gpu_blur_filter_execu
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_color_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_convolution_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_gpu_drop_shadow_filter_execution(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_gpu_offset_filter_execution(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_layer_filters(self) -> bool
 pub const fn surgeist_render::FilterCapabilities::supports_ordered_filter_lists(self) -> bool
+pub struct surgeist_render::FilterDomains
+impl surgeist_render::FilterDomains
+pub const fn surgeist_render::FilterDomains::filter(self) -> surgeist_render::Rect
+pub const fn surgeist_render::FilterDomains::result(self) -> surgeist_render::Rect
+pub const fn surgeist_render::FilterDomains::source(self) -> surgeist_render::Rect
+pub fn surgeist_render::FilterDomains::try_new(source: surgeist_render::Rect, filter: surgeist_render::Rect, result: surgeist_render::Rect) -> surgeist_render::Result<Self>
 pub struct surgeist_render::FilterDropShadow
 impl surgeist_render::FilterDropShadow
 pub const fn surgeist_render::FilterDropShadow::blur(self) -> surgeist_render::FilterBlur
@@ -1433,6 +1454,7 @@ pub const fn surgeist_render::Layer::is_isolated(&self) -> bool
 pub const fn surgeist_render::Layer::isolated(self) -> Self
 pub fn surgeist_render::Layer::mask(&self) -> core::option::Option<&surgeist_render::Shape>
 pub fn surgeist_render::Layer::new() -> Self
+pub const fn surgeist_render::Layer::offset(&self) -> core::option::Option<&surgeist_render::PreparedOffset>
 pub const fn surgeist_render::Layer::opacity(&self) -> f32
 pub fn surgeist_render::Layer::resolved_alpha_mask(&self) -> core::option::Option<&surgeist_render::ResolvedLayerAlphaMask>
 pub fn surgeist_render::Layer::resolved_luminance_mask(&self) -> core::option::Option<&surgeist_render::ResolvedLayerLuminanceMask>
@@ -1446,6 +1468,7 @@ pub fn surgeist_render::Layer::try_opacity(self, opacity: f32) -> surgeist_rende
 pub const fn surgeist_render::Layer::with_composition(self, composition: surgeist_render::LayerComposition) -> Self
 pub fn surgeist_render::Layer::with_convolution(self, convolution: surgeist_render::PreparedConvolution) -> Self
 pub fn surgeist_render::Layer::with_filter_list(self, filters: surgeist_render::FilterList) -> Self
+pub fn surgeist_render::Layer::with_offset(self, offset: surgeist_render::PreparedOffset) -> Self
 pub fn surgeist_render::Layer::with_resolved_alpha_mask(self, alpha_mask: surgeist_render::ResolvedLayerAlphaMask) -> Self
 pub fn surgeist_render::Layer::with_resolved_luminance_mask(self, mask: surgeist_render::ResolvedLayerLuminanceMask) -> Self
 pub const fn surgeist_render::Layer::with_transform(self, transform: surgeist_render::Transform) -> Self
@@ -1580,6 +1603,14 @@ pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_mask_execu
 pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_nested_opacity_composition(self) -> bool
 pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_offscreen_layer_rendering(self) -> bool
 pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_persistent_effect_resources(self) -> bool
+pub struct surgeist_render::OffsetInput
+impl surgeist_render::OffsetInput
+pub const fn surgeist_render::OffsetInput::new() -> Self
+pub const fn surgeist_render::OffsetInput::with_dx(self, dx: f64) -> Self
+pub const fn surgeist_render::OffsetInput::with_dy(self, dy: f64) -> Self
+pub const fn surgeist_render::OffsetInput::with_rendering(self, rendering: surgeist_render::ImageRendering) -> Self
+impl core::default::Default for surgeist_render::OffsetInput
+pub fn surgeist_render::OffsetInput::default() -> Self
 pub struct surgeist_render::Options
 impl surgeist_render::Options
 pub const fn surgeist_render::Options::accounting(self) -> surgeist_render::RenderAccountingOptions
@@ -1717,6 +1748,7 @@ pub const fn surgeist_render::PreparedLeaderRun<'a>::ordinal(self) -> usize
 pub const fn surgeist_render::PreparedLeaderRun<'a>::paint(self) -> &'a surgeist_render::TextPaint
 pub const fn surgeist_render::PreparedLeaderRun<'a>::run(self) -> &'a surgeist_render::PreparedGlyphRun
 pub const fn surgeist_render::PreparedLeaderRun<'a>::transform(self) -> surgeist_render::Transform
+pub struct surgeist_render::PreparedOffset
 pub struct surgeist_render::PreparedTextScene<'a>
 impl<'a> surgeist_render::PreparedTextScene<'a>
 pub fn surgeist_render::PreparedTextScene<'a>::glyph_draws(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::PreparedGlyphDraw<'_>>
@@ -1988,6 +2020,7 @@ pub surgeist_render::RenderWorkTable::ResourceRetirements: T
 pub surgeist_render::RenderWorkTable::ResourceReuses: T
 pub surgeist_render::RenderWorkTable::ScheduledConvolutionTaps: T
 pub surgeist_render::RenderWorkTable::ScheduledFilterTexels: T
+pub surgeist_render::RenderWorkTable::ScheduledOffsetSamples: T
 pub surgeist_render::RenderWorkTable::SerializedBytes: T
 pub surgeist_render::RenderWorkTable::ShaderBindingVisits: T
 pub surgeist_render::RenderWorkTable::ShaderKeyCopies: T
@@ -2345,8 +2378,9 @@ pub struct surgeist_render::WebCanvas
 impl surgeist_render::WebCanvas
 pub fn surgeist_render::WebCanvas::id(&self) -> &str
 pub fn surgeist_render::WebCanvas::new(id: impl core::convert::Into<alloc::string::String>) -> Self
-pub fn surgeist_render::prepare_convolution(input: surgeist_render::ConvolutionInput<'_>, domains: surgeist_render::ConvolutionDomains, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedConvolution>
+pub fn surgeist_render::prepare_convolution(input: surgeist_render::ConvolutionInput<'_>, domains: surgeist_render::FilterDomains, color_space: surgeist_render::FilterColorSpace, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedConvolution>
 pub fn surgeist_render::prepare_leader_pattern<'text>(pattern: &'text surgeist_text::engine::leader::FinalizedLeaderPattern, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedLeaderPattern<'text>>
+pub fn surgeist_render::prepare_offset(input: surgeist_render::OffsetInput, domains: surgeist_render::FilterDomains, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedOffset>
 pub fn surgeist_render::prepare_sdr_srgb_color(resolved: surgeist_color::value::Color, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Color>
 pub fn surgeist_render::prepare_text_layout<'a>(layout: &'a surgeist_text::layout::Layout, placement: surgeist_render::Transform, limits: surgeist_render::TextLayoutLimits, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedTextScene<'a>>
 pub type surgeist_render::Result<T> = core::result::Result<T, surgeist_render::Error>

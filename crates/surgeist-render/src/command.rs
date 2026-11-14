@@ -214,9 +214,24 @@ pub(crate) enum RenderCommand {
         bounds: TextRunBounds,
     },
     Layer {
-        layer: NormalizedLayer,
+        layer: SharedValue<NormalizedLayer>,
         children: RenderCommands,
     },
+}
+
+impl RenderCommand {
+    /// Owns actual immutable layer metadata under central backing admission.
+    /// The recursive child sequence retains its existing iterative final owner.
+    pub(crate) fn layer_in(
+        layer: NormalizedLayer,
+        children: RenderCommands,
+        account: &Account,
+    ) -> Result<Self> {
+        Ok(Self::Layer {
+            layer: SharedValue::new(layer, &account.storage())?,
+            children,
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -315,6 +330,7 @@ pub(crate) struct NormalizedLayer {
 pub(crate) enum NormalizedForegroundEffect {
     Css(SharedValue<FilterList>),
     Convolution(crate::PreparedConvolution),
+    Offset(crate::PreparedOffset),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -775,10 +791,11 @@ fn normalize_commands_in_context(
             };
             commands = siblings;
             normalized = parent;
-            RenderCommand::Layer {
-                layer: NormalizedLayer::from_authored_in(layer, &children, capabilities, account)?,
+            RenderCommand::layer_in(
+                NormalizedLayer::from_authored_in(layer, &children, capabilities, account)?,
                 children,
-            }
+                account,
+            )?
         };
         emit_command(&value, account)?;
         normalized.push(value)?;
@@ -1322,6 +1339,13 @@ impl NormalizedLayer {
                 PrimitiveOperation::LayerFilter,
             ))?;
             Some(match filter {
+                LayerFilter::Offset(offset) => {
+                    capabilities.ensure_supported(UnsupportedPrimitive::new(
+                        PrimitiveFamily::Filters,
+                        PrimitiveOperation::GpuOffsetFilterExecution,
+                    ))?;
+                    NormalizedForegroundEffect::Offset(*offset)
+                }
                 LayerFilter::Convolution(convolution) => {
                     capabilities.ensure_supported(UnsupportedPrimitive::new(
                         PrimitiveFamily::Filters,
@@ -1776,6 +1800,190 @@ mod deep_normalization_tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod layer_metadata_tests {
+    use super::*;
+    use crate::accounting::{FrameFixture, RendererCpu};
+
+    fn empty_layer(account: &Account) -> Result<(NormalizedLayer, RenderCommands)> {
+        let children = RenderCommands::new_in(account.retained(0)?, account)?;
+        let layer = NormalizedLayer::from_authored_in(
+            &Layer::new().try_opacity(0.375)?,
+            &children,
+            Capabilities::CURRENT,
+            account,
+        )?;
+        Ok((layer, children))
+    }
+
+    #[test]
+    fn normalized_layer_metadata_remains_live_until_final_command_clone_drops() {
+        let options =
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+        let cpu = RendererCpu::new(options).unwrap();
+        let opening = cpu
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account();
+                let (layer, children) = empty_layer(account)?;
+                let before = cpu
+                    .snapshot()?
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes);
+                let command = RenderCommand::layer_in(layer, children, account)?;
+                let admitted = cpu
+                    .snapshot()?
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes);
+                assert_eq!(
+                    admitted - before,
+                    SharedValue::<NormalizedLayer>::allocation_size() as u64
+                );
+                let RenderCommand::Layer { layer, .. } = &command else {
+                    panic!("expected a normalized layer");
+                };
+                assert_eq!(layer.opacity, 0.375);
+                let metadata_live = layer.allocation_liveness_for_test();
+                let clone = command.clone();
+                drop(command);
+                assert!(metadata_live());
+                assert_eq!(
+                    cpu.snapshot()?
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes),
+                    admitted
+                );
+                drop(clone);
+                assert!(!metadata_live());
+                assert_eq!(
+                    cpu.snapshot()?
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes),
+                    opening
+                );
+                Ok(())
+            })
+            .unwrap()
+            .into_parts();
+        result.unwrap();
+        assert_eq!(fault, None);
+        let interval = report.renderer_cpu().unwrap();
+        assert_eq!(
+            interval.usage().live(RenderResource::RetainedCpuBytes),
+            opening
+        );
+        assert_eq!(
+            interval
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+        assert!(
+            interval
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .peak(RenderResource::RetainedCpuBytes)
+                > 0
+        );
+    }
+
+    #[test]
+    fn actual_layer_metadata_exact_budget_admits_and_one_under_releases_children() {
+        let options = RenderAccountingOptions::new();
+        let cpu = RendererCpu::new(options).unwrap();
+        let (required, _, _, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let (layer, children) = empty_layer(attempt.account())?;
+                let command = RenderCommand::layer_in(layer, children, attempt.account())?;
+                let required = cpu
+                    .snapshot()?
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes);
+                drop(command);
+                Ok(required)
+            })
+            .unwrap()
+            .into_parts();
+        let required = required.unwrap();
+        assert_eq!(fault, None);
+        for cap in [required, required - 1] {
+            let options = options.with_limits(RenderLimits::new().with_retained_bytes(cap));
+            let cpu = RendererCpu::new(options).unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let (layer, children) = empty_layer(attempt.account())?;
+                    let before = cpu
+                        .snapshot()?
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes);
+                    match RenderCommand::layer_in(layer, children, attempt.account()) {
+                        Ok(command) => {
+                            assert_eq!(cap, required);
+                            assert_eq!(
+                                cpu.snapshot()?
+                                    .usage()
+                                    .live(RenderResource::RetainedCpuBytes),
+                                required
+                            );
+                            drop(command);
+                            Ok(())
+                        }
+                        Err(error) => {
+                            assert_eq!(cap, required - 1);
+                            let Some(RenderAccountingError::CpuRefused {
+                                quantity,
+                                current,
+                                amount,
+                                reason,
+                                ..
+                            }) = error.accounting_diagnostic()
+                            else {
+                                panic!("expected actual metadata backing refusal: {error:?}");
+                            };
+                            assert_eq!(
+                                quantity,
+                                RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
+                            );
+                            assert_eq!(current, before);
+                            assert_eq!(
+                                amount,
+                                SharedValue::<NormalizedLayer>::allocation_size() as u64
+                            );
+                            assert_eq!(reason, RenderRefusalReason::Limit { limit: cap });
+                            assert_eq!(
+                                cpu.snapshot()?
+                                    .usage()
+                                    .live(RenderResource::RetainedCpuBytes),
+                                opening
+                            );
+                            Err(error)
+                        }
+                    }
+                })
+                .unwrap()
+                .into_parts();
+            assert_eq!(result.is_ok(), cap == required);
+            assert_eq!(fault, None);
+            assert_eq!(report.cleanup_fault(), None);
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+        }
     }
 }
 
