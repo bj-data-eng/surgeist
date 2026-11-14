@@ -249,12 +249,18 @@ impl GpuOperationTransaction {
             prepared_frame,
             output,
         } = payload;
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        prepared_frame
+            .observe_parameter_custody_for_test(crate::pass::ParameterStageForTest::BeforeSubmit);
         #[cfg(test)]
         prepared_frame.observe_displacement_uniforms_for_test(
             crate::pass::DisplacementUniformStageForTest::BeforeSubmit,
         );
         self.submit_graph_command(queue, command_buffer, account)
             .await?;
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        prepared_frame
+            .observe_parameter_custody_for_test(crate::pass::ParameterStageForTest::Submitted);
         #[cfg(test)]
         prepared_frame.observe_displacement_uniforms_for_test(
             crate::pass::DisplacementUniformStageForTest::Submitted,

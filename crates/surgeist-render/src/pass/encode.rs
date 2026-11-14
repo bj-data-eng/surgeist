@@ -1047,6 +1047,10 @@ pub(crate) struct AccountingReadyPreparedFrameCommit<'cache> {
 }
 
 impl PendingPreparedFrameCommit {
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn observe_parameter_custody_for_test(&self, stage: super::ParameterStageForTest) {
+        super::parameter_custody_observation::record_scope(self.frame_scope.generation(), stage);
+    }
     #[cfg(test)]
     pub(crate) fn observe_displacement_uniforms_for_test(
         &self,
@@ -2569,6 +2573,8 @@ impl<'device> PreparedGraph<'device> {
         };
         self.custom_spine_encoding_state = Some(CustomSpineEncodingState::Complete);
         self.custom_spine_completed_session = Some(Arc::clone(&session));
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        self.observe_parameter_custody_for_test(super::ParameterStageForTest::Encoded);
         Ok(PendingGraphEncoding {
             summary,
             resources: PendingVelloResourceCommit::from_aggregate(leases),

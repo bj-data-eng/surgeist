@@ -579,6 +579,8 @@ pub(crate) async fn render_exact_headless_graph_surface(
     account.cpu()?.ensure_healthy()?;
     #[cfg(test)]
     prepared.observe_displacement_uniforms_for_test();
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    prepared.observe_parameter_custody_for_test(crate::pass::ParameterStageForTest::Prepared);
     #[cfg(test)]
     exact_preparation_wait_for_test().await;
     if prepared.output_extent(account)? != physical_size
@@ -747,6 +749,8 @@ pub(crate) async fn render_exact_presented_graph_surface(
     account.cpu()?.ensure_healthy()?;
     #[cfg(test)]
     prepared.observe_displacement_uniforms_for_test();
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    prepared.observe_parameter_custody_for_test(crate::pass::ParameterStageForTest::Prepared);
     #[cfg(test)]
     exact_preparation_wait_for_test().await;
     if prepared.output_extent(account)? != physical_size

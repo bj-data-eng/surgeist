@@ -50,6 +50,8 @@ mod offset_accounting;
 #[cfg(not(target_arch = "wasm32"))]
 mod offset_transactions;
 mod outline;
+#[cfg(not(target_arch = "wasm32"))]
+mod parameter_custody;
 mod platform;
 mod porter_duff;
 mod repeating_gradients;

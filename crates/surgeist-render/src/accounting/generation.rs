@@ -751,6 +751,10 @@ impl Generation {
     pub(crate) fn object_usage_for_test(&self, kind: GpuObjectKind) -> Result<GenerationUsage> {
         self.usage_at(kind.scope())
     }
+    #[cfg(test)]
+    pub(crate) fn identity_for_test(&self) -> RenderGenerationIdentity {
+        self.0.identity.clone()
+    }
     pub(crate) fn cache_bytes(&self) -> Result<u64> {
         Ok(self
             .usage_at(RenderGenerationScope::Cache)?
