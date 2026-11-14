@@ -13,6 +13,7 @@ mod element_tasks;
 mod font_element;
 mod html_reflection;
 mod inline_style;
+mod li_reflections;
 mod list_compact;
 mod meta_reflection;
 mod nested_dispatch;
@@ -384,6 +385,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     param::param_members_reflect_canonical_attributes();
     data_time::data_and_time_reflect_canonical_attributes();
     pre_width::pre_width_reflects_the_canonical_signed_attribute();
+    li_reflections::li_members_reflect_canonical_attributes();
     pre_width::pre_width_family_preserves_native_and_web_idl_contracts();
     super::guest::tests::pre_width_admission::numeric_getters_admit_raw_units_and_large_leading_zeroes();
     super::guest::tests::pre_width_admission::numeric_setters_admit_actual_temporary_work_and_storage();
