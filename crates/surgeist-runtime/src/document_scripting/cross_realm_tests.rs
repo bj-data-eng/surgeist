@@ -24,6 +24,7 @@ mod node_position;
 mod node_relations;
 mod normalize;
 mod param;
+mod pre_width;
 mod processing_instruction;
 mod scoped_registries;
 mod slot;
@@ -382,6 +383,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     list_compact::list_compact_reflects_canonical_presence();
     param::param_members_reflect_canonical_attributes();
     data_time::data_and_time_reflect_canonical_attributes();
+    pre_width::pre_width_reflects_the_canonical_signed_attribute();
     data_time::data_time_families_preserve_native_and_web_idl_contracts();
     param::param_family_preserves_native_and_web_idl_contracts();
     list_compact::list_compact_families_preserve_native_and_web_idl_contracts();
