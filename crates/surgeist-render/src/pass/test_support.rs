@@ -1331,6 +1331,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::CopyBackdrop
             | RuntimePassKind::ColorFilter(None)
             | RuntimePassKind::Convolution(_)
+            | RuntimePassKind::Offset(_)
             | RuntimePassKind::BlurHorizontal(_)
             | RuntimePassKind::BlurVertical(_)
             | RuntimePassKind::DropShadowColorize(_)
@@ -2934,11 +2935,22 @@ pub(crate) fn composite_parameter_bytes_for_test(
             .iter()
             .find(|resource| resource.id == result)?
             .spatial;
+        let source_id = pass
+            .reads
+            .iter()
+            .find(|read| read.role == RuntimeReadRole::CompositeSource)?
+            .resource;
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == source_id)?
+            .spatial;
         parameters
             .alpha_mask()
             .and_then(|_| {
                 CompositeParameterBytes::try_from_runtime_layer(
                     parameters,
+                    source,
                     destination,
                     &Account::for_test(),
                 )
@@ -3163,6 +3175,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         RuntimePassKind::CanonicalizeCapture => Some(CorePassClass::CanonicalizeCapture),
         RuntimePassKind::CopyBackdrop
         | RuntimePassKind::Convolution(_)
+        | RuntimePassKind::Offset(_)
         | RuntimePassKind::ColorFilter(_)
         | RuntimePassKind::BlurHorizontal(_)
         | RuntimePassKind::BlurVertical(_)
@@ -4889,6 +4902,9 @@ fn spatial_filter_pass_tags(
     let mut tags = Vec::new();
     for step in &facts.filter_steps {
         match step {
+            ExecutableFilterStepFacts::Offset { .. } => {
+                tags.push(SpatialFilterPassTagForTest::Offset);
+            }
             ExecutableFilterStepFacts::Convolution { .. } => {
                 tags.push(SpatialFilterPassTagForTest::Convolution);
             }
@@ -5304,6 +5320,7 @@ fn observe_layer_composition(
             RuntimeReadRole::CaptureSource
             | RuntimeReadRole::CompletedParent
             | RuntimeReadRole::FilterSource
+            | RuntimeReadRole::OffsetSource
             | RuntimeReadRole::ConvolutionSource
             | RuntimeReadRole::ConvolutionAuxiliary
             | RuntimeReadRole::BlurredSourceAlpha
@@ -6117,7 +6134,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 11];
+    let mut vocabulary = [false; 12];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6127,6 +6144,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && vocabulary[8]
         && vocabulary[9]
         && !vocabulary[10]
+        && !vocabulary[11]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6211,7 +6229,10 @@ fn prepared_allocations_are_exact(plan: &RuntimeGraphPreparationPlan) -> bool {
 fn prepared_spatial_keys_are_exact(plan: &RuntimeGraphPreparationPlan) -> bool {
     plan.passes.iter().all(|pass| {
         pass.cache_keys == pass.runtime.cache_keys
-            && pass.spatial_uniform.is_some() == pass.cache_keys.is_some()
+            && (pass.spatial_uniform.is_some()
+                || pass.convolution_parameters.is_some()
+                || pass.offset_parameters.is_some())
+                == pass.cache_keys.is_some()
             && pass
                 .spatial_uniform
                 .as_ref()
@@ -6495,7 +6516,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 11];
+    let mut vocabulary = [false; 12];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6622,6 +6643,11 @@ fn runtime_semantic_pass_facts_are_exact(plan: &LoweredGraphPlan) -> bool {
                 ..
             })) if parameters.alpha_mask().is_some()
         )
+    }) && plan.passes.iter().any(|pass| {
+        matches!(&pass.kind, RuntimePassKind::Offset(work)
+            if work.stage() == crate::frame::OffsetStage::Sample
+                && work.operation().dx() == 0.5 && work.operation().dy() == 0.0
+                && work.mapping().sampling() == crate::frame::OffsetSampling::Bilinear)
     }) && plan.passes.iter().any(|pass| {
         matches!(&pass.kind, RuntimePassKind::Convolution(work)
             if matches!(work.stage(), crate::frame::ConvolutionStage::Accumulate {
@@ -6845,6 +6871,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::Composite(_) => 8,
         RuntimePassKind::Present => 9,
         RuntimePassKind::Convolution(_) => 10,
+        RuntimePassKind::Offset(_) => 11,
     }
 }
 

@@ -81,7 +81,12 @@ pub(super) fn prepared_pass_spatial_uniform(
     root_working_image: RuntimeResourceId,
     account: &Account,
 ) -> Result<Option<PassSpatialUniformBytes>> {
-    if pass.cache_keys.is_none() || matches!(pass.kind, RuntimePassKind::Convolution(_)) {
+    if pass.cache_keys.is_none()
+        || matches!(
+            pass.kind,
+            RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_)
+        )
+    {
         return Ok(None);
     }
     let result_spatial = || -> Result<RuntimeSpatialDescriptor> {
@@ -95,22 +100,7 @@ pub(super) fn prepared_pass_spatial_uniform(
             .map(|resource| resource.spatial)
             .ok_or_else(|| preparation_error("custom pass result spatial binding is missing"))
     };
-    let read_spatial = |role| -> Result<RuntimeSpatialDescriptor> {
-        let mut resource = None;
-        for read in &pass.reads {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if read.role == role {
-                resource = Some(read.resource);
-                break;
-            }
-        }
-        let resource = resource
-            .ok_or_else(|| preparation_error("custom pass source spatial binding is missing"))?;
-        resources
-            .get(&resource, account)?
-            .map(|resource| resource.spatial)
-            .ok_or_else(|| preparation_error("custom pass source resource is missing"))
-    };
+    let read_spatial = |role| prepared_pass_read_spatial(pass, resources, role, account);
 
     let (source, destination) = match &pass.kind {
         RuntimePassKind::CanonicalizeCapture => (
@@ -124,7 +114,7 @@ pub(super) fn prepared_pass_spatial_uniform(
         RuntimePassKind::ColorFilter(Some(filter)) => {
             (filter.spatial.source, filter.spatial.result)
         }
-        RuntimePassKind::Convolution(_) => return Ok(None),
+        RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_) => return Ok(None),
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {
             (blur.spatial.source, blur.spatial.result)
         }
@@ -163,6 +153,28 @@ pub(super) fn prepared_pass_spatial_uniform(
     .map(Some)
 }
 
+fn prepared_pass_read_spatial(
+    pass: &RuntimePass,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    role: RuntimeReadRole,
+    account: &Account,
+) -> Result<RuntimeSpatialDescriptor> {
+    let mut resource = None;
+    for read in &pass.reads {
+        account.work(RenderWork::ResourceProbes, 1)?;
+        if read.role == role {
+            resource = Some(read.resource);
+            break;
+        }
+    }
+    let resource = resource
+        .ok_or_else(|| preparation_error("custom pass source spatial binding is missing"))?;
+    resources
+        .get(&resource, account)?
+        .map(|resource| resource.spatial)
+        .ok_or_else(|| preparation_error("custom pass source resource is missing"))
+}
+
 pub(super) fn prepared_pass_composite_parameters(
     pass: &RuntimePass,
     resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
@@ -182,8 +194,18 @@ pub(super) fn prepared_pass_composite_parameters(
                 .get(&result, account)?
                 .ok_or_else(|| preparation_error("composite result spatial binding is missing"))?
                 .spatial;
-            let bytes =
-                CompositeParameterBytes::try_from_runtime_layer(parameters, destination, account)?;
+            let source = prepared_pass_read_spatial(
+                pass,
+                resources,
+                RuntimeReadRole::CompositeSource,
+                account,
+            )?;
+            let bytes = CompositeParameterBytes::try_from_runtime_layer(
+                parameters,
+                source,
+                destination,
+                account,
+            )?;
             if bytes.as_bytes().len() != 112 {
                 return Err(preparation_error(
                     "composite parameter serialization changed its exact WGSL byte length",
@@ -239,9 +261,19 @@ mod role_lookup_accounting_tests {
     use crate::accounting::SharedValue;
     use crate::pass::test_support::{lower_capture_proof_fixture, measure_proof_work};
 
+    // The Pixelated mask selects SurfaceGrid capture. Before serialization:
+    // source/destination grids 4+8, local map 12, SurfaceGrid source map 15,
+    // source/mask uploaded-map proofs 44+44, mask map 14, Pixelated lattice
+    // factors 76 and signed sampling qualification 48 coordinate operations.
+    const PIXELATED_MASK_COORDINATE_PREFIX: u64 = 265;
+
     #[test]
     fn pixelated_prepared_mask_lattice_refuses_before_serialization() {
-        for limit in [0, 75, 76] {
+        for limit in [
+            0,
+            PIXELATED_MASK_COORDINATE_PREFIX - 1,
+            PIXELATED_MASK_COORDINATE_PREFIX,
+        ] {
             assert_prepared_mask_lattice_boundary(limit);
         }
     }
@@ -309,6 +341,14 @@ mod role_lookup_accounting_tests {
                 )
             })
             .unwrap();
+        assert!(matches!(
+            &pass.kind,
+            RuntimePassKind::Composite(Some(RuntimeComposite {
+                kind: RuntimeCompositeKind::Layer { parameters, .. }, ..
+            })) if parameters.source_space() == crate::frame::CompositeSourceSpace::SurfaceGrid
+        ));
+        assert_eq!(pass.reads[0].role, RuntimeReadRole::CompositeParent);
+        assert_eq!(pass.reads[1].role, RuntimeReadRole::CompositeSource);
         let RuntimeResultBinding::Resource(result) = pass.result else {
             panic!("the authored layer must have a result resource");
         };
@@ -317,8 +357,21 @@ mod role_lookup_accounting_tests {
             .iter()
             .find(|resource| resource.id == result)
             .unwrap();
-        let mut resources = PassMap::temporary(&setup, 1).unwrap();
+        let source_id = pass
+            .reads
+            .iter()
+            .find(|read| read.role == RuntimeReadRole::CompositeSource)
+            .unwrap()
+            .resource;
+        assert!(source_id < result);
+        let source = lowered
+            .resources
+            .iter()
+            .find(|resource| resource.id == source_id)
+            .unwrap();
+        let mut resources = PassMap::temporary(&setup, 2).unwrap();
         resources.insert_with(result, destination, &setup).unwrap();
+        resources.insert_with(source_id, source, &setup).unwrap();
         let control = prepared_pass_composite_parameters(pass, &resources, &setup)
             .unwrap()
             .unwrap();
@@ -334,7 +387,9 @@ mod role_lookup_accounting_tests {
             .with_limits(limits)
             .with_profile(RenderProfile::Detailed {
                 timing: false,
-                event_limit: 128,
+                // At most one event per coordinate operation, five probes,
+                // one refusal and one completed preparation phase.
+                event_limit: usize::try_from(PIXELATED_MASK_COORDINATE_PREFIX).unwrap() + 5 + 2,
                 filter: RenderPhaseFilter::Phase(phase),
             });
         let cpu = RendererCpu::new(options).unwrap();
@@ -357,7 +412,7 @@ mod role_lookup_accounting_tests {
             Some(RenderAccountingError::Refused(refusal))
         );
         assert_eq!(refusal.phase(), RenderPhase::Attempt);
-        let (work, current, amount) = if limit == 76 {
+        let (work, current, amount) = if limit == PIXELATED_MASK_COORDINATE_PREFIX {
             (RenderWork::SerializedBytes, 0, 112)
         } else {
             (RenderWork::CoordinateVisits, limit, 1)
@@ -375,7 +430,9 @@ mod role_lookup_accounting_tests {
             }
         )));
         let usage = attempt.phase_usage(phase);
-        assert_eq!(usage.work(RenderWork::ResourceProbes), 1);
+        // The two-entry map probes result once and source twice; finding
+        // CompositeSource visits CompositeParent then CompositeSource.
+        assert_eq!(usage.work(RenderWork::ResourceProbes), 1 + 2 + 2);
         assert_eq!(usage.work(RenderWork::CoordinateVisits), limit);
         assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
         assert_eq!(usage.work(RenderWork::UploadBytes), 0);

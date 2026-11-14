@@ -229,6 +229,7 @@ fn core_pass_program_sampling(
         ),
         ShaderProgramKey::CopyBackdrop
         | ShaderProgramKey::Convolution
+        | ShaderProgramKey::Offset
         | ShaderProgramKey::ColorFilter
         | ShaderProgramKey::BlurHorizontal { .. }
         | ShaderProgramKey::BlurVertical { .. }
@@ -357,6 +358,60 @@ pub(super) fn validate_convolution_pass_keys(
 }
 
 pub(super) fn convolution_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct OffsetPassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct OffsetPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_offset_pass_keys(
+    keys: OffsetPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<OffsetPassDescription> {
+    let [source] = keys.layout.sampled_textures.as_slice() else {
+        return Err(offset_cache_error(
+            "offset requires exactly one source texture",
+        ));
+    };
+    binding_visit(observer)?;
+    let target_format = keys.pipeline.target_format;
+    if keys.layout.program != ShaderProgramKey::Offset
+        || keys.shader.program != ShaderProgramKey::Offset
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[ShaderDataBindingKey::OffsetParameters],
+            observer,
+        )?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(target_format)
+        || keys.shader.output_format != Some(target_format)
+        || source.binding_role != ShaderBindingRoleKey::OffsetSource
+        || source.source_format != target_format
+        || !is_working_format(target_format)
+    {
+        return Err(offset_cache_error(
+            "offset keys disagree across bindings, programs, or working formats",
+        ));
+    }
+    Ok(OffsetPassDescription { target_format })
+}
+
+pub(super) fn offset_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
 }
 
@@ -1177,5 +1232,165 @@ mod convolution_key_tests {
         wrong_pipeline.layout = wrong_layout.clone();
         wrong_pipeline.shader = wrong_shader.clone();
         assert!(validate(&wrong_layout, &wrong_shader, &wrong_pipeline).is_err());
+    }
+}
+
+#[cfg(test)]
+mod offset_key_tests {
+    use super::*;
+    use crate::accounting::RendererCpu;
+
+    fn fixture(
+        format: ShaderTextureFormatKey,
+    ) -> (BindGroupLayoutKey, ShaderModuleKey, RenderPipelineKey) {
+        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let layout = BindGroupLayoutKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::Offset,
+            &[(ShaderBindingRoleKey::OffsetSource, format)],
+            &[ShaderDataBindingKey::OffsetParameters],
+        )
+        .unwrap();
+        let shader = ShaderModuleKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::Offset,
+            layout.clone(),
+            &[],
+            Some(format),
+            Some(format),
+        )
+        .unwrap();
+        let pipeline =
+            RenderPipelineKey::new(&cpu, None, shader.clone(), layout.clone(), &[], format)
+                .unwrap();
+        (layout, shader, pipeline)
+    }
+
+    #[test]
+    fn offset_keys_accept_both_working_formats_and_refuse_foreign_or_mixed_formats() {
+        for (format, valid) in [
+            (
+                ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+                true,
+            ),
+            (
+                ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
+                true,
+            ),
+            (ShaderTextureFormatKey::ConvolutionRgba32Float, false),
+            (ShaderTextureFormatKey::VelloCaptureRgba8Unorm, false),
+            (ShaderTextureFormatKey::OutputRgba8Unorm, false),
+        ] {
+            let (layout, shader, pipeline) = fixture(format);
+            let result = validate_offset_pass_keys(
+                OffsetPassKeyRefs {
+                    samplers: &[],
+                    layout: &layout,
+                    shader: &shader,
+                    pipeline: &pipeline,
+                },
+                None,
+            );
+            assert_eq!(result.is_ok(), valid, "{format:?}");
+        }
+        let format = ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float;
+        let (layout, shader, mut pipeline) = fixture(format);
+        pipeline.target_format = ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm;
+        assert!(
+            validate_offset_pass_keys(
+                OffsetPassKeyRefs {
+                    samplers: &[],
+                    layout: &layout,
+                    shader: &shader,
+                    pipeline: &pipeline,
+                },
+                None
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn offset_keys_require_exact_source_uniform_and_sampler_free_phase_identity() {
+        let format = ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float;
+        let (layout, shader, pipeline) = fixture(format);
+        fn validate(
+            layout: &BindGroupLayoutKey,
+            shader: &ShaderModuleKey,
+            pipeline: &RenderPipelineKey,
+        ) -> Result<OffsetPassDescription> {
+            validate_offset_pass_keys(
+                OffsetPassKeyRefs {
+                    samplers: &[],
+                    layout,
+                    shader,
+                    pipeline,
+                },
+                None,
+            )
+        }
+        let mut wrong = shader.clone();
+        wrong.output_format = None;
+        assert!(validate(&layout, &wrong, &pipeline).is_err());
+        let mut wrong = layout.clone();
+        wrong.program = ShaderProgramKey::Convolution;
+        assert!(validate(&wrong, &shader, &pipeline).is_err());
+        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        for (role, data) in [
+            (
+                ShaderBindingRoleKey::ConvolutionSource,
+                ShaderDataBindingKey::OffsetParameters,
+            ),
+            (
+                ShaderBindingRoleKey::OffsetSource,
+                ShaderDataBindingKey::ConvolutionParameters,
+            ),
+        ] {
+            let layout = BindGroupLayoutKey::new(
+                &cpu,
+                None,
+                ShaderProgramKey::Offset,
+                &[(role, format)],
+                &[data],
+            )
+            .unwrap();
+            let shader = ShaderModuleKey::new(
+                &cpu,
+                None,
+                ShaderProgramKey::Offset,
+                layout.clone(),
+                &[],
+                Some(format),
+                Some(format),
+            )
+            .unwrap();
+            let pipeline =
+                RenderPipelineKey::new(&cpu, None, shader.clone(), layout.clone(), &[], format)
+                    .unwrap();
+            assert!(validate(&layout, &shader, &pipeline).is_err());
+        }
+        let sampler = SamplerKey::new(
+            ShaderBindingRoleKey::OffsetSource,
+            format,
+            ShaderSamplingFilterKey::Nearest,
+            ShaderSamplingEdgeKey::TransparentBlack,
+            None,
+        );
+        assert!(
+            validate_offset_pass_keys(
+                OffsetPassKeyRefs {
+                    samplers: &[sampler],
+                    layout: &layout,
+                    shader: &shader,
+                    pipeline: &pipeline,
+                },
+                None
+            )
+            .is_err()
+        );
     }
 }

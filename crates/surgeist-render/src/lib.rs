@@ -48,6 +48,7 @@ mod geometry;
 mod gpu_transaction;
 mod image;
 mod layer;
+mod offset;
 mod paint;
 #[cfg(feature = "render-paint")]
 mod paint_gradient;
@@ -113,6 +114,10 @@ pub use layer::{
     BlendMode, Filter, Layer, LayerComposition, MaskLuminanceSpace, PorterDuffOperator,
     ResolvedLayerAlphaMask, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
     Shadow, ShadowKind, ShadowList,
+};
+pub use offset::{
+    OffsetInput, OffsetNumericPhase, OffsetParameter, OffsetPreparationError, PreparedOffset,
+    prepare_offset,
 };
 pub use paint::{
     Color, Gradient, GradientHint, GradientStop, NormalizedPaintLayer, Paint, PaintColor,

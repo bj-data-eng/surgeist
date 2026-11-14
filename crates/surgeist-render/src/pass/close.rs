@@ -1,4 +1,5 @@
 mod convolution;
+mod offset;
 
 use crate::accounting::{
     Account, AccountedVec, RenderAccountingError, RenderResource, RenderWork, SharedValue,
@@ -461,6 +462,12 @@ pub(super) struct ExecutableBackdropFacts {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ExecutableFilterStepFacts {
     Color(RuntimePassId),
+    Offset {
+        rebase: Option<RuntimePassId>,
+        sample: RuntimePassId,
+        source: RuntimeResourceId,
+        result: RuntimeResourceId,
+    },
     Convolution {
         passes: SharedValue<Vec<RuntimePassId>>,
         source: RuntimeResourceId,
@@ -482,6 +489,7 @@ impl ExecutableFilterStepFacts {
     fn first_pass(&self) -> Option<RuntimePassId> {
         match self {
             Self::Color(pass) => Some(*pass),
+            Self::Offset { rebase, sample, .. } => Some(rebase.unwrap_or(*sample)),
             Self::Blur { horizontal, .. } | Self::DropShadow { horizontal, .. } => {
                 Some(*horizontal)
             }
@@ -492,6 +500,7 @@ impl ExecutableFilterStepFacts {
     fn last_pass(&self) -> Option<RuntimePassId> {
         match self {
             Self::Color(pass) => Some(*pass),
+            Self::Offset { sample, .. } => Some(*sample),
             Self::Blur { vertical, .. } => Some(*vertical),
             Self::DropShadow { merge, .. } => Some(*merge),
             Self::Convolution { passes, .. } => passes.last().copied(),
@@ -512,6 +521,7 @@ pub(super) struct ClosedExecutableGraphFacts {
     // Derived while visiting validated convolution steps and checked by the
     // accounted repeated proof; route predicates must not rescan their payload.
     has_convolution: bool,
+    has_offset: bool,
     pub(super) backdrops: SharedValue<Vec<ExecutableBackdropFacts>>,
 }
 
@@ -555,6 +565,7 @@ impl ClosedExecutableGraph {
         !self.facts.blurs.is_empty()
             || !self.facts.drop_shadows.is_empty()
             || self.facts.has_convolution
+            || self.facts.has_offset
     }
 
     fn has_backdrops(&self) -> bool {
@@ -649,7 +660,7 @@ impl ClosedExecutableGraphFacts {
                         })
                         .count();
             let filter_order_is_exact =
-                filter_step_order_is_exact(plan, &self.filter_steps, &proof);
+                filter_step_order_is_exact(plan, &self.filter_steps, self.has_offset, &proof);
             let backdrops_are_exact = proof_nodes(&self.backdrops, &proof)
                 .all(|backdrop| backdrop.proves_exact_facts_for(plan, &self.filter_steps, &proof));
             captures_are_exact
@@ -664,6 +675,7 @@ impl ClosedExecutableGraphFacts {
                     self.has_convolution,
                     &proof,
                 )
+                && offset::steps_are_exact(plan, &self.filter_steps, self.has_offset, &proof)
                 && backdrops_are_exact
         })();
         proof.finish()?;
@@ -1020,10 +1032,12 @@ fn filter_steps_match(
 fn filter_step_order_is_exact(
     plan: &LoweredGraphPlan,
     expected: &[ExecutableFilterStepFacts],
+    expected_offset: bool,
     proof: &ProofContext<'_>,
 ) -> bool {
     let result = (|| -> Option<()> {
         let mut step_index = 0;
+        let mut has_offset = false;
         macro_rules! step {
             ($step:expr) => {{
                 let expected_step = expected.get(step_index)?;
@@ -1043,6 +1057,30 @@ fn filter_step_order_is_exact(
             }
             let pass = &plan.passes[cursor];
             match &pass.kind {
+                RuntimePassKind::Offset(_) => {
+                    has_offset = true;
+                    if !proof.work(RenderWork::GraphNodeVisits, 1) {
+                        return None;
+                    }
+                    let ExecutableFilterStepFacts::Offset { rebase, sample, .. } =
+                        expected.get(step_index)?
+                    else {
+                        return None;
+                    };
+                    let ids = rebase.iter().copied().chain(std::iter::once(*sample));
+                    let count = 1 + usize::from(rebase.is_some());
+                    let end = cursor.checked_add(count)?;
+                    if !proof_relationships_equal(
+                        plan.passes.get(cursor..end)?.iter().map(|p| p.id),
+                        ids,
+                        proof,
+                        |a, b| a == b,
+                    ) {
+                        return None;
+                    }
+                    step_index += 1;
+                    cursor = end;
+                }
                 RuntimePassKind::Convolution(_) => {
                     let ExecutableFilterStepFacts::Convolution { passes, .. } =
                         expected.get(step_index)?
@@ -1107,7 +1145,7 @@ fn filter_step_order_is_exact(
                 _ => cursor = cursor.checked_add(1)?,
             }
         }
-        (step_index == expected.len()).then_some(())
+        (step_index == expected.len() && has_offset == expected_offset).then_some(())
     })();
     result.is_some()
 }
@@ -1805,6 +1843,11 @@ impl ProofBounds {
                 {
                     bounds.steps += 1
                 }
+                RuntimePassKind::Offset(work)
+                    if work.stage() == crate::frame::OffsetStage::Sample =>
+                {
+                    bounds.steps += 1
+                }
                 RuntimePassKind::CopyBackdrop => bounds.backdrops += 1,
                 _ => {}
             }
@@ -1825,6 +1868,7 @@ struct ClosedGraphTraversal<'plan, 'proof> {
     drop_shadows: ProofVec<ExecutableDropShadowFacts>,
     filter_steps: ProofVec<ExecutableFilterStepFacts>,
     has_convolution: bool,
+    has_offset: bool,
     backdrops: ProofVec<ExecutableBackdropFacts>,
     expected_resources: ProofSet<'proof, RuntimeResourceId>,
     cursor: usize,
@@ -1891,6 +1935,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 RenderResource::RetainedCpuBytes,
             )?,
             has_convolution: false,
+            has_offset: false,
             backdrops: ProofVec::new(
                 proof.account,
                 bounds.backdrops,
@@ -1942,6 +1987,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             drop_shadows: self.drop_shadows.into_shared(self.proof.account)?,
             filter_steps: self.filter_steps.into_shared(self.proof.account)?,
             has_convolution: self.has_convolution,
+            has_offset: self.has_offset,
             backdrops: self.backdrops.into_shared(self.proof.account)?,
         }))
     }
@@ -1970,6 +2016,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 self.visit_ordinary_filter(pass)
             }
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
+            RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::CopyBackdrop => self.visit_backdrop(pass),
             RuntimePassKind::Composite(Some(composite))
                 if matches!(composite.kind, RuntimeCompositeKind::Layer { .. }) =>
@@ -2261,6 +2308,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
     fn visit_ordinary_filter(&mut self, pass: &RuntimePass) -> Option<()> {
         match &pass.kind {
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
+            RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::ColorFilter(Some(filter)) => self.visit_color_filter(pass, filter),
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => self.visit_blur(pass, blur),
@@ -2403,6 +2451,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 RuntimePassKind::ColorFilter(Some(_))
                     | RuntimePassKind::BlurHorizontal(Some(_))
                     | RuntimePassKind::Convolution(_)
+                    | RuntimePassKind::Offset(_)
             ) {
                 break;
             }
@@ -5382,7 +5431,9 @@ fn dispatch_pass_semantics(
                 .then_some(DispatchPassSemantics::ClosedExecutable)
         }
         RuntimePassKind::VelloCapture(_) => None,
-        RuntimePassKind::Convolution(_) => Some(DispatchPassSemantics::ClosedExecutable),
+        RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_) => {
+            Some(DispatchPassSemantics::ClosedExecutable)
+        }
         RuntimePassKind::CopyBackdrop
         | RuntimePassKind::ColorFilter(Some(_))
         | RuntimePassKind::DropShadowColorize(Some(_)) => Some(DispatchPassSemantics::FuturePass),

@@ -148,6 +148,7 @@ impl GpuRenderGraph {
             composites: copy_backing(&self.composites, account)?,
             filter_steps: copy_backing(&self.filter_steps, account)?,
             convolutions: copy_backing(&self.convolutions, account)?,
+            offsets: copy_backing(&self.offsets, account)?,
             backdrop_reads: copy_backing(&self.backdrop_reads, account)?,
             imports: copy_backing(&self.imports, account)?,
         })
@@ -1271,6 +1272,7 @@ pub(crate) fn semantic_graph_base_initialization_observation_for_test(
             | SemanticPassIntent::BlurVertical { .. }
             | SemanticPassIntent::DropShadowColorize
             | SemanticPassIntent::Convolution(_)
+            | SemanticPassIntent::Offset(_)
             | SemanticPassIntent::Composite
             | SemanticPassIntent::Present => None,
         });

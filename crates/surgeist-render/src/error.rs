@@ -51,6 +51,7 @@ struct ErrorContext {
 #[derive(Debug)]
 enum PreparationDiagnostic {
     Convolution(crate::ConvolutionPreparationError),
+    Offset(crate::OffsetPreparationError),
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
     GeometryRealization(GeometryRealizationError),
@@ -460,6 +461,18 @@ impl Error {
         }
     }
 
+    /// Returns a typed native offset preparation or frame qualification refusal.
+    #[must_use]
+    pub const fn offset_diagnostic(&self) -> Option<&crate::OffsetPreparationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::Offset(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns an invalid outgoing-hint association or unsupported sweep hint.
     #[must_use]
     pub const fn gradient_hint_diagnostic(&self) -> Option<&GradientHintError> {
@@ -595,6 +608,26 @@ impl From<crate::ConvolutionPreparationError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: Some(PreparationDiagnostic::Convolution(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
+        })
+    }
+}
+
+impl From<crate::OffsetPreparationError> for Error {
+    fn from(value: crate::OffsetPreparationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::InvalidInput,
+            message: format!("offset preparation refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::Offset(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
             #[cfg(feature = "render-text")]
@@ -1435,6 +1468,8 @@ pub enum PrimitiveOperation {
     GpuDropShadowFilterExecution,
     /// Executing an admitted resolved convolution through the native Layer GPU receiver.
     GpuConvolutionFilterExecution,
+    /// Executing an admitted native image-space offset through the Layer GPU receiver.
+    GpuOffsetFilterExecution,
     /// Planning filter execution regions and outsets.
     FilterRegionPlanning,
     /// Executing an unbounded or root/nested backdrop form.
@@ -1516,6 +1551,7 @@ impl PrimitiveOperation {
             Self::GpuBlurFilterExecution => "GPU blur filter execution",
             Self::GpuDropShadowFilterExecution => "GPU drop-shadow filter execution",
             Self::GpuConvolutionFilterExecution => "GPU convolution filter execution",
+            Self::GpuOffsetFilterExecution => "GPU offset filter execution",
             Self::FilterRegionPlanning => "filter-region planning",
             Self::BroadBackdropExecution => "broad backdrop execution",
             Self::BoundedBackdropCapture => "bounded backdrop capture",

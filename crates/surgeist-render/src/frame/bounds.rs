@@ -1,6 +1,6 @@
 use super::FrameContext;
 use super::filter::foreground_filter_bounds;
-use crate::accounting::{Account, AccountedVec, RenderWork};
+use crate::accounting::{Account, AccountedVec, RenderWork, SharedValue};
 use crate::{
     command::{
         NormalizedLayer, RenderClip, RenderCommand, RenderCommands, RenderLayerMask,
@@ -343,7 +343,7 @@ impl ContributionSequence {
 }
 
 struct LayerQualification {
-    layer: NormalizedLayer,
+    layer: SharedValue<NormalizedLayer>,
     layer_to_surface: Transform,
     singular_source: bool,
     has_bounded_children: bool,
@@ -535,7 +535,7 @@ impl SemanticSourceContribution {
     }
 
     fn try_prepare_layer(
-        layer: NormalizedLayer,
+        layer: SharedValue<NormalizedLayer>,
         children: RenderCommands,
         current_parent: SemanticSourceBounds,
         domain: SemanticContributionDomain,
@@ -615,25 +615,40 @@ impl SemanticSourceContribution {
         account: &Account,
     ) -> Result<SemanticCommandContribution> {
         let LayerQualification {
-            mut layer,
+            layer,
             layer_to_surface,
             singular_source,
             has_bounded_children,
             transparent_wrapper,
         } = qualification;
+        // Suspension only reads sealed metadata. Own a value copy exactly
+        // where qualification starts pruning or replacing layer properties.
+        let mut layer = (*layer).clone();
         let mut source_bounds = match layer.mask.as_ref().filter(|mask| mask.supplies_coverage()) {
             Some(mask) => {
                 SemanticSourceBounds::try_from_rect(mask.bounds())?.with_sampled_mask_coverage(true)
             }
             None => children.current_parent,
         };
-        if layer.foreground_filters.as_ref().is_some_and(|effect| {
-            matches!(effect, crate::command::NormalizedForegroundEffect::Convolution(operation)
+        let empty_offset = layer.foreground_filters.as_ref().is_some_and(|effect| {
+            matches!(effect, crate::command::NormalizedForegroundEffect::Offset(operation)
+                if super::offset::domains_are_empty(operation))
+        });
+        if empty_offset
+            || layer.foreground_filters.as_ref().is_some_and(|effect| {
+                matches!(effect, crate::command::NormalizedForegroundEffect::Convolution(operation)
                 if super::convolution::source_domain_is_empty(operation))
-        }) {
+            })
+        {
             // An empty convolution input excludes backdrop as well as child
             // ink; do not qualify or capture a source the primitive cannot read.
             layer.backdrop = None;
+        }
+        if empty_offset {
+            // No sample can reach children or backdrop. Keep only the outer
+            // transparent-source operation when Porter-Duff requires it.
+            children.commands = RenderCommands::new_in(account.retained(0)?, account)?;
+            source_bounds = SemanticSourceBounds::exactly_empty();
         }
         source_bounds = Self::include_backdrop_contribution(
             source_bounds,
@@ -669,6 +684,19 @@ impl SemanticSourceContribution {
                         "convolution primitive result",
                     )?);
             }
+            Some(crate::command::NormalizedForegroundEffect::Offset(operation))
+                if !source_bounds.is_exactly_empty() && !empty_offset =>
+            {
+                // Translation cannot create ink from a transparent input;
+                // consider the completed same-layer backdrop before this test.
+                let domains = operation.domains();
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::convolution::intersection(domains.result(), domains.filter()),
+                        "offset primitive result",
+                    )?);
+            }
+            Some(crate::command::NormalizedForegroundEffect::Offset(_)) => {}
             None => {}
         }
         if let Some(clip) = layer.clip.as_ref() {
@@ -755,15 +783,16 @@ impl SemanticSourceContribution {
                 && !transparent_wrapper);
         let composition = layer.composition;
         let partially_covered = layer.clip.is_some();
+        let command = if no_operation {
+            None
+        } else {
+            Some(RenderCommand::layer_in(layer, children.commands, account)?)
+        };
         SemanticCommandContribution::try_layer(
-            RenderCommand::Layer {
-                layer,
-                children: children.commands,
-            },
+            command,
             source_bounds,
             affected_bounds,
             current_parent,
-            no_operation,
             composition,
             partially_covered,
         )
@@ -831,15 +860,15 @@ impl SemanticCommandContribution {
     }
 
     fn try_layer(
-        command: RenderCommand,
+        command: Option<RenderCommand>,
         source_bounds: SemanticSourceBounds,
         affected_bounds: SemanticSourceBounds,
         current_parent: SemanticSourceBounds,
-        no_operation: bool,
         composition: crate::layer::LayerComposition,
         partially_covered: bool,
     ) -> Result<Self> {
         use crate::layer::PorterDuffOperator;
+        let no_operation = command.is_none();
         // These are support bounds, not alpha estimates. In/atop factors bound
         // the result even when there is source ink; destructive operations are
         // still retained through their independent affected domain.
@@ -887,7 +916,7 @@ impl SemanticCommandContribution {
             operation_result
         };
         Ok(Self {
-            command: (!no_operation).then_some(command),
+            command,
             source_bounds,
             affected_bounds,
             current_parent: result_support,

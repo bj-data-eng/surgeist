@@ -5,9 +5,9 @@ struct PassSpatialUniform {
 }
 
 struct CompositeParameters {
-    affine_linear: vec4<f32>,
-    affine_translation: vec4<f32>,
-    mask_bounds: vec4<f32>,
+    source_texel_linear: vec4<f32>,
+    source_mask_translation: vec4<f32>,
+    mask_normalized_linear: vec4<f32>,
     mask_dimensions: vec4<u32>,
     mask_texel_facts: vec4<f32>,
     opacity: f32,
@@ -55,29 +55,34 @@ fn vertex_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return output;
 }
 
-fn destination_point(destination_position: vec2<f32>) -> vec2<f32> {
-    return spatial.destination_origin_scale.xy
-        + destination_position / spatial.destination_origin_scale.z;
-}
-
-fn layer_local_point(destination_position: vec2<f32>) -> vec2<f32> {
-    let point = destination_point(destination_position);
+fn source_texel(destination_position: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(
-        parameters.affine_linear.x * point.x
-            + parameters.affine_linear.z * point.y
-            + parameters.affine_translation.x,
-        parameters.affine_linear.y * point.x
-            + parameters.affine_linear.w * point.y
-            + parameters.affine_translation.y,
+        parameters.source_texel_linear.x * destination_position.x
+            + parameters.source_texel_linear.z * destination_position.y
+            + parameters.source_mask_translation.x,
+        parameters.source_texel_linear.y * destination_position.x
+            + parameters.source_texel_linear.w * destination_position.y
+            + parameters.source_mask_translation.y,
     );
 }
 
-fn source_texel(destination_position: vec2<f32>) -> vec2<f32> {
-    var source_point = layer_local_point(destination_position);
-    if (parameters.presence.z == 1u) {
-        source_point = destination_point(destination_position);
+fn mask_normalized(destination_position: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(
+        parameters.mask_normalized_linear.x * destination_position.x
+            + parameters.mask_normalized_linear.z * destination_position.y
+            + parameters.source_mask_translation.z,
+        parameters.mask_normalized_linear.y * destination_position.x
+            + parameters.mask_normalized_linear.w * destination_position.y
+            + parameters.source_mask_translation.w,
+    );
+}
+
+fn load_surface_source(texel: vec2<f32>, extent: vec2<f32>) -> vec4<f32> {
+    // Guard the conversion as well as the load, including distant finite maps.
+    if (any(texel < vec2<f32>(0.0)) || any(texel >= extent)) {
+        return vec4<f32>(0.0);
     }
-    return (source_point - spatial.source_origin_scale.xy) * spatial.source_origin_scale.z;
+    return textureLoad(source_texture, vec2<i32>(floor(texel)), 0);
 }
 
 fn sample_source(destination_position: vec2<f32>) -> vec4<f32> {
@@ -88,7 +93,7 @@ fn sample_source(destination_position: vec2<f32>) -> vec4<f32> {
     if (parameters.presence.z == 1u) {
         // Surface-grid sources share the destination's device-pixel lattice.
         // Load that pixel directly so composition cannot smooth it again.
-        sampled = textureLoad(source_texture, vec2<i32>(floor(texel)), 0);
+        sampled = load_surface_source(texel, extent);
     } else {
         sampled = textureSample(
             source_texture,
@@ -161,28 +166,13 @@ fn mask_alpha_tap(coordinate: vec2<i32>) -> f32 {
     return dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * texel.a;
 }
 
-fn mitchell_netravali(distance_value: f32) -> f32 {
-    let distance = abs(distance_value);
-    let squared = distance * distance;
-    let cubed = squared * distance;
-    if (distance < 1.0) {
-        return (7.0 * cubed - 12.0 * squared + 5.3333335) / 6.0;
-    }
-    if (distance < 2.0) {
-        return (-2.3333335 * cubed + 12.0 * squared - 20.0 * distance + 10.666667) / 6.0;
-    }
-    return 0.0;
-}
 
 fn sample_mask_alpha(destination_position: vec2<f32>) -> f32 {
-    let local = layer_local_point(destination_position);
-    let minimum = parameters.mask_bounds.xy;
-    let maximum = minimum + parameters.mask_bounds.zw;
-    if (any(local < minimum) || any(local > maximum)) {
+    let normalized = mask_normalized(destination_position);
+    if (any(normalized < vec2<f32>(0.0)) || any(normalized > vec2<f32>(1.0))) {
         return 0.0;
     }
 
-    let normalized = (local - minimum) / parameters.mask_bounds.zw;
     let sample_texel = (normalized - parameters.mask_texel_facts.xy)
         / parameters.mask_texel_facts.zw;
     if (parameters.mask_quality == 0u) {

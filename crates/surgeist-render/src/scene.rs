@@ -173,7 +173,7 @@ impl Scene {
         let mut child = Scene::new();
         children(&mut child);
         self.commands.push(Command::Layer {
-            layer,
+            layer: Box::new(layer),
             children: child.commands.into(),
         });
         self
@@ -325,7 +325,9 @@ pub(crate) enum Command {
         shadows: ShadowList,
     },
     Layer {
-        layer: Layer,
+        // Authored metadata is caller-owned; children retain their separate
+        // iterative tree owner rather than a recursive boxed sequence.
+        layer: Box<Layer>,
         children: LayerCommands,
     },
 }

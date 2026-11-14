@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 #[path = "encode/convolution.rs"]
 mod convolution;
+#[path = "encode/offset.rs"]
+mod offset;
 
 #[cfg(test)]
 use crate::BlendMode;
@@ -19,10 +21,10 @@ use super::super::{
     shader::{
         BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
         CompositeParameterBytes, ConvolutionParameterBytes, DevicePassCache,
-        DropShadowParameterBytes, PassCacheCommitPreparation, PassSpatialUniformBytes,
-        ProvisionalColorFilterPassObjects, ProvisionalCompositePassObjects,
-        ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
-        ShaderCompositePathKey,
+        DropShadowParameterBytes, OffsetParameterBytes, PassCacheCommitPreparation,
+        PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
+        ProvisionalCompositePassObjects, ProvisionalCorePassObjects,
+        ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate, ShaderCompositePathKey,
     },
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloCaptureProof, PendingVelloResourceCommit,
@@ -43,8 +45,9 @@ use super::{
     parameters::backdrop_blur_edge_uniform_bytes,
     prepare::{
         PreparedColorFilterOperationBinding, PreparedConvolutionWeightsBinding, PreparedGraph,
-        PreparedKernelBinding, PreparedResourceBinding, PreparedSpatialFilterPassObjects,
-        PreparedTextureBinding, RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
+        PreparedKernelBinding, PreparedOffsetParameterBinding, PreparedResourceBinding,
+        PreparedSpatialFilterPassObjects, PreparedTextureBinding, RuntimePassPreparationRequest,
+        VELLO_CAPTURE_TEXTURE_USAGES,
     },
 };
 
@@ -55,6 +58,7 @@ pub(super) fn filter_step_passes<'a>(
     steps.iter().flat_map(move |step| {
         let count = match step {
             ExecutableFilterStepFacts::Color(_) => 1,
+            ExecutableFilterStepFacts::Offset { rebase, .. } => 1 + usize::from(rebase.is_some()),
             ExecutableFilterStepFacts::Blur { .. } => 2,
             ExecutableFilterStepFacts::DropShadow { .. } => 4,
             ExecutableFilterStepFacts::Convolution { passes, .. } => passes.len().max(1),
@@ -65,6 +69,13 @@ pub(super) fn filter_step_passes<'a>(
             }
             let pass = match step {
                 ExecutableFilterStepFacts::Color(pass) => Some(*pass),
+                ExecutableFilterStepFacts::Offset { rebase, sample, .. } => {
+                    if index == 0 {
+                        Some(rebase.unwrap_or(*sample))
+                    } else {
+                        Some(*sample)
+                    }
+                }
                 ExecutableFilterStepFacts::Blur {
                     horizontal,
                     vertical,
@@ -214,6 +225,7 @@ pub(super) enum GraphScheduledEncodingKind {
     CopyBackdrop,
     ColorFilter,
     Convolution,
+    Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
     BlurHorizontalSourceAlpha,
@@ -230,6 +242,7 @@ pub(super) enum GraphScheduledEncodingKind {
 pub(crate) enum ScheduledFilterRawFact {
     Color,
     Convolution,
+    Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
     BlurHorizontalSourceAlpha,
@@ -247,6 +260,8 @@ pub(super) enum CustomSpineEncodingState {
 }
 
 pub(crate) struct CustomSpineEncodingSummary {
+    pub(crate) offset_pass_count: usize,
+    pub(crate) offset_parameters_and_resources_are_exact: bool,
     pub(crate) convolution_pass_count: usize,
     pub(crate) convolution_parameters_and_resources_are_exact: bool,
     pub(crate) encodes_custom_passes_in_order: bool,
@@ -313,6 +328,8 @@ pub(crate) struct CustomSpineEncodingSummary {
 }
 
 struct CustomSpineEncodingProgress {
+    offset_pass_count: usize,
+    offset_parameters_and_resources_are_exact: bool,
     convolution_pass_count: usize,
     convolution_parameters_and_resources_are_exact: bool,
     scheduled: AccountedVec<GraphScheduledEncodingKind>,
@@ -377,6 +394,8 @@ impl CustomSpineEncodingProgress {
         account: &Account,
     ) -> Result<Self> {
         Ok(Self {
+            offset_pass_count: 0,
+            offset_parameters_and_resources_are_exact: true,
             convolution_pass_count: 0,
             convolution_parameters_and_resources_are_exact: true,
             scheduled: account.temporary(expected_pass_count)?,
@@ -463,6 +482,9 @@ impl CustomSpineEncodingProgress {
             .saturating_add(self.layer_composite_count);
         let backdrop = backdrop_execution_receipt(prepared, account)?;
         Ok(CustomSpineEncodingSummary {
+            offset_pass_count: self.offset_pass_count,
+            offset_parameters_and_resources_are_exact: self
+                .offset_parameters_and_resources_are_exact,
             convolution_pass_count: self.convolution_pass_count,
             convolution_parameters_and_resources_are_exact: self
                 .convolution_parameters_and_resources_are_exact,
@@ -610,6 +632,7 @@ fn scheduled_filter_raw_facts(
         .filter_map(|kind| match kind {
             GraphScheduledEncodingKind::ColorFilter => Some(ScheduledFilterRawFact::Color),
             GraphScheduledEncodingKind::Convolution => Some(ScheduledFilterRawFact::Convolution),
+            GraphScheduledEncodingKind::Offset => Some(ScheduledFilterRawFact::Offset),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
                 Some(ScheduledFilterRawFact::BlurHorizontalRgba)
             }
@@ -767,7 +790,9 @@ fn backdrop_execution_receipt(
 
 impl CustomSpineEncodingSummary {
     fn proves_complete_submission(&self) -> bool {
-        let common = self.encodes_custom_passes_in_order
+        let common = (self.offset_pass_count == 0
+            || self.offset_parameters_and_resources_are_exact)
+            && self.encodes_custom_passes_in_order
             && (self.convolution_pass_count == 0
                 || self.convolution_parameters_and_resources_are_exact)
             && self.clears_full_root_once
@@ -799,7 +824,9 @@ impl CustomSpineEncodingSummary {
             .blur_pass_count
             .saturating_add(self.drop_shadow_colorize_count)
             .saturating_add(self.drop_shadow_merge_count);
-        let spatial_pass_count = spatial_pass_count.saturating_add(self.convolution_pass_count);
+        let spatial_pass_count = spatial_pass_count
+            .saturating_add(self.convolution_pass_count)
+            .saturating_add(self.offset_pass_count);
         let exact_base = self.layer_composite_count == 0
             && self.color_filter_count == 0
             && self.copy_backdrop_count == 0
@@ -854,7 +881,9 @@ impl CustomSpineEncodingSummary {
                 && self.spatial_filter_kernels_release_at_validated_last_use
                 && self.spatial_filter_textures_release_at_validated_last_use);
         let exact_spatial_filter = self.copy_backdrop_count == 0
-            && (self.blur_pass_count > 0 || self.convolution_pass_count > 0)
+            && (self.blur_pass_count > 0
+                || self.convolution_pass_count > 0
+                || self.offset_pass_count > 0)
             && exact_layers
             && exact_color_filters
             && exact_spatial_passes;
@@ -1003,6 +1032,7 @@ struct PreparedPassEncodingRequest {
     releases: SharedValue<Vec<RuntimeResourceId>>,
     kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     convolution_parameters: Option<ConvolutionParameterBytes>,
+    offset_parameters: Option<OffsetParameterBytes>,
     convolution_weights: Option<RuntimePassId>,
 }
 
@@ -1016,6 +1046,7 @@ struct CompletedPassReleases {
     resources: SharedValue<Vec<RuntimeResourceId>>,
     kernels: SharedValue<Vec<GaussianKernelKey>>,
     color_buffer_taken: bool,
+    offset_buffer_taken: bool,
 }
 
 /// Scheduled bindings from the graph whose frame resolved their exact leases.
@@ -1024,6 +1055,8 @@ struct ResolvedPassReleases<'graph> {
     resources: SharedValue<Vec<RuntimeResourceId>>,
     kernels: SharedValue<Vec<GaussianKernelKey>>,
     releases_color_filter_operation: bool,
+    releases_offset_parameters: bool,
+    offset_parameter_bindings: &'graph mut PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     resource_bindings: &'graph mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
     kernel_bindings: &'graph mut PassMap<GaussianKernelKey, PreparedKernelBinding>,
     color_filter_operation_bindings:
@@ -1043,6 +1076,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
         let resource_releases = request.runtime.releases.clone();
         let kernel_releases = request.kernel_releases.clone();
         let releases_color_filter_operation = request.color_filter_operations.is_some();
+        let releases_offset_parameters = request.offset_parameters.is_some();
         let convolution_release = request
             .convolution_weights
             .map(|owner| -> Result<Option<RuntimePassId>> {
@@ -1097,7 +1131,19 @@ impl<'graph> ResolvedPassReleases<'graph> {
             ));
         }
 
+        if releases_offset_parameters
+            && graph
+                .offset_parameter_bindings
+                .get(&pass, account)?
+                .is_none_or(|binding| binding.buffer.is_none())
+        {
+            return Err(preparation_error(
+                "prepared offset uniform release is stale or missing",
+            ));
+        }
+
         let PreparedGraph {
+            offset_parameter_bindings,
             resource_bindings,
             kernel_bindings,
             color_filter_operation_bindings,
@@ -1147,6 +1193,8 @@ impl<'graph> ResolvedPassReleases<'graph> {
             resources: resource_releases,
             kernels: kernel_releases,
             releases_color_filter_operation,
+            releases_offset_parameters,
+            offset_parameter_bindings,
             resource_bindings,
             kernel_bindings,
             color_filter_operation_bindings,
@@ -1190,6 +1238,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 &mut first_missing,
             );
         }
+        if self.releases_offset_parameters {
+            let binding = self
+                .offset_parameter_bindings
+                .maintenance_get_mut(&self.pass)
+                .and_then(|binding| binding.buffer.take());
+            Self::drop_required_binding(
+                binding,
+                "offset uniform missing after atomic resource release",
+                &mut first_missing,
+            );
+        }
         if let Some(owner) = self.convolution_release {
             let lease = self
                 .convolution_weight_bindings
@@ -1209,6 +1268,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
             resources: self.resources,
             kernels: self.kernels,
             color_buffer_taken: self.releases_color_filter_operation,
+            offset_buffer_taken: self.releases_offset_parameters,
         })
     }
 
@@ -1230,6 +1290,7 @@ struct CompletedReleaseFacts {
     resources: bool,
     kernels: bool,
     color_buffer: bool,
+    offset_buffer: bool,
 }
 
 impl CompletedPassReleases {
@@ -1241,6 +1302,7 @@ impl CompletedPassReleases {
             resources: exact_source,
             kernels: exact_source,
             color_buffer: exact_source && self.color_buffer_taken,
+            offset_buffer: exact_source && self.offset_buffer_taken,
         }
     }
 }
@@ -1261,6 +1323,7 @@ impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
             releases: request.runtime.releases.clone(),
             kernel_releases: request.kernel_releases.clone(),
             convolution_parameters: request.convolution_parameters.clone(),
+            offset_parameters: request.offset_parameters.clone(),
             convolution_weights: request.convolution_weights,
         }
     }
@@ -1567,7 +1630,35 @@ fn encode_spatial_filter_full_target_pass(
     filter: bool,
     account: &Account,
 ) -> Result<()> {
-    if filter {
+    encode_spatial_filter_full_target_pass_with_samples(
+        encoder, target, bindings, region, label, filter, None, account,
+    )
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one exact draw carries its optional scheduled sample footprint"
+)]
+fn encode_spatial_filter_full_target_pass_with_samples(
+    encoder: &mut wgpu::CommandEncoder,
+    target: &wgpu::TextureView,
+    bindings: SpatialPassDrawBindings<'_>,
+    region: GraphRenderRegion,
+    label: &'static str,
+    filter: bool,
+    offset_samples: Option<u64>,
+    account: &Account,
+) -> Result<()> {
+    if let Some(samples) = offset_samples {
+        account.work_batch([
+            (RenderWork::ImagePasses, 1),
+            (
+                RenderWork::ScheduledFilterTexels,
+                scheduled_region_texels(region),
+            ),
+            (RenderWork::ScheduledOffsetSamples, samples),
+        ])?;
+    } else if filter {
         account.work_batch([
             (RenderWork::ImagePasses, 1),
             (
@@ -1664,6 +1755,7 @@ fn graph_scheduled_encoding_order_is_exact(
             RuntimePassKind::CopyBackdrop => GraphScheduledEncodingKind::CopyBackdrop,
             RuntimePassKind::ColorFilter(Some(_)) => GraphScheduledEncodingKind::ColorFilter,
             RuntimePassKind::Convolution(_) => GraphScheduledEncodingKind::Convolution,
+            RuntimePassKind::Offset(_) => GraphScheduledEncodingKind::Offset,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
                 RuntimeBlurInput::SourceAlpha => {
@@ -2131,6 +2223,16 @@ impl<'device> PreparedGraph<'device> {
             }
             RuntimePassKind::ColorFilter(Some(_)) => {
                 self.encode_color_filter_step(encoder, request, progress, account)
+            }
+            RuntimePassKind::Offset(_) => {
+                self.encode_offset(encoder, request, account)?;
+                let released = self
+                    .complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                progress.offset_parameters_and_resources_are_exact &=
+                    released.resources && released.offset_buffer;
+                progress.offset_pass_count = progress.offset_pass_count.saturating_add(1);
+                progress.record_custom_completion(GraphScheduledEncodingKind::Offset)
             }
             RuntimePassKind::Convolution(_) => {
                 self.encode_convolution(encoder, request, account)?;
@@ -4137,8 +4239,12 @@ impl<'device> PreparedGraph<'device> {
         let composite_parameters = request.composite_parameters.as_ref().ok_or_else(|| {
             preparation_error("the composition layer composite has no prepared parameter bytes")
         })?;
-        let expected_parameters =
-            CompositeParameterBytes::try_from_runtime_layer(parameters, target_spatial, account)?;
+        let expected_parameters = CompositeParameterBytes::try_from_runtime_layer(
+            parameters,
+            source_spatial,
+            target_spatial,
+            account,
+        )?;
         if composite_parameters != &expected_parameters {
             return Err(preparation_error(
                 "the composition layer composite parameter bytes changed after preparation",
@@ -4473,6 +4579,14 @@ impl<'device> PreparedGraph<'device> {
             if binding.lease.is_some() {
                 return Err(preparation_error(
                     "graph submission retains a convolution coefficient lease",
+                ));
+            }
+        }
+        for binding in self.offset_parameter_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.buffer.is_some() {
+                return Err(preparation_error(
+                    "graph submission retains an unresolved offset uniform",
                 ));
             }
         }

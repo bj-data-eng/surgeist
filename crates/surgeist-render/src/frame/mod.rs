@@ -4,6 +4,7 @@ mod convolution;
 mod filter;
 mod graph;
 mod lower;
+mod offset;
 #[cfg(all(test, not(target_family = "wasm")))]
 mod selection_stack_tests;
 #[cfg(test)]
@@ -29,7 +30,7 @@ pub(crate) use lower::{
     GraphLoweringColorOperation, GraphLoweringComposite, GraphLoweringCompositeKind,
     GraphLoweringConvolution, GraphLoweringDropShadow, GraphLoweringEdgePolicy,
     GraphLoweringFilterSpatialMapping, GraphLoweringGeneration, GraphLoweringImportView,
-    GraphLoweringInitialization, GraphLoweringPassId, GraphLoweringPassKind,
+    GraphLoweringInitialization, GraphLoweringOffset, GraphLoweringPassId, GraphLoweringPassKind,
     GraphLoweringPassResult, GraphLoweringPassView, GraphLoweringReadBinding,
     GraphLoweringReadRole, GraphLoweringResourceId, GraphLoweringResourceProducer,
     GraphLoweringResourceRole, GraphLoweringResourceView, GraphLoweringSamplingEdge,
@@ -44,6 +45,7 @@ pub(crate) use lower::{
     GraphLoweringDestinationToLayerLocal, GraphLoweringOuterClip,
     GraphLoweringResolvedAlphaMaskComposition, GraphLoweringView,
 };
+pub(crate) use offset::{OffsetSampling, OffsetStage};
 #[cfg(test)]
 #[expect(
     unused_imports,

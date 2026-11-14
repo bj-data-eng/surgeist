@@ -296,6 +296,13 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
         &mut crate::RenderAccountingContext::default(),
     )
     .unwrap();
+    let offset_bounds = Rect::new(10.0, 0.0, 2.0, 2.0);
+    let offset = crate::prepare_offset(
+        crate::OffsetInput::new().with_dx(0.5),
+        crate::FilterDomains::try_new(offset_bounds, offset_bounds, offset_bounds).unwrap(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let mut scene = Scene::new();
     scene
         .fill(Rect::new(0.0, 0.0, 8.0, 6.0), Color::BLACK)
@@ -313,6 +320,9 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
         })
         .layer(Layer::new().with_convolution(convolution), |scene| {
             scene.fill(convolution_bounds, Color::BLACK);
+        })
+        .layer(Layer::new().with_offset(offset), |scene| {
+            scene.fill(offset_bounds, Color::BLACK);
         });
     scene
         .normalize(

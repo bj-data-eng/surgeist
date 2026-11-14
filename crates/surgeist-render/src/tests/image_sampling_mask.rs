@@ -283,8 +283,11 @@ fn pixelated_mask_accounts_for_both_placements_and_preserves_publication_on_refu
         ]
         .map(|phase| attempt.phase_usage(phase).work(coordinates))
     });
-    assert_eq!(pixelated_work[1], ordinary_work[1] + 76);
-    assert_eq!(pixelated_work[2], ordinary_work[2] + 76);
+    // Each placement adds76 factor-producer coordinate visits,36 additional
+    // endpoint-sampling checks (Pixelated48 versus Medium12), and one extra
+    // source-map visit because Pixelated selects the SurfaceGrid source path.
+    assert_eq!(pixelated_work[1], ordinary_work[1] + 113);
+    assert_eq!(pixelated_work[2], ordinary_work[2] + 113);
     let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
     for (y, row) in [[0; 7], [0, 0, 0, 128, 255, 255, 0], [0; 7]]
         .into_iter()

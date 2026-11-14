@@ -26,8 +26,8 @@ use super::super::{
         ColorFilterOperationBytes, ColorFilterPassKeyRefs, CompositeParameterBytes,
         CompositePassKeyRefs, ConvolutionParameterBytes, ConvolutionPassKeyRefs,
         CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache, DropShadowColorizePassKeyRefs,
-        DropShadowParameterBytes, PassSpatialUniformBytes, ProvisionalCopyBackdropPassObjects,
-        ProvisionalDevicePassCacheUpdate,
+        DropShadowParameterBytes, OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
+        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -125,6 +125,7 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) kernel: Option<GaussianKernelKey>,
     pub(super) kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     pub(super) convolution_parameters: Option<ConvolutionParameterBytes>,
+    pub(super) offset_parameters: Option<OffsetParameterBytes>,
     pub(super) convolution_weights: Option<RuntimePassId>,
 }
 
@@ -195,6 +196,7 @@ impl RuntimeGraphPreparationPlan {
             &prepared_resources.resource_by_id,
             &pass_facts,
             color_filter_limits,
+            &device.limits(),
             account,
         )?;
         let convolution_weights = prepare_convolution_weights(&mut passes, device, account)?;
@@ -717,6 +719,7 @@ fn prepare_runtime_pass_requests(
     resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
     facts: &RuntimePassAnalysis,
     color_filter_limits: ColorFilterOperationBufferLimits,
+    uniform_limits: &wgpu::Limits,
     account: &Account,
 ) -> Result<AccountedVec<RuntimePassPreparationRequest>> {
     let mut requests = account.retained(lowered.passes.len())?;
@@ -735,7 +738,18 @@ fn prepare_runtime_pass_requests(
             }
             _ => None,
         };
-        if (spatial_uniform.is_some() || convolution_parameters.is_some())
+        let offset_parameters = match &pass.kind {
+            RuntimePassKind::Offset(operation) => {
+                Some(super::offset::parameters(operation, account)?)
+            }
+            _ => None,
+        };
+        if offset_parameters.is_some() {
+            validate_offset_uniform_limits(uniform_limits)?;
+        }
+        if (spatial_uniform.is_some()
+            || convolution_parameters.is_some()
+            || offset_parameters.is_some())
             != pass.cache_keys.is_some()
         {
             return Err(preparation_error(
@@ -762,10 +776,22 @@ fn prepare_runtime_pass_requests(
                 kernel: facts.kernel_by_pass.get(&pass.id, account)?.copied(),
                 kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
                 convolution_parameters,
+                offset_parameters,
                 convolution_weights: None,
             });
     }
     Ok(requests)
+}
+
+fn validate_offset_uniform_limits(limits: &wgpu::Limits) -> Result<()> {
+    if limits.max_buffer_size < 256 || limits.max_uniform_buffer_binding_size < 256 {
+        return Err(crate::Error::invalid_value(
+            "offset uniform buffer byte length",
+            256,
+            "must fit the selected device buffer and uniform-binding limits",
+        ));
+    }
+    Ok(())
 }
 
 fn prepare_convolution_weights(
@@ -865,6 +891,11 @@ pub(super) struct PreparedKernelBinding {
 pub(super) struct PreparedConvolutionWeightsBinding {
     pub(super) lease: Option<ResourceLease>,
     pub(super) last_use: RuntimePassId,
+}
+
+pub(super) struct PreparedOffsetParameterBinding {
+    pub(super) bytes: OffsetParameterBytes,
+    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
 }
 
 pub(super) struct PreparedColorFilterOperationBinding {
@@ -1194,6 +1225,7 @@ pub(crate) struct PreparedGraph<'device> {
     pub(super) kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
     pub(super) convolution_weight_bindings:
         PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+    pub(super) offset_parameter_bindings: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     pub(super) color_filter_operation_bindings:
         PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     pub(super) spatial_filter_pass_objects:
@@ -1282,16 +1314,53 @@ fn acquire_prepared_graph_resources(
     })
 }
 
+fn create_offset_parameter_binding(
+    generation: &Generation,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bytes: &OffsetParameterBytes,
+    account: &Account,
+) -> Result<PreparedOffsetParameterBinding> {
+    let buffer = generation.allocation_with_upload(
+        GenerationClass::PassBuffers,
+        256,
+        256,
+        Some(account),
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist offset checked texel uniform"),
+                size: 256,
+                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        },
+    )?;
+    queue.write_buffer(&buffer, 0, bytes.as_bytes());
+    Ok(PreparedOffsetParameterBinding {
+        bytes: bytes.clone(),
+        buffer: Some(buffer),
+    })
+}
+
 fn create_color_filter_operation_bindings(
     generation: &Generation,
     plan: &RuntimeGraphPreparationPlan,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     account: &Account,
-) -> Result<PassMap<RuntimePassId, PreparedColorFilterOperationBinding>> {
+) -> Result<(
+    PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
+    PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
+)> {
     let mut count = 0usize;
+    let mut offset_count = 0usize;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
+        if request.offset_parameters.is_some() {
+            offset_count = offset_count
+                .checked_add(1)
+                .ok_or(crate::RenderAccountingError::Invariant)?;
+        }
         if request.color_filter_operations.is_some() {
             count = count
                 .checked_add(1)
@@ -1299,8 +1368,24 @@ fn create_color_filter_operation_bindings(
         }
     }
     let mut bindings = PassMap::new(account, count)?;
+    let mut offset_bindings = PassMap::new(account, offset_count)?;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
+        if let Some(bytes) = request.offset_parameters.as_ref() {
+            if !matches!(request.runtime.kind, RuntimePassKind::Offset(_)) {
+                return Err(preparation_error(
+                    "prepared offset bytes have no exact runtime pass",
+                ));
+            }
+            let Err(slot) = offset_bindings.position(&request.runtime.id, account)? else {
+                return Err(preparation_error(
+                    "one offset pass acquired more than one uniform buffer",
+                ));
+            };
+            let binding =
+                create_offset_parameter_binding(generation, device, queue, bytes, account)?;
+            offset_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
+        }
         let Some(bytes) = request.color_filter_operations.as_ref() else {
             continue;
         };
@@ -1343,7 +1428,7 @@ fn create_color_filter_operation_bindings(
             },
         )?;
     }
-    Ok(bindings)
+    Ok((bindings, offset_bindings))
 }
 
 fn realize_prepared_graph_passes(
@@ -1447,6 +1532,22 @@ fn realize_prepared_graph_pass(
                     pass_cache,
                     account,
                     ColorFilterPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+                .require_encoding_ready()?;
+            Ok(None)
+        }
+        RuntimePassKind::Offset(_) => {
+            update
+                .realize_offset_pass(
+                    device,
+                    pass_cache,
+                    account,
+                    OffsetPassKeyRefs {
                         samplers: keys.samplers(),
                         layout: keys.layout(),
                         shader: keys.shader(),
@@ -1891,13 +1992,14 @@ impl<'device> PreparedGraph<'device> {
                 capabilities,
                 account,
             )?;
-            let color_filter_operation_bindings = create_color_filter_operation_bindings(
-                frame_scope.generation(),
-                &plan,
-                device,
-                queue,
-                account,
-            )?;
+            let (color_filter_operation_bindings, offset_parameter_bindings) =
+                create_color_filter_operation_bindings(
+                    frame_scope.generation(),
+                    &plan,
+                    device,
+                    queue,
+                    account,
+                )?;
             let pass_realization = realize_prepared_graph_passes(
                 &plan,
                 device,
@@ -1923,6 +2025,7 @@ impl<'device> PreparedGraph<'device> {
                 kernel_bindings: acquired_resources.gaussian_kernel_bindings,
                 convolution_weight_bindings: acquired_resources.convolution_weight_bindings,
                 color_filter_operation_bindings,
+                offset_parameter_bindings,
                 spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
                 pass_cache_update: pass_realization.update,
                 frame_scope: Some(frame_scope),
@@ -2679,5 +2782,23 @@ mod reconstructed_key_accounting_tests {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod offset_uniform_tests {
+    use super::validate_offset_uniform_limits;
+
+    #[test]
+    fn offset_uniform_preflight_requires_each_actual_device_limit_to_cover_256_bytes() {
+        let mut limits = wgpu::Limits::downlevel_defaults();
+        limits.max_buffer_size = 256;
+        limits.max_uniform_buffer_binding_size = 256;
+        validate_offset_uniform_limits(&limits).unwrap();
+        limits.max_buffer_size = 255;
+        assert!(validate_offset_uniform_limits(&limits).is_err());
+        limits.max_buffer_size = 256;
+        limits.max_uniform_buffer_binding_size = 255;
+        assert!(validate_offset_uniform_limits(&limits).is_err());
     }
 }

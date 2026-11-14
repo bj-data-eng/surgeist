@@ -1,5 +1,6 @@
 use super::CompositeSourceSpace;
 use super::convolution::{ConvolutionMapping, ConvolutionStage};
+use super::offset::{OffsetMapping, OffsetStage};
 use super::{
     bounds::NonEmptyFrameSpatialPlan,
     filter::{
@@ -884,6 +885,25 @@ impl GraphLoweringConvolution {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) struct GraphLoweringOffset {
+    operation: crate::PreparedOffset,
+    mapping: OffsetMapping,
+    stage: OffsetStage,
+}
+
+impl GraphLoweringOffset {
+    pub(crate) fn operation(&self) -> &crate::PreparedOffset {
+        &self.operation
+    }
+    pub(crate) const fn mapping(&self) -> OffsetMapping {
+        self.mapping
+    }
+    pub(crate) const fn stage(&self) -> OffsetStage {
+        self.stage
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum GraphLoweringPassKind {
     ClearRoot {
         initialization: GraphLoweringInitialization,
@@ -894,6 +914,7 @@ pub(crate) enum GraphLoweringPassKind {
     CopyBackdrop,
     ColorFilter(Option<GraphLoweringColorFilter>),
     Convolution(GraphLoweringConvolution),
+    Offset(GraphLoweringOffset),
     BlurHorizontal(Option<GraphLoweringBlur>),
     BlurVertical(Option<GraphLoweringBlur>),
     DropShadowColorize(Option<GraphLoweringDropShadow>),
@@ -908,6 +929,7 @@ pub(crate) enum GraphLoweringReadRole {
     FilterSource,
     ConvolutionSource,
     ConvolutionAuxiliary,
+    OffsetSource,
     BlurredSourceAlpha,
     CompositeParent,
     CompositeSource,
@@ -1152,6 +1174,32 @@ fn graph_lowering_pass_kind(
                     stage,
                 },
             ))
+        }
+        SemanticPassIntent::Offset(stage) => {
+            let mut low = 0;
+            let mut high = graph.offsets.len();
+            while low < high {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let middle = low + (high - low) / 2;
+                if graph.offsets[middle].pass.index.0 < pass.id.index.0 {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let entry = graph
+                .offsets
+                .get(low)
+                .filter(|entry| entry.pass == pass.id)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            if entry.stage != stage {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            Ok(GraphLoweringPassKind::Offset(GraphLoweringOffset {
+                operation: entry.operation,
+                mapping: entry.mapping,
+                stage,
+            }))
         }
         SemanticPassIntent::ColorFilter => {
             graph_lowering_color_filter(pass, filter_steps.find(pass.id, account)?, account)
@@ -1747,6 +1795,20 @@ fn graph_lowering_read_bindings(
                 )?);
             }
             reads
+        }
+        GraphLoweringPassKind::Offset(_) => {
+            if pass.reads.len() != 1 {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            temp_array(
+                &[make(
+                    0,
+                    GraphLoweringReadRole::OffsetSource,
+                    GraphLoweringSamplingFilter::Nearest,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?],
+                account,
+            )?
         }
         GraphLoweringPassKind::ColorFilter(Some(filter)) => temp_array(
             &[make(

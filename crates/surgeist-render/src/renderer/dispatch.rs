@@ -386,6 +386,7 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
     let mut has_blur = false;
     let mut has_drop_shadow = false;
     let mut has_convolution = false;
+    let mut has_offset = false;
 
     for pass in graph.lowering_view(account)?.passes(account)?.iter() {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -397,6 +398,7 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
             GraphLoweringPassKind::CopyBackdrop => has_copy_backdrop = true,
             GraphLoweringPassKind::ColorFilter(Some(_)) => has_color_filter = true,
             GraphLoweringPassKind::Convolution(_) => has_convolution = true,
+            GraphLoweringPassKind::Offset(_) => has_offset = true,
             GraphLoweringPassKind::BlurHorizontal(Some(_))
             | GraphLoweringPassKind::BlurVertical(Some(_)) => has_blur = true,
             GraphLoweringPassKind::DropShadowColorize(Some(_)) => has_drop_shadow = true,
@@ -433,6 +435,11 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
         Some((
             PrimitiveFamily::Filters,
             PrimitiveOperation::GpuConvolutionFilterExecution,
+        ))
+    } else if has_offset {
+        Some((
+            PrimitiveFamily::Filters,
+            PrimitiveOperation::GpuOffsetFilterExecution,
         ))
     } else if has_blur {
         Some((

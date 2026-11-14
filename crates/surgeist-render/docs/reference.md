@@ -698,6 +698,13 @@ the image atlas. Alpha masks sample the equivalent virtual enlarged grid.
 Both paths smooth premultiplied contributions; transparent source colors do not
 bleed into visible output.
 
+Graph layer composition builds independent destination-pixel-to-source-texel and
+destination-pixel-to-mask-normalized affine maps from actual source/result
+capture descriptors in f64 before uploading f32 coefficients. It does not form
+large absolute local coordinates and subtract another large origin on the GPU.
+Mask bounds, reconstruction hints and authored clip ownership remain independent.
+Reached mapping arithmetic and sampling neighbors must qualify before execution.
+
 `Image::quality` remains available for explicit backend quality selection.
 Selecting a rendering hint replaces that quality selection, and selecting a
 quality clears the rendering hint. `Image::rendering_hint` reports the selected
@@ -901,6 +908,12 @@ limits with `RenderProfile::Off`. A frame uses three disjoint Ledger owners:
 Work units describe actual visits and invocations. Unordered source traversal can
 vary comparison/probe totals between otherwise equal inputs; those comparisons
 remain measured in their owning domain.
+
+Native [offset](offset.md) reports `ScheduledOffsetSamples` as actual scheduled
+offset cells times the selected fixed reconstruction footprint (1, 4 or 16), plus
+one opportunity per required raw-rebase cell. Transparent exterior taps remain
+scheduled samples. `ScheduledFilterTexels` separately includes each offset and
+rebase output cell; there are no coefficient visits or coefficient uploads.
 Resource probes include complete registered-entry validation, idle summaries and
 repeated explicit entry lookups as well as candidate selection. Forward registry
 audits spend the current attempt's allowance before inspecting each entry; a
@@ -1227,6 +1240,12 @@ position generation. An empty axis retains its admitted work, and the
 stops the planner at the corresponding check or calculation.
 
 ## Preparation accounting
+
+`prepare_offset` uses `RenderAttemptKind::Offset` and the same central context.
+It inspects one filter operation, dx and dy, then six coordinates/extents for
+each independent source/filter/result domain. A successful call reaches twenty
+`CoordinateVisits`; failure preserves only the reached prefix. The returned
+value is fixed inline data without payload backing or an import lease.
 
 `FontData::prepare_glyph_run` and `prepare_text_layout` take a mutable
 `RenderAccountingContext` after their existing limits. Reuse the context to

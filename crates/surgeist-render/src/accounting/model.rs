@@ -82,10 +82,14 @@ dimensions! {
         /// kernels or packed raster streams.
         SerializedBytes,
         /// Output-scissor area scheduled for filter color conversion, resampling,
-        /// convolution accumulation/finalization, blur, colorize or shadow-merge passes.
+        /// convolution accumulation/finalization, offset, raw lattice rebase,
+        /// blur, colorize or shadow-merge passes.
         ScheduledFilterTexels,
         /// Actual scheduled convolution result-grid cells multiplied by taps, across all batches.
         ScheduledConvolutionTaps,
+        /// Offset output-scissor cells times the selected fixed sampling footprint,
+        /// plus scheduled raw-rebase fetch opportunities. Includes transparent taps.
+        ScheduledOffsetSamples,
         /// Nonempty native compute dispatch calls issued by the internal raster engine.
         RasterDispatches,
         /// Logical internal Vello raster passes actually encoded.
@@ -217,9 +221,13 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::SdrColor)
             || self.supported_for(RenderAttemptKind::ColorFilterProjection)
             || self.supported_for(RenderAttemptKind::Convolution)
+            || self.supported_for(RenderAttemptKind::Offset)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::Offset => {
+                matches!(self, Self::FilterOperationVisits | Self::CoordinateVisits)
+            }
             RenderAttemptKind::Convolution => matches!(
                 self,
                 Self::FilterOperationVisits
@@ -310,6 +318,7 @@ impl RenderWork {
                         | Self::SerializedBytes
                         | Self::ScheduledFilterTexels
                         | Self::ScheduledConvolutionTaps
+                        | Self::ScheduledOffsetSamples
                         | Self::RasterDispatches
                         | Self::VelloPasses
                         | Self::ImagePasses
@@ -932,6 +941,8 @@ pub enum RenderAttemptKind {
     ColorFilterProjection,
     /// Standalone resolved convolution admission.
     Convolution,
+    /// Standalone native image-space offset admission.
+    Offset,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

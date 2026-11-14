@@ -5269,7 +5269,7 @@ fn layer_with_transform_accepts_finite_singular_values_and_scene_keeps_command_o
                 paint: Color::BLACK.into()
             },
             Command::Layer {
-                layer: Layer::new().with_transform(singular),
+                layer: Box::new(Layer::new().with_transform(singular)),
                 children: vec![
                     Command::Fill {
                         shape: second.into(),

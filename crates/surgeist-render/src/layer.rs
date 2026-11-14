@@ -149,6 +149,22 @@ impl Layer {
         }
     }
 
+    /// Installs an admitted image-space offset, replacing the previous foreground effect.
+    #[must_use]
+    pub fn with_offset(mut self, offset: crate::PreparedOffset) -> Self {
+        self.filter = Some(LayerFilter::Offset(offset));
+        self
+    }
+
+    /// Returns the admitted foreground offset, if selected.
+    #[must_use]
+    pub const fn offset(&self) -> Option<&crate::PreparedOffset> {
+        match &self.filter {
+            Some(LayerFilter::Offset(offset)) => Some(offset),
+            _ => None,
+        }
+    }
+
     /// Returns this layer with the supplied validated backdrop-filter input.
     ///
     /// The new input replaces any previous backdrop-filter input. This builder
@@ -281,7 +297,8 @@ impl Layer {
     pub const fn filter(&self) -> Option<Filter> {
         match &self.filter {
             Some(LayerFilter::Blur(filter)) => Some(*filter),
-            Some(LayerFilter::List(_) | LayerFilter::Convolution(_)) | None => None,
+            Some(LayerFilter::List(_) | LayerFilter::Convolution(_) | LayerFilter::Offset(_))
+            | None => None,
         }
     }
 
@@ -290,7 +307,8 @@ impl Layer {
     pub const fn filter_list(&self) -> Option<&FilterList> {
         match &self.filter {
             Some(LayerFilter::List(filters)) => Some(filters),
-            Some(LayerFilter::Blur(_) | LayerFilter::Convolution(_)) | None => None,
+            Some(LayerFilter::Blur(_) | LayerFilter::Convolution(_) | LayerFilter::Offset(_))
+            | None => None,
         }
     }
 
@@ -331,6 +349,7 @@ pub(crate) enum LayerFilter {
     Blur(Filter),
     List(FilterList),
     Convolution(crate::PreparedConvolution),
+    Offset(crate::PreparedOffset),
 }
 
 #[derive(Clone, Debug, PartialEq)]
