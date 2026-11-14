@@ -39,6 +39,7 @@ pub(super) enum Receiver {
     Directory,
     Font,
     Meta,
+    Param,
     Slot,
 }
 
@@ -62,6 +63,7 @@ impl Receiver {
             Self::Directory => super::list_compact::is_directory(node),
             Self::Font => super::font::is_font(node),
             Self::Meta => html_element_is(node, "HTMLMetaElement"),
+            Self::Param => super::param::is_param(node),
             Self::Slot => super::slot::is_slot(node),
         }
     }
@@ -80,6 +82,7 @@ impl Receiver {
             Self::Directory => const { &ascii(b"HTMLDirectoryElement required") },
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
+            Self::Param => const { &ascii(b"HTMLParamElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
         }
     }

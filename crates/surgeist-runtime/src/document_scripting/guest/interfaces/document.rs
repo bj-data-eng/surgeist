@@ -25,6 +25,7 @@ mod fragment;
 mod list_compact;
 mod meta;
 mod ordinary;
+mod param;
 mod parent_node;
 mod processing_instruction;
 mod reflection;
