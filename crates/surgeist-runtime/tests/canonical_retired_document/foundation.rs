@@ -9,15 +9,44 @@ use surgeist_runtime::*;
 #[test]
 fn ordinary_creation_uses_retained_document_facts_after_real_teardown() {
     let mut fixture = HostedFixture::retired();
-    create_ordinary_nodes(&mut fixture, true);
+    let document = fixture.top.document();
+    let global = fixture.top.global();
+    let registry = fixture.registry;
+    create_ordinary_nodes(&mut fixture, document, Some(global), registry);
     fixture.assert_retired();
 }
 
 #[test]
 fn ordinary_creation_has_active_and_never_hosted_controls() {
     let mut fixture = HostedFixture::active();
-    create_ordinary_nodes(&mut fixture, true);
-    create_ordinary_nodes(&mut fixture, false);
+    let global = fixture.top.global();
+    for (document, registry) in [
+        (fixture.top.document(), fixture.registry),
+        (fixture.closed, DomRegistryBinding::Null),
+    ] {
+        create_ordinary_nodes(&mut fixture, document, Some(global), registry);
+    }
+    let snapshot = fixture.session.snapshot();
+    let closed = snapshot.document(fixture.closed).unwrap();
+    assert_eq!(
+        snapshot.relevant_global(fixture.closed.node()).unwrap(),
+        Some(global)
+    );
+    assert_eq!(
+        snapshot.global_document(global).unwrap(),
+        fixture.top.document()
+    );
+    assert_eq!(
+        closed.metadata().document_environment().browsing_context(),
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
+    );
+    assert!(
+        !closed
+            .metadata()
+            .document_environment()
+            .has_ever_had_navigable()
+    );
+    assert!(!closed.is_fully_active().unwrap());
     assert!(
         fixture
             .session
@@ -29,18 +58,12 @@ fn ordinary_creation_has_active_and_never_hosted_controls() {
     );
 }
 
-fn create_ordinary_nodes(fixture: &mut HostedFixture, hosted: bool) {
-    let document = if hosted {
-        fixture.top.document()
-    } else {
-        fixture.closed
-    };
-    let global = hosted.then_some(fixture.top.global());
-    let registry = if hosted {
-        fixture.registry
-    } else {
-        DomRegistryBinding::Null
-    };
+fn create_ordinary_nodes(
+    fixture: &mut HostedFixture,
+    document: DocumentId,
+    global: Option<DomHostedGlobalId>,
+    registry: DomRegistryBinding,
+) {
     let exact = DocumentString::from_utf16(vec![0, 0xd800, 13, 10]);
     let mut batch = DomBatch::new();
     let text = batch.create_text(document, exact.clone());
@@ -137,6 +160,59 @@ fn create_ordinary_nodes(fixture: &mut HostedFixture, hosted: bool) {
                 .is_none()
         );
     }
+}
+
+#[test]
+fn native_document_and_its_html_factory_keep_global_absence_without_hosting() {
+    let mut fixture = HostedFixture::active();
+    let before = fixture.session.snapshot();
+    let mut batch = DomBatch::new();
+    let native = batch.create_document();
+    let html = batch.create_html_document(&native, None);
+    let commit = fixture.session.dom().apply(batch, &cancel()).unwrap();
+    let native = commit.document(&native).unwrap();
+    let html = commit.document(&html).unwrap();
+    assert_ne!(native, html);
+    let snapshot = fixture.session.snapshot();
+    for document in [native, html] {
+        assert!(matches!(
+            before.node(document.node()),
+            Err(DomError::StaleNode)
+        ));
+        assert_eq!(
+            snapshot.node(document.node()).unwrap().owner_document(),
+            None
+        );
+        assert_eq!(snapshot.relevant_global(document.node()).unwrap(), None);
+        let view = snapshot.document(document).unwrap();
+        let metadata = view.metadata();
+        assert_eq!(metadata.custom_element_registry(), DomRegistryBinding::Null);
+        assert_eq!(
+            metadata.document_environment().input_platform(),
+            DomNativeInputPlatform::headless()
+        );
+        assert_eq!(
+            metadata.document_environment().browsing_context(),
+            surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
+        );
+        assert!(!metadata.document_environment().has_ever_had_navigable());
+        assert_eq!(view.navigable(), None);
+        assert!(!view.is_fully_active().unwrap());
+    }
+    let native_metadata = snapshot.document(native).unwrap().metadata();
+    let html_metadata = snapshot.document(html).unwrap().metadata();
+    assert_eq!(native_metadata.class(), DomDocumentClass::Xml);
+    assert_eq!(html_metadata.class(), DomDocumentClass::Html);
+    assert_eq!(native_metadata.origin(), html_metadata.origin());
+    assert_ne!(
+        native_metadata.origin(),
+        snapshot
+            .document(fixture.top.document())
+            .unwrap()
+            .metadata()
+            .origin()
+    );
+    create_ordinary_nodes(&mut fixture, html, None, DomRegistryBinding::Null);
 }
 
 #[test]
@@ -285,7 +361,14 @@ fn xml_creator_reads_retained_origin_and_platform_but_creates_a_fresh_closed_doc
         assert!(!metadata.document_environment().has_ever_had_navigable());
         assert!(!actual.is_fully_active().unwrap());
         assert_eq!(metadata.custom_element_registry(), DomRegistryBinding::Null);
-        assert_eq!(snapshot.relevant_global(document.node()).unwrap(), None);
+        assert_eq!(
+            snapshot.relevant_global(document.node()).unwrap(),
+            Some(fixture.top.global())
+        );
+        assert_eq!(
+            snapshot.global_document(fixture.top.global()).unwrap(),
+            fixture.top.document()
+        );
         let root = snapshot.node(actual.document_element().unwrap()).unwrap();
         assert_eq!(
             root.as_element().unwrap().name().namespace_uri(),
@@ -293,6 +376,7 @@ fn xml_creator_reads_retained_origin_and_platform_but_creates_a_fresh_closed_doc
         );
         assert_eq!(root.node_name(), DocumentString::from("Root"));
         assert_eq!(root.owner_document(), Some(document));
+        assert_eq!(root.relevant_global().unwrap(), Some(fixture.top.global()));
     }
     fixture.assert_retired();
 }
