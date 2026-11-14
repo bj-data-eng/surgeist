@@ -4697,7 +4697,7 @@ fn runtime_pair_is_listed(
         ),
         RuntimeOperation::ConvolutionRendering => matches!(
             reason,
-            RuntimeCapabilityUnavailableReason::ConvolutionFloat32Unavailable
+            RuntimeCapabilityUnavailableReason::FilterFloat32Unavailable
                 | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
                 | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
         ),

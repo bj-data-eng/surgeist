@@ -47,7 +47,7 @@ pub(crate) enum ShaderProgramKey {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ShaderTextureFormatKey {
     VelloCaptureRgba8Unorm,
-    ConvolutionRgba32Float,
+    FilterRgba32Float,
     ClipCoverageRgba8Unorm,
     WorkingHighPrecisionRgba16Float,
     WorkingReducedPrecisionRgba8Unorm,

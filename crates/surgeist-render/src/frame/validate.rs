@@ -189,7 +189,7 @@ fn validate_convolution_metadata(
                     };
                     let width = extent[0].max(1);
                     let height = extent[1].max(1);
-                    if descriptor.role != SemanticResourceRole::ConvolutionFloat
+                    if descriptor.role != SemanticResourceRole::FilterFloat
                         || descriptor.device_origin.x != 0
                         || descriptor.device_origin.y != 0
                         || descriptor.device_extent.width != width

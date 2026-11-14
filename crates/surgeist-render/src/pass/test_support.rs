@@ -6573,7 +6573,7 @@ fn runtime_resource_facts_are_exact(
         && plan
             .resources
             .iter()
-            .any(|resource| resource.format == RuntimeResourceFormat::ConvolutionRgba32Float);
+            .any(|resource| resource.format == RuntimeResourceFormat::FilterRgba32Float);
     let over_limit = DeviceCapabilities::from_test_facts(true, true, 1);
     let extent_rejected = LoweredGraphPlan::try_lower_validated_graph(
         graph,

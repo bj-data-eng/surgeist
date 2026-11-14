@@ -305,11 +305,11 @@ fn prepare_runtime_resource_allocation(
 ) -> Result<RuntimeAllocationRequest> {
     let extent = resource.spatial.device_extent;
     match (&resource.format, &resource.import) {
-        (RuntimeResourceFormat::ConvolutionRgba32Float, None)
-            if resource.role == RuntimeResourceRole::ConvolutionFloat
+        (RuntimeResourceFormat::FilterRgba32Float, None)
+            if resource.role == RuntimeResourceRole::FilterFloat
                 && matches!(resource.producer, RuntimeResourceProducer::Pass(_)) =>
         {
-            let descriptor = EffectTextureDescriptor::try_convolution_float32(
+            let descriptor = EffectTextureDescriptor::try_filter_float32(
                 extent,
                 wgpu::TextureUsages::RENDER_ATTACHMENT
                     .union(wgpu::TextureUsages::TEXTURE_BINDING)

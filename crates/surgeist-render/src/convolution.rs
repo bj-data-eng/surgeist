@@ -5,27 +5,7 @@ use crate::accounting::{
 };
 use crate::{Error, FilterDomains, Result};
 
-/// Numeric working space selected by the resolved filter consumer.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FilterColorSpace {
-    /// Operate on numeric sRGB components.
-    Srgb,
-    /// Decode sRGB transfer before filtering and encode after filtering.
-    LinearSrgb,
-}
-
-/// Neighborhood addressing against the semantic source domain.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConvolutionEdgeMode {
-    /// Extend the nearest boundary sample.
-    Duplicate,
-    /// Repeat the semantic source extent periodically.
-    Wrap,
-    /// Reflect with a twice-extent period, repeating boundary samples.
-    Mirror,
-    /// Sample transparent black beyond the semantic source extent.
-    None,
-}
+use crate::{FilterColorSpace, FilterEdgeMode};
 
 /// Parameter whose resolved value is invalid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -93,7 +73,7 @@ pub struct ConvolutionInput<'a> {
     divisor: Option<f64>,
     bias: f64,
     preserve_alpha: bool,
-    edge_mode: ConvolutionEdgeMode,
+    edge_mode: FilterEdgeMode,
     unit_length: Option<[f64; 2]>,
 }
 impl<'a> ConvolutionInput<'a> {
@@ -107,7 +87,7 @@ impl<'a> ConvolutionInput<'a> {
             divisor: None,
             bias: 0.0,
             preserve_alpha: false,
-            edge_mode: ConvolutionEdgeMode::Duplicate,
+            edge_mode: FilterEdgeMode::Duplicate,
             unit_length: None,
         }
     }
@@ -143,7 +123,7 @@ impl<'a> ConvolutionInput<'a> {
     }
     /// Selects addressing outside the semantic source domain.
     #[must_use]
-    pub const fn with_edge_mode(mut self, edge: ConvolutionEdgeMode) -> Self {
+    pub const fn with_edge_mode(mut self, edge: FilterEdgeMode) -> Self {
         self.edge_mode = edge;
         self
     }
@@ -180,7 +160,7 @@ enum PreparedOperation {
         target: [u32; 2],
         bias: f32,
         preserve_alpha: bool,
-        edge_mode: ConvolutionEdgeMode,
+        edge_mode: FilterEdgeMode,
         color_space: FilterColorSpace,
         unit_length: Option<[f64; 2]>,
     },
@@ -243,10 +223,10 @@ impl PreparedConvolution {
             _ => false,
         }
     }
-    pub(crate) fn edge_mode(&self) -> ConvolutionEdgeMode {
+    pub(crate) fn edge_mode(&self) -> FilterEdgeMode {
         match &self.data.operation {
             PreparedOperation::Executable { edge_mode, .. } => *edge_mode,
-            _ => ConvolutionEdgeMode::None,
+            _ => FilterEdgeMode::None,
         }
     }
     pub(crate) fn color_space(&self) -> FilterColorSpace {

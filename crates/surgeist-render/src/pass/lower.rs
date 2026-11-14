@@ -407,7 +407,7 @@ const fn runtime_resource_role(role: GraphLoweringResourceRole) -> RuntimeResour
         GraphLoweringResourceRole::ImportedImage => RuntimeResourceRole::ImportedImage,
         GraphLoweringResourceRole::BackdropCopy => RuntimeResourceRole::BackdropCopy,
         GraphLoweringResourceRole::FilterIntermediate => RuntimeResourceRole::FilterIntermediate,
-        GraphLoweringResourceRole::ConvolutionFloat => RuntimeResourceRole::ConvolutionFloat,
+        GraphLoweringResourceRole::FilterFloat => RuntimeResourceRole::FilterFloat,
         GraphLoweringResourceRole::ShadowImage => RuntimeResourceRole::ShadowImage,
         GraphLoweringResourceRole::CompositeResult => RuntimeResourceRole::CompositeResult,
     }
@@ -421,7 +421,7 @@ pub(super) const fn runtime_resource_format(
         RuntimeResourceRole::CaptureWorkingImage => RuntimeResourceFormat::VelloCaptureRgba8Unorm,
         RuntimeResourceRole::ClipCoverage => RuntimeResourceFormat::ClipCoverageRgba8Unorm,
         RuntimeResourceRole::ImportedImage => RuntimeResourceFormat::ResolvedMaskRgba8Unorm,
-        RuntimeResourceRole::ConvolutionFloat => RuntimeResourceFormat::ConvolutionRgba32Float,
+        RuntimeResourceRole::FilterFloat => RuntimeResourceFormat::FilterRgba32Float,
         RuntimeResourceRole::RootWorkingImage
         | RuntimeResourceRole::IsolationWorkingImage
         | RuntimeResourceRole::BackdropCopy
@@ -950,7 +950,7 @@ pub(super) fn runtime_pass_cache_keys(
         layout.clone(),
         &samplers,
         Some(if matches!(kind, RuntimePassKind::Convolution(_)) {
-            ShaderTextureFormatKey::ConvolutionRgba32Float
+            ShaderTextureFormatKey::FilterRgba32Float
         } else {
             ShaderTextureFormatKey::working(working_format)
         }),

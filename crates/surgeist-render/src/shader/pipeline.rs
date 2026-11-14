@@ -1170,7 +1170,7 @@ const fn texture_format(format: ShaderTextureFormatKey) -> Result<wgpu::TextureF
         | ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm
         | ShaderTextureFormatKey::ResolvedMaskRgba8Unorm
         | ShaderTextureFormatKey::OutputRgba8Unorm => Ok(wgpu::TextureFormat::Rgba8Unorm),
-        ShaderTextureFormatKey::ConvolutionRgba32Float => Ok(wgpu::TextureFormat::Rgba32Float),
+        ShaderTextureFormatKey::FilterRgba32Float => Ok(wgpu::TextureFormat::Rgba32Float),
         ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float => {
             Ok(wgpu::TextureFormat::Rgba16Float)
         }
@@ -1217,7 +1217,7 @@ mod convolution_shader_tests {
         };
         assert_eq!(span, 256);
         assert_eq!(
-            texture_format(ShaderTextureFormatKey::ConvolutionRgba32Float).unwrap(),
+            texture_format(ShaderTextureFormatKey::FilterRgba32Float).unwrap(),
             wgpu::TextureFormat::Rgba32Float
         );
     }
@@ -1250,7 +1250,7 @@ mod convolution_alpha_gpu_tests {
             Some(&account),
             device,
             ConvolutionPassDescription {
-                target_format: ShaderTextureFormatKey::ConvolutionRgba32Float,
+                target_format: ShaderTextureFormatKey::FilterRgba32Float,
             },
             &layout,
             &shader,

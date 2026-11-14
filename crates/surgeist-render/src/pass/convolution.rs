@@ -1,6 +1,6 @@
 //! Runtime preparation of the checked convolution graph payload.
 use crate::{
-    ConvolutionEdgeMode, FilterColorSpace, Result,
+    FilterColorSpace, FilterEdgeMode, Result,
     accounting::Account,
     frame::{ConvolutionStage, GraphLoweringConvolution},
     shader::{ConvolutionParameterBytes, ConvolutionParameterFacts},
@@ -44,10 +44,10 @@ pub(super) fn parameters(
             first_tap,
             tap_count,
             edge: match prepared.edge_mode() {
-                ConvolutionEdgeMode::Duplicate => 0,
-                ConvolutionEdgeMode::Wrap => 1,
-                ConvolutionEdgeMode::Mirror => 2,
-                ConvolutionEdgeMode::None => 3,
+                FilterEdgeMode::Duplicate => 0,
+                FilterEdgeMode::Wrap => 1,
+                FilterEdgeMode::Mirror => 2,
+                FilterEdgeMode::None => 3,
             },
             preserve_alpha: prepared.preserve_alpha(),
             linear_srgb: prepared.color_space() == FilterColorSpace::LinearSrgb,

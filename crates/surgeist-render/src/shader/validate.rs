@@ -320,7 +320,7 @@ pub(super) fn validate_convolution_pass_keys(
         is_working_format(format)
             || matches!(
                 format,
-                ShaderTextureFormatKey::ConvolutionRgba32Float
+                ShaderTextureFormatKey::FilterRgba32Float
                     | ShaderTextureFormatKey::VelloCaptureRgba8Unorm
             )
     };
@@ -341,14 +341,14 @@ pub(super) fn validate_convolution_pass_keys(
         || !layout_eq(&keys.shader.layout, keys.layout, observer)?
         || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
         || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
-        || keys.shader.working_format != Some(ShaderTextureFormatKey::ConvolutionRgba32Float)
+        || keys.shader.working_format != Some(ShaderTextureFormatKey::FilterRgba32Float)
         || keys.shader.output_format != Some(target_format)
         || source.binding_role != ShaderBindingRoleKey::ConvolutionSource
         || auxiliary.binding_role != ShaderBindingRoleKey::ConvolutionAuxiliary
         || !valid_input(source.source_format)
         || !valid_input(auxiliary.source_format)
         || !(is_working_format(target_format)
-            || target_format == ShaderTextureFormatKey::ConvolutionRgba32Float)
+            || target_format == ShaderTextureFormatKey::FilterRgba32Float)
     {
         return Err(convolution_cache_error(
             "convolution keys disagree across bindings, programs, or formats",
@@ -1155,7 +1155,7 @@ mod convolution_key_tests {
     fn fixture() -> (BindGroupLayoutKey, ShaderModuleKey, RenderPipelineKey) {
         let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
         let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
-        let format = ShaderTextureFormatKey::ConvolutionRgba32Float;
+        let format = ShaderTextureFormatKey::FilterRgba32Float;
         let layout = BindGroupLayoutKey::new(
             &cpu,
             None,
@@ -1209,7 +1209,7 @@ mod convolution_key_tests {
         assert!(validate(&layout, &shader, &wrong).is_err());
         let sampler = SamplerKey::new(
             ShaderBindingRoleKey::ConvolutionSource,
-            ShaderTextureFormatKey::ConvolutionRgba32Float,
+            ShaderTextureFormatKey::FilterRgba32Float,
             ShaderSamplingFilterKey::Nearest,
             ShaderSamplingEdgeKey::ClampToExtent,
             None,
@@ -1280,7 +1280,7 @@ mod offset_key_tests {
                 ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
                 true,
             ),
-            (ShaderTextureFormatKey::ConvolutionRgba32Float, false),
+            (ShaderTextureFormatKey::FilterRgba32Float, false),
             (ShaderTextureFormatKey::VelloCaptureRgba8Unorm, false),
             (ShaderTextureFormatKey::OutputRgba8Unorm, false),
         ] {

@@ -34,7 +34,7 @@ pub(crate) enum RuntimeResourceRole {
     ImportedImage,
     BackdropCopy,
     FilterIntermediate,
-    ConvolutionFloat,
+    FilterFloat,
     ShadowImage,
     CompositeResult,
 }
@@ -45,7 +45,7 @@ pub(crate) enum RuntimeResourceFormat {
     ClipCoverageRgba8Unorm,
     Working(WorkingFormat),
     ResolvedMaskRgba8Unorm,
-    ConvolutionRgba32Float,
+    FilterRgba32Float,
 }
 
 impl RuntimeResourceFormat {
@@ -55,7 +55,7 @@ impl RuntimeResourceFormat {
             Self::ClipCoverageRgba8Unorm => ShaderTextureFormatKey::ClipCoverageRgba8Unorm,
             Self::Working(format) => ShaderTextureFormatKey::working(format),
             Self::ResolvedMaskRgba8Unorm => ShaderTextureFormatKey::ResolvedMaskRgba8Unorm,
-            Self::ConvolutionRgba32Float => ShaderTextureFormatKey::ConvolutionRgba32Float,
+            Self::FilterRgba32Float => ShaderTextureFormatKey::FilterRgba32Float,
         }
     }
 }

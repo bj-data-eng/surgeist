@@ -116,7 +116,7 @@ pub(super) enum SemanticResourceRole {
     ImportedImage,
     BackdropCopy,
     FilterIntermediate,
-    ConvolutionFloat,
+    FilterFloat,
     ShadowImage,
     CompositeResult,
 }
@@ -924,7 +924,7 @@ impl SemanticGraphBuilder {
                 | ConvolutionStage::PassThrough
                 | ConvolutionStage::Resolve,
             ) => SemanticResourceRole::FilterIntermediate,
-            SemanticPassIntent::Convolution(_) => SemanticResourceRole::ConvolutionFloat,
+            SemanticPassIntent::Convolution(_) => SemanticResourceRole::FilterFloat,
             SemanticPassIntent::CopyBackdrop => SemanticResourceRole::BackdropCopy,
             SemanticPassIntent::DropShadowColorize => SemanticResourceRole::ShadowImage,
             SemanticPassIntent::Composite => SemanticResourceRole::CompositeResult,
@@ -2449,7 +2449,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             ConvolutionStage::RebaseSource
             | ConvolutionStage::PassThrough
             | ConvolutionStage::Resolve => SemanticResourceRole::FilterIntermediate,
-            _ => SemanticResourceRole::ConvolutionFloat,
+            _ => SemanticResourceRole::FilterFloat,
         };
         let result = graph_build(
             self.builder

@@ -1,6 +1,6 @@
 use super::convolution::*;
 use crate::{
-    Color, ConvolutionEdgeMode, ConvolutionInput, FilterColorSpace, FilterDomains, Layer, Rect,
+    Color, ConvolutionInput, FilterColorSpace, FilterDomains, FilterEdgeMode, Layer, Rect,
     RenderAccountingContext, Scene, prepare_convolution,
 };
 
@@ -15,10 +15,10 @@ fn zero_axis_source_does_not_qualify_the_unused_large_axis() {
             Rect::new(0.0, 0.0, extent, 0.0),
         ] {
             for edge in [
-                ConvolutionEdgeMode::Duplicate,
-                ConvolutionEdgeMode::Wrap,
-                ConvolutionEdgeMode::Mirror,
-                ConvolutionEdgeMode::None,
+                FilterEdgeMode::Duplicate,
+                FilterEdgeMode::Wrap,
+                FilterEdgeMode::Mirror,
+                FilterEdgeMode::None,
             ] {
                 let op = prepare_convolution(
                     ConvolutionInput::new(&[1.0])

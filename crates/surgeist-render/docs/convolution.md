@@ -74,7 +74,7 @@ An explicit nonzero divisor does not calculate an unnecessary raw kernel sum.
 Overflow in a requested default sum is a typed numeric refusal.
 
 Bias defaults to zero, `preserveAlpha` defaults to false, and edge mode defaults
-to `ConvolutionEdgeMode::Duplicate`. The caller supplies `FilterColorSpace::Srgb`
+to `FilterEdgeMode::Duplicate`. The caller supplies `FilterColorSpace::Srgb`
 or `FilterColorSpace::LinearSrgb`; Render does not infer an SVG default from a
 CSS-filter setting. A consumer implementing SVG's default selects linear-sRGB.
 

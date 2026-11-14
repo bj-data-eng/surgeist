@@ -2700,7 +2700,7 @@ impl<'device> PreparedGraph<'device> {
             | RuntimeResourceFormat::ClipCoverageRgba8Unorm
             | RuntimeResourceFormat::ResolvedMaskRgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
             RuntimeResourceFormat::Working(format) => format.texture_format(),
-            RuntimeResourceFormat::ConvolutionRgba32Float => wgpu::TextureFormat::Rgba32Float,
+            RuntimeResourceFormat::FilterRgba32Float => wgpu::TextureFormat::Rgba32Float,
         };
         if binding.runtime_resource() != resource
             || texture.width() != request.spatial.device_extent.width()

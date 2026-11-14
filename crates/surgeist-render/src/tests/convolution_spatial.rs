@@ -1,8 +1,8 @@
 //! Hand-derived image-domain and two-stage lattice witnesses.
 use super::convolution::*;
 use crate::{
-    Color, ConvolutionEdgeMode, ConvolutionInput, FilterColorSpace, FilterDomains, Layer,
-    Parameters, Rect, RenderAccountingContext, Scene, Transform, prepare_convolution,
+    Color, ConvolutionInput, FilterColorSpace, FilterDomains, FilterEdgeMode, Layer, Parameters,
+    Rect, RenderAccountingContext, Scene, Transform, prepare_convolution,
 };
 
 #[test]
@@ -59,10 +59,10 @@ fn explicit_kernel_grid_materializes_finite_input_before_edge_extension() {
     let domain = bounds(2, 1);
     let source = image(2, 1, vec![255, 255, 255, 255, 255, 0, 255, 0]);
     for (edge, alpha) in [
-        (ConvolutionEdgeMode::Duplicate, 128),
-        (ConvolutionEdgeMode::Wrap, 128),
-        (ConvolutionEdgeMode::Mirror, 128),
-        (ConvolutionEdgeMode::None, 96),
+        (FilterEdgeMode::Duplicate, 128),
+        (FilterEdgeMode::Wrap, 128),
+        (FilterEdgeMode::Mirror, 128),
+        (FilterEdgeMode::None, 96),
     ] {
         let op = operation(
             ConvolutionInput::new(&[1.0])
@@ -121,7 +121,7 @@ fn source_filter_and_result_domains_clip_different_image_cells() {
     let request = ConvolutionInput::new(&[0.0, 0.0, 1.0])
         .with_order(3.0, Some(1.0))
         .with_divisor(1.0)
-        .with_edge_mode(ConvolutionEdgeMode::None);
+        .with_edge_mode(FilterEdgeMode::None);
     for (filter, expected) in [
         (full, [255, 0, 0, 255]),
         (Rect::new(1.0, 0.0, 2.0, 1.0), [0, 0, 0, 0]),

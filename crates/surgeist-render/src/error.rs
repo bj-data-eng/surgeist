@@ -968,10 +968,10 @@ impl RuntimeCapabilityUnavailable {
         }
     }
 
-    pub(crate) const fn convolution_float32_unavailable() -> Self {
+    pub(crate) const fn filter_float32_unavailable() -> Self {
         Self {
             operation: RuntimeOperation::ConvolutionRendering,
-            reason: RuntimeCapabilityUnavailableReason::ConvolutionFloat32Unavailable,
+            reason: RuntimeCapabilityUnavailableReason::FilterFloat32Unavailable,
         }
     }
 
@@ -1151,8 +1151,8 @@ pub enum RuntimeCapabilityUnavailableReason {
         /// Effect precision policy that could not be met.
         policy: EffectQualityPolicy,
     },
-    /// Signed float32 convolution textures lack required render/sample/copy usages.
-    ConvolutionFloat32Unavailable,
+    /// Float32 native-filter textures lack required render/sample/copy usages.
+    FilterFloat32Unavailable,
     /// The requested effect texture exceeds the selected device limit.
     TextureDimensionExceeded {
         /// Requested physical texture dimensions.

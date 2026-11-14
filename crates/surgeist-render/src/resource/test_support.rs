@@ -271,7 +271,7 @@ impl ResourceManager {
             .values()
             .filter(|entry| matches!(entry.key, ResourceCacheKey::EffectTexture(_)))
             .count();
-        let convolution_float32_entries = state
+        let filter_float32_entries = state
             .entries
             .values()
             .filter(|entry| {
@@ -332,7 +332,7 @@ impl ResourceManager {
             committed_transient_image_count,
             committed_transient_image_byte_len,
             effect_texture_count,
-            convolution_float32_entries,
+            filter_float32_entries,
             convolution_weight_entries,
             resolved_mask_upload_keys,
             gaussian_kernel_count,
@@ -490,7 +490,7 @@ pub(crate) struct ResourceManagerObservationForTest {
     committed_transient_image_count: usize,
     committed_transient_image_byte_len: u64,
     effect_texture_count: usize,
-    convolution_float32_entries: usize,
+    filter_float32_entries: usize,
     convolution_weight_entries: usize,
     resolved_mask_upload_keys: Vec<ResolvedMaskUploadKey>,
     gaussian_kernel_count: usize,
@@ -547,8 +547,8 @@ impl ResourceManagerObservationForTest {
     }
 
     /// Counts actual native float32 effect textures, independently of cache-key roles.
-    pub(crate) const fn convolution_float32_entries_for_test(&self) -> usize {
-        self.convolution_float32_entries
+    pub(crate) const fn filter_float32_entries_for_test(&self) -> usize {
+        self.filter_float32_entries
     }
 
     pub(crate) const fn convolution_weight_entries_for_test(&self) -> usize {

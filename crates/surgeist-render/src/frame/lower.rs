@@ -287,7 +287,7 @@ pub(crate) enum GraphLoweringResourceRole {
     ImportedImage,
     BackdropCopy,
     FilterIntermediate,
-    ConvolutionFloat,
+    FilterFloat,
     ShadowImage,
     CompositeResult,
 }
@@ -302,7 +302,7 @@ impl GraphLoweringResourceRole {
             SemanticResourceRole::ImportedImage => Self::ImportedImage,
             SemanticResourceRole::BackdropCopy => Self::BackdropCopy,
             SemanticResourceRole::FilterIntermediate => Self::FilterIntermediate,
-            SemanticResourceRole::ConvolutionFloat => Self::ConvolutionFloat,
+            SemanticResourceRole::FilterFloat => Self::FilterFloat,
             SemanticResourceRole::ShadowImage => Self::ShadowImage,
             SemanticResourceRole::CompositeResult => Self::CompositeResult,
         }

@@ -87,7 +87,7 @@ fn divisor_zero_default_zero_sum_signed_bias_and_units() {
             .with_bias(-0.25)
             .with_preserve_alpha(true)
             .with_unit_length(0.5, Some(2.0))
-            .with_edge_mode(ConvolutionEdgeMode::Mirror),
+            .with_edge_mode(FilterEdgeMode::Mirror),
     )
     .unwrap();
     assert_eq!(output.weights(), &[-2.0, 2.0]);
@@ -95,7 +95,7 @@ fn divisor_zero_default_zero_sum_signed_bias_and_units() {
     assert_eq!(output.bias(), -0.25);
     assert!(output.preserve_alpha());
     assert_eq!(output.unit_length(), Some([0.5, 2.0]));
-    assert_eq!(output.edge_mode(), ConvolutionEdgeMode::Mirror);
+    assert_eq!(output.edge_mode(), FilterEdgeMode::Mirror);
     let signed = prepare(
         ConvolutionInput::new(&[2.0])
             .with_order(1.0, None)
@@ -354,10 +354,10 @@ fn native_convolution_capability_accepts_all_resolved_edge_modes() {
         "GPU convolution filter execution"
     );
     for edge in [
-        ConvolutionEdgeMode::Duplicate,
-        ConvolutionEdgeMode::Wrap,
-        ConvolutionEdgeMode::Mirror,
-        ConvolutionEdgeMode::None,
+        FilterEdgeMode::Duplicate,
+        FilterEdgeMode::Wrap,
+        FilterEdgeMode::Mirror,
+        FilterEdgeMode::None,
     ] {
         let output = prepare(
             ConvolutionInput::new(&[1.0])

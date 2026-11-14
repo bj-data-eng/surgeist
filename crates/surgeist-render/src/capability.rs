@@ -106,19 +106,19 @@ impl AvailableRuntimeCapabilities {
 pub struct EffectPrecisionCapabilities {
     high_precision: bool,
     reduced_precision: bool,
-    convolution_float32: bool,
+    filter_float32: bool,
 }
 
 impl EffectPrecisionCapabilities {
     pub(crate) const fn new(
         high_precision: bool,
         reduced_precision: bool,
-        convolution_float32: bool,
+        filter_float32: bool,
     ) -> Self {
         Self {
             high_precision,
             reduced_precision,
-            convolution_float32,
+            filter_float32,
         }
     }
 
@@ -130,13 +130,13 @@ impl EffectPrecisionCapabilities {
         self.high_precision
     }
 
-    /// Returns whether signed float32 convolution accumulation textures support all required usages.
+    /// Returns whether float32 native-filter textures support all required usages.
     ///
     /// This requirement is independent of the ordinary effect precision policy;
-    /// convolution uses manual interpolation and does not require hardware filtering.
+    /// native float32 filtering uses manual interpolation and does not require hardware filtering.
     #[must_use]
-    pub const fn supports_convolution_float32(self) -> bool {
-        self.convolution_float32
+    pub const fn supports_filter_float32(self) -> bool {
+        self.filter_float32
     }
 
     /// Returns whether the selected runtime device supports reduced-precision effect textures.

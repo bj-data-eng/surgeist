@@ -1,7 +1,7 @@
 //! Independent fixtures through the public admitted-convolution receiver and real GPU readback.
 //! Readback pixels are straight RGBA8; comments distinguish premultiplied equations.
 use crate::{
-    Color, ConvolutionEdgeMode, ConvolutionInput, FilterAmount, FilterColorSpace, FilterDomains,
+    Color, ConvolutionInput, FilterAmount, FilterColorSpace, FilterDomains, FilterEdgeMode,
     FilterList, FilterOp, Image, ImageBuffer, ImageFit, ImageQuality, Layer, Options, Parameters,
     PreparedConvolution, Rect, RenderAccountingContext, RenderRoute, Renderer,
     ResolvedLayerAlphaMask, Scene, Size, Surface, prepare_convolution,
@@ -162,10 +162,10 @@ fn public_convolution_gpu_addresses_all_edges_and_preserves_alpha() {
     // A seven-column kernel with only its first coefficient set samples x+3.
     // Expected addressing below is handwritten for source indices3,4,5.
     for (edge, expected) in [
-        (ConvolutionEdgeMode::Duplicate, [192, 192, 192]),
-        (ConvolutionEdgeMode::Wrap, [64, 128, 192]),
-        (ConvolutionEdgeMode::Mirror, [192, 128, 64]),
-        (ConvolutionEdgeMode::None, [0, 0, 0]),
+        (FilterEdgeMode::Duplicate, [192, 192, 192]),
+        (FilterEdgeMode::Wrap, [64, 128, 192]),
+        (FilterEdgeMode::Mirror, [192, 128, 64]),
+        (FilterEdgeMode::None, [0, 0, 0]),
     ] {
         let convolution = operation(
             ConvolutionInput::new(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -190,7 +190,7 @@ fn public_convolution_gpu_addresses_all_edges_and_preserves_alpha() {
         ConvolutionInput::new(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             .with_order(7.0, Some(1.0))
             .with_divisor(1.0)
-            .with_edge_mode(ConvolutionEdgeMode::None),
+            .with_edge_mode(FilterEdgeMode::None),
         domain,
         FilterColorSpace::Srgb,
     );
@@ -301,7 +301,7 @@ fn public_convolution_gpu_bias_empty_input_multibatch_and_normalization() {
         .unwrap()
         .internal_resource_manager_observation_for_test();
     assert!(
-        resources.convolution_float32_entries_for_test() > 0,
+        resources.filter_float32_entries_for_test() > 0,
         "the actual GPU resource payload must include Rgba32Float accumulation storage"
     );
     assert!(resources.convolution_weight_entries_for_test() > 0);
@@ -309,7 +309,7 @@ fn public_convolution_gpu_bias_empty_input_multibatch_and_normalization() {
         renderer
             .default_device_capabilities_for_test()
             .effect_precisions()
-            .supports_convolution_float32()
+            .supports_filter_float32()
     );
     assert!(renderer.default_device_has_no_terminal_signal_for_test());
 }
@@ -503,10 +503,10 @@ fn public_convolution_gpu_negative_multiple_periods_and_empty_domains_are_define
     let mut weights = [0.0; 15];
     weights[14] = 1.0;
     for (edge, reds) in [
-        (ConvolutionEdgeMode::Duplicate, [64, 64, 64]),
-        (ConvolutionEdgeMode::Wrap, [128, 192, 64]),
-        (ConvolutionEdgeMode::Mirror, [128, 64, 64]),
-        (ConvolutionEdgeMode::None, [0, 0, 0]),
+        (FilterEdgeMode::Duplicate, [64, 64, 64]),
+        (FilterEdgeMode::Wrap, [128, 192, 64]),
+        (FilterEdgeMode::Mirror, [128, 64, 64]),
+        (FilterEdgeMode::None, [0, 0, 0]),
     ] {
         let output = render(
             &mut renderer,
@@ -549,11 +549,7 @@ fn public_convolution_gpu_negative_multiple_periods_and_empty_domains_are_define
             &mut surface,
             &image_scene(image(1, 1, vec![128, 128, 128, 255]), singleton, op),
         );
-        let red = if edge == ConvolutionEdgeMode::None {
-            0
-        } else {
-            128
-        };
+        let red = if edge == FilterEdgeMode::None { 0 } else { 128 };
         assert_pixel(&singleton_output, 0, 0, [red, red, red, 255], 1);
         assert_pixel(&singleton_output, 1, 0, [0; 4], 1);
         let op = prepare_convolution(
