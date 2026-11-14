@@ -481,6 +481,42 @@
       ]
     },
     {
+      "id": "HTMLDListElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmldlistelement",
+      "block": 0,
+      "sha256": "4d37a168d965ac6399c58b5c3de72de050a581ab3e82ffbf78b203f73105ea87",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldlistelement",
+      "entries": [
+        "HTMLDListElement"
+      ]
+    },
+    {
+      "id": "HTMLDListElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLDListElement&#45;partial",
+      "block": 0,
+      "sha256": "04ba92c0ba292e1aaba72aff4c8a9a9fe72ee1969721f9b75ef2a33a647dcbd6",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dl-compact",
+      "entries": [
+        "HTMLDListElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLDirectoryElement.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "htmldirectoryelement",
+      "block": 0,
+      "sha256": "08ae62b9416bccb334b80b12ee7a0c11cef88ab149bd8ff233ba26a1f15e9c3d",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldirectoryelement",
+      "entries": [
+        "HTMLDirectoryElement"
+      ]
+    },
+    {
       "id": "HTMLFontElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlfontelement",
@@ -4440,6 +4476,99 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLDListElement",
+      "kind": "interface",
+      "name": "HTMLDListElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLDListElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLDListElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLDListElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "compact",
+          "readonly": false,
+          "id": "HTMLDListElement.obsolete.compact"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLDirectoryElement",
+      "kind": "interface",
+      "name": "HTMLDirectoryElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLDirectoryElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "compact",
+          "readonly": false,
+          "id": "HTMLDirectoryElement.compact"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "HTMLFontElement",
@@ -8675,6 +8804,88 @@
           "owner": "surgeist-dom",
           "path": "crates/surgeist-dom/src/source.rs",
           "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDListElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmldlistelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDListElement.obsolete.compact/get": {
+      "kind": "native",
+      "adapter": "htmldlistelement.compact.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDListElement.obsolete.compact/set": {
+      "kind": "native",
+      "adapter": "htmldlistelement.compact.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDirectoryElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmldirectoryelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDirectoryElement.compact/get": {
+      "kind": "native",
+      "adapter": "htmldirectoryelement.compact.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDirectoryElement.compact/set": {
+      "kind": "native",
+      "adapter": "htmldirectoryelement.compact.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
         }
       ],
       "requirements": []

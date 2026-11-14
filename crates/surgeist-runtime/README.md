@@ -349,6 +349,9 @@ remain raw attribute strings.
 HTMLDivElement, HTMLParagraphElement and HTMLHeadingElement reflect align as a
 raw DOMString through the same admitted Source and reaction adapter. All six
 heading elements share HTMLHeadingElement's reflected member.
+HTMLDListElement and HTMLDirectoryElement reflect compact as attribute presence,
+setting an empty attribute for true and removing it for false through that
+adapter. HTMLElement.dir supplies their inherited direction-string reflection.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous
