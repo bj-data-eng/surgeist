@@ -578,12 +578,15 @@ type SharedBoxPreparation<Node, S, M> = LayoutResultOf<
     M,
 >;
 
+type SharedBoxQualificationResult<Node, S, M> =
+    LayoutResultOf<Node, (entry::EntryQuery<Node, S>, SharedBoxQualification<Node, S>), S, M>;
+
 pub(super) fn prepare_shared_box<'input, Tree, S, M>(
     tree: &mut Tree,
     computation: &InFlowBoxComputation<'_, 'input, Tree::Node, S>,
     preparation: &InFlowBoxPreparation<S>,
     resident_cut: Option<entry::canonical::Separation<Tree::Node, S>>,
-) -> SharedBoxPreparation<Tree::Node, S, M>
+) -> SharedBoxQualificationResult<Tree::Node, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
@@ -591,7 +594,6 @@ where
     let InFlowBoxComputation {
         node,
         child,
-        index,
         child_style,
         constants,
         prepared,
@@ -647,7 +649,7 @@ where
         own_start: CollapsibleMarginOf::ZERO.collapse_with_margin(pending.margin.block_start),
         inline_offset: pending.inline_offset,
     };
-    let summary = match tree.qualify_entry(entry::EntryQuery {
+    let query = entry::EntryQuery {
         node: child,
         input: entry_input,
         reporting_side: constants.flow_axes.block_start(),
@@ -659,11 +661,52 @@ where
             cut: resident_cut,
         }),
         position: Some(position),
-    })? {
+    };
+    Ok((
+        query,
+        SharedBoxQualification {
+            pending,
+            frame,
+            position,
+            clearance_funding,
+            resident_cut,
+        },
+    ))
+}
+
+pub(super) struct SharedBoxQualification<Node, S: LayoutScalar> {
+    pending: scope::Pending<Node, S>,
+    frame: std::sync::Arc<InheritedFloatExclusions<S, Node>>,
+    position: entry::canonical::EntryPosition<S>,
+    clearance_funding: Option<crate::text_layout::scope_alignment::EntryFunding<S>>,
+    resident_cut: Option<entry::canonical::Separation<Node, S>>,
+}
+
+pub(super) fn complete_shared_preparation<'input, Node: Copy + Eq, S: LayoutScalar, M>(
+    computation: &InFlowBoxComputation<'_, 'input, Node, S>,
+    qualification: SharedBoxQualification<Node, S>,
+    observation: entry::EntryObservation<Node, S>,
+) -> SharedBoxPreparation<Node, S, M> {
+    let InFlowBoxComputation {
+        node,
+        child,
+        index,
+        child_style,
+        constants,
+        float_exclusions,
+        ..
+    } = *computation;
+    let SharedBoxQualification {
+        pending,
+        frame,
+        position,
+        clearance_funding,
+        resident_cut,
+    } = qualification;
+    let funding = clearance_funding.as_ref();
+    let summary = match observation {
         entry::EntryObservation::Summary(summary) => summary,
-        entry::EntryObservation::Demand(demand) => {
-            return Err(float_context::missing(demand.node));
-        }
+        entry::EntryObservation::Demand(demand) => return Err(float_context::missing(demand.node)),
     };
     let hypothetical = frame
         .common_border(position.hypothetical(summary.start_fact().margin))

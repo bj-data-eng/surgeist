@@ -328,10 +328,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
         self.driver.query.purpose == EntryPurpose::Component
     }
 
-    pub(crate) fn observe_float<'input, Tree, M>(
+    pub(crate) fn prepare_float<'input, Tree, M>(
         mut self,
         tree: &mut Tree,
-    ) -> EntryResult<Node, S, M>
+    ) -> LayoutResultOf<Node, EntryFloat<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
         Node: 'input,
@@ -368,44 +368,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
                 first_in_flow: &mut frame.first_in_flow,
             },
         )?;
-        let output = tree.measure_entry_float(node, prepared.input)?;
-        let margin = in_flow::resolve_logical_in_flow_margin(
-            frame
-                .constants
-                .flow_axes
-                .logical_edges(prepared.unresolved_margin),
-            frame.constants.flow_axes.logical_size(output.size),
-            frame.constants.logical_node_inner_size().inline,
-        );
-        let pending = PendingFloat {
-            placement: super::super::floats::PendingPlacement::Unresolved,
+        Ok(EntryFloat {
+            demand: self,
             node,
-            source_index: index,
-            side: style.float,
-            clear: style.clear,
-            block_start: S::ZERO,
-            size: output.size,
-            named_baselines: output.named_baselines,
-            content_size: output.content_size,
-            border: prepared.border,
-            padding: prepared.padding,
-            margin: frame.constants.flow_axes.physical_edges(margin),
-            float_exclusion: style.float_exclusion,
-            child_compute_geometry: output.scroll_geometry,
-        };
-        let inline = frame
-            .inline
-            .ok_or_else(|| float_context::missing(self.node))?;
-        self.driver.floats.push(super::canonical::SourceFloat::new(
-            pending,
-            inline,
-            &frame.constants,
-        ));
-        if self.native_tail.is_some() {
-            self.resume_native_tail(tree)
-        } else {
-            self.resume_frame(tree)
-        }
+            index,
+            style,
+            prepared,
+        })
     }
 
     pub(crate) fn observe_native<'input, Tree, M>(
@@ -650,3 +619,79 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
 #[cfg(test)]
 #[path = "driver_tests.rs"]
 mod tests;
+
+pub(crate) struct EntryFloat<'input, Node, S: LayoutScalar> {
+    demand: EntryDemand<Node, S>,
+    node: Node,
+    index: usize,
+    style: BlockChildProjection<'input, S>,
+    prepared: in_flow::PreparedChild<S>,
+}
+
+impl<'input, Node: Copy + Eq + 'input, S: LayoutScalar> EntryFloat<'input, Node, S> {
+    pub(crate) fn request(&self) -> (Node, ComputeInputOf<S>) {
+        (self.node, self.prepared.input)
+    }
+
+    pub(crate) fn complete<Tree, M>(
+        self,
+        tree: &mut Tree,
+        output: ComputeOutputOf<S>,
+    ) -> EntryResult<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Self {
+            mut demand,
+            node,
+            index,
+            style,
+            prepared,
+        } = self;
+        let frame = demand
+            .driver
+            .frames
+            .last_mut()
+            .ok_or_else(|| float_context::missing(demand.node))?;
+        let margin = in_flow::resolve_logical_in_flow_margin(
+            frame
+                .constants
+                .flow_axes
+                .logical_edges(prepared.unresolved_margin),
+            frame.constants.flow_axes.logical_size(output.size),
+            frame.constants.logical_node_inner_size().inline,
+        );
+        let pending = PendingFloat {
+            placement: super::super::floats::PendingPlacement::Unresolved,
+            node,
+            source_index: index,
+            side: style.float,
+            clear: style.clear,
+            block_start: S::ZERO,
+            size: output.size,
+            named_baselines: output.named_baselines,
+            content_size: output.content_size,
+            border: prepared.border,
+            padding: prepared.padding,
+            margin: frame.constants.flow_axes.physical_edges(margin),
+            float_exclusion: style.float_exclusion,
+            child_compute_geometry: output.scroll_geometry,
+        };
+        let inline = frame
+            .inline
+            .ok_or_else(|| float_context::missing(demand.node))?;
+        demand
+            .driver
+            .floats
+            .push(super::canonical::SourceFloat::new(
+                pending,
+                inline,
+                &frame.constants,
+            ));
+        if demand.native_tail.is_some() {
+            demand.resume_native_tail(tree)
+        } else {
+            demand.resume_frame(tree)
+        }
+    }
+}

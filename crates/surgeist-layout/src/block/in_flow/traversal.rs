@@ -7,12 +7,13 @@ pub(in crate::block) enum InFlowStep<'input, Node, S: LayoutScalar> {
 }
 
 pub(crate) struct InFlowChild<'input, Node, S: LayoutScalar> {
-    request: scope::ChildRequest<Node, S>,
+    request: BlockChildRequest<Node, S>,
     pending: PendingInFlowChild<'input, Node, S>,
 }
 
 pub(crate) enum PendingInFlowChild<'input, Node, S: LayoutScalar> {
     Hidden,
+    SharedEntry(Box<PendingSharedEntry<'input, Node, S>>),
     Box(PendingBox<'input, Node, S>),
     InlineReceiver(crate::block::inline_run::AtomicReceiverChild<Node, S>),
     Inline(crate::block::inline_run::PendingInlinePreparation<'input, Node, S>),
@@ -45,7 +46,7 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
     pub(crate) fn into_request(
         self,
     ) -> (
-        scope::ChildRequest<Node, S>,
+        BlockChildRequest<Node, S>,
         PendingInFlowChild<'input, Node, S>,
     ) {
         (self.request, self.pending)
@@ -59,6 +60,15 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let Self { request, pending } = self;
+        let request = match request {
+            BlockChildRequest::Entry(query) => {
+                return Ok((
+                    pending,
+                    BlockChildReceipt::Entry(Box::new(tree.qualify_entry(*query)?)),
+                ));
+            }
+            BlockChildRequest::Layout(request) => request,
+        };
         if let Some(trial) = pending.float_trial() {
             let packet = tree.probe_float_child(request.node, request.input, trial)?;
             return Ok((pending, BlockChildReceipt::FloatTrial(packet)));
@@ -74,6 +84,7 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
                 }
             }
             PendingInFlowChild::Box(_) => tree.compute_block_child(request)?,
+            PendingInFlowChild::SharedEntry(_) => unreachable!("entry request returns entry facts"),
             PendingInFlowChild::Hidden
             | PendingInFlowChild::InlineReceiver(_)
             | PendingInFlowChild::Inline(_)
@@ -83,6 +94,11 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
         };
         Ok((pending, BlockChildReceipt::Layout(output)))
     }
+}
+
+pub(crate) struct PendingSharedEntry<'input, Node, S: LayoutScalar> {
+    child: PendingBox<'input, Node, S>,
+    qualification: SharedBoxQualification<Node, S>,
 }
 
 pub(crate) struct PendingBox<'input, Node, S: LayoutScalar> {
@@ -119,6 +135,7 @@ pub(in crate::block) struct InFlowTraversal<'input, Node, S: LayoutScalar> {
     adjoining: entry::AdjoiningFlow<S>,
     remaining_cut: Option<entry::canonical::Separation<Node, S>>,
     shared_child: Option<PendingSharedBox<Node, S>>,
+    shared_body: Option<PendingBox<'input, Node, S>>,
     occupied_block_end: S,
     intrinsic_inline_demand: S,
     owned_float_block_end: S,
@@ -323,6 +340,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
             adjoining,
             remaining_cut,
             shared_child: None,
+            shared_body: None,
             occupied_block_end,
             intrinsic_inline_demand,
             owned_float_block_end,
@@ -366,6 +384,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        if let Some(child) = self.shared_body.take() {
+            return Ok(InFlowStep::Child(InFlowChild {
+                request: BlockChildRequest::Layout(scope::ChildRequest {
+                    node: child.child,
+                    input: child.preparation.shared_input(),
+                    entry: None,
+                }),
+                pending: PendingInFlowChild::Box(child),
+            }));
+        }
         if self.active_inline.is_some() {
             return self.advance_inline(tree, children, constants);
         }
@@ -374,11 +402,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                 self.box_computation(pending.child, &pending.style, &pending.prepared, constants);
             let band = avoidance.request(tree, &computation, &pending.preparation)?;
             return Ok(InFlowStep::Child(InFlowChild {
-                request: scope::ChildRequest {
+                request: BlockChildRequest::Layout(scope::ChildRequest {
                     node: pending.child,
                     input: band.input,
                     entry: None,
-                },
+                }),
                 pending: PendingInFlowChild::FloatBand(band),
             }));
         }
@@ -415,7 +443,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                     ));
                     if compute_box {
                         return Ok(InFlowStep::Child(InFlowChild {
-                            request: scope::ChildRequest {
+                            request: BlockChildRequest::Layout(scope::ChildRequest {
                                 node: child,
                                 input: ComputeInputOf::<S>::hidden_in_containing_pass(
                                     ContainingLayoutContext::new(
@@ -425,7 +453,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                                     input.settled_auto_scrollbars(),
                                 ),
                                 entry: None,
-                            },
+                            }),
                             pending: PendingInFlowChild::Hidden,
                         }));
                     }
@@ -528,28 +556,29 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         let computation = self.box_computation(child, &child_style, &prepared, constants);
         let (request, preparation) = prepare_in_flow_box(tree, &computation)?;
         let shared = preparation.inherits_float_exclusions;
-        let request = if shared {
-            let (frame, pending) =
-                prepare_shared_box(tree, &computation, &preparation, self.remaining_cut)?;
-            let input = preparation.shared_input();
-            tree.begin_child_float_context(child, input, frame)?;
-            self.shared_child = Some(pending);
-            scope::ChildRequest {
-                node: child,
-                input,
-                entry: None,
-            }
-        } else {
-            request
+        let child = PendingBox {
+            child,
+            style: child_style,
+            prepared,
+            preparation,
         };
+        if shared {
+            // Qualification has not installed actual-body float custody yet.
+            let computation =
+                self.box_computation(child.child, &child.style, &child.prepared, constants);
+            let (query, qualification) =
+                prepare_shared_box(tree, &computation, &child.preparation, self.remaining_cut)?;
+            return Ok(InFlowStep::Child(InFlowChild {
+                request: BlockChildRequest::Entry(Box::new(query)),
+                pending: PendingInFlowChild::SharedEntry(Box::new(PendingSharedEntry {
+                    child,
+                    qualification,
+                })),
+            }));
+        }
         Ok(InFlowStep::Child(InFlowChild {
-            request,
-            pending: PendingInFlowChild::Box(PendingBox {
-                child,
-                style: child_style,
-                prepared,
-                preparation,
-            }),
+            request: BlockChildRequest::Layout(request),
+            pending: PendingInFlowChild::Box(child),
         }))
     }
 
@@ -571,11 +600,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                     .next_child(tree, self.node, run, constants, &active.context)?
         {
             return Ok(InFlowStep::Child(InFlowChild {
-                request: scope::ChildRequest {
+                request: BlockChildRequest::Layout(scope::ChildRequest {
                     node: child.node,
                     input: child.input,
                     entry: None,
-                },
+                }),
                 pending: PendingInFlowChild::Inline(child.pending),
             }));
         }
@@ -598,11 +627,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
             )?
         {
             return Ok(InFlowStep::Child(InFlowChild {
-                request: scope::ChildRequest {
+                request: BlockChildRequest::Layout(scope::ChildRequest {
                     node: child.node,
                     input: child.input,
                     entry: None,
-                },
+                }),
                 pending: PendingInFlowChild::InlineReceiver(child),
             }));
         }
@@ -688,6 +717,28 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let mut pending = match pending {
+            PendingInFlowChild::SharedEntry(pending) => {
+                let PendingSharedEntry {
+                    child,
+                    qualification,
+                } = *pending;
+                let observation = match receipt {
+                    BlockChildReceipt::Entry(observation) => *observation,
+                    _ => unreachable!("shared preparation awaits entry facts"),
+                };
+                let computation =
+                    self.box_computation(child.child, &child.style, &child.prepared, constants);
+                let (frame, shared) =
+                    complete_shared_preparation(&computation, qualification, observation)?;
+                tree.begin_child_float_context(
+                    child.child,
+                    child.preparation.shared_input(),
+                    frame,
+                )?;
+                self.shared_child = Some(shared);
+                self.shared_body = Some(child);
+                return Ok(());
+            }
             PendingInFlowChild::InlineReceiver(child) => {
                 let active = self.active_inline.as_mut().expect("active inline run");
                 return active
@@ -780,6 +831,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         let (output, packet) = match receipt {
             BlockChildReceipt::Layout(output) => (output, None),
             BlockChildReceipt::FloatTrial(packet) => (packet.output, Some(packet)),
+            BlockChildReceipt::Entry(_) => unreachable!("float band awaits layout"),
         };
         let computation =
             self.box_computation(pending.child, &pending.style, &pending.prepared, constants);

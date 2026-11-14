@@ -17,8 +17,8 @@ pub(super) use traversal::{InFlowStep, InFlowTraversal};
 
 use child_compute::{
     FloatAvoidance, FloatBandRequest, InFlowBoxComputation, InFlowBoxPreparation,
-    InFlowComputedBox, PendingSharedBox, finish_requested_box, finish_shared_box,
-    prepare_in_flow_box, prepare_shared_box,
+    InFlowComputedBox, PendingSharedBox, SharedBoxQualification, complete_shared_preparation,
+    finish_requested_box, finish_shared_box, prepare_in_flow_box, prepare_shared_box,
 };
 use placement::{
     InFlowBoxOrigins, InFlowBoxPlacement, InFlowChildMargins, InFlowFloatItem, InFlowFloatPass,
