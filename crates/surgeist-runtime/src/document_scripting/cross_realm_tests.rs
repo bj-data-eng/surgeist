@@ -384,6 +384,10 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     param::param_members_reflect_canonical_attributes();
     data_time::data_and_time_reflect_canonical_attributes();
     pre_width::pre_width_reflects_the_canonical_signed_attribute();
+    pre_width::pre_width_family_preserves_native_and_web_idl_contracts();
+    super::guest::tests::pre_width_admission::numeric_getters_admit_raw_units_and_large_leading_zeroes();
+    super::guest::tests::pre_width_admission::numeric_setters_admit_actual_temporary_work_and_storage();
+    super::guest::tests::pre_width_admission::numeric_queries_preserve_cancellation_and_original_source_custody();
     data_time::data_time_families_preserve_native_and_web_idl_contracts();
     param::param_family_preserves_native_and_web_idl_contracts();
     list_compact::list_compact_families_preserve_native_and_web_idl_contracts();

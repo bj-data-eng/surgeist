@@ -28,6 +28,7 @@ mod meta;
 mod ordinary;
 mod param;
 mod parent_node;
+mod pre;
 mod processing_instruction;
 mod reflection;
 mod shadow;

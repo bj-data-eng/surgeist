@@ -11,6 +11,9 @@ use surgeist_html::bounded::attributes::{
     popover_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
 };
+use surgeist_html::bounded::numeric::{
+    HtmlNumericParseError, integer_long_work_bound, parse_integer_long,
+};
 use surgeist_html::vocabulary::KnownHtmlElement;
 
 #[derive(Clone, Copy)]
@@ -23,6 +26,7 @@ pub(super) enum Reflection {
     Direction,
     Popover,
     HeadingOffset,
+    SignedLong,
 }
 
 #[derive(Clone, Copy)]
@@ -42,12 +46,17 @@ pub(super) enum Receiver {
     Font,
     Meta,
     Param,
+    Pre,
     Slot,
 }
 
 impl Receiver {
-    fn matches(self, node: DomNode<'_>) -> bool {
-        match self {
+    fn matches(
+        self,
+        node: DomNode<'_>,
+        step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+    ) -> Result<bool, DocumentGuestEventError> {
+        Ok(match self {
             Self::Element => node.as_element().is_some(),
             Self::Html => node.as_element().is_some_and(|element| {
                 element
@@ -68,8 +77,9 @@ impl Receiver {
             Self::Font => super::font::is_font(node),
             Self::Meta => html_element_is(node, "HTMLMetaElement"),
             Self::Param => super::param::is_param(node),
+            Self::Pre => return super::pre::is_pre(node, step),
             Self::Slot => super::slot::is_slot(node),
-        }
+        })
     }
 
     fn error_message(self) -> &'static [u16] {
@@ -89,6 +99,7 @@ impl Receiver {
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
             Self::Param => const { &ascii(b"HTMLParamElement required") },
+            Self::Pre => const { &ascii(b"HTMLPreElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
         }
     }
@@ -173,7 +184,7 @@ impl Capture {
             events.step()?;
             let value = self.callbacks.with_read(&owner, &events, |read, _| {
                 let node = read.node(id)?;
-                if !receiver.matches(node) {
+                if !receiver.matches(node, || read.step())? {
                     return Ok(None);
                 }
                 if write {
@@ -202,6 +213,24 @@ impl Capture {
                     Reflection::HeadingOffset => {
                         Reflected::Unsigned(heading_offset_reflection_with(units, |_| read.step())?)
                     }
+                    Reflection::SignedLong => {
+                        let value = if let Some(stored) = stored {
+                            let raw = stored.value();
+                            let work = integer_long_work_bound(raw.len())
+                                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                            for _ in 0..work {
+                                read.step()?;
+                            }
+                            match parse_integer_long(raw) {
+                                Ok(Some(value)) => value,
+                                Ok(None) | Err(HtmlNumericParseError::InvalidSyntax) => 0,
+                                Err(_) => return Err(Error::BackendUnavailable.into()),
+                            }
+                        } else {
+                            0
+                        };
+                        Reflected::Signed(value)
+                    }
                 }))
             })?;
             let Some(value) = value else {
@@ -213,6 +242,9 @@ impl Capture {
                 Reflected::Write => None,
                 Reflected::Boolean(value) => Some(scope.primitive(Primitive::Boolean(value))?),
                 Reflected::Unsigned(value) => {
+                    Some(scope.primitive(Primitive::Number(f64::from(value)))?)
+                }
+                Reflected::Signed(value) => {
                     Some(scope.primitive(Primitive::Number(f64::from(value)))?)
                 }
                 Reflected::String(value) => Some(self.copy_dom_units(
@@ -282,23 +314,31 @@ impl Capture {
                 };
                 events.step()?;
                 let value = heading_offset_setter_value(value);
-                // A u32 decimal has at most ten digits. Fund the requested
-                // UTF-8 capacity before formatting, then copy via stack UTF-16.
-                let _format_backing = events.reserve(&owner, 10)?;
-                let mut text = String::new();
-                text.try_reserve_exact(10).map_err(|_| Error::Allocation)?;
-                events.step()?;
-                write!(&mut text, "{value}")
-                    .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
-                let mut units = [0_u16; 10];
-                for (byte, unit) in text.as_bytes().iter().zip(&mut units) {
-                    events.step()?;
-                    *unit = u16::from(*byte);
-                }
-                let units = units
-                    .get(..text.len())
-                    .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-                Some(copy_native_data(&owner, &events, units)?)
+                Some(copy_numeric_attribute(
+                    &owner,
+                    &events,
+                    NumericAttribute::HeadingOffset(value),
+                )?)
+            } else if matches!(reflection, Reflection::SignedLong) {
+                let converted = self
+                    .callbacks
+                    .conversion
+                    .run(scope, |cx| {
+                        cx.value(
+                            &IntegerType::new(IntegerKind::Long, IntegerMode::Wrap),
+                            input,
+                        )
+                    })
+                    .map_err(Error::from)?;
+                scope.check_active()?;
+                let IntegerValue::Long(value) = *converted.get() else {
+                    return Err(Error::BackendUnavailable.into());
+                };
+                Some(copy_numeric_attribute(
+                    &owner,
+                    &events,
+                    NumericAttribute::SignedLong(value),
+                )?)
             } else {
                 let descriptor = if matches!(reflection, Reflection::StringNullToEmpty) {
                     &DOM_STRING_NULL_TO_EMPTY
@@ -344,6 +384,47 @@ enum Reflected {
     Write,
     Boolean(bool),
     Unsigned(u8),
+    Signed(i32),
     String(Option<DocumentString>),
     Keyword(Option<&'static str>),
+}
+
+enum NumericAttribute {
+    HeadingOffset(u32),
+    SignedLong(i32),
+}
+
+fn copy_numeric_attribute(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    value: NumericAttribute,
+) -> Result<(DocumentString, GuestBacking), DocumentGuestEventError> {
+    // Typed decimal cases fix the maximum capacity before formatting: a u32
+    // has ten digits, and an i32 has at most ten digits plus its minus sign.
+    let capacity = match value {
+        NumericAttribute::HeadingOffset(_) => 10,
+        NumericAttribute::SignedLong(_) => 11,
+    };
+    let _format_backing = events.reserve(owner, capacity)?;
+    let mut text = String::new();
+    text.try_reserve_exact(capacity)
+        .map_err(|_| Error::Allocation)?;
+    if text.capacity() > capacity {
+        return Err(DocumentScriptNativeError::StorageLimit.into());
+    }
+    events.step()?;
+    match value {
+        NumericAttribute::HeadingOffset(value) => write!(&mut text, "{value}"),
+        NumericAttribute::SignedLong(value) => write!(&mut text, "{value}"),
+    }
+    .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
+    let mut units = [0_u16; 11];
+    for (byte, unit) in text.as_bytes().iter().zip(&mut units) {
+        events.step()?;
+        *unit = u16::from(*byte);
+    }
+    let units = units
+        .get(..text.len())
+        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+    copy_native_data(owner, events, units)
 }

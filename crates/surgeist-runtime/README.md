@@ -357,6 +357,10 @@ through that adapter. The valueType member reflects the valuetype attribute.
 HTMLDataElement.value and HTMLTimeElement.dateTime reflect raw value and datetime
 attribute strings. An absent attribute returns an empty string, including when
 the Time element's child text contains a date.
+HTMLPreElement.width reflects a signed long on pre, listing and xmp elements.
+Reads use the admitted native integer parser and return zero for missing,
+invalid or out-of-range attributes. Setters apply Web IDL long conversion and
+write the canonical integer string through the Source and reaction adapter.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous
