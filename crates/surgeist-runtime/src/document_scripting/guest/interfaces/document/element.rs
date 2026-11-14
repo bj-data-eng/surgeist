@@ -296,6 +296,7 @@ impl ElementBindings {
                 }
                 "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
+                "HTMLParamElement" => super::param::install(scope, &prototype, capture)?,
                 "HTMLSlotElement" => super::slot::install(scope, &prototype, capture)?,
                 "HTMLTemplateElement" => super::template::install(scope, &prototype, capture)?,
                 "HTMLTitleElement" => super::title::install(scope, &prototype, capture)?,
