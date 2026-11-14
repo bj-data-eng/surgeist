@@ -472,3 +472,55 @@ fn deep_tail_named_receiver_returns_typed_refusal_f64() {
         },
     );
 }
+
+// Mandatory/Forced endings isolate the full-width atoms into one-line groups.
+// Pretty can neither repair a terminal pair nor change a body break here;
+// its actual ordinary group still has to resolve the named receiving source.
+#[test]
+fn shallow_pretty_named_receiver_preserves_geometry_and_refusal() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::shallow_pretty_named_receiver_preserves_geometry_and_refusal",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f32>(2, crate::TextWrapStyle::Pretty);
+            assert_named_receiver_geometry_with_wrap_style::<f64>(2, crate::TextWrapStyle::Pretty);
+            assert_named_refusal_with_wrap_style::<f32>(2, crate::TextWrapStyle::Pretty);
+            assert_named_refusal_with_wrap_style::<f64>(2, crate::TextWrapStyle::Pretty);
+        },
+    );
+}
+
+#[test]
+fn deep_pretty_named_receiver_publishes_actual_named_lines_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_pretty_named_receiver_publishes_actual_named_lines_f32",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f32>(24, crate::TextWrapStyle::Pretty);
+        },
+    );
+}
+
+#[test]
+fn deep_pretty_named_receiver_publishes_actual_named_lines_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_pretty_named_receiver_publishes_actual_named_lines_f64",
+        || {
+            assert_named_receiver_geometry_with_wrap_style::<f64>(24, crate::TextWrapStyle::Pretty);
+        },
+    );
+}
+
+#[test]
+fn deep_pretty_named_receiver_returns_typed_refusal_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_pretty_named_receiver_returns_typed_refusal_f32",
+        || assert_named_refusal_with_wrap_style::<f32>(24, crate::TextWrapStyle::Pretty),
+    );
+}
+
+#[test]
+fn deep_pretty_named_receiver_returns_typed_refusal_f64() {
+    on_bounded_stack(
+        "engine::depth_tests::named_inline::deep_pretty_named_receiver_returns_typed_refusal_f64",
+        || assert_named_refusal_with_wrap_style::<f64>(24, crate::TextWrapStyle::Pretty),
+    );
+}
