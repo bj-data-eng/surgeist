@@ -334,10 +334,8 @@ impl WindowTimers {
         if values.len() > 1 {
             values.remove(1);
         }
-        let temporary = self.reserve(owner, scope.argument_copy_storage_bytes(values.len())?)?;
         let array = scope.array(&values)?;
         drop(values);
-        drop(temporary);
         let call = scope.callback_object(&array)?;
         let call = scope.retain_callback_object(call, |bytes| {
             self.reserve(owner, bytes)
@@ -501,17 +499,13 @@ impl WindowTimers {
         owner: &NativeOwner,
         scope: &mut Scope<'_>,
         due: Due,
-        exception_bytes: usize,
     ) -> Result<Option<Exception>, DocumentScriptError> {
         charge(owner, due.arguments.max(1))?;
-        let copies = scope.argument_copy_storage_bytes(due.arguments)?;
         let arguments_bytes = due
             .arguments
             .checked_mul(size_of::<Value<'_>>())
-            .and_then(|bytes| bytes.checked_add(copies))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let temporary = self.reserve(owner, arguments_bytes)?;
-        let exception = self.reserve(owner, exception_bytes)?;
         let mut args = Vec::new();
         args.try_reserve_exact(due.arguments)
             .map_err(|_| Error::Allocation)?;
@@ -543,10 +537,7 @@ impl WindowTimers {
         drop(temporary);
         match result {
             Ok(_) => Ok(None),
-            Err(Error::Exception(thrown)) => {
-                scope.retain_exception_backing(&thrown, Box::new(exception))?;
-                Ok(Some(thrown))
-            }
+            Err(Error::Exception(thrown)) => Ok(Some(thrown)),
             Err(error) => Err(error.into()),
         }
     }
@@ -619,13 +610,8 @@ impl DocumentScriptHost {
         {
             return Ok(WindowTimerProgress::Waiting(wait));
         }
-        let exception_bytes = engine
-            .process
-            .managed_object_storage_bytes()
-            .checked_add(size_of::<Debit>())
-            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let result = engine.process.execution().in_realm(&engine.realm, |scope| {
-            Ok(timers.fire(&self.native, scope, due, exception_bytes))
+            Ok(timers.fire(&self.native, scope, due))
         });
         engine.settle_engine_cleanup(&attachment.realm);
         let exception = result??;

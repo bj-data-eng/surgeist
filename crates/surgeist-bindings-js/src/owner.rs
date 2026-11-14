@@ -13,11 +13,11 @@ use crate::conversion::{CleanupFailure, CleanupFault, CleanupPrimary, CleanupSta
 enum Failure {
     Host(Error),
     Cleanup(CleanupFault),
-    CaptureCleanup(crate::capture::CleanupFailure),
+    PreparationCleanup(crate::preparation::CleanupFailure),
 }
 
 pub(crate) struct OwnerState {
-    pub(crate) capture: OnceCell<Rc<crate::capture::Account>>,
+    pub(crate) preparation: OnceCell<Rc<crate::preparation::Account>>,
     id: u64,
     closed: Cell<bool>,
     failure: Cell<Option<Failure>>,
@@ -28,7 +28,7 @@ pub(crate) struct OwnerState {
 impl OwnerState {
     pub(crate) fn new(id: u64) -> Self {
         Self {
-            capture: OnceCell::new(),
+            preparation: OnceCell::new(),
             id,
             closed: Cell::new(false),
             failure: Cell::new(None),
@@ -51,8 +51,8 @@ impl OwnerState {
                 }
                 Err(error)
             }
-            Some(Failure::CaptureCleanup(cleanup)) => {
-                let error = Error::CallbackCaptureCleanup(cleanup);
+            Some(Failure::PreparationCleanup(cleanup)) => {
+                let error = Error::PreparationCleanup(cleanup);
                 if self.boundaries.get() == 0 && !std::thread::panicking() {
                     self.failure.set(Some(Failure::Host(error.clone())));
                 }
@@ -70,7 +70,7 @@ impl OwnerState {
             && !self.closed.get()
             && matches!(
                 self.failure(),
-                Some(Failure::Cleanup(_) | Failure::CaptureCleanup(_))
+                Some(Failure::Cleanup(_) | Failure::PreparationCleanup(_))
             )
         {
             return Ok(());
@@ -88,9 +88,7 @@ impl OwnerState {
     fn qualify_error(&self, error: Error) -> Error {
         match &error {
             Error::HostFailure(failure) if failure.owner != self.id => Error::ForeignOwner,
-            Error::CallbackCaptureCleanup(failure) if failure.owner != self.id => {
-                Error::ForeignOwner
-            }
+            Error::PreparationCleanup(failure) if failure.owner != self.id => Error::ForeignOwner,
             _ => error,
         }
     }
@@ -105,7 +103,7 @@ impl OwnerState {
             Some(Failure::Cleanup(cleanup)) if matches!(&error, Error::ConversionCleanup(failure) if failure.cleanup() == cleanup) => {
                 error
             }
-            Some(Failure::CaptureCleanup(cleanup)) if matches!(&error, Error::CallbackCaptureCleanup(failure) if failure.same_fault(&cleanup)) => {
+            Some(Failure::PreparationCleanup(cleanup)) if matches!(&error, Error::PreparationCleanup(failure) if failure.same_fault(&cleanup)) => {
                 error
             }
             _ => {
@@ -140,13 +138,13 @@ impl OwnerState {
         self.cleanup.get()
     }
 
-    pub(crate) fn record_capture_cleanup(&self, cleanup: crate::capture::CleanupFailure) {
+    pub(crate) fn record_preparation_cleanup(&self, cleanup: crate::preparation::CleanupFailure) {
         if self.failure().is_none() {
             if self.boundaries.get() == 0 && !std::thread::panicking() {
                 self.failure
-                    .set(Some(Failure::Host(Error::CallbackCaptureCleanup(cleanup))));
+                    .set(Some(Failure::Host(Error::PreparationCleanup(cleanup))));
             } else {
-                self.failure.set(Some(Failure::CaptureCleanup(cleanup)));
+                self.failure.set(Some(Failure::PreparationCleanup(cleanup)));
             }
         }
     }
@@ -165,18 +163,18 @@ impl OwnerState {
                 }
                 Err(error) => Err(combine(self.qualify_error(error), cleanup)),
             },
-            Some(Failure::CaptureCleanup(mut cleanup)) => match result {
+            Some(Failure::PreparationCleanup(mut cleanup)) => match result {
                 Ok(value) => {
                     drop(value);
-                    Err(Error::CallbackCaptureCleanup(cleanup))
+                    Err(Error::PreparationCleanup(cleanup))
                 }
                 Err(Error::Exception(exception)) => {
                     cleanup.primary = Some(CleanupPrimary::Exception(exception));
-                    Err(Error::CallbackCaptureCleanup(cleanup))
+                    Err(Error::PreparationCleanup(cleanup))
                 }
                 Err(Error::CallbackPanicked) => {
                     cleanup.primary = Some(CleanupPrimary::CallbackPanicked);
-                    Err(Error::CallbackCaptureCleanup(cleanup))
+                    Err(Error::PreparationCleanup(cleanup))
                 }
                 Err(error) => Err(self.qualify_error(error)),
             },
@@ -188,7 +186,7 @@ impl OwnerState {
         let result = self.operation_result(result);
         if matches!(
             self.failure(),
-            Some(Failure::Cleanup(_) | Failure::CaptureCleanup(_))
+            Some(Failure::Cleanup(_) | Failure::PreparationCleanup(_))
         ) && let Err(error) = &result
         {
             self.failure.set(Some(Failure::Host(error.clone())));

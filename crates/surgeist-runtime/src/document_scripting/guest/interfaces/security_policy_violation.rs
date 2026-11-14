@@ -20,7 +20,7 @@ pub(super) fn install<'scope>(
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
     let event_constructor = scope.get(event, PropertyKey::String(CONSTRUCTOR))?;
     let fallback = capture(size_of::<Capture>())?;
-    let constructor = capture(size_of::<Capture>())?;
+    let constructor = constructor_capture(capture, size_of::<Capture>())?;
     let callback = ConstructorCallback::bounded(
         2,
         move |scope| {

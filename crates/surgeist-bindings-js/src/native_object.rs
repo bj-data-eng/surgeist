@@ -52,12 +52,21 @@ struct ProjectedNativeObject {
     holder: Rc<CallbackObjectIdentity>,
     realm: RealmAuthority,
     index: u32,
+    root: crate::Root,
 }
 
 impl ProjectedNativeObject {
     fn into_holder(self) -> RetainedCallbackObject {
         RetainedCallbackObject::new(self.holder, self.realm)
     }
+}
+
+/// Single-use owned funding for one unpublished native projection root.
+/// It carries no native loan or engine handle. The producer consumes it before
+/// creating the root record or entering the SDK, and verifies its original owner.
+pub struct NativeProjectionFunding {
+    owner: std::rc::Weak<crate::owner::OwnerState>,
+    backing: Option<crate::preparation::Guard>,
 }
 
 /// Private guest object and its admitted backing. Dropping it before
@@ -83,14 +92,6 @@ impl<'scope, T> PreparedNativeProjection<'_, 'scope, T> {
         }
     }
 
-    /// Keep admitted root backing until the prepared object's scoped root
-    /// is reaped. Call before publishing any native effect that uses it.
-    pub fn retain_root_backing(&mut self, backing: Box<dyn std::any::Any>) -> Result<(), Error> {
-        self.abort
-            .scope
-            .retain_invocation_result_backing(&self.value, backing)
-    }
-
     /// Publish the private projection after the host's own commit. Binding its
     /// native payload and transferring its holder require no engine operation.
     pub fn publish<R>(
@@ -110,9 +111,11 @@ impl<'scope, T> PreparedNativeProjection<'_, 'scope, T> {
 impl Drop for AbortProjection<'_, '_> {
     fn drop(&mut self) {
         if self.armed {
-            self.scope
-                .operations
-                .discard_unpublished_native_object(self.projected.index, &self.projected.holder);
+            self.scope.operations.discard_unpublished_native_object(
+                self.projected.index,
+                &self.projected.holder,
+                &self.projected.root,
+            );
         }
     }
 }
@@ -183,10 +186,11 @@ impl<'scope> Scope<'scope> {
         let realm = self.realm_authority()?;
         let projection = admit(self.native_projection_bytes::<T, Storage>()?)?;
         let holder_backing = admit(self.callback_object_bytes::<Storage>()?)?;
-        let (holder, _) = self.operations.project_retained_native_object(
+        let (holder, _, _root) = self.operations.project_retained_native_object(
             prototype.input(),
             Rc::new(NativeObject::new(payload, projection)),
             Box::new(holder_backing),
+            None,
         )?;
         Ok(RetainedCallbackObject::new(holder, realm))
     }
@@ -212,6 +216,7 @@ impl<'scope> Scope<'scope> {
             NativeProjectionPrototype::Creation(prototype),
             payload,
             admit,
+            |_| Ok(None),
         )
         .map(ProjectedNativeObject::into_holder)
     }
@@ -248,16 +253,78 @@ impl<'scope> Scope<'scope> {
         payload: T,
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
     ) -> Result<PreparedNativeProjection<'_, 'scope, T>, E> {
-        let projected = self.form_retained_native_object(prototype, payload, admit)?;
+        let projected =
+            self.form_retained_native_object(prototype, payload, admit, |_| Ok(None))?;
+        self.prepared_native_projection(projected)
+    }
+
+    /// Prepare root funding before a native edit loan, using this process policy.
+    /// No engine object is created. The owned grant is consumed by the explicit
+    /// funded projection operation before its tentative object is formed.
+    pub fn prepare_native_projection_root(&self) -> Result<NativeProjectionFunding, Error> {
+        let owner = self.operations.owner_state();
+        owner.available()?;
+        let backing = owner
+            .preparation
+            .get()
+            .map(|account| {
+                account.admit(crate::preparation::Request::RootRecord {
+                    bytes: self.operations.root_storage_bytes(),
+                })
+            })
+            .transpose()?;
+        Ok(NativeProjectionFunding {
+            owner: Rc::downgrade(&owner),
+            backing,
+        })
+    }
+
+    /// Fund one native projection root before entering a native edit loan.
+    /// The caller receives the producer-computed extent and returns owned
+    /// retention immediately. The grant only funds this non-guest operation.
+    pub fn fund_native_projection_root<R: crate::preparation::Retention>(
+        &self,
+        controller: &crate::preparation::Controller<R>,
+        fund: impl FnOnce(crate::preparation::Request) -> Result<R, Error>,
+    ) -> Result<NativeProjectionFunding, Error> {
+        let owner = self.operations.owner_state();
+        let backing = self.fund_root(controller, fund)?;
+        Ok(NativeProjectionFunding {
+            owner: Rc::downgrade(&owner),
+            backing: Some(backing),
+        })
+    }
+
+    /// Form an unpublished native projection using previously accepted root
+    /// funding. Prototype/owner validation precedes payload materialization.
+    pub fn prepare_retained_native_object_funded<T: 'static, Storage: 'static, E: From<Error>>(
+        &mut self,
+        prototype: NativeProjectionPrototype<'_, 'scope>,
+        payload: T,
+        admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
+        funding: NativeProjectionFunding,
+    ) -> Result<PreparedNativeProjection<'_, 'scope, T>, E> {
+        let projected = self.form_retained_native_object(prototype, payload, admit, |scope| {
+            let owner = scope.operations.owner_state();
+            if !funding.owner.ptr_eq(&Rc::downgrade(&owner)) {
+                return Err(E::from(Error::ForeignOwner));
+            }
+            owner.available().map_err(E::from)?;
+            Ok(funding.backing)
+        })?;
+        self.prepared_native_projection(projected)
+    }
+
+    fn prepared_native_projection<T: 'static, E: From<Error>>(
+        &mut self,
+        projected: ProjectedNativeObject,
+    ) -> Result<PreparedNativeProjection<'_, 'scope, T>, E> {
+        let root = projected.root.clone();
         let abort = AbortProjection {
             scope: self,
             projected,
             armed: true,
         };
-        let root = abort
-            .scope
-            .operations
-            .open_callback_object(&abort.projected.holder)?;
         let value = abort.scope.value(root);
         let native = abort
             .scope
@@ -275,39 +342,52 @@ impl<'scope> Scope<'scope> {
         prototype: NativeProjectionPrototype<'_, 'scope>,
         payload: T,
         admit: impl FnOnce(usize, usize) -> Result<(Storage, Storage), E>,
+        prepare_root: impl FnOnce(&Self) -> Result<Option<crate::preparation::Guard>, E>,
     ) -> Result<ProjectedNativeObject, E> {
         enum Resolved<'value> {
             Current(crate::backend::ObjectPrototype<'value>),
             Creation(&'value Rc<CallbackObjectIdentity>),
         }
         let (realm, prototype) = match prototype {
-            NativeProjectionPrototype::Current(prototype) => (
-                self.realm_authority()?,
-                Resolved::Current(prototype.input()),
-            ),
+            NativeProjectionPrototype::Current(prototype) => {
+                let realm = self.realm_authority()?;
+                if let ObjectPrototype::Object(value) = prototype {
+                    self.operations.validate_root(&value.root)?;
+                }
+                (realm, Resolved::Current(prototype.input()))
+            }
             NativeProjectionPrototype::Creation(prototype) => (
                 prototype.associated_realm().clone(),
                 Resolved::Creation(prototype.validated_holder(self)?),
             ),
         };
+        let root_funding = prepare_root(self)?;
         let (projection_bytes, holder_bytes) = self.retained_native_object_bytes::<T, Storage>()?;
         let (projection, holder_backing) = admit(projection_bytes, holder_bytes)?;
         let payload = Rc::new(NativeObject::new(payload, projection));
         let backing = Box::new(holder_backing);
-        let (holder, index) = match prototype {
-            Resolved::Current(prototype) => self
-                .operations
-                .project_retained_native_object(prototype, payload, backing)?,
+        let (holder, index, root) = match prototype {
+            Resolved::Current(prototype) => self.operations.project_retained_native_object(
+                prototype,
+                payload,
+                backing,
+                root_funding,
+            )?,
             Resolved::Creation(prototype) => self
                 .operations
                 .project_retained_native_object_in_prototype_realm(
-                    prototype, realm.key, payload, backing,
+                    prototype,
+                    realm.key,
+                    payload,
+                    backing,
+                    root_funding,
                 )?,
         };
         Ok(ProjectedNativeObject {
             holder,
             realm,
             index,
+            root,
         })
     }
 
@@ -342,6 +422,26 @@ impl<'scope> Scope<'scope> {
             .operations
             .open_native_object(token.index, TypeId::of::<NativeObject<T>>())?;
         Ok(root.map(|root| self.value(root)))
+    }
+
+    /// Clear a private engine-traced reference using its exact weak projection
+    /// token. Collection and an already empty slot are successful no-ops.
+    /// This cleanup creates no root or admission request and remains available
+    /// after terminal refusal. It cannot enter guest code or replace that cause.
+    /// A foreign token is refused before backend access.
+    pub fn clear_native_object_reference<T: 'static>(
+        &mut self,
+        token: &NativeObjectToken<T>,
+        slot: u32,
+    ) -> Result<(), Error> {
+        if token.owner != self.operations.owner_state().id() {
+            return Err(Error::ForeignOwner);
+        }
+        self.operations.clear_native_object_reference(
+            token.index,
+            TypeId::of::<NativeObject<T>>(),
+            slot,
+        )
     }
 
     /// Read a private engine-traced object reference from the exact projection.

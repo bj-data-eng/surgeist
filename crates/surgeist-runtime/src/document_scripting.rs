@@ -27,6 +27,7 @@ use crate::{
 };
 
 pub(crate) mod guest;
+mod preparation;
 mod projection;
 pub use guest::{
     DocumentCspViolationProgress, DocumentGuestAccounting, DocumentGuestAccountingReport,
@@ -667,8 +668,34 @@ impl PreparedDocumentScriptHost {
             hosted
         };
 
-        let mut process = Process::bootstrap(EngineKind::V8)?;
-        let realm = process.execution().create_realm()?;
+        let setup_bytes = Cell::new(0_usize);
+        let fund_setup = |request: surgeist_bindings_js::preparation::Request| {
+            let bytes = setup_bytes
+                .get()
+                .checked_add(request.bytes())
+                .ok_or(DocumentScriptNativeError::StorageLimit)?;
+            if bytes
+                .checked_add(size_of::<NativeOwner>())
+                .is_none_or(|total| total > owner.storage_limit)
+            {
+                return Err(DocumentScriptNativeError::StorageLimit.into());
+            }
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let mut dom = session.dom();
+            hosted
+                .admit_script_work(&dom, 1, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            let backing = hosted
+                .retain_script_payload(&mut dom, request.bytes(), cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            setup_bytes.set(bytes);
+            Ok::<_, DocumentScriptError>(backing)
+        };
+        let mut process = Process::bootstrap_funded(EngineKind::V8, fund_setup)?;
+        let realm = process.execution().create_realm_funded(fund_setup)?;
         let authority = process
             .execution()
             .in_realm(&realm, |scope| scope.realm_authority())?;
@@ -685,11 +712,13 @@ impl PreparedDocumentScriptHost {
         let source_failure_bytes = SourceFailureSlot::storage_bytes();
         let liveness_bytes =
             DomDocumentScriptRegistration::storage_bytes() + REGISTRATION_ACCESS_BYTES;
-        let css_bytes = css::callback_storage_bytes::<DomHostedRuntimeRetention>();
+        let css_bytes = css::callback_storage_bytes::<DomHostedRuntimeRetention>()
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let css_failure_bytes =
             HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes();
         let dom_exception_bytes =
-            dom_exception::constructor_storage_bytes::<DomHostedRuntimeRetention>();
+            dom_exception::constructor_storage_bytes::<DomHostedRuntimeRetention>()
+                .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let window_event_bytes = window_event::WindowEvent::storage_bytes();
         let timer_limits = owner.timer_limits.get();
         let timer_bytes = match timer_limits {
@@ -699,7 +728,8 @@ impl PreparedDocumentScriptHost {
             None => 0,
         };
         let bytes = size_of::<NativeOwner>()
-            .checked_add(hook_bytes)
+            .checked_add(setup_bytes.get())
+            .and_then(|bytes| bytes.checked_add(hook_bytes))
             .and_then(|bytes| bytes.checked_add(failure_bytes))
             .and_then(|bytes| bytes.checked_add(source_failure_bytes))
             .and_then(|bytes| bytes.checked_add(liveness_bytes))
@@ -786,6 +816,7 @@ impl PreparedDocumentScriptHost {
                 timer,
             )
         };
+        let preparation = preparation::Prepared::install(&mut process, owner, &authority, bytes)?;
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
         let window_event = window_event::WindowEvent::new(window_event_backing);
@@ -849,6 +880,7 @@ impl PreparedDocumentScriptHost {
 
         Ok(UnpublishedScriptEngine {
             process,
+            preparation,
             realm,
             target,
             authority,
@@ -857,7 +889,6 @@ impl PreparedDocumentScriptHost {
             window_event,
             window_timers,
             liveness_backing,
-            retained_bytes: bytes,
             _hook_backing: hook_backing,
         })
     }
@@ -865,6 +896,7 @@ impl PreparedDocumentScriptHost {
 
 struct UnpublishedScriptEngine {
     process: Process,
+    preparation: preparation::Prepared,
     realm: Realm,
     target: DomHostedTopLevel,
     authority: RealmAuthority,
@@ -873,7 +905,6 @@ struct UnpublishedScriptEngine {
     window_event: Rc<window_event::WindowEvent>,
     window_timers: Option<Rc<window_timers::WindowTimers>>,
     liveness_backing: DomHostedRuntimeRetention,
-    retained_bytes: usize,
     _hook_backing: DomHostedRuntimeRetention,
 }
 
@@ -886,6 +917,7 @@ impl UnpublishedScriptEngine {
         let cancel = &owner.cancellation;
         let Self {
             process,
+            preparation,
             realm,
             target,
             authority,
@@ -894,7 +926,6 @@ impl UnpublishedScriptEngine {
             window_event,
             window_timers,
             mut liveness_backing,
-            retained_bytes,
             _hook_backing,
         } = self;
         // Keep the hook debit alive through engine disposal on refusal.
@@ -941,10 +972,10 @@ impl UnpublishedScriptEngine {
             window_event,
             window_timers,
             process,
+            preparation,
             realm,
             comments: projection::ProjectedComments::default(),
             creations: CreationRealms::default(),
-            retained_bytes,
             _hook_backing,
         })
     }
@@ -999,6 +1030,7 @@ struct CreationRealm {
     global: DomHostedGlobalId,
     realm: Realm,
     _backing: DomHostedRuntimeRetention,
+    _cap: preparation::CapReservation,
 }
 
 struct ScriptEngine {
@@ -1008,10 +1040,10 @@ struct ScriptEngine {
     window_event: Rc<window_event::WindowEvent>,
     window_timers: Option<Rc<window_timers::WindowTimers>>,
     process: Process,
+    preparation: preparation::Prepared,
     realm: Realm,
     comments: projection::ProjectedComments,
     creations: CreationRealms,
-    retained_bytes: usize,
     _hook_backing: DomHostedRuntimeRetention,
 }
 
@@ -1023,12 +1055,7 @@ impl Drop for ScriptEngine {
 
 impl ScriptEngine {
     fn retained_bytes_with(&self, additional: usize) -> Option<usize> {
-        self.comments
-            .len()
-            .checked_mul(projection::ProjectedComments::pin_bytes(&self.process)?)?
-            .checked_add(self.retained_bytes)?
-            .checked_add(self.comments.slot_bytes()?)?
-            .checked_add(additional)
+        self.preparation.total_with(additional)
     }
 
     fn settle_engine_cleanup(&mut self, realm: &RealmAuthority) {
@@ -1190,16 +1217,8 @@ impl DocumentScriptHost {
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        let bytes = size_of::<CreationRealm>()
-            .checked_add(engine.process.realm_storage_bytes())
-            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-        let retained_bytes = engine
-            .retained_bytes
-            .checked_add(bytes)
-            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-        let total = engine
-            .retained_bytes_with(bytes)
-            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let bytes = size_of::<CreationRealm>();
+        let cap = engine.preparation.reserve_external(bytes)?;
         let cancel = &self.native.cancellation;
         let (backing, registry) = {
             let mut session = self
@@ -1222,9 +1241,6 @@ impl DocumentScriptHost {
                     .is_some();
             if registered {
                 return Err(DocumentScriptNativeError::CreationRealmAlreadyRegistered.into());
-            }
-            if total > self.native.storage_limit {
-                return Err(DocumentScriptNativeError::StorageLimit.into());
             }
             let backing = hosted
                 .retain_script_payload(&mut dom, bytes, cancel)
@@ -1257,8 +1273,8 @@ impl DocumentScriptHost {
             global: origin.global(),
             realm,
             _backing: backing,
+            _cap: cap,
         }));
-        engine.retained_bytes = retained_bytes;
         Ok(())
     }
 

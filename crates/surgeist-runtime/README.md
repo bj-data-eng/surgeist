@@ -353,16 +353,21 @@ read-only report custody that survives host refusal and teardown. The
 `node-projection` scope attributes adapter admission for native node pins
 to the attachment's root. Its phase timings are inclusive, including
 nested projection phases. Detailed mode uses Ledger's bounded event buffer.
-The `callback-capture` child scope admits incoming argument buffers and root
-records through the same aggregate guest limits and canonical native retention.
-Each reached request charges one adapter work unit. Temporary buffers release
-when their owning container or iterator drops. Captured roots release at backend
-reaping, while explicitly retained roots keep their original custody. Capture
-refusal precedes argument normalization and native mutation. Release faults
-reach the binding's terminal cleanup report.
-Native Source and retirement retain their own work limits. The report
-covers Rust adapter work and backing, with V8 internals and Web IDL
-conversion accounted for separately.
+The `binding-preparation` child scope admits incoming capture, general roots,
+outbound buffers and callback-frame/registration records through the same guest
+operation and canonical native retention. Each allocation request charges one
+adapter unit, while explicit traversal and copy work uses its reported extent.
+Owning containers and backend reaping release their corresponding custody.
+Refusal precedes the reached preparation or guest entry. Release faults reach
+the binding terminal cleanup report.
+
+Initial process and realm construction use funded setup. One installed policy
+covers native hooks and timers, then attaches the original guest operation when
+a registry is enabled. Native preparation, live Source projection/report bodies
+and the reserved guest allowance share the host storage cap. Source and native
+retirement also retain their domain work limits. Reports describe Rust adapter
+work and backing. V8 owns its execution and heap behavior, and Web IDL conversion
+retains its conversion-specific account.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's
 registered creation realm, including borrowed calls. Native Text and Comment

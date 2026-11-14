@@ -78,6 +78,7 @@ pub(crate) enum ByteStringStep {
 }
 
 impl ByteString {
+    #[cfg(test)]
     pub(crate) fn convert(units: Vec<u16>) -> Result<Self, Error> {
         Self::convert_with(units, |_| Ok(()))
     }
@@ -86,9 +87,9 @@ impl ByteString {
         units: Vec<u16>,
         mut before: impl FnMut(ByteStringStep) -> Result<(), Error>,
     ) -> Result<Self, Error> {
-        for &unit in &units {
+        for unit in &units {
             before(ByteStringStep::Inspect)?;
-            if unit > 255 {
+            if *unit > 255 {
                 return Err(Error::ByteStringOutOfRange);
             }
         }

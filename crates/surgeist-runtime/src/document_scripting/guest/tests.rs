@@ -99,8 +99,7 @@ pub(in crate::document_scripting) fn successful_constructor_needs_no_fallback_ad
             PropertyKey::String(&units("useRemainingWork")),
             &callback,
         )?;
-        assert_guest(
-            scope,
+        let result = scope.evaluate(&units(
             r#"(() => {
             let constructed;
             class Exact extends HTMLElement {
@@ -113,7 +112,15 @@ pub(in crate::document_scripting) fn successful_constructor_needs_no_fallback_ad
             customElements.define('x-exact-autonomous', Exact);
             return document.createElement('x-exact-autonomous') === constructed;
         })()"#,
-        )
+        ))?;
+        // The constructor exhausted preparation work. Observing its already
+        // admitted Boolean result must not allocate another expected root.
+        assert_eq!(
+            scope.kind(&result)?,
+            surgeist_bindings_js::ValueKind::Boolean
+        );
+        assert!(scope.boolean(&result)?);
+        Ok(())
     })
     .unwrap();
     assert!(entered.get());
@@ -1733,7 +1740,9 @@ fn enable_public_nodes(
             },
             registry,
             DocumentGuestEventLimits {
-                storage_bytes: 192 * 1024,
+                // Semantic fixtures fund installed interfaces and their actual
+                // root, registration and callback-frame preparation bodies.
+                storage_bytes: 512 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
@@ -2062,9 +2071,12 @@ pub(in crate::document_scripting) fn element_projection_admits_exact_work_and_ba
     let permit = control.permit().unwrap();
     let events = control.guest_events().unwrap();
     let before = (events.budget.work().unwrap(), events.budget.used());
-    control.in_document(&permit, read).unwrap();
+    let (result, peak) = events
+        .budget
+        .measure_peak(|| control.in_document(&permit, read));
+    result.unwrap();
     let binding_work = events.budget.work().unwrap() - before.0;
-    let bytes = events.budget.peak_used() - before.1;
+    let bytes = peak - before.1;
     let retained = events.budget.used() - before.1;
     assert!(binding_work > 0 && bytes > 0);
     drop((control, events));
@@ -2170,36 +2182,42 @@ pub(in crate::document_scripting) fn refused_element_realm_installation_releases
     let permit = control.permit().unwrap();
     let origin = create_origin(&mut control);
     let events = control.guest_events().unwrap();
+    let (plan_bytes, plan_requests) = events.public.as_ref().unwrap().origin_installation_cost();
     let before = (events.budget.used(), events.budget.work().unwrap());
-    control
-        .register_node_creation_realm(&permit, origin)
-        .unwrap();
-    let exact = events.budget.used() - before.0;
+    let (result, peak) = events
+        .budget
+        .measure_peak(|| control.register_node_creation_realm(&permit, origin));
+    result.unwrap();
+    // These measured totals select envelope limits for the same operation;
+    // producer counts and physical sizing have their own qualification.
+    let required = peak - before.0;
+    let retained = events.budget.used() - before.0;
     let work = events.budget.work().unwrap() - before.1;
-    assert!(exact > 0 && work > 0);
+    assert!(required >= retained && retained > 0 && work > plan_requests + 1);
     drop((control, events));
 
+    // The consumer's complete owned plan can still refuse before creating an
+    // engine Realm. Its reservation attempt spends its one accepted work unit.
     let mut host = public_node_host(1_000, 20_000);
     let permit = host.permit().unwrap();
     let origin = create_origin(&mut host);
     let events = host.guest_events().unwrap();
-    let spare = events.limits.storage_bytes - events.budget.used() - exact;
+    let spare = events.limits.storage_bytes - events.budget.used() - plan_bytes;
     let one_short = events.reserve(&host.native, spare + 1).unwrap();
-    let before = events.budget.used();
+    let before = (events.budget.used(), events.budget.work().unwrap());
+    let stamp = host.snapshot().unwrap().stamp();
     assert!(matches!(
         host.register_node_creation_realm(&permit, origin),
         Err(DocumentScriptError::Native(
             DocumentScriptNativeError::StorageLimit
         ))
     ));
-    assert_eq!(
-        events.budget.used(),
-        before,
-        "an unpublished realm must release its guest backing"
-    );
+    assert_eq!(events.budget.used(), before.0);
+    assert_eq!(events.budget.work().unwrap(), before.1 + 1);
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+    assert!(host.engine.as_ref().unwrap().creations.0.is_none());
     drop(one_short);
-    let exact_backing = events.reserve(&host.native, spare).unwrap();
-    events.budget.set_work_remaining(work - 1);
+    events.budget.set_work_remaining(plan_requests);
     let before = (events.budget.used(), events.budget.work().unwrap());
     assert!(matches!(
         host.register_node_creation_realm(&permit, origin),
@@ -2211,17 +2229,122 @@ pub(in crate::document_scripting) fn refused_element_realm_installation_releases
         (events.budget.used(), events.budget.work().unwrap()),
         before
     );
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+    assert!(host.engine.as_ref().unwrap().creations.0.is_none());
+
+    // Retry on that same owner after retryable preflight refusal, this time
+    // funding the entire physical peak, including transient producer bodies.
+    let spare = events.limits.storage_bytes - events.budget.used() - required;
+    let fill = events.reserve(&host.native, spare).unwrap();
     events.budget.set_work_remaining(work);
-    host.register_node_creation_realm(&permit, origin).unwrap();
-    assert_eq!(events.budget.used(), events.limits.storage_bytes);
+    let before = events.budget.used();
+    let (result, peak) = events
+        .budget
+        .measure_peak(|| host.register_node_creation_realm(&permit, origin));
+    result.unwrap();
+    assert_eq!(peak, events.limits.storage_bytes);
+    assert_eq!(events.budget.used(), before + retained);
     assert_eq!(events.budget.work_remaining().unwrap(), 0);
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
     assert!(matches!(
         host.register_node_creation_realm(&permit, origin),
         Err(DocumentScriptError::Native(
             DocumentScriptNativeError::CreationRealmAlreadyRegistered
         ))
     ));
-    drop(exact_backing);
+    drop(fill);
+    events.budget.set_work_remaining(events.limits.work);
+    let engine = host.engine.as_mut().unwrap();
+    let registered = engine.creations.0.as_ref().unwrap();
+    assert_eq!(registered.global, origin.global());
+    engine.process.execution().in_realm(&registered.realm, |scope| {
+        let global = scope.global()?;
+        let constructor = scope.get(&global, PropertyKey::String(&units("HTMLElement")))?;
+        let prototype = scope.get(&constructor, PropertyKey::String(&units("prototype")))?;
+        let realm = scope.realm_authority()?.identity();
+        assert_eq!(scope.callback_object(&constructor)?.associated_realm().identity(), realm);
+        assert_eq!(scope.callback_object(&prototype)?.associated_realm().identity(), realm);
+        assert_guest(scope, "Object.getPrototypeOf(HTMLDivElement.prototype) === HTMLElement.prototype && Object.getPrototypeOf(HTMLElement.prototype) === Element.prototype")
+    }).unwrap();
+    let budget = events.budget.clone();
+    drop(events);
+    host.stop().into_session().unwrap();
+    assert_eq!(budget.used(), 0);
+
+    // The Registry body, registry prototype holder and final target holder are
+    // three consumer-plan admissions after the last producer request. Preserve
+    // the compound one-short envelope separately from producer refusal.
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let origin = create_origin(&mut host);
+    let events = host.guest_events().unwrap();
+    let spare = events.limits.storage_bytes - events.budget.used() - required;
+    let fill = events.reserve(&host.native, spare).unwrap();
+    events.budget.set_work_remaining(work - 1);
+    let stamp = host.snapshot().unwrap().stamp();
+    assert!(matches!(
+        host.register_node_creation_realm(&permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::CreationRealmWorkLimit
+        ))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+    assert!(host.engine.as_ref().unwrap().creations.0.is_none());
+    host.in_document(&permit, |_| Ok(())).unwrap();
+    drop(fill);
+    let budget = events.budget.clone();
+    drop(events);
+    host.stop().into_session().unwrap();
+    assert_eq!(budget.used(), 0);
+
+    // A refusal from producer preparation itself is terminal. Qualify its
+    // accepted prefix and cleanup on fresh owners, without retrying that heap.
+    const CONSUMER_SUFFIX_WORK: u64 = 3;
+    for (available, remaining_work, storage_short) in [
+        (required - 1, work, true),
+        (required, work - CONSUMER_SUFFIX_WORK - 1, false),
+    ] {
+        let mut host = public_node_host(1_000, 20_000);
+        let permit = host.permit().unwrap();
+        let origin = create_origin(&mut host);
+        let events = host.guest_events().unwrap();
+        let spare = events.limits.storage_bytes - events.budget.used() - available;
+        let fill = events.reserve(&host.native, spare).unwrap();
+        events.budget.set_work_remaining(remaining_work);
+        let stamp = host.snapshot().unwrap().stamp();
+        let before = events.budget.used();
+        let refused = host.register_node_creation_realm(&permit, origin);
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = refused else {
+            panic!("one-short producer preparation must refuse the original heap: {refused:?}")
+        };
+        assert!(matches!(
+            (storage_short, failure.cause::<DocumentGuestEventError>()),
+            (
+                true,
+                Some(DocumentGuestEventError::Document(
+                    DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+                ))
+            ) | (false, Some(DocumentGuestEventError::WorkLimit))
+        ));
+        assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+        assert!(host.engine.as_ref().unwrap().creations.0.is_none());
+        assert!(events.budget.used() >= before);
+        assert!(events.budget.used() <= events.limits.storage_bytes);
+        let Err(DocumentScriptError::Script(Error::HostFailure(sticky))) =
+            host.in_document(&permit, |_| Ok(()))
+        else {
+            panic!("producer refusal must remain terminal")
+        };
+        assert!(std::ptr::eq(
+            failure.cause::<DocumentGuestEventError>().unwrap(),
+            sticky.cause::<DocumentGuestEventError>().unwrap(),
+        ));
+        drop((failure, sticky, fill));
+        let budget = events.budget.clone();
+        drop(events);
+        host.stop().into_session().unwrap();
+        assert_eq!(budget.used(), 0);
+    }
 }
 
 pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_metered() {
@@ -2246,11 +2369,17 @@ pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_
             .map(drop)
     })
     .unwrap();
+    let connected = |scope: &mut Scope<'_>| {
+        let result = scope.evaluate(&units("trackedElement.isConnected"))?;
+        assert_eq!(
+            scope.kind(&result)?,
+            surgeist_bindings_js::ValueKind::Boolean
+        );
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    };
     let before = events.budget.work().unwrap();
-    host.in_document(&permit, |scope| {
-        assert_guest(scope, "trackedElement.isConnected")
-    })
-    .unwrap();
+    host.in_document(&permit, connected).unwrap();
     let shallow = events.budget.work().unwrap() - before;
 
     let cancel = host.native.cancellation.clone();
@@ -2334,23 +2463,17 @@ pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_
         assert_guest(scope, "window.document.documentElement === observedAncestor && trackedElement.getRootNode() === window.document")
     }).unwrap();
     let before = events.budget.work().unwrap();
-    host.in_document(&permit, |scope| {
-        assert_guest(scope, "trackedElement.isConnected")
-    })
-    .unwrap();
+    host.in_document(&permit, connected).unwrap();
     let deep = events.budget.work().unwrap() - before;
     assert!(
         deep > shallow,
         "native ancestor reads must charge actual visited records"
     );
     let retained = events.budget.used();
+    let stamp = host.snapshot().unwrap().stamp();
     events.budget.set_work_remaining(deep - 1);
     let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
-        host.in_document(&permit, |scope| {
-            scope
-                .evaluate(&units("trackedElement.isConnected"))
-                .map(drop)
-        })
+        host.in_document(&permit, connected)
     else {
         panic!("a one-short ancestor walk must refuse");
     };
@@ -2359,6 +2482,7 @@ pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_
         Some(DocumentGuestEventError::WorkLimit)
     ));
     assert_eq!(events.budget.used(), retained);
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
 }
 
 pub(in crate::document_scripting) fn qualified_tag_presentation_admits_its_utf16_work() {
@@ -2399,11 +2523,20 @@ pub(in crate::document_scripting) fn qualified_tag_presentation_admits_its_utf16
 
     let events = host.guest_events().unwrap();
     let retained = events.budget.used();
+    let spelling = |scope: &mut Scope<'_>, probe: &str| {
+        let result = scope.evaluate(&units(probe))?;
+        assert_eq!(
+            scope.kind(&result)?,
+            surgeist_bindings_js::ValueKind::Boolean
+        );
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    };
     let mut tag_work = 0;
     for property in ["tagName", "nodeName"] {
         let before = events.budget.work().unwrap();
         let probe = format!("tagProbe.{property} === '{expected}'");
-        host.in_document(&permit, |scope| assert_guest(scope, &probe))
+        host.in_document(&permit, |scope| spelling(scope, &probe))
             .unwrap();
         let work = events.budget.work().unwrap() - before;
         assert!(
@@ -2416,11 +2549,11 @@ pub(in crate::document_scripting) fn qualified_tag_presentation_admits_its_utf16
         }
     }
 
+    let stamp = host.snapshot().unwrap().stamp();
     events.budget.set_work_remaining(tag_work - 1);
-    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
-        .in_document(&permit, |scope| {
-            scope.evaluate(&units("tagProbe.tagName")).map(drop)
-        })
+    let probe = format!("tagProbe.tagName === '{expected}'");
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| spelling(scope, &probe))
     else {
         panic!("one-short spelling admission must refuse before copying");
     };
@@ -2429,6 +2562,7 @@ pub(in crate::document_scripting) fn qualified_tag_presentation_admits_its_utf16
         Some(DocumentGuestEventError::WorkLimit)
     ));
     assert_eq!(events.budget.used(), retained);
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
 }
 
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
@@ -2700,8 +2834,8 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let mut foreign_registry = Some(foreign_registry);
     let mut bound = Some(bound);
     let limits = DocumentGuestEventLimits {
-        storage_bytes: 72_000,
-        work: 1_000,
+        storage_bytes: 512 * 1024,
+        work: 10_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
         source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
@@ -2781,7 +2915,10 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         .enable_with_guest_event_registry(target, policy, hooks(), &mut bound, limits)
         .unwrap();
     assert!(bound.is_none());
-    let exact_activation = host.guest_events().unwrap().budget.used();
+    // This fresh account has observed only activation. Retained installation
+    // bodies and the complete transient activation peak are distinct extents.
+    let exact_activation = host.guest_events().unwrap().budget.peak_used();
+    let retained_activation = host.guest_events().unwrap().budget.used();
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
         scope
@@ -2972,10 +3109,10 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         })
         .unwrap();
 
-    // Reserve the direct report vector, its root bank and two root slots,
+    // Reserve the direct report vector, open the receiver and Event roots,
     // then admit projection qualification and the first native advance.
     // Callback work itself is one unit beyond this exact prefix.
-    let prefix = 4 + u64::try_from(limits.dispatch.failure_records).unwrap();
+    let prefix = 1 + 2 + 1 + 1;
     events.budget.set_work_remaining(prefix);
     let Err(refused) = host.dispatch_guest_event(&permit, &event_target, &event) else {
         panic!("callback work must refuse after native once selection");
@@ -2987,6 +3124,9 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     );
     assert!(refused.exceptions().is_empty());
     assert!(!events.registry.borrow().has_registration(id));
+    // The bounded refusal is settled. The separate semantic probe opens a
+    // receiver root and therefore needs its own preparation headroom.
+    events.budget.set_work_remaining(limits.work);
     host.in_document(&permit, |scope| {
         let receiver = event_target.object(scope)?;
         assert!(
@@ -3022,7 +3162,14 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
         if storage_bytes == exact_activation {
             let host = result.unwrap();
             assert!(registry.is_none());
-            assert_eq!(host.guest_events().unwrap().budget.used(), exact_activation);
+            assert_eq!(
+                host.guest_events().unwrap().budget.peak_used(),
+                exact_activation
+            );
+            assert_eq!(
+                host.guest_events().unwrap().budget.used(),
+                retained_activation
+            );
         } else {
             let Err(refused) = result else {
                 panic!("one byte short must leave the Window unpublished");
@@ -3030,7 +3177,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
             assert!(matches!(
                 refused.error,
                 DocumentGuestEventError::Document(DocumentScriptError::Native(
-                    DocumentScriptNativeError::StorageLimit,
+                    DocumentScriptNativeError::StorageLimit
                 ))
             ));
             assert!(registry.is_some());
@@ -3060,35 +3207,79 @@ pub(in crate::document_scripting) fn refused_first_target_releases_prototype_cap
         )
     };
     assert!(prototype_bytes > 0 && target_bytes > 0);
+    let retained = prototype_bytes + target_bytes;
+    let required = {
+        let mut control = host(Arc::new(AtomicBool::new(false)));
+        let permit = control.permit().unwrap();
+        attach_registry(&mut control, &permit);
+        let events = control.guest_events().unwrap();
+        let before = events.budget.used();
+        let (result, peak) = events
+            .budget
+            .measure_peak(|| control.create_guest_event_target(&permit));
+        let _target = result.unwrap();
+        assert_eq!(events.budget.used(), before + retained);
+        assert!(peak > before + retained);
+        peak - before
+    };
+
+    // The old retained-prototype cut reaches producer refusal before the
+    // method is registered. Its admitted capture must still release immediately.
+    // A complete-operation shortfall can retain an accepted prototype prefix.
+    for (available, prototype_accepted) in [(prototype_bytes - 1, false), (required - 1, true)] {
+        let mut host = host(Arc::new(AtomicBool::new(false)));
+        let permit = host.permit().unwrap();
+        attach_registry(&mut host, &permit);
+        let events = host.guest_events().unwrap();
+        let spare = events.limits.storage_bytes - events.budget.used() - available;
+        let fill = events.reserve(&host.native, spare).unwrap();
+        let before = events.budget.used();
+        let stamp = host.snapshot().unwrap().stamp();
+        let refused = host.create_guest_event_target(&permit);
+        let Err(DocumentGuestEventError::Document(DocumentScriptError::Script(
+            Error::HostFailure(failure),
+        ))) = refused
+        else {
+            panic!("producer target refusal must remain terminal")
+        };
+        assert!(matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+            ))
+        ));
+        assert_eq!(events.target_prototype.get().is_some(), prototype_accepted);
+        assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+        if !prototype_accepted {
+            assert_eq!(
+                events.budget.used(),
+                before,
+                "unpublished prototype capture releases without collection"
+            );
+        } else {
+            assert_eq!(events.budget.used(), before + prototype_bytes);
+        }
+        drop((failure, fill));
+        let budget = events.budget.clone();
+        drop(events);
+        host.stop().into_session().unwrap();
+        assert_eq!(budget.used(), 0);
+    }
 
     let mut host = host(Arc::new(AtomicBool::new(false)));
     let permit = host.permit().unwrap();
     attach_registry(&mut host, &permit);
     let events = host.guest_events().unwrap();
-    let available = events.limits.storage_bytes - events.budget.used();
-    let one_short = events
-        .reserve(&host.native, available - prototype_bytes + 1)
-        .unwrap();
-    let at_refusal = events.budget.used();
-    assert!(matches!(
-        host.create_guest_event_target(&permit),
-        Err(DocumentGuestEventError::Document(
-            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
-        ))
-    ));
-    assert!(events.target_prototype.get().is_none());
-    assert_eq!(
-        events.budget.used(),
-        at_refusal,
-        "a refused prototype must release its method capture without collection"
-    );
-    drop(one_short);
-
-    let exact = events
-        .reserve(&host.native, available - prototype_bytes - target_bytes)
-        .unwrap();
-    let target = host.create_guest_event_target(&permit).unwrap();
-    assert_eq!(events.budget.used(), events.limits.storage_bytes);
+    let spare = events.limits.storage_bytes - events.budget.used() - required;
+    let fill = events.reserve(&host.native, spare).unwrap();
+    let before = events.budget.used();
+    let (result, peak) = events
+        .budget
+        .measure_peak(|| host.create_guest_event_target(&permit));
+    let target = result.unwrap();
+    assert_eq!(peak, events.limits.storage_bytes);
+    assert_eq!(events.budget.used(), before + retained);
+    drop(fill);
     host.in_document(&permit, |scope| {
         let target = target.object(scope)?;
         let method = scope.get(&target, PropertyKey::String(&units("dispatchEvent")))?;
@@ -3096,7 +3287,11 @@ pub(in crate::document_scripting) fn refused_first_target_releases_prototype_cap
         Ok(())
     })
     .unwrap();
-    drop(exact);
+    drop(target);
+    let budget = events.budget.clone();
+    drop(events);
+    host.stop().into_session().unwrap();
+    assert_eq!(budget.used(), 0);
 }
 
 pub(in crate::document_scripting) fn refused_projection_releases_native_backing_before_retry() {
@@ -3106,15 +3301,25 @@ pub(in crate::document_scripting) fn refused_projection_releases_native_backing_
     let events = host.guest_events().unwrap();
     let kind = units("projection");
     let before = events.budget.used();
-    let control = host
-        .create_guest_event(&permit, &kind, DomEventInit::default())
-        .unwrap();
+    let (result, peak) = events
+        .budget
+        .measure_peak(|| host.create_guest_event(&permit, &kind, DomEventInit::default()));
+    let control = result.unwrap();
     let with_control = events.budget.used();
     let projection = with_control - before;
     assert!(projection > 0);
+    let root_bytes = host
+        .engine
+        .as_ref()
+        .unwrap()
+        .process
+        .managed_object_storage_bytes()
+        + size_of::<crate::document_scripting::preparation::Backing>();
+    let required = peak - before;
+    assert_eq!(required, projection + root_bytes);
 
-    // Measure the complete backing of the same Event projection. Hold its
-    // positive control live so the second attempt cannot borrow its storage.
+    // Preserve caller-plan preflight refusal before the producer root is
+    // prepared. Keep the positive control live so it cannot fund a retry.
     let exact_margin = events.limits.storage_bytes - with_control - projection;
     let one_short = events.reserve(&host.native, exact_margin + 1).unwrap();
     let at_refusal = events.budget.used();
@@ -3131,11 +3336,20 @@ pub(in crate::document_scripting) fn refused_projection_releases_native_backing_
     );
     drop(one_short);
 
-    let exact = events.reserve(&host.native, exact_margin).unwrap();
-    let retry = host
-        .create_guest_event(&permit, &kind, DomEventInit::default())
+    let exact = events
+        .reserve(
+            &host.native,
+            events.limits.storage_bytes - with_control - required,
+        )
         .unwrap();
-    assert_eq!(events.budget.used(), events.limits.storage_bytes);
+    let before_retry = events.budget.used();
+    let (result, peak) = events
+        .budget
+        .measure_peak(|| host.create_guest_event(&permit, &kind, DomEventInit::default()));
+    let retry = result.unwrap();
+    assert_eq!(peak, events.limits.storage_bytes);
+    assert_eq!(events.budget.used(), before_retry + projection);
+    drop(exact);
     host.in_document(&permit, |scope| {
         let control = control.object(scope)?;
         let retry = retry.object(scope)?;
@@ -3143,7 +3357,6 @@ pub(in crate::document_scripting) fn refused_projection_releases_native_backing_
         Ok(())
     })
     .unwrap();
-    drop(exact);
 }
 
 pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact_native_invocation()
@@ -3276,7 +3489,12 @@ pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact
     host.in_document(&permit, |_| Ok(())).unwrap();
     assert_eq!(
         before_root_reap - events.budget.used(),
-        events.exception_root_bytes + size_of::<GuestBacking>()
+        host.engine
+            .as_ref()
+            .unwrap()
+            .process
+            .managed_object_storage_bytes()
+            + size_of::<super::super::preparation::Backing>()
     );
     assert!(!host.remove_guest_event_listener(&permit, first_id).unwrap());
     assert!(
@@ -3315,10 +3533,13 @@ fn assert_native_projection_admission(
         let (mut host, permit) = make_host();
         let events = host.guest_events().unwrap();
         let before = (events.budget.work().unwrap(), events.budget.used());
-        host.in_document(&permit, read).unwrap();
+        let (result, peak) = events
+            .budget
+            .measure_peak(|| host.in_document(&permit, read));
+        result.unwrap();
         (
             events.budget.work().unwrap() - before.0,
-            events.budget.peak_used() - before.1,
+            peak - before.1,
             events.budget.used() - before.1,
         )
     };
@@ -3760,7 +3981,12 @@ pub(in crate::document_scripting) fn direct_guest_dispatch_preserves_reports_and
     host.in_document(&permit, |_| Ok(())).unwrap();
     assert_eq!(
         before_root_reap - events.budget.used(),
-        events.exception_root_bytes + size_of::<GuestBacking>()
+        host.engine
+            .as_ref()
+            .unwrap()
+            .process
+            .managed_object_storage_bytes()
+            + size_of::<super::super::preparation::Backing>()
     );
     host.in_document(&permit, |scope| {
         assert_guest(

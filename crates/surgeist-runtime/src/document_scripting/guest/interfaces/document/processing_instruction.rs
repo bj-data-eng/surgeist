@@ -14,7 +14,7 @@ pub(super) fn constructor(
     capture: CaptureFunding<'_>,
 ) -> Result<ConstructorCallback, DocumentGuestEventError> {
     let fallback = capture(size_of::<Capture>())?;
-    let construct = capture(size_of::<Capture>())?;
+    let construct = constructor_capture(capture, size_of::<Capture>())?;
     Ok(ConstructorCallback::bounded(
         2,
         move |scope| fallback.instruction_prototype(scope),

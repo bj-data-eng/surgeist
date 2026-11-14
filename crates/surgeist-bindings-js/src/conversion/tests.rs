@@ -632,8 +632,10 @@ fn installed_dom_exception_charges_the_retained_account_body() -> TestResult {
         let profile_reference = size_of::<Weak<ConversionAccount>>();
         let account_wrapper = size_of::<ConversionAccount>();
         assert_eq!(
-            dom_exception::constructor_storage_bytes::<()>(),
-            constructor_capture + profile_reference + account_wrapper + account,
+            dom_exception::constructor_storage_bytes::<()>().unwrap(),
+            constructor_capture + profile_reference + account_wrapper + account
+                + crate::ConstructorCallback::behavior_storage_bytes()
+                + surgeist_ledger::SharedOperation::<super::Work, super::Resource>::reserved_backing_bytes(2).unwrap(),
             "DOMException storage must include the live {account}-byte account target"
         );
         Ok::<_, Error>(())

@@ -1952,7 +1952,7 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         lease
             .finish_returned_custom_element(request, &cancel())
             .unwrap(),
-        None
+        DomSourceCustomElementReturn::Fallback(DomSourceCustomElementDisposition::Abrupt)
     );
     assert_eq!(lease.snapshot().stamp(), before_watch);
     assert_eq!(lease.status().operation(), request.operation());
@@ -2068,7 +2068,7 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
         lease
             .finish_returned_custom_element(request, &cancel())
             .unwrap(),
-        Some(returned)
+        DomSourceCustomElementReturn::Constructed(returned)
     );
     let snapshot = lease.snapshot();
     let element = snapshot.node(returned).unwrap().as_element().unwrap();
@@ -2080,6 +2080,80 @@ fn autonomous_factory_retains_a_single_completion_across_native_reentry_and_refu
     );
     drop(lease);
     assert_eq!(dom.usage().string_code_units(), units + 1);
+
+    // The new observation exposes the original native classification. It must
+    // neither publish a fallback nor consume its accepted constructor result.
+    let mut observe_fallback = |outcome, expected, custody_key| {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::create_element(document.node(), "x-broken"),
+                bounds,
+                &cancel(),
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::CustomElementConstruction(request)) =
+            lease.advance(&cancel()).unwrap()
+        else {
+            panic!("selected constructor");
+        };
+        let callback = lease
+            .open_custom_element_callback(request, &registration, &cancel())
+            .unwrap();
+        drop(callback);
+        let mut outcome = Some(outcome);
+        lease
+            .accept_custom_element_callback(request, &registration, &mut outcome, &cancel())
+            .unwrap();
+        assert_eq!(outcome, None);
+        let before = lease.snapshot().stamp();
+        assert_eq!(
+            lease.finish_returned_custom_element(request, &AtomicBool::new(true)),
+            Err(DomError::Cancelled)
+        );
+        assert_eq!(lease.snapshot().stamp(), before);
+        assert_eq!(
+            lease
+                .finish_returned_custom_element(request, &cancel())
+                .unwrap(),
+            DomSourceCustomElementReturn::Fallback(expected)
+        );
+        assert_eq!(lease.snapshot().stamp(), before);
+        assert_eq!(lease.status().operation(), request.operation());
+        // Repeating the observation preserves the same original result.
+        assert_eq!(
+            lease
+                .finish_returned_custom_element(request, &cancel())
+                .unwrap(),
+            DomSourceCustomElementReturn::Fallback(expected)
+        );
+        assert_eq!(lease.snapshot().stamp(), before);
+        let DomWatchedCustomElementResult::Fallback { disposition, .. } = lease
+            .finish_custom_element_with_watch(
+                request,
+                (&inbox, custody_key),
+                watch_limits,
+                &cancel(),
+                |name| {
+                    assert_eq!(name.custom_element_disposition(), Some(expected));
+                    Ok::<_, DomError>(())
+                },
+            )
+            .unwrap()
+        else {
+            panic!("classified fallback keeps its watched publication");
+        };
+        assert_eq!(disposition, expected);
+    };
+    observe_fallback(
+        DomSourceCustomElementOutcome::InvalidInterface,
+        DomSourceCustomElementDisposition::InvalidInterface,
+        2,
+    );
+    observe_fallback(
+        DomSourceCustomElementOutcome::Returned(child),
+        DomSourceCustomElementDisposition::InvalidElement,
+        3,
+    );
 }
 
 #[test]

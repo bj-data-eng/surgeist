@@ -150,24 +150,48 @@ impl SvgBindings {
         global: &Value<'scope>,
         element_constructor: &Value<'scope>,
         element: &Value<'scope>,
+        capture: CaptureFunding<'_>,
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let base = install_named(scope, global, "SVGElement", element_constructor, element)?;
-        let graphics = install_named(scope, global, "SVGGraphicsElement", &base.0, &base.1)?;
+        let base = install_named(
+            scope,
+            global,
+            "SVGElement",
+            element_constructor,
+            element,
+            capture,
+        )?;
+        let graphics = install_named(
+            scope,
+            global,
+            "SVGGraphicsElement",
+            &base.0,
+            &base.1,
+            capture,
+        )?;
         let geometry = install_named(
             scope,
             global,
             "SVGGeometryElement",
             &graphics.0,
             &graphics.1,
+            capture,
         )?;
-        let gradient = install_named(scope, global, "SVGGradientElement", &base.0, &base.1)?;
+        let gradient = install_named(
+            scope,
+            global,
+            "SVGGradientElement",
+            &base.0,
+            &base.1,
+            capture,
+        )?;
         let text_content = install_named(
             scope,
             global,
             "SVGTextContentElement",
             &graphics.0,
             &graphics.1,
+            capture,
         )?;
         let text_positioning = install_named(
             scope,
@@ -175,14 +199,23 @@ impl SvgBindings {
             "SVGTextPositioningElement",
             &text_content.0,
             &text_content.1,
+            capture,
         )?;
-        let animation = install_named(scope, global, "SVGAnimationElement", &base.0, &base.1)?;
+        let animation = install_named(
+            scope,
+            global,
+            "SVGAnimationElement",
+            &base.0,
+            &base.1,
+            capture,
+        )?;
         let transfer = install_named(
             scope,
             global,
             "SVGComponentTransferFunctionElement",
             &base.0,
             &base.1,
+            capture,
         )?;
         let bytes = ELEMENTS
             .len()
@@ -207,7 +240,7 @@ impl SvgBindings {
                 Parent::Animation => &animation,
                 Parent::TransferFunction => &transfer,
             };
-            let (_, prototype) = install_named(scope, global, name, constructor, parent)?;
+            let (_, prototype) = install_named(scope, global, name, constructor, parent, capture)?;
             let observed = scope.callback_object(&prototype)?;
             specialized.push(scope.retain_callback_object(observed, fund)?);
         }

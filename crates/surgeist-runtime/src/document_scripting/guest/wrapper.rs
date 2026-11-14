@@ -193,7 +193,7 @@ impl GuestEvents {
             owner.qualify_guest_dispatch(attachment, &mut session)?;
         }
         event.check_dispatch_state()?;
-        let mut reports = self.reports.reserve(self, owner)?;
+        let mut reports = self.reports.reserve(self)?;
         let invocation = self.prepare(owner, target, event)?;
         let receipt = self.run(
             owner,
@@ -201,7 +201,7 @@ impl GuestEvents {
             invocation,
             receiver,
             argument,
-            |scope, exception| reports.publish(scope, exception),
+            |_scope, exception| reports.publish(exception),
         )?;
         Ok(!receipt.default_prevented())
     }

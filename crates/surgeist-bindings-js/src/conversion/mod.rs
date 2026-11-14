@@ -251,6 +251,23 @@ impl<'scope> Conversion<'_, 'scope> {
         self.core(result)
     }
 
+    /// Copies a known native payload using current-context owned root backing.
+    /// Code-unit charging remains in this conversion account, without a second
+    /// output-buffer allocation or a native loan across guest entry.
+    pub fn copy_to_js_funded<T: crate::preparation::Retention>(
+        &mut self,
+        units: &[u16],
+        controller: &crate::preparation::Controller<T>,
+        fund: impl FnOnce(crate::preparation::Request) -> Result<T, Error>,
+    ) -> Result<Value<'scope>, Failure> {
+        self.core(controller.check_owner(&self.scope.operations.owner_state()))?;
+        self.core(self.scope.operations.validate_string_length(units.len()))?;
+        let length = u64::try_from(units.len()).map_err(|_| self.host(Error::StringTooLong))?;
+        self.work(Work::CodeUnit, length).map_err(Failure)?;
+        let result = self.scope.string_funded(units, controller, fund);
+        self.core(result)
+    }
+
     fn default_dom_string(&mut self, units: &[u16]) -> Result<Converted<DomString>, Failure> {
         let (mut output, storage) = self.string_buffer(units.len())?;
         output.extend_from_slice(units);

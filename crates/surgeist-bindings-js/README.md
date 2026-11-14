@@ -33,7 +33,8 @@ Foreign tokens fail before SDK conversion. Context and value roots are reaped
 at operation boundaries after their external Rust custody is dropped. Native
 projections can store private object references traced by the guest heap.
 A weak projection token can reopen the exact live wrapper in its owning
-heap without prolonging its lifetime. Callback
+heap without prolonging its lifetime. Token-qualified private-reference cleanup
+remains available after refusal and requires no new root or admission. Callback
 registrations retain their creation context and pristine intrinsics through
 guest heap edges, allowing unreachable context/function cycles to be collected.
 Guest references and pending jobs can retain their objects after Rust roots
@@ -102,24 +103,32 @@ the selected standard's safe-integer bounds for 64-bit range/clamp conversions.
 `IntegerKind` selects a standard IDL type and `IntegerValue` retains that type
 with its corresponding fixed-width Rust payload.
 
-[`capture::Admission`](src/capture.rs) installs a caller-owned incoming-capture
-policy once per process, including for previously created functions. Admit its
-reported setup storage before installation. Each reached nonempty argument
-buffer and receiver, selected argument or NewTarget root requests one work unit
-and its requested Rust body bytes before materialization. The byte request also
-includes the caller's retention body. Allocator metadata, tree-node packing and
-engine storage remain outside these requested-body figures. A process without
-this optional policy reports false from `has_callback_capture_admission` and
-performs unaccounted incoming capture.
+[`preparation::Admission`](src/preparation.rs) installs one caller-owned policy
+for subsequent Rust preparation. Allocation requests report producer-owned
+record and buffer extents, including the caller retention body. Separate work
+requests cover reached element traversal and UTF-16 payload passes. The byte
+contract measures requested Rust bodies. The dependency owns its engine heap,
+allocator bookkeeping and native execution costs.
 
-`ArgumentValues` and its consuming iterator retain the buffer admission through
-allocation destruction. Individually captured roots retain separate custody
-through registry reaping or process teardown, including after `Scope::retain`.
-Declared prefixes preserve ignored operands, and full variadics capture all
-supplied operands. A failed request stops before its materialization. Fallible
-retention release reports its original error through preallocated cleanup
-custody, preserving an earlier selected guest exception and the first host
-refusal. The read-only cleanup observation survives process destruction.
+`Process::bootstrap_funded` and `Execution::create_realm_funded` admit initial
+setup through caller-owned backing. Later realms use the installed policy.
+The explicit standalone path reports policy absence through
+`has_preparation_admission`. A throwing operation prepares its Rust outcome
+record before guest entry and fills it with the original result or exception.
+Identity imports and clones share that record.
+
+`ArgumentValues` and its consuming iterator retain incoming-buffer custody.
+`Admitted<T>` retains returned UTF-16 and IDL-string storage through borrowed
+access. Roots, callable registrations and callback-frame records have distinct
+custody matching their lifetimes. Declared prefixes preserve ignored operands,
+and full variadics capture all supplied operands. Release failures use prepared
+cleanup storage and preserve the selected guest cause and first host refusal.
+Cleanup observations remain usable after process destruction.
+
+Known native-read paths accept explicit owner-qualified funding for scalar,
+string, callback and promise preparation. `NativeProjectionFunding` carries a
+single-use projection-root reservation across native preparation. Tentative
+projection publication transfers the existing root and holder together.
 
 The other primitive conversions preserve noncoercive boolean semantics, exact
 DOMString code units, USVString surrogate replacement and checked ByteString

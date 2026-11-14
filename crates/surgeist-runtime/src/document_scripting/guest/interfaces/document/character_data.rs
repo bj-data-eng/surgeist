@@ -87,7 +87,7 @@ impl CharacterBindings {
                 name: CHARACTER_DATA,
                 length: 0,
             },
-            &illegal_constructor(),
+            &illegal_constructor(funding.capture)?,
         )?;
         for (length, key, name) in [
             (false, &ascii(b"data")[..], &ascii(b"get data")[..]),
@@ -187,7 +187,7 @@ impl CharacterBindings {
     ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
         let callback = if let Some(capture) = constructors {
             let fallback = capture(size_of::<(Capture, CharacterKind)>())?;
-            let construct = capture(size_of::<(Capture, CharacterKind)>())?;
+            let construct = constructor_capture(capture, size_of::<(Capture, CharacterKind)>())?;
             ConstructorCallback::bounded(
                 1,
                 move |scope| {
@@ -200,7 +200,7 @@ impl CharacterBindings {
                 move |scope, arguments| construct.construct_character(scope, arguments, kind),
             )
         } else {
-            illegal_constructor()
+            illegal_constructor(funding.capture)?
         };
         let (_, prototype) = install_derived_interface(
             scope,

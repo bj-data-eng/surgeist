@@ -1,4 +1,4 @@
-use std::{any::Any, collections::VecDeque};
+use std::collections::VecDeque;
 
 use super::*;
 use crate::trusted_types_csp::{ReportError, ViolationReport};
@@ -228,7 +228,8 @@ impl ViolationQueue {
     }
 }
 
-pub(super) type DispatchFailure = HostFailureSlot<DocumentGuestEventError, GuestBacking>;
+pub(in crate::document_scripting) type DispatchFailure =
+    HostFailureSlot<DocumentGuestEventError, GuestBacking>;
 
 pub(in crate::document_scripting) struct GuestExceptionReports {
     queue: RefCell<VecDeque<GuestExceptionReport>>,
@@ -304,15 +305,12 @@ impl GuestExceptionReports {
     pub(super) fn reserve<'a>(
         &'a self,
         events: &GuestEvents,
-        owner: &NativeOwner,
     ) -> Result<ReportReservation<'a>, DocumentGuestEventError> {
-        self.reserve_count(events, owner, events.limits.dispatch.failure_records)
+        self.reserve_count(events.limits.dispatch.failure_records)
     }
 
     pub(super) fn reserve_count<'a>(
         &'a self,
-        events: &GuestEvents,
-        owner: &NativeOwner,
         count: usize,
     ) -> Result<ReportReservation<'a>, DocumentGuestEventError> {
         let reserved = self
@@ -329,68 +327,24 @@ impl GuestExceptionReports {
         {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let roots = ExceptionRoots::reserve(events, owner, count)?;
         self.reserved.set(reserved);
         Ok(ReportReservation {
             reports: self,
-            roots,
+            remaining: count,
         })
     }
 
     pub(super) fn reserve_constructor(
         self: &Rc<Self>,
-        events: &GuestEvents,
-        owner: &NativeOwner,
     ) -> Result<ConstructorReportReservation, DocumentGuestEventError> {
-        let mut reservation = self.reserve_count(events, owner, 1)?;
-        let root = reservation.roots.take()?;
+        let mut reservation = self.reserve_count(1)?;
+        // Transfer this logical slot; only the constructor reservation releases
+        // it, including when no exception is eventually published.
+        reservation.remaining = 0;
         Ok(ConstructorReportReservation {
             reports: self.clone(),
-            root: Some(root),
+            prepared: false,
         })
-    }
-}
-
-pub(super) struct ExceptionRoots {
-    roots: Vec<Box<dyn Any>>,
-    _backing: GuestBacking,
-}
-
-impl ExceptionRoots {
-    pub(super) fn reserve(
-        events: &GuestEvents,
-        owner: &NativeOwner,
-        count: usize,
-    ) -> Result<Self, DocumentGuestEventError> {
-        let bytes = count
-            .checked_mul(size_of::<Box<dyn Any>>())
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let backing = events.reserve(owner, bytes)?;
-        let mut roots = Vec::new();
-        roots
-            .try_reserve_exact(count)
-            .map_err(|_| Error::Allocation)?;
-        if roots.capacity() != count {
-            return Err(DocumentScriptNativeError::StorageLimit.into());
-        }
-        let root_bytes = events
-            .exception_root_bytes
-            .checked_add(size_of::<GuestBacking>())
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        for _ in 0..count {
-            let root: Box<dyn Any> = Box::new(events.reserve(owner, root_bytes)?);
-            roots.push(root);
-        }
-        Ok(Self {
-            roots,
-            _backing: backing,
-        })
-    }
-
-    pub(super) fn take(&mut self) -> Result<Box<dyn Any>, DocumentGuestEventError> {
-        self.roots
-            .pop()
-            .ok_or_else(|| DocumentScriptNativeError::StorageLimit.into())
     }
 }
 
@@ -425,11 +379,11 @@ impl DirectExceptions {
 
     pub(super) fn publish(
         &mut self,
-        scope: &mut Scope<'_>,
-        roots: &mut ExceptionRoots,
         exception: DocumentGuestListenerException,
     ) -> Result<(), DocumentGuestEventError> {
-        scope.retain_exception_backing(&exception.exception, roots.take()?)?;
+        if self.exceptions.len() == self.exceptions.capacity() {
+            return Err(DocumentScriptNativeError::StorageLimit.into());
+        }
         self.exceptions.push(exception);
         Ok(())
     }
@@ -441,18 +395,19 @@ impl DirectExceptions {
 
 pub(super) struct ReportReservation<'a> {
     reports: &'a GuestExceptionReports,
-    roots: ExceptionRoots,
+    remaining: usize,
 }
 
 impl ReportReservation<'_> {
     pub(super) fn publish(
         &mut self,
-        scope: &mut Scope<'_>,
         exception: DocumentGuestListenerException,
     ) -> Result<(), DocumentGuestEventError> {
-        let backing = self.roots.take()?;
+        self.remaining = self
+            .remaining
+            .checked_sub(1)
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
         self.reports.reserved.set(self.reports.reserved.get() - 1);
-        scope.retain_exception_backing(&exception.exception, backing)?;
         self.reports
             .queue
             .borrow_mut()
@@ -463,21 +418,20 @@ impl ReportReservation<'_> {
 
 pub(super) struct ConstructorReportReservation {
     reports: Rc<GuestExceptionReports>,
-    root: Option<Box<dyn Any>>,
+    prepared: bool,
 }
 
 impl ConstructorReportReservation {
-    pub(super) fn needs_backing(&self) -> bool {
-        self.root.is_some()
+    pub(super) fn needs_preparation(&self) -> bool {
+        !self.prepared
     }
 
-    pub(super) fn prepare(
-        &mut self,
-        scope: &mut Scope<'_>,
-        exception: &Exception,
-    ) -> Result<(), Error> {
-        let backing = self.root.take().ok_or(Error::RegistryConflict)?;
-        scope.retain_exception_backing(exception, backing)
+    pub(super) fn prepare(&mut self) -> Result<(), Error> {
+        if self.prepared {
+            return Err(Error::RegistryConflict);
+        }
+        self.prepared = true;
+        Ok(())
     }
 
     pub(super) fn publish_custom_element_callback(
@@ -508,6 +462,6 @@ impl Drop for ReportReservation<'_> {
     fn drop(&mut self) {
         self.reports
             .reserved
-            .set(self.reports.reserved.get() - self.roots.roots.len());
+            .set(self.reports.reserved.get() - self.remaining);
     }
 }

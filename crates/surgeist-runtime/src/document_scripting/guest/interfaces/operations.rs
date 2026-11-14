@@ -221,10 +221,8 @@ fn project_path<'scope>(
     if count == 0 {
         return Ok(scope.array(&[])?);
     }
-    let copied = scope.argument_copy_storage_bytes(count)?;
     let bytes = count
         .checked_mul(size_of::<Value<'scope>>())
-        .and_then(|bytes| bytes.checked_add(copied))
         .ok_or(Error::Allocation)?;
     let _backing = events.reserve(owner, bytes)?;
     let mut projected = Vec::new();

@@ -10,7 +10,7 @@ pub(super) fn constructor(
     capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
 ) -> Result<ConstructorCallback, DocumentGuestEventError> {
     let fallback = capture(size_of::<Capture>())?;
-    let constructor = capture(size_of::<Capture>())?;
+    let constructor = constructor_capture(capture, size_of::<Capture>())?;
     Ok(ConstructorCallback::bounded(
         0,
         move |scope| {

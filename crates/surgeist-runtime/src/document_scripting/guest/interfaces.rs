@@ -140,6 +140,20 @@ impl OriginCost {
 
 type CaptureFunding<'a> = &'a dyn Fn(usize) -> Result<Capture, DocumentGuestEventError>;
 
+fn constructor_capture_bytes(action_bytes: usize) -> Result<usize, DocumentScriptNativeError> {
+    action_bytes
+        .checked_add(ConstructorCallback::behavior_storage_bytes())
+        .ok_or(DocumentScriptNativeError::StorageLimit)
+}
+
+/// One action capture also keeps its constructor's shared behavior body funded.
+fn constructor_capture(
+    capture: CaptureFunding<'_>,
+    action_bytes: usize,
+) -> Result<Capture, DocumentGuestEventError> {
+    capture(constructor_capture_bytes(action_bytes)?)
+}
+
 struct OriginInterfaceFunding<'a> {
     capture: CaptureFunding<'a>,
     retain: &'a dyn Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
@@ -424,9 +438,18 @@ impl PublicEventBindings {
         let backup_reaction_job = scope.retain_callback_object(backup_reaction_job, fund)?;
         let origin_cost = origin_cost
             .get()
+            // The receiving origin replaces attachment-only constructors with
+            // one shared illegal Document/Fragment callback and Text/Comment
+            // callbacks. Their action captures were absent from this probe.
+            .include(constructor_capture_bytes(size_of::<Capture>())?)?
+            .include(constructor_capture_bytes(size_of::<Capture>())?)?
+            .include(constructor_capture_bytes(size_of::<Capture>())?)?
             .include(size_of::<OriginBindings>())?
             .include(OriginAuthority::STORAGE_BYTES)?
-            .include(dom_exception::constructor_storage_bytes::<GuestBacking>())?;
+            .include(
+                dom_exception::constructor_storage_bytes::<GuestBacking>()
+                    .ok_or(DocumentScriptNativeError::StorageLimit)?,
+            )?;
         Ok(Self {
             callbacks,
             window,
@@ -477,7 +500,10 @@ impl PublicEventBindings {
         dom_exception::install(
             scope,
             dom_exception_limits,
-            fund(dom_exception::constructor_storage_bytes::<GuestBacking>())?,
+            fund(
+                dom_exception::constructor_storage_bytes::<GuestBacking>()
+                    .ok_or(DocumentScriptNativeError::StorageLimit)?,
+            )?,
         )?;
         let target = install_target_prototype(scope, &capture)?;
         install_event_interface(scope, Interface::Target, &target, &capture)?;
@@ -638,7 +664,7 @@ fn install_event_interface<'scope>(
     capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
 ) -> Result<(), DocumentGuestEventError> {
     let fallback = capture(size_of::<(Capture, Interface)>())?;
-    let constructor = capture(size_of::<(Capture, Interface)>())?;
+    let constructor = constructor_capture(capture, size_of::<(Capture, Interface)>())?;
     let (name, length, prefix) = kind.declaration();
     let callback = ConstructorCallback::bounded(
         prefix,
@@ -773,6 +799,34 @@ impl NativeRead<'_> {
                     .retain_script_payload(&mut dom, bytes, self.cancel)
                     .map_err(DocumentScriptNativeError::from)
             })
+    }
+
+    fn prepare_root(
+        &self,
+        request: surgeist_bindings_js::preparation::Request,
+    ) -> Result<crate::document_scripting::preparation::Backing, Error> {
+        let result = (|| {
+            self.source_step()?;
+            let bytes = request.bytes();
+            let backing =
+                self.events
+                    .budget
+                    .reserve_with(AccountScope::Preparation, bytes, || {
+                        let mut dom = self
+                            .dom
+                            .try_borrow_mut()
+                            .map_err(|_| DocumentScriptNativeError::Busy)?;
+                        self.hosted
+                            .retain_script_payload(&mut dom, bytes, self.cancel)
+                            .map_err(DocumentScriptNativeError::from)
+                    })?;
+            Ok::<_, DocumentGuestEventError>(
+                crate::document_scripting::preparation::Backing::Guest(
+                    accounting::CaptureBacking::new(backing, self.events.refusal.clone()),
+                ),
+            )
+        })();
+        result.map_err(|error| accounting::capture_refusal(&self.events.refusal, error))
     }
 
     fn retain_text_units(

@@ -273,13 +273,13 @@ impl Operation {
         execution: &mut Execution<'_>,
     ) -> Result<(), DomError> {
         if let Some(pending) = &mut self.custom_element {
-            let fallback_needed = match execution.synchronous_node.as_mut() {
-                Some(synchronous_node::SynchronousNode::ReturnedCustomElement(required)) => {
-                    Some(&mut **required)
+            let fallback_disposition = match execution.synchronous_node.as_mut() {
+                Some(synchronous_node::SynchronousNode::ReturnedCustomElement(disposition)) => {
+                    Some(&mut **disposition)
                 }
                 _ => None,
             };
-            return pending.finish(&mut self.draft, dom.limits, cancel, fallback_needed);
+            return pending.finish(&mut self.draft, dom.limits, cancel, fallback_disposition);
         }
         if let Some(pending) = &self.attribute_verification {
             self.draft.source_step(cancel)?;

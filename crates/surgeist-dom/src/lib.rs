@@ -359,9 +359,9 @@ pub use store::source::operation::meta::{
 pub use store::source::operation::{
     DomPreparedElementName, DomShadowReactionRoute, DomSourceCustomElementCallbackScope,
     DomSourceCustomElementDisposition, DomSourceCustomElementOutcome,
-    DomSourceCustomElementRetention, DomSourceCustomElementUpgrade, DomSourceEventFiringLoan,
-    DomSourceLease, DomSourceNodeOutputWatch, DomStyleCspBudget, DomWatchedCustomElementResult,
-    DomWatchedElementCreation,
+    DomSourceCustomElementRetention, DomSourceCustomElementReturn, DomSourceCustomElementUpgrade,
+    DomSourceEventFiringLoan, DomSourceLease, DomSourceNodeOutputWatch, DomStyleCspBudget,
+    DomWatchedCustomElementResult, DomWatchedElementCreation,
 };
 pub use store::source::reactions::{
     DomCustomElementReaction, DomCustomElementReactionKind, DomCustomElementReactions,

@@ -70,7 +70,7 @@ impl Pending {
         draft: &mut Draft,
         limits: DomLimits,
         cancel: &AtomicBool,
-        fallback_needed: Option<&mut bool>,
+        fallback_disposition: Option<&mut Option<DomSourceCustomElementDisposition>>,
     ) -> Result<(), DomError> {
         let outcome = self.outcome.ok_or(DomError::InvalidSourceOperation)?;
         if let Some(receiver) = self.receiver {
@@ -144,8 +144,8 @@ impl Pending {
                 (key, DomSourceCustomElementDisposition::Constructed)
             }
             Err(disposition) => {
-                if let Some(fallback_needed) = fallback_needed {
-                    *fallback_needed = true;
+                if let Some(fallback_disposition) = fallback_disposition {
+                    *fallback_disposition = Some(disposition);
                     return Err(DomError::UnavailableCreation);
                 }
                 let budget = formation::Formation::new(draft, cancel)?;

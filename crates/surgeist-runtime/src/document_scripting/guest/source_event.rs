@@ -136,7 +136,7 @@ impl GuestEvents {
                 .map(|request| ActiveAttachedEvent::enter(owner, request))
                 .transpose()?;
             self.step()?;
-            report = Some(self.reports.reserve_count(self, owner, 1)?);
+            report = Some(self.reports.reserve_count(1)?);
             let current = selected
                 .event()
                 .current_target()
@@ -151,11 +151,11 @@ impl GuestEvents {
             selected,
             values,
             active.as_ref(),
-            |scope, exception| {
+            |_scope, exception| {
                 report
                     .as_mut()
                     .ok_or(DocumentGuestEventError::RegistryState)?
-                    .publish(scope, exception)
+                    .publish(exception)
             },
         ) {
             Ok(result) => Ok(result),

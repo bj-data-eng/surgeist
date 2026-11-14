@@ -71,7 +71,28 @@ pub(crate) fn validate_array_length(length: usize) -> Result<(), Error> {
 /// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
     fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
-    fn create_realm(&mut self) -> Result<Realm, Error>;
+    fn prepare_realm(&mut self) -> Result<(), Error>;
+    fn create_realm_with_backing(
+        &mut self,
+        backing: Option<Rc<crate::RealmBacking>>,
+    ) -> Result<Realm, Error>;
+    fn create_realm(&mut self) -> Result<Realm, Error> {
+        self.prepare_realm()?;
+        let owner = self.owner_state();
+        let backing = owner
+            .preparation
+            .get()
+            .map(|account| {
+                let bytes = self
+                    .realm_storage_bytes()
+                    .checked_add(size_of::<crate::preparation::Guard>())
+                    .ok_or_else(|| owner.fail(Error::Allocation))?;
+                let guard = account.admit(crate::preparation::Request::Realm { bytes })?;
+                Ok::<_, Error>(crate::RealmBacking::new(guard))
+            })
+            .transpose()?;
+        self.create_realm_with_backing(backing)
+    }
     fn with_realm(
         &mut self,
         realm: &Realm,
@@ -110,6 +131,17 @@ pub(crate) trait Operations {
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
     fn enqueue_microtask(&mut self, function: &Root) -> Result<(), Error>;
     fn validate_string_length(&self, units: usize) -> Result<(), Error>;
+    fn root_storage_bytes(&self) -> usize;
+    fn string_funded(
+        &mut self,
+        units: &[u16],
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error>;
+    fn primitive_funded(
+        &mut self,
+        primitive: Primitive,
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error>;
     fn string(&mut self, units: &[u16]) -> Result<Root, Error>;
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error>;
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
@@ -127,7 +159,16 @@ pub(crate) trait Operations {
     fn open_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>) -> Result<Root, Error>;
     fn release_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>)
     -> Result<(), Error>;
-    fn argument_locals_storage_bytes(&self, count: usize) -> Option<usize>;
+    fn open_callback_object_funded(
+        &mut self,
+        holder: &Rc<CallbackObjectIdentity>,
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error>;
+    fn resolver_promise_funded(
+        &mut self,
+        resolver: &Root,
+        backing: crate::preparation::Guard,
+    ) -> Result<Root, Error>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
     fn new_promise_resolver(&mut self) -> Result<Root, Error>;
     fn resolver_promise(&mut self, resolver: &Root) -> Result<Root, Error>;
@@ -191,22 +232,31 @@ pub(crate) trait Operations {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error>;
+        funding: Option<crate::preparation::Guard>,
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error>;
     fn project_retained_native_object_in_prototype_realm(
         &mut self,
         prototype: &Rc<CallbackObjectIdentity>,
         realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
-    ) -> Result<(Rc<CallbackObjectIdentity>, u32), Error>;
+        funding: Option<crate::preparation::Guard>,
+    ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error>;
     fn discard_unpublished_native_object(
         &mut self,
         index: u32,
         holder: &Rc<CallbackObjectIdentity>,
+        root: &Root,
     );
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
     fn native_object_index(&mut self, object: &Root, brand: TypeId) -> Result<Option<u32>, Error>;
     fn open_native_object(&mut self, index: u32, brand: TypeId) -> Result<Option<Root>, Error>;
+    fn clear_native_object_reference(
+        &mut self,
+        index: u32,
+        brand: TypeId,
+        slot: u32,
+    ) -> Result<(), Error>;
     fn native_object_reference(
         &mut self,
         object: &Root,
@@ -220,7 +270,6 @@ pub(crate) trait Operations {
         slot: u32,
         reference: Option<&Root>,
     ) -> Result<(), Error>;
-    fn retain_root_backing(&mut self, root: &Root, backing: Box<dyn Any>) -> Result<(), Error>;
     fn managed_object(&mut self) -> Result<Root, Error>;
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)
@@ -239,14 +288,22 @@ pub(crate) trait Operations {
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error>;
     /// Copies the entire string into an exactly sized, caller-owned buffer.
     fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error>;
-    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error> {
+    fn to_utf16(&mut self, value: &Root) -> Result<crate::Admitted<Vec<u16>>, Error> {
         let string = self.coerce_string(value)?;
-        let mut units = Vec::new();
-        units
-            .try_reserve_exact(string.len())
-            .map_err(|_| Error::Allocation)?;
-        units.resize(string.len(), 0);
-        self.copy_string(&string, &mut units)?;
+        let owner = self.owner_state();
+        let mut units = crate::preparation::buffer::<u16>(
+            &owner,
+            crate::preparation::BufferKind::Utf16,
+            string.len(),
+        )?;
+        crate::preparation::charge(
+            &owner,
+            crate::preparation::Work::CodeUnits {
+                units: string.len(),
+            },
+        )?;
+        units.value.resize(string.len(), 0);
+        self.copy_string(&string, &mut units.value)?;
         Ok(units)
     }
     fn to_boolean(&mut self, value: &Root) -> Result<bool, Error>;
