@@ -1,5 +1,7 @@
 mod cache_stores;
 mod memo;
+#[cfg(test)]
+pub(crate) use memo::compute_ordinary_with_request_trace;
 mod requests;
 
 #[cfg(test)]
@@ -1377,9 +1379,16 @@ where
         Ok(())
     }
 
-    fn memo_hidden_leaf_index(&self, node: Tree::Node) -> Option<usize> {
+    fn memo_hidden_effect_index(&self, node: Tree::Node) -> Option<usize> {
         let graph = self.flow_graph?;
         let index = graph.index(node)?;
+        let memo = self.memo.as_ref()?;
+        if !memo.is_scoped() {
+            // Clear and hidden geometry are explicit operations. A Box may
+            // also be reached visibly, and cache_clear precedes its hidden
+            // geometry, so neither ancestry nor staged visibility is a key.
+            return memo.ordinary_effect_index(index);
+        }
         (graph.children[index].is_empty()
             && self
                 .tree
@@ -1609,12 +1618,18 @@ where
         let restore_subtree = input.run_mode().is_perform_layout() && self.child_count(node) != 0;
         let uncached_input = input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL);
         let host_cache = !restore_subtree || self.subtree_uses_shape_provider(node);
+        #[cfg(test)]
+        let admission_context;
         let (cache, memo) = if host_cache || self.memo.is_some() {
             let context = if host_cache {
                 self.cache_context()
             } else {
                 crate::CacheKeyContext::new()
             };
+            #[cfg(test)]
+            {
+                admission_context = context;
+            }
             let cache = host_cache.then(|| {
                 let cache_input = if restore_subtree {
                     uncached_input
@@ -1637,8 +1652,18 @@ where
             }
             (cache, memo)
         } else {
+            #[cfg(test)]
+            {
+                admission_context = crate::CacheKeyContext::new();
+            }
             (None, None)
         };
+        #[cfg(test)]
+        if let Some(observer) = &self.memo {
+            // Observe the requested key before the uncached body resets its
+            // scrollbar pass. Hidden traversal and ready hits returned above.
+            observer.record_uncached_admission(node, input, admission_context);
+        }
         Ok(ChildAdmission::Uncached {
             input: uncached_input,
             cache,
@@ -1731,6 +1756,75 @@ where
             )?;
         }
         self.record_block_body(node, input, output)?;
+        Ok(())
+    }
+
+    // Observation children share the original fork policy with synchronous probes.
+    fn grid_observation_session(&self, node: Tree::Node) -> SessionResult<Tree, Self> {
+        let mut observation = Self::new(self.tree, self.cache.invalidated.clone());
+        observation.block_floats = self.block_floats.fork();
+        observation.entry_sources = self.entry_sources.clone();
+        if self.entry_sources.is_none() {
+            observation.memo = self.memo.as_ref().and_then(memo::Memo::fork);
+        }
+        observation.wrapping.context = self.wrapping.context.clone();
+        observation.flow_graph = self.flow_graph;
+        observation.bound = self.bound.clone();
+        if let Some(fragment) = &self.fragmentation {
+            let allocations = fragment.allocations.clone();
+            let intrinsics = fragment.intrinsics.clone();
+            let margins = fragment.margins.fork_entry(None).map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
+            observation.fragmentation = Some(FragmentComputation {
+                scopes: None,
+                margins,
+                allocations,
+                intrinsics,
+            });
+        }
+        observation.wrapping.uncached = self.wrapping.uncached.clone();
+        if let Some(text) = &self.text {
+            let mut state = crate::text_layout::state::TextComputation::new(
+                text.paragraphs,
+                text.associations.clone(),
+                text.scope_resources.clone(),
+            );
+            state.frames = text.frames.clone();
+            state.wrapping = text.wrapping.clone();
+            state.graph = text.graph;
+            state.formatted = text.formatted.as_ref().map(|state| state.fork());
+            observation.text = Some(state);
+        }
+        Ok(observation)
+    }
+
+    fn accept_grid_observation(
+        &mut self,
+        node: Tree::Node,
+        observation: &Self,
+    ) -> SessionResult<Tree, ()> {
+        if let Some(formatted) = observation
+            .text
+            .as_ref()
+            .and_then(|text| text.formatted.as_ref())
+            && let Some(text) = &mut self.text
+        {
+            // A consumed probe can affect the parent's sizing decision. Retain
+            // only its purpose-scoped semantic dependencies; none of its
+            // geometry, pending Text, fragments or cache writes are published.
+            text.formatted_accept(formatted).map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
+        }
         Ok(())
     }
 
@@ -2109,7 +2203,7 @@ where
                 self.cache.stores.retain(|entry| entry.node() != node);
             }
             if let Some(memo) = &self.memo
-                && self.memo_hidden_leaf_index(node).is_none()
+                && self.memo_hidden_effect_index(node).is_none()
             {
                 memo.barrier();
             }
@@ -2202,7 +2296,7 @@ where
     ) {
         let replayable = self.memo.is_some()
             && fragments.is_none()
-            && self.memo_hidden_leaf_index(node).is_some();
+            && self.memo_hidden_effect_index(node).is_some();
         if let Some(memo) = &mut self.memo {
             if replayable {
                 memo.record(node, memo::Effect::ClearInline(node));
@@ -2347,63 +2441,10 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        let mut observation = Self::new(self.tree, self.cache.invalidated.clone());
-        observation.block_floats = self.block_floats.fork();
-        observation.entry_sources = self.entry_sources.clone();
-        if self.entry_sources.is_none() {
-            observation.memo = self.memo.as_ref().and_then(memo::Memo::fork);
-        }
-        observation.wrapping.context = self.wrapping.context.clone();
-        observation.flow_graph = self.flow_graph;
-        observation.bound = self.bound.clone();
-        if let Some(fragment) = &self.fragmentation {
-            let allocations = fragment.allocations.clone();
-            let intrinsics = fragment.intrinsics.clone();
-            let margins = fragment.margins.fork_entry(None).map_err(|error| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
-                )
-            })?;
-            observation.fragmentation = Some(FragmentComputation {
-                scopes: None,
-                margins,
-                allocations,
-                intrinsics,
-            });
-        }
-        observation.wrapping.uncached = self.wrapping.uncached.clone();
-        if let Some(text) = &self.text {
-            let mut state = crate::text_layout::state::TextComputation::new(
-                text.paragraphs,
-                text.associations.clone(),
-                text.scope_resources.clone(),
-            );
-            state.frames = text.frames.clone();
-            state.wrapping = text.wrapping.clone();
-            state.graph = text.graph;
-            state.formatted = text.formatted.as_ref().map(|state| state.fork());
-            observation.text = Some(state);
-        }
+        let mut observation = self.grid_observation_session(node)?;
         let result = probe.observe(&mut observation, node);
-        if result.is_ok()
-            && let Some(formatted) = observation
-                .text
-                .as_ref()
-                .and_then(|text| text.formatted.as_ref())
-            && let Some(text) = &mut self.text
-        {
-            // A consumed probe can affect the parent's sizing decision. Retain
-            // only its purpose-scoped semantic dependencies; none of its
-            // geometry, pending Text, fragments or cache writes are published.
-            text.formatted_accept(formatted).map_err(|error| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
-                )
-            })?;
+        if result.is_ok() {
+            self.accept_grid_observation(node, &observation)?;
         }
         result
     }
@@ -2848,12 +2889,12 @@ where
     }
 
     fn cache_clear(&mut self, node: Self::Node) -> SessionResult<Tree, ()> {
-        let hidden_leaf_index = self
+        let hidden_effect_index = self
             .memo
             .as_ref()
-            .and_then(|_| self.memo_hidden_leaf_index(node));
+            .and_then(|_| self.memo_hidden_effect_index(node));
         if let Some(memo) = &mut self.memo {
-            if let Some(index) = hidden_leaf_index {
+            if let Some(index) = hidden_effect_index {
                 memo.record(node, memo::Effect::Clear { node, index });
             } else {
                 memo.barrier();

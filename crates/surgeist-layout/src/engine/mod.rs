@@ -29,7 +29,9 @@ pub(crate) use rounding::round_layout;
 #[cfg(test)]
 pub(crate) use session::trace_hidden_compute_session_requests;
 #[cfg(test)]
-pub(crate) use session::{observe_grid_probe, seed_grid_leaf_requests};
+pub(crate) use session::{
+    compute_ordinary_with_request_trace, observe_grid_probe, seed_grid_leaf_requests,
+};
 
 type CompletedTreeBatch<Tree> =
     CompletedLayoutBatchOf<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
