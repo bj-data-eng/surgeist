@@ -604,3 +604,15 @@ typed string conversion, floating conversion and failures, and the standard's
 range/clamp ordering. It delegates JavaScript coercion to the engine and copies
 no JavaScript engine implementation. The original standard remains authoritative;
 no endorsement or broader interface-conformance claim is implied.
+
+## HTMLDocument constructor alias
+
+The [alias reference](../../references/html-document-constructor-alias--877d6146487f.md)
+retains the complete paragraph at repository-source lines 97492–97494 from
+HTML revision `877d6146487f15b15bc8dd0e3c625063a37b456a`. Complete source SHA-256
+is `99203fe90c56b7af9aa7332bacaa50a3eaca1cd33437c521f40103f68afb97ab`.
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft). The existing exact
+[upstream license](LICENSE) applies. Specification prose is Creative Commons
+Attribution 4.0 International, with BSD 3-Clause for portions incorporated into
+source code. Surgeist extracted the paragraph on 2026-11-14, preserving the
+source bytes in a literal HTML fence and adding heading/provenance text.

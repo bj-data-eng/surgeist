@@ -6,6 +6,7 @@ mod data_time;
 mod declarative_shadow;
 mod details_reflections;
 mod document_import;
+mod document_legacy_entrypoints;
 mod document_tree_properties;
 mod document_type;
 mod dom_implementation;
@@ -394,6 +395,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     details_reflections::details_properties_preserve_native_and_web_idl_contracts();
     document_tree_properties::document_tree_properties_select_and_forward_native_attributes();
     document_tree_properties::document_tree_properties_preserve_selection_conversion_and_source_contracts();
+    document_legacy_entrypoints::document_legacy_entrypoints_preserve_tree_and_constructor_identity(
+    );
+    document_legacy_entrypoints::document_legacy_entrypoints_preserve_native_qualification_and_realm_contracts();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();
     pre_width::pre_width_family_preserves_native_and_web_idl_contracts();

@@ -25,6 +25,7 @@ mod element_factory;
 mod font;
 mod fragment;
 mod html_document;
+mod legacy;
 mod li;
 mod list_compact;
 mod lists;
@@ -347,6 +348,16 @@ impl DocumentPrototypes {
             },
             document_callback,
         )?;
+        let global = scope.global()?;
+        define_data(
+            scope,
+            &global,
+            PropertyKey::String(&ascii(b"HTMLDocument")),
+            &document_constructor,
+            true,
+            false,
+            true,
+        )?;
         let (_, xml_document) = install_derived_interface(
             scope,
             &document,
@@ -381,6 +392,7 @@ impl DocumentPrototypes {
         tree::install_import(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         html_document::install(scope, &document, funding.capture)?;
+        legacy::install(scope, &document, funding.capture)?;
         let document_names = tree_mutations::unscopables(scope, &document)?;
         parent_node::install(
             scope,
