@@ -687,6 +687,78 @@
         "ToggleEvent",
         "ToggleEventInit"
       ]
+    },
+    {
+      "id": "HTMLOListElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlolistelement",
+      "block": 0,
+      "sha256": "4ced290a9f654a384cb904fbed9c546fee2d0f8cb0b73293646d59f1ffa38c89",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlolistelement",
+      "entries": [
+        "HTMLOListElement"
+      ]
+    },
+    {
+      "id": "HTMLOListElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLOListElement&#45;partial",
+      "block": 0,
+      "sha256": "78a945f766ad48f3e242c1b061fb53a0f2bb5e368710e3645204f2c9fc1440be",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLOListElement-partial",
+      "entries": [
+        "HTMLOListElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLUListElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlulistelement",
+      "block": 0,
+      "sha256": "7df66de7d883d73addae1e0ec0dfdfc654d078cbc9eb5caeb6de06542bd19a4d",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlulistelement",
+      "entries": [
+        "HTMLUListElement"
+      ]
+    },
+    {
+      "id": "HTMLUListElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLUListElement&#45;partial",
+      "block": 0,
+      "sha256": "ce9b6929aaf7d5fe25acff02321889ff3919782f406bebb7980e5f886b5869ec",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLUListElement-partial",
+      "entries": [
+        "HTMLUListElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLMenuElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlmenuelement",
+      "block": 0,
+      "sha256": "1edcfafafb86783386d97e902f75253e406104e0c863b6f5a73a6c8c6e527d04",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlmenuelement",
+      "entries": [
+        "HTMLMenuElement"
+      ]
+    },
+    {
+      "id": "HTMLMenuElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLMenuElement&#45;partial",
+      "block": 0,
+      "sha256": "eb3ebd86b7ee132cd50d9680db071d9f4c85b040f330f051e00250d74420e18a",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLMenuElement-partial",
+      "entries": [
+        "HTMLMenuElement.obsolete"
+      ]
     }
   ],
   "declarations": [
@@ -5512,6 +5584,235 @@
         }
       ],
       "inherits": "EventInit"
+    },
+    {
+      "id": "HTMLOListElement",
+      "kind": "interface",
+      "name": "HTMLOListElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLOListElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "reversed",
+          "readonly": false,
+          "id": "HTMLOListElement.reversed"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            },
+            {
+              "name": "ReflectDefault",
+              "value": 1
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "start",
+          "readonly": false,
+          "id": "HTMLOListElement.start"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLOListElement.type"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLOListElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLOListElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "compact",
+          "readonly": false,
+          "id": "HTMLOListElement.obsolete.compact"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLUListElement",
+      "kind": "interface",
+      "name": "HTMLUListElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLUListElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLUListElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLUListElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "compact",
+          "readonly": false,
+          "id": "HTMLUListElement.obsolete.compact"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLUListElement.obsolete.type"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLMenuElement",
+      "kind": "interface",
+      "name": "HTMLMenuElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLMenuElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLMenuElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLMenuElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "compact",
+          "readonly": false,
+          "id": "HTMLMenuElement.obsolete.compact"
+        }
+      ],
+      "partial": true
     }
   ],
   "includes": [
@@ -10110,6 +10411,240 @@
           "issue": 2634
         }
       ]
+    },
+    "HTMLOListElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlolistelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.reversed/get": {
+      "kind": "native",
+      "adapter": "htmlolistelement.reversed.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.reversed/set": {
+      "kind": "native",
+      "adapter": "htmlolistelement.reversed.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.start/get": {
+      "kind": "native",
+      "adapter": "htmlolistelement.start.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs",
+          "symbol": "integer_long_work_bound"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs",
+          "symbol": "parse_integer_long"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.start/set": {
+      "kind": "native",
+      "adapter": "htmlolistelement.start.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.type/get": {
+      "kind": "native",
+      "adapter": "htmlolistelement.type.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.type/set": {
+      "kind": "native",
+      "adapter": "htmlolistelement.type.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.obsolete.compact/get": {
+      "kind": "native",
+      "adapter": "htmlolistelement.compact.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLOListElement.obsolete.compact/set": {
+      "kind": "native",
+      "adapter": "htmlolistelement.compact.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLUListElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlulistelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLUListElement.obsolete.compact/get": {
+      "kind": "native",
+      "adapter": "htmlulistelement.compact.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLUListElement.obsolete.compact/set": {
+      "kind": "native",
+      "adapter": "htmlulistelement.compact.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLUListElement.obsolete.type/get": {
+      "kind": "native",
+      "adapter": "htmlulistelement.type.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLUListElement.obsolete.type/set": {
+      "kind": "native",
+      "adapter": "htmlulistelement.type.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMenuElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlmenuelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMenuElement.obsolete.compact/get": {
+      "kind": "native",
+      "adapter": "htmlmenuelement.compact.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMenuElement.obsolete.compact/set": {
+      "kind": "native",
+      "adapter": "htmlmenuelement.compact.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
     }
   },
   "semantics": {

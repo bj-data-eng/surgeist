@@ -11,7 +11,7 @@ const MEMBERS: &[reflection::Member] = &[(
     &ascii(b"get width"),
     &ascii(b"set width"),
     &ascii(b"width"),
-    Reflection::SignedLong,
+    Reflection::SignedLongZero,
 )];
 
 pub(super) fn is_pre(

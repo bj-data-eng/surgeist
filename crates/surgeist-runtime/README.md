@@ -364,6 +364,15 @@ write the canonical integer string through the Source and reaction adapter.
 HTMLLIElement.value uses the same signed-long reflection of the value attribute,
 independently of the list item's computed ordinal. Its obsolete type member
 reflects the raw type attribute as a DOMString through that adapter.
+HTMLOListElement reflects reversed and compact as attribute presence, type as a
+raw DOMString, and start as a signed long with default one for missing, invalid
+or out-of-range content. The start getter remains independent of a reversed
+list's derived starting value. Its setter uses ordinary long wrapping and
+shortest signed decimal, including zero for undefined, NaN and infinities.
+HTMLUListElement reflects compact as presence and type as a raw DOMString;
+HTMLMenuElement reflects compact as presence. These members share the same
+native Source, reaction and admitted numeric paths; Pre.width and LI.value keep
+their default zero.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous

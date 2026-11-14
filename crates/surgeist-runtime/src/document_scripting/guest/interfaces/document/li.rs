@@ -11,7 +11,7 @@ const MEMBERS: &[reflection::Member] = &[
         &ascii(b"get value"),
         &ascii(b"set value"),
         &ascii(b"value"),
-        Reflection::SignedLong,
+        Reflection::SignedLongZero,
     ),
     (
         &ascii(b"type"),

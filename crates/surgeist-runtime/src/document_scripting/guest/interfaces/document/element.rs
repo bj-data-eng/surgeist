@@ -298,6 +298,9 @@ impl ElementBindings {
                 }
                 "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
                 "HTMLLIElement" => super::li::install(scope, &prototype, capture)?,
+                "HTMLOListElement" => super::lists::install_ol(scope, &prototype, capture)?,
+                "HTMLUListElement" => super::lists::install_ul(scope, &prototype, capture)?,
+                "HTMLMenuElement" => super::lists::install_menu(scope, &prototype, capture)?,
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLParamElement" => super::param::install(scope, &prototype, capture)?,
                 "HTMLPreElement" => super::pre::install(scope, &prototype, capture)?,

@@ -24,6 +24,57 @@ if RUSTC:
 
 
 class DescriptionTests(unittest.TestCase):
+    def test_reflected_integer_default_preserves_the_pinned_literal(self):
+        self.assertEqual(
+            g.attributes([{"name": "ReflectDefault", "value": 1}]),
+            "[ReflectDefault=1] ",
+        )
+
+    def test_reflected_integer_defaults_serialize_exact_signed_long_literals(self):
+        for value, expected in [
+            (-2147483648, "[ReflectDefault=-2147483648] "),
+            (0, "[ReflectDefault=0] "),
+            (2147483647, "[ReflectDefault=2147483647] "),
+        ]:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    g.attributes([{"name": "ReflectDefault", "value": value}]),
+                    expected,
+                )
+
+    def test_reflected_integer_defaults_refuse_missing_mistyped_and_out_of_range_values(self):
+        invalid = [{"name": "ReflectDefault"}]
+        invalid.extend(
+            {"name": "ReflectDefault", "value": value}
+            for value in [None, True, False, "1", 1.0, [], {}, -2147483649, 2147483648]
+        )
+        for annotation in invalid:
+            with self.subTest(annotation=annotation):
+                with self.assertRaises(g.DescriptionError):
+                    g.attributes([annotation])
+        with self.assertRaisesRegex(g.DescriptionError, "duplicate"):
+            g.attributes([
+                {"name": "ReflectDefault", "value": 1},
+                {"name": "ReflectDefault", "value": 1},
+            ])
+
+    def test_retained_ol_start_default_and_its_reflection_context_cannot_change(self):
+        # Source correspondence validates altered declarations through the real generator.
+        for change in ["altered", "omitted", "without_reflect", "string_type"]:
+            with self.subTest(change=change):
+                self.setUp()
+                member = self.member("HTMLOListElement.start")
+                if change == "altered":
+                    next(a for a in member["attributes"] if a["name"] == "ReflectDefault")["value"] = 2
+                elif change == "omitted":
+                    member["attributes"] = [a for a in member["attributes"] if a["name"] != "ReflectDefault"]
+                elif change == "without_reflect":
+                    member["attributes"] = [a for a in member["attributes"] if a["name"] != "Reflect"]
+                else:
+                    member["type"] = {"kind": "named", "name": "DOMString"}
+                with self.assertRaises(g.DescriptionError):
+                    g.generate(self.data)
+
     def test_named_reflection_preserves_the_source_attribute(self):
         self.assertEqual(g.attributes([{"name": "Reflect", "value": "for"}]), '[Reflect="for"] ')
         with self.assertRaisesRegex(g.DescriptionError, "invalid reflected attribute name"):
