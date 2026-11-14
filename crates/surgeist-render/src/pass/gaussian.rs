@@ -2,8 +2,8 @@
 use crate::{
     FilterColorSpace, FilterEdgeMode, Result,
     accounting::Account,
+    filter_source::FilterSourceDescriptor,
     frame::{GaussianPassFacts, GaussianStage},
-    gaussian::GaussianSourceDescriptor,
     shader::{
         GaussianParameterBytes, GaussianParameterFacts, ShaderDataBindingKey, ShaderProgramKey,
     },
@@ -44,14 +44,14 @@ pub(super) fn parameters(
         GaussianStage::Constant => (5, 0, 0, 0, false),
     };
     let edge_mode = match work.source() {
-        GaussianSourceDescriptor::Finite { edge, .. } => match edge {
+        FilterSourceDescriptor::Finite { edge, .. } => match edge {
             FilterEdgeMode::Duplicate => 0,
             FilterEdgeMode::Wrap => 1,
             FilterEdgeMode::Mirror => 2,
             FilterEdgeMode::None => 3,
         },
-        GaussianSourceDescriptor::Periodic { .. } => 1,
-        GaussianSourceDescriptor::Constant { .. } => 3,
+        FilterSourceDescriptor::Periodic { .. } => 1,
+        FilterSourceDescriptor::Constant { .. } => 3,
     };
     let color = if work.stage() == GaussianStage::Constant {
         account.work(crate::accounting::RenderWork::CoordinateVisits, 4)?;

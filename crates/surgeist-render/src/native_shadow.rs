@@ -1,12 +1,12 @@
 //! Resolved native alpha-blur, displacement, flood and source-over shadow.
 use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
-use crate::gaussian::{GaussianSourceDescriptor, prepare_gaussian_in};
 use crate::offset::{OffsetDisplacement, prepare_offset_displacement_in};
 use crate::{
     Color, FilterColorSpace, FilterDomains, GaussianInput, GaussianPreparationError,
     GaussianSource, ImageRendering, OffsetInput, PreparedGaussian, PreparedOffset, Rect, Result,
     Scene,
 };
+use crate::{filter_source::FilterSourceDescriptor, gaussian::prepare_gaussian_in};
 
 /// Actual native shadow merge arithmetic that could not be represented safely.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -207,10 +207,10 @@ impl DropShadowSource {
                 }
             })
     }
-    pub(crate) const fn descriptor(&self) -> GaussianSourceDescriptor {
+    pub(crate) const fn descriptor(&self) -> FilterSourceDescriptor {
         self.0.descriptor()
     }
-    pub(crate) fn into_parts(self) -> (Scene, GaussianSourceDescriptor) {
+    pub(crate) fn into_parts(self) -> (Scene, FilterSourceDescriptor) {
         self.0.into_parts()
     }
 }
@@ -218,7 +218,7 @@ impl DropShadowSource {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DropShadowForeground {
     pub(crate) operation: PreparedDropShadow,
-    pub(crate) source: GaussianSourceDescriptor,
+    pub(crate) source: FilterSourceDescriptor,
 }
 
 #[cfg(test)]
@@ -487,7 +487,7 @@ mod tests {
         let finite = DropShadowSource::finite(ink(), domains());
         assert_eq!(
             finite.descriptor(),
-            GaussianSourceDescriptor::Finite {
+            FilterSourceDescriptor::Finite {
                 domains: domains(),
                 edge: crate::FilterEdgeMode::None
             }

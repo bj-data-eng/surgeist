@@ -809,6 +809,7 @@ mod error_context_tests {
         capabilities.filter_float32_features.allowed_usages = wgpu::TextureUsages::empty();
         for operation in [
             RuntimeOperation::GaussianRendering,
+            RuntimeOperation::MorphologyRendering,
             RuntimeOperation::ConvolutionRendering,
             RuntimeOperation::NativeDropShadowRendering,
         ] {

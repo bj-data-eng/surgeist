@@ -21,6 +21,12 @@ mod image_sampling_graph;
 mod image_sampling_mask;
 mod model;
 #[cfg(not(target_arch = "wasm32"))]
+mod morphology;
+#[cfg(not(target_arch = "wasm32"))]
+mod morphology_composition;
+#[cfg(not(target_arch = "wasm32"))]
+mod morphology_transactions;
+#[cfg(not(target_arch = "wasm32"))]
 mod native_shadow;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_shadow_composition;

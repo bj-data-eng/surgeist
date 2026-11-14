@@ -53,6 +53,7 @@ enum PreparationDiagnostic {
     Convolution(crate::ConvolutionPreparationError),
     Offset(crate::OffsetPreparationError),
     Gaussian(crate::GaussianPreparationError),
+    Morphology(crate::MorphologyPreparationError),
     DropShadow(crate::DropShadowPreparationError),
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
@@ -475,6 +476,18 @@ impl Error {
         }
     }
 
+    /// Returns the typed native morphology diagnostic, if present.
+    #[must_use]
+    pub const fn morphology_diagnostic(&self) -> Option<&crate::MorphologyPreparationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::Morphology(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns a typed resolved convolution refusal, when applicable.
     #[must_use]
     pub const fn convolution_diagnostic(&self) -> Option<&crate::ConvolutionPreparationError> {
@@ -674,6 +687,26 @@ impl From<crate::GaussianPreparationError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: Some(PreparationDiagnostic::Gaussian(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+            #[cfg(feature = "render-text")]
+            leader_pattern: None,
+        })
+    }
+}
+
+impl From<crate::MorphologyPreparationError> for Error {
+    fn from(value: crate::MorphologyPreparationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::InvalidInput,
+            message: format!("morphology preparation refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::Morphology(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
             #[cfg(feature = "render-text")]
@@ -1179,6 +1212,8 @@ pub enum RuntimeOperation {
     ConvolutionRendering,
     /// Executing native Gaussian accumulation.
     GaussianRendering,
+    /// Executing native rectangular component erosion or dilation.
+    MorphologyRendering,
     /// Executing native alpha-blur, displacement, flood and original-source merge.
     NativeDropShadowRendering,
     /// Allocating an effect texture.
@@ -1542,6 +1577,8 @@ pub enum PrimitiveOperation {
     GpuOffsetFilterExecution,
     /// Executing admitted native Gaussian filtering on the GPU.
     GpuGaussianFilterExecution,
+    /// Executing admitted rectangular component erosion and dilation on the GPU.
+    GpuMorphologyFilterExecution,
     /// Executing admitted native alpha-blur, displacement, flood and merge.
     GpuNativeDropShadowFilterExecution,
     /// Planning filter execution regions and outsets.
@@ -1627,6 +1664,7 @@ impl PrimitiveOperation {
             Self::GpuConvolutionFilterExecution => "GPU convolution filter execution",
             Self::GpuOffsetFilterExecution => "GPU offset filter execution",
             Self::GpuGaussianFilterExecution => "GPU Gaussian filter execution",
+            Self::GpuMorphologyFilterExecution => "GPU morphology filter execution",
             Self::GpuNativeDropShadowFilterExecution => "GPU native drop-shadow filter execution",
             Self::FilterRegionPlanning => "filter-region planning",
             Self::BroadBackdropExecution => "broad backdrop execution",

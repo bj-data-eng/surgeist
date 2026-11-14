@@ -31,6 +31,11 @@ deviations and authentic finite, constant or periodic sources. It preserves
 independent domains, full outer transforms and color semantics through bounded
 float32 GPU accumulation and atomic publication.
 
+Prepared [native morphology](docs/morphology.md) executes rectangular component
+erosion and dilation with independent radii, transparent finite exterior and
+authentic constant or periodic sources. Exact GPU range-extrema tables preserve
+independent domains, color phases and bounded outer composition.
+
 Prepared [native drop shadow](docs/native-shadow.md) preserves a single original
 capture above an alpha-only Gaussian, finite displacement and colored flood. It
 keeps independent stage domains, working color, bounded outer composition and
@@ -129,6 +134,7 @@ and the full first-success walkthrough.
 | [How-to](docs/how-to.md) | Exercise native presentation and check the browser compilation boundary. |
 | [Reference](docs/reference.md) | Find public interfaces, features, diagnostics, and verification commands. |
 | [Native convolution](docs/convolution.md) | Prepare and execute resolved convolution with explicit domains, grids and numeric policy. |
+| [Native morphology](docs/morphology.md) | Erode or dilate premultiplied components with resolved radii, independent domains and authentic source declarations. |
 | [Native resolved drop shadow](docs/native-shadow.md) | Blur alpha, displace its finite result and merge the unchanged original above a colored shadow. |
 | [Native offset](docs/offset.md) | Translate finite captured images with independent clipping and resolved reconstruction intent. |
 | [Explanation](docs/explanation.md) | Understand execution routes, publication, precision, and ownership. |

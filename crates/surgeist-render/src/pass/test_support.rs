@@ -1332,6 +1332,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::ColorFilter(None)
             | RuntimePassKind::Convolution(_)
             | RuntimePassKind::Gaussian(_)
+            | RuntimePassKind::Morphology(_)
             | RuntimePassKind::Offset(_)
             | RuntimePassKind::NativeShadowMerge(_)
             | RuntimePassKind::BlurHorizontal(_)
@@ -3178,6 +3179,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         RuntimePassKind::CopyBackdrop
         | RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
+        | RuntimePassKind::Morphology(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_)
         | RuntimePassKind::ColorFilter(_)
@@ -4923,6 +4925,12 @@ fn spatial_filter_pass_tags(
             ExecutableFilterStepFacts::Offset { .. } => {
                 tags.push(SpatialFilterPassTagForTest::Offset);
             }
+            ExecutableFilterStepFacts::Morphology { passes, .. } => {
+                tags.extend(std::iter::repeat_n(
+                    SpatialFilterPassTagForTest::Morphology,
+                    passes.len(),
+                ));
+            }
             ExecutableFilterStepFacts::Gaussian { passes, .. } => {
                 tags.extend(std::iter::repeat_n(
                     SpatialFilterPassTagForTest::Gaussian,
@@ -5350,6 +5358,8 @@ fn observe_layer_composition(
             | RuntimeReadRole::ConvolutionSource
             | RuntimeReadRole::GaussianSource
             | RuntimeReadRole::GaussianAuxiliary
+            | RuntimeReadRole::MorphologySource
+            | RuntimeReadRole::MorphologyPreviousQuery
             | RuntimeReadRole::ConvolutionAuxiliary
             | RuntimeReadRole::BlurredSourceAlpha
             | RuntimeReadRole::Shadow
@@ -6026,7 +6036,10 @@ impl<'device> PreparedGraph<'device> {
             })
             .nth(successful_capture_count)
             .expect("the capture-failure fixture requires the selected prepared capture");
-        let removed = self.resource_bindings.remove_with(&target, account)?;
+        let removed = self
+            .acquired_bindings
+            .runtime_bindings
+            .remove_with(&target, account)?;
         assert!(
             removed.is_some(),
             "the capture-failure fixture requires a live prepared target binding"
@@ -6090,22 +6103,32 @@ impl<'device> PreparedGraph<'device> {
     pub(crate) fn allocation_identities_for_test(&self) -> PreparedAllocationIdentitiesForTest {
         PreparedAllocationIdentitiesForTest {
             resources: self
-                .resource_bindings
+                .acquired_bindings
+                .runtime_bindings
                 .entries
                 .iter()
                 .map(|(runtime, binding)| {
                     (
                         *runtime,
-                        binding
-                            .lease
-                            .as_ref()
-                            .expect("new prepared resources must own live leases")
-                            .resource_identity(),
+                        match &binding.backing {
+                            super::prepare::PreparedResourceBacking::Dedicated { .. } => self
+                                .acquired_bindings
+                                .dedicated_lease_for_test(*runtime)
+                                .expect("new dedicated resources own real leases")
+                                .resource_identity(),
+                            super::prepare::PreparedResourceBacking::MorphologyScratch {
+                                assignment,
+                            } => self.acquired_bindings.morphology_scratch_bindings.slots
+                                [self.plan.morphology_scratch.assignments[assignment.index()].slot]
+                                .lease
+                                .resource_identity(),
+                        },
                     )
                 })
                 .collect(),
             kernels: self
-                .kernel_bindings
+                .acquired_bindings
+                .gaussian_kernel_bindings
                 .entries
                 .iter()
                 .map(|(kernel, binding)| {
@@ -6149,12 +6172,21 @@ impl<'device> PreparedGraph<'device> {
 
     #[cfg(test)]
     fn outstanding_lease_count_for_test(&self) -> usize {
-        self.resource_bindings
-            .values()
-            .filter(|binding| binding.lease.is_some())
+        self.acquired_bindings
+            .dedicated_lease_slots
+            .iter()
+            .filter(|entry| entry.lease.is_some())
             .count()
             + self
-                .kernel_bindings
+                .acquired_bindings
+                .morphology_scratch_bindings
+                .slots
+                .iter()
+                .filter(|slot| !slot.resolved)
+                .count()
+            + self
+                .acquired_bindings
+                .gaussian_kernel_bindings
                 .values()
                 .filter(|binding| binding.lease.is_some())
                 .count()
@@ -6163,7 +6195,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 14];
+    let mut vocabulary = [false; 15];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6176,6 +6208,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && !vocabulary[11]
         && !vocabulary[12]
         && !vocabulary[13]
+        && !vocabulary[14]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6262,7 +6295,8 @@ fn prepared_spatial_keys_are_exact(plan: &RuntimeGraphPreparationPlan) -> bool {
         pass.cache_keys == pass.runtime.cache_keys
             && (pass.spatial_uniform.is_some()
                 || pass.convolution_parameters.is_some()
-                || pass.offset_parameters.is_some())
+                || pass.offset_parameters.is_some()
+                || pass.morphology_parameters.is_some())
                 == pass.cache_keys.is_some()
             && pass
                 .spatial_uniform
@@ -6319,6 +6353,7 @@ fn exercise_prepared_bindings(graph: &mut PreparedGraph<'_>) -> Result<bool> {
         let bound_resources = pass.bound_resources_for_test();
         let resource_releases = pass.resource_releases_for_test().to_vec();
         let kernel_releases = pass.kernel_releases_for_test().to_vec();
+        graph.activate_morphology_scratch(pass_id, &account)?;
         for resource in bound_resources {
             let binding = graph.texture_binding_for_pass(pass_id, resource, &account)?;
             bindings_inspected &= binding.runtime_resource() == resource
@@ -6338,13 +6373,26 @@ fn exercise_prepared_bindings(graph: &mut PreparedGraph<'_>) -> Result<bool> {
         graph.complete_pass(pass_id, &account)?;
         releases_exact &= resource_releases.iter().all(|resource| {
             graph
-                .resource_bindings
+                .acquired_bindings
+                .runtime_bindings
                 .get(resource, &account)
                 .expect("fixture texture release lookup")
-                .is_some_and(|binding| binding.lease.is_none())
+                .is_some_and(|binding| match &binding.backing {
+                    super::prepare::PreparedResourceBacking::Dedicated { slot } => graph
+                        .acquired_bindings
+                        .dedicated_lease_slots
+                        .get(slot.index())
+                        .is_some_and(|entry| entry.resource == *resource && entry.lease.is_none()),
+                    super::prepare::PreparedResourceBacking::MorphologyScratch { assignment } => {
+                        graph.acquired_bindings.morphology_scratch_bindings.logical
+                            [assignment.index()]
+                        .retired
+                    }
+                })
         }) && kernel_releases.iter().all(|kernel| {
             graph
-                .kernel_bindings
+                .acquired_bindings
+                .gaussian_kernel_bindings
                 .get(kernel, &account)
                 .expect("fixture kernel release lookup")
                 .is_some_and(|binding| binding.lease.is_none())
@@ -6547,7 +6595,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 14];
+    let mut vocabulary = [false; 15];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6689,6 +6737,12 @@ fn runtime_semantic_pass_facts_are_exact(plan: &LoweredGraphPlan) -> bool {
         matches!(&pass.kind, RuntimePassKind::Gaussian(work)
             if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { first_tap:0,first:true,.. })
                 && work.operation().sigma()==Some([0.5;2]))
+    }) && plan.passes.iter().any(|pass| {
+        matches!(&pass.kind, RuntimePassKind::Morphology(work)
+            if work.stage() == crate::frame::MorphologyStage::Prepare
+                && work.operation().operator() == crate::MorphologyOperator::Dilate
+                && work.operation().radii() == Some([1.0; 2])
+                && work.operation().color_space() == crate::FilterColorSpace::Srgb)
     })
 }
 
@@ -6870,7 +6924,9 @@ fn runtime_format_keys_are_separate(
         let fixed_accumulation_format = matches!(&pass.kind, RuntimePassKind::Convolution(work)
             if matches!(work.stage(), crate::frame::ConvolutionStage::Accumulate { .. }
                 | crate::frame::ConvolutionStage::Finalize))
-            || matches!(&pass.kind, RuntimePassKind::Gaussian(work) if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { .. }));
+            || matches!(&pass.kind, RuntimePassKind::Gaussian(work) if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { .. }))
+            || matches!(&pass.kind, RuntimePassKind::Morphology(work) if matches!(work.stage(), crate::frame::MorphologyStage::Table { .. }
+                | crate::frame::MorphologyStage::FirstQuery { .. } | crate::frame::MorphologyStage::RefineQuery { .. } | crate::frame::MorphologyStage::Query { .. }));
         reduced_keys.get(&pass.id).is_some_and(|other| {
             if fixed_accumulation_format {
                 *other == *main
@@ -6910,6 +6966,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::Offset(_) => 11,
         RuntimePassKind::Gaussian(_) => 12,
         RuntimePassKind::NativeShadowMerge(_) => 13,
+        RuntimePassKind::Morphology(_) => 14,
     }
 }
 

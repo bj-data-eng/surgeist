@@ -563,6 +563,7 @@ impl SemanticSourceContribution {
                     layer.foreground_filters,
                     Some(
                         crate::command::NormalizedForegroundEffect::Gaussian(_)
+                            | crate::command::NormalizedForegroundEffect::Morphology(_)
                             | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                     )
                 ))
@@ -584,7 +585,26 @@ impl SemanticSourceContribution {
                     || super::gaussian::empty(super::gaussian::result_domain(source))
             })
         });
-        let children = if gaussian_source_unreachable {
+        let morphology_unreachable =
+            if let Some(crate::command::NormalizedForegroundEffect::Morphology(foreground)) =
+                &layer.foreground_filters
+                && layer.opacity > 0.0
+                && !singular_source
+                && !layer
+                    .mask
+                    .as_ref()
+                    .is_some_and(RenderLayerMask::annihilates_source)
+            {
+                super::morphology::input_is_unreachable(
+                    context,
+                    *foreground,
+                    layer_to_surface,
+                    account,
+                )?
+            } else {
+                false
+            };
+        let children = if gaussian_source_unreachable || morphology_unreachable {
             RenderCommands::new_in(account.retained(0)?, account)?
         } else {
             children
@@ -632,7 +652,7 @@ impl SemanticSourceContribution {
             .and_then(super::bounded_filter_source)
         {
             match source {
-                crate::gaussian::GaussianSourceDescriptor::Periodic { period, .. }
+                crate::filter_source::FilterSourceDescriptor::Periodic { period, .. }
                     if !super::gaussian::empty(super::gaussian::result_domain(source))
                         && !children.is_empty()
                         && layer.opacity > 0.0
@@ -642,11 +662,16 @@ impl SemanticSourceContribution {
                             .as_ref()
                             .is_some_and(RenderLayerMask::annihilates_source) =>
                 {
-                    let capture = super::gaussian::PeriodCapture::try_new(
+                    let capture = super::filter_grid::PeriodCapture::try_new_for(
                         context,
                         period,
                         layer_to_surface,
                         account,
+                        layer
+                            .foreground_filters
+                            .as_ref()
+                            .map(super::filter_grid_owner)
+                            .unwrap_or(super::filter_grid::FilterGridOwner::Gaussian),
                     )?;
                     child_context = capture.context;
                     child_transform = capture.transform;
@@ -655,7 +680,7 @@ impl SemanticSourceContribution {
                         "Gaussian period domain",
                     )?)
                 }
-                crate::gaussian::GaussianSourceDescriptor::Finite { .. } => {
+                crate::filter_source::FilterSourceDescriptor::Finite { .. } => {
                     SemanticContributionDomain::RootOutputBounded(LogicalBounds::try_from_rect(
                         super::gaussian::finite_domain(source)
                             .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0)),
@@ -712,12 +737,32 @@ impl SemanticSourceContribution {
             matches!(effect, crate::command::NormalizedForegroundEffect::Offset(operation)
                 if super::offset::domains_are_empty(operation))
         });
-        let empty_gaussian = layer.foreground_filters.as_ref().is_some_and(|effect| {
-            super::bounded_filter_source(effect).is_some_and(|source| {
-                super::gaussian::source_is_empty(source)
-                    || super::gaussian::empty(super::gaussian::result_domain(source))
-            })
-        });
+        let morphology_unreachable =
+            if let Some(crate::command::NormalizedForegroundEffect::Morphology(foreground)) =
+                &layer.foreground_filters
+                && layer.opacity > 0.0
+                && !singular_source
+                && !layer
+                    .mask
+                    .as_ref()
+                    .is_some_and(RenderLayerMask::annihilates_source)
+            {
+                super::morphology::input_is_unreachable(
+                    context,
+                    *foreground,
+                    layer_to_surface,
+                    account,
+                )?
+            } else {
+                false
+            };
+        let empty_gaussian = morphology_unreachable
+            || layer.foreground_filters.as_ref().is_some_and(|effect| {
+                super::bounded_filter_source(effect).is_some_and(|source| {
+                    super::gaussian::source_is_empty(source)
+                        || super::gaussian::empty(super::gaussian::result_domain(source))
+                })
+            });
         if empty_offset
             || empty_gaussian
             || layer.foreground_filters.as_ref().is_some_and(|effect| {
@@ -787,6 +832,13 @@ impl SemanticSourceContribution {
                     SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
                         super::gaussian::result_domain(foreground.source),
                         "native shadow primitive result",
+                    )?);
+            }
+            Some(crate::command::NormalizedForegroundEffect::Morphology(foreground)) => {
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::filter_grid::result_domain(foreground.source),
+                        "morphology primitive result",
                     )?);
             }
             Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) => {

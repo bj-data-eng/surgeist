@@ -288,6 +288,107 @@ impl Generation {
         self.preview(RenderGenerationScope::Cache, &changes)
     }
 
+    /// Checks the complete missing physical set at its shared ancestor and real cache leaves.
+    /// Inspection work is real; this does not reserve bytes or record native creation work.
+    pub(crate) fn preview_classified_cache_allocations(
+        &self,
+        allocations: impl IntoIterator<Item = (GenerationClass, u64)>,
+        observer: Option<&Account>,
+    ) -> Result<()> {
+        const CLASSES: [GenerationClass; 4] = [
+            GenerationClass::CacheVello,
+            GenerationClass::CacheEffects,
+            GenerationClass::CacheMasks,
+            GenerationClass::CacheKernels,
+        ];
+        let mut groups = [(0_u64, 0_u64); 4];
+        let mut total_bytes = 0_u64;
+        let mut total_count = 0_u64;
+        let mut reached = 0_u8;
+        let sum_bytes = |current: u64, amount: u64| {
+            current.checked_add(amount).ok_or_else(|| {
+                Error::from(RenderAccountingError::GenerationRefused {
+                    quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                    current,
+                    amount,
+                    reason: RenderRefusalReason::Overflow,
+                })
+            })
+        };
+        for (class, bytes) in allocations {
+            self.probe(class, observer)?;
+            let index = match class {
+                GenerationClass::CacheVello => 0,
+                GenerationClass::CacheEffects => 1,
+                GenerationClass::CacheMasks => 2,
+                GenerationClass::CacheKernels => 3,
+                _ => return Err(RenderAccountingError::Invariant.into()),
+            };
+            let group = &mut groups[index];
+            group.0 = sum_bytes(group.0, bytes)?;
+            group.1 = group
+                .1
+                .checked_add(1)
+                .ok_or(RenderAccountingError::Invariant)?;
+            total_bytes = sum_bytes(total_bytes, bytes)?;
+            total_count = total_count
+                .checked_add(1)
+                .ok_or(RenderAccountingError::Invariant)?;
+            reached |= 1 << index;
+        }
+        let changes = |bytes, count| {
+            [
+                Change::Acquire(RenderResource::GpuBytes, bytes),
+                Change::Work(RenderWork::ResourceAllocations, count),
+                Change::Work(
+                    RenderWork::ResourceAllocationRequests,
+                    if observer.is_none() { count } else { 0 },
+                ),
+            ]
+        };
+        if total_count > 0 {
+            self.probe_cache(observer)?;
+        }
+        self.preview(
+            RenderGenerationScope::Cache,
+            &changes(total_bytes, total_count),
+        )?;
+        while reached != 0 {
+            let index = reached.trailing_zeros() as usize;
+            reached &= reached - 1;
+            let class = CLASSES[index];
+            let (bytes, count) = groups[index];
+            self.probe(class, observer)?;
+            self.preview(class.scope(), &changes(bytes, count))?;
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_effects_gpu_byte_limit_for_test(&self, limit: u64) -> Result<()> {
+        self.ensure_healthy()?;
+        let scope = self.0.scopes[RenderGenerationScope::Effects.index()];
+        let current = self
+            .0
+            .ledger
+            .limits(scope)
+            .map_err(|error| Error::from(map_ledger_failure(error)))?;
+        let limits = Limits::from_fn(
+            |work| current.work(work),
+            |resource| {
+                if resource == RenderResource::GpuBytes {
+                    limit
+                } else {
+                    current.live(resource)
+                }
+            },
+        );
+        self.0
+            .ledger
+            .set_limits(scope, limits)
+            .map_err(|error| Error::from(map_ledger_failure(error)))
+    }
+
     pub(crate) fn allocation<T>(
         &self,
         class: GenerationClass,

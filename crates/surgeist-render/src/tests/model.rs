@@ -4697,7 +4697,8 @@ fn runtime_pair_is_listed(
         ),
         RuntimeOperation::ConvolutionRendering
         | RuntimeOperation::GaussianRendering
-        | RuntimeOperation::NativeDropShadowRendering => matches!(
+        | RuntimeOperation::NativeDropShadowRendering
+        | RuntimeOperation::MorphologyRendering => matches!(
             reason,
             RuntimeCapabilityUnavailableReason::FilterFloat32Unavailable
                 | RuntimeCapabilityUnavailableReason::DeviceLost { .. }

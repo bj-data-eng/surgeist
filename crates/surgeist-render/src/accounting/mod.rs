@@ -804,6 +804,7 @@ impl Account {
                 | RenderAttemptKind::Convolution
                 | RenderAttemptKind::Offset
                 | RenderAttemptKind::Gaussian
+                | RenderAttemptKind::Morphology
                 | RenderAttemptKind::DropShadow
         ) {
             return RenderAccountingError::StandaloneAllocation { resource }.into();
@@ -840,6 +841,7 @@ impl Account {
                 | RenderAttemptKind::Convolution
                 | RenderAttemptKind::Offset
                 | RenderAttemptKind::Gaussian
+                | RenderAttemptKind::Morphology
                 | RenderAttemptKind::DropShadow
         ) {
             return RenderAccountingError::StandaloneCapacityOverflow { resource }.into();
@@ -913,6 +915,7 @@ impl Account {
             && self.kind != RenderAttemptKind::Convolution
             && self.kind != RenderAttemptKind::Offset
             && self.kind != RenderAttemptKind::Gaussian
+            && self.kind != RenderAttemptKind::Morphology
             && self.kind != RenderAttemptKind::DropShadow
             && refusal.phase != RenderPhase::Attempt
             && let RenderRefusalReason::Limit { limit } = refusal.reason

@@ -9,6 +9,7 @@ use std::sync::Arc;
 mod convolution;
 #[path = "encode/gaussian.rs"]
 mod gaussian;
+mod morphology;
 mod native_shadow;
 #[path = "encode/offset.rs"]
 mod offset;
@@ -24,11 +25,11 @@ use super::super::{
     shader::{
         BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
         CompositeParameterBytes, ConvolutionParameterBytes, DevicePassCache,
-        DropShadowParameterBytes, GaussianParameterBytes, NativeShadowParameterBytes,
-        OffsetParameterBytes, PassCacheCommitPreparation, PassSpatialUniformBytes,
-        ProvisionalColorFilterPassObjects, ProvisionalCompositePassObjects,
-        ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
-        ShaderCompositePathKey,
+        DropShadowParameterBytes, GaussianParameterBytes, MorphologyParameterBytes,
+        NativeShadowParameterBytes, OffsetParameterBytes, PassCacheCommitPreparation,
+        PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
+        ProvisionalCompositePassObjects, ProvisionalCorePassObjects,
+        ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate, ShaderCompositePathKey,
     },
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloCaptureProof, PendingVelloResourceCommit,
@@ -50,9 +51,10 @@ use super::{
     prepare::{
         PreparedColorFilterOperationBinding, PreparedConvolutionWeightsBinding,
         PreparedGaussianParameterBinding, PreparedGraph, PreparedKernelBinding,
-        PreparedNativeShadowParameterBinding, PreparedOffsetParameterBinding,
-        PreparedResourceBinding, PreparedSpatialFilterPassObjects, PreparedTextureBinding,
-        RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
+        PreparedMorphologyParameterBinding, PreparedNativeShadowParameterBinding,
+        PreparedOffsetParameterBinding, PreparedResourceBacking, PreparedResourceBinding,
+        PreparedSpatialFilterPassObjects, PreparedTextureBinding, RuntimePassPreparationRequest,
+        VELLO_CAPTURE_TEXTURE_USAGES,
     },
 };
 
@@ -68,6 +70,7 @@ pub(super) fn filter_step_passes<'a>(
             ExecutableFilterStepFacts::DropShadow { .. } => 4,
             ExecutableFilterStepFacts::Convolution { passes, .. }
             | ExecutableFilterStepFacts::Gaussian { passes, .. }
+            | ExecutableFilterStepFacts::Morphology { passes, .. }
             | ExecutableFilterStepFacts::NativeShadow { passes, .. } => passes.len().max(1),
         };
         (0..count).map(move |index| {
@@ -97,6 +100,7 @@ pub(super) fn filter_step_passes<'a>(
                     .copied(),
                 ExecutableFilterStepFacts::Convolution { passes, .. }
                 | ExecutableFilterStepFacts::Gaussian { passes, .. }
+                | ExecutableFilterStepFacts::Morphology { passes, .. }
                 | ExecutableFilterStepFacts::NativeShadow { passes, .. } => {
                     passes.get(index).copied()
                 }
@@ -237,6 +241,7 @@ pub(super) enum GraphScheduledEncodingKind {
     ColorFilter,
     Convolution,
     Gaussian,
+    Morphology,
     NativeShadow,
     Offset,
     BlurHorizontalRgba,
@@ -256,6 +261,7 @@ pub(crate) enum ScheduledFilterRawFact {
     Color,
     Convolution,
     Gaussian,
+    Morphology,
     NativeShadow,
     Offset,
     BlurHorizontalRgba,
@@ -278,6 +284,8 @@ pub(crate) struct CustomSpineEncodingSummary {
     pub(crate) offset_pass_count: usize,
     pub(crate) offset_parameters_and_resources_are_exact: bool,
     pub(crate) gaussian_pass_count: usize,
+    pub(crate) morphology_pass_count: usize,
+    pub(crate) morphology_parameters_and_resources_are_exact: bool,
     pub(crate) native_shadow_pass_count: usize,
     pub(crate) native_shadow_parameters_and_resources_are_exact: bool,
     pub(crate) gaussian_parameters_and_resources_are_exact: bool,
@@ -350,6 +358,8 @@ struct CustomSpineEncodingProgress {
     offset_pass_count: usize,
     offset_parameters_and_resources_are_exact: bool,
     gaussian_pass_count: usize,
+    morphology_pass_count: usize,
+    morphology_parameters_and_resources_are_exact: bool,
     native_shadow_pass_count: usize,
     native_shadow_parameters_and_resources_are_exact: bool,
     gaussian_parameters_and_resources_are_exact: bool,
@@ -420,6 +430,8 @@ impl CustomSpineEncodingProgress {
             offset_pass_count: 0,
             offset_parameters_and_resources_are_exact: true,
             gaussian_pass_count: 0,
+            morphology_pass_count: 0,
+            morphology_parameters_and_resources_are_exact: true,
             native_shadow_pass_count: 0,
             native_shadow_parameters_and_resources_are_exact: true,
             gaussian_parameters_and_resources_are_exact: true,
@@ -513,6 +525,9 @@ impl CustomSpineEncodingProgress {
             offset_parameters_and_resources_are_exact: self
                 .offset_parameters_and_resources_are_exact,
             gaussian_pass_count: self.gaussian_pass_count,
+            morphology_pass_count: self.morphology_pass_count,
+            morphology_parameters_and_resources_are_exact: self
+                .morphology_parameters_and_resources_are_exact,
             native_shadow_pass_count: self.native_shadow_pass_count,
             native_shadow_parameters_and_resources_are_exact: self
                 .native_shadow_parameters_and_resources_are_exact,
@@ -666,6 +681,7 @@ fn scheduled_filter_raw_facts(
             GraphScheduledEncodingKind::ColorFilter => Some(ScheduledFilterRawFact::Color),
             GraphScheduledEncodingKind::Convolution => Some(ScheduledFilterRawFact::Convolution),
             GraphScheduledEncodingKind::Gaussian => Some(ScheduledFilterRawFact::Gaussian),
+            GraphScheduledEncodingKind::Morphology => Some(ScheduledFilterRawFact::Morphology),
             GraphScheduledEncodingKind::NativeShadow => Some(ScheduledFilterRawFact::NativeShadow),
             GraphScheduledEncodingKind::Offset => Some(ScheduledFilterRawFact::Offset),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
@@ -828,6 +844,8 @@ impl CustomSpineEncodingSummary {
         let common = (self.offset_pass_count == 0
             || self.offset_parameters_and_resources_are_exact)
             && (self.gaussian_pass_count == 0 || self.gaussian_parameters_and_resources_are_exact)
+            && (self.morphology_pass_count == 0
+                || self.morphology_parameters_and_resources_are_exact)
             && (self.native_shadow_pass_count == 0
                 || self.native_shadow_parameters_and_resources_are_exact)
             && self.encodes_custom_passes_in_order
@@ -865,6 +883,7 @@ impl CustomSpineEncodingSummary {
         let spatial_pass_count = spatial_pass_count
             .saturating_add(self.convolution_pass_count)
             .saturating_add(self.gaussian_pass_count)
+            .saturating_add(self.morphology_pass_count)
             .saturating_add(self.native_shadow_pass_count)
             .saturating_add(self.offset_pass_count);
         let exact_base = self.layer_composite_count == 0
@@ -924,6 +943,7 @@ impl CustomSpineEncodingSummary {
             && (self.blur_pass_count > 0
                 || self.convolution_pass_count > 0
                 || self.gaussian_pass_count > 0
+                || self.morphology_pass_count > 0
                 || self.native_shadow_pass_count > 0
                 || self.offset_pass_count > 0)
             && exact_layers
@@ -978,9 +998,16 @@ struct VelloCaptureEncodingContext<'encoding, 'device> {
     session: &'encoding Arc<()>,
 }
 
+#[cfg(test)]
+enum SpatialPassTargetForTest {
+    Dedicated,
+    MorphologyScratch,
+}
 struct SpatialPassDrawBindings<'a> {
     pipeline: &'a wgpu::RenderPipeline,
     bind_group: &'a wgpu::BindGroup,
+    #[cfg(test)]
+    target_kind_for_test: SpatialPassTargetForTest,
 }
 
 /// Owns the scope-clean capture leases until they enter the transaction
@@ -1075,13 +1102,14 @@ struct PreparedPassEncodingRequest {
     kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     convolution_parameters: Option<ConvolutionParameterBytes>,
     gaussian_parameters: Option<GaussianParameterBytes>,
+    morphology_parameters: Option<MorphologyParameterBytes>,
     offset_parameters: Option<OffsetParameterBytes>,
     native_shadow_parameters: Option<NativeShadowParameterBytes>,
     convolution_weights: Option<RuntimePassId>,
 }
 
-/// Created only after atomic lease resolution and every corresponding binding
-/// take succeeds. Encoding requests can only clone these immutable release
+/// Created only after dedicated leases resolve and scratch logical occupants
+/// retire, and every corresponding binding transition succeeds. Encoding requests can only clone these immutable release
 /// sources from their exact prepared request, so fixed headers bind this linear
 /// witness to the pass without a post-effect content walk or lookup.
 #[must_use = "completed releases must supply their semantic receipt or be discarded"]
@@ -1092,6 +1120,7 @@ struct CompletedPassReleases {
     color_buffer_taken: bool,
     offset_buffer_taken: bool,
     gaussian_buffer_taken: bool,
+    morphology_buffer_taken: bool,
     native_shadow_buffer_taken: bool,
 }
 
@@ -1103,13 +1132,20 @@ struct ResolvedPassReleases<'graph> {
     releases_color_filter_operation: bool,
     releases_offset_parameters: bool,
     releases_gaussian_parameters: bool,
+    releases_morphology_parameters: bool,
     releases_native_shadow_parameters: bool,
     native_shadow_parameter_bindings:
         &'graph mut PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     gaussian_parameter_bindings:
         &'graph mut PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
+    morphology_parameter_bindings:
+        &'graph mut PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
     offset_parameter_bindings: &'graph mut PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     resource_bindings: &'graph mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    dedicated_lease_slots: &'graph mut AccountedVec<super::prepare::DedicatedLeaseEntry>,
+    scratch_plan: &'graph super::morphology_scratch::MorphologyScratchPlan,
+    scratch_bindings: &'graph mut super::morphology_scratch::MorphologyScratchBindings,
+    ordinal: usize,
     kernel_bindings: &'graph mut PassMap<GaussianKernelKey, PreparedKernelBinding>,
     color_filter_operation_bindings:
         &'graph mut PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
@@ -1124,17 +1160,20 @@ impl<'graph> ResolvedPassReleases<'graph> {
         pass: RuntimePassId,
         account: &Account,
     ) -> Result<Self> {
+        let ordinal = graph.next_pass;
         let request = graph.require_current_pass(pass, account)?;
         let resource_releases = request.runtime.releases.clone();
         let kernel_releases = request.kernel_releases.clone();
         let releases_color_filter_operation = request.color_filter_operations.is_some();
         let releases_offset_parameters = request.offset_parameters.is_some();
         let releases_gaussian_parameters = request.gaussian_parameters.is_some();
+        let releases_morphology_parameters = request.morphology_parameters.is_some();
         let releases_native_shadow_parameters = request.native_shadow_parameters.is_some();
         let convolution_release = request
             .convolution_weights
             .map(|owner| -> Result<Option<RuntimePassId>> {
                 let binding = graph
+                    .acquired_bindings
                     .convolution_weight_bindings
                     .get(&owner, account)?
                     .ok_or_else(|| {
@@ -1153,19 +1192,34 @@ impl<'graph> ResolvedPassReleases<'graph> {
         for resource in &resource_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
             let binding = graph
-                .resource_bindings
+                .acquired_bindings
+                .runtime_bindings
                 .get(resource, account)?
                 .ok_or_else(|| preparation_error("prepared runtime release binding is missing"))?;
-            if binding.lease.is_none() {
-                return Err(preparation_error(
-                    "prepared runtime release is stale or duplicate",
-                ));
+            match &binding.backing {
+                PreparedResourceBacking::Dedicated { slot } => {
+                    graph
+                        .acquired_bindings
+                        .dedicated_lease(*slot, *resource, account)?;
+                }
+                PreparedResourceBacking::MorphologyScratch { assignment } => {
+                    graph
+                        .acquired_bindings
+                        .morphology_scratch_bindings
+                        .validate_retirement(
+                            &graph.plan.morphology_scratch,
+                            assignment.index(),
+                            ordinal,
+                            account,
+                        )?;
+                }
             }
         }
         for kernel in &kernel_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
             let binding = graph
-                .kernel_bindings
+                .acquired_bindings
+                .gaussian_kernel_bindings
                 .get(kernel, account)?
                 .ok_or_else(|| preparation_error("prepared Gaussian release binding is missing"))?;
             if binding.lease.is_none() {
@@ -1206,6 +1260,16 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 "prepared Gaussian uniform release is stale or missing",
             ));
         }
+        if releases_morphology_parameters
+            && graph
+                .morphology_parameter_bindings
+                .get(&pass, account)?
+                .is_none_or(|binding| binding.buffer.is_none())
+        {
+            return Err(preparation_error(
+                "prepared Morphology uniform release is stale or missing",
+            ));
+        }
         if releases_native_shadow_parameters
             && graph
                 .native_shadow_parameter_bindings
@@ -1218,15 +1282,22 @@ impl<'graph> ResolvedPassReleases<'graph> {
         }
         let PreparedGraph {
             gaussian_parameter_bindings,
+            morphology_parameter_bindings,
             native_shadow_parameter_bindings,
             offset_parameter_bindings,
-            resource_bindings,
-            kernel_bindings,
+            acquired_bindings,
+            plan,
             color_filter_operation_bindings,
-            convolution_weight_bindings,
             frame_scope,
             ..
         } = graph;
+        let super::prepare::AcquiredGraphBindings {
+            runtime_bindings: resource_bindings,
+            dedicated_lease_slots,
+            morphology_scratch_bindings: scratch_bindings,
+            gaussian_kernel_bindings: kernel_bindings,
+            convolution_weight_bindings,
+        } = &mut **acquired_bindings;
         let mut leases = account.temporary(
             resource_releases.len()
                 + kernel_releases.len()
@@ -1234,13 +1305,19 @@ impl<'graph> ResolvedPassReleases<'graph> {
         )?;
         for resource in &resource_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
-            let lease = resource_bindings
-                .get(resource, account)?
-                .and_then(|binding| binding.lease.as_ref())
-                .ok_or_else(|| {
-                    preparation_error("prepared resource release is unavailable after validation")
-                })?;
-            leases.append_slot()?.write(lease);
+            let binding = resource_bindings.get(resource, account)?.ok_or_else(|| {
+                preparation_error("prepared resource release is unavailable after validation")
+            })?;
+            if let PreparedResourceBacking::Dedicated { slot } = &binding.backing {
+                leases
+                    .append_slot()?
+                    .write(super::prepare::dedicated_lease_at(
+                        dedicated_lease_slots,
+                        *slot,
+                        *resource,
+                        account,
+                    )?);
+            }
         }
         for kernel in &kernel_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
@@ -1271,11 +1348,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
             releases_color_filter_operation,
             releases_offset_parameters,
             releases_gaussian_parameters,
+            releases_morphology_parameters,
             releases_native_shadow_parameters,
             gaussian_parameter_bindings,
+            morphology_parameter_bindings,
             native_shadow_parameter_bindings,
             offset_parameter_bindings,
             resource_bindings,
+            dedicated_lease_slots,
+            scratch_plan: &plan.morphology_scratch,
+            scratch_bindings,
+            ordinal,
             kernel_bindings,
             color_filter_operation_bindings,
             convolution_weight_bindings,
@@ -1286,15 +1369,43 @@ impl<'graph> ResolvedPassReleases<'graph> {
     fn take_bindings(self) -> Result<CompletedPassReleases> {
         let mut first_missing = None;
         for resource in self.resources.iter() {
-            let binding = self
-                .resource_bindings
-                .maintenance_get_mut(resource)
-                .and_then(|binding| binding.lease.take());
-            Self::drop_required_binding(
-                binding,
-                "prepared resource release is unavailable after atomic resolution",
-                &mut first_missing,
-            );
+            let binding = self.resource_bindings.maintenance_get_mut(resource);
+            match binding {
+                Some(PreparedResourceBinding {
+                    backing: PreparedResourceBacking::Dedicated { slot },
+                    ..
+                }) => {
+                    self.dedicated_lease_slots
+                        .renderer_maintenance(RenderWork::ResourceProbes, 1);
+                    let lease = self
+                        .dedicated_lease_slots
+                        .get_mut(slot.index())
+                        .filter(|entry| entry.resource == *resource)
+                        .and_then(|entry| entry.lease.take());
+                    Self::drop_required_binding(
+                        lease,
+                        "prepared resource release is unavailable after atomic resolution",
+                        &mut first_missing,
+                    );
+                }
+                Some(PreparedResourceBinding {
+                    backing: PreparedResourceBacking::MorphologyScratch { assignment },
+                    ..
+                }) => {
+                    if self
+                        .scratch_bindings
+                        .retire(self.scratch_plan, assignment.index(), self.ordinal)
+                        .is_err()
+                    {
+                        first_missing.get_or_insert(
+                            "scratch logical retirement became unavailable after validation",
+                        );
+                    }
+                }
+                None => {
+                    first_missing.get_or_insert("prepared logical release binding is missing");
+                }
+            }
         }
         for kernel in self.kernels.iter() {
             let binding = self
@@ -1326,6 +1437,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
             Self::drop_required_binding(
                 binding,
                 "Gaussian uniform missing after atomic resource release",
+                &mut first_missing,
+            );
+        }
+        if self.releases_morphology_parameters {
+            let binding = self
+                .morphology_parameter_bindings
+                .maintenance_get_mut(&self.pass)
+                .and_then(|binding| binding.buffer.take());
+            Self::drop_required_binding(
+                binding,
+                "Morphology uniform missing after atomic resource release",
                 &mut first_missing,
             );
         }
@@ -1372,6 +1494,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
             color_buffer_taken: self.releases_color_filter_operation,
             offset_buffer_taken: self.releases_offset_parameters,
             gaussian_buffer_taken: self.releases_gaussian_parameters,
+            morphology_buffer_taken: self.releases_morphology_parameters,
             native_shadow_buffer_taken: self.releases_native_shadow_parameters,
         })
     }
@@ -1396,6 +1519,7 @@ struct CompletedReleaseFacts {
     color_buffer: bool,
     offset_buffer: bool,
     gaussian_buffer: bool,
+    morphology_buffer: bool,
     native_shadow_buffer: bool,
 }
 
@@ -1410,6 +1534,7 @@ impl CompletedPassReleases {
             color_buffer: exact_source && self.color_buffer_taken,
             offset_buffer: exact_source && self.offset_buffer_taken,
             gaussian_buffer: exact_source && self.gaussian_buffer_taken,
+            morphology_buffer: exact_source && self.morphology_buffer_taken,
             native_shadow_buffer: exact_source && self.native_shadow_buffer_taken,
         }
     }
@@ -1432,6 +1557,7 @@ impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
             kernel_releases: request.kernel_releases.clone(),
             convolution_parameters: request.convolution_parameters.clone(),
             gaussian_parameters: request.gaussian_parameters.clone(),
+            morphology_parameters: request.morphology_parameters.clone(),
             offset_parameters: request.offset_parameters.clone(),
             native_shadow_parameters: request.native_shadow_parameters.clone(),
             convolution_weights: request.convolution_weights,
@@ -1779,13 +1905,22 @@ fn encode_spatial_filter_full_target_pass_with_samples(
     } else {
         account.work(RenderWork::ImagePasses, 1)?;
     }
+    #[cfg(test)]
+    let clear_color = match bindings.target_kind_for_test {
+        SpatialPassTargetForTest::Dedicated => wgpu::Color::TRANSPARENT,
+        SpatialPassTargetForTest::MorphologyScratch => {
+            super::morphology_scratch::padding_clear_for_test().unwrap_or(wgpu::Color::TRANSPARENT)
+        }
+    };
+    #[cfg(not(test))]
+    let clear_color = wgpu::Color::TRANSPARENT;
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some(label),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view: target,
             resolve_target: None,
             ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                load: wgpu::LoadOp::Clear(clear_color),
                 store: wgpu::StoreOp::Store,
             },
             depth_slice: None,
@@ -1866,6 +2001,7 @@ fn graph_scheduled_encoding_order_is_exact(
             RuntimePassKind::ColorFilter(Some(_)) => GraphScheduledEncodingKind::ColorFilter,
             RuntimePassKind::Convolution(_) => GraphScheduledEncodingKind::Convolution,
             RuntimePassKind::Gaussian(_) => GraphScheduledEncodingKind::Gaussian,
+            RuntimePassKind::Morphology(_) => GraphScheduledEncodingKind::Morphology,
             RuntimePassKind::NativeShadowMerge(_) => GraphScheduledEncodingKind::NativeShadow,
             RuntimePassKind::Offset(_) => GraphScheduledEncodingKind::Offset,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
@@ -2316,6 +2452,7 @@ impl<'device> PreparedGraph<'device> {
         progress: &mut CustomSpineEncodingProgress,
         account: &Account,
     ) -> Result<()> {
+        self.activate_morphology_scratch(request.id, account)?;
         match &request.kind {
             RuntimePassKind::ClearRoot { initialization, .. } => {
                 self.encode_clear_root_step(encoder, request, *initialization, progress, account)
@@ -2355,6 +2492,16 @@ impl<'device> PreparedGraph<'device> {
                     released.resources && released.kernels && released.gaussian_buffer;
                 progress.gaussian_pass_count = progress.gaussian_pass_count.saturating_add(1);
                 progress.record_custom_completion(GraphScheduledEncodingKind::Gaussian)
+            }
+            RuntimePassKind::Morphology(_) => {
+                self.encode_morphology(encoder, request, account)?;
+                let released = self
+                    .complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                progress.morphology_parameters_and_resources_are_exact &=
+                    released.resources && released.morphology_buffer;
+                progress.morphology_pass_count = progress.morphology_pass_count.saturating_add(1);
+                progress.record_custom_completion(GraphScheduledEncodingKind::Morphology)
             }
             RuntimePassKind::NativeShadowMerge(_) => {
                 self.encode_native_shadow(encoder, request, account)?;
@@ -2601,10 +2748,19 @@ impl<'device> PreparedGraph<'device> {
         let facts = self.encode_drop_shadow_merge(encoder, request, account)?;
         let source =
             exact_core_pass_read(request, RuntimeReadRole::CompositeSource, account)?.resource();
-        let source_is_live = self
-            .resource_bindings
+        let source_is_live = match self
+            .acquired_bindings
+            .runtime_bindings
             .get(&source, account)?
-            .is_some_and(|binding| binding.lease.is_some());
+            .map(|binding| binding.backing)
+        {
+            Some(PreparedResourceBacking::Dedicated { slot }) => {
+                self.acquired_bindings
+                    .dedicated_lease(slot, source, account)?;
+                true
+            }
+            _ => false,
+        };
         let source_expected_reads = self.resource_request(source, account)?.expected_reads;
         let mut source_read_twice = false;
         'shadow_facts: for execution in [&self.spatial_filter_execution, &self.backdrop_execution]
@@ -2820,7 +2976,7 @@ impl<'device> PreparedGraph<'device> {
         })
     }
 
-    fn validate_texture_binding(
+    pub(super) fn validate_texture_binding(
         &self,
         binding: &PreparedTextureBinding<'_>,
         resource: RuntimeResourceId,
@@ -2835,9 +2991,21 @@ impl<'device> PreparedGraph<'device> {
             RuntimeResourceFormat::Working(format) => format.texture_format(),
             RuntimeResourceFormat::FilterRgba32Float => wgpu::TextureFormat::Rgba32Float,
         };
+        let dimensions_exact = if let Some(capacity) = binding.scratch_capacity {
+            request.role == RuntimeResourceRole::FilterFloat
+                && request.format == RuntimeResourceFormat::FilterRgba32Float
+                && texture.width() == capacity.physical_size().width()
+                && texture.height() == capacity.physical_size().height()
+                && texture.format() == capacity.texture_format()
+                && texture.usage() == capacity.usage()
+                && request.spatial.device_extent.width() <= texture.width()
+                && request.spatial.device_extent.height() <= texture.height()
+        } else {
+            texture.width() == request.spatial.device_extent.width()
+                && texture.height() == request.spatial.device_extent.height()
+        };
         if binding.runtime_resource() != resource
-            || texture.width() != request.spatial.device_extent.width()
-            || texture.height() != request.spatial.device_extent.height()
+            || !dimensions_exact
             || texture.depth_or_array_layers() != 1
             || texture.mip_level_count() != 1
             || texture.sample_count() != 1
@@ -3441,6 +3609,8 @@ impl<'device> PreparedGraph<'device> {
             encoder,
             target_binding.view(),
             SpatialPassDrawBindings {
+                #[cfg(test)]
+                target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline,
                 bind_group: &bind_group,
             },
@@ -3801,6 +3971,8 @@ impl<'device> PreparedGraph<'device> {
             encoder,
             target_binding.view(),
             SpatialPassDrawBindings {
+                #[cfg(test)]
+                target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline,
                 bind_group: &bind_group,
             },
@@ -3914,6 +4086,8 @@ impl<'device> PreparedGraph<'device> {
             encoder,
             target_binding.view(),
             SpatialPassDrawBindings {
+                #[cfg(test)]
+                target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline,
                 bind_group: &bind_group,
             },
@@ -4671,6 +4845,20 @@ impl<'device> PreparedGraph<'device> {
     ) -> Result<CompletedPassReleases> {
         let completed = ResolvedPassReleases::try_resolve(self, pass, account)?.take_bindings()?;
         self.next_pass = self.next_pass.saturating_add(1);
+        if self.next_pass == self.plan.passes.len()
+            && !self
+                .acquired_bindings
+                .morphology_scratch_bindings
+                .slots
+                .is_empty()
+        {
+            self.acquired_bindings.morphology_scratch_bindings.resolve(
+                self.frame_scope
+                    .as_mut()
+                    .ok_or_else(|| preparation_error("scratch physical frame owner is closed"))?,
+                account,
+            )?;
+        }
         Ok(completed)
     }
 
@@ -4691,15 +4879,23 @@ impl<'device> PreparedGraph<'device> {
                 "the graph submission does not own one exact completed prepared frame",
             ));
         }
-        for binding in self.resource_bindings.values() {
+        for entry in &self.acquired_bindings.dedicated_lease_slots {
             account.work(RenderWork::ResourceProbes, 1)?;
-            if binding.lease.is_some() {
+            if entry.lease.is_some() {
                 return Err(preparation_error(
                     "the graph submission retains an unresolved texture lease",
                 ));
             }
         }
-        for binding in self.kernel_bindings.values() {
+        for slot in &self.acquired_bindings.morphology_scratch_bindings.slots {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if slot.occupant.is_some() || !slot.resolved {
+                return Err(preparation_error(
+                    "submission has unresolved scratch physical custody",
+                ));
+            }
+        }
+        for binding in self.acquired_bindings.gaussian_kernel_bindings.values() {
             account.work(RenderWork::ResourceProbes, 1)?;
             if binding.lease.is_some() {
                 return Err(preparation_error(
@@ -4707,7 +4903,7 @@ impl<'device> PreparedGraph<'device> {
                 ));
             }
         }
-        for binding in self.convolution_weight_bindings.values() {
+        for binding in self.acquired_bindings.convolution_weight_bindings.values() {
             account.work(RenderWork::ResourceProbes, 1)?;
             if binding.lease.is_some() {
                 return Err(preparation_error(
@@ -4720,6 +4916,14 @@ impl<'device> PreparedGraph<'device> {
             if binding.buffer.is_some() {
                 return Err(preparation_error(
                     "graph submission retains an unresolved Gaussian uniform",
+                ));
+            }
+        }
+        for binding in self.morphology_parameter_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.buffer.is_some() {
+                return Err(preparation_error(
+                    "graph submission retains an unresolved Morphology uniform",
                 ));
             }
         }
@@ -4777,11 +4981,19 @@ impl<'device> PreparedGraph<'device> {
     pub(crate) fn finish(mut self) -> Result<FrameCleanup> {
         if self.next_pass != self.plan.passes.len()
             || self
-                .resource_bindings
-                .values()
-                .any(|binding| binding.lease.is_some())
+                .acquired_bindings
+                .dedicated_lease_slots
+                .iter()
+                .any(|entry| entry.lease.is_some())
             || self
-                .kernel_bindings
+                .acquired_bindings
+                .morphology_scratch_bindings
+                .slots
+                .iter()
+                .any(|slot| slot.occupant.is_some() || !slot.resolved)
+            || self
+                .acquired_bindings
+                .gaussian_kernel_bindings
                 .values()
                 .any(|binding| binding.lease.is_some())
             || self
@@ -5149,11 +5361,8 @@ mod repeated_proof_accounting_tests {
                 assert_eq!(prepared.next_pass, index + 1);
                 assert!(
                     prepared
-                        .resource_bindings
-                        .get(&resource, &setup)
-                        .unwrap()
-                        .unwrap()
-                        .lease
+                        .acquired_bindings
+                        .dedicated_lease_for_test(resource)
                         .is_none()
                 );
             }
@@ -5249,16 +5458,14 @@ mod repeated_proof_accounting_tests {
                     assert_eq!(prepared.next_pass, index + 1);
                     assert!(
                         prepared
-                            .resource_bindings
-                            .get(&resource, &setup)
-                            .unwrap()
-                            .unwrap()
-                            .lease
+                            .acquired_bindings
+                            .dedicated_lease_for_test(resource)
                             .is_none()
                     );
                     assert!(
                         prepared
-                            .kernel_bindings
+                            .acquired_bindings
+                            .gaussian_kernel_bindings
                             .get(&kernel, &setup)
                             .unwrap()
                             .unwrap()
@@ -5279,16 +5486,14 @@ mod repeated_proof_accounting_tests {
                     assert_eq!(prepared.next_pass, index);
                     assert!(
                         prepared
-                            .resource_bindings
-                            .get(&resource, &setup)
-                            .unwrap()
-                            .unwrap()
-                            .lease
+                            .acquired_bindings
+                            .dedicated_lease_for_test(resource)
                             .is_some()
                     );
                     assert!(
                         prepared
-                            .kernel_bindings
+                            .acquired_bindings
+                            .gaussian_kernel_bindings
                             .get(&kernel, &setup)
                             .unwrap()
                             .unwrap()
@@ -5350,14 +5555,16 @@ mod repeated_proof_accounting_tests {
                     assert!(request.kernel_releases.is_empty());
                     let pass = request.runtime.id;
                     let source = request.runtime.releases[0];
-                    assert_eq!(prepared.resource_bindings.len(), 7);
-                    assert_eq!(prepared.resource_bindings.entries[4].0, source);
+                    assert_eq!(prepared.acquired_bindings.runtime_bindings.len(), 7);
+                    assert_eq!(
+                        prepared.acquired_bindings.runtime_bindings.entries[4].0,
+                        source
+                    );
                     assert_eq!(prepared.color_filter_operation_bindings.len(), 1);
                     assert_eq!(prepared.color_filter_operation_bindings.entries[0].0, pass);
-                    let source_id = prepared.resource_bindings.entries[4]
-                        .1
-                        .lease
-                        .as_ref()
+                    let source_id = prepared
+                        .acquired_bindings
+                        .dedicated_lease_for_test(source)
                         .unwrap()
                         .resource_identity();
                     assert_eq!(
@@ -5401,8 +5608,10 @@ mod repeated_proof_accounting_tests {
                     };
                     // A search for index four among seven sorted keys compares
                     // indices three, five and four. The color map has one key.
-                    // Two source searches and one color search need seven probes.
-                    for limit in [6, 7] {
+                    // Validate source map3 + dedicated slot1 + color map1,
+                    // then collect the real lease through source map3 + slot1:
+                    // 3+1+1+3+1 = 9 forward probes before atomic resolution.
+                    for limit in [8, 9] {
                         let cache_before = cache_custody();
                         let buffer_before = buffer_bytes();
                         let returns_before = texture_returns();
@@ -5420,7 +5629,7 @@ mod repeated_proof_accounting_tests {
                         assert_eq!(usage.work(RenderWork::GraphNodeVisits), 1);
                         assert_eq!(usage.work(RenderWork::GraphEdgeVisits), 2);
                         assert_eq!(usage.work(RenderWork::ResourceProbes), limit);
-                        let succeeded = limit == 7;
+                        let succeeded = limit == 9;
                         if succeeded {
                             assert_eq!(result.unwrap(), (pass, true));
                             assert_eq!(attempt.refusal(), None);
@@ -5431,8 +5640,8 @@ mod repeated_proof_accounting_tests {
                                 refusal.quantity(),
                                 RenderQuantity::Work(RenderWork::ResourceProbes)
                             );
-                            assert_eq!((refusal.current(), refusal.amount()), (6, 1));
-                            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 6 });
+                            assert_eq!((refusal.current(), refusal.amount()), (8, 1));
+                            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 8 });
                             assert_eq!(
                                 result.unwrap_err().accounting_diagnostic(),
                                 Some(RenderAccountingError::Refused(refusal))
@@ -5440,10 +5649,9 @@ mod repeated_proof_accounting_tests {
                         }
                         assert_eq!(prepared.next_pass, index + usize::from(succeeded));
                         assert_eq!(
-                            prepared.resource_bindings.entries[4]
-                                .1
-                                .lease
-                                .as_ref()
+                            prepared
+                                .acquired_bindings
+                                .dedicated_lease_for_test(source)
                                 .map(|lease| lease.resource_identity()),
                             (!succeeded).then_some(source_id)
                         );
@@ -5463,7 +5671,8 @@ mod repeated_proof_accounting_tests {
                                 - probes_before,
                             2 * u64::from(succeeded)
                         );
-                        assert_eq!(cleanup_probes() - cleanup_before, 4 * u64::from(succeeded));
+                        // Final take: source map3 + dedicated slot1 + color map1.
+                        assert_eq!(cleanup_probes() - cleanup_before, 5 * u64::from(succeeded));
                     }
                     drop(prepared);
                     transaction
@@ -5550,9 +5759,18 @@ mod repeated_proof_accounting_tests {
                         // Brightness follows the inner composite at index four.
                         // Vertical blur follows its horizontal intermediate at five.
                         let source_index = if color { 4 } else { 5 };
-                        assert_eq!(prepared.resource_bindings.len(), if color { 7 } else { 8 });
-                        assert_eq!(prepared.resource_bindings.entries[source_index].0, source);
-                        assert_eq!(prepared.kernel_bindings.len(), usize::from(!color));
+                        assert_eq!(
+                            prepared.acquired_bindings.runtime_bindings.len(),
+                            if color { 7 } else { 8 }
+                        );
+                        assert_eq!(
+                            prepared.acquired_bindings.runtime_bindings.entries[source_index].0,
+                            source
+                        );
+                        assert_eq!(
+                            prepared.acquired_bindings.gaussian_kernel_bindings.len(),
+                            usize::from(!color)
+                        );
                         assert_eq!(
                             prepared.color_filter_operation_bindings.len(),
                             usize::from(color)
@@ -5594,13 +5812,12 @@ mod repeated_proof_accounting_tests {
                         // slot after real atomic resolution. Leave its key in
                         // the original map and observe the scheduled takes alone.
                         drop(
-                            resolved
-                                .resource_bindings
-                                .maintenance_get_mut(&source)
-                                .unwrap()
-                                .lease
-                                .take()
-                                .unwrap(),
+                            super::super::prepare::take_dedicated_lease_for_test(
+                                &mut *resolved.resource_bindings,
+                                &mut *resolved.dedicated_lease_slots,
+                                source,
+                            )
+                            .unwrap(),
                         );
                         if matches!(case, Case::MissingKernel) {
                             drop(
@@ -5628,9 +5845,9 @@ mod repeated_proof_accounting_tests {
                         );
                         assert_eq!(prepared.next_pass, index);
                         assert!(
-                            prepared.resource_bindings.entries[source_index]
-                                .1
-                                .lease
+                            prepared
+                                .acquired_bindings
+                                .dedicated_lease_for_test(source)
                                 .is_none()
                         );
                         if color {
@@ -5641,11 +5858,17 @@ mod repeated_proof_accounting_tests {
                                     .is_none()
                             );
                         } else {
-                            assert!(prepared.kernel_bindings.entries[0].1.lease.is_none());
+                            assert!(
+                                prepared.acquired_bindings.gaussian_kernel_bindings.entries[0]
+                                    .1
+                                    .lease
+                                    .is_none()
+                            );
                         }
-                        // Both source searches take three comparisons. The
-                        // single later kernel or color binding adds one.
-                        assert_eq!(cleanup_probes() - cleanup_before, 4);
+                        // The source map search takes three comparisons,
+                        // its dedicated slot record adds one, and the later
+                        // kernel/color binding adds one even after the fault.
+                        assert_eq!(cleanup_probes() - cleanup_before, 5);
                         assert_eq!(setup.work_count(RenderWork::ResourceProbes)?, probes_before);
                         assert_eq!(setup.work_count(RenderWork::GraphEdgeVisits)?, edges_before);
                         assert_eq!(cache_custody(), cache_before);
@@ -5671,7 +5894,7 @@ mod repeated_proof_accounting_tests {
 
     #[test]
     fn repeated_proof_color_completion_admits_all_probes_before_atomic_release() {
-        assert_color_completion_work(RenderWork::ResourceProbes, 40);
+        assert_color_completion_work(RenderWork::ResourceProbes, 44);
     }
 
     #[test]
@@ -5762,9 +5985,15 @@ mod repeated_proof_accounting_tests {
                 );
                 assert_eq!(prepared.plan.resources[4].runtime.id, source);
                 assert_eq!(prepared.plan.resources[5].runtime.id, target);
-                assert_eq!(prepared.resource_bindings.entries.len(), 7);
-                assert_eq!(prepared.resource_bindings.entries[4].0, source);
-                assert_eq!(prepared.resource_bindings.entries[5].0, target);
+                assert_eq!(prepared.acquired_bindings.runtime_bindings.entries.len(), 7);
+                assert_eq!(
+                    prepared.acquired_bindings.runtime_bindings.entries[4].0,
+                    source
+                );
+                assert_eq!(
+                    prepared.acquired_bindings.runtime_bindings.entries[5].0,
+                    target
+                );
                 assert_eq!(prepared.color_filter_operation_bindings.len(), 1);
                 prepared.next_pass = index;
                 // The isolated step has the same active scheduler state as
@@ -5795,22 +6024,19 @@ mod repeated_proof_accounting_tests {
                 });
                 if limit == exact {
                     result.unwrap();
-                    // Read-role lookup1; seven-entry texture maps3+2;
-                    // resource scans(5+6)*2; operation binding1; four
-                    // provisional shader lookups; release preflight3+1
-                    // and lease-input3: 1+5+22+1+4+4+3 = 40. A
-                    // completed-release witness needs no later map lookup.
+                    // Read-role1; texture maps3+2 and dedicated slots1+1;
+                    // resource scans(5+6)*2; operation binding1; four shader
+                    // lookups; release preflight map3+slot1+color1; lease
+                    // input map3+slot1: 1+5+2+22+1+4+5+4 = 44. The
+                    // completed-release witness adds no forward lookup.
                     assert_eq!(report.attempt().unwrap().usage().work(work), exact);
                     assert_eq!(progress.completed_pass_count, 1);
                     assert!(progress.color_filter_operation_buffers_released);
                     assert_eq!(prepared.next_pass, index + 1);
                     assert!(
                         prepared
-                            .resource_bindings
-                            .get(&source, &setup)
-                            .unwrap()
-                            .unwrap()
-                            .lease
+                            .acquired_bindings
+                            .dedicated_lease_for_test(source)
                             .is_none()
                     );
                     assert!(
@@ -5834,11 +6060,8 @@ mod repeated_proof_accounting_tests {
                     assert_eq!(prepared.next_pass, index);
                     assert!(
                         prepared
-                            .resource_bindings
-                            .get(&source, &setup)
-                            .unwrap()
-                            .unwrap()
-                            .lease
+                            .acquired_bindings
+                            .dedicated_lease_for_test(source)
                             .is_some()
                     );
                     assert!(

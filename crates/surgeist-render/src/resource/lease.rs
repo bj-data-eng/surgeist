@@ -1895,20 +1895,23 @@ mod tests {
         // Preflight first audits both entries, then each independent request
         // scans both candidates: three more visits per class. Selecting one
         // idle identity does not remove it from the next request's scan.
+        // One request misses: grouping its Effects tuple and previewing that
+        // real child scope add two Effects probes. The ancestor probe belongs
+        // to Cache, so it changes neither class total below.
         assert_eq!(probes(GenerationClass::CacheVello), 11);
-        assert_eq!(probes(GenerationClass::CacheEffects), 9);
+        assert_eq!(probes(GenerationClass::CacheEffects), 11);
 
         let mut reuse = manager.begin_frame(None).unwrap();
         let effect = reuse.acquire(effect_key(1), 4).unwrap();
         // Begin-frame audit, acquisition audit and candidate selection each
         // visit both entries. The later selected lookup has the cache scope.
         assert_eq!(probes(GenerationClass::CacheVello), 14);
-        assert_eq!(probes(GenerationClass::CacheEffects), 12);
+        assert_eq!(probes(GenerationClass::CacheEffects), 14);
         reuse.release(effect).unwrap();
         let _ = reuse.finish();
         // Another six cleanup visits per entry.
         assert_eq!(probes(GenerationClass::CacheVello), 20);
-        assert_eq!(probes(GenerationClass::CacheEffects), 18);
+        assert_eq!(probes(GenerationClass::CacheEffects), 20);
 
         let mut retirement = manager.begin_frame(None).unwrap();
         retirement.retire_idle_vello_atlases().unwrap();
@@ -1916,7 +1919,7 @@ mod tests {
         // inspect both. The modeled VelloAtlas key is not a native persistent
         // image-atlas key, so this selection removes neither entry.
         assert_eq!(probes(GenerationClass::CacheVello), 24);
-        assert_eq!(probes(GenerationClass::CacheEffects), 22);
+        assert_eq!(probes(GenerationClass::CacheEffects), 24);
     }
 
     #[test]

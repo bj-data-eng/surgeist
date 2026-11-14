@@ -496,6 +496,21 @@ pub(super) fn composite_footprint_is_exact(
                 work.mapping().output_clip(),
             ))
         }
+        RuntimePassKind::Morphology(work)
+            if matches!(
+                work.stage(),
+                crate::frame::MorphologyStage::Constant
+                    | crate::frame::MorphologyStage::Copy
+                    | crate::frame::MorphologyStage::Resolve
+            ) && work.route_len().checked_sub(1) == Some(work.route_index())
+                && proof.capture(work.proves_exact(proof.account))? =>
+        {
+            Some((
+                work.mapping().target_spatial(),
+                work.mapping().output_clip(),
+            ))
+        }
+        RuntimePassKind::Morphology(_) => return None,
         RuntimePassKind::Gaussian(_) => return None,
         RuntimePassKind::NativeShadowMerge(work) => Some((
             work.mapping().target_spatial(),

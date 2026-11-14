@@ -232,6 +232,7 @@ fn core_pass_program_sampling(
         | ShaderProgramKey::Gaussian
         | ShaderProgramKey::GaussianSource
         | ShaderProgramKey::GaussianConstant
+        | ShaderProgramKey::Morphology { .. }
         | ShaderProgramKey::Offset
         | ShaderProgramKey::NativeShadow { .. }
         | ShaderProgramKey::ColorFilter
@@ -455,6 +456,236 @@ pub(super) fn validate_gaussian_pass_keys(
 
 pub(super) fn gaussian_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct MorphologyPassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+    pub(super) stage: super::ShaderMorphologyStageKey,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct MorphologyPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_morphology_pass_keys(
+    keys: MorphologyPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<MorphologyPassDescription> {
+    use super::ShaderMorphologyStageKey as Stage;
+    let ShaderProgramKey::Morphology { stage } = keys.layout.program else {
+        return Err(morphology_cache_error(
+            "morphology keys require a morphology program",
+        ));
+    };
+    let roles: &[ShaderBindingRoleKey] = match stage {
+        Stage::Constant => &[],
+        Stage::RefineQuery => &[
+            ShaderBindingRoleKey::MorphologySource,
+            ShaderBindingRoleKey::MorphologyPreviousQuery,
+        ],
+        _ => &[ShaderBindingRoleKey::MorphologySource],
+    };
+    let target_format = keys.pipeline.target_format;
+    let float_target = matches!(
+        stage,
+        Stage::Prepare | Stage::Table | Stage::FirstQuery | Stage::RefineQuery | Stage::Query
+    );
+    let float_source = matches!(
+        stage,
+        Stage::Table | Stage::FirstQuery | Stage::RefineQuery | Stage::Query | Stage::Resolve
+    );
+    if keys.layout.sampled_textures.len() != roles.len() {
+        return Err(morphology_cache_error(
+            "morphology texture bindings disagree with the concrete stage",
+        ));
+    }
+    for (texture, role) in keys.layout.sampled_textures.iter().zip(roles) {
+        binding_visit(observer)?;
+        if texture.binding_role != *role
+            || if float_source {
+                texture.source_format != ShaderTextureFormatKey::FilterRgba32Float
+            } else {
+                !(is_working_format(texture.source_format)
+                    || texture.source_format == ShaderTextureFormatKey::VelloCaptureRgba8Unorm)
+            }
+        {
+            return Err(morphology_cache_error(
+                "morphology texture role or format is invalid",
+            ));
+        }
+    }
+    if keys.shader.program != keys.layout.program
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[ShaderDataBindingKey::MorphologyParameters],
+            observer,
+        )?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(ShaderTextureFormatKey::FilterRgba32Float)
+        || keys.shader.output_format != Some(target_format)
+        || if float_target {
+            target_format != ShaderTextureFormatKey::FilterRgba32Float
+        } else {
+            !is_working_format(target_format)
+        }
+    {
+        return Err(morphology_cache_error(
+            "morphology keys disagree across bindings, programs, or formats",
+        ));
+    }
+    Ok(MorphologyPassDescription {
+        target_format,
+        stage,
+    })
+}
+
+pub(super) fn morphology_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[cfg(test)]
+mod morphology_key_tests {
+    use super::*;
+    use crate::accounting::RendererCpu;
+    use crate::shader::ShaderMorphologyStageKey as Stage;
+
+    #[test]
+    fn morphology_keys_require_exact_stage_resources_and_real_intermediate_precision() {
+        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        for working in [
+            ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+            ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
+        ] {
+            for stage in [
+                Stage::RebaseSource,
+                Stage::Copy,
+                Stage::Prepare,
+                Stage::Table,
+                Stage::FirstQuery,
+                Stage::RefineQuery,
+                Stage::Query,
+                Stage::Resolve,
+                Stage::Constant,
+            ] {
+                let program = ShaderProgramKey::Morphology { stage };
+                let float_source = matches!(
+                    stage,
+                    Stage::Table
+                        | Stage::FirstQuery
+                        | Stage::RefineQuery
+                        | Stage::Query
+                        | Stage::Resolve
+                );
+                let float_target = matches!(
+                    stage,
+                    Stage::Prepare
+                        | Stage::Table
+                        | Stage::FirstQuery
+                        | Stage::RefineQuery
+                        | Stage::Query
+                );
+                let source = if float_source {
+                    ShaderTextureFormatKey::FilterRgba32Float
+                } else {
+                    working
+                };
+                let target = if float_target {
+                    ShaderTextureFormatKey::FilterRgba32Float
+                } else {
+                    working
+                };
+                let mut textures = Vec::new();
+                if stage != Stage::Constant {
+                    textures.push((ShaderBindingRoleKey::MorphologySource, source));
+                }
+                if stage == Stage::RefineQuery {
+                    textures.push((ShaderBindingRoleKey::MorphologyPreviousQuery, source));
+                }
+                let make = |textures: &[(ShaderBindingRoleKey, ShaderTextureFormatKey)], target| {
+                    let layout = BindGroupLayoutKey::new(
+                        &cpu,
+                        None,
+                        program,
+                        textures,
+                        &[ShaderDataBindingKey::MorphologyParameters],
+                    )
+                    .unwrap();
+                    let shader = ShaderModuleKey::new(
+                        &cpu,
+                        None,
+                        program,
+                        layout.clone(),
+                        &[],
+                        Some(ShaderTextureFormatKey::FilterRgba32Float),
+                        Some(target),
+                    )
+                    .unwrap();
+                    let pipeline = RenderPipelineKey::new(
+                        &cpu,
+                        None,
+                        shader.clone(),
+                        layout.clone(),
+                        &[],
+                        target,
+                    )
+                    .unwrap();
+                    (layout, shader, pipeline)
+                };
+                let validate = |(layout, shader, pipeline): &(
+                    BindGroupLayoutKey,
+                    ShaderModuleKey,
+                    RenderPipelineKey,
+                )| {
+                    validate_morphology_pass_keys(
+                        MorphologyPassKeyRefs {
+                            samplers: &[],
+                            layout,
+                            shader,
+                            pipeline,
+                        },
+                        None,
+                    )
+                };
+                assert!(validate(&make(&textures, target)).is_ok());
+                let mut extra = textures.clone();
+                extra.push((ShaderBindingRoleKey::MorphologySource, source));
+                assert!(validate(&make(&extra, target)).is_err());
+                if !textures.is_empty() {
+                    let mut wrong = textures.clone();
+                    wrong[0].0 = ShaderBindingRoleKey::GaussianSource;
+                    assert!(validate(&make(&wrong, target)).is_err());
+                    if float_source {
+                        wrong = textures.clone();
+                        wrong[0].1 = working;
+                        assert!(validate(&make(&wrong, target)).is_err());
+                    }
+                }
+                if stage == Stage::RefineQuery {
+                    assert!(validate(&make(&textures[..1], target)).is_err());
+                    let mut wrong = textures.clone();
+                    wrong.swap(0, 1);
+                    assert!(validate(&make(&wrong, target)).is_err());
+                }
+                let wrong_target = if float_target {
+                    working
+                } else {
+                    ShaderTextureFormatKey::FilterRgba32Float
+                };
+                assert!(validate(&make(&textures, wrong_target)).is_err());
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

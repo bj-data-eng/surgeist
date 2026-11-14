@@ -5,29 +5,11 @@ use crate::frame::{
     native_shadow::NativeShadowMapping,
 };
 use crate::{
-    gaussian::{GaussianForeground, GaussianSourceDescriptor},
+    filter_source::FilterSourceDescriptor, gaussian::GaussianForeground,
     native_shadow::DropShadowForeground,
 };
 
 impl SemanticFrameGraphPlanner<'_> {
-    pub(super) fn prepare_native_shadow_source(
-        &mut self,
-        children: RenderCommands,
-        foreground: DropShadowForeground,
-        transform: Transform,
-    ) -> Result<PreparedLayerSource> {
-        // Source capture and actual period canvas remain owned by Gaussian's
-        // existing scene capture algorithm, without another authored tree.
-        self.prepare_gaussian_source(
-            children,
-            GaussianForeground {
-                operation: foreground.operation.gaussian(),
-                source: foreground.source,
-            },
-            transform,
-        )
-    }
-
     pub(super) fn apply_native_shadow(
         &mut self,
         mut original: Option<PlannedGraphResource>,
@@ -70,10 +52,10 @@ impl SemanticFrameGraphPlanner<'_> {
                 )?);
             }
         }
-        let constant = matches!(foreground.source, GaussianSourceDescriptor::Constant { .. });
+        let constant = matches!(foreground.source, FilterSourceDescriptor::Constant { .. });
         let nonempty_source = constant || original.is_some();
         let transparent_constant = matches!(foreground.source,
-            GaussianSourceDescriptor::Constant { color, .. } if color.a() == 0.0);
+            FilterSourceDescriptor::Constant { color, .. } if color.a() == 0.0);
         let shadow_enabled = nonempty_source
             && !transparent_constant
             && foreground.operation.flood_color().a() > 0.0

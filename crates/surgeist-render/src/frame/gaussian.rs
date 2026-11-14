@@ -2,15 +2,13 @@
 //! allocations; the full authored affine belongs to final composition only.
 use super::{
     FrameContext, GraphLoweringSpatialDescriptor,
-    bounds::{FrameSpatialPlan, LogicalBounds, NonEmptyFrameSpatialPlan},
-    convolution::intersection,
-    graph::{SemanticResourceDescriptor, SemanticResourceRole},
+    bounds::{LogicalBounds, NonEmptyFrameSpatialPlan},
 };
 use crate::{
     Rect, Transform,
     accounting::{Account, RenderWork, SharedValue},
     error::{Error, Result},
-    gaussian::GaussianSourceDescriptor,
+    filter_source::FilterSourceDescriptor,
     resource::{GaussianKernelGeometry, GaussianKernelSamplingForm},
 };
 
@@ -65,7 +63,7 @@ pub(crate) struct GaussianPassFacts(SharedValue<GaussianPassData>);
 #[derive(Debug, PartialEq)]
 struct GaussianPassData {
     operation: crate::PreparedGaussian,
-    source: crate::gaussian::GaussianSourceDescriptor,
+    source: crate::filter_source::FilterSourceDescriptor,
     mapping: GaussianMapping,
     stage: GaussianStage,
     purpose: GaussianPurpose,
@@ -130,7 +128,7 @@ impl GaussianPassFacts {
     pub(crate) fn operation(&self) -> &crate::PreparedGaussian {
         &self.0.operation
     }
-    pub(crate) fn source(&self) -> crate::gaussian::GaussianSourceDescriptor {
+    pub(crate) fn source(&self) -> crate::filter_source::FilterSourceDescriptor {
         self.0.source
     }
     pub(crate) fn mapping(&self) -> GaussianMapping {
@@ -149,43 +147,57 @@ impl GaussianPassFacts {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct GaussianMapping {
-    source_spatial: Option<NonEmptyFrameSpatialPlan>,
-    target_spatial: NonEmptyFrameSpatialPlan,
-    source_base: [i32; 2],
-    source_clip: [f64; 4],
-    output_clip: [f64; 4],
-    periodic_base: [f64; 2],
-    periodic_step: [f64; 2],
-    periodic: bool,
-    direct: bool,
-    converted: bool,
+    grid: super::filter_grid::FilterGridMapping,
     geometries: [Option<GaussianKernelGeometry>; 2],
     original_source: Option<NonEmptyFrameSpatialPlan>,
     result: NonEmptyFrameSpatialPlan,
     period: Option<PeriodCapture>,
-    color: crate::Color,
 }
 impl GaussianMapping {
     pub(crate) fn source_spatial(self) -> Option<GraphLoweringSpatialDescriptor> {
-        self.source_spatial.map(spatial_descriptor)
+        self.grid.source_spatial()
     }
     pub(crate) fn target_spatial(self) -> GraphLoweringSpatialDescriptor {
-        spatial_descriptor(self.target_spatial)
+        self.grid.target_spatial()
     }
     pub(crate) fn source_extent(self) -> [u32; 2] {
-        self.source_spatial.map(extent).unwrap_or([1; 2])
+        self.grid.source_extent()
     }
     pub(crate) const fn target_extent(self) -> [u32; 2] {
-        extent(self.target_spatial)
-    }
-    pub(super) fn output_footprint(self) -> super::FilterOutputFootprint {
-        super::FilterOutputFootprint::from_qualified_grid(self.target_spatial(), self.output_clip)
+        self.grid.target_extent()
     }
     pub(crate) const fn color(self) -> crate::Color {
-        self.color
+        self.grid.color()
+    }
+    pub(crate) const fn source_base(self) -> [i32; 2] {
+        self.grid.source_base()
+    }
+    pub(crate) const fn source_clip(self) -> [f64; 4] {
+        self.grid.source_clip()
+    }
+    pub(crate) const fn output_clip(self) -> [f64; 4] {
+        self.grid.output_clip()
+    }
+    pub(crate) const fn periodic_base(self) -> [f64; 2] {
+        self.grid.periodic_base()
+    }
+    pub(crate) const fn periodic_step(self) -> [f64; 2] {
+        self.grid.periodic_step()
+    }
+    pub(crate) const fn periodic(self) -> bool {
+        self.grid.periodic()
+    }
+    pub(crate) const fn direct(self) -> bool {
+        self.grid.direct()
+    }
+    pub(crate) const fn converted(self) -> bool {
+        self.grid.converted()
+    }
+    pub(super) fn output_footprint(self) -> super::FilterOutputFootprint {
+        self.grid.output_footprint()
     }
     pub(super) const fn with_color(mut self, color: crate::Color) -> Self {
-        self.color = color;
+        self.grid = self.grid.with_color(color);
         self
     }
     pub(super) const fn with_route(
@@ -199,30 +211,6 @@ impl GaussianMapping {
         self.period = period;
         self
     }
-    pub(crate) const fn source_base(self) -> [i32; 2] {
-        self.source_base
-    }
-    pub(crate) const fn source_clip(self) -> [f64; 4] {
-        self.source_clip
-    }
-    pub(crate) const fn output_clip(self) -> [f64; 4] {
-        self.output_clip
-    }
-    pub(crate) const fn periodic_base(self) -> [f64; 2] {
-        self.periodic_base
-    }
-    pub(crate) const fn periodic_step(self) -> [f64; 2] {
-        self.periodic_step
-    }
-    pub(crate) const fn periodic(self) -> bool {
-        self.periodic
-    }
-    pub(crate) const fn direct(self) -> bool {
-        self.direct
-    }
-    pub(crate) const fn converted(self) -> bool {
-        self.converted
-    }
     pub(crate) const fn geometry(self, axis: GaussianAxis) -> Option<GaussianKernelGeometry> {
         self.geometries[axis.index()]
     }
@@ -234,24 +222,16 @@ impl GaussianMapping {
         target: NonEmptyFrameSpatialPlan,
         geometries: [Option<GaussianKernelGeometry>; 2],
     ) -> Self {
-        let source_extent = source.map(extent).unwrap_or([1; 2]);
-        let target_extent = extent(target);
         Self {
-            source_spatial: source,
-            target_spatial: target,
-            source_base: [0; 2],
-            source_clip: full_clip(source_extent),
-            output_clip: full_clip(target_extent),
-            periodic_base: [0.0; 2],
-            periodic_step: [1.0; 2],
-            periodic: false,
-            direct: false,
-            converted: false,
+            grid: super::filter_grid::FilterGridMapping::new(
+                source,
+                target,
+                super::filter_grid::FilterGridOwner::Gaussian,
+            ),
             geometries,
             original_source: source,
             result: target,
             period: None,
-            color: crate::Color::TRANSPARENT,
         }
     }
     pub(super) fn with_base(
@@ -260,21 +240,7 @@ impl GaussianMapping {
         radius: [u32; 2],
         account: &Account,
     ) -> Result<Self> {
-        let size = self.target_extent();
-        for axis in 0..2 {
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            let low = base[axis]
-                .checked_sub(i64::from(radius[axis]))
-                .ok_or_else(|| index_error(base[axis] as f64))?;
-            let high = base[axis]
-                .checked_add(i64::from(size[axis]) - 1)
-                .and_then(|n| n.checked_add(i64::from(radius[axis])))
-                .ok_or_else(|| index_error(base[axis] as f64))?;
-            i32::try_from(low).map_err(|_| index_error(low as f64))?;
-            i32::try_from(high).map_err(|_| index_error(high as f64))?;
-            self.source_base[axis] =
-                i32::try_from(base[axis]).map_err(|_| index_error(base[axis] as f64))?;
-        }
+        self.grid = self.grid.with_base(base, radius, account)?;
         Ok(self)
     }
     pub(super) fn with_source_clip(
@@ -283,7 +249,7 @@ impl GaussianMapping {
         spatial: NonEmptyFrameSpatialPlan,
         account: &Account,
     ) -> Result<Self> {
-        self.source_clip = clip(domain, spatial, account)?;
+        self.grid = self.grid.with_source_clip(domain, spatial, account)?;
         Ok(self)
     }
     pub(super) fn with_output_clip(
@@ -292,7 +258,7 @@ impl GaussianMapping {
         spatial: NonEmptyFrameSpatialPlan,
         account: &Account,
     ) -> Result<Self> {
-        self.output_clip = clip(domain, spatial, account)?;
+        self.grid = self.grid.with_output_clip(domain, spatial, account)?;
         Ok(self)
     }
     pub(super) const fn with_flags(
@@ -301,9 +267,7 @@ impl GaussianMapping {
         direct: bool,
         converted: bool,
     ) -> Self {
-        self.periodic = periodic;
-        self.direct = direct;
-        self.converted = converted;
+        self.grid = self.grid.with_flags(periodic, direct, converted);
         self
     }
     pub(super) fn with_periodic_resolve(
@@ -312,51 +276,7 @@ impl GaussianMapping {
         result: NonEmptyFrameSpatialPlan,
         account: &Account,
     ) -> Result<Self> {
-        let origin = result.texel_center_mapping.origin;
-        let values = [origin.x(), origin.y()];
-        let tile = [period.period.x(), period.period.y()];
-        let sizes = extent(period.spatial);
-        for axis in 0..2 {
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            // Reducing before upload preserves the phase for far-away output.
-            // Divide in logical units first to avoid overflow from a large
-            // difference times density, then multiply the bounded remainder.
-            let length = if axis == 0 {
-                period.period.width()
-            } else {
-                period.period.height()
-            };
-            let phase = (values[axis].rem_euclid(length) - tile[axis].rem_euclid(length))
-                .rem_euclid(length);
-            if !phase.is_finite() {
-                return Err(mapping_error(phase));
-            }
-            self.periodic_base[axis] =
-                (phase * period.density[axis]).rem_euclid(f64::from(sizes[axis]));
-            self.periodic_step[axis] = period.density[axis] / result.raster_scale.get();
-            let b = uploaded(self.periodic_base[axis])?;
-            let step = uploaded(self.periodic_step[axis])?;
-            if step <= 0.0 || !step.is_normal() {
-                return Err(mapping_error(self.periodic_step[axis]));
-            }
-            // Exactly the multiply/add/subtract consumed by WGSL. Monotone
-            // endpoints bound every interior invocation and both +1 neighbors.
-            for p in [0.5_f32, self.target_extent()[axis] as f32 - 0.5] {
-                let product = finite(p * step)?;
-                let shifted = finite(product + b)?;
-                let coordinate = finite(shifted - 0.5)?;
-                let floor = f64::from(coordinate.floor());
-                if floor < f64::from(i32::MIN) || floor + 1.0 > f64::from(i32::MAX) {
-                    return Err(index_error(floor));
-                }
-                // Reconstruction needs a distinguishable fraction and next
-                // integer; if f32 cannot represent it refuse that actual map.
-                if coordinate.abs() >= 8_388_608.0 {
-                    return Err(mapping_error(f64::from(coordinate)));
-                }
-            }
-        }
-        self.periodic = true;
+        self.grid = self.grid.with_periodic_resolve(period, result, account)?;
         Ok(self)
     }
     /// Re-establish the concrete private mapping at closure, under its actual
@@ -364,7 +284,7 @@ impl GaussianMapping {
     pub(crate) fn proves_exact(
         self,
         operation: &crate::PreparedGaussian,
-        source: GaussianSourceDescriptor,
+        source: FilterSourceDescriptor,
         stage: GaussianStage,
         account: &Account,
     ) -> Result<bool> {
@@ -384,26 +304,26 @@ impl GaussianMapping {
         }
         if stage == GaussianStage::Constant {
             let color = match source {
-                GaussianSourceDescriptor::Constant { color, .. } => color,
+                FilterSourceDescriptor::Constant { color, .. } => color,
                 _ => crate::Color::TRANSPARENT,
             };
             let expected = Self::new(None, self.result, [None; 2])
-                .with_color(self.color)
+                .with_color(self.grid.color())
                 .with_output_clip(output, self.result, account)?;
-            return Ok(self == expected && self.color == color);
+            return Ok(self == expected && self.grid.color() == color);
         }
         let Some(original) = self.original_source else {
             return Ok(false);
         };
         let expected_period = match source {
-            GaussianSourceDescriptor::Periodic { period, .. } => Some(PeriodCapture::try_new(
+            FilterSourceDescriptor::Periodic { period, .. } => Some(PeriodCapture::try_new(
                 context,
                 period,
                 Transform::identity(),
                 account,
             )?),
-            GaussianSourceDescriptor::Finite { .. } => None,
-            GaussianSourceDescriptor::Constant { .. } => return Ok(false),
+            FilterSourceDescriptor::Finite { .. } => None,
+            FilterSourceDescriptor::Constant { .. } => return Ok(false),
         };
         // The context's antialiasing is irrelevant to the grid. Preserve its
         // actual captured value in the equality witness rather than fabricate it.
@@ -456,7 +376,7 @@ impl GaussianMapping {
                 if period.is_some() {
                     return Ok(false);
                 }
-                let Some(raw) = self.source_spatial else {
+                let Some(raw) = self.grid.source_plan() else {
                     return Ok(false);
                 };
                 let bounds = raw.logical_bounds.rect();
@@ -596,85 +516,9 @@ impl GaussianMapping {
         Ok(self == expected)
     }
     pub(super) const fn target_plan(self) -> NonEmptyFrameSpatialPlan {
-        self.target_spatial
+        self.grid.target_plan()
     }
 }
-fn spatial_descriptor(spatial: NonEmptyFrameSpatialPlan) -> GraphLoweringSpatialDescriptor {
-    GraphLoweringSpatialDescriptor::from_semantic(SemanticResourceDescriptor::new(
-        SemanticResourceRole::FilterIntermediate,
-        spatial,
-        0,
-    ))
-}
-pub(super) const fn extent(spatial: NonEmptyFrameSpatialPlan) -> [u32; 2] {
-    [spatial.device_extent.width, spatial.device_extent.height]
-}
-fn full_clip(size: [u32; 2]) -> [f64; 4] {
-    [0.0, 0.0, f64::from(size[0]), f64::from(size[1])]
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct PeriodCapture {
-    pub(super) period: Rect,
-    pub(super) spatial: NonEmptyFrameSpatialPlan,
-    pub(super) context: FrameContext,
-    pub(super) transform: Transform,
-    pub(super) density: [f64; 2],
-}
-impl PeriodCapture {
-    pub(super) fn try_new(
-        context: FrameContext,
-        period: Rect,
-        raster_transform: Transform,
-        account: &Account,
-    ) -> Result<Self> {
-        let rho = context
-            .local_raster_scale(raster_transform)?
-            .ok_or_else(|| mapping_error(0.0))?
-            .get();
-        let mut sizes = [0; 2];
-        let mut density = [0.0; 2];
-        for (axis, length) in [period.width(), period.height()].into_iter().enumerate() {
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            let size = (length * rho).ceil().max(1.0);
-            if !size.is_finite() || size > 8_388_608.0 {
-                return Err(index_error(size));
-            }
-            sizes[axis] = size as u32;
-            density[axis] = size / length;
-            let d = uploaded(density[axis])?;
-            if !d.is_normal() || !uploaded(1.0 / density[axis])?.is_normal() {
-                return Err(mapping_error(density[axis]));
-            }
-        }
-        let spatial = allocation_spatial(context, sizes)?;
-        let mut scoped = context;
-        scoped.surface_scale = 1.0;
-        scoped.output_bounds = LogicalBounds::NonEmpty(spatial.logical_bounds);
-        let coefficients = [
-            density[0],
-            0.0,
-            0.0,
-            density[1],
-            -period.x() * density[0],
-            -period.y() * density[1],
-        ];
-        for value in coefficients {
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            uploaded(value)?;
-        }
-        let transform =
-            Transform::try_new(coefficients).map_err(|_| mapping_error(coefficients[4]))?;
-        Ok(Self {
-            period,
-            spatial,
-            context: scoped,
-            transform,
-            density,
-        })
-    }
-}
-
 pub(super) fn kernel_geometries(
     operation: crate::PreparedGaussian,
     density: [f64; 2],
@@ -696,33 +540,17 @@ pub(super) fn kernel_geometries(
     }
     Ok(geometries)
 }
-pub(super) fn result_domain(source: GaussianSourceDescriptor) -> Rect {
-    intersection(source.filter(), source.result())
-}
-pub(super) fn finite_domain(source: GaussianSourceDescriptor) -> Option<Rect> {
-    match source {
-        GaussianSourceDescriptor::Finite { domains, .. } => {
-            Some(intersection(domains.source(), domains.filter()))
-        }
-        _ => None,
-    }
-}
-pub(super) fn source_is_empty(source: GaussianSourceDescriptor) -> bool {
-    finite_domain(source).is_some_and(empty)
-}
-pub(super) fn empty(rect: Rect) -> bool {
-    rect.width() == 0.0 || rect.height() == 0.0
-}
+pub(super) use super::filter_grid::{
+    PeriodCapture, empty, extent, finite_domain, result_domain, source_is_empty,
+};
 pub(super) fn allocation_spatial(
     context: FrameContext,
     size: [u32; 2],
 ) -> Result<NonEmptyFrameSpatialPlan> {
-    let mut unit_context = context;
-    unit_context.surface_scale = 1.0;
-    require_spatial(
-        unit_context,
-        Rect::new(0.0, 0.0, f64::from(size[0]), f64::from(size[1])),
-        Transform::identity(),
+    super::filter_grid::allocation_spatial(
+        context,
+        size,
+        super::filter_grid::FilterGridOwner::Gaussian,
     )
 }
 pub(super) fn require_spatial(
@@ -730,98 +558,22 @@ pub(super) fn require_spatial(
     rect: Rect,
     transform: Transform,
 ) -> Result<NonEmptyFrameSpatialPlan> {
-    let plan = context
-        .plan_local_bounds(
-            LogicalBounds::try_from_rect(rect, "Gaussian domain")?,
-            transform,
-        )
-        .map_err(|error| {
-            if error.code() == crate::ErrorCode::InvalidInput {
-                mapping_error(
-                    rect.x()
-                        .abs()
-                        .max(rect.y().abs())
-                        .max(rect.width())
-                        .max(rect.height()),
-                )
-            } else {
-                error
-            }
-        })?;
-    let FrameSpatialPlan::NonEmpty(spatial) = plan else {
-        return Err(mapping_error(0.0));
-    };
-    for size in extent(spatial) {
-        if size > 8_388_608 {
-            return Err(index_error(f64::from(size)));
-        }
-    }
-    Ok(spatial)
+    super::filter_grid::require_spatial(
+        context,
+        rect,
+        transform,
+        super::filter_grid::FilterGridOwner::Gaussian,
+    )
 }
 pub(super) fn base_between(
     source: NonEmptyFrameSpatialPlan,
     target: NonEmptyFrameSpatialPlan,
 ) -> Result<[i64; 2]> {
-    // This is a proof about raw aligned lattices, not rounded f32 origins.
-    if source.raster_scale != target.raster_scale {
-        return Err(mapping_error(source.raster_scale.get()));
-    }
-    for spatial in [source, target] {
-        if spatial.texel_center_mapping.origin.x()
-            != f64::from(spatial.device_origin.x) / spatial.raster_scale.get()
-            || spatial.texel_center_mapping.origin.y()
-                != f64::from(spatial.device_origin.y) / spatial.raster_scale.get()
-        {
-            return Err(mapping_error(spatial.texel_center_mapping.origin.x()));
-        }
-    }
-    Ok([
-        i64::from(target.device_origin.x) - i64::from(source.device_origin.x),
-        i64::from(target.device_origin.y) - i64::from(source.device_origin.y),
-    ])
-}
-fn clip(domain: Rect, spatial: NonEmptyFrameSpatialPlan, account: &Account) -> Result<[f64; 4]> {
-    let origin = [
-        spatial.texel_center_mapping.origin.x(),
-        spatial.texel_center_mapping.origin.y(),
-    ];
-    let edges = [domain.x(), domain.y(), domain.max().x(), domain.max().y()];
-    let size = extent(spatial);
-    let mut result = [0.0; 4];
-    for index in 0..4 {
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        let axis = index % 2;
-        let value = (edges[index] - origin[axis]) * spatial.raster_scale.get();
-        if !value.is_finite() {
-            return Err(mapping_error(value));
-        }
-        result[index] = value.clamp(0.0, f64::from(size[axis]));
-        uploaded(result[index])?;
-    }
-    for axis in 0..2 {
-        if result[axis + 2] as f32 <= result[axis] as f32 {
-            return Err(mapping_error(result[axis + 2]));
-        }
-        for cell in [0.0_f32, (size[axis] - 1) as f32] {
-            finite((cell + 1.0).min(result[axis + 2] as f32) - cell.max(result[axis] as f32))?;
-        }
-    }
-    Ok(result)
-}
-fn uploaded(value: f64) -> Result<f32> {
-    let n = value as f32;
-    if !n.is_finite() || (value != 0.0 && !n.is_normal()) {
-        Err(mapping_error(value))
-    } else {
-        Ok(n)
-    }
-}
-fn finite(value: f32) -> Result<f32> {
-    if value.is_finite() {
-        Ok(value)
-    } else {
-        Err(mapping_error(f64::from(value)))
-    }
+    super::filter_grid::base_between(
+        source,
+        target,
+        super::filter_grid::FilterGridOwner::Gaussian,
+    )
 }
 fn mapping_error(value: f64) -> Error {
     crate::GaussianPreparationError::Numeric {
@@ -830,14 +582,6 @@ fn mapping_error(value: f64) -> Error {
     }
     .into()
 }
-fn index_error(value: f64) -> Error {
-    crate::GaussianPreparationError::Numeric {
-        phase: crate::GaussianNumericPhase::GridIndex,
-        value,
-    }
-    .into()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -994,7 +738,7 @@ mod tests {
         let account = Account::for_test();
         let domain = Rect::new(0.0, 0.0, 1.0, 1.0);
         let result = require_spatial(context(1.0), domain, Transform::identity()).unwrap();
-        let source = GaussianSourceDescriptor::Constant {
+        let source = FilterSourceDescriptor::Constant {
             color: Color::BLACK,
             filter: domain,
             result: domain,
@@ -1158,7 +902,7 @@ mod pass_storage_tests {
         (
             crate::gaussian::GaussianForeground {
                 operation,
-                source: crate::gaussian::GaussianSourceDescriptor::Constant {
+                source: crate::filter_source::FilterSourceDescriptor::Constant {
                     color: Color::BLACK,
                     filter: domain,
                     result: domain,

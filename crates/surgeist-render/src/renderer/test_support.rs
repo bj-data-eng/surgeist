@@ -39,6 +39,34 @@ pub(crate) struct ResourcePreparationObservationForTest {
 }
 
 impl Renderer {
+    pub(crate) fn set_default_device_effects_gpu_byte_limit_for_test(
+        &mut self,
+        limit: u64,
+    ) -> Result<()> {
+        let device_identity = self.default_device.ok_or_else(|| {
+            Error::runtime_unavailable(
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+                "Effects byte-limit coverage requires a ready default device",
+            )
+        })?;
+        let backend = self.backend.as_mut().ok_or_else(|| {
+            Error::runtime_unavailable(
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+                "Effects byte-limit coverage requires a renderer backend",
+            )
+        })?;
+        backend
+            .ready_device_state_borrow_for_test(device_identity)
+            .ok_or_else(|| {
+                Error::runtime_unavailable(
+                    RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+                    "Effects byte-limit coverage requires a ready selected device generation",
+                )
+            })?
+            .generation_for_test()
+            .set_effects_gpu_byte_limit_for_test(limit)
+    }
+
     pub(crate) async fn submit_prepared_vello_pass_for_test(
         &mut self,
         prepared: &super::super::vello_engine::PreparedVelloPass,

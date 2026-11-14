@@ -673,6 +673,68 @@ struct GraphSubmissionGate {
 #[cfg(not(target_arch = "wasm32"))]
 thread_local! {
     static GRAPH_SUBMISSION_GATE: std::cell::RefCell<Option<std::rc::Rc<GraphSubmissionGate>>> = const { std::cell::RefCell::new(None) };
+    static GRAPH_BEFORE_SUBMISSION_GATE: std::cell::RefCell<Option<std::rc::Rc<GraphSubmissionGate>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Holds the actual encoded command buffer before its sole queue submission.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) struct GraphBeforeSubmissionGateGuardForTest {
+    gate: std::rc::Rc<GraphSubmissionGate>,
+    previous: Option<std::rc::Rc<GraphSubmissionGate>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl GraphBeforeSubmissionGateGuardForTest {
+    pub(crate) fn install(signal: Arc<DeviceSignal>) -> Self {
+        let gate = std::rc::Rc::new(GraphSubmissionGate {
+            signal,
+            generation: std::cell::Cell::new(None),
+            submissions: std::cell::Cell::new(0),
+            released: std::cell::Cell::new(false),
+            waker: std::cell::RefCell::new(None),
+        });
+        let previous = GRAPH_BEFORE_SUBMISSION_GATE
+            .with_borrow_mut(|slot| slot.replace(std::rc::Rc::clone(&gate)));
+        Self { gate, previous }
+    }
+    pub(crate) fn reached_generation(&self) -> Option<u64> {
+        self.gate.generation.get()
+    }
+    pub(crate) fn submissions(&self) -> usize {
+        self.gate.submissions.get()
+    }
+    pub(crate) fn release(&self) {
+        self.gate.released.set(true);
+        if let Some(waker) = self.gate.waker.borrow_mut().take() {
+            waker.wake();
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for GraphBeforeSubmissionGateGuardForTest {
+    fn drop(&mut self) {
+        self.release();
+        GRAPH_BEFORE_SUBMISSION_GATE.with_borrow_mut(|slot| *slot = self.previous.take());
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) async fn before_graph_submit_for_test(lease: &super::GpuOperationLease) {
+    let gate = GRAPH_BEFORE_SUBMISSION_GATE.with_borrow(Clone::clone);
+    let Some(gate) = gate.filter(|gate| Arc::ptr_eq(&gate.signal, &lease.signal)) else {
+        return;
+    };
+    gate.generation.set(Some(lease.generation));
+    std::future::poll_fn(|cx| {
+        if gate.released.get() {
+            std::task::Poll::Ready(())
+        } else {
+            *gate.waker.borrow_mut() = Some(cx.waker().clone());
+            std::task::Poll::Pending
+        }
+    })
+    .await;
 }
 
 /// Restores any enclosing fixture on every exit. Device identity prevents
@@ -724,6 +786,14 @@ impl Drop for GraphSubmissionGateGuardForTest {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) async fn after_graph_submit_for_test(lease: &super::GpuOperationLease) {
+    GRAPH_BEFORE_SUBMISSION_GATE.with_borrow(|slot| {
+        if let Some(gate) = slot
+            .as_ref()
+            .filter(|gate| Arc::ptr_eq(&gate.signal, &lease.signal))
+        {
+            gate.submissions.set(gate.submissions.get() + 1);
+        }
+    });
     let gate = GRAPH_SUBMISSION_GATE.with_borrow(Clone::clone);
     let Some(gate) = gate.filter(|gate| Arc::ptr_eq(&gate.signal, &lease.signal)) else {
         return;

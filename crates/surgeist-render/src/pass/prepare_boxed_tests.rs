@@ -12,7 +12,28 @@ use crate::{
 fn source(kind: usize, caps: &DeviceCapabilities, account: &Account) -> OwnedBox<ExactGraph> {
     let mut scene = Scene::new();
     let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
-    if kind == 3 {
+    if kind == 4 {
+        let mut input = Scene::new();
+        input.fill(bounds, Color::BLACK);
+        let operation = crate::prepare_morphology(
+            crate::MorphologyInput::new()
+                .with_operator(crate::MorphologyOperator::Dilate)
+                .with_radius(1.0),
+            crate::FilterColorSpace::Srgb,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
+        scene
+            .morphology_layer(
+                Layer::new(),
+                operation,
+                crate::MorphologySource::finite(
+                    input,
+                    crate::FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
+                ),
+            )
+            .unwrap();
+    } else if kind == 3 {
         let mut input = Scene::new();
         input.fill(bounds, Color::BLACK);
         let operation = crate::prepare_drop_shadow(
@@ -104,7 +125,7 @@ fn source(kind: usize, caps: &DeviceCapabilities, account: &Account) -> OwnedBox
         PrePreparationGraphClassification::ExactBackdrop(backdrop) if kind == 2 => {
             ExactGraph::Backdrop(backdrop)
         }
-        PrePreparationGraphClassification::ExactSpatialFilter(spatial) if kind == 3 => {
+        PrePreparationGraphClassification::ExactSpatialFilter(spatial) if kind >= 3 => {
             ExactGraph::ForegroundFilters(ForegroundFilterPreparableGraph::Spatial(spatial))
         }
         _ => panic!("fixture must retain its selected exact family"),
@@ -302,7 +323,7 @@ fn exact_execution_disposes_source_before_downstream_wait_and_cancellation() {
     let caps = backend.device_capabilities(identity).unwrap();
     let mut pending_count = 0;
     let mut completed = Vec::new();
-    for kind in 0..4 {
+    for kind in 0..5 {
         let cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
         let baseline = cpu
             .snapshot()
@@ -375,7 +396,7 @@ fn exact_execution_disposes_source_before_downstream_wait_and_cancellation() {
     }
     eprintln!("prepared native resource cancellations at explicit test wait={pending_count}");
     assert_eq!(
-        pending_count, 4,
+        pending_count, 5,
         "each exact family must cancel with real prepared resources live"
     );
 }
@@ -494,7 +515,7 @@ fn borrowed_exact_sources_retain_fact_identity_and_release_lists_before_prepared
         resources.generation().clone(),
         device_cpu.at(RenderCpuScope::DeviceBacking),
     );
-    for kind in 0..4 {
+    for kind in 0..5 {
         let cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
         let baseline = cpu
             .snapshot()
@@ -628,7 +649,7 @@ fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_sou
     let ready = backend
         .ready_device_state_borrow_for_test(identity)
         .unwrap();
-    for kind in 0..4 {
+    for kind in 0..5 {
         let measure = |limit: u64, block: bool| {
             let options = RenderAccountingOptions::new()
                 .with_limits(RenderLimits::new().with_retained_bytes(limit));
@@ -804,4 +825,264 @@ fn immutable_preparation_plan_fixed_backing_admits_exact_bytes_and_releases_on_d
         );
         assert_eq!(cpu.snapshot().unwrap().fault(), None);
     }
+}
+
+#[test]
+fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acquisition() {
+    let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
+    let mut backend = Backend::new(
+        crate::ResourceCacheBudget::DISABLED,
+        device_cpu,
+        RenderAccountingOptions::new(),
+    )
+    .unwrap();
+    let identity = pollster::block_on(backend.select_device(None))
+        .unwrap()
+        .unwrap();
+    let caps = backend.device_capabilities(identity).unwrap();
+    let ready = backend
+        .ready_device_state_borrow_for_test(identity)
+        .unwrap();
+    let bytes = size_of::<AcquiredGraphBindings>() as u64;
+    for exact in [false, true] {
+        let provider_before = ready.internal_resource_manager_observation_for_test();
+        let setup = Account::for_test();
+        let source = source(4, &caps, &setup);
+        let (lowered, ..) = view(&source).parts();
+        let plan = RuntimeGraphPreparationPlan::try_derive(
+            lowered,
+            source.working_format(),
+            &caps,
+            ready.device_for_test(),
+            &setup,
+        )
+        .unwrap();
+        // The producer retains each real reserved map/vector backing. The
+        // limited consumer admits only the aggregate's additional fixed bytes.
+        let bindings = AcquiredGraphBindings {
+            runtime_bindings: PassMap::new(&setup, plan.resources.len()).unwrap(),
+            dedicated_lease_slots: setup
+                .retained(
+                    plan.resources
+                        .len()
+                        .checked_sub(plan.morphology_scratch.assignments.len())
+                        .unwrap(),
+                )
+                .unwrap(),
+            morphology_scratch_bindings: MorphologyScratchBindings::reserve(
+                &plan.morphology_scratch,
+                &setup,
+            )
+            .unwrap(),
+            gaussian_kernel_bindings: PassMap::new(&setup, plan.kernels.len()).unwrap(),
+            convolution_weight_bindings: PassMap::new(&setup, plan.convolution_weights.len())
+                .unwrap(),
+        };
+        assert!(!plan.morphology_scratch.slots.is_empty());
+        assert!(bindings.morphology_scratch_bindings.slots.is_empty());
+        assert!(
+            bindings.morphology_scratch_bindings.slots.capacity()
+                >= plan.morphology_scratch.slots.len()
+        );
+        assert_eq!(
+            setup
+                .work_count(RenderWork::ResourceAllocationRequests)
+                .unwrap(),
+            0
+        );
+        let baseline = RendererCpu::new(RenderAccountingOptions::new())
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let limit = baseline + bytes - u64::from(!exact);
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_retained_bytes(limit)),
+        )
+        .unwrap();
+        let storage =
+            crate::accounting::StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+        let result = OwnedBox::new(bindings, &storage);
+        if exact {
+            let owned = result.unwrap();
+            assert!(owned.runtime_bindings.is_empty());
+            assert!(owned.gaussian_kernel_bindings.is_empty());
+            assert!(owned.convolution_weight_bindings.is_empty());
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes),
+                baseline + bytes
+            );
+            drop(owned);
+        } else {
+            let error = result
+                .err()
+                .expect("one byte below the aggregate backing must refuse");
+            assert!(
+                matches!(error.accounting_diagnostic(), Some(crate::RenderAccountingError::CpuRefused {
+                quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes), current, amount,
+                reason: crate::RenderRefusalReason::Limit { limit: actual }, ..
+            }) if current == baseline && amount == bytes && actual == limit)
+            );
+        }
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            baseline
+        );
+        assert_eq!(cpu.snapshot().unwrap().fault(), None);
+        assert_eq!(
+            setup
+                .work_count(RenderWork::ResourceAllocationRequests)
+                .unwrap(),
+            0
+        );
+        let provider_after = ready.internal_resource_manager_observation_for_test();
+        assert_eq!(
+            provider_after.effects_allocations,
+            provider_before.effects_allocations
+        );
+        assert_eq!(
+            provider_after.effects_gpu_bytes,
+            provider_before.effects_gpu_bytes
+        );
+        assert_eq!(
+            provider_after.effect_textures,
+            provider_before.effect_textures
+        );
+        assert_eq!(
+            (
+                provider_after.active_frame_count,
+                provider_after.leased_count
+            ),
+            (
+                provider_before.active_frame_count,
+                provider_before.leased_count
+            )
+        );
+    }
+}
+
+#[test]
+fn dedicated_slot_references_reject_equal_descriptor_wrong_owners_and_resolved_stale_leases() {
+    let options = RenderAccountingOptions::new();
+    let mut backend = Backend::new(
+        crate::ResourceCacheBudget::DISABLED,
+        RendererCpu::new(options).unwrap(),
+        options,
+    )
+    .unwrap();
+    let identity = pollster::block_on(backend.select_device(None))
+        .unwrap()
+        .unwrap();
+    let caps = backend.device_capabilities(identity).unwrap();
+    let setup = Account::for_test();
+    let source = source(0, &caps, &setup);
+    let lowered = view(&source).parts().0.clone();
+    let mut prepared = backend
+        .prepare_graph_resources(
+            identity,
+            lowered,
+            crate::EffectQualityPolicy::AllowReducedPrecision,
+            &setup,
+        )
+        .unwrap();
+    let root = prepared.plan.root_working_image;
+    let pass = prepared.plan.passes[0].runtime.id;
+    let original = prepared
+        .acquired_bindings
+        .runtime_bindings
+        .get(&root, &setup)
+        .unwrap()
+        .unwrap();
+    let PreparedResourceBacking::Dedicated { slot } = original.backing else {
+        panic!("root is dedicated");
+    };
+    let allocation = original.allocation.clone();
+    let other = prepared
+        .acquired_bindings
+        .runtime_bindings
+        .entries
+        .iter()
+        .find_map(|(id, binding)| {
+            if *id != root
+                && binding.allocation == allocation
+                && let PreparedResourceBacking::Dedicated { slot } = binding.backing
+            {
+                return Some(slot);
+            }
+            None
+        })
+        .expect("equal-sized working images have independent logical ownership");
+    assert_ne!(slot, other);
+    prepared
+        .acquired_bindings
+        .runtime_bindings
+        .get_mut(&root, &setup)
+        .unwrap()
+        .unwrap()
+        .backing = PreparedResourceBacking::Dedicated { slot: other };
+    let error = prepared
+        .texture_binding_for_pass(pass, root, &setup)
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.message(),
+        "dedicated lease slot belongs to another logical resource"
+    );
+    prepared
+        .acquired_bindings
+        .runtime_bindings
+        .get_mut(&root, &setup)
+        .unwrap()
+        .unwrap()
+        .backing = PreparedResourceBacking::Dedicated { slot };
+    prepared
+        .texture_binding_for_pass(pass, root, &setup)
+        .unwrap();
+    // Resolve the actual provider lease, then retire its one owned token.
+    // The logical reference remains present and must become unavailable.
+    {
+        let lease = prepared
+            .acquired_bindings
+            .dedicated_lease(slot, root, &setup)
+            .unwrap();
+        prepared
+            .frame_scope
+            .as_mut()
+            .unwrap()
+            .resolve_leases_atomically(&[lease])
+            .unwrap();
+    }
+    {
+        let acquired = &mut *prepared.acquired_bindings;
+        drop(
+            take_dedicated_lease_for_test(
+                &mut acquired.runtime_bindings,
+                &mut acquired.dedicated_lease_slots,
+                root,
+            )
+            .unwrap(),
+        );
+    }
+    let error = prepared
+        .texture_binding_for_pass(pass, root, &setup)
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.message(),
+        "dedicated lease binding is stale or already released"
+    );
+    drop(prepared);
+    let after = backend
+        .ready_device_state_borrow_for_test(identity)
+        .unwrap()
+        .internal_resource_manager_observation_for_test();
+    assert_eq!((after.active_frame_count, after.leased_count), (0, 0));
 }

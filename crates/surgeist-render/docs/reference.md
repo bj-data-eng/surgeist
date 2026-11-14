@@ -11,6 +11,7 @@ current source API.
 | --- | --- | --- |
 | Renderer and options | `Renderer`, `Options`, `Parameters`, `EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
 | Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
+| Native morphology | `MorphologyInput`, `MorphologyOperator`, `PreparedMorphology`, `MorphologySource`, `prepare_morphology`, `Scene::morphology_layer` | [Native morphology](morphology.md), [admitted model](../src/morphology.rs) |
 | Gradient paints | `Gradient`, `RepeatingGradient`, `GradientStop`, `GradientHint`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
 | Native Paint consumer (`render-paint`) | `prepare_linear_gradient`, `prepare_radial_gradient`, `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
 | Native zero-height Paint colors (`render-paint`) | `prepare_zero_height_gradient_color` | [Color preparation](#zero-height-paint-colors) |
@@ -676,6 +677,26 @@ backdrop and the children before the outer layer effects. Nested,
 transformed, and repeated backdrop requests return the typed
 `BroadBackdropExecution` diagnostic.
 
+### Native rectangular morphology
+
+`Scene::morphology_layer` replaces the exclusive foreground effect with admitted
+component erosion or dilation. Defaults select Erode with zero radii. Both
+resolved radii are checked for finiteness before either nonpositive radius
+disables the whole primitive. Strictly positive radii instead use the selected
+floor/closed-center grid policy, including actual point axes after quantization.
+Finite transparent exterior, authentic constant/periodic sources and independent
+source/filter/result domains retain their distinct semantics. The
+[morphology contract](morphology.md) owns coverage, exact range-extrema queries,
+color phases, last-use custody and typed numeric qualifications.
+
+`FilterCapabilities::supports_gpu_morphology_filter_execution()` reports the
+concrete semantic operation; active float32 runtime refusal identifies
+`RuntimeOperation::MorphologyRendering`. Adding
+`PrimitiveOperation::GpuMorphologyFilterExecution` extends the existing exhaustive
+public enum and is source-breaking for downstream exhaustive matches. The new
+required `RenderWorkTable<T>::ScheduledMorphologySamples` field also requires
+updates to exhaustive struct literals and patterns.
+
 ## Image sampling
 
 `Image::rendering` accepts an `ImageRendering` hint already selected by the
@@ -938,6 +959,14 @@ finite original1, periodic original4, constant original0, plus shifted alpha1
 when present, per output cell. Its one retained raw capture survives both alpha
 preparation and original merge. `ScheduledFilterTexels` includes the actual
 merge, with no fictional projection or flood pass.
+
+Native [morphology](morphology.md#accounting-diagnostics-and-api-impact) adds
+`ScheduledMorphologySamples`: table builds and constant-length queries schedule
+two opportunities per cell, FirstQuery one, variable refinements three,
+rebase/preparation/point-copy/direct resolve one and periodic resolve four;
+analytic constants schedule zero. These counts describe fetch opportunities,
+not hardware traffic or graph read-resource counts. `ScheduledFilterTexels`
+includes actual target cells. There is no Gaussian coefficient or Kernel charge.
 
 Resource probes include complete registered-entry validation, idle summaries and
 repeated explicit entry lookups as well as candidate selection. Forward registry
@@ -1265,6 +1294,13 @@ position generation. An empty axis retains its admitted work, and the
 stops the planner at the corresponding check or calculation.
 
 ## Preparation accounting
+
+`prepare_morphology` uses `RenderAttemptKind::Morphology` and the same central
+context. It admits one filter operation and inspects radii in X/Y order,
+reaching two `CoordinateVisits` on success. Both finiteness checks precede
+nonpositive whole-primitive disabling. The immutable result is inline with no
+payload backing, coefficient storage or import lease. Actual grid resolution,
+extrema work and device qualification belong to the frame.
 
 `prepare_drop_shadow` uses `RenderAttemptKind::DropShadow` and the same central
 context. It admits one filter operation, finite dx/dy, finite X/Y deviations and

@@ -18,6 +18,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_convolution_metadata(graph, account)?;
     validate_offset_metadata(graph, account)?;
     validate_gaussian_metadata(graph, account)?;
+    validate_morphology_metadata(graph, account)?;
     validate_native_shadow_metadata(graph, account)?;
     if any_node(&graph.passes, account, |pass| {
         Ok(
@@ -259,6 +260,7 @@ fn validate_convolution_metadata(
     let mut count = 0_usize;
     let mut offset_count = 0_usize;
     let mut gaussian_count = 0_usize;
+    let mut morphology_count = 0_usize;
     let mut shadow_count = 0_usize;
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -268,6 +270,9 @@ fn validate_convolution_metadata(
         if pass.intent == SemanticPassIntent::NativeShadowMerge {
             shadow_count += 1;
         }
+        if matches!(pass.intent, SemanticPassIntent::Morphology(_)) {
+            morphology_count += 1;
+        }
         if matches!(pass.intent, SemanticPassIntent::Gaussian(_)) {
             gaussian_count += 1;
         }
@@ -276,6 +281,9 @@ fn validate_convolution_metadata(
         }
     }
     if count != graph.convolutions.len() {
+        return Err(GraphValidationError::InvalidPassArity);
+    }
+    if morphology_count != graph.morphologies.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
     if gaussian_count != graph.gaussians.len() {
@@ -559,6 +567,32 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
                 .native_shadows
                 .get(low)
                 .filter(|entry| entry.pass == producer)
+                .map(|entry| entry.facts.mapping().output_footprint())
+        });
+        let mut low = 0;
+        let mut high = graph.morphologies.len();
+        while low < high {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let middle = low + (high - low) / 2;
+            if graph.morphologies[middle].pass.index.0 < producer.index.0 {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        let expected = expected.or_else(|| {
+            graph
+                .morphologies
+                .get(low)
+                .filter(|entry| {
+                    entry.pass == producer
+                        && matches!(
+                            entry.facts.stage(),
+                            super::MorphologyStage::Constant
+                                | super::MorphologyStage::Copy
+                                | super::MorphologyStage::Resolve
+                        )
+                })
                 .map(|entry| entry.facts.mapping().output_footprint())
         });
         if composite.filter_footprint != expected
@@ -1431,6 +1465,143 @@ fn ordered_metadata_index<T>(
         }
     }
     Ok(low)
+}
+
+/// Authenticates the complete route and both refinement inputs before generic lifetime closure.
+fn validate_morphology_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
+    use super::MorphologyStage;
+    let mut cursor = 0;
+    while let Some(first) = graph.morphologies.get(cursor) {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if first.facts.route_index() != 0 || first.facts.route_len() == 0 {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        let start = first.pass.index.0;
+        let first_node = graph
+            .passes
+            .get(first.pass.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownPass(first.pass))?;
+        let mut current = first_node.reads.first().copied();
+        let mut table = None;
+        let mut previous = None;
+        let mut axis = None;
+        for index in 0..first.facts.route_len() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let entry = graph
+                .morphologies
+                .get(cursor)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            let facts = &entry.facts;
+            let stage = facts.stage();
+            if facts.route_index() != index
+                || !facts.same_route_in(&first.facts, account)?
+                || facts.expected_stage(index, account)? != Some(stage)
+                || !facts.proves_exact(account)?
+                || entry.pass.index.0
+                    != start
+                        .checked_add(
+                            u32::try_from(index)
+                                .map_err(|_| GraphValidationError::InvalidPassArity)?,
+                        )
+                        .ok_or(GraphValidationError::InvalidPassArity)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            if let Some(next) = stage.axis()
+                && axis != Some(next)
+            {
+                axis = Some(next);
+                table = current;
+                previous = None;
+            }
+            let mut expected = [None; 2];
+            match stage {
+                MorphologyStage::Constant => {}
+                MorphologyStage::Table { .. }
+                | MorphologyStage::FirstQuery { .. }
+                | MorphologyStage::Query { .. } => expected[0] = table,
+                MorphologyStage::RefineQuery { .. } => {
+                    expected[0] = table;
+                    expected[1] = previous;
+                }
+                _ => expected[0] = current,
+            }
+            let mut reads = account.temporary(stage.read_count())?;
+            for id in expected.into_iter().take(stage.read_count()) {
+                reads
+                    .append_slot()?
+                    .write(id.ok_or(GraphValidationError::InvalidPassArity)?);
+            }
+            let pass = graph
+                .passes
+                .get(entry.pass.index.as_usize()?)
+                .filter(|pass| pass.id == entry.pass)
+                .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+            if pass.intent != SemanticPassIntent::Morphology(stage)
+                || !edges_equal(&pass.reads, &reads, account)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let SemanticPassResult::Resource(result) = pass.result else {
+                return Err(GraphValidationError::InvalidPassArity);
+            };
+            let output = graph
+                .resources
+                .get(result.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(result))?;
+            let role = if stage.float_output() {
+                SemanticResourceRole::FilterFloat
+            } else {
+                SemanticResourceRole::FilterIntermediate
+            };
+            if output.descriptor.role != role
+                || super::GraphLoweringSpatialDescriptor::from_semantic(output.descriptor)
+                    != facts.mapping().target_spatial()
+            {
+                return Err(GraphValidationError::InvalidPassResultRole);
+            }
+            for (read_index, id) in reads.iter().enumerate() {
+                account.work(RenderWork::GraphEdgeVisits, 1)?;
+                let resource = graph
+                    .resources
+                    .get(id.index.as_usize()?)
+                    .ok_or(GraphValidationError::UnknownResource(*id))?;
+                let spatial = Some(super::GraphLoweringSpatialDescriptor::from_semantic(
+                    resource.descriptor,
+                ));
+                let expected = if read_index == 0 {
+                    facts.mapping().source_spatial()
+                } else {
+                    facts.mapping().previous_query_spatial()
+                };
+                if spatial != expected
+                    || ((stage.axis().is_some() || stage == MorphologyStage::Resolve)
+                        && resource.descriptor.role != SemanticResourceRole::FilterFloat)
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+            }
+            if reads.is_empty() && facts.mapping().source_spatial().is_some() {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            match stage {
+                MorphologyStage::Table { .. } => table = Some(result),
+                MorphologyStage::FirstQuery { .. } | MorphologyStage::RefineQuery { .. } => {
+                    previous = Some(result);
+                    if facts
+                        .mapping()
+                        .query()
+                        .is_some_and(|query| query.max_level() == stage.level())
+                    {
+                        current = Some(result);
+                    }
+                }
+                _ => current = Some(result),
+            }
+            cursor += 1;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

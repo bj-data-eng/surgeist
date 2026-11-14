@@ -1,5 +1,6 @@
 mod convolution;
 mod gaussian;
+mod morphology;
 mod native_shadow;
 mod offset;
 
@@ -480,6 +481,11 @@ pub(super) enum ExecutableFilterStepFacts {
         source: Option<RuntimeResourceId>,
         result: RuntimeResourceId,
     },
+    Morphology {
+        passes: SharedValue<Vec<RuntimePassId>>,
+        source: Option<RuntimeResourceId>,
+        result: RuntimeResourceId,
+    },
     Convolution {
         passes: SharedValue<Vec<RuntimePassId>>,
         source: RuntimeResourceId,
@@ -507,6 +513,7 @@ impl ExecutableFilterStepFacts {
             }
             Self::Convolution { passes, .. }
             | Self::Gaussian { passes, .. }
+            | Self::Morphology { passes, .. }
             | Self::NativeShadow { passes, .. } => passes.first().copied(),
         }
     }
@@ -519,6 +526,7 @@ impl ExecutableFilterStepFacts {
             Self::DropShadow { merge, .. } => Some(*merge),
             Self::Convolution { passes, .. }
             | Self::Gaussian { passes, .. }
+            | Self::Morphology { passes, .. }
             | Self::NativeShadow { passes, .. } => passes.last().copied(),
         }
     }
@@ -538,6 +546,7 @@ pub(super) struct ClosedExecutableGraphFacts {
     // accounted repeated proof; route predicates must not rescan their payload.
     has_convolution: bool,
     has_gaussian: bool,
+    has_morphology: bool,
     has_native_shadow: bool,
     has_offset: bool,
     pub(super) backdrops: SharedValue<Vec<ExecutableBackdropFacts>>,
@@ -584,6 +593,7 @@ impl ClosedExecutableGraph {
             || !self.facts.drop_shadows.is_empty()
             || self.facts.has_convolution
             || self.facts.has_gaussian
+            || self.facts.has_morphology
             || self.facts.has_native_shadow
             || self.facts.has_offset
     }
@@ -641,7 +651,10 @@ impl ClosedExecutableGraphFacts {
                     }
                     _ => false,
                 };
-                (self.has_gaussian || self.has_native_shadow || !filter_footprint_present)
+                (self.has_gaussian
+                    || self.has_morphology
+                    || self.has_native_shadow
+                    || !filter_footprint_present)
                     && same_source_composite(composite, &layer.composite)
                     && proof_reads(pass, &proof)
                         .map(|read| read.resource)
@@ -703,6 +716,12 @@ impl ClosedExecutableGraphFacts {
                     &proof,
                 )
                 && gaussian::steps_are_exact(plan, &self.filter_steps, self.has_gaussian, &proof)
+                && morphology::steps_are_exact(
+                    plan,
+                    &self.filter_steps,
+                    self.has_morphology,
+                    &proof,
+                )
                 && offset::steps_are_exact(plan, &self.filter_steps, self.has_offset, &proof)
                 && native_shadow::steps_are_exact(
                     plan,
@@ -1055,6 +1074,32 @@ fn filter_steps_match(
                 }
             }
             (
+                ExecutableFilterStepFacts::Morphology {
+                    passes: a,
+                    source: a_source,
+                    result: a_result,
+                },
+                ExecutableFilterStepFacts::Morphology {
+                    passes: b,
+                    source: b_source,
+                    result: b_result,
+                },
+            ) => {
+                if a_source != b_source || a_result != b_result || a.len() != b.len() {
+                    false
+                } else if a.same_allocation(b) {
+                    true
+                } else {
+                    for (a, b) in a.iter().zip(b.iter()) {
+                        account.work(RenderWork::GraphEdgeVisits, 1)?;
+                        if a != b {
+                            return Ok(false);
+                        }
+                    }
+                    true
+                }
+            }
+            (
                 ExecutableFilterStepFacts::NativeShadow {
                     passes: a,
                     source: a_source,
@@ -1171,6 +1216,27 @@ fn filter_step_order_is_exact(
                     if work.purpose() == crate::frame::GaussianPurpose::Standalone =>
                 {
                     let ExecutableFilterStepFacts::Gaussian { passes, .. } =
+                        expected.get(step_index)?
+                    else {
+                        return None;
+                    };
+                    if passes.is_empty() {
+                        return None;
+                    }
+                    let end = cursor.checked_add(passes.len())?;
+                    if !proof_relationships_equal(
+                        plan.passes.get(cursor..end)?.iter().map(|p| p.id),
+                        passes.iter().copied(),
+                        proof,
+                        |a, b| a == b,
+                    ) {
+                        return None;
+                    }
+                    step_index += 1;
+                    cursor = end;
+                }
+                RuntimePassKind::Morphology(_) => {
+                    let ExecutableFilterStepFacts::Morphology { passes, .. } =
                         expected.get(step_index)?
                     else {
                         return None;
@@ -1978,6 +2044,12 @@ impl ProofBounds {
                         bounds.contexts += 1;
                     }
                 }
+                RuntimePassKind::Morphology(work) if work.route_index() == 0 => {
+                    bounds.steps += 1;
+                    if work.stage() == crate::frame::MorphologyStage::Constant {
+                        bounds.contexts += 1;
+                    }
+                }
                 RuntimePassKind::Convolution(work)
                     if matches!(
                         work.stage(),
@@ -2026,6 +2098,7 @@ struct ClosedGraphTraversal<'plan, 'proof> {
     filter_steps: ProofVec<ExecutableFilterStepFacts>,
     has_convolution: bool,
     has_gaussian: bool,
+    has_morphology: bool,
     has_native_shadow: bool,
     has_offset: bool,
     backdrops: ProofVec<ExecutableBackdropFacts>,
@@ -2095,6 +2168,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             )?,
             has_convolution: false,
             has_gaussian: false,
+            has_morphology: false,
             has_native_shadow: false,
             has_offset: false,
             backdrops: ProofVec::new(
@@ -2149,6 +2223,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             filter_steps: self.filter_steps.into_shared(self.proof.account)?,
             has_convolution: self.has_convolution,
             has_gaussian: self.has_gaussian,
+            has_morphology: self.has_morphology,
             has_native_shadow: self.has_native_shadow,
             has_offset: self.has_offset,
             backdrops: self.backdrops.into_shared(self.proof.account)?,
@@ -2180,6 +2255,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             }
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
             RuntimePassKind::Gaussian(_) => self.visit_gaussian(),
+            RuntimePassKind::Morphology(_) => self.visit_morphology(),
             RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::NativeShadowMerge(_) => self.visit_native_shadow(),
             RuntimePassKind::CopyBackdrop => self.visit_backdrop(pass),
@@ -2474,6 +2550,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         match &pass.kind {
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
             RuntimePassKind::Gaussian(_) => self.visit_gaussian(),
+            RuntimePassKind::Morphology(_) => self.visit_morphology(),
             RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::NativeShadowMerge(_) => self.visit_native_shadow(),
             RuntimePassKind::ColorFilter(Some(filter)) => self.visit_color_filter(pass, filter),
@@ -2619,6 +2696,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                     | RuntimePassKind::BlurHorizontal(Some(_))
                     | RuntimePassKind::Convolution(_)
                     | RuntimePassKind::Gaussian(_)
+                    | RuntimePassKind::Morphology(_)
                     | RuntimePassKind::Offset(_)
                     | RuntimePassKind::NativeShadowMerge(_)
             ) {
@@ -5602,6 +5680,7 @@ fn dispatch_pass_semantics(
         RuntimePassKind::VelloCapture(_) => None,
         RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
+        | RuntimePassKind::Morphology(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_) => Some(DispatchPassSemantics::ClosedExecutable),
         RuntimePassKind::CopyBackdrop

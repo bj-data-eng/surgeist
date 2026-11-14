@@ -2,65 +2,9 @@ use super::*;
 use crate::frame::gaussian::{
     self as grid, GaussianAxis, GaussianMapping, GaussianPurpose, GaussianStage, PeriodCapture,
 };
-use crate::gaussian::{GaussianForeground, GaussianSourceDescriptor};
+use crate::{filter_source::FilterSourceDescriptor, gaussian::GaussianForeground};
 
 impl SemanticFrameGraphPlanner<'_> {
-    pub(super) fn prepare_gaussian_source(
-        &mut self,
-        children: RenderCommands,
-        foreground: GaussianForeground,
-        raster_transform: Transform,
-    ) -> Result<PreparedLayerSource> {
-        if grid::empty(grid::result_domain(foreground.source))
-            || grid::source_is_empty(foreground.source)
-            || children.is_empty()
-        {
-            return Ok(ControlFlow::Break(None));
-        }
-        let (spatial, context, capture_transform, parent_to_surface) = match foreground.source {
-            GaussianSourceDescriptor::Constant { .. } => return Ok(ControlFlow::Break(None)),
-            GaussianSourceDescriptor::Finite { .. } => (
-                grid::require_spatial(
-                    self.context,
-                    grid::finite_domain(foreground.source).ok_or_else(|| {
-                        Error::new(
-                            BackendErrorCode::RenderFailed,
-                            "finite Gaussian source lost its domain",
-                        )
-                    })?,
-                    raster_transform,
-                )?,
-                self.context,
-                Transform::identity(),
-                raster_transform,
-            ),
-            GaussianSourceDescriptor::Periodic { period, .. } => {
-                let period =
-                    PeriodCapture::try_new(self.context, period, raster_transform, self.account)?;
-                (
-                    period.spatial,
-                    period.context,
-                    period.transform,
-                    Transform::identity(),
-                )
-            }
-        };
-        let parent = self.declare_transparent_parent(spatial)?;
-        Ok(ControlFlow::Continue(self.command_frame(
-            children,
-            parent,
-            SemanticCommandPlanningState {
-                context,
-                parent_locality: CaptureParentLocality::CaptureLocal,
-                span_scope: SemanticVelloSpanScope::LayerSource,
-                capture_transform,
-                parent_to_surface,
-                capture_space: CaptureBoundsCoordinateSpace::Local,
-                outer_clips: shared_copy(&[], self.account)?,
-            },
-        )?))
-    }
-
     pub(super) fn apply_gaussian(
         &mut self,
         source: Option<PlannedGraphResource>,
@@ -88,12 +32,12 @@ impl SemanticFrameGraphPlanner<'_> {
             return Ok(None);
         }
         let result = grid::require_spatial(self.context, output_domain, raster_transform)?;
-        if matches!(foreground.source, GaussianSourceDescriptor::Constant { .. })
+        if matches!(foreground.source, FilterSourceDescriptor::Constant { .. })
             || grid::source_is_empty(foreground.source)
             || source.is_none()
         {
             let color = match foreground.source {
-                GaussianSourceDescriptor::Constant { color, .. } => color,
+                FilterSourceDescriptor::Constant { color, .. } => color,
                 _ => crate::Color::TRANSPARENT,
             };
             let mapping = GaussianMapping::new(None, result, [None; 2])
@@ -113,7 +57,7 @@ impl SemanticFrameGraphPlanner<'_> {
             Error::new(BackendErrorCode::RenderFailed, "Gaussian source is absent")
         })?;
         let period = match foreground.source {
-            GaussianSourceDescriptor::Periodic { period, .. } => Some(PeriodCapture::try_new(
+            FilterSourceDescriptor::Periodic { period, .. } => Some(PeriodCapture::try_new(
                 self.context,
                 period,
                 raster_transform,

@@ -86,6 +86,7 @@ pub(super) fn prepared_pass_spatial_uniform(
             pass.kind,
             RuntimePassKind::Convolution(_)
                 | RuntimePassKind::Gaussian(_)
+                | RuntimePassKind::Morphology(_)
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::NativeShadowMerge(_)
         )
@@ -119,6 +120,7 @@ pub(super) fn prepared_pass_spatial_uniform(
         }
         RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
+        | RuntimePassKind::Morphology(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_) => return Ok(None),
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {

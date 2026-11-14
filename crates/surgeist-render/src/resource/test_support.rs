@@ -227,118 +227,182 @@ impl ResourceManager {
 
     #[cfg(test)]
     pub(crate) fn observation_for_test(&self) -> ResourceManagerObservationForTest {
-        let state = lock_state(&self.state);
-        let idle_count = state
-            .entries
-            .values()
-            .filter(|entry| matches!(entry.state, ResourceEntryState::Idle { .. }))
-            .count();
-        let retained_atlas_count = state
-            .entries
-            .values()
-            .filter(|entry| entry.key.is_vello_atlas())
-            .count();
-        let retained_atlas_byte_len = state
-            .entries
-            .values()
-            .filter(|entry| entry.key.is_vello_atlas())
-            .map(|entry| entry.byte_len)
-            .sum();
-        let committed_transient_buffer_count = state
-            .entries
-            .values()
-            .filter(|entry| entry.key.is_vello_buffer())
-            .count();
-        let committed_transient_buffer_byte_len = state
-            .entries
-            .values()
-            .filter(|entry| entry.key.is_vello_buffer())
-            .map(|entry| entry.byte_len)
-            .sum();
-        let committed_transient_image_count = state
-            .entries
-            .values()
-            .filter(|entry| entry.key.is_transient_vello_image())
-            .count();
-        let committed_transient_image_byte_len = state
-            .entries
-            .values()
-            .filter(|entry| entry.key.is_transient_vello_image())
-            .map(|entry| entry.byte_len)
-            .sum();
-        let effect_texture_count = state
-            .entries
-            .values()
-            .filter(|entry| matches!(entry.key, ResourceCacheKey::EffectTexture(_)))
-            .count();
-        let filter_float32_entries = state
-            .entries
-            .values()
-            .filter(|entry| {
-                matches!(&entry.payload,
-                ResourcePayload::EffectTexture { texture, .. }
-                if texture.format() == wgpu::TextureFormat::Rgba32Float)
-            })
-            .count();
-        let convolution_weight_entries = state
-            .entries
-            .values()
-            .filter(|entry| {
-                matches!(
-                    &entry.payload,
-                    ResourcePayload::ConvolutionWeightsBuffer { .. }
-                )
-            })
-            .count();
-        let resolved_mask_upload_keys = state
-            .entries
-            .values()
-            .filter_map(|entry| match &entry.key {
-                ResourceCacheKey::ResolvedMaskUpload(key) => Some(key.clone()),
-                ResourceCacheKey::VelloAtlas
-                | ResourceCacheKey::VelloBuffer(_)
-                | ResourceCacheKey::VelloImage(_)
-                | ResourceCacheKey::EffectTexture(_)
-                | ResourceCacheKey::GaussianKernelBuffer(_)
-                | ResourceCacheKey::ConvolutionWeightsBuffer(_) => None,
-            })
-            .collect();
-        let gaussian_kernel_count = state
-            .entries
-            .values()
-            .filter(|entry| matches!(entry.key, ResourceCacheKey::GaussianKernelBuffer(_)))
-            .count();
-        ResourceManagerObservationForTest {
-            idle_count,
-            leased_count: state.entries.len().saturating_sub(idle_count),
-            retained_bytes: state.generation.observe_registered_cache_bytes_for_test(),
-            accounted_entry_bytes: state.registered_entry_bytes_for_test(),
-            accounting_fault: state.accounting_fault,
-            active_frame_count: state.active_frames.len(),
-            resolved_lease_count: state
-                .entries
-                .values()
-                .filter(|entry| entry.resolved)
-                .count(),
-            entry_identities: state.entries.keys().copied().collect(),
-            lifecycle_stats: lifecycle_snapshot(&state),
-            next_resource: state.next_resource,
-            entry_count: state.entries.len(),
-            payload_creation_attempts: state.payload_creation_attempts,
-            retained_atlas_count,
-            retained_atlas_byte_len,
-            committed_transient_buffer_count,
-            committed_transient_buffer_byte_len,
-            committed_transient_image_count,
-            committed_transient_image_byte_len,
-            effect_texture_count,
-            filter_float32_entries,
-            convolution_weight_entries,
-            resolved_mask_upload_keys,
-            gaussian_kernel_count,
-            recovery_outcome: state.pending_vello_atlas_recovery,
-        }
+        observe_resource_manager_state_for_test(&lock_state(&self.state))
     }
+
+    /// Reads the real manager while a render future holds the Renderer borrow.
+    /// The reader retains state custody, never a raw native texture clone.
+    pub(crate) fn observation_reader_for_test(
+        &self,
+    ) -> std::rc::Rc<dyn Fn() -> ResourceManagerObservationForTest> {
+        let state = std::sync::Arc::clone(&self.state);
+        std::rc::Rc::new(move || observe_resource_manager_state_for_test(&lock_state(&state)))
+    }
+}
+
+fn observe_resource_manager_state_for_test(
+    state: &super::manager::ResourceManagerState,
+) -> ResourceManagerObservationForTest {
+    let effects = state
+        .generation
+        .class_usage(crate::accounting::GenerationClass::CacheEffects)
+        .expect("real Effects custody remains observable");
+    let effect_textures = state
+        .entries
+        .iter()
+        .filter_map(|(resource, entry)| observe_effect_texture_for_test(*resource, entry))
+        .collect();
+    let idle_count = state
+        .entries
+        .values()
+        .filter(|entry| matches!(entry.state, ResourceEntryState::Idle { .. }))
+        .count();
+    let retained_atlas_count = state
+        .entries
+        .values()
+        .filter(|entry| entry.key.is_vello_atlas())
+        .count();
+    let retained_atlas_byte_len = state
+        .entries
+        .values()
+        .filter(|entry| entry.key.is_vello_atlas())
+        .map(|entry| entry.byte_len)
+        .sum();
+    let committed_transient_buffer_count = state
+        .entries
+        .values()
+        .filter(|entry| entry.key.is_vello_buffer())
+        .count();
+    let committed_transient_buffer_byte_len = state
+        .entries
+        .values()
+        .filter(|entry| entry.key.is_vello_buffer())
+        .map(|entry| entry.byte_len)
+        .sum();
+    let committed_transient_image_count = state
+        .entries
+        .values()
+        .filter(|entry| entry.key.is_transient_vello_image())
+        .count();
+    let committed_transient_image_byte_len = state
+        .entries
+        .values()
+        .filter(|entry| entry.key.is_transient_vello_image())
+        .map(|entry| entry.byte_len)
+        .sum();
+    let effect_texture_count = state
+        .entries
+        .values()
+        .filter(|entry| matches!(entry.key, ResourceCacheKey::EffectTexture(_)))
+        .count();
+    let filter_float32_entries = state
+        .entries
+        .values()
+        .filter(|entry| {
+            matches!(&entry.payload,
+            ResourcePayload::EffectTexture { texture, .. }
+            if texture.format() == wgpu::TextureFormat::Rgba32Float)
+        })
+        .count();
+    let convolution_weight_entries = state
+        .entries
+        .values()
+        .filter(|entry| {
+            matches!(
+                &entry.payload,
+                ResourcePayload::ConvolutionWeightsBuffer { .. }
+            )
+        })
+        .count();
+    let resolved_mask_upload_keys = state
+        .entries
+        .values()
+        .filter_map(|entry| match &entry.key {
+            ResourceCacheKey::ResolvedMaskUpload(key) => Some(key.clone()),
+            ResourceCacheKey::VelloAtlas
+            | ResourceCacheKey::VelloBuffer(_)
+            | ResourceCacheKey::VelloImage(_)
+            | ResourceCacheKey::EffectTexture(_)
+            | ResourceCacheKey::GaussianKernelBuffer(_)
+            | ResourceCacheKey::ConvolutionWeightsBuffer(_) => None,
+        })
+        .collect();
+    let gaussian_kernel_count = state
+        .entries
+        .values()
+        .filter(|entry| matches!(entry.key, ResourceCacheKey::GaussianKernelBuffer(_)))
+        .count();
+    ResourceManagerObservationForTest {
+        effect_textures,
+        effects_gpu_bytes: effects.live(crate::RenderResource::GpuBytes),
+        effects_registered_bytes: effects.live(crate::RenderResource::RegisteredCacheGpuBytes),
+        effects_idle_bytes: effects.live(crate::RenderResource::IdleCacheGpuBytes),
+        effects_allocations: effects.work(RenderWork::ResourceAllocations),
+        idle_count,
+        leased_count: state.entries.len().saturating_sub(idle_count),
+        retained_bytes: state.generation.observe_registered_cache_bytes_for_test(),
+        accounted_entry_bytes: state.registered_entry_bytes_for_test(),
+        accounting_fault: state.accounting_fault,
+        active_frame_count: state.active_frames.len(),
+        resolved_lease_count: state
+            .entries
+            .values()
+            .filter(|entry| entry.resolved)
+            .count(),
+        entry_identities: state.entries.keys().copied().collect(),
+        lifecycle_stats: lifecycle_snapshot(state),
+        next_resource: state.next_resource,
+        entry_count: state.entries.len(),
+        payload_creation_attempts: state.payload_creation_attempts,
+        retained_atlas_count,
+        retained_atlas_byte_len,
+        committed_transient_buffer_count,
+        committed_transient_buffer_byte_len,
+        committed_transient_image_count,
+        committed_transient_image_byte_len,
+        effect_texture_count,
+        filter_float32_entries,
+        convolution_weight_entries,
+        resolved_mask_upload_keys,
+        gaussian_kernel_count,
+        recovery_outcome: state.pending_vello_atlas_recovery,
+    }
+}
+
+/// Actual provider facts. Texture identity uses WGPU's native-handle Hash/Eq
+/// contract; observation never clones or exports the native handle.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EffectTextureObservationForTest {
+    pub(crate) resource: ResourceIdentity,
+    pub(crate) native_identity: u64,
+    pub(crate) extent: PhysicalSize,
+    pub(crate) format: wgpu::TextureFormat,
+    pub(crate) usage: wgpu::TextureUsages,
+    pub(crate) bytes: u64,
+    pub(crate) resolved: bool,
+    pub(crate) leased: bool,
+}
+
+fn observe_effect_texture_for_test(
+    resource: ResourceIdentity,
+    entry: &super::manager::ResourceEntry,
+) -> Option<EffectTextureObservationForTest> {
+    use std::hash::{Hash, Hasher};
+    let ResourcePayload::EffectTexture { texture, .. } = &entry.payload else {
+        return None;
+    };
+    let mut identity = std::collections::hash_map::DefaultHasher::new();
+    std::ops::Deref::deref(texture).hash(&mut identity);
+    Some(EffectTextureObservationForTest {
+        resource,
+        native_identity: identity.finish(),
+        extent: PhysicalSize::new(texture.width(), texture.height()),
+        format: texture.format(),
+        usage: texture.usage(),
+        bytes: entry.byte_len,
+        resolved: entry.resolved,
+        leased: matches!(entry.state, ResourceEntryState::Leased { .. }),
+    })
 }
 
 impl ResourceLease {
@@ -353,6 +417,40 @@ impl ResourceLease {
 }
 
 impl FrameResourceScope {
+    /// Unlike a sampled binding, a custody observation also accepts a resolved
+    /// lease still held by this active frame. All token identities remain exact.
+    pub(crate) fn effect_texture_observation_for_test(
+        &self,
+        lease: &ResourceLease,
+    ) -> Result<EffectTextureObservationForTest> {
+        let state = lock_state(&self.state);
+        let token = &lease.token;
+        let invalid = || {
+            crate::Error::invalid_value(
+                "effect texture observation",
+                token.resource_identity.get(),
+                "must name this active frame's exact native effect texture",
+            )
+        };
+        if state.identity != self.manager_identity
+            || token.manager_identity != self.manager_identity
+            || token.frame_identity != self.frame
+            || !state.active_frames.contains_key(&self.frame)
+        {
+            return Err(invalid());
+        }
+        let entry = state
+            .entries
+            .get(&token.resource_identity)
+            .ok_or_else(invalid)?;
+        if entry.allocation_generation != token.allocation_generation
+            || entry.state != (ResourceEntryState::Leased { frame: self.frame })
+        {
+            return Err(invalid());
+        }
+        observe_effect_texture_for_test(token.resource_identity, entry).ok_or_else(invalid)
+    }
+
     pub(crate) fn acquire_working_effect_texture_for_test(
         &mut self,
         device: &wgpu::Device,
@@ -471,6 +569,11 @@ impl ResourceLeaseTokenForTest {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ResourceManagerObservationForTest {
+    pub(crate) effect_textures: Vec<EffectTextureObservationForTest>,
+    pub(crate) effects_gpu_bytes: u64,
+    pub(crate) effects_registered_bytes: u64,
+    pub(crate) effects_idle_bytes: u64,
+    pub(crate) effects_allocations: u64,
     pub(crate) idle_count: usize,
     pub(crate) leased_count: usize,
     pub(crate) retained_bytes: u64,

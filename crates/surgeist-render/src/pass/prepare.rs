@@ -1,3 +1,6 @@
+use super::morphology_scratch::{
+    MorphologyScratchBindings, MorphologyScratchPlan, ScratchAssignmentRef,
+};
 use super::{PassMap, PassSet};
 #[cfg(test)]
 #[path = "prepare_boxed_tests.rs"]
@@ -27,9 +30,9 @@ use super::super::{
         CompositePassKeyRefs, ConvolutionParameterBytes, ConvolutionPassKeyRefs,
         CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache, DropShadowColorizePassKeyRefs,
         DropShadowParameterBytes, GaussianParameterBytes, GaussianPassKeyRefs,
-        NativeShadowParameterBytes, NativeShadowPassKeyRefs, OffsetParameterBytes,
-        OffsetPassKeyRefs, PassSpatialUniformBytes, ProvisionalCopyBackdropPassObjects,
-        ProvisionalDevicePassCacheUpdate,
+        MorphologyParameterBytes, MorphologyPassKeyRefs, NativeShadowParameterBytes,
+        NativeShadowPassKeyRefs, OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
+        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -128,6 +131,7 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     pub(super) convolution_parameters: Option<ConvolutionParameterBytes>,
     pub(super) gaussian_parameters: Option<GaussianParameterBytes>,
+    pub(super) morphology_parameters: Option<MorphologyParameterBytes>,
     pub(super) offset_parameters: Option<OffsetParameterBytes>,
     pub(super) native_shadow_parameters: Option<NativeShadowParameterBytes>,
     pub(super) convolution_weights: Option<RuntimePassId>,
@@ -152,6 +156,7 @@ pub(super) struct RuntimeGraphPreparationPlan {
     pub(super) root_working_image: RuntimeResourceId,
     pub(super) final_present: RuntimePassId,
     pub(super) allocation_preflights: AccountedVec<ResourceAllocationPreflight>,
+    pub(super) morphology_scratch: MorphologyScratchPlan,
 }
 
 impl RuntimeGraphPreparationPlan {
@@ -214,6 +219,30 @@ impl RuntimeGraphPreparationPlan {
             account.work(RenderWork::GraphNodeVisits, 1)?;
             kernels.append_slot()?.write(kernel);
         }
+        let morphology_scratch =
+            MorphologyScratchPlan::try_new(&prepared_resources.resources, &passes, account)?;
+        if !morphology_scratch.proves_exact(&prepared_resources.resources, &passes, account)? {
+            return Err(preparation_error(
+                "morphology scratch physical plan is not exact",
+            ));
+        }
+        for resource in &prepared_resources.resources {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            if morphology_scratch
+                .assignment_for(resource.runtime.id, account)?
+                .is_none()
+            {
+                prepared_resources
+                    .allocation_preflights
+                    .push(resource.allocation.preflight(account)?)?;
+            }
+        }
+        for slot in &morphology_scratch.slots {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            prepared_resources.allocation_preflights.push(
+                ResourceAllocationPreflight::effect_texture(slot.descriptor)?,
+            )?;
+        }
         for kernel in &kernels {
             account.work(RenderWork::GraphNodeVisits, 1)?;
             prepared_resources
@@ -238,6 +267,7 @@ impl RuntimeGraphPreparationPlan {
             root_working_image: lowered.root_working_image,
             final_present: lowered.final_present,
             allocation_preflights: prepared_resources.allocation_preflights,
+            morphology_scratch,
         })
     }
 }
@@ -272,9 +302,6 @@ fn prepare_runtime_resources<'a>(
         validate_runtime_resource_request(resource, lowered.working_format, capabilities)?;
         let allocation =
             prepare_runtime_resource_allocation(resource, lowered.working_format, capabilities)?;
-        prepared
-            .allocation_preflights
-            .push(allocation.preflight(account)?)?;
         prepared.resources.push(RuntimeResourcePreparationRequest {
             runtime: resource.clone(),
             allocation,
@@ -468,6 +495,10 @@ fn analyze_runtime_passes(
                         crate::RuntimeOperation::NativeDropShadowRendering
                     }
                 })?;
+            }
+            RuntimePassKind::Morphology(work) if work.needs_float32() => {
+                capabilities
+                    .validate_filter_float32(crate::RuntimeOperation::MorphologyRendering)?;
             }
             RuntimePassKind::Convolution(work) if !work.operation().is_passthrough() => {
                 capabilities
@@ -814,6 +845,12 @@ fn prepare_runtime_pass_requests(
             }
             _ => None,
         };
+        let morphology_parameters = match &pass.kind {
+            RuntimePassKind::Morphology(work) => {
+                Some(super::morphology::parameters(work, account)?)
+            }
+            _ => None,
+        };
         let offset_parameters = match &pass.kind {
             RuntimePassKind::Offset(operation) => {
                 Some(super::offset::parameters(operation, account)?)
@@ -828,6 +865,7 @@ fn prepare_runtime_pass_requests(
         };
         if offset_parameters.is_some()
             || gaussian_parameters.is_some()
+            || morphology_parameters.is_some()
             || native_shadow_parameters.is_some()
         {
             validate_offset_uniform_limits(uniform_limits)?;
@@ -835,6 +873,7 @@ fn prepare_runtime_pass_requests(
         if (spatial_uniform.is_some()
             || convolution_parameters.is_some()
             || gaussian_parameters.is_some()
+            || morphology_parameters.is_some()
             || offset_parameters.is_some()
             || native_shadow_parameters.is_some())
             != pass.cache_keys.is_some()
@@ -864,6 +903,7 @@ fn prepare_runtime_pass_requests(
                 kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
                 convolution_parameters,
                 gaussian_parameters,
+                morphology_parameters,
                 offset_parameters,
                 native_shadow_parameters,
                 convolution_weights: None,
@@ -970,6 +1010,22 @@ fn runtime_blur_for_kernel(kind: &RuntimePassKind) -> Option<&RuntimeBlur> {
 
 pub(super) struct PreparedResourceBinding {
     pub(super) allocation: RuntimeAllocationRequest,
+    pub(super) backing: PreparedResourceBacking,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DedicatedLeaseSlot(usize);
+impl DedicatedLeaseSlot {
+    pub(super) const fn index(self) -> usize {
+        self.0
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PreparedResourceBacking {
+    Dedicated { slot: DedicatedLeaseSlot },
+    MorphologyScratch { assignment: ScratchAssignmentRef },
+}
+pub(super) struct DedicatedLeaseEntry {
+    pub(super) resource: RuntimeResourceId,
     pub(super) lease: Option<ResourceLease>,
 }
 
@@ -989,6 +1045,11 @@ pub(super) struct PreparedOffsetParameterBinding {
 
 pub(super) struct PreparedNativeShadowParameterBinding {
     pub(super) bytes: NativeShadowParameterBytes,
+    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
+}
+
+pub(super) struct PreparedMorphologyParameterBinding {
+    pub(super) bytes: MorphologyParameterBytes,
     pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
 }
 
@@ -1320,15 +1381,14 @@ pub(crate) struct PreparedGraph<'device> {
     pub(super) color_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) spatial_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) backdrop_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
-    pub(super) resource_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
-    pub(super) kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
-    pub(super) convolution_weight_bindings:
-        PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+    pub(super) acquired_bindings: crate::accounting::OwnedBox<AcquiredGraphBindings>,
     pub(super) offset_parameter_bindings: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     pub(super) native_shadow_parameter_bindings:
         PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     pub(super) gaussian_parameter_bindings:
         PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
+    pub(super) morphology_parameter_bindings:
+        PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
     pub(super) color_filter_operation_bindings:
         PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     pub(super) spatial_filter_pass_objects:
@@ -1348,10 +1408,81 @@ pub(crate) struct PreparedGraph<'device> {
     _ready_device: PhantomData<&'device ResourceManager>,
 }
 
-struct AcquiredGraphBindings {
-    runtime_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
-    gaussian_kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
-    convolution_weight_bindings: PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+pub(super) struct AcquiredGraphBindings {
+    pub(super) runtime_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    pub(super) dedicated_lease_slots: AccountedVec<DedicatedLeaseEntry>,
+    pub(super) morphology_scratch_bindings: MorphologyScratchBindings,
+    pub(super) gaussian_kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
+    pub(super) convolution_weight_bindings:
+        PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+}
+
+impl AcquiredGraphBindings {
+    pub(super) fn dedicated_lease(
+        &self,
+        slot: DedicatedLeaseSlot,
+        resource: RuntimeResourceId,
+        account: &Account,
+    ) -> Result<&ResourceLease> {
+        dedicated_lease_at(&self.dedicated_lease_slots, slot, resource, account)
+    }
+    #[cfg(test)]
+    pub(super) fn dedicated_lease_for_test(
+        &self,
+        resource: RuntimeResourceId,
+    ) -> Option<&ResourceLease> {
+        let binding = self
+            .runtime_bindings
+            .entries
+            .iter()
+            .find(|(id, _)| *id == resource)?
+            .1
+            .backing;
+        let PreparedResourceBacking::Dedicated { slot } = binding else {
+            return None;
+        };
+        let entry = self.dedicated_lease_slots.get(slot.index())?;
+        (entry.resource == resource)
+            .then_some(entry.lease.as_ref())
+            .flatten()
+    }
+}
+pub(super) fn dedicated_lease_at<'a>(
+    entries: &'a [DedicatedLeaseEntry],
+    slot: DedicatedLeaseSlot,
+    resource: RuntimeResourceId,
+    account: &Account,
+) -> Result<&'a ResourceLease> {
+    account.work(RenderWork::ResourceProbes, 1)?;
+    let entry = entries
+        .get(slot.index())
+        .ok_or_else(|| preparation_error("dedicated lease slot is missing"))?;
+    if entry.resource != resource {
+        return Err(preparation_error(
+            "dedicated lease slot belongs to another logical resource",
+        ));
+    }
+    entry
+        .lease
+        .as_ref()
+        .ok_or_else(|| preparation_error("dedicated lease binding is stale or already released"))
+}
+#[cfg(test)]
+pub(super) fn take_dedicated_lease_for_test(
+    runtime: &mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    dedicated: &mut AccountedVec<DedicatedLeaseEntry>,
+    resource: RuntimeResourceId,
+) -> Option<ResourceLease> {
+    let PreparedResourceBacking::Dedicated { slot } =
+        runtime.maintenance_get_mut(&resource)?.backing
+    else {
+        return None;
+    };
+    dedicated.renderer_maintenance(RenderWork::ResourceProbes, 1);
+    let entry = dedicated.get_mut(slot.index())?;
+    (entry.resource == resource)
+        .then(|| entry.lease.take())
+        .flatten()
 }
 
 fn acquire_prepared_graph_resources(
@@ -1361,38 +1492,88 @@ fn acquire_prepared_graph_resources(
     queue: &wgpu::Queue,
     capabilities: &DeviceCapabilities,
     account: &Account,
-) -> Result<AcquiredGraphBindings> {
-    let mut runtime_bindings = PassMap::new(account, plan.resources.len())?;
-    let mut gaussian_kernel_bindings = PassMap::new(account, plan.kernels.len())?;
-    let mut convolution_weight_bindings = PassMap::new(account, plan.convolution_weights.len())?;
+) -> Result<crate::accounting::OwnedBox<AcquiredGraphBindings>> {
+    account.work(RenderWork::CoordinateVisits, 1)?;
+    let dedicated_count = plan
+        .resources
+        .len()
+        .checked_sub(plan.morphology_scratch.assignments.len())
+        .ok_or_else(|| preparation_error("scratch assignments exceed logical resource requests"))?;
+    // One unique owner keeps all physical binding families together. Admit its
+    // actual fixed backing and reserved maps before acquiring any native lease.
+    let mut bindings = crate::accounting::OwnedBox::new(
+        AcquiredGraphBindings {
+            runtime_bindings: PassMap::new(account, plan.resources.len())?,
+            dedicated_lease_slots: account.retained(dedicated_count)?,
+            morphology_scratch_bindings: MorphologyScratchBindings::reserve(
+                &plan.morphology_scratch,
+                account,
+            )?,
+            gaussian_kernel_bindings: PassMap::new(account, plan.kernels.len())?,
+            convolution_weight_bindings: PassMap::new(account, plan.convolution_weights.len())?,
+        },
+        &account.storage(),
+    )?;
     for request in &plan.resources {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        let Err(slot) = runtime_bindings.position(&request.runtime.id, account)? else {
+        let Err(slot) = bindings
+            .runtime_bindings
+            .position(&request.runtime.id, account)?
+        else {
             return Err(preparation_error(
                 "one runtime resource acquired more than one concrete binding",
             ));
         };
-        let lease = request
-            .allocation
-            .acquire(frame_scope, device, queue, capabilities)?;
-        runtime_bindings.insert_at_reserved(
+        let backing = match plan
+            .morphology_scratch
+            .assignment_for(request.runtime.id, account)?
+        {
+            Some(assignment) => PreparedResourceBacking::MorphologyScratch {
+                assignment: ScratchAssignmentRef::new(assignment),
+            },
+            None => {
+                let slot = DedicatedLeaseSlot(bindings.dedicated_lease_slots.len());
+                let lease = request
+                    .allocation
+                    .acquire(frame_scope, device, queue, capabilities)?;
+                bindings
+                    .dedicated_lease_slots
+                    .append_slot()?
+                    .write(DedicatedLeaseEntry {
+                        resource: request.runtime.id,
+                        lease: Some(lease),
+                    });
+                PreparedResourceBacking::Dedicated { slot }
+            }
+        };
+        bindings.runtime_bindings.insert_at_reserved(
             slot,
             request.runtime.id,
             PreparedResourceBinding {
                 allocation: request.allocation.clone(),
-                lease: Some(lease),
+                backing,
             },
         )?;
     }
+    bindings.morphology_scratch_bindings.acquire(
+        &plan.morphology_scratch,
+        frame_scope,
+        device,
+        capabilities,
+        account,
+    )?;
     for request in &plan.kernels {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        let Err(slot) = gaussian_kernel_bindings.position(&request.key, account)? else {
+        let Err(slot) = bindings
+            .gaussian_kernel_bindings
+            .position(&request.key, account)?
+        else {
             return Err(preparation_error(
                 "one Gaussian kernel acquired more than one concrete binding",
             ));
         };
         let lease = frame_scope.acquire_gaussian_kernel_buffer(device, &request.plan)?;
-        gaussian_kernel_bindings.insert_at_reserved(
+        bindings.gaussian_kernel_bindings.insert_at_reserved(
             slot,
             request.key,
             PreparedKernelBinding { lease: Some(lease) },
@@ -1401,7 +1582,7 @@ fn acquire_prepared_graph_resources(
     for request in &plan.convolution_weights {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         let lease = frame_scope.acquire_convolution_weights(device, queue, &request.plan)?;
-        convolution_weight_bindings.insert_with(
+        bindings.convolution_weight_bindings.insert_with(
             request.owner,
             PreparedConvolutionWeightsBinding {
                 lease: Some(lease),
@@ -1410,11 +1591,7 @@ fn acquire_prepared_graph_resources(
             account,
         )?;
     }
-    Ok(AcquiredGraphBindings {
-        runtime_bindings,
-        gaussian_kernel_bindings,
-        convolution_weight_bindings,
-    })
+    Ok(bindings)
 }
 
 fn create_offset_parameter_binding(
@@ -1501,11 +1678,40 @@ fn create_gaussian_parameter_binding(
     })
 }
 
+fn create_morphology_parameter_binding(
+    generation: &Generation,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bytes: &MorphologyParameterBytes,
+    account: &Account,
+) -> Result<PreparedMorphologyParameterBinding> {
+    let buffer = generation.allocation_with_upload(
+        GenerationClass::PassBuffers,
+        256,
+        256,
+        Some(account),
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist Morphology checked texel uniform"),
+                size: 256,
+                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        },
+    )?;
+    queue.write_buffer(&buffer, 0, bytes.as_bytes());
+    Ok(PreparedMorphologyParameterBinding {
+        bytes: bytes.clone(),
+        buffer: Some(buffer),
+    })
+}
+
 struct PreparedOperationParameterBindings {
     color_filters: PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     offsets: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     native_shadows: PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     gaussians: PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
+    morphologies: PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
 }
 
 fn create_operation_parameter_bindings(
@@ -1519,8 +1725,14 @@ fn create_operation_parameter_bindings(
     let mut offset_count = 0usize;
     let mut native_shadow_count = 0usize;
     let mut gaussian_count = 0usize;
+    let mut morphology_count = 0usize;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
+        if request.morphology_parameters.is_some() {
+            morphology_count = morphology_count
+                .checked_add(1)
+                .ok_or(crate::RenderAccountingError::Invariant)?;
+        }
         if request.gaussian_parameters.is_some() {
             gaussian_count = gaussian_count
                 .checked_add(1)
@@ -1546,6 +1758,7 @@ fn create_operation_parameter_bindings(
     let mut offset_bindings = PassMap::new(account, offset_count)?;
     let mut native_shadow_bindings = PassMap::new(account, native_shadow_count)?;
     let mut gaussian_bindings = PassMap::new(account, gaussian_count)?;
+    let mut morphology_bindings = PassMap::new(account, morphology_count)?;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if let Some(bytes) = request.gaussian_parameters.as_ref() {
@@ -1562,6 +1775,21 @@ fn create_operation_parameter_bindings(
             let binding =
                 create_gaussian_parameter_binding(generation, device, queue, bytes, account)?;
             gaussian_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
+        }
+        if let Some(bytes) = request.morphology_parameters.as_ref() {
+            if !matches!(request.runtime.kind, RuntimePassKind::Morphology(_)) {
+                return Err(preparation_error(
+                    "prepared Morphology bytes have no exact runtime pass",
+                ));
+            }
+            let Err(slot) = morphology_bindings.position(&request.runtime.id, account)? else {
+                return Err(preparation_error(
+                    "one Morphology pass acquired duplicate uniforms",
+                ));
+            };
+            let binding =
+                create_morphology_parameter_binding(generation, device, queue, bytes, account)?;
+            morphology_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
         }
         if let Some(bytes) = request.offset_parameters.as_ref() {
             if !matches!(request.runtime.kind, RuntimePassKind::Offset(_)) {
@@ -1640,6 +1868,7 @@ fn create_operation_parameter_bindings(
         offsets: offset_bindings,
         native_shadows: native_shadow_bindings,
         gaussians: gaussian_bindings,
+        morphologies: morphology_bindings,
     })
 }
 
@@ -1792,6 +2021,22 @@ fn realize_prepared_graph_pass(
                     pass_cache,
                     account,
                     GaussianPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+                .require_encoding_ready()?;
+            Ok(None)
+        }
+        RuntimePassKind::Morphology(_) => {
+            update
+                .realize_morphology_pass(
+                    device,
+                    pass_cache,
+                    account,
+                    MorphologyPassKeyRefs {
                         samplers: keys.samplers(),
                         layout: keys.layout(),
                         shader: keys.shader(),
@@ -2244,6 +2489,7 @@ impl<'device> PreparedGraph<'device> {
                 color_filters: color_filter_operation_bindings,
                 offsets: offset_parameter_bindings,
                 gaussians: gaussian_parameter_bindings,
+                morphologies: morphology_parameter_bindings,
                 native_shadows: native_shadow_parameter_bindings,
             } = create_operation_parameter_bindings(
                 frame_scope.generation(),
@@ -2273,12 +2519,11 @@ impl<'device> PreparedGraph<'device> {
                 color_filter_execution,
                 spatial_filter_execution,
                 backdrop_execution,
-                resource_bindings: acquired_resources.runtime_bindings,
-                kernel_bindings: acquired_resources.gaussian_kernel_bindings,
-                convolution_weight_bindings: acquired_resources.convolution_weight_bindings,
+                acquired_bindings: acquired_resources,
                 color_filter_operation_bindings,
                 offset_parameter_bindings,
                 gaussian_parameter_bindings,
+                morphology_parameter_bindings,
                 native_shadow_parameter_bindings,
                 spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
                 pass_cache_update: pass_realization.update,
@@ -2390,6 +2635,117 @@ impl PreparedGraph<'_> {
         Ok(request)
     }
 
+    pub(super) fn activate_morphology_scratch(
+        &mut self,
+        pass: RuntimePassId,
+        account: &Account,
+    ) -> Result<()> {
+        let request = self.require_current_pass(pass, account)?;
+        for read in &request.runtime.reads {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let binding = self
+                .acquired_bindings
+                .runtime_bindings
+                .get(&read.resource, account)?
+                .ok_or_else(|| preparation_error("scratch activation read binding is missing"))?;
+            if let PreparedResourceBacking::MorphologyScratch { assignment } = &binding.backing {
+                let assignment = assignment.index();
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if self
+                    .plan
+                    .morphology_scratch
+                    .assignments
+                    .get(assignment)
+                    .ok_or_else(|| preparation_error("scratch read assignment is absent"))?
+                    .resource
+                    != read.resource
+                {
+                    return Err(preparation_error(
+                        "scratch activation read has a forged logical identity",
+                    ));
+                }
+                self.acquired_bindings
+                    .morphology_scratch_bindings
+                    .validate_read(
+                        &self.plan.morphology_scratch,
+                        assignment,
+                        self.next_pass,
+                        account,
+                    )?;
+            }
+        }
+        let target = match request.runtime.result {
+            super::model::RuntimeResultBinding::Resource(resource) => self
+                .acquired_bindings
+                .runtime_bindings
+                .get(&resource, account)?
+                .and_then(|binding| match &binding.backing {
+                    PreparedResourceBacking::MorphologyScratch { assignment } => {
+                        Some((resource, assignment.index()))
+                    }
+                    _ => None,
+                }),
+            _ => None,
+        };
+        if let Some((resource, index)) = target {
+            account.work(RenderWork::ResourceProbes, 4)?;
+            let assignment = self
+                .plan
+                .morphology_scratch
+                .assignments
+                .get(index)
+                .ok_or_else(|| preparation_error("scratch activation assignment is absent"))?;
+            let state = self
+                .acquired_bindings
+                .morphology_scratch_bindings
+                .logical
+                .get(index)
+                .ok_or_else(|| preparation_error("scratch activation logical state is absent"))?;
+            let slot = self
+                .acquired_bindings
+                .morphology_scratch_bindings
+                .slots
+                .get(assignment.slot)
+                .ok_or_else(|| preparation_error("scratch activation physical slot is absent"))?;
+            if assignment.resource != resource
+                || assignment.producer != self.next_pass
+                || state.activated
+                || state.retired
+                || slot.occupant.is_some()
+                || slot.resolved
+                || self
+                    .plan
+                    .morphology_scratch
+                    .slots
+                    .get(assignment.slot)
+                    .map(|planned| planned.descriptor)
+                    != Some(slot.descriptor)
+            {
+                return Err(preparation_error(
+                    "scratch target slot is occupied, stale or scheduled at another producer",
+                ));
+            }
+            self.acquired_bindings.morphology_scratch_bindings.logical[index].activated = true;
+            self.acquired_bindings.morphology_scratch_bindings.slots[assignment.slot].occupant =
+                Some(index);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn morphology_slot_observation_for_test(
+        &self,
+        account: &Account,
+    ) -> Result<super::morphology_scratch::MorphologySlotObservationForTest> {
+        self.acquired_bindings.morphology_scratch_bindings.observe(
+            &self.plan.morphology_scratch,
+            self.frame_scope
+                .as_ref()
+                .ok_or_else(|| preparation_error("scratch observation frame is closed"))?,
+            account,
+        )
+    }
+
     pub(crate) fn texture_binding_for_pass(
         &self,
         pass: RuntimePassId,
@@ -2412,12 +2768,35 @@ impl PreparedGraph<'_> {
             ));
         }
         let binding = self
-            .resource_bindings
+            .acquired_bindings
+            .runtime_bindings
             .get(&resource, account)?
             .ok_or_else(|| preparation_error("prepared runtime resource binding is missing"))?;
-        let lease = binding.lease.as_ref().ok_or_else(|| {
-            preparation_error("prepared runtime resource binding is stale or already released")
-        })?;
+        let (lease, scratch_capacity) = match &binding.backing {
+            PreparedResourceBacking::Dedicated { slot } => (
+                self.acquired_bindings
+                    .dedicated_lease(*slot, resource, account)?,
+                None,
+            ),
+            PreparedResourceBacking::MorphologyScratch { assignment } => {
+                let plan = &self.plan.morphology_scratch;
+                let logical = plan
+                    .assignments
+                    .get(assignment.index())
+                    .ok_or_else(|| preparation_error("scratch logical assignment is missing"))?;
+                if logical.resource != resource {
+                    return Err(preparation_error(
+                        "scratch binding names the wrong logical identity",
+                    ));
+                }
+                self.acquired_bindings
+                    .morphology_scratch_bindings
+                    .validate_read(plan, assignment.index(), self.next_pass, account)?;
+                account.work(RenderWork::ResourceProbes, 1)?;
+                let slot = &self.acquired_bindings.morphology_scratch_bindings.slots[logical.slot];
+                (&slot.lease, Some(slot.descriptor))
+            }
+        };
         let frame_scope = self
             .frame_scope
             .as_ref()
@@ -2431,6 +2810,7 @@ impl PreparedGraph<'_> {
         Ok(PreparedTextureBinding {
             runtime_resource: resource,
             allocation_resource: lease.resource_identity(),
+            scratch_capacity,
             texture,
             view,
         })
@@ -2446,7 +2826,8 @@ impl PreparedGraph<'_> {
             return Ok(None);
         };
         let binding = self
-            .kernel_bindings
+            .acquired_bindings
+            .gaussian_kernel_bindings
             .get(&kernel, account)?
             .ok_or_else(|| preparation_error("prepared Gaussian kernel binding is missing"))?;
         let lease = binding.lease.as_ref().ok_or_else(|| {
@@ -2527,6 +2908,7 @@ impl PreparedPassView<'_> {
 pub(crate) struct PreparedTextureBinding<'prepared> {
     runtime_resource: RuntimeResourceId,
     allocation_resource: ResourceIdentity,
+    pub(super) scratch_capacity: Option<EffectTextureDescriptor>,
     texture: &'prepared wgpu::Texture,
     view: &'prepared wgpu::TextureView,
 }

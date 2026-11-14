@@ -82,8 +82,8 @@ dimensions! {
         /// kernels or packed raster streams.
         SerializedBytes,
         /// Output-scissor area scheduled for filter color conversion, resampling,
-        /// convolution accumulation/finalization, offset, raw lattice rebase,
-        /// blur, colorize or shadow-merge passes.
+        /// convolution accumulation/finalization, morphology tables/queries, offset,
+        /// raw lattice rebase, blur, colorize or shadow-merge passes.
         ScheduledFilterTexels,
         /// Actual scheduled convolution result-grid cells multiplied by taps, across all batches.
         ScheduledConvolutionTaps,
@@ -95,6 +95,11 @@ dimensions! {
         ScheduledGaussianSamples,
         /// Native shadow merge cells times actual original/shifted-alpha fetch opportunities.
         ScheduledShadowSamples,
+        /// Native morphology scheduled fetch opportunities: table builds and
+        /// constant-length queries use two per cell, first variable queries one,
+        /// refinements three, point copies/preparation/direct resolve one,
+        /// wrapped periodic resolve four and analytic constants zero.
+        ScheduledMorphologySamples,
         /// Nonempty native compute dispatch calls issued by the internal raster engine.
         RasterDispatches,
         /// Logical internal Vello raster passes actually encoded.
@@ -228,12 +233,14 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Convolution)
             || self.supported_for(RenderAttemptKind::Offset)
             || self.supported_for(RenderAttemptKind::Gaussian)
+            || self.supported_for(RenderAttemptKind::Morphology)
             || self.supported_for(RenderAttemptKind::DropShadow)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
             RenderAttemptKind::Offset
             | RenderAttemptKind::Gaussian
+            | RenderAttemptKind::Morphology
             | RenderAttemptKind::DropShadow => {
                 matches!(self, Self::FilterOperationVisits | Self::CoordinateVisits)
             }
@@ -329,6 +336,7 @@ impl RenderWork {
                         | Self::ScheduledConvolutionTaps
                         | Self::ScheduledOffsetSamples
                         | Self::ScheduledGaussianSamples
+                        | Self::ScheduledMorphologySamples
                         | Self::ScheduledShadowSamples
                         | Self::RasterDispatches
                         | Self::VelloPasses
@@ -956,6 +964,8 @@ pub enum RenderAttemptKind {
     Offset,
     /// Standalone resolved native Gaussian admission.
     Gaussian,
+    /// Standalone resolved native morphology admission.
+    Morphology,
     /// Standalone resolved native drop-shadow admission.
     DropShadow,
 }

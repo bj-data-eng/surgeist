@@ -1003,3 +1003,319 @@ fn initialized_native_constructor_admits_request_and_upload_atomically_before_in
         );
     }
 }
+
+fn set_generation_resource_limit(
+    generation: &Generation,
+    scope: RenderGenerationScope,
+    resource: RenderResource,
+    limit: u64,
+) {
+    let scope = generation.0.scopes[scope.index()];
+    let old = generation.0.ledger.limits(scope).unwrap();
+    generation
+        .0
+        .ledger
+        .set_limits(
+            scope,
+            Limits::from_fn(
+                |work| old.work(work),
+                |dimension| {
+                    if dimension == resource {
+                        limit
+                    } else {
+                        old.live(dimension)
+                    }
+                },
+            ),
+        )
+        .unwrap();
+}
+
+#[test]
+fn classified_cache_preview_refuses_the_complete_effects_requirement_before_any_payload_and_retries()
+ {
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    set_generation_resource_limit(
+        &generation,
+        RenderGenerationScope::Cache,
+        RenderResource::GpuBytes,
+        16,
+    );
+    generation.set_effects_gpu_byte_limit_for_test(7).unwrap();
+    let requests = [
+        (GenerationClass::CacheEffects, 4),
+        (GenerationClass::CacheEffects, 4),
+        (GenerationClass::CacheMasks, 2),
+    ];
+    let creates = AtomicUsize::new(0);
+    let acquire = || -> Result<Vec<OwnedGpu<()>>> {
+        generation.preview_classified_cache_allocations(requests, None)?;
+        requests
+            .into_iter()
+            .map(|(class, bytes)| {
+                generation.allocation(class, bytes, None, || {
+                    creates.fetch_add(1, Ordering::SeqCst);
+                })
+            })
+            .collect()
+    };
+    let error = acquire().unwrap_err();
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::GenerationRefused {
+            quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+            current: 0,
+            amount: 8,
+            reason: RenderRefusalReason::Limit { limit: 7 }
+        })
+    );
+    assert_eq!(creates.load(Ordering::SeqCst), 0);
+    let refused = generation.usage().unwrap();
+    assert_eq!(refused.live(RenderResource::GpuBytes), 0);
+    assert_eq!(refused.peak(RenderResource::GpuBytes), 0);
+    assert_eq!(refused.work(RenderWork::ResourceAllocations), 0);
+    assert_eq!(refused.work(RenderWork::ResourceAllocationRequests), 0);
+    generation.ensure_healthy().unwrap();
+    generation.set_effects_gpu_byte_limit_for_test(8).unwrap();
+    let live = acquire().unwrap();
+    assert_eq!(creates.load(Ordering::SeqCst), 3);
+    assert_eq!(generation.cache_bytes().unwrap(), 10);
+    drop(live);
+    assert_eq!(generation.cache_bytes().unwrap(), 0);
+    generation.ensure_healthy().unwrap();
+}
+
+#[test]
+fn classified_cache_preview_preserves_the_aggregate_ancestor_cap_across_distinct_classes() {
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    set_generation_resource_limit(
+        &generation,
+        RenderGenerationScope::Cache,
+        RenderResource::GpuBytes,
+        9,
+    );
+    generation.set_effects_gpu_byte_limit_for_test(8).unwrap();
+    let error = generation
+        .preview_classified_cache_allocations(
+            [
+                (GenerationClass::CacheEffects, 5),
+                (GenerationClass::CacheMasks, 5),
+            ],
+            None,
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::GenerationRefused {
+            quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+            current: 0,
+            amount: 10,
+            reason: RenderRefusalReason::Limit { limit: 9 }
+        })
+    );
+    assert_eq!(generation.cache_bytes().unwrap(), 0);
+    assert_eq!(
+        generation
+            .usage()
+            .unwrap()
+            .work(RenderWork::ResourceAllocations),
+        0
+    );
+    generation.ensure_healthy().unwrap();
+}
+
+#[test]
+fn classified_cache_preview_sums_repeated_class_bytes_with_checked_overflow_before_creation() {
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    let creates = AtomicUsize::new(0);
+    let result = generation
+        .preview_classified_cache_allocations(
+            [
+                (GenerationClass::CacheEffects, u64::MAX),
+                (GenerationClass::CacheEffects, 1),
+            ],
+            None,
+        )
+        .and_then(|()| {
+            generation.allocation(GenerationClass::CacheEffects, 1, None, || {
+                creates.fetch_add(1, Ordering::SeqCst);
+            })
+        });
+    assert_eq!(
+        result.unwrap_err().accounting_diagnostic(),
+        Some(RenderAccountingError::GenerationRefused {
+            quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+            current: u64::MAX,
+            amount: 1,
+            reason: RenderRefusalReason::Overflow
+        })
+    );
+    assert_eq!(creates.load(Ordering::SeqCst), 0);
+    assert_eq!(generation.cache_bytes().unwrap(), 0);
+    assert_eq!(
+        generation
+            .usage()
+            .unwrap()
+            .work(RenderWork::ResourceAllocations),
+        0
+    );
+    generation.ensure_healthy().unwrap();
+}
+
+#[test]
+fn classified_cache_preview_admits_each_new_inspection_before_its_work_and_never_creates() {
+    use crate::{RenderAccountingContext, RenderAttemptKind, RenderLimits, RenderPhase};
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    for limit in [0, 1, 2, 3, 4] {
+        let options = RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::ResourceProbes, limit)
+                .unwrap(),
+        );
+        let mut context = RenderAccountingContext::new(options);
+        let result = context.run(
+            RenderAttemptKind::Frame,
+            RenderPhase::GpuPrepare,
+            |account| {
+                generation.preview_classified_cache_allocations(
+                    [
+                        (GenerationClass::CacheEffects, 4),
+                        (GenerationClass::CacheEffects, 4),
+                    ],
+                    Some(account),
+                )
+            },
+        );
+        if limit == 4 {
+            result.unwrap();
+        } else {
+            let error = result.unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("each reached preview inspection must use the attempt allowance")
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::ResourceProbes)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+        }
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::ResourceProbes), limit);
+        assert_eq!(usage.work(RenderWork::ResourceAllocationRequests), 0);
+        assert_eq!(generation.cache_bytes().unwrap(), 0);
+        assert_eq!(
+            generation.usage().unwrap().work(RenderWork::ResourceProbes),
+            0
+        );
+        assert_eq!(
+            generation
+                .usage()
+                .unwrap()
+                .work(RenderWork::ResourceAllocations),
+            0
+        );
+        generation.ensure_healthy().unwrap();
+    }
+}
+
+#[test]
+fn effects_test_limit_changes_only_the_actual_scope_cap_without_resetting_custody_or_work() {
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    let scope = generation.0.scopes[RenderGenerationScope::Effects.index()];
+    generation
+        .0
+        .ledger
+        .set_limits(
+            scope,
+            Limits::from_fn(
+                |work| {
+                    if work == RenderWork::ResourceAllocations {
+                        2
+                    } else {
+                        u64::MAX
+                    }
+                },
+                |resource| {
+                    if resource == RenderResource::OpaqueGpuObjects {
+                        3
+                    } else {
+                        u64::MAX
+                    }
+                },
+            ),
+        )
+        .unwrap();
+    let value = generation
+        .allocation(GenerationClass::CacheEffects, 4, None, || ())
+        .unwrap();
+    let before = generation
+        .class_usage(GenerationClass::CacheEffects)
+        .unwrap();
+    generation.set_effects_gpu_byte_limit_for_test(3).unwrap();
+    let caps = generation.0.ledger.limits(scope).unwrap();
+    assert_eq!(caps.live(RenderResource::GpuBytes), 3);
+    assert_eq!(caps.live(RenderResource::OpaqueGpuObjects), 3);
+    assert_eq!(caps.work(RenderWork::ResourceAllocations), 2);
+    let after = generation
+        .class_usage(GenerationClass::CacheEffects)
+        .unwrap();
+    assert_eq!(
+        after.live(RenderResource::GpuBytes),
+        before.live(RenderResource::GpuBytes)
+    );
+    assert_eq!(
+        after.peak(RenderResource::GpuBytes),
+        before.peak(RenderResource::GpuBytes)
+    );
+    assert_eq!(
+        after.work(RenderWork::ResourceAllocations),
+        before.work(RenderWork::ResourceAllocations)
+    );
+    generation
+        .set_effects_gpu_byte_limit_for_test(u64::MAX)
+        .unwrap();
+    assert_eq!(
+        generation
+            .class_usage(GenerationClass::CacheEffects)
+            .unwrap()
+            .live(RenderResource::GpuBytes),
+        4
+    );
+    drop(value);
+    generation.ensure_healthy().unwrap();
+}
+
+#[test]
+fn classified_cache_preview_checks_each_actual_cache_class_scope() {
+    for class in [
+        GenerationClass::CacheVello,
+        GenerationClass::CacheEffects,
+        GenerationClass::CacheMasks,
+        GenerationClass::CacheKernels,
+    ] {
+        let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+        set_generation_resource_limit(&generation, class.scope(), RenderResource::GpuBytes, 3);
+        let error = generation
+            .preview_classified_cache_allocations([(class, 4)], None)
+            .unwrap_err();
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::GenerationRefused {
+                quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                current: 0,
+                amount: 4,
+                reason: RenderRefusalReason::Limit { limit: 3 }
+            })
+        );
+        assert_eq!(generation.cache_bytes().unwrap(), 0);
+        assert_eq!(
+            generation
+                .usage()
+                .unwrap()
+                .work(RenderWork::ResourceAllocations),
+            0
+        );
+        generation.ensure_healthy().unwrap();
+    }
+}

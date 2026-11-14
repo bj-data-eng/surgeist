@@ -467,6 +467,7 @@ fn runtime_pass_kind(
             RuntimePassKind::NativeShadowMerge(work.clone())
         }
         GraphLoweringPassKind::Gaussian(gaussian) => RuntimePassKind::Gaussian(gaussian.clone()),
+        GraphLoweringPassKind::Morphology(work) => RuntimePassKind::Morphology(work.clone()),
         GraphLoweringPassKind::Convolution(convolution) => {
             RuntimePassKind::Convolution(convolution.clone())
         }
@@ -810,6 +811,8 @@ const fn runtime_read_role(role: GraphLoweringReadRole) -> RuntimeReadRole {
         GraphLoweringReadRole::ConvolutionSource => RuntimeReadRole::ConvolutionSource,
         GraphLoweringReadRole::GaussianSource => RuntimeReadRole::GaussianSource,
         GraphLoweringReadRole::GaussianAuxiliary => RuntimeReadRole::GaussianAuxiliary,
+        GraphLoweringReadRole::MorphologySource => RuntimeReadRole::MorphologySource,
+        GraphLoweringReadRole::MorphologyPreviousQuery => RuntimeReadRole::MorphologyPreviousQuery,
         GraphLoweringReadRole::OffsetSource => RuntimeReadRole::OffsetSource,
         GraphLoweringReadRole::NativeShadowOriginal => RuntimeReadRole::NativeShadowOriginal,
         GraphLoweringReadRole::NativeShadowAlpha => RuntimeReadRole::NativeShadowAlpha,
@@ -842,6 +845,8 @@ pub(super) const fn shader_binding_role(role: RuntimeReadRole) -> ShaderBindingR
         RuntimeReadRole::ConvolutionSource => ShaderBindingRoleKey::ConvolutionSource,
         RuntimeReadRole::GaussianSource => ShaderBindingRoleKey::GaussianSource,
         RuntimeReadRole::GaussianAuxiliary => ShaderBindingRoleKey::GaussianAuxiliary,
+        RuntimeReadRole::MorphologySource => ShaderBindingRoleKey::MorphologySource,
+        RuntimeReadRole::MorphologyPreviousQuery => ShaderBindingRoleKey::MorphologyPreviousQuery,
         RuntimeReadRole::OffsetSource => ShaderBindingRoleKey::OffsetSource,
         RuntimeReadRole::NativeShadowOriginal => ShaderBindingRoleKey::NativeShadowOriginal,
         RuntimeReadRole::NativeShadowAlpha => ShaderBindingRoleKey::NativeShadowAlpha,
@@ -868,6 +873,7 @@ const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeR
     match kind {
         RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
+        | RuntimePassKind::Morphology(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
@@ -977,7 +983,9 @@ pub(super) fn runtime_pass_cache_keys(
         Some(
             if matches!(
                 kind,
-                RuntimePassKind::Convolution(_) | RuntimePassKind::Gaussian(_)
+                RuntimePassKind::Convolution(_)
+                    | RuntimePassKind::Gaussian(_)
+                    | RuntimePassKind::Morphology(_)
             ) {
                 ShaderTextureFormatKey::FilterRgba32Float
             } else {
@@ -988,6 +996,7 @@ pub(super) fn runtime_pass_cache_keys(
             kind,
             RuntimePassKind::Convolution(_)
                 | RuntimePassKind::Gaussian(_)
+                | RuntimePassKind::Morphology(_)
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::NativeShadowMerge(_)
         ) {
@@ -1037,6 +1046,7 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::ColorFilter(Some(_)) => Ok(ShaderProgramKey::ColorFilter),
         RuntimePassKind::Convolution(_) => Ok(ShaderProgramKey::Convolution),
         RuntimePassKind::Gaussian(operation) => Ok(super::gaussian::shader_program(operation)),
+        RuntimePassKind::Morphology(work) => Ok(super::morphology::shader_program(work)),
         RuntimePassKind::Offset(_) => Ok(ShaderProgramKey::Offset),
         RuntimePassKind::NativeShadowMerge(work) => Ok(super::native_shadow::shader_program(work)),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
@@ -1097,6 +1107,7 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         RuntimePassKind::Offset(_) => &[ShaderDataBindingKey::OffsetParameters],
         RuntimePassKind::NativeShadowMerge(_) => &[ShaderDataBindingKey::NativeShadowParameters],
         RuntimePassKind::Gaussian(operation) => super::gaussian::data_bindings(operation),
+        RuntimePassKind::Morphology(_) => &[ShaderDataBindingKey::MorphologyParameters],
         RuntimePassKind::Convolution(_) => &[
             ShaderDataBindingKey::ConvolutionParameters,
             ShaderDataBindingKey::ConvolutionWeights,

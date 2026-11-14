@@ -18,7 +18,8 @@ use super::{
         BlurAxis, BlurInput, BlurPassDescription, ColorFilterPassDescription,
         CompositePassDescription, ConvolutionPassDescription, CopyBackdropPassDescription,
         CorePassDescription, CorePassProgram, DropShadowColorizePassDescription,
-        GaussianPassDescription, NativeShadowPassDescription, OffsetPassDescription,
+        GaussianPassDescription, MorphologyPassDescription, NativeShadowPassDescription,
+        OffsetPassDescription,
     },
 };
 
@@ -33,6 +34,11 @@ pub(super) const GAUSSIAN_WGSL: &str = concat!(
     include_str!("../shaders/native_filter_color.wgsl"),
     include_str!("../shaders/native_periodic.wgsl"),
     include_str!("../shaders/gaussian.wgsl")
+);
+pub(super) const MORPHOLOGY_WGSL: &str = concat!(
+    include_str!("../shaders/native_filter_color.wgsl"),
+    include_str!("../shaders/native_periodic.wgsl"),
+    include_str!("../shaders/morphology.wgsl"),
 );
 pub(super) const NATIVE_SHADOW_WGSL: &str = concat!(
     include_str!("../shaders/native_filter_color.wgsl"),
@@ -692,6 +698,129 @@ pub(super) fn create_gaussian_render_pipeline(
                     super::ShaderProgramKey::GaussianConstant => "constant_main",
                     super::ShaderProgramKey::GaussianSource => "source_main",
                     _ => "fragment_main",
+                }),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
+pub(super) fn create_morphology_bind_group_layout(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: MorphologyPassDescription,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    let texture = |binding| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    let all_entries = [
+        texture(0),
+        texture(1),
+        wgpu::BindGroupLayoutEntry {
+            binding: 2,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(256),
+            },
+            count: None,
+        },
+    ];
+    let entries: &[wgpu::BindGroupLayoutEntry] = match description.stage {
+        super::ShaderMorphologyStageKey::Constant => &all_entries[2..3],
+        super::ShaderMorphologyStageKey::RefineQuery => &all_entries,
+        _ => &[all_entries[0], all_entries[2]],
+    };
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist morphology bindings"),
+            entries,
+        })
+    })
+}
+
+pub(super) fn create_morphology_shader_module(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist morphology shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(MORPHOLOGY_WGSL)),
+        })
+    })
+}
+
+pub(super) fn create_morphology_render_pipeline(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: MorphologyPassDescription,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Surgeist morphology pipeline layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
+        })
+    })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist morphology pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vertex_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(match description.stage {
+                    super::ShaderMorphologyStageKey::RebaseSource => "rebase_main",
+                    super::ShaderMorphologyStageKey::Copy => "copy_main",
+                    super::ShaderMorphologyStageKey::Prepare => "prepare_main",
+                    super::ShaderMorphologyStageKey::Table => "table_main",
+                    super::ShaderMorphologyStageKey::FirstQuery => "first_query_main",
+                    super::ShaderMorphologyStageKey::RefineQuery => "refine_query_main",
+                    super::ShaderMorphologyStageKey::Query => "query_main",
+                    super::ShaderMorphologyStageKey::Resolve => "resolve_main",
+                    super::ShaderMorphologyStageKey::Constant => "constant_main",
                 }),
                 targets: &[Some(target)],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -1939,6 +2068,339 @@ mod gaussian_pipeline_gpu_tests {
             pollster::block_on(validation.pop()).is_none(),
             "actual Gaussian entry points must accept their exact resource layouts"
         );
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod morphology_shader_tests {
+    use super::*;
+    use crate::shader::ShaderMorphologyStageKey as Stage;
+
+    const STAGES: [Stage; 9] = [
+        Stage::RebaseSource,
+        Stage::Copy,
+        Stage::Prepare,
+        Stage::Table,
+        Stage::FirstQuery,
+        Stage::RefineQuery,
+        Stage::Query,
+        Stage::Resolve,
+        Stage::Constant,
+    ];
+
+    #[test]
+    fn morphology_shader_validates_exact_uniform_and_reached_stage_bindings() {
+        let module = wgpu::naga::front::wgsl::parse_str(MORPHOLOGY_WGSL)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(MORPHOLOGY_WGSL)));
+        let info = wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
+        let bindings: Vec<_> = module
+            .global_variables
+            .iter()
+            .filter_map(|(_, variable)| {
+                variable
+                    .binding
+                    .as_ref()
+                    .map(|binding| (binding.binding, variable))
+            })
+            .collect();
+        assert_eq!(bindings.len(), 3);
+        assert!(bindings.iter().all(|(_, variable)| !matches!(
+            module.types[variable.ty].inner,
+            wgpu::naga::TypeInner::Sampler { .. }
+        )));
+        let uniform = bindings
+            .iter()
+            .find(|(binding, _)| *binding == 2)
+            .unwrap()
+            .1;
+        let wgpu::naga::TypeInner::Struct { span, .. } = module.types[uniform.ty].inner else {
+            panic!("morphology binding 2 must be its uniform protocol");
+        };
+        assert_eq!(span, 256);
+        for (index, entry) in module.entry_points.iter().enumerate() {
+            if entry.stage != wgpu::naga::ShaderStage::Fragment {
+                continue;
+            }
+            let mut used: Vec<_> = module
+                .global_variables
+                .iter()
+                .filter_map(|(handle, variable)| {
+                    let binding = variable.binding.as_ref()?;
+                    (!info.get_entry_point(index)[handle].is_empty()).then_some(binding.binding)
+                })
+                .collect();
+            used.sort_unstable();
+            let expected: &[u32] = match entry.name.as_str() {
+                "constant_main" => &[2],
+                "refine_query_main" => &[0, 1, 2],
+                "rebase_main" | "copy_main" | "prepare_main" | "table_main"
+                | "first_query_main" | "query_main" | "resolve_main" => &[0, 2],
+                _ => panic!("unrecognized morphology entry point"),
+            };
+            assert_eq!(used, expected, "{}", entry.name);
+        }
+    }
+
+    #[test]
+    fn morphology_gpu_creates_every_stage_pipeline_with_exact_resources_in_both_formats() {
+        let mut renderer =
+            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let (device, _) = renderer.default_wgpu_device_queue().unwrap();
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let account = Account::for_test();
+        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = account.cpu().unwrap();
+        let shader =
+            create_morphology_shader_module(&generation, cpu, Some(&account), device).unwrap();
+        for working in [
+            ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+            ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
+        ] {
+            for stage in STAGES {
+                let target_format = if matches!(
+                    stage,
+                    Stage::Prepare
+                        | Stage::Table
+                        | Stage::FirstQuery
+                        | Stage::RefineQuery
+                        | Stage::Query
+                ) {
+                    ShaderTextureFormatKey::FilterRgba32Float
+                } else {
+                    working
+                };
+                let description = MorphologyPassDescription {
+                    target_format,
+                    stage,
+                };
+                let layout = create_morphology_bind_group_layout(
+                    &generation,
+                    cpu,
+                    Some(&account),
+                    device,
+                    description,
+                )
+                .unwrap();
+                create_morphology_render_pipeline(
+                    &generation,
+                    cpu,
+                    Some(&account),
+                    device,
+                    description,
+                    &layout,
+                    &shader,
+                )
+                .unwrap();
+            }
+        }
+        assert!(
+            pollster::block_on(validation.pop()).is_none(),
+            "each real morphology stage must accept only its actual reads"
+        );
+    }
+
+    #[test]
+    fn morphology_first_query_completes_point_selection_and_zeroes_finite_exterior() {
+        use crate::shader::{MorphologyParameterBytes, MorphologyParameterFacts};
+        use wgpu::util::DeviceExt;
+        let mut renderer =
+            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let (device, queue) = renderer.default_wgpu_device_queue().unwrap();
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let account = Account::for_test();
+        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = account.cpu().unwrap();
+        let description = MorphologyPassDescription {
+            target_format: ShaderTextureFormatKey::FilterRgba32Float,
+            stage: Stage::FirstQuery,
+        };
+        let layout = create_morphology_bind_group_layout(
+            &generation,
+            cpu,
+            Some(&account),
+            device,
+            description,
+        )
+        .unwrap();
+        let shader =
+            create_morphology_shader_module(&generation, cpu, Some(&account), device).unwrap();
+        let pipeline = create_morphology_render_pipeline(
+            &generation,
+            cpu,
+            Some(&account),
+            device,
+            description,
+            &layout,
+            &shader,
+        )
+        .unwrap();
+        let extent = |width| wgpu::Extent3d {
+            width,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+        let texture = |width| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("morphology literal point selection"),
+                size: extent(width),
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba32Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
+        };
+        let source = texture(3);
+        let output = texture(5);
+        let literal = [
+            [0.25_f32, 0.0, 0.0, 0.5],
+            [0.0, 0.5, 0.0, 0.75],
+            [0.0, 0.0, 1.0, 1.0],
+        ];
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &source,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(&literal),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(48),
+                rows_per_image: None,
+            },
+            extent(3),
+        );
+        let bytes = MorphologyParameterBytes::try_new(
+            MorphologyParameterFacts {
+                stage: Stage::FirstQuery.parameter_code(),
+                source_size: [3, 1],
+                target_size: [5, 1],
+                source_base: [0, 0],
+                source_clip: [0.0, 0.0, 3.0, 1.0],
+                output_clip: [0.0, 0.0, 5.0, 1.0],
+                periodic_base: [0.0; 2],
+                periodic_step: [1.0; 2],
+                periodic: false,
+                converted: true,
+                linear: true,
+                operator: 0,
+                axis: 0,
+                level: 0,
+                span: 1,
+                input_length: 3,
+                lower_kind: 2,
+                lower_delta: -1,
+                upper_kind: 2,
+                upper_delta: 0,
+                valid_output: [1, 4],
+                constant_length: Some(1),
+                color: [0.0; 4],
+            },
+            &account,
+        )
+        .unwrap();
+        let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("morphology point parameters"),
+            contents: bytes.as_bytes(),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
+        let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
+        let bindings = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("morphology point bindings"),
+            layout: &layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&source_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: uniform.as_entire_binding(),
+                },
+            ],
+        });
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("morphology point readback"),
+            size: 256,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let attachments = [Some(wgpu::RenderPassColorAttachment {
+                view: &output_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                    store: wgpu::StoreOp::Store,
+                },
+            })];
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &attachments,
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &bindings, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &output,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(256),
+                    rows_per_image: None,
+                },
+            },
+            extent(5),
+        );
+        queue.submit([encoder.finish()]);
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .unwrap();
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        let mapped = slice.get_mapped_range();
+        let expected = [[0.0; 4], literal[0], literal[1], literal[2], [0.0; 4]];
+        for (pixel, expected) in expected.into_iter().enumerate() {
+            for (channel, expected) in expected.into_iter().enumerate() {
+                let offset = pixel * 16 + channel * 4;
+                let actual = f32::from_le_bytes(mapped[offset..offset + 4].try_into().unwrap());
+                assert_eq!(actual, expected, "pixel {pixel} channel {channel}");
+            }
+        }
+        drop(mapped);
+        staging.unmap();
+        assert!(pollster::block_on(validation.pop()).is_none());
     }
 }
 
