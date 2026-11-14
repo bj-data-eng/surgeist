@@ -1429,3 +1429,6 @@ mod relative_oriented;
 
 #[path = "baseline_offsets/relative_static_ports.rs"]
 mod relative_static_ports;
+
+#[path = "baseline_offsets/captured_depth.rs"]
+mod captured_depth;

@@ -44,7 +44,7 @@ fn standalone<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     )
 }
 
-fn on_bounded_stack(test: &str, run: impl FnOnce() + Send + 'static) {
+pub(crate) fn on_bounded_stack(test: &str, run: impl FnOnce() + Send + 'static) {
     const CHILD: &str = "SURGEIST_TEST_LAYOUT_TREE_DEPTH_CHILD";
     const STACK_BYTES: usize = 2 * 1024 * 1024;
 

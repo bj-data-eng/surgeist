@@ -704,4 +704,4 @@ fn run_session<Tree: LayoutTree>(
 mod atomic_size_tests;
 
 #[cfg(test)]
-mod depth_tests;
+pub(crate) mod depth_tests;
