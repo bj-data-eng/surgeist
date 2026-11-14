@@ -636,6 +636,15 @@ impl Account {
             self.work(RenderWork::ImageContentHits, 1)
         }
     }
+    pub(crate) fn import_convolution(
+        &self,
+        prepared: &crate::PreparedConvolution,
+    ) -> Result<Option<CpuImport>> {
+        self.cpu
+            .as_ref()
+            .map(|cpu| cpu.import_convolution(prepared, Some(self)))
+            .transpose()
+    }
     pub(crate) fn import_image(&self, image: &crate::Image) -> Result<Option<CpuImport>> {
         self.cpu
             .as_ref()
@@ -790,7 +799,9 @@ impl Account {
     pub(crate) fn allocation_error(&self, resource: RenderResource) -> Error {
         if matches!(
             self.kind,
-            RenderAttemptKind::ColorFilterProjection | RenderAttemptKind::LeaderPattern
+            RenderAttemptKind::ColorFilterProjection
+                | RenderAttemptKind::LeaderPattern
+                | RenderAttemptKind::Convolution
         ) {
             return RenderAccountingError::StandaloneAllocation { resource }.into();
         }
@@ -821,7 +832,9 @@ impl Account {
     pub(crate) fn capacity_error(&self, resource: RenderResource) -> Error {
         if matches!(
             self.kind,
-            RenderAttemptKind::ColorFilterProjection | RenderAttemptKind::LeaderPattern
+            RenderAttemptKind::ColorFilterProjection
+                | RenderAttemptKind::LeaderPattern
+                | RenderAttemptKind::Convolution
         ) {
             return RenderAccountingError::StandaloneCapacityOverflow { resource }.into();
         }
@@ -891,6 +904,7 @@ impl Account {
             .get_or_insert(refusal);
         if !self.is_paint_gradient()
             && self.kind != RenderAttemptKind::LeaderPattern
+            && self.kind != RenderAttemptKind::Convolution
             && refusal.phase != RenderPhase::Attempt
             && let RenderRefusalReason::Limit { limit } = refusal.reason
             && let Some(required) = refusal

@@ -38,6 +38,7 @@ mod capability;
 mod color_mapping;
 mod color_reduction;
 mod command;
+mod convolution;
 mod encode;
 mod error;
 mod filter;
@@ -90,6 +91,11 @@ pub use capability::{
     SymbolicColorPolicy, TransformCoordinateSpaceCapabilities,
 };
 pub use color_mapping::prepare_sdr_srgb_color;
+pub use convolution::{
+    ConvolutionDomains, ConvolutionEdgeMode, ConvolutionInput, ConvolutionNumericPhase,
+    ConvolutionParameter, ConvolutionPreparationError, FilterColorSpace, PreparedConvolution,
+    prepare_convolution,
+};
 pub use error::{
     DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,
     InvalidValue, PrimitiveFamily, PrimitiveOperation, RenderSurfaceAvailability, Result,

@@ -1,3 +1,5 @@
+mod convolution;
+
 use crate::accounting::{
     Account, AccountedVec, RenderAccountingError, RenderResource, RenderWork, SharedValue,
 };
@@ -456,9 +458,14 @@ pub(super) struct ExecutableBackdropFacts {
     pub(super) result: RuntimeResourceId,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ExecutableFilterStepFacts {
     Color(RuntimePassId),
+    Convolution {
+        passes: SharedValue<Vec<RuntimePassId>>,
+        source: RuntimeResourceId,
+        result: RuntimeResourceId,
+    },
     Blur {
         horizontal: RuntimePassId,
         vertical: RuntimePassId,
@@ -472,18 +479,22 @@ pub(super) enum ExecutableFilterStepFacts {
 }
 
 impl ExecutableFilterStepFacts {
-    fn first_pass(self) -> RuntimePassId {
+    fn first_pass(&self) -> Option<RuntimePassId> {
         match self {
-            Self::Color(pass) => pass,
-            Self::Blur { horizontal, .. } | Self::DropShadow { horizontal, .. } => horizontal,
+            Self::Color(pass) => Some(*pass),
+            Self::Blur { horizontal, .. } | Self::DropShadow { horizontal, .. } => {
+                Some(*horizontal)
+            }
+            Self::Convolution { passes, .. } => passes.first().copied(),
         }
     }
 
-    fn last_pass(self) -> RuntimePassId {
+    fn last_pass(&self) -> Option<RuntimePassId> {
         match self {
-            Self::Color(pass) => pass,
-            Self::Blur { vertical, .. } => vertical,
-            Self::DropShadow { merge, .. } => merge,
+            Self::Color(pass) => Some(*pass),
+            Self::Blur { vertical, .. } => Some(*vertical),
+            Self::DropShadow { merge, .. } => Some(*merge),
+            Self::Convolution { passes, .. } => passes.last().copied(),
         }
     }
 }
@@ -538,7 +549,13 @@ impl ClosedExecutableGraph {
     }
 
     fn has_spatial_filters(&self) -> bool {
-        !self.facts.blurs.is_empty() || !self.facts.drop_shadows.is_empty()
+        !self.facts.blurs.is_empty()
+            || !self.facts.drop_shadows.is_empty()
+            || self
+                .facts
+                .filter_steps
+                .iter()
+                .any(|step| matches!(step, ExecutableFilterStepFacts::Convolution { .. }))
     }
 
     fn has_backdrops(&self) -> bool {
@@ -642,6 +659,7 @@ impl ClosedExecutableGraphFacts {
                 && blurs_are_exact
                 && drop_shadows_are_exact
                 && filter_order_is_exact
+                && convolution::steps_are_exact(plan, &self.filter_steps, &proof)
                 && backdrops_are_exact
         })();
         proof.finish()?;
@@ -696,10 +714,10 @@ impl ExecutableBackdropFacts {
                 proof.work(
                     RenderWork::GraphNodeVisits,
                     if group_steps.len() == 1 { 1 } else { 2 },
-                ) && pass(first.first_pass()).is_some_and(|first| {
+                ) && first.first_pass().and_then(pass).is_some_and(|first| {
                     proof_read(first, 0, proof)
                         .is_some_and(|read| read.resource == self.completed_group)
-                }) && pass(last.last_pass()).is_some_and(|last| {
+                }) && last.last_pass().and_then(pass).is_some_and(|last| {
                     last.result == RuntimeResultBinding::Resource(self.outer_source)
                 })
             }
@@ -959,7 +977,36 @@ fn filter_steps_match(
     }
     for (a, b) in actual.iter().zip(expected) {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        if a != b {
+        let equal = match (a, b) {
+            (
+                ExecutableFilterStepFacts::Convolution {
+                    passes: a,
+                    source: a_source,
+                    result: a_result,
+                },
+                ExecutableFilterStepFacts::Convolution {
+                    passes: b,
+                    source: b_source,
+                    result: b_result,
+                },
+            ) => {
+                if a_source != b_source || a_result != b_result || a.len() != b.len() {
+                    false
+                } else if a.same_allocation(b) {
+                    true
+                } else {
+                    for (a, b) in a.iter().zip(b.iter()) {
+                        account.work(RenderWork::GraphEdgeVisits, 1)?;
+                        if a != b {
+                            return Ok(false);
+                        }
+                    }
+                    true
+                }
+            }
+            _ => a == b,
+        };
+        if !equal {
             return Ok(false);
         }
     }
@@ -992,6 +1039,27 @@ fn filter_step_order_is_exact(
             }
             let pass = &plan.passes[cursor];
             match &pass.kind {
+                RuntimePassKind::Convolution(_) => {
+                    let ExecutableFilterStepFacts::Convolution { passes, .. } =
+                        expected.get(step_index)?
+                    else {
+                        return None;
+                    };
+                    if passes.is_empty() {
+                        return None;
+                    }
+                    let end = cursor.checked_add(passes.len())?;
+                    if !proof_relationships_equal(
+                        plan.passes.get(cursor..end)?.iter().map(|p| p.id),
+                        passes.iter().copied(),
+                        proof,
+                        |a, b| a == b,
+                    ) {
+                        return None;
+                    }
+                    step_index += 1;
+                    cursor = end;
+                }
                 RuntimePassKind::ColorFilter(Some(_)) => {
                     step!(ExecutableFilterStepFacts::Color(pass.id));
                     cursor = cursor.checked_add(1)?;
@@ -1723,6 +1791,16 @@ impl ProofBounds {
                         bounds.shadows += 1;
                     }
                 }
+                RuntimePassKind::Convolution(work)
+                    if matches!(
+                        work.stage(),
+                        crate::frame::ConvolutionStage::RebaseSource
+                            | crate::frame::ConvolutionStage::PassThrough
+                            | crate::frame::ConvolutionStage::Prepare
+                    ) =>
+                {
+                    bounds.steps += 1
+                }
                 RuntimePassKind::CopyBackdrop => bounds.backdrops += 1,
                 _ => {}
             }
@@ -1884,6 +1962,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             RuntimePassKind::ColorFilter(Some(_)) | RuntimePassKind::BlurHorizontal(Some(_)) => {
                 self.visit_ordinary_filter(pass)
             }
+            RuntimePassKind::Convolution(_) => self.visit_convolution(),
             RuntimePassKind::CopyBackdrop => self.visit_backdrop(pass),
             RuntimePassKind::Composite(Some(composite))
                 if matches!(composite.kind, RuntimeCompositeKind::Layer { .. }) =>
@@ -2174,6 +2253,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
 
     fn visit_ordinary_filter(&mut self, pass: &RuntimePass) -> Option<()> {
         match &pass.kind {
+            RuntimePassKind::Convolution(_) => self.visit_convolution(),
             RuntimePassKind::ColorFilter(Some(filter)) => self.visit_color_filter(pass, filter),
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => self.visit_blur(pass, blur),
@@ -2313,7 +2393,9 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             let pass = self.pass_at(self.cursor)?;
             if !matches!(
                 pass.kind,
-                RuntimePassKind::ColorFilter(Some(_)) | RuntimePassKind::BlurHorizontal(Some(_))
+                RuntimePassKind::ColorFilter(Some(_))
+                    | RuntimePassKind::BlurHorizontal(Some(_))
+                    | RuntimePassKind::Convolution(_)
             ) {
                 break;
             }
@@ -4108,9 +4190,9 @@ mod repeated_proof_accounting_tests {
             ExecutableFilterStepFacts::Color(plan.passes[2].id),
         ];
         for mismatch in [false, true] {
-            let mut expected = actual;
+            let mut expected = actual.clone();
             if mismatch {
-                expected[1] = actual[2];
+                expected[1] = actual[2].clone();
             }
             let count = if mismatch { 2 } else { 3 };
             for limit in [count, count - 1] {
@@ -5293,6 +5375,7 @@ fn dispatch_pass_semantics(
                 .then_some(DispatchPassSemantics::ClosedExecutable)
         }
         RuntimePassKind::VelloCapture(_) => None,
+        RuntimePassKind::Convolution(_) => Some(DispatchPassSemantics::ClosedExecutable),
         RuntimePassKind::CopyBackdrop
         | RuntimePassKind::ColorFilter(Some(_))
         | RuntimePassKind::DropShadowColorize(Some(_)) => Some(DispatchPassSemantics::FuturePass),

@@ -407,6 +407,7 @@ const fn runtime_resource_role(role: GraphLoweringResourceRole) -> RuntimeResour
         GraphLoweringResourceRole::ImportedImage => RuntimeResourceRole::ImportedImage,
         GraphLoweringResourceRole::BackdropCopy => RuntimeResourceRole::BackdropCopy,
         GraphLoweringResourceRole::FilterIntermediate => RuntimeResourceRole::FilterIntermediate,
+        GraphLoweringResourceRole::ConvolutionFloat => RuntimeResourceRole::ConvolutionFloat,
         GraphLoweringResourceRole::ShadowImage => RuntimeResourceRole::ShadowImage,
         GraphLoweringResourceRole::CompositeResult => RuntimeResourceRole::CompositeResult,
     }
@@ -420,6 +421,7 @@ pub(super) const fn runtime_resource_format(
         RuntimeResourceRole::CaptureWorkingImage => RuntimeResourceFormat::VelloCaptureRgba8Unorm,
         RuntimeResourceRole::ClipCoverage => RuntimeResourceFormat::ClipCoverageRgba8Unorm,
         RuntimeResourceRole::ImportedImage => RuntimeResourceFormat::ResolvedMaskRgba8Unorm,
+        RuntimeResourceRole::ConvolutionFloat => RuntimeResourceFormat::ConvolutionRgba32Float,
         RuntimeResourceRole::RootWorkingImage
         | RuntimeResourceRole::IsolationWorkingImage
         | RuntimeResourceRole::BackdropCopy
@@ -460,6 +462,9 @@ fn runtime_pass_kind(
                 .map(|filter| runtime_color_filter(filter, account))
                 .transpose()?,
         ),
+        GraphLoweringPassKind::Convolution(convolution) => {
+            RuntimePassKind::Convolution(convolution.clone())
+        }
         GraphLoweringPassKind::BlurHorizontal(blur) => RuntimePassKind::BlurHorizontal(
             blur.map(|blur| runtime_blur(blur, RuntimeBlurAxis::Horizontal, working_format)),
         ),
@@ -796,6 +801,8 @@ const fn runtime_read_role(role: GraphLoweringReadRole) -> RuntimeReadRole {
         GraphLoweringReadRole::CaptureSource => RuntimeReadRole::CaptureSource,
         GraphLoweringReadRole::CompletedParent => RuntimeReadRole::CompletedParent,
         GraphLoweringReadRole::FilterSource => RuntimeReadRole::FilterSource,
+        GraphLoweringReadRole::ConvolutionSource => RuntimeReadRole::ConvolutionSource,
+        GraphLoweringReadRole::ConvolutionAuxiliary => RuntimeReadRole::ConvolutionAuxiliary,
         GraphLoweringReadRole::BlurredSourceAlpha => RuntimeReadRole::BlurredSourceAlpha,
         GraphLoweringReadRole::CompositeParent => RuntimeReadRole::CompositeParent,
         GraphLoweringReadRole::CompositeSource => RuntimeReadRole::CompositeSource,
@@ -821,6 +828,8 @@ pub(super) const fn shader_binding_role(role: RuntimeReadRole) -> ShaderBindingR
         RuntimeReadRole::CaptureSource => ShaderBindingRoleKey::CaptureSource,
         RuntimeReadRole::CompletedParent => ShaderBindingRoleKey::CompletedParent,
         RuntimeReadRole::FilterSource => ShaderBindingRoleKey::FilterSource,
+        RuntimeReadRole::ConvolutionSource => ShaderBindingRoleKey::ConvolutionSource,
+        RuntimeReadRole::ConvolutionAuxiliary => ShaderBindingRoleKey::ConvolutionAuxiliary,
         RuntimeReadRole::BlurredSourceAlpha => ShaderBindingRoleKey::BlurredSourceAlpha,
         RuntimeReadRole::CompositeParent => ShaderBindingRoleKey::CompositeParent,
         RuntimeReadRole::CompositeSource => ShaderBindingRoleKey::CompositeSource,
@@ -841,6 +850,7 @@ pub(super) const fn shader_sampling_edge(edge: RuntimeSamplingEdge) -> ShaderSam
 
 const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeReadRole) -> bool {
     match kind {
+        RuntimePassKind::Convolution(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { .. },
             ..
@@ -884,7 +894,7 @@ pub(super) fn runtime_pass_cache_keys(
             kind: RuntimeCompositeKind::Layer { parameters, .. }, ..
         })) if !parameters.composition().is_source_over_normal()
     );
-    let mut sampled_textures = account.temporary(reads.len())?;
+    let mut sampled_textures = account.temporary(reads.len().max(2))?;
     let mut samplers = account.retained(reads.len())?;
     for read in reads {
         account.work(RenderWork::GraphEdgeVisits, 1)?;
@@ -909,6 +919,14 @@ pub(super) fn runtime_pass_cache_keys(
             samplers.append_slot()?.write(read.sampler_key);
         }
     }
+    if matches!(kind, RuntimePassKind::Convolution(_)) && reads.len() == 1 {
+        let format = resource_format(reads[0].resource)?
+            .ok_or_else(|| lowering_error("convolution source format is missing"))?;
+        sampled_textures.append_slot()?.write((
+            ShaderBindingRoleKey::ConvolutionAuxiliary,
+            format.shader_key(),
+        ));
+    }
     let StorageAccount::Renderer(cpu) = account.storage() else {
         return Err(crate::accounting::RenderAccountingError::Invariant.into());
     };
@@ -928,8 +946,25 @@ pub(super) fn runtime_pass_cache_keys(
         program,
         layout.clone(),
         &samplers,
-        Some(ShaderTextureFormatKey::working(working_format)),
-        output_key,
+        Some(if matches!(kind, RuntimePassKind::Convolution(_)) {
+            ShaderTextureFormatKey::ConvolutionRgba32Float
+        } else {
+            ShaderTextureFormatKey::working(working_format)
+        }),
+        if matches!(kind, RuntimePassKind::Convolution(_)) {
+            Some(match result {
+                RuntimeResultBinding::Resource(resource) => resource_format(resource)?
+                    .ok_or_else(|| lowering_error("convolution target format is missing"))?
+                    .shader_key(),
+                _ => {
+                    return Err(lowering_error(
+                        "convolution requires a concrete resource target",
+                    ));
+                }
+            })
+        } else {
+            output_key
+        },
     )?;
     let target_format = match result {
         RuntimeResultBinding::Resource(resource) => resource_format(resource)?
@@ -961,6 +996,7 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::CanonicalizeCapture => Ok(ShaderProgramKey::CanonicalizeCapture),
         RuntimePassKind::CopyBackdrop => Ok(ShaderProgramKey::CopyBackdrop),
         RuntimePassKind::ColorFilter(Some(_)) => Ok(ShaderProgramKey::ColorFilter),
+        RuntimePassKind::Convolution(_) => Ok(ShaderProgramKey::Convolution),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
             source_alpha: blur.input == RuntimeBlurInput::SourceAlpha,
             edge: shader_sampling_edge(blur.edge),
@@ -1016,6 +1052,10 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         | RuntimePassKind::CopyBackdrop
         | RuntimePassKind::Present => &[SpatialUniform],
         RuntimePassKind::ColorFilter(Some(_)) => &[SpatialUniform, ColorFilterOperations],
+        RuntimePassKind::Convolution(_) => &[
+            ShaderDataBindingKey::ConvolutionParameters,
+            ShaderDataBindingKey::ConvolutionWeights,
+        ],
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {
             if matches!(blur.edge, RuntimeSamplingEdge::SemanticBorderMirror(_)) {
                 &[SpatialUniform, GaussianKernel, BlurEdgeParameters]

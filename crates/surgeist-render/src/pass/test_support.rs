@@ -1330,6 +1330,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::CanonicalizeCapture
             | RuntimePassKind::CopyBackdrop
             | RuntimePassKind::ColorFilter(None)
+            | RuntimePassKind::Convolution(_)
             | RuntimePassKind::BlurHorizontal(_)
             | RuntimePassKind::BlurVertical(_)
             | RuntimePassKind::DropShadowColorize(_)
@@ -3161,6 +3162,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         RuntimePassKind::VelloCapture(None) => None,
         RuntimePassKind::CanonicalizeCapture => Some(CorePassClass::CanonicalizeCapture),
         RuntimePassKind::CopyBackdrop
+        | RuntimePassKind::Convolution(_)
         | RuntimePassKind::ColorFilter(_)
         | RuntimePassKind::BlurHorizontal(_)
         | RuntimePassKind::BlurVertical(_)
@@ -4887,6 +4889,9 @@ fn spatial_filter_pass_tags(
     let mut tags = Vec::new();
     for step in &facts.filter_steps {
         match step {
+            ExecutableFilterStepFacts::Convolution { .. } => {
+                tags.push(SpatialFilterPassTagForTest::Convolution);
+            }
             ExecutableFilterStepFacts::Color(_) => {
                 tags.push(SpatialFilterPassTagForTest::Color);
             }
@@ -5299,6 +5304,8 @@ fn observe_layer_composition(
             RuntimeReadRole::CaptureSource
             | RuntimeReadRole::CompletedParent
             | RuntimeReadRole::FilterSource
+            | RuntimeReadRole::ConvolutionSource
+            | RuntimeReadRole::ConvolutionAuxiliary
             | RuntimeReadRole::BlurredSourceAlpha
             | RuntimeReadRole::Shadow
             | RuntimeReadRole::FinalWorkingImage => None,
@@ -6110,7 +6117,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 10];
+    let mut vocabulary = [false; 11];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6119,6 +6126,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && vocabulary[2]
         && vocabulary[8]
         && vocabulary[9]
+        && !vocabulary[10]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6487,7 +6495,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 10];
+    let mut vocabulary = [false; 11];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6540,7 +6548,11 @@ fn runtime_resource_facts_are_exact(
         && plan
             .resources
             .iter()
-            .any(|resource| resource.format == RuntimeResourceFormat::ResolvedMaskRgba8Unorm);
+            .any(|resource| resource.format == RuntimeResourceFormat::ResolvedMaskRgba8Unorm)
+        && plan
+            .resources
+            .iter()
+            .any(|resource| resource.format == RuntimeResourceFormat::ConvolutionRgba32Float);
     let over_limit = DeviceCapabilities::from_test_facts(true, true, 1);
     let extent_rejected = LoweredGraphPlan::try_lower_validated_graph(
         graph,
@@ -6610,6 +6622,12 @@ fn runtime_semantic_pass_facts_are_exact(plan: &LoweredGraphPlan) -> bool {
                 ..
             })) if parameters.alpha_mask().is_some()
         )
+    }) && plan.passes.iter().any(|pass| {
+        matches!(&pass.kind, RuntimePassKind::Convolution(work)
+            if matches!(work.stage(), crate::frame::ConvolutionStage::Accumulate {
+                first_tap: 0, tap_count: 1, first: true,
+            }) && work.operation().order() == [1, 1]
+                && work.operation().weights() == [1.0])
     })
 }
 
@@ -6781,9 +6799,24 @@ fn runtime_format_keys_are_separate(
     let main_keys = custom_key_map(plan);
     let reduced_keys = custom_key_map(reduced);
     let alternate_keys = custom_key_map(alternate_output);
-    let working_changes = main_keys
-        .iter()
-        .all(|(id, keys)| reduced_keys.get(id).is_some_and(|other| *other != *keys));
+    let working_changes = plan.passes.iter().all(|pass| {
+        let Some(main) = main_keys.get(&pass.id) else {
+            return true;
+        };
+        // Signed accumulation and finalization use only float32 resources;
+        // ordinary High/Reduced precision must not change these keys. All
+        // original pass kinds and the convolution boundary passes still vary.
+        let fixed_accumulation_format = matches!(&pass.kind, RuntimePassKind::Convolution(work)
+            if matches!(work.stage(), crate::frame::ConvolutionStage::Accumulate { .. }
+                | crate::frame::ConvolutionStage::Finalize));
+        reduced_keys.get(&pass.id).is_some_and(|other| {
+            if fixed_accumulation_format {
+                *other == *main
+            } else {
+                *other != *main
+            }
+        })
+    });
     let output_changes_only_present = plan.passes.iter().all(|pass| {
         let Some(main) = pass.cache_keys.as_ref() else {
             return true;
@@ -6811,6 +6844,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::DropShadowColorize(_) => 7,
         RuntimePassKind::Composite(_) => 8,
         RuntimePassKind::Present => 9,
+        RuntimePassKind::Convolution(_) => 10,
     }
 }
 

@@ -6,6 +6,7 @@ use super::{
     manager::{
         AllocationGeneration, FrameIdentity, ManagerIdentity, ResourceAccountingFault,
         ResourceAllocationPreflight, ResourceCacheKey, ResourceEntryState, ResourceIdentity,
+        ResourcePayload,
     },
 };
 use crate::{
@@ -270,6 +271,25 @@ impl ResourceManager {
             .values()
             .filter(|entry| matches!(entry.key, ResourceCacheKey::EffectTexture(_)))
             .count();
+        let convolution_float32_entries = state
+            .entries
+            .values()
+            .filter(|entry| {
+                matches!(&entry.payload,
+                ResourcePayload::EffectTexture { texture, .. }
+                if texture.format() == wgpu::TextureFormat::Rgba32Float)
+            })
+            .count();
+        let convolution_weight_entries = state
+            .entries
+            .values()
+            .filter(|entry| {
+                matches!(
+                    &entry.payload,
+                    ResourcePayload::ConvolutionWeightsBuffer { .. }
+                )
+            })
+            .count();
         let resolved_mask_upload_keys = state
             .entries
             .values()
@@ -279,7 +299,8 @@ impl ResourceManager {
                 | ResourceCacheKey::VelloBuffer(_)
                 | ResourceCacheKey::VelloImage(_)
                 | ResourceCacheKey::EffectTexture(_)
-                | ResourceCacheKey::GaussianKernelBuffer(_) => None,
+                | ResourceCacheKey::GaussianKernelBuffer(_)
+                | ResourceCacheKey::ConvolutionWeightsBuffer(_) => None,
             })
             .collect();
         let gaussian_kernel_count = state
@@ -311,6 +332,8 @@ impl ResourceManager {
             committed_transient_image_count,
             committed_transient_image_byte_len,
             effect_texture_count,
+            convolution_float32_entries,
+            convolution_weight_entries,
             resolved_mask_upload_keys,
             gaussian_kernel_count,
             recovery_outcome: state.pending_vello_atlas_recovery,
@@ -467,6 +490,8 @@ pub(crate) struct ResourceManagerObservationForTest {
     committed_transient_image_count: usize,
     committed_transient_image_byte_len: u64,
     effect_texture_count: usize,
+    convolution_float32_entries: usize,
+    convolution_weight_entries: usize,
     resolved_mask_upload_keys: Vec<ResolvedMaskUploadKey>,
     gaussian_kernel_count: usize,
     recovery_outcome: Option<VelloAtlasOutcome>,
@@ -519,6 +544,15 @@ impl ResourceManagerObservationForTest {
 
     pub(crate) const fn effect_texture_count_for_test(&self) -> usize {
         self.effect_texture_count
+    }
+
+    /// Counts actual native float32 effect textures, independently of cache-key roles.
+    pub(crate) const fn convolution_float32_entries_for_test(&self) -> usize {
+        self.convolution_float32_entries
+    }
+
+    pub(crate) const fn convolution_weight_entries_for_test(&self) -> usize {
+        self.convolution_weight_entries
     }
 
     pub(crate) fn resolved_mask_upload_keys_for_test(&self) -> &[ResolvedMaskUploadKey] {

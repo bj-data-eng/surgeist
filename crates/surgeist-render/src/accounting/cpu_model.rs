@@ -17,7 +17,7 @@ pub enum RenderCpuScope {
     DeviceBacking,
     /// Canonical history and publication draft record backing.
     ImageHistory,
-    /// Canonical prepared runs and their directly owned allocations.
+    /// Canonical prepared runs, convolution parameters and their directly owned allocations.
     PreparedValues,
     /// Producer-authoritative font resource payloads.
     FontPayloads,

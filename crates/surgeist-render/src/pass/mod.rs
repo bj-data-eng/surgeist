@@ -1,4 +1,5 @@
 mod close;
+mod convolution;
 mod encode;
 mod lower;
 mod model;

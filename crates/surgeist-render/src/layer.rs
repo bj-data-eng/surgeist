@@ -133,6 +133,22 @@ impl Layer {
         self
     }
 
+    /// Installs an admitted convolution, replacing the previous foreground effect.
+    #[must_use]
+    pub fn with_convolution(mut self, convolution: crate::PreparedConvolution) -> Self {
+        self.filter = Some(LayerFilter::Convolution(convolution));
+        self
+    }
+
+    /// Returns the admitted foreground convolution, if selected.
+    #[must_use]
+    pub const fn convolution(&self) -> Option<&crate::PreparedConvolution> {
+        match &self.filter {
+            Some(LayerFilter::Convolution(convolution)) => Some(convolution),
+            _ => None,
+        }
+    }
+
     /// Returns this layer with the supplied validated backdrop-filter input.
     ///
     /// The new input replaces any previous backdrop-filter input. This builder
@@ -265,7 +281,7 @@ impl Layer {
     pub const fn filter(&self) -> Option<Filter> {
         match &self.filter {
             Some(LayerFilter::Blur(filter)) => Some(*filter),
-            Some(LayerFilter::List(_)) | None => None,
+            Some(LayerFilter::List(_) | LayerFilter::Convolution(_)) | None => None,
         }
     }
 
@@ -274,7 +290,7 @@ impl Layer {
     pub const fn filter_list(&self) -> Option<&FilterList> {
         match &self.filter {
             Some(LayerFilter::List(filters)) => Some(filters),
-            Some(LayerFilter::Blur(_)) | None => None,
+            Some(LayerFilter::Blur(_) | LayerFilter::Convolution(_)) | None => None,
         }
     }
 
@@ -314,6 +330,7 @@ impl Layer {
 pub(crate) enum LayerFilter {
     Blur(Filter),
     List(FilterList),
+    Convolution(crate::PreparedConvolution),
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -13,8 +13,9 @@ pub(crate) const LAYER_COMPOSITE_WGSL: &str = concat!(
 
 pub(crate) use cache::{
     DevicePassCache, PassCacheCommitPreparation, ProvisionalColorFilterPassObjects,
-    ProvisionalCompositePassObjects, ProvisionalCopyBackdropPassObjects,
-    ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
+    ProvisionalCompositePassObjects, ProvisionalConvolutionPassObjects,
+    ProvisionalCopyBackdropPassObjects, ProvisionalCorePassObjects,
+    ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
 };
 #[cfg(test)]
 pub(crate) use cache::{ProvisionalBlurPassObjects, ProvisionalDropShadowColorizePassObjects};
@@ -26,7 +27,8 @@ pub(crate) use key::{
 };
 pub(crate) use parameters::{
     BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
-    CompositeParameterBytes, DropShadowParameterBytes, PassSpatialUniformBytes,
+    CompositeParameterBytes, ConvolutionParameterBytes, ConvolutionParameterFacts,
+    DropShadowParameterBytes, PassSpatialUniformBytes,
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) use parameters::{
@@ -50,6 +52,6 @@ pub(crate) use test_support::{
 };
 
 pub(crate) use validate::{
-    BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, CopyBackdropPassKeyRefs,
-    CorePassKeyRefs, DropShadowColorizePassKeyRefs,
+    BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, ConvolutionPassKeyRefs,
+    CopyBackdropPassKeyRefs, CorePassKeyRefs, DropShadowColorizePassKeyRefs,
 };

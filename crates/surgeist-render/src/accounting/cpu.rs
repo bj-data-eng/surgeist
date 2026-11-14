@@ -526,6 +526,48 @@ impl CpuAccount {
             })
         })
     }
+    pub(crate) fn import_convolution(
+        &self,
+        prepared: &crate::PreparedConvolution,
+        forward: Option<&Account>,
+    ) -> Result<CpuImport> {
+        let account = self.at(RenderCpuScope::PreparedValues);
+        account.phase(|| {
+            let owner = account.owner()?;
+            let mut registry = owner.lock();
+            for entry in &mut registry.entries {
+                account.probe(forward)?;
+                if let Payload::Convolution(existing) = &entry.payload
+                    && existing.same_allocation(prepared)
+                {
+                    entry.add_lease(&account.core)?;
+                    return Ok(CpuImport {
+                        owner: owner.clone(),
+                        key: entry.key,
+                    });
+                }
+            }
+            registry.reserve(&account)?;
+            let hold = account.acquire(
+                RenderResource::RetainedCpuBytes,
+                prepared
+                    .own_backing_bytes()
+                    .map_err(|_| account.capacity_error(RenderResource::RetainedCpuBytes))?,
+            )?;
+            let key = registry.next(&account.core)?;
+            registry.entries.push(Entry {
+                key,
+                leases: 1,
+                payload: Payload::Convolution(prepared.payload_clone()),
+                dependencies: None,
+                hold,
+            });
+            Ok(CpuImport {
+                owner: owner.clone(),
+                key,
+            })
+        })
+    }
     pub(crate) fn import_prepared(
         &self,
         prepared: &PreparedGlyphRun,
@@ -742,6 +784,7 @@ enum Payload {
     },
     Font(surgeist_font::ResourceId),
     Prepared(PreparedGlyphRun),
+    Convolution(crate::PreparedConvolution),
 }
 struct Entry {
     key: Key,

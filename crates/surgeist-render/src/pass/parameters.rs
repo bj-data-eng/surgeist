@@ -81,7 +81,7 @@ pub(super) fn prepared_pass_spatial_uniform(
     root_working_image: RuntimeResourceId,
     account: &Account,
 ) -> Result<Option<PassSpatialUniformBytes>> {
-    if pass.cache_keys.is_none() {
+    if pass.cache_keys.is_none() || matches!(pass.kind, RuntimePassKind::Convolution(_)) {
         return Ok(None);
     }
     let result_spatial = || -> Result<RuntimeSpatialDescriptor> {
@@ -124,6 +124,7 @@ pub(super) fn prepared_pass_spatial_uniform(
         RuntimePassKind::ColorFilter(Some(filter)) => {
             (filter.spatial.source, filter.spatial.result)
         }
+        RuntimePassKind::Convolution(_) => return Ok(None),
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {
             (blur.spatial.source, blur.spatial.result)
         }

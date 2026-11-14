@@ -17,16 +17,17 @@ use super::super::{
     image::ResolvedMaskUploadDescriptor,
     renderer::EffectQualityPolicy,
     resource::{
-        FrameResourceScope, GaussianKernelBufferLimits, GaussianKernelKey, GaussianKernelPlan,
-        GaussianKernelSamplingForm, ResourceAllocationPreflight, ResourceIdentity, ResourceLease,
-        ResourceManager, WorkingFormat,
+        ConvolutionWeightsPlan, FrameResourceScope, GaussianKernelBufferLimits, GaussianKernelKey,
+        GaussianKernelPlan, GaussianKernelSamplingForm, ResourceAllocationPreflight,
+        ResourceIdentity, ResourceLease, ResourceManager, WorkingFormat,
     },
     shader::{
         BlurEdgeParameterBytes, BlurPassKeyRefs, ColorFilterOperationBufferLimits,
         ColorFilterOperationBytes, ColorFilterPassKeyRefs, CompositeParameterBytes,
-        CompositePassKeyRefs, CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache,
-        DropShadowColorizePassKeyRefs, DropShadowParameterBytes, PassSpatialUniformBytes,
-        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
+        CompositePassKeyRefs, ConvolutionParameterBytes, ConvolutionPassKeyRefs,
+        CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache, DropShadowColorizePassKeyRefs,
+        DropShadowParameterBytes, PassSpatialUniformBytes, ProvisionalCopyBackdropPassObjects,
+        ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -123,6 +124,15 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) cache_keys: Option<RuntimePassCacheKeys>,
     pub(super) kernel: Option<GaussianKernelKey>,
     pub(super) kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
+    pub(super) convolution_parameters: Option<ConvolutionParameterBytes>,
+    pub(super) convolution_weights: Option<RuntimePassId>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct RuntimeConvolutionWeightsRequest {
+    pub(super) owner: RuntimePassId,
+    pub(super) plan: ConvolutionWeightsPlan,
+    pub(super) last_use: RuntimePassId,
 }
 
 #[derive(Debug, PartialEq)]
@@ -132,6 +142,7 @@ pub(super) struct RuntimeGraphPreparationPlan {
     pub(super) output_format: Format,
     pub(super) resources: AccountedVec<RuntimeResourcePreparationRequest>,
     pub(super) kernels: AccountedVec<RuntimeKernelPreparationRequest>,
+    pub(super) convolution_weights: AccountedVec<RuntimeConvolutionWeightsRequest>,
     pub(super) passes: AccountedVec<RuntimePassPreparationRequest>,
     pub(super) root_working_image: RuntimeResourceId,
     pub(super) final_present: RuntimePassId,
@@ -179,13 +190,14 @@ impl RuntimeGraphPreparationPlan {
             &pass_facts,
             account,
         )?;
-        let passes = prepare_runtime_pass_requests(
+        let mut passes = prepare_runtime_pass_requests(
             lowered,
             &prepared_resources.resource_by_id,
             &pass_facts,
             color_filter_limits,
             account,
         )?;
+        let convolution_weights = prepare_convolution_weights(&mut passes, device, account)?;
         let mut kernels = account.retained(pass_facts.kernels.len())?;
         for kernel in pass_facts.kernels.into_values() {
             account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -197,6 +209,12 @@ impl RuntimeGraphPreparationPlan {
                 .allocation_preflights
                 .push(ResourceAllocationPreflight::gaussian_kernel(&kernel.plan)?)?;
         }
+        for weights in &convolution_weights {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            prepared_resources.allocation_preflights.push(
+                ResourceAllocationPreflight::convolution_weights(&weights.plan)?,
+            )?;
+        }
 
         Ok(Self {
             generation: lowered.generation,
@@ -204,6 +222,7 @@ impl RuntimeGraphPreparationPlan {
             output_format: lowered.output_format,
             resources: prepared_resources.resources,
             kernels,
+            convolution_weights,
             passes,
             root_working_image: lowered.root_working_image,
             final_present: lowered.final_present,
@@ -284,6 +303,25 @@ fn prepare_runtime_resource_allocation(
 ) -> Result<RuntimeAllocationRequest> {
     let extent = resource.spatial.device_extent;
     match (&resource.format, &resource.import) {
+        (RuntimeResourceFormat::ConvolutionRgba32Float, None)
+            if resource.role == RuntimeResourceRole::ConvolutionFloat
+                && matches!(resource.producer, RuntimeResourceProducer::Pass(_)) =>
+        {
+            let descriptor = EffectTextureDescriptor::try_convolution_float32(
+                extent,
+                wgpu::TextureUsages::RENDER_ATTACHMENT
+                    .union(wgpu::TextureUsages::TEXTURE_BINDING)
+                    .union(wgpu::TextureUsages::COPY_SRC)
+                    .union(wgpu::TextureUsages::COPY_DST),
+            )?;
+            capabilities.validate_effect_texture_allocation(
+                extent,
+                None,
+                descriptor.texture_format(),
+                descriptor.usage(),
+            )?;
+            Ok(RuntimeAllocationRequest::EffectTexture(descriptor))
+        }
         (RuntimeResourceFormat::VelloCaptureRgba8Unorm, None)
             if resource.role == RuntimeResourceRole::CaptureWorkingImage
                 && matches!(resource.producer, RuntimeResourceProducer::Pass(_)) =>
@@ -691,7 +729,15 @@ fn prepare_runtime_pass_requests(
             prepare_color_filter_operations(pass, color_filter_limits, account)?;
         let drop_shadow_parameters = prepare_drop_shadow_parameters(pass, account)?;
         let composite_parameters = prepared_pass_composite_parameters(pass, resources, account)?;
-        if spatial_uniform.is_some() != pass.cache_keys.is_some() {
+        let convolution_parameters = match &pass.kind {
+            RuntimePassKind::Convolution(operation) => {
+                Some(super::convolution::parameters(operation, account)?)
+            }
+            _ => None,
+        };
+        if (spatial_uniform.is_some() || convolution_parameters.is_some())
+            != pass.cache_keys.is_some()
+        {
             return Err(preparation_error(
                 "prepared pass spatial bytes and executable cache keys disagree",
             ));
@@ -715,9 +761,87 @@ fn prepare_runtime_pass_requests(
                 cache_keys: pass.cache_keys.clone(),
                 kernel: facts.kernel_by_pass.get(&pass.id, account)?.copied(),
                 kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
+                convolution_parameters,
+                convolution_weights: None,
             });
     }
     Ok(requests)
+}
+
+fn prepare_convolution_weights(
+    passes: &mut [RuntimePassPreparationRequest],
+    device: &wgpu::Device,
+    account: &Account,
+) -> Result<AccountedVec<RuntimeConvolutionWeightsRequest>> {
+    use crate::frame::ConvolutionStage;
+    let mut count = 0usize;
+    for pass in passes.iter() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if matches!(&pass.runtime.kind, RuntimePassKind::Convolution(op) if matches!(op.stage(), ConvolutionStage::Prepare | ConvolutionStage::PassThrough | ConvolutionStage::RebaseSource))
+        {
+            count = count
+                .checked_add(1)
+                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
+        }
+    }
+    let mut weights = account.retained::<RuntimeConvolutionWeightsRequest>(count)?;
+    let mut active = None;
+    for pass in passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let RuntimePassKind::Convolution(op) = &pass.runtime.kind else {
+            continue;
+        };
+        if matches!(
+            op.stage(),
+            ConvolutionStage::Prepare
+                | ConvolutionStage::PassThrough
+                | ConvolutionStage::RebaseSource
+        ) {
+            if active.is_some() {
+                return Err(preparation_error(
+                    "convolution weight chain was not completed",
+                ));
+            }
+            let input = if matches!(
+                op.stage(),
+                ConvolutionStage::PassThrough | ConvolutionStage::RebaseSource
+            ) {
+                &[][..]
+            } else {
+                op.operation().weights()
+            };
+            let plan = ConvolutionWeightsPlan::try_new(input, account, &device.limits())?;
+            let index = weights.len();
+            weights
+                .append_slot()?
+                .write(RuntimeConvolutionWeightsRequest {
+                    owner: pass.runtime.id,
+                    plan,
+                    last_use: pass.runtime.id,
+                });
+            active = Some(index);
+        }
+        let index = active.ok_or_else(|| {
+            preparation_error("convolution stage has no prepared coefficient owner")
+        })?;
+        let request = &mut weights[index];
+        pass.convolution_weights = Some(request.owner);
+        request.last_use = pass.runtime.id;
+        if matches!(
+            op.stage(),
+            ConvolutionStage::Resolve
+                | ConvolutionStage::PassThrough
+                | ConvolutionStage::RebaseSource
+        ) {
+            active = None;
+        }
+    }
+    if active.is_some() {
+        return Err(preparation_error(
+            "convolution coefficient chain has no terminal stage",
+        ));
+    }
+    Ok(weights)
 }
 
 fn runtime_blur_for_kernel(kind: &RuntimePassKind) -> Option<&RuntimeBlur> {
@@ -736,6 +860,11 @@ pub(super) struct PreparedResourceBinding {
 
 pub(super) struct PreparedKernelBinding {
     pub(super) lease: Option<ResourceLease>,
+}
+
+pub(super) struct PreparedConvolutionWeightsBinding {
+    pub(super) lease: Option<ResourceLease>,
+    pub(super) last_use: RuntimePassId,
 }
 
 pub(super) struct PreparedColorFilterOperationBinding {
@@ -1063,6 +1192,8 @@ pub(crate) struct PreparedGraph<'device> {
     pub(super) backdrop_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) resource_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
     pub(super) kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
+    pub(super) convolution_weight_bindings:
+        PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
     pub(super) color_filter_operation_bindings:
         PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     pub(super) spatial_filter_pass_objects:
@@ -1085,6 +1216,7 @@ pub(crate) struct PreparedGraph<'device> {
 struct AcquiredGraphBindings {
     runtime_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
     gaussian_kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
+    convolution_weight_bindings: PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
 }
 
 fn acquire_prepared_graph_resources(
@@ -1097,6 +1229,7 @@ fn acquire_prepared_graph_resources(
 ) -> Result<AcquiredGraphBindings> {
     let mut runtime_bindings = PassMap::new(account, plan.resources.len())?;
     let mut gaussian_kernel_bindings = PassMap::new(account, plan.kernels.len())?;
+    let mut convolution_weight_bindings = PassMap::new(account, plan.convolution_weights.len())?;
     for request in &plan.resources {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         let Err(slot) = runtime_bindings.position(&request.runtime.id, account)? else {
@@ -1130,9 +1263,22 @@ fn acquire_prepared_graph_resources(
             PreparedKernelBinding { lease: Some(lease) },
         )?;
     }
+    for request in &plan.convolution_weights {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let lease = frame_scope.acquire_convolution_weights(device, queue, &request.plan)?;
+        convolution_weight_bindings.insert_with(
+            request.owner,
+            PreparedConvolutionWeightsBinding {
+                lease: Some(lease),
+                last_use: request.last_use,
+            },
+            account,
+        )?;
+    }
     Ok(AcquiredGraphBindings {
         runtime_bindings,
         gaussian_kernel_bindings,
+        convolution_weight_bindings,
     })
 }
 
@@ -1301,6 +1447,22 @@ fn realize_prepared_graph_pass(
                     pass_cache,
                     account,
                     ColorFilterPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+                .require_encoding_ready()?;
+            Ok(None)
+        }
+        RuntimePassKind::Convolution(_) => {
+            update
+                .realize_convolution_pass(
+                    device,
+                    pass_cache,
+                    account,
+                    ConvolutionPassKeyRefs {
                         samplers: keys.samplers(),
                         layout: keys.layout(),
                         shader: keys.shader(),
@@ -1759,6 +1921,7 @@ impl<'device> PreparedGraph<'device> {
                 backdrop_execution,
                 resource_bindings: acquired_resources.runtime_bindings,
                 kernel_bindings: acquired_resources.gaussian_kernel_bindings,
+                convolution_weight_bindings: acquired_resources.convolution_weight_bindings,
                 color_filter_operation_bindings,
                 spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
                 pass_cache_update: pass_realization.update,

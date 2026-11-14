@@ -7182,7 +7182,7 @@ fn runtime_capability_report_keeps_precision_flags_independent() {
     let combinations = [(true, true), (true, false), (false, true), (false, false)];
 
     for (high_precision, reduced_precision) in combinations {
-        let precisions = EffectPrecisionCapabilities::new(high_precision, reduced_precision);
+        let precisions = EffectPrecisionCapabilities::new(high_precision, reduced_precision, false);
         let available = AvailableRuntimeCapabilities::new(Format::Bgra8, precisions, 8_192);
         let report = RuntimeCapabilities::Available(available);
 
@@ -11446,7 +11446,7 @@ fn broad_backdrop_diagnostic_precedes_unavailable_effect_working_format() {
         .internal_resource_manager_observation_for_test();
     assert!(
         renderer.override_default_device_effect_precision_facts_for_test(
-            EffectPrecisionCapabilities::new(false, false),
+            EffectPrecisionCapabilities::new(false, false, false),
         ),
         "the real renderer must accept the scoped no-effect-format capability facts"
     );

@@ -34,6 +34,7 @@ pub(crate) enum RuntimeResourceRole {
     ImportedImage,
     BackdropCopy,
     FilterIntermediate,
+    ConvolutionFloat,
     ShadowImage,
     CompositeResult,
 }
@@ -44,6 +45,7 @@ pub(crate) enum RuntimeResourceFormat {
     ClipCoverageRgba8Unorm,
     Working(WorkingFormat),
     ResolvedMaskRgba8Unorm,
+    ConvolutionRgba32Float,
 }
 
 impl RuntimeResourceFormat {
@@ -53,6 +55,7 @@ impl RuntimeResourceFormat {
             Self::ClipCoverageRgba8Unorm => ShaderTextureFormatKey::ClipCoverageRgba8Unorm,
             Self::Working(format) => ShaderTextureFormatKey::working(format),
             Self::ResolvedMaskRgba8Unorm => ShaderTextureFormatKey::ResolvedMaskRgba8Unorm,
+            Self::ConvolutionRgba32Float => ShaderTextureFormatKey::ConvolutionRgba32Float,
         }
     }
 }
@@ -541,6 +544,7 @@ pub(crate) enum RuntimePassKind {
     CanonicalizeCapture,
     CopyBackdrop,
     ColorFilter(Option<RuntimeColorFilter>),
+    Convolution(crate::frame::GraphLoweringConvolution),
     BlurHorizontal(Option<RuntimeBlur>),
     BlurVertical(Option<RuntimeBlur>),
     DropShadowColorize(Option<RuntimeDropShadow>),
@@ -553,6 +557,8 @@ pub(crate) enum RuntimeReadRole {
     CaptureSource,
     CompletedParent,
     FilterSource,
+    ConvolutionSource,
+    ConvolutionAuxiliary,
     BlurredSourceAlpha,
     CompositeParent,
     CompositeSource,

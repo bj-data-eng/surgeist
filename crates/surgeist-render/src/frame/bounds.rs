@@ -627,6 +627,14 @@ impl SemanticSourceContribution {
             }
             None => children.current_parent,
         };
+        if layer.foreground_filters.as_ref().is_some_and(|effect| {
+            matches!(effect, crate::command::NormalizedForegroundEffect::Convolution(operation)
+                if super::convolution::source_domain_is_empty(operation))
+        }) {
+            // An empty convolution input excludes backdrop as well as child
+            // ink; do not qualify or capture a source the primitive cannot read.
+            layer.backdrop = None;
+        }
         source_bounds = Self::include_backdrop_contribution(
             source_bounds,
             current_parent,
@@ -635,19 +643,33 @@ impl SemanticSourceContribution {
             layer_to_surface,
             account,
         )?;
-        if let Some(filters) = &layer.foreground_filters
-            && let Some(bounds) = source_bounds.known_non_empty_extent()
-            && let Some(scale) = context.local_raster_scale(layer_to_surface)?
-        {
-            source_bounds = SemanticSourceBounds::from_parts(
-                Some(foreground_filter_bounds(
-                    bounds,
-                    scale,
-                    filters.ops(),
-                    account,
-                )?),
-                source_bounds.contains_unresolved_content(),
-            );
+        match &layer.foreground_filters {
+            Some(crate::command::NormalizedForegroundEffect::Css(filters)) => {
+                if let Some(bounds) = source_bounds.known_non_empty_extent()
+                    && let Some(scale) = context.local_raster_scale(layer_to_surface)?
+                {
+                    source_bounds = SemanticSourceBounds::from_parts(
+                        Some(foreground_filter_bounds(
+                            bounds,
+                            scale,
+                            filters.ops(),
+                            account,
+                        )?),
+                        source_bounds.contains_unresolved_content(),
+                    );
+                }
+            }
+            Some(crate::command::NormalizedForegroundEffect::Convolution(operation)) => {
+                // Primitive output support is independent of child ink. In
+                // particular, nonzero bias can paint an empty captured scene.
+                let domains = operation.domains();
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::convolution::intersection(domains.result(), domains.filter()),
+                        "convolution primitive result",
+                    )?);
+            }
+            None => {}
         }
         if let Some(clip) = layer.clip.as_ref() {
             source_bounds = source_bounds.try_intersect(

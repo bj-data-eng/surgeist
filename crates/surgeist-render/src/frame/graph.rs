@@ -1,3 +1,7 @@
+use super::convolution::{
+    ConvolutionMapping, ConvolutionStage, empty_source_spatial, intersection, require_spatial,
+    source_domain_is_empty,
+};
 use crate::accounting::{Account, AccountedVec, RenderWork, SharedValue};
 use std::ops::ControlFlow;
 #[cfg(test)]
@@ -111,6 +115,7 @@ pub(super) enum SemanticResourceRole {
     ImportedImage,
     BackdropCopy,
     FilterIntermediate,
+    ConvolutionFloat,
     ShadowImage,
     CompositeResult,
 }
@@ -172,6 +177,7 @@ pub(super) enum SemanticPassIntent {
         input: BlurInput,
     },
     DropShadowColorize,
+    Convolution(ConvolutionStage),
     Composite,
     Present,
 }
@@ -473,6 +479,14 @@ pub(super) struct SemanticFilterStepPlan {
     pub(super) step: ResolvedFilterStep,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SemanticConvolutionPlan {
+    pub(super) pass: SemanticPassId,
+    pub(super) operation: crate::PreparedConvolution,
+    pub(super) mapping: ConvolutionMapping,
+    pub(super) stage: ConvolutionStage,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SemanticBackdropRead {
     pub(super) pass: SemanticPassId,
@@ -504,6 +518,7 @@ pub(crate) struct GpuRenderGraph {
     pub(super) clip_coverages: AccountedVec<SemanticClipCoverage>,
     pub(super) composites: AccountedVec<SemanticCompositePlan>,
     pub(super) filter_steps: AccountedVec<SemanticFilterStepPlan>,
+    pub(super) convolutions: AccountedVec<SemanticConvolutionPlan>,
     pub(super) backdrop_reads: AccountedVec<SemanticBackdropRead>,
     pub(super) imports: AccountedVec<SemanticImportPlan>,
 }
@@ -783,6 +798,7 @@ impl SemanticGraphBuilder {
             | SemanticPassIntent::BlurHorizontal { .. }
             | SemanticPassIntent::BlurVertical { .. }
             | SemanticPassIntent::DropShadowColorize
+            | SemanticPassIntent::Convolution(_)
             | SemanticPassIntent::Composite => {
                 self.validate_transform_pass_shape(intent, reads, result)?;
             }
@@ -875,7 +891,14 @@ impl SemanticGraphBuilder {
                 Err(GraphValidationError::InvalidPassArity)
             };
         };
-        let reads_are_valid = if intent == SemanticPassIntent::Composite {
+        let reads_are_valid = if let SemanticPassIntent::Convolution(stage) = intent {
+            reads.len()
+                == match stage {
+                    ConvolutionStage::Accumulate { first: false, .. }
+                    | ConvolutionStage::Finalize => 2,
+                    _ => 1,
+                }
+        } else if intent == SemanticPassIntent::Composite {
             reads.len() >= 2
         } else {
             reads.len() == 1
@@ -884,6 +907,12 @@ impl SemanticGraphBuilder {
             return Err(GraphValidationError::InvalidPassArity);
         }
         let expected_role = match intent {
+            SemanticPassIntent::Convolution(
+                ConvolutionStage::RebaseSource
+                | ConvolutionStage::PassThrough
+                | ConvolutionStage::Resolve,
+            ) => SemanticResourceRole::FilterIntermediate,
+            SemanticPassIntent::Convolution(_) => SemanticResourceRole::ConvolutionFloat,
             SemanticPassIntent::CopyBackdrop => SemanticResourceRole::BackdropCopy,
             SemanticPassIntent::DropShadowColorize => SemanticResourceRole::ShadowImage,
             SemanticPassIntent::Composite => SemanticResourceRole::CompositeResult,
@@ -1167,6 +1196,7 @@ impl SemanticGraphBuilder {
             clip_coverages: self.account.retained(0)?,
             composites: self.account.retained(0)?,
             filter_steps: self.account.retained(0)?,
+            convolutions: self.account.retained(0)?,
             backdrop_reads: self.account.retained(0)?,
             imports: self.account.retained(0)?,
         })
@@ -1350,6 +1380,7 @@ pub(super) struct SemanticFrameGraphPlanner<'a> {
     clip_coverages: AccountedVec<SemanticClipCoverage>,
     composites: AccountedVec<SemanticCompositePlan>,
     filter_steps: AccountedVec<SemanticFilterStepPlan>,
+    convolutions: AccountedVec<SemanticConvolutionPlan>,
     backdrop_reads: AccountedVec<SemanticBackdropRead>,
     imports: AccountedVec<SemanticImportPlan>,
     resolved_mask_imports: AccountedVec<(ResolvedMaskUploadKey, PlannedGraphResource)>,
@@ -1399,6 +1430,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             clip_coverages: account.retained(0)?,
             composites: account.retained(0)?,
             filter_steps: account.retained(0)?,
+            convolutions: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1459,6 +1491,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.clip_coverages = planner.clip_coverages;
         graph.composites = planner.composites;
         graph.filter_steps = planner.filter_steps;
+        graph.convolutions = planner.convolutions;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1497,6 +1530,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             clip_coverages: account.retained(0)?,
             composites: account.retained(0)?,
             filter_steps: account.retained(0)?,
+            convolutions: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1597,6 +1631,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.clip_coverages = planner.clip_coverages;
         graph.composites = planner.composites;
         graph.filter_steps = planner.filter_steps;
+        graph.convolutions = planner.convolutions;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1789,12 +1824,20 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             .current,
                     )
                 } else {
-                    match self.prepare_layer_source(
-                        children,
-                        layer_to_surface,
-                        capture_space,
-                        finite_source.then_some((frame.parent.spatial, layer_to_destination)),
-                    )? {
+                    let prepared = match completion.layer.foreground_filters.as_ref() {
+                        Some(crate::command::NormalizedForegroundEffect::Convolution(
+                            operation,
+                        )) => {
+                            self.prepare_convolution_source(children, operation, layer_to_surface)?
+                        }
+                        _ => self.prepare_layer_source(
+                            children,
+                            layer_to_surface,
+                            capture_space,
+                            finite_source.then_some((frame.parent.spatial, layer_to_destination)),
+                        )?,
+                    };
+                    match prepared {
                         ControlFlow::Break(source) => source,
                         ControlFlow::Continue(child) => {
                             if pending.len() == pending.capacity() {
@@ -1970,7 +2013,15 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             source_forced_empty,
             source_is_coverage,
         } = completion;
-        if let Some(backdrop) = layer.backdrop.as_ref().filter(|_| !source_forced_empty) {
+        let empty_convolution_source = layer.foreground_filters.as_ref().is_some_and(|effect| {
+            matches!(effect, crate::command::NormalizedForegroundEffect::Convolution(operation)
+                if source_domain_is_empty(operation))
+        });
+        if let Some(backdrop) = layer
+            .backdrop
+            .as_ref()
+            .filter(|_| !source_forced_empty && !empty_convolution_source)
+        {
             source = self.plan_backdrop_group(
                 backdrop,
                 source,
@@ -1979,16 +2030,23 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 capture_space.source_space(),
             )?;
         }
-        if let Some(filters) = &layer.foreground_filters
+        if let Some(effect) = &layer.foreground_filters
             && let Some(group) = source
             && !source_forced_empty
         {
-            source = Some(self.apply_filter_operations(
-                group,
-                filters.ops(),
-                FilterSourceRole::Ordinary,
-                layer_to_surface,
-            )?);
+            source = match effect {
+                crate::command::NormalizedForegroundEffect::Css(filters) => {
+                    Some(self.apply_filter_operations(
+                        group,
+                        filters.ops(),
+                        FilterSourceRole::Ordinary,
+                        layer_to_surface,
+                    )?)
+                }
+                crate::command::NormalizedForegroundEffect::Convolution(operation) => {
+                    self.apply_convolution(group, operation, layer_to_surface)?
+                }
+            };
         }
         if source.is_none()
             && layer.foreground_filters.is_some()
@@ -2060,6 +2118,200 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             ControlFlow::Break(source) => Ok(source),
             ControlFlow::Continue(frame) => Ok(Some(self.plan_command_frame(frame)?.current)),
         }
+    }
+
+    fn prepare_convolution_source(
+        &mut self,
+        children: RenderCommands,
+        operation: &crate::PreparedConvolution,
+        raster_transform: Transform,
+    ) -> Result<PreparedLayerSource> {
+        let domains = operation.domains();
+        let result = intersection(domains.result(), domains.filter());
+        if result.width() == 0.0 || result.height() == 0.0 {
+            return Ok(ControlFlow::Break(None));
+        }
+        let source = intersection(domains.source(), domains.filter());
+        // An empty source has no child image to capture. Bias can still
+        // generate output, so retain one bounded transparent binding while
+        // preserving the actual result lattice's density and placement.
+        if source.width() == 0.0 || source.height() == 0.0 {
+            let result_spatial = require_spatial(self.context, result, raster_transform)?;
+            let dummy = empty_source_spatial(result_spatial)?;
+            return Ok(ControlFlow::Break(Some(
+                self.declare_transparent_parent(dummy)?.current,
+            )));
+        }
+        let spatial = require_spatial(self.context, source, raster_transform)?;
+        let parent = self.declare_transparent_parent(spatial)?;
+        let frame = self.command_frame(
+            children,
+            parent,
+            SemanticCommandPlanningState {
+                parent_locality: CaptureParentLocality::CaptureLocal,
+                span_scope: SemanticVelloSpanScope::LayerSource,
+                capture_transform: Transform::identity(),
+                parent_to_surface: raster_transform,
+                capture_space: CaptureBoundsCoordinateSpace::Local,
+                outer_clips: shared_copy(&[], self.account)?,
+            },
+        )?;
+        Ok(ControlFlow::Continue(frame))
+    }
+
+    fn apply_convolution(
+        &mut self,
+        mut source: PlannedGraphResource,
+        operation: &crate::PreparedConvolution,
+        raster_transform: Transform,
+    ) -> Result<Option<PlannedGraphResource>> {
+        self.account.work(RenderWork::FilterOperationVisits, 1)?;
+        let result_domain =
+            intersection(operation.domains().result(), operation.domains().filter());
+        if result_domain.width() == 0.0 || result_domain.height() == 0.0 {
+            return Ok(None);
+        }
+        let result_spatial = require_spatial(self.context, result_domain, raster_transform)?;
+        let source_domain =
+            intersection(operation.domains().source(), operation.domains().filter());
+        if source_domain.width() > 0.0 && source_domain.height() > 0.0 {
+            let required_source = require_spatial(self.context, source_domain, raster_transform)?;
+            if source.spatial != required_source {
+                // Backdrop composition can enlarge the group. Copy its raw,
+                // aligned working pixels back to the original D lattice before
+                // preparation owns the single source clip/color/grid conversion.
+                let mapping = ConvolutionMapping::try_rebase(
+                    operation,
+                    source.spatial,
+                    required_source,
+                    self.account,
+                )?;
+                source = self.declare_convolution_pass(
+                    &[source],
+                    required_source,
+                    operation,
+                    mapping,
+                    ConvolutionStage::RebaseSource,
+                )?;
+            }
+        }
+        let mapping =
+            ConvolutionMapping::try_new(operation, source.spatial, result_spatial, self.account)?;
+        if operation.is_passthrough() {
+            return self
+                .declare_convolution_pass(
+                    &[source],
+                    result_spatial,
+                    operation,
+                    mapping,
+                    ConvolutionStage::PassThrough,
+                )
+                .map(Some);
+        }
+        mapping.validate_tap_offsets(operation, self.account)?;
+        let source_grid = mapping.allocation_spatial(self.context, true)?;
+        let result_grid = mapping.allocation_spatial(self.context, false)?;
+        let prepared = self.declare_convolution_pass(
+            &[source],
+            source_grid,
+            operation,
+            mapping,
+            ConvolutionStage::Prepare,
+        )?;
+        let mut sum = None;
+        let mut first_tap = 0_u32;
+        let tap_total = u32::try_from(operation.weights().len()).map_err(|_| {
+            Error::invalid_value(
+                "convolution tap count",
+                operation.weights().len(),
+                "must fit the GPU tap address space",
+            )
+        })?;
+        while first_tap < tap_total {
+            self.account.work(RenderWork::FilterOperationVisits, 1)?;
+            let tap_count = (tap_total - first_tap).min(32);
+            let stage = ConvolutionStage::Accumulate {
+                first_tap,
+                tap_count,
+                first: sum.is_none(),
+            };
+            let inputs = match sum {
+                Some(previous) => [prepared, previous],
+                None => [prepared, prepared],
+            };
+            let reads = if sum.is_none() {
+                &inputs[..1]
+            } else {
+                &inputs[..]
+            };
+            sum = Some(self.declare_convolution_pass(
+                reads,
+                result_grid,
+                operation,
+                mapping,
+                stage,
+            )?);
+            first_tap += tap_count;
+        }
+        let sum = sum
+            .ok_or_else(|| Error::invalid_value("convolution tap count", 0, "must be positive"))?;
+        let finalized = self.declare_convolution_pass(
+            &[prepared, sum],
+            result_grid,
+            operation,
+            mapping,
+            ConvolutionStage::Finalize,
+        )?;
+        self.declare_convolution_pass(
+            &[finalized],
+            result_spatial,
+            operation,
+            mapping,
+            ConvolutionStage::Resolve,
+        )
+        .map(Some)
+    }
+
+    fn declare_convolution_pass(
+        &mut self,
+        reads: &[PlannedGraphResource],
+        spatial: NonEmptyFrameSpatialPlan,
+        operation: &crate::PreparedConvolution,
+        mapping: ConvolutionMapping,
+        stage: ConvolutionStage,
+    ) -> Result<PlannedGraphResource> {
+        let role = match stage {
+            ConvolutionStage::RebaseSource
+            | ConvolutionStage::PassThrough
+            | ConvolutionStage::Resolve => SemanticResourceRole::FilterIntermediate,
+            _ => SemanticResourceRole::ConvolutionFloat,
+        };
+        let result = graph_build(
+            self.builder
+                .declare_resource(SemanticResourceDescriptor::new(role, spatial, 0)),
+        )?;
+        let mut ids = self.account.temporary(reads.len())?;
+        for read in reads {
+            ids.append_slot()?.write(read.id);
+        }
+        let pass = graph_build(self.builder.declare_pass(
+            SemanticPassIntent::Convolution(stage),
+            &dependencies_for(reads, self.account)?,
+            &ids,
+            SemanticPassResult::Resource(result),
+        ))?;
+        self.convolutions.push(SemanticConvolutionPlan {
+            pass,
+            operation: operation.clone(),
+            mapping,
+            stage,
+        })?;
+        Ok(PlannedGraphResource {
+            id: result,
+            producer: Some(pass),
+            logical_bounds: spatial.logical_bounds,
+            spatial,
+        })
     }
 
     fn prepare_layer_source(

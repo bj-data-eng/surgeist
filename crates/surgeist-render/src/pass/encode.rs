@@ -5,6 +5,9 @@ use crate::accounting::{
 
 use std::sync::Arc;
 
+#[path = "encode/convolution.rs"]
+mod convolution;
+
 #[cfg(test)]
 use crate::BlendMode;
 
@@ -15,10 +18,11 @@ use super::super::{
     resource::{FrameCleanup, FrameResourceScope, GaussianKernelKey, ResourceManager},
     shader::{
         BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
-        CompositeParameterBytes, DevicePassCache, DropShadowParameterBytes,
-        PassCacheCommitPreparation, PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
-        ProvisionalCompositePassObjects, ProvisionalCorePassObjects,
-        ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate, ShaderCompositePathKey,
+        CompositeParameterBytes, ConvolutionParameterBytes, DevicePassCache,
+        DropShadowParameterBytes, PassCacheCommitPreparation, PassSpatialUniformBytes,
+        ProvisionalColorFilterPassObjects, ProvisionalCompositePassObjects,
+        ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
+        ShaderCompositePathKey,
     },
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloCaptureProof, PendingVelloResourceCommit,
@@ -38,9 +42,9 @@ use super::{
     },
     parameters::backdrop_blur_edge_uniform_bytes,
     prepare::{
-        PreparedColorFilterOperationBinding, PreparedGraph, PreparedKernelBinding,
-        PreparedResourceBinding, PreparedSpatialFilterPassObjects, PreparedTextureBinding,
-        RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
+        PreparedColorFilterOperationBinding, PreparedConvolutionWeightsBinding, PreparedGraph,
+        PreparedKernelBinding, PreparedResourceBinding, PreparedSpatialFilterPassObjects,
+        PreparedTextureBinding, RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
     },
 };
 
@@ -48,33 +52,38 @@ pub(super) fn filter_step_passes<'a>(
     steps: &'a [ExecutableFilterStepFacts],
     account: &'a Account,
 ) -> impl Iterator<Item = Result<RuntimePassId>> + 'a {
-    steps
-        .iter()
-        .flat_map(move |step| {
-            if let Err(error) = account.work(RenderWork::GraphNodeVisits, 1) {
-                return [Some(Err(error)), None, None, None];
+    steps.iter().flat_map(move |step| {
+        let count = match step {
+            ExecutableFilterStepFacts::Color(_) => 1,
+            ExecutableFilterStepFacts::Blur { .. } => 2,
+            ExecutableFilterStepFacts::DropShadow { .. } => 4,
+            ExecutableFilterStepFacts::Convolution { passes, .. } => passes.len().max(1),
+        };
+        (0..count).map(move |index| {
+            if index == 0 {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
             }
-            let passes = match *step {
-                ExecutableFilterStepFacts::Color(pass) => [Some(pass), None, None, None],
+            let pass = match step {
+                ExecutableFilterStepFacts::Color(pass) => Some(*pass),
                 ExecutableFilterStepFacts::Blur {
                     horizontal,
                     vertical,
-                } => [Some(horizontal), Some(vertical), None, None],
+                } => [*horizontal, *vertical].get(index).copied(),
                 ExecutableFilterStepFacts::DropShadow {
                     horizontal,
                     vertical,
                     colorize,
                     merge,
-                } => [
-                    Some(horizontal),
-                    Some(vertical),
-                    Some(colorize),
-                    Some(merge),
-                ],
+                } => [*horizontal, *vertical, *colorize, *merge]
+                    .get(index)
+                    .copied(),
+                ExecutableFilterStepFacts::Convolution { passes, .. } => passes.get(index).copied(),
             };
-            passes.map(|pass| pass.map(Ok))
+            pass.ok_or_else(|| {
+                preparation_error("filter receipt contains an empty convolution chain")
+            })
         })
-        .flatten()
+    })
 }
 
 pub(super) fn vello_capture_raster_parameters(
@@ -204,6 +213,7 @@ pub(super) enum GraphScheduledEncodingKind {
     CanonicalizeCapture,
     CopyBackdrop,
     ColorFilter,
+    Convolution,
     BlurHorizontalRgba,
     BlurVerticalRgba,
     BlurHorizontalSourceAlpha,
@@ -219,6 +229,7 @@ pub(super) enum GraphScheduledEncodingKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ScheduledFilterRawFact {
     Color,
+    Convolution,
     BlurHorizontalRgba,
     BlurVerticalRgba,
     BlurHorizontalSourceAlpha,
@@ -236,6 +247,8 @@ pub(super) enum CustomSpineEncodingState {
 }
 
 pub(crate) struct CustomSpineEncodingSummary {
+    pub(crate) convolution_pass_count: usize,
+    pub(crate) convolution_parameters_and_resources_are_exact: bool,
     pub(crate) encodes_custom_passes_in_order: bool,
     pub(crate) clears_full_root_once: bool,
     pub(crate) uses_exact_prepared_spatial_mapping: bool,
@@ -300,6 +313,8 @@ pub(crate) struct CustomSpineEncodingSummary {
 }
 
 struct CustomSpineEncodingProgress {
+    convolution_pass_count: usize,
+    convolution_parameters_and_resources_are_exact: bool,
     scheduled: AccountedVec<GraphScheduledEncodingKind>,
     expected_capture_count: usize,
     expected_pass_count: usize,
@@ -362,6 +377,8 @@ impl CustomSpineEncodingProgress {
         account: &Account,
     ) -> Result<Self> {
         Ok(Self {
+            convolution_pass_count: 0,
+            convolution_parameters_and_resources_are_exact: true,
             scheduled: account.temporary(expected_pass_count)?,
             expected_capture_count,
             expected_pass_count,
@@ -446,6 +463,9 @@ impl CustomSpineEncodingProgress {
             .saturating_add(self.layer_composite_count);
         let backdrop = backdrop_execution_receipt(prepared, account)?;
         Ok(CustomSpineEncodingSummary {
+            convolution_pass_count: self.convolution_pass_count,
+            convolution_parameters_and_resources_are_exact: self
+                .convolution_parameters_and_resources_are_exact,
             encodes_custom_passes_in_order: graph_scheduled_encoding_order_is_exact(
                 &self.scheduled,
                 &prepared.plan.passes,
@@ -589,6 +609,7 @@ fn scheduled_filter_raw_facts(
         .iter()
         .filter_map(|kind| match kind {
             GraphScheduledEncodingKind::ColorFilter => Some(ScheduledFilterRawFact::Color),
+            GraphScheduledEncodingKind::Convolution => Some(ScheduledFilterRawFact::Convolution),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
                 Some(ScheduledFilterRawFact::BlurHorizontalRgba)
             }
@@ -747,6 +768,8 @@ fn backdrop_execution_receipt(
 impl CustomSpineEncodingSummary {
     fn proves_complete_submission(&self) -> bool {
         let common = self.encodes_custom_passes_in_order
+            && (self.convolution_pass_count == 0
+                || self.convolution_parameters_and_resources_are_exact)
             && self.clears_full_root_once
             && self.uses_exact_prepared_spatial_mapping
             && self.presents_to_exact_external_output
@@ -776,6 +799,7 @@ impl CustomSpineEncodingSummary {
             .blur_pass_count
             .saturating_add(self.drop_shadow_colorize_count)
             .saturating_add(self.drop_shadow_merge_count);
+        let spatial_pass_count = spatial_pass_count.saturating_add(self.convolution_pass_count);
         let exact_base = self.layer_composite_count == 0
             && self.color_filter_count == 0
             && self.copy_backdrop_count == 0
@@ -830,7 +854,7 @@ impl CustomSpineEncodingSummary {
                 && self.spatial_filter_kernels_release_at_validated_last_use
                 && self.spatial_filter_textures_release_at_validated_last_use);
         let exact_spatial_filter = self.copy_backdrop_count == 0
-            && self.blur_pass_count > 0
+            && (self.blur_pass_count > 0 || self.convolution_pass_count > 0)
             && exact_layers
             && exact_color_filters
             && exact_spatial_passes;
@@ -978,6 +1002,8 @@ struct PreparedPassEncodingRequest {
     cache_keys: Option<RuntimePassCacheKeys>,
     releases: SharedValue<Vec<RuntimeResourceId>>,
     kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
+    convolution_parameters: Option<ConvolutionParameterBytes>,
+    convolution_weights: Option<RuntimePassId>,
 }
 
 /// Created only after atomic lease resolution and every corresponding binding
@@ -1002,6 +1028,9 @@ struct ResolvedPassReleases<'graph> {
     kernel_bindings: &'graph mut PassMap<GaussianKernelKey, PreparedKernelBinding>,
     color_filter_operation_bindings:
         &'graph mut PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
+    convolution_weight_bindings:
+        &'graph mut PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+    convolution_release: Option<RuntimePassId>,
 }
 
 impl<'graph> ResolvedPassReleases<'graph> {
@@ -1014,6 +1043,24 @@ impl<'graph> ResolvedPassReleases<'graph> {
         let resource_releases = request.runtime.releases.clone();
         let kernel_releases = request.kernel_releases.clone();
         let releases_color_filter_operation = request.color_filter_operations.is_some();
+        let convolution_release = request
+            .convolution_weights
+            .map(|owner| -> Result<Option<RuntimePassId>> {
+                let binding = graph
+                    .convolution_weight_bindings
+                    .get(&owner, account)?
+                    .ok_or_else(|| {
+                        preparation_error("convolution weight release binding is missing")
+                    })?;
+                if binding.lease.is_none() {
+                    return Err(preparation_error(
+                        "convolution weights are stale or already released",
+                    ));
+                }
+                Ok((binding.last_use == pass).then_some(owner))
+            })
+            .transpose()?
+            .flatten();
 
         for resource in &resource_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
@@ -1054,10 +1101,15 @@ impl<'graph> ResolvedPassReleases<'graph> {
             resource_bindings,
             kernel_bindings,
             color_filter_operation_bindings,
+            convolution_weight_bindings,
             frame_scope,
             ..
         } = graph;
-        let mut leases = account.temporary(resource_releases.len() + kernel_releases.len())?;
+        let mut leases = account.temporary(
+            resource_releases.len()
+                + kernel_releases.len()
+                + usize::from(convolution_release.is_some()),
+        )?;
         for resource in &resource_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
             let lease = resource_bindings
@@ -1078,6 +1130,13 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 })?;
             leases.append_slot()?.write(lease);
         }
+        if let Some(owner) = convolution_release {
+            let lease = convolution_weight_bindings
+                .get(&owner, account)?
+                .and_then(|binding| binding.lease.as_ref())
+                .ok_or_else(|| preparation_error("convolution release became unavailable"))?;
+            leases.append_slot()?.write(lease);
+        }
         frame_scope
             .as_mut()
             .ok_or_else(|| preparation_error("prepared frame resource scope is closed"))?
@@ -1091,6 +1150,8 @@ impl<'graph> ResolvedPassReleases<'graph> {
             resource_bindings,
             kernel_bindings,
             color_filter_operation_bindings,
+            convolution_weight_bindings,
+            convolution_release,
         })
     }
 
@@ -1126,6 +1187,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
             Self::drop_required_binding(
                 binding,
                 "prepared color-filter operation release is unavailable after atomic resolution",
+                &mut first_missing,
+            );
+        }
+        if let Some(owner) = self.convolution_release {
+            let lease = self
+                .convolution_weight_bindings
+                .maintenance_get_mut(&owner)
+                .and_then(|binding| binding.lease.take());
+            Self::drop_required_binding(
+                lease,
+                "convolution coefficient lease missing after atomic release",
                 &mut first_missing,
             );
         }
@@ -1188,6 +1260,8 @@ impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
             cache_keys: request.cache_keys.clone(),
             releases: request.runtime.releases.clone(),
             kernel_releases: request.kernel_releases.clone(),
+            convolution_parameters: request.convolution_parameters.clone(),
+            convolution_weights: request.convolution_weights,
         }
     }
 }
@@ -1589,6 +1663,7 @@ fn graph_scheduled_encoding_order_is_exact(
             RuntimePassKind::CanonicalizeCapture => GraphScheduledEncodingKind::CanonicalizeCapture,
             RuntimePassKind::CopyBackdrop => GraphScheduledEncodingKind::CopyBackdrop,
             RuntimePassKind::ColorFilter(Some(_)) => GraphScheduledEncodingKind::ColorFilter,
+            RuntimePassKind::Convolution(_) => GraphScheduledEncodingKind::Convolution,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
                 RuntimeBlurInput::SourceAlpha => {
@@ -2057,6 +2132,13 @@ impl<'device> PreparedGraph<'device> {
             RuntimePassKind::ColorFilter(Some(_)) => {
                 self.encode_color_filter_step(encoder, request, progress, account)
             }
+            RuntimePassKind::Convolution(_) => {
+                self.encode_convolution(encoder, request, account)?;
+                self.complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                progress.convolution_pass_count = progress.convolution_pass_count.saturating_add(1);
+                progress.record_custom_completion(GraphScheduledEncodingKind::Convolution)
+            }
             RuntimePassKind::BlurHorizontal(Some(_)) | RuntimePassKind::BlurVertical(Some(_)) => {
                 self.encode_blur_step(encoder, request, progress, account)
             }
@@ -2516,6 +2598,7 @@ impl<'device> PreparedGraph<'device> {
             | RuntimeResourceFormat::ClipCoverageRgba8Unorm
             | RuntimeResourceFormat::ResolvedMaskRgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
             RuntimeResourceFormat::Working(format) => format.texture_format(),
+            RuntimeResourceFormat::ConvolutionRgba32Float => wgpu::TextureFormat::Rgba32Float,
         };
         if binding.runtime_resource() != resource
             || texture.width() != request.spatial.device_extent.width()
@@ -4382,6 +4465,14 @@ impl<'device> PreparedGraph<'device> {
             if binding.lease.is_some() {
                 return Err(preparation_error(
                     "the graph submission retains an unresolved kernel lease",
+                ));
+            }
+        }
+        for binding in self.convolution_weight_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.lease.is_some() {
+                return Err(preparation_error(
+                    "graph submission retains a convolution coefficient lease",
                 ));
             }
         }

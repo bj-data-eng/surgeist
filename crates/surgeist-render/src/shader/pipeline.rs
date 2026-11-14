@@ -16,14 +16,15 @@ use super::{
     },
     validate::{
         BlurAxis, BlurInput, BlurPassDescription, ColorFilterPassDescription,
-        CompositePassDescription, CopyBackdropPassDescription, CorePassDescription,
-        CorePassProgram, DropShadowColorizePassDescription,
+        CompositePassDescription, ConvolutionPassDescription, CopyBackdropPassDescription,
+        CorePassDescription, CorePassProgram, DropShadowColorizePassDescription,
     },
 };
 
 const CANONICALIZE_CAPTURE_WGSL: &str = include_str!("../shaders/canonicalize_capture.wgsl");
 const SPAN_SOURCE_OVER_WGSL: &str = include_str!("../shaders/span_source_over.wgsl");
 const PRESENT_WGSL: &str = include_str!("../shaders/present.wgsl");
+pub(super) const CONVOLUTION_WGSL: &str = include_str!("../shaders/convolution.wgsl");
 const COLOR_FILTER_WGSL: &str = include_str!("../shaders/color_filter.wgsl");
 pub(super) const BLUR_WGSL: &str = include_str!("../shaders/blur.wgsl");
 const DROP_SHADOW_WGSL: &str = include_str!("../shaders/drop_shadow.wgsl");
@@ -414,6 +415,123 @@ pub(super) fn create_copy_backdrop_pipeline(
     generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Surgeist backdrop-copy pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vertex_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some("fragment_main"),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
+pub(super) fn create_convolution_bind_group_layout(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    let texture = |binding| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    let entries = [
+        texture(0),
+        texture(1),
+        wgpu::BindGroupLayoutEntry {
+            binding: 2,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(256),
+            },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry {
+            binding: 3,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(4),
+            },
+            count: None,
+        },
+    ];
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist convolution bindings"),
+            entries: &entries,
+        })
+    })
+}
+
+pub(super) fn create_convolution_shader_module(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist convolution shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(CONVOLUTION_WGSL)),
+        })
+    })
+}
+
+pub(super) fn create_convolution_render_pipeline(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: ConvolutionPassDescription,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Surgeist convolution pipeline layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
+        })
+    })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist convolution pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: shader,
@@ -941,9 +1059,323 @@ const fn texture_format(format: ShaderTextureFormatKey) -> Result<wgpu::TextureF
         | ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm
         | ShaderTextureFormatKey::ResolvedMaskRgba8Unorm
         | ShaderTextureFormatKey::OutputRgba8Unorm => Ok(wgpu::TextureFormat::Rgba8Unorm),
+        ShaderTextureFormatKey::ConvolutionRgba32Float => Ok(wgpu::TextureFormat::Rgba32Float),
         ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float => {
             Ok(wgpu::TextureFormat::Rgba16Float)
         }
         ShaderTextureFormatKey::OutputBgra8Unorm => Ok(wgpu::TextureFormat::Bgra8Unorm),
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod convolution_shader_tests {
+    use super::*;
+
+    #[test]
+    fn convolution_shader_validates_with_exact_uniform_and_sampler_free_bindings() {
+        let module = wgpu::naga::front::wgsl::parse_str(CONVOLUTION_WGSL)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(CONVOLUTION_WGSL)));
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
+        let bindings: Vec<_> = module
+            .global_variables
+            .iter()
+            .filter_map(|(_, variable)| {
+                variable
+                    .binding
+                    .as_ref()
+                    .map(|binding| (binding.binding, variable))
+            })
+            .collect();
+        assert_eq!(bindings.len(), 4);
+        assert!(bindings.iter().all(|(_, variable)| !matches!(
+            module.types[variable.ty].inner,
+            wgpu::naga::TypeInner::Sampler { .. }
+        )));
+        let uniform = bindings
+            .iter()
+            .find(|(binding, _)| *binding == 2)
+            .unwrap()
+            .1;
+        let wgpu::naga::TypeInner::Struct { span, .. } = module.types[uniform.ty].inner else {
+            panic!("convolution binding 2 must be the uniform structure");
+        };
+        assert_eq!(span, 256);
+        assert_eq!(
+            texture_format(ShaderTextureFormatKey::ConvolutionRgba32Float).unwrap(),
+            wgpu::TextureFormat::Rgba32Float
+        );
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod convolution_alpha_gpu_tests {
+    use super::*;
+    use crate::shader::{ConvolutionParameterBytes, ConvolutionParameterFacts};
+    use wgpu::util::DeviceExt;
+
+    #[test]
+    fn convolution_preserve_alpha_gpu_guards_zero_and_subnormal_divisors() {
+        let mut renderer =
+            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let (device, queue) = renderer
+            .default_wgpu_device_queue()
+            .expect("tiny-alpha shader coverage requires a GPU adapter");
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let account = Account::for_test();
+        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = account.cpu().unwrap();
+        let layout =
+            create_convolution_bind_group_layout(&generation, cpu, Some(&account), device).unwrap();
+        let shader =
+            create_convolution_shader_module(&generation, cpu, Some(&account), device).unwrap();
+        let pipeline = create_convolution_render_pipeline(
+            &generation,
+            cpu,
+            Some(&account),
+            device,
+            ConvolutionPassDescription {
+                target_format: ShaderTextureFormatKey::ConvolutionRgba32Float,
+            },
+            &layout,
+            &shader,
+        )
+        .unwrap();
+        let extent = wgpu::Extent3d {
+            width: 4,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+        let texture = |label| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: extent,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba32Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
+        };
+        let source = texture("convolution tiny-alpha source");
+        let sums = texture("convolution tiny-alpha straight sums");
+        let output = texture("convolution tiny-alpha finalized output");
+        let empty_output = texture("convolution empty-domain output");
+        let min = f32::MIN_POSITIVE;
+        let subnormal = f32::from_bits(min.to_bits() / 2);
+        let input = [
+            [0.0, 0.0, 0.0, 0.0],
+            [subnormal, 0.0, 0.0, subnormal],
+            [min, 0.0, 0.0, min],
+            [0.5, 0.0, 0.0, 0.5],
+        ];
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &source,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(&input),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(64),
+                rows_per_image: None,
+            },
+            extent,
+        );
+        let weights = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("convolution tiny-alpha identity weight"),
+            contents: &1.0_f32.to_le_bytes(),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let facts = |stage| ConvolutionParameterFacts {
+            capture_origin: [0.0; 2],
+            capture_scale: 1.0,
+            kernel_origin: [0.0; 2],
+            unit_length: [1.0; 2],
+            source_grid_origin: [0; 2],
+            source_grid_extent: [4, 1],
+            result_grid_origin: [0; 2],
+            result_grid_extent: [4, 1],
+            source_domain: crate::Rect::new(0.0, 0.0, 4.0, 1.0),
+            result_domain: crate::Rect::new(0.0, 0.0, 4.0, 1.0),
+            result_capture_origin: [0.0; 2],
+            result_capture_scale: 1.0,
+            order: [1; 2],
+            target: [0; 2],
+            stage,
+            first_tap: 0,
+            tap_count: 1,
+            edge: 0,
+            preserve_alpha: true,
+            linear_srgb: false,
+            first_batch: true,
+            bias: 0.0,
+        };
+        let uniform = |facts| {
+            let bytes = ConvolutionParameterBytes::try_new(facts, &account).unwrap();
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("convolution tiny-alpha parameters"),
+                contents: bytes.as_bytes(),
+                usage: wgpu::BufferUsages::UNIFORM,
+            })
+        };
+        let accumulate_parameters = uniform(facts(1));
+        let finalize_parameters = uniform(facts(2));
+        let mut empty_facts = facts(4);
+        empty_facts.source_domain = crate::Rect::new(0.0, 0.0, 0.0, 1.0e12);
+        let empty_parameters = uniform(empty_facts);
+        let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
+        let sums_view = sums.create_view(&wgpu::TextureViewDescriptor::default());
+        let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
+        let empty_output_view = empty_output.create_view(&wgpu::TextureViewDescriptor::default());
+        let bindings = |auxiliary, parameters: &wgpu::Buffer| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("convolution tiny-alpha bindings"),
+                layout: &layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&source_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(auxiliary),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: parameters.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: weights.as_entire_binding(),
+                    },
+                ],
+            })
+        };
+        let accumulate_bindings = bindings(&source_view, &accumulate_parameters);
+        let finalize_bindings = bindings(&sums_view, &finalize_parameters);
+        let empty_bindings = bindings(&source_view, &empty_parameters);
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("convolution tiny-alpha readback"),
+            size: 768,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        for (view, bindings) in [
+            (&sums_view, &accumulate_bindings),
+            (&output_view, &finalize_bindings),
+            (&empty_output_view, &empty_bindings),
+        ] {
+            let attachments = [Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })];
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &attachments,
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, bindings, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        for (texture, offset) in [(&sums, 0), (&output, 256), (&empty_output, 512)] {
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &staging,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset,
+                        bytes_per_row: Some(256),
+                        rows_per_image: None,
+                    },
+                },
+                extent,
+            );
+        }
+        queue.submit([encoder.finish()]);
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .unwrap();
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        let mapped = slice.get_mapped_range();
+        let read_pixel = |row: usize, index: usize| {
+            let mut pixel = [0.0_f32; 4];
+            for (channel, value) in pixel.iter_mut().enumerate() {
+                let offset = row * 256 + index * 16 + channel * 4;
+                *value = f32::from_le_bytes(mapped[offset..offset + 4].try_into().unwrap());
+            }
+            pixel
+        };
+        let straight: Vec<_> = (0..4).map(|index| read_pixel(0, index)).collect();
+        let finalized: Vec<_> = (0..4).map(|index| read_pixel(1, index)).collect();
+        let empty: Vec<_> = (0..4).map(|index| read_pixel(2, index)).collect();
+        drop(mapped);
+        staging.unmap();
+        assert!(
+            pollster::block_on(validation.pop()).is_none(),
+            "the actual convolution passes must validate"
+        );
+        for row in [&straight, &finalized] {
+            assert!(
+                row.iter().flatten().all(|value| value.is_finite()),
+                "guarded alpha division must remain finite: {row:?}"
+            );
+            assert_eq!(
+                row[0], [0.0; 4],
+                "zero alpha has no straight or premultiplied color"
+            );
+            assert_eq!(
+                row[1], [0.0; 4],
+                "a positive subnormal alpha is effective zero before division"
+            );
+        }
+        assert_eq!(
+            empty,
+            vec![[0.0; 4]; 4],
+            "an empty source ignores its huge unused axis before integer mapping"
+        );
+        assert_eq!(straight[3], [1.0, 0.0, 0.0, 0.0]);
+        assert_eq!(finalized[3], [0.5, 0.0, 0.0, 0.5]);
+        // At the normal/subnormal boundary, WGSL permits loss in intermediate
+        // operations. Check finite bounded output, without claiming bit identity.
+        assert!((0.0..=1.0).contains(&straight[2][0]));
+        assert!((0.0..=min).contains(&finalized[2][3]));
+        assert!(
+            finalized[2][..3]
+                .iter()
+                .all(|value| (0.0..=finalized[2][3]).contains(value))
+        );
     }
 }

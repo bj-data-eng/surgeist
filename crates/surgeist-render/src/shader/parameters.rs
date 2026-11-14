@@ -15,6 +15,168 @@ use crate::{
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::image::{Extend, ImageQuality};
 
+/// Validated runtime facts for the exact 256-byte convolution uniform block.
+pub(crate) struct ConvolutionParameterFacts {
+    pub(crate) capture_origin: [f64; 2],
+    pub(crate) capture_scale: f64,
+    pub(crate) kernel_origin: [f64; 2],
+    pub(crate) unit_length: [f64; 2],
+    pub(crate) source_grid_origin: [i32; 2],
+    pub(crate) source_grid_extent: [u32; 2],
+    pub(crate) result_grid_origin: [i32; 2],
+    pub(crate) result_grid_extent: [u32; 2],
+    pub(crate) source_domain: Rect,
+    pub(crate) result_domain: Rect,
+    pub(crate) result_capture_origin: [f64; 2],
+    pub(crate) result_capture_scale: f64,
+    pub(crate) order: [u32; 2],
+    pub(crate) target: [u32; 2],
+    pub(crate) stage: u32,
+    pub(crate) first_tap: u32,
+    pub(crate) tap_count: u32,
+    pub(crate) edge: u32,
+    pub(crate) preserve_alpha: bool,
+    pub(crate) linear_srgb: bool,
+    pub(crate) first_batch: bool,
+    pub(crate) bias: f64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ConvolutionParameterBytes([u8; 256]);
+
+impl ConvolutionParameterBytes {
+    pub(crate) fn try_new(facts: ConvolutionParameterFacts, account: &Account) -> Result<Self> {
+        let invalid = || {
+            Error::invalid_value(
+                "convolution parameters",
+                "runtime convolution",
+                "must fit the validated shader coordinate and stage domains",
+            )
+        };
+        if facts.stage > 5
+            || facts.edge > 3
+            || facts.tap_count > 32
+            || facts.order.contains(&0)
+            || facts.source_domain.width() < 0.0
+            || facts.source_domain.height() < 0.0
+            || facts.result_domain.width() < 0.0
+            || facts.result_domain.height() < 0.0
+            || (facts.stage != 4
+                && (facts.target[0] >= facts.order[0] || facts.target[1] >= facts.order[1]))
+            || facts.first_tap.checked_add(facts.tap_count).is_none()
+            || facts
+                .source_grid_extent
+                .into_iter()
+                .chain(facts.result_grid_extent)
+                .any(|v| v > i32::MAX as u32)
+            || facts.capture_scale <= 0.0
+            || facts.result_capture_scale <= 0.0
+            || facts.unit_length.into_iter().any(|v| v <= 0.0)
+        {
+            return Err(invalid());
+        }
+        let mut words = [[0_u32; 4]; 16];
+        let mut floats = |row: usize, values: [f64; 4]| -> Result<()> {
+            for (slot, value) in words[row].iter_mut().zip(values) {
+                let value = account.coordinate(|| value as f32)?;
+                if !value.is_finite() {
+                    return Err(invalid());
+                }
+                *slot = value.to_bits();
+            }
+            Ok(())
+        };
+        floats(
+            0,
+            [
+                facts.capture_origin[0],
+                facts.capture_origin[1],
+                facts.capture_scale,
+                0.0,
+            ],
+        )?;
+        floats(
+            1,
+            [
+                facts.kernel_origin[0],
+                facts.kernel_origin[1],
+                facts.unit_length[0],
+                facts.unit_length[1],
+            ],
+        )?;
+        floats(
+            4,
+            [
+                facts.source_domain.x(),
+                facts.source_domain.y(),
+                account.coordinate(|| facts.source_domain.x() + facts.source_domain.width())?,
+                account.coordinate(|| facts.source_domain.y() + facts.source_domain.height())?,
+            ],
+        )?;
+        floats(
+            5,
+            [
+                facts.result_domain.x(),
+                facts.result_domain.y(),
+                account.coordinate(|| facts.result_domain.x() + facts.result_domain.width())?,
+                account.coordinate(|| facts.result_domain.y() + facts.result_domain.height())?,
+            ],
+        )?;
+        floats(
+            6,
+            [
+                facts.result_capture_origin[0],
+                facts.result_capture_origin[1],
+                facts.result_capture_scale,
+                0.0,
+            ],
+        )?;
+        floats(10, [facts.bias, 0.0, 0.0, 0.0])?;
+        // Positive f64 spatial values must remain positive after wire narrowing.
+        if f32::from_bits(words[0][2]) <= 0.0
+            || f32::from_bits(words[6][2]) <= 0.0
+            || f32::from_bits(words[1][2]) <= 0.0
+            || f32::from_bits(words[1][3]) <= 0.0
+        {
+            return Err(invalid());
+        }
+        for (row, origin, extent) in [
+            (2, facts.source_grid_origin, facts.source_grid_extent),
+            (3, facts.result_grid_origin, facts.result_grid_extent),
+        ] {
+            words[row] = [
+                u32::from_ne_bytes(origin[0].to_ne_bytes()),
+                u32::from_ne_bytes(origin[1].to_ne_bytes()),
+                extent[0],
+                extent[1],
+            ];
+        }
+        words[7] = [
+            facts.order[0],
+            facts.order[1],
+            facts.target[0],
+            facts.target[1],
+        ];
+        words[8] = [facts.stage, facts.first_tap, facts.tap_count, facts.edge];
+        words[9] = [
+            u32::from(facts.preserve_alpha),
+            u32::from(facts.linear_srgb),
+            u32::from(facts.first_batch),
+            0,
+        ];
+        account.work(RenderWork::SerializedBytes, 256)?;
+        let mut bytes = [0; 256];
+        for (index, word) in words.into_iter().flatten().enumerate() {
+            bytes[index * 4..index * 4 + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        Ok(Self(bytes))
+    }
+
+    pub(crate) const fn as_bytes(&self) -> &[u8; 256] {
+        &self.0
+    }
+}
+
 const COLOR_FILTER_OPERATION_HEADER_BYTE_LEN: usize = 16;
 const COLOR_FILTER_OPERATION_RECORD_BYTE_LEN: usize = 32;
 type ColorFilterOperationHeader = [u8; COLOR_FILTER_OPERATION_HEADER_BYTE_LEN];
@@ -1486,5 +1648,71 @@ mod accounting_tests {
                 .work(RenderWork::SerializedBytes),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod convolution_parameter_tests {
+    use super::*;
+
+    fn facts() -> ConvolutionParameterFacts {
+        ConvolutionParameterFacts {
+            capture_origin: [-2.0, 3.0],
+            capture_scale: 2.0,
+            kernel_origin: [-2.0, 3.0],
+            unit_length: [0.5, 1.5],
+            source_grid_origin: [-3, 4],
+            source_grid_extent: [7, 8],
+            result_grid_origin: [-5, 2],
+            result_grid_extent: [11, 12],
+            source_domain: Rect::new(-1.0, 4.0, 3.0, 5.0),
+            result_domain: Rect::new(-2.0, 3.0, 8.0, 9.0),
+            result_capture_origin: [-2.0, 3.0],
+            result_capture_scale: 2.0,
+            order: [7, 5],
+            target: [3, 2],
+            stage: 1,
+            first_tap: 32,
+            tap_count: 3,
+            edge: 2,
+            preserve_alpha: true,
+            linear_srgb: true,
+            first_batch: false,
+            bias: -0.25,
+        }
+    }
+
+    #[test]
+    fn convolution_wire_retains_signed_origins_runtime_flags_and_zero_reserved_words() {
+        let bytes = ConvolutionParameterBytes::try_new(facts(), &Account::for_test()).unwrap();
+        let words: Vec<u32> = bytes
+            .as_bytes()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
+            .collect();
+        assert_eq!(words.len(), 64);
+        assert_eq!(&words[8..12], &[(-3_i32) as u32, 4, 7, 8]);
+        assert_eq!(&words[12..16], &[(-5_i32) as u32, 2, 11, 12]);
+        assert_eq!(&words[28..32], &[7, 5, 3, 2]);
+        assert_eq!(&words[32..36], &[1, 32, 3, 2]);
+        assert_eq!(&words[36..40], &[1, 1, 0, 0]);
+        assert_eq!(words[40], (-0.25_f32).to_bits());
+        assert!(words[41..].iter().all(|word| *word == 0));
+    }
+
+    #[test]
+    fn convolution_wire_refuses_nonfinite_and_underflowed_coordinates_and_unbounded_batches() {
+        let account = Account::for_test();
+        let mut input = facts();
+        input.capture_origin[0] = f64::INFINITY;
+        assert!(ConvolutionParameterBytes::try_new(input, &account).is_err());
+        let mut input = facts();
+        input.unit_length[0] = f64::MIN_POSITIVE;
+        assert!(ConvolutionParameterBytes::try_new(input, &account).is_err());
+        let mut input = facts();
+        input.tap_count = 33;
+        assert!(ConvolutionParameterBytes::try_new(input, &account).is_err());
     }
 }

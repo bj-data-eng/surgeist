@@ -34,7 +34,7 @@ dimensions! {
         /// Filter operations inspected during normalization, planning or encoding,
         /// including paired fixed-size serialized operation records in exact proofs.
         FilterOperationVisits,
-        /// Gaussian sample records calculated or inspected by Render, including
+        /// Filter tap records calculated or inspected by Render, including
         /// paired fixed-size serialized samples in exact proofs.
         KernelSampleVisits,
         /// Frame, pass or runtime graph nodes actually inspected, including repeated proof passes.
@@ -81,8 +81,11 @@ dimensions! {
         /// Bytes serialized into PNG compressed storage, shader sources, native parameters,
         /// kernels or packed raster streams.
         SerializedBytes,
-        /// Output-scissor area scheduled for actual color, blur, colorize or shadow-merge passes.
+        /// Output-scissor area scheduled for filter color conversion, resampling,
+        /// convolution accumulation/finalization, blur, colorize or shadow-merge passes.
         ScheduledFilterTexels,
+        /// Actual scheduled convolution result-grid cells multiplied by taps, across all batches.
+        ScheduledConvolutionTaps,
         /// Nonempty native compute dispatch calls issued by the internal raster engine.
         RasterDispatches,
         /// Logical internal Vello raster passes actually encoded.
@@ -213,9 +216,17 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::PaintGradient)
             || self.supported_for(RenderAttemptKind::SdrColor)
             || self.supported_for(RenderAttemptKind::ColorFilterProjection)
+            || self.supported_for(RenderAttemptKind::Convolution)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::Convolution => matches!(
+                self,
+                Self::FilterOperationVisits
+                    | Self::KernelSampleVisits
+                    | Self::CoordinateVisits
+                    | Self::StorageRelocations
+            ),
             RenderAttemptKind::ColorFilterProjection => matches!(self, Self::FilterOperationVisits),
             RenderAttemptKind::SdrColor => {
                 matches!(self, Self::PaintVisits | Self::CoordinateVisits)
@@ -298,6 +309,7 @@ impl RenderWork {
                         | Self::UploadBytes
                         | Self::SerializedBytes
                         | Self::ScheduledFilterTexels
+                        | Self::ScheduledConvolutionTaps
                         | Self::RasterDispatches
                         | Self::VelloPasses
                         | Self::ImagePasses
@@ -918,6 +930,8 @@ pub enum RenderAttemptKind {
     SdrColor,
     /// Standalone projection of an authored list into a color-only pipeline.
     ColorFilterProjection,
+    /// Standalone resolved convolution admission.
+    Convolution,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -302,9 +302,12 @@ impl<T> SharedValue<T> {
         let weak = std::sync::Arc::downgrade(&self.0);
         move || weak.strong_count() != 0
     }
+    pub(crate) const fn allocation_size() -> usize {
+        std::mem::size_of::<SharedValueData<T>>()
+    }
     #[cfg(test)]
     pub(crate) const fn allocation_size_for_test() -> usize {
-        std::mem::size_of::<SharedValueData<T>>()
+        Self::allocation_size()
     }
     pub(crate) fn from_accounted(
         values: AccountedVec<T>,
