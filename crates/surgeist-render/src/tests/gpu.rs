@@ -988,15 +988,15 @@ fn color_filter_pass_uses_distinct_source_and_result() {
     );
 }
 
-fn expected_composite_parameter_bytes_for_test() -> [u8; 112] {
-    fn write_f32(bytes: &mut [u8; 112], offset: usize, value: f32) {
+fn expected_composite_parameter_bytes_for_test() -> [u8; 128] {
+    fn write_f32(bytes: &mut [u8; 128], offset: usize, value: f32) {
         bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
-    fn write_u32(bytes: &mut [u8; 112], offset: usize, value: u32) {
+    fn write_u32(bytes: &mut [u8; 128], offset: usize, value: u32) {
         bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
 
-    let mut bytes = [0_u8; 112];
+    let mut bytes = [0_u8; 128];
     // A=[2,.5,-.25,1.5] has A^T A trace6.5625 and eigenvalue
     // discriminant4.00390625. The captured child bounds[-1,.5,6,3]
     // therefore start at device(-3,1) at densityrho; destination is origin0.

@@ -2,6 +2,7 @@ use crate::accounting::{Account, AccountedVec, OwnedBox, RenderPhase, RenderWork
 mod bounds;
 mod convolution;
 mod filter;
+mod gaussian;
 mod graph;
 mod lower;
 mod offset;
@@ -24,6 +25,9 @@ pub(crate) use convolution::{ConvolutionMapping, ConvolutionStage};
 pub(crate) use filter::{
     OrderedFilterEdgeObservation, OrderedFilterIntentObservation, OrderedFilterPlanObservation,
     OrderedFilterStepObservation, ordered_filter_plan_for_test,
+};
+pub(crate) use gaussian::{
+    GaussianAxis, GaussianOutputFootprint, GaussianPassFacts, GaussianStage,
 };
 pub(crate) use lower::{
     GraphLoweringBlur, GraphLoweringBlurInput, GraphLoweringClipCoverage, GraphLoweringColorFilter,

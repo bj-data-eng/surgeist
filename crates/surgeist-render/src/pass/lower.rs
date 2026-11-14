@@ -46,7 +46,7 @@ use crate::{
 };
 
 impl RuntimeSpatialDescriptor {
-    fn from_graph(spatial: GraphLoweringSpatialDescriptor) -> Self {
+    pub(super) fn from_graph(spatial: GraphLoweringSpatialDescriptor) -> Self {
         Self {
             logical_bounds: spatial.logical_bounds(),
             device_origin: spatial.device_origin(),
@@ -463,6 +463,7 @@ fn runtime_pass_kind(
                 .transpose()?,
         ),
         GraphLoweringPassKind::Offset(offset) => RuntimePassKind::Offset(offset.clone()),
+        GraphLoweringPassKind::Gaussian(gaussian) => RuntimePassKind::Gaussian(gaussian.clone()),
         GraphLoweringPassKind::Convolution(convolution) => {
             RuntimePassKind::Convolution(convolution.clone())
         }
@@ -694,6 +695,7 @@ fn runtime_composite(
                         *composition,
                         clip.is_some() || !outer_clips.is_empty(),
                         alpha_mask,
+                        composite.gaussian_footprint(),
                     )?,
                     &account.storage(),
                 )?,
@@ -803,6 +805,8 @@ const fn runtime_read_role(role: GraphLoweringReadRole) -> RuntimeReadRole {
         GraphLoweringReadRole::CompletedParent => RuntimeReadRole::CompletedParent,
         GraphLoweringReadRole::FilterSource => RuntimeReadRole::FilterSource,
         GraphLoweringReadRole::ConvolutionSource => RuntimeReadRole::ConvolutionSource,
+        GraphLoweringReadRole::GaussianSource => RuntimeReadRole::GaussianSource,
+        GraphLoweringReadRole::GaussianAuxiliary => RuntimeReadRole::GaussianAuxiliary,
         GraphLoweringReadRole::OffsetSource => RuntimeReadRole::OffsetSource,
         GraphLoweringReadRole::ConvolutionAuxiliary => RuntimeReadRole::ConvolutionAuxiliary,
         GraphLoweringReadRole::BlurredSourceAlpha => RuntimeReadRole::BlurredSourceAlpha,
@@ -831,6 +835,8 @@ pub(super) const fn shader_binding_role(role: RuntimeReadRole) -> ShaderBindingR
         RuntimeReadRole::CompletedParent => ShaderBindingRoleKey::CompletedParent,
         RuntimeReadRole::FilterSource => ShaderBindingRoleKey::FilterSource,
         RuntimeReadRole::ConvolutionSource => ShaderBindingRoleKey::ConvolutionSource,
+        RuntimeReadRole::GaussianSource => ShaderBindingRoleKey::GaussianSource,
+        RuntimeReadRole::GaussianAuxiliary => ShaderBindingRoleKey::GaussianAuxiliary,
         RuntimeReadRole::OffsetSource => ShaderBindingRoleKey::OffsetSource,
         RuntimeReadRole::ConvolutionAuxiliary => ShaderBindingRoleKey::ConvolutionAuxiliary,
         RuntimeReadRole::BlurredSourceAlpha => ShaderBindingRoleKey::BlurredSourceAlpha,
@@ -853,7 +859,9 @@ pub(super) const fn shader_sampling_edge(edge: RuntimeSamplingEdge) -> ShaderSam
 
 const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeReadRole) -> bool {
     match kind {
-        RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_) => false,
+        RuntimePassKind::Convolution(_)
+        | RuntimePassKind::Gaussian(_)
+        | RuntimePassKind::Offset(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { .. },
             ..
@@ -930,6 +938,15 @@ pub(super) fn runtime_pass_cache_keys(
             format.shader_key(),
         ));
     }
+    if matches!(kind, RuntimePassKind::Gaussian(work) if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { .. }))
+        && reads.len() == 1
+    {
+        let format = resource_format(reads[0].resource)?
+            .ok_or_else(|| lowering_error("Gaussian source format is missing"))?;
+        sampled_textures
+            .append_slot()?
+            .write((ShaderBindingRoleKey::GaussianAuxiliary, format.shader_key()));
+    }
     let StorageAccount::Renderer(cpu) = account.storage() else {
         return Err(crate::accounting::RenderAccountingError::Invariant.into());
     };
@@ -949,14 +966,21 @@ pub(super) fn runtime_pass_cache_keys(
         program,
         layout.clone(),
         &samplers,
-        Some(if matches!(kind, RuntimePassKind::Convolution(_)) {
-            ShaderTextureFormatKey::FilterRgba32Float
-        } else {
-            ShaderTextureFormatKey::working(working_format)
-        }),
+        Some(
+            if matches!(
+                kind,
+                RuntimePassKind::Convolution(_) | RuntimePassKind::Gaussian(_)
+            ) {
+                ShaderTextureFormatKey::FilterRgba32Float
+            } else {
+                ShaderTextureFormatKey::working(working_format)
+            },
+        ),
         if matches!(
             kind,
-            RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_)
+            RuntimePassKind::Convolution(_)
+                | RuntimePassKind::Gaussian(_)
+                | RuntimePassKind::Offset(_)
         ) {
             Some(match result {
                 RuntimeResultBinding::Resource(resource) => resource_format(resource)?
@@ -1003,6 +1027,7 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::CopyBackdrop => Ok(ShaderProgramKey::CopyBackdrop),
         RuntimePassKind::ColorFilter(Some(_)) => Ok(ShaderProgramKey::ColorFilter),
         RuntimePassKind::Convolution(_) => Ok(ShaderProgramKey::Convolution),
+        RuntimePassKind::Gaussian(operation) => Ok(super::gaussian::shader_program(operation)),
         RuntimePassKind::Offset(_) => Ok(ShaderProgramKey::Offset),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
             source_alpha: blur.input == RuntimeBlurInput::SourceAlpha,
@@ -1060,6 +1085,7 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         | RuntimePassKind::Present => &[SpatialUniform],
         RuntimePassKind::ColorFilter(Some(_)) => &[SpatialUniform, ColorFilterOperations],
         RuntimePassKind::Offset(_) => &[ShaderDataBindingKey::OffsetParameters],
+        RuntimePassKind::Gaussian(operation) => super::gaussian::data_bindings(operation),
         RuntimePassKind::Convolution(_) => &[
             ShaderDataBindingKey::ConvolutionParameters,
             ShaderDataBindingKey::ConvolutionWeights,

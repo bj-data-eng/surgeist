@@ -84,7 +84,9 @@ pub(super) fn prepared_pass_spatial_uniform(
     if pass.cache_keys.is_none()
         || matches!(
             pass.kind,
-            RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_)
+            RuntimePassKind::Convolution(_)
+                | RuntimePassKind::Gaussian(_)
+                | RuntimePassKind::Offset(_)
         )
     {
         return Ok(None);
@@ -114,7 +116,9 @@ pub(super) fn prepared_pass_spatial_uniform(
         RuntimePassKind::ColorFilter(Some(filter)) => {
             (filter.spatial.source, filter.spatial.result)
         }
-        RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_) => return Ok(None),
+        RuntimePassKind::Convolution(_)
+        | RuntimePassKind::Gaussian(_)
+        | RuntimePassKind::Offset(_) => return Ok(None),
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {
             (blur.spatial.source, blur.spatial.result)
         }
@@ -200,13 +204,21 @@ pub(super) fn prepared_pass_composite_parameters(
                 RuntimeReadRole::CompositeSource,
                 account,
             )?;
+            if let Some(footprint) = parameters.gaussian_footprint() {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                if RuntimeSpatialDescriptor::from_graph(footprint.source_spatial()) != source {
+                    return Err(preparation_error(
+                        "Gaussian output footprint differs from its actual composite source",
+                    ));
+                }
+            }
             let bytes = CompositeParameterBytes::try_from_runtime_layer(
                 parameters,
                 source,
                 destination,
                 account,
             )?;
-            if bytes.as_bytes().len() != 112 {
+            if bytes.as_bytes().len() != 128 {
                 return Err(preparation_error(
                     "composite parameter serialization changed its exact WGSL byte length",
                 ));
@@ -413,7 +425,7 @@ mod role_lookup_accounting_tests {
         );
         assert_eq!(refusal.phase(), RenderPhase::Attempt);
         let (work, current, amount) = if limit == PIXELATED_MASK_COORDINATE_PREFIX {
-            (RenderWork::SerializedBytes, 0, 112)
+            (RenderWork::SerializedBytes, 0, 128)
         } else {
             (RenderWork::CoordinateVisits, limit, 1)
         };
@@ -439,7 +451,7 @@ mod role_lookup_accounting_tests {
         assert_eq!(
             (refusal.quantity(), refusal.current(), refusal.amount()),
             (RenderQuantity::Work(work), current, amount),
-            "Pixelated placement must finish before serializing the 112-byte block"
+            "Pixelated placement must finish before serializing the 128-byte block"
         );
     }
 

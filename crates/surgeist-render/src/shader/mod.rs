@@ -29,7 +29,8 @@ pub(crate) use key::{
 pub(crate) use parameters::{
     BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
     CompositeParameterBytes, ConvolutionParameterBytes, ConvolutionParameterFacts,
-    DropShadowParameterBytes, OffsetParameterBytes, OffsetParameterFacts, PassSpatialUniformBytes,
+    DropShadowParameterBytes, GaussianParameterBytes, GaussianParameterFacts, OffsetParameterBytes,
+    OffsetParameterFacts, PassSpatialUniformBytes,
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) use parameters::{
@@ -54,5 +55,6 @@ pub(crate) use test_support::{
 
 pub(crate) use validate::{
     BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, ConvolutionPassKeyRefs,
-    CopyBackdropPassKeyRefs, CorePassKeyRefs, DropShadowColorizePassKeyRefs, OffsetPassKeyRefs,
+    CopyBackdropPassKeyRefs, CorePassKeyRefs, DropShadowColorizePassKeyRefs, GaussianPassKeyRefs,
+    OffsetPassKeyRefs,
 };

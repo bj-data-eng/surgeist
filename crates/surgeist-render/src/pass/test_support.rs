@@ -1331,6 +1331,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::CopyBackdrop
             | RuntimePassKind::ColorFilter(None)
             | RuntimePassKind::Convolution(_)
+            | RuntimePassKind::Gaussian(_)
             | RuntimePassKind::Offset(_)
             | RuntimePassKind::BlurHorizontal(_)
             | RuntimePassKind::BlurVertical(_)
@@ -2917,7 +2918,7 @@ pub(crate) fn mask_upload_allocation_observation_for_test(
 pub(crate) fn composite_parameter_bytes_for_test(
     commands: RenderCommands,
     context: FrameContext,
-) -> Option<[u8; 112]> {
+) -> Option<[u8; 128]> {
     let plan = lowered_composition_mask_plan_for_test(commands, context)?;
     plan.passes.iter().find_map(|pass| {
         let RuntimePassKind::Composite(Some(RuntimeComposite {
@@ -3175,6 +3176,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         RuntimePassKind::CanonicalizeCapture => Some(CorePassClass::CanonicalizeCapture),
         RuntimePassKind::CopyBackdrop
         | RuntimePassKind::Convolution(_)
+        | RuntimePassKind::Gaussian(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::ColorFilter(_)
         | RuntimePassKind::BlurHorizontal(_)
@@ -4905,6 +4907,12 @@ fn spatial_filter_pass_tags(
             ExecutableFilterStepFacts::Offset { .. } => {
                 tags.push(SpatialFilterPassTagForTest::Offset);
             }
+            ExecutableFilterStepFacts::Gaussian { passes, .. } => {
+                tags.extend(std::iter::repeat_n(
+                    SpatialFilterPassTagForTest::Gaussian,
+                    passes.len(),
+                ));
+            }
             ExecutableFilterStepFacts::Convolution { .. } => {
                 tags.push(SpatialFilterPassTagForTest::Convolution);
             }
@@ -5322,6 +5330,8 @@ fn observe_layer_composition(
             | RuntimeReadRole::FilterSource
             | RuntimeReadRole::OffsetSource
             | RuntimeReadRole::ConvolutionSource
+            | RuntimeReadRole::GaussianSource
+            | RuntimeReadRole::GaussianAuxiliary
             | RuntimeReadRole::ConvolutionAuxiliary
             | RuntimeReadRole::BlurredSourceAlpha
             | RuntimeReadRole::Shadow
@@ -5446,6 +5456,7 @@ fn base_graph_rejects_every_other_pass_kind_and_composite_payload(plan: &Lowered
         1.0,
         crate::LayerComposition::from_blend(BlendMode::Normal),
         false,
+        None,
         None,
     ) else {
         return false;
@@ -6134,7 +6145,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 12];
+    let mut vocabulary = [false; 13];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6145,6 +6156,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && vocabulary[9]
         && !vocabulary[10]
         && !vocabulary[11]
+        && !vocabulary[12]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6376,7 +6388,7 @@ fn prepared_pass_view_is_consistent(pass: &PreparedPassView<'_>) -> bool {
             )
         && pass
             .composite_parameters()
-            .is_some_and(|bytes| bytes.as_bytes().len() == 112)
+            .is_some_and(|bytes| bytes.as_bytes().len() == 128)
             == matches!(
                 pass.kind(),
                 RuntimePassKind::Composite(Some(RuntimeComposite {
@@ -6516,7 +6528,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 12];
+    let mut vocabulary = [false; 13];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6654,6 +6666,10 @@ fn runtime_semantic_pass_facts_are_exact(plan: &LoweredGraphPlan) -> bool {
                 first_tap: 0, tap_count: 1, first: true,
             }) && work.operation().order() == [1, 1]
                 && work.operation().weights() == [1.0])
+    }) && plan.passes.iter().any(|pass| {
+        matches!(&pass.kind, RuntimePassKind::Gaussian(work)
+            if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { first_tap:0,first:true,.. })
+                && work.operation().sigma()==Some([0.5;2]))
     })
 }
 
@@ -6834,7 +6850,8 @@ fn runtime_format_keys_are_separate(
         // original pass kinds and the convolution boundary passes still vary.
         let fixed_accumulation_format = matches!(&pass.kind, RuntimePassKind::Convolution(work)
             if matches!(work.stage(), crate::frame::ConvolutionStage::Accumulate { .. }
-                | crate::frame::ConvolutionStage::Finalize));
+                | crate::frame::ConvolutionStage::Finalize))
+            || matches!(&pass.kind, RuntimePassKind::Gaussian(work) if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { .. }));
         reduced_keys.get(&pass.id).is_some_and(|other| {
             if fixed_accumulation_format {
                 *other == *main
@@ -6872,6 +6889,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::Present => 9,
         RuntimePassKind::Convolution(_) => 10,
         RuntimePassKind::Offset(_) => 11,
+        RuntimePassKind::Gaussian(_) => 12,
     }
 }
 

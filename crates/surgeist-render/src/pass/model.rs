@@ -454,6 +454,7 @@ pub(crate) struct RuntimeLayerCompositeParameters {
     pub(super) composition: LayerComposition,
     pub(super) has_clip: bool,
     pub(super) alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
+    gaussian_footprint: Option<crate::frame::GaussianOutputFootprint>,
 }
 
 impl RuntimeLayerCompositeParameters {
@@ -464,6 +465,7 @@ impl RuntimeLayerCompositeParameters {
         composition: LayerComposition,
         has_clip: bool,
         alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
+        gaussian_footprint: Option<crate::frame::GaussianOutputFootprint>,
     ) -> Result<Self> {
         if !opacity.is_finite() {
             return Err(Error::invalid_value(
@@ -481,6 +483,7 @@ impl RuntimeLayerCompositeParameters {
             composition,
             has_clip,
             alpha_mask,
+            gaussian_footprint,
         })
     }
 
@@ -512,6 +515,10 @@ impl RuntimeLayerCompositeParameters {
     #[must_use]
     pub(crate) const fn alpha_mask(self) -> Option<RuntimeResolvedAlphaMaskComposition> {
         self.alpha_mask
+    }
+
+    pub(crate) const fn gaussian_footprint(self) -> Option<crate::frame::GaussianOutputFootprint> {
+        self.gaussian_footprint
     }
 }
 
@@ -545,6 +552,7 @@ pub(crate) enum RuntimePassKind {
     CopyBackdrop,
     ColorFilter(Option<RuntimeColorFilter>),
     Convolution(crate::frame::GraphLoweringConvolution),
+    Gaussian(crate::frame::GaussianPassFacts),
     Offset(crate::frame::GraphLoweringOffset),
     BlurHorizontal(Option<RuntimeBlur>),
     BlurVertical(Option<RuntimeBlur>),
@@ -559,6 +567,8 @@ pub(crate) enum RuntimeReadRole {
     CompletedParent,
     FilterSource,
     ConvolutionSource,
+    GaussianSource,
+    GaussianAuxiliary,
     OffsetSource,
     ConvolutionAuxiliary,
     BlurredSourceAlpha,

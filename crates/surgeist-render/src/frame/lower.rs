@@ -1,5 +1,6 @@
 use super::CompositeSourceSpace;
 use super::convolution::{ConvolutionMapping, ConvolutionStage};
+use super::gaussian::{GaussianPassFacts, GaussianStage};
 use super::offset::{OffsetMapping, OffsetStage};
 use super::{
     bounds::NonEmptyFrameSpatialPlan,
@@ -319,7 +320,7 @@ pub(crate) struct GraphLoweringSpatialDescriptor {
 }
 
 impl GraphLoweringSpatialDescriptor {
-    const fn from_semantic(descriptor: SemanticResourceDescriptor) -> Self {
+    pub(super) const fn from_semantic(descriptor: SemanticResourceDescriptor) -> Self {
         Self {
             logical_bounds: descriptor.logical_bounds.rect(),
             device_origin: (descriptor.device_origin.x, descriptor.device_origin.y),
@@ -851,6 +852,7 @@ pub(crate) enum GraphLoweringCompositeKind {
 pub(crate) struct GraphLoweringComposite {
     kind: GraphLoweringCompositeKind,
     source_captured_before_outer_semantics: bool,
+    gaussian_footprint: Option<super::gaussian::GaussianOutputFootprint>,
 }
 
 impl GraphLoweringComposite {
@@ -860,6 +862,12 @@ impl GraphLoweringComposite {
     }
 
     #[must_use]
+    pub(crate) const fn gaussian_footprint(
+        &self,
+    ) -> Option<super::gaussian::GaussianOutputFootprint> {
+        self.gaussian_footprint
+    }
+
     pub(crate) const fn source_captured_before_outer_semantics(&self) -> bool {
         self.source_captured_before_outer_semantics
     }
@@ -915,6 +923,7 @@ pub(crate) enum GraphLoweringPassKind {
     ColorFilter(Option<GraphLoweringColorFilter>),
     Convolution(GraphLoweringConvolution),
     Offset(GraphLoweringOffset),
+    Gaussian(GaussianPassFacts),
     BlurHorizontal(Option<GraphLoweringBlur>),
     BlurVertical(Option<GraphLoweringBlur>),
     DropShadowColorize(Option<GraphLoweringDropShadow>),
@@ -930,6 +939,8 @@ pub(crate) enum GraphLoweringReadRole {
     ConvolutionSource,
     ConvolutionAuxiliary,
     OffsetSource,
+    GaussianSource,
+    GaussianAuxiliary,
     BlurredSourceAlpha,
     CompositeParent,
     CompositeSource,
@@ -1174,6 +1185,25 @@ fn graph_lowering_pass_kind(
                     stage,
                 },
             ))
+        }
+        SemanticPassIntent::Gaussian(stage) => {
+            let mut low = 0;
+            let mut high = graph.gaussians.len();
+            while low < high {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let middle = low + (high - low) / 2;
+                if graph.gaussians[middle].pass.index.0 < pass.id.index.0 {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+            }
+            let entry = graph
+                .gaussians
+                .get(low)
+                .filter(|entry| entry.pass == pass.id && entry.facts.stage() == stage)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            Ok(GraphLoweringPassKind::Gaussian(entry.facts.clone()))
         }
         SemanticPassIntent::Offset(stage) => {
             let mut low = 0;
@@ -1714,6 +1744,7 @@ fn graph_lowering_composite(
             SemanticCompositeKind::DropShadow => GraphLoweringCompositeKind::DropShadow,
         },
         source_captured_before_outer_semantics: composite.source_captured_before_outer_semantics,
+        gaussian_footprint: composite.gaussian_footprint,
     })
 }
 
@@ -1790,6 +1821,30 @@ fn graph_lowering_read_bindings(
                 reads.append_slot()?.write(make(
                     1,
                     GraphLoweringReadRole::ConvolutionAuxiliary,
+                    GraphLoweringSamplingFilter::Nearest,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?);
+            }
+            reads
+        }
+        GraphLoweringPassKind::Gaussian(gaussian) => {
+            let count = match gaussian.stage() {
+                GaussianStage::Constant => 0,
+                GaussianStage::Accumulate { first: false, .. } => 2,
+                _ => 1,
+            };
+            if pass.reads.len() != count {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let mut reads = account.temporary(count)?;
+            for index in 0..count {
+                reads.append_slot()?.write(make(
+                    index,
+                    if index == 0 {
+                        GraphLoweringReadRole::GaussianSource
+                    } else {
+                        GraphLoweringReadRole::GaussianAuxiliary
+                    },
                     GraphLoweringSamplingFilter::Nearest,
                     GraphLoweringSamplingEdge::TransparentBlack,
                 )?);

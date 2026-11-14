@@ -9,6 +9,12 @@ mod convolution_spatial;
 #[cfg(not(target_arch = "wasm32"))]
 mod convolution_transactions;
 mod frame;
+#[cfg(not(target_arch = "wasm32"))]
+mod gaussian;
+#[cfg(not(target_arch = "wasm32"))]
+mod gaussian_accounting;
+#[cfg(not(target_arch = "wasm32"))]
+mod gaussian_transactions;
 mod gpu;
 mod image_sampling;
 mod image_sampling_graph;

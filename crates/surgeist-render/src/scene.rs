@@ -179,6 +179,31 @@ impl Scene {
         self
     }
 
+    /// Appends an admitted native Gaussian, replacing the layer's foreground effect.
+    ///
+    /// Preserves the complete outer transform, isolation, clip, mask, opacity
+    /// and composition. Finite input includes supported same-layer backdrop.
+    /// Constant and periodic sources reject same-layer backdrop before append,
+    /// returning [`GaussianPreparationError::InfiniteSourceBackdrop`].
+    pub fn gaussian_layer(
+        &mut self,
+        layer: Layer,
+        operation: PreparedGaussian,
+        source: GaussianSource,
+    ) -> Result<&mut Self> {
+        if source.descriptor().is_infinite() && layer.backdrop_filter().is_some() {
+            return Err(GaussianPreparationError::InfiniteSourceBackdrop.into());
+        }
+        let (child, source) = source.into_parts();
+        self.commands.push(Command::Layer {
+            layer: Box::new(
+                layer.with_gaussian(crate::gaussian::GaussianForeground { operation, source }),
+            ),
+            children: child.commands.into(),
+        });
+        Ok(self)
+    }
+
     /// Applies an ordered stack of resolved masks to one isolated group of children.
     ///
     /// Supply masks from top to bottom. Coverage combines from bottom to top,

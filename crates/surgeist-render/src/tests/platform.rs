@@ -441,3 +441,78 @@ fn render_window_smoke_executes_masked_and_blended_graph_frames() {
         "the presented masked composition did not commit atomically"
     );
 }
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+#[test]
+fn render_window_public_gaussian_executes_through_renderer_and_presented_surface() {
+    use crate::{
+        FilterColorSpace, FilterDomains, GaussianInput, GaussianSource, ImageFit, Layer,
+        RenderAccountingContext, prepare_gaussian,
+    };
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = PhysicalSize::new(9, 3);
+    let mut surface = display_free_presented_surface_for_test(
+        &mut renderer,
+        SurfaceOptions {
+            size: Size::new(9.0, 3.0),
+            format: Format::Rgba8,
+            ..SurfaceOptions::default()
+        },
+    );
+    pollster::block_on(renderer.configure_presented_surface_for_test(&mut surface)).unwrap();
+    let domain = Rect::new(0.0, 0.0, 9.0, 3.0);
+    let source = super::convolution::image(
+        9,
+        3,
+        (0..27)
+            .flat_map(|i| if i == 13 { [255; 4] } else { [0; 4] })
+            .collect(),
+    );
+    let mut input = Scene::new();
+    input.image(source, domain, ImageFit::Stretch);
+    let sigma = 1.0 / (2.0 * 2.0_f64.ln()).sqrt();
+    let operation = prepare_gaussian(
+        GaussianInput::new().with_standard_deviations(sigma, 0.0),
+        FilterColorSpace::Srgb,
+        &mut RenderAccountingContext::default(),
+    )
+    .unwrap();
+    let mut scene = Scene::new();
+    scene
+        .gaussian_layer(
+            Layer::new(),
+            operation,
+            GaussianSource::finite(
+                input,
+                FilterDomains::try_new(domain, domain, domain).unwrap(),
+            ),
+        )
+        .unwrap();
+    let presentation = presented_observation_handle_for_test(&surface);
+    let stats =
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    assert_eq!(renderer.stats(), stats);
+    let texture = take_last_presented_texture_for_test(&mut surface).unwrap();
+    let output = pollster::block_on(renderer.read_render_texture_for_test(&texture, size)).unwrap();
+    // Independently normalized exp(-k² ln2): center65536/139522,
+    // +/-1=32768/139522 and +/-2=4096/139522.
+    for (x, weight) in [
+        (4, 65536.0 / 139522.0),
+        (3, 32768.0 / 139522.0),
+        (2, 4096.0 / 139522.0),
+    ] {
+        super::convolution::assert_pixel(
+            &output,
+            x,
+            1,
+            [255, 255, 255, (weight * 255.0_f64).round() as u8],
+            2,
+        );
+    }
+    super::convolution::assert_pixel(&output, 4, 0, [0; 4], 1);
+    let observation = presentation.snapshot_for_test();
+    assert_eq!(observation.acquire_count_for_test(), 1);
+    assert_eq!(observation.present_count_for_test(), 1);
+    assert_eq!(observation.discarded_count_for_test(), 0);
+}

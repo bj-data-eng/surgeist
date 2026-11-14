@@ -9,7 +9,8 @@ mod test_support;
 
 pub(crate) use convolution::ConvolutionWeightsPlan;
 pub(crate) use gaussian::{
-    GaussianKernelBufferLimits, GaussianKernelKey, GaussianKernelPlan, GaussianKernelSamplingForm,
+    GaussianKernelBufferLimits, GaussianKernelGeometry, GaussianKernelKey, GaussianKernelPlan,
+    GaussianKernelSamplingForm,
 };
 #[cfg(test)]
 pub(crate) use lease::ResourceRetentionOutcome;

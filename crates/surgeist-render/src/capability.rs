@@ -233,6 +233,7 @@ impl Capabilities {
             gpu_drop_shadow_filter_execution: true,
             gpu_convolution_filter_execution: true,
             gpu_offset_filter_execution: true,
+            gpu_gaussian_filter_execution: true,
             filter_region_planning: true,
         },
         masks_clips: MaskClipCapabilities {
@@ -498,6 +499,9 @@ impl Capabilities {
             }
             PrimitiveOperation::GpuConvolutionFilterExecution => {
                 self.filters.supports_gpu_convolution_filter_execution()
+            }
+            PrimitiveOperation::GpuGaussianFilterExecution => {
+                self.filters.supports_gpu_gaussian_filter_execution()
             }
             PrimitiveOperation::GpuOffsetFilterExecution => {
                 self.filters.supports_gpu_offset_filter_execution()
@@ -979,6 +983,7 @@ pub struct FilterCapabilities {
     gpu_drop_shadow_filter_execution: bool,
     gpu_convolution_filter_execution: bool,
     gpu_offset_filter_execution: bool,
+    gpu_gaussian_filter_execution: bool,
     filter_region_planning: bool,
 }
 
@@ -1021,6 +1026,15 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_convolution_filter_execution(self) -> bool {
         self.gpu_convolution_filter_execution
+    }
+
+    /// Returns whether admitted native Gaussian filtering executes through a Layer on the GPU.
+    ///
+    /// Includes independent axes and finite, constant and periodic sources.
+    /// Actual float32 resource availability is reported by runtime capabilities.
+    #[must_use]
+    pub const fn supports_gpu_gaussian_filter_execution(self) -> bool {
+        self.gpu_gaussian_filter_execution
     }
 
     /// Returns whether an admitted image-space offset executes through a native Layer on the GPU.

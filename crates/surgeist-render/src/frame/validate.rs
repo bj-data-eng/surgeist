@@ -17,6 +17,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_import_metadata(graph, account)?;
     validate_convolution_metadata(graph, account)?;
     validate_offset_metadata(graph, account)?;
+    validate_gaussian_metadata(graph, account)?;
     if any_node(&graph.passes, account, |pass| {
         Ok(
             matches!(pass.intent, SemanticPassIntent::VelloCapture { .. })
@@ -256,10 +257,14 @@ fn validate_convolution_metadata(
     // Metadata cannot omit a pass with a convolution intent.
     let mut count = 0_usize;
     let mut offset_count = 0_usize;
+    let mut gaussian_count = 0_usize;
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if matches!(pass.intent, SemanticPassIntent::Convolution(_)) {
             count += 1;
+        }
+        if matches!(pass.intent, SemanticPassIntent::Gaussian(_)) {
+            gaussian_count += 1;
         }
         if matches!(pass.intent, SemanticPassIntent::Offset(_)) {
             offset_count += 1;
@@ -268,8 +273,253 @@ fn validate_convolution_metadata(
     if count != graph.convolutions.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
+    if gaussian_count != graph.gaussians.len() {
+        return Err(GraphValidationError::InvalidPassArity);
+    }
     if offset_count != graph.offsets.len() {
         return Err(GraphValidationError::InvalidPassArity);
+    }
+    Ok(())
+}
+
+fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
+    use super::gaussian::{GaussianAxis, GaussianStage};
+    let mut cursor = 0;
+    while let Some(first) = graph.gaussians.get(cursor) {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let foreground = first.facts.foreground();
+        let start = first.pass.index.0;
+        let initial_pass = graph
+            .passes
+            .get(first.pass.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownPass(first.pass))?;
+        let mut source = initial_pass.reads.first().copied();
+        let prepare_cursor = if first.facts.stage() == GaussianStage::RebaseSource {
+            cursor + 1
+        } else {
+            cursor
+        };
+        let geometries = graph
+            .gaussians
+            .get(prepare_cursor)
+            .map(|p| {
+                [
+                    p.facts.mapping().geometry(GaussianAxis::X),
+                    p.facts.mapping().geometry(GaussianAxis::Y),
+                ]
+            })
+            .unwrap_or([None; 2]);
+        let mut position = 0_u32;
+        let mut take = |stage: GaussianStage,
+                        reads: &[SemanticResourceId]|
+         -> GraphBuildResult<SemanticResourceId> {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let entry = graph
+                .gaussians
+                .get(cursor)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            if entry.facts.foreground() != foreground
+                || entry.facts.stage() != stage
+                || entry.pass.index.0
+                    != start
+                        .checked_add(position)
+                        .ok_or(GraphValidationError::InvalidPassArity)?
+                || !entry.facts.mapping().proves_exact(
+                    &foreground.operation,
+                    foreground.source,
+                    stage,
+                    account,
+                )?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let pass = graph
+                .passes
+                .get(entry.pass.index.as_usize()?)
+                .filter(|p| p.id == entry.pass)
+                .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+            if pass.intent != SemanticPassIntent::Gaussian(stage)
+                || !edges_equal(&pass.reads, reads, account)?
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let SemanticPassResult::Resource(result) = pass.result else {
+                return Err(GraphValidationError::InvalidPassArity);
+            };
+            let descriptor = graph
+                .resources
+                .get(result.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(result))?
+                .descriptor;
+            let expected_role = if matches!(
+                stage,
+                GaussianStage::Prepare | GaussianStage::Accumulate { .. }
+            ) {
+                SemanticResourceRole::FilterFloat
+            } else {
+                SemanticResourceRole::FilterIntermediate
+            };
+            if descriptor.role != expected_role
+                || super::lower::GraphLoweringSpatialDescriptor::from_semantic(descriptor)
+                    != entry.facts.mapping().target_spatial()
+            {
+                return Err(GraphValidationError::InvalidPassResultRole);
+            }
+            if let Some(source) = reads.first() {
+                let descriptor = graph
+                    .resources
+                    .get(source.index.as_usize()?)
+                    .ok_or(GraphValidationError::UnknownResource(*source))?
+                    .descriptor;
+                if Some(super::lower::GraphLoweringSpatialDescriptor::from_semantic(
+                    descriptor,
+                )) != entry.facts.mapping().source_spatial()
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+                if matches!(
+                    stage,
+                    GaussianStage::Accumulate { .. } | GaussianStage::Resolve
+                ) && descriptor.role != SemanticResourceRole::FilterFloat
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+                if stage == GaussianStage::RebaseSource
+                    && descriptor.role != SemanticResourceRole::CompositeResult
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+            } else if entry.facts.mapping().source_spatial().is_some() {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            if let Some(previous) = reads.get(1) {
+                let descriptor = graph
+                    .resources
+                    .get(previous.index.as_usize()?)
+                    .ok_or(GraphValidationError::UnknownResource(*previous))?
+                    .descriptor;
+                if descriptor.role != SemanticResourceRole::FilterFloat
+                    || super::lower::GraphLoweringSpatialDescriptor::from_semantic(descriptor)
+                        != entry.facts.mapping().target_spatial()
+                {
+                    return Err(GraphValidationError::InvalidPassResultRole);
+                }
+            }
+            cursor += 1;
+            position += 1;
+            Ok(result)
+        };
+        let mut first_stage = first.facts.stage();
+        if first_stage == GaussianStage::RebaseSource {
+            source = Some(take(
+                GaussianStage::RebaseSource,
+                &[source.ok_or(GraphValidationError::InvalidPassArity)?],
+            )?);
+            first_stage = if foreground.operation.is_passthrough() {
+                GaussianStage::PassThrough
+            } else {
+                GaussianStage::Prepare
+            };
+        }
+        match first_stage {
+            GaussianStage::Constant => {
+                take(GaussianStage::Constant, &[])?;
+            }
+            GaussianStage::PassThrough => {
+                take(
+                    GaussianStage::PassThrough,
+                    &[source.ok_or(GraphValidationError::InvalidPassArity)?],
+                )?;
+            }
+            GaussianStage::Prepare => {
+                let mut current = take(
+                    GaussianStage::Prepare,
+                    &[source.ok_or(GraphValidationError::InvalidPassArity)?],
+                )?;
+                // The first mapping owns admitted per-axis geometry. Rebase
+                // carries no geometry; derive these from the actual prepare.
+                for axis in [GaussianAxis::X, GaussianAxis::Y] {
+                    let Some(geometry) = geometries[axis.index()] else {
+                        continue;
+                    };
+                    let axis_source = current;
+                    let mut previous = None;
+                    let mut first_tap = 0;
+                    while first_tap < geometry.sample_count() {
+                        let count = (geometry.sample_count() - first_tap).min(32);
+                        let inputs = [axis_source, previous.unwrap_or(axis_source)];
+                        let reads = if previous.is_none() {
+                            &inputs[..1]
+                        } else {
+                            &inputs[..]
+                        };
+                        previous = Some(take(
+                            GaussianStage::Accumulate {
+                                axis,
+                                first_tap,
+                                tap_count: count,
+                                first: previous.is_none(),
+                            },
+                            reads,
+                        )?);
+                        first_tap += count;
+                    }
+                    current = previous.ok_or(GraphValidationError::InvalidPassArity)?;
+                }
+                take(GaussianStage::Resolve, &[current])?;
+            }
+            _ => return Err(GraphValidationError::InvalidPassArity),
+        }
+    }
+    for composite in &graph.composites {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let pass = graph
+            .passes
+            .get(composite.pass.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownPass(composite.pass))?;
+        let Some(source) = pass.reads.get(1) else {
+            if composite.gaussian_footprint.is_some() {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            continue;
+        };
+        let resource = graph
+            .resources
+            .get(source.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownResource(*source))?;
+        let Some(SemanticResourceProducer::Pass(producer)) = resource.producer else {
+            continue;
+        };
+        let mut low = 0;
+        let mut high = graph.gaussians.len();
+        while low < high {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let middle = low + (high - low) / 2;
+            if graph.gaussians[middle].pass.index.0 < producer.index.0 {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        let expected = graph
+            .gaussians
+            .get(low)
+            .filter(|entry| {
+                entry.pass == producer
+                    && matches!(
+                        entry.facts.stage(),
+                        GaussianStage::Constant
+                            | GaussianStage::PassThrough
+                            | GaussianStage::Resolve
+                    )
+            })
+            .map(|entry| entry.facts.mapping().output_footprint());
+        if composite.gaussian_footprint != expected
+            || (expected.is_some()
+                && !matches!(composite.kind, SemanticCompositeKind::Layer { .. }))
+        {
+            return Err(GraphValidationError::InvalidPassResultRole);
+        }
     }
     Ok(())
 }

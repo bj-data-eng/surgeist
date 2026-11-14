@@ -45,6 +45,7 @@ mod filter;
 mod filter_domains;
 mod filter_model;
 mod frame;
+mod gaussian;
 mod geometry;
 mod gpu_transaction;
 mod image;
@@ -107,6 +108,10 @@ pub use error::{
 pub use error::{GeometryRealizationError, GradientHintError, GradientRealizationError};
 pub use filter_domains::FilterDomains;
 pub use filter_model::{FilterColorSpace, FilterEdgeMode};
+pub use gaussian::{
+    GaussianInput, GaussianNumericPhase, GaussianParameter, GaussianPreparationError,
+    GaussianSource, PreparedGaussian, prepare_gaussian,
+};
 pub use geometry::{
     CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag, PhysicalSize, Point, Radii, Rect,
     Size, Transform,

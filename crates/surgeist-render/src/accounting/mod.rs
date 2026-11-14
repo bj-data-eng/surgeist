@@ -803,6 +803,7 @@ impl Account {
                 | RenderAttemptKind::LeaderPattern
                 | RenderAttemptKind::Convolution
                 | RenderAttemptKind::Offset
+                | RenderAttemptKind::Gaussian
         ) {
             return RenderAccountingError::StandaloneAllocation { resource }.into();
         }
@@ -837,6 +838,7 @@ impl Account {
                 | RenderAttemptKind::LeaderPattern
                 | RenderAttemptKind::Convolution
                 | RenderAttemptKind::Offset
+                | RenderAttemptKind::Gaussian
         ) {
             return RenderAccountingError::StandaloneCapacityOverflow { resource }.into();
         }
@@ -908,6 +910,7 @@ impl Account {
             && self.kind != RenderAttemptKind::LeaderPattern
             && self.kind != RenderAttemptKind::Convolution
             && self.kind != RenderAttemptKind::Offset
+            && self.kind != RenderAttemptKind::Gaussian
             && refusal.phase != RenderPhase::Attempt
             && let RenderRefusalReason::Limit { limit } = refusal.reason
             && let Some(required) = refusal

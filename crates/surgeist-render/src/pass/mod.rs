@@ -1,6 +1,7 @@
 mod close;
 mod convolution;
 mod encode;
+mod gaussian;
 mod lower;
 mod model;
 mod offset;

@@ -168,6 +168,18 @@ impl Renderer {
             .runtime_report(Format::Rgba8)
     }
 
+    pub(crate) fn override_default_device_filter_float32_fact_for_test(
+        &mut self,
+        supported: bool,
+    ) -> bool {
+        let Some(identity) = self.default_device else {
+            return false;
+        };
+        self.backend.as_mut().is_some_and(|backend| {
+            backend.override_device_filter_float32_fact_for_test(identity, supported)
+        })
+    }
+
     pub(crate) fn override_default_device_effect_precision_facts_for_test(
         &mut self,
         effect_precisions: EffectPrecisionCapabilities,

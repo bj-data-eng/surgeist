@@ -18,14 +18,21 @@ use super::{
         BlurAxis, BlurInput, BlurPassDescription, ColorFilterPassDescription,
         CompositePassDescription, ConvolutionPassDescription, CopyBackdropPassDescription,
         CorePassDescription, CorePassProgram, DropShadowColorizePassDescription,
-        OffsetPassDescription,
+        GaussianPassDescription, OffsetPassDescription,
     },
 };
 
 const CANONICALIZE_CAPTURE_WGSL: &str = include_str!("../shaders/canonicalize_capture.wgsl");
 const SPAN_SOURCE_OVER_WGSL: &str = include_str!("../shaders/span_source_over.wgsl");
 const PRESENT_WGSL: &str = include_str!("../shaders/present.wgsl");
-pub(super) const CONVOLUTION_WGSL: &str = include_str!("../shaders/convolution.wgsl");
+pub(super) const CONVOLUTION_WGSL: &str = concat!(
+    include_str!("../shaders/native_filter_color.wgsl"),
+    include_str!("../shaders/convolution.wgsl")
+);
+pub(super) const GAUSSIAN_WGSL: &str = concat!(
+    include_str!("../shaders/native_filter_color.wgsl"),
+    include_str!("../shaders/gaussian.wgsl")
+);
 const OFFSET_WGSL: &str = concat!(
     include_str!("../shaders/cubic.wgsl"),
     include_str!("../shaders/offset.wgsl"),
@@ -248,7 +255,7 @@ pub(super) fn create_composite_bind_group_layout(
         ty: wgpu::BindingType::Buffer {
             ty: wgpu::BufferBindingType::Uniform,
             has_dynamic_offset: false,
-            min_binding_size: wgpu::BufferSize::new(112),
+            min_binding_size: wgpu::BufferSize::new(128),
         },
         count: None,
     })?;
@@ -553,6 +560,133 @@ pub(super) fn create_convolution_render_pipeline(
             fragment: Some(wgpu::FragmentState {
                 module: shader,
                 entry_point: Some("fragment_main"),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
+pub(super) fn create_gaussian_bind_group_layout(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: GaussianPassDescription,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    let texture = |binding| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    let all_entries = [
+        texture(0),
+        texture(1),
+        wgpu::BindGroupLayoutEntry {
+            binding: 2,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(256),
+            },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry {
+            binding: 3,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(8),
+            },
+            count: None,
+        },
+    ];
+    let entries: &[wgpu::BindGroupLayoutEntry] = match description.program {
+        super::ShaderProgramKey::GaussianConstant => &all_entries[2..3],
+        super::ShaderProgramKey::GaussianSource => &[all_entries[0], all_entries[2]],
+        _ => &all_entries,
+    };
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist gaussian bindings"),
+            entries,
+        })
+    })
+}
+
+pub(super) fn create_gaussian_shader_module(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist gaussian shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(GAUSSIAN_WGSL)),
+        })
+    })
+}
+
+pub(super) fn create_gaussian_render_pipeline(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: GaussianPassDescription,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Surgeist gaussian pipeline layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
+        })
+    })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist gaussian pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vertex_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(match description.program {
+                    super::ShaderProgramKey::GaussianConstant => "constant_main",
+                    super::ShaderProgramKey::GaussianSource => "source_main",
+                    _ => "fragment_main",
+                }),
                 targets: &[Some(target)],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
@@ -1224,6 +1358,51 @@ mod convolution_shader_tests {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
+mod gaussian_shader_tests {
+    use super::*;
+
+    #[test]
+    fn gaussian_shader_validates_with_exact_uniform_and_sampler_free_bindings() {
+        let module = wgpu::naga::front::wgsl::parse_str(GAUSSIAN_WGSL)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(GAUSSIAN_WGSL)));
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
+        let bindings: Vec<_> = module
+            .global_variables
+            .iter()
+            .filter_map(|(_, variable)| {
+                variable
+                    .binding
+                    .as_ref()
+                    .map(|binding| (binding.binding, variable))
+            })
+            .collect();
+        assert_eq!(bindings.len(), 4);
+        assert!(bindings.iter().all(|(_, variable)| !matches!(
+            module.types[variable.ty].inner,
+            wgpu::naga::TypeInner::Sampler { .. }
+        )));
+        let uniform = bindings
+            .iter()
+            .find(|(binding, _)| *binding == 2)
+            .unwrap()
+            .1;
+        let wgpu::naga::TypeInner::Struct { span, .. } = module.types[uniform.ty].inner else {
+            panic!("gaussian binding 2 must be the uniform structure");
+        };
+        assert_eq!(span, 256);
+        assert_eq!(
+            texture_format(ShaderTextureFormatKey::FilterRgba32Float).unwrap(),
+            wgpu::TextureFormat::Rgba32Float
+        );
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod convolution_alpha_gpu_tests {
     use super::*;
     use crate::shader::{ConvolutionParameterBytes, ConvolutionParameterFacts};
@@ -1565,5 +1744,68 @@ mod offset_shader_tests {
         )
         .validate(&module)
         .unwrap();
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod gaussian_pipeline_gpu_tests {
+    use super::*;
+
+    #[test]
+    fn gaussian_pipeline_entry_points_validate_with_only_reached_resources() {
+        let mut renderer =
+            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let (device, _) = renderer
+            .default_wgpu_device_queue()
+            .expect("Gaussian pipeline validation requires a GPU adapter");
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let account = Account::for_test();
+        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = account.cpu().unwrap();
+        let shader =
+            create_gaussian_shader_module(&generation, cpu, Some(&account), device).unwrap();
+        for program in [
+            super::super::ShaderProgramKey::GaussianConstant,
+            super::super::ShaderProgramKey::GaussianSource,
+            super::super::ShaderProgramKey::Gaussian,
+        ] {
+            for target_format in [
+                ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+                ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
+                ShaderTextureFormatKey::FilterRgba32Float,
+            ] {
+                if program == super::super::ShaderProgramKey::Gaussian
+                    && target_format != ShaderTextureFormatKey::FilterRgba32Float
+                {
+                    continue;
+                }
+                let description = GaussianPassDescription {
+                    target_format,
+                    program,
+                };
+                let layout = create_gaussian_bind_group_layout(
+                    &generation,
+                    cpu,
+                    Some(&account),
+                    device,
+                    description,
+                )
+                .unwrap();
+                let _pipeline = create_gaussian_render_pipeline(
+                    &generation,
+                    cpu,
+                    Some(&account),
+                    device,
+                    description,
+                    &layout,
+                    &shader,
+                )
+                .unwrap();
+            }
+        }
+        assert!(
+            pollster::block_on(validation.pop()).is_none(),
+            "actual Gaussian entry points must accept their exact resource layouts"
+        );
     }
 }

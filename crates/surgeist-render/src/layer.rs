@@ -165,6 +165,11 @@ impl Layer {
         }
     }
 
+    pub(crate) fn with_gaussian(mut self, gaussian: crate::gaussian::GaussianForeground) -> Self {
+        self.filter = Some(LayerFilter::Gaussian(gaussian));
+        self
+    }
+
     /// Returns this layer with the supplied validated backdrop-filter input.
     ///
     /// The new input replaces any previous backdrop-filter input. This builder
@@ -297,7 +302,12 @@ impl Layer {
     pub const fn filter(&self) -> Option<Filter> {
         match &self.filter {
             Some(LayerFilter::Blur(filter)) => Some(*filter),
-            Some(LayerFilter::List(_) | LayerFilter::Convolution(_) | LayerFilter::Offset(_))
+            Some(
+                LayerFilter::List(_)
+                | LayerFilter::Convolution(_)
+                | LayerFilter::Offset(_)
+                | LayerFilter::Gaussian(_),
+            )
             | None => None,
         }
     }
@@ -307,7 +317,12 @@ impl Layer {
     pub const fn filter_list(&self) -> Option<&FilterList> {
         match &self.filter {
             Some(LayerFilter::List(filters)) => Some(filters),
-            Some(LayerFilter::Blur(_) | LayerFilter::Convolution(_) | LayerFilter::Offset(_))
+            Some(
+                LayerFilter::Blur(_)
+                | LayerFilter::Convolution(_)
+                | LayerFilter::Offset(_)
+                | LayerFilter::Gaussian(_),
+            )
             | None => None,
         }
     }
@@ -350,6 +365,7 @@ pub(crate) enum LayerFilter {
     List(FilterList),
     Convolution(crate::PreparedConvolution),
     Offset(crate::PreparedOffset),
+    Gaussian(crate::gaussian::GaussianForeground),
 }
 
 #[derive(Clone, Debug, PartialEq)]

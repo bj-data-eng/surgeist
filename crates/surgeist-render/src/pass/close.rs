@@ -1,4 +1,5 @@
 mod convolution;
+mod gaussian;
 mod offset;
 
 use crate::accounting::{
@@ -468,6 +469,11 @@ pub(super) enum ExecutableFilterStepFacts {
         source: RuntimeResourceId,
         result: RuntimeResourceId,
     },
+    Gaussian {
+        passes: SharedValue<Vec<RuntimePassId>>,
+        source: Option<RuntimeResourceId>,
+        result: RuntimeResourceId,
+    },
     Convolution {
         passes: SharedValue<Vec<RuntimePassId>>,
         source: RuntimeResourceId,
@@ -493,7 +499,9 @@ impl ExecutableFilterStepFacts {
             Self::Blur { horizontal, .. } | Self::DropShadow { horizontal, .. } => {
                 Some(*horizontal)
             }
-            Self::Convolution { passes, .. } => passes.first().copied(),
+            Self::Convolution { passes, .. } | Self::Gaussian { passes, .. } => {
+                passes.first().copied()
+            }
         }
     }
 
@@ -503,7 +511,9 @@ impl ExecutableFilterStepFacts {
             Self::Offset { sample, .. } => Some(*sample),
             Self::Blur { vertical, .. } => Some(*vertical),
             Self::DropShadow { merge, .. } => Some(*merge),
-            Self::Convolution { passes, .. } => passes.last().copied(),
+            Self::Convolution { passes, .. } | Self::Gaussian { passes, .. } => {
+                passes.last().copied()
+            }
         }
     }
 }
@@ -521,6 +531,7 @@ pub(super) struct ClosedExecutableGraphFacts {
     // Derived while visiting validated convolution steps and checked by the
     // accounted repeated proof; route predicates must not rescan their payload.
     has_convolution: bool,
+    has_gaussian: bool,
     has_offset: bool,
     pub(super) backdrops: SharedValue<Vec<ExecutableBackdropFacts>>,
 }
@@ -565,6 +576,7 @@ impl ClosedExecutableGraph {
         !self.facts.blurs.is_empty()
             || !self.facts.drop_shadows.is_empty()
             || self.facts.has_convolution
+            || self.facts.has_gaussian
             || self.facts.has_offset
     }
 
@@ -615,7 +627,14 @@ impl ClosedExecutableGraphFacts {
                 ]
                 .into_iter()
                 .flatten();
-                same_source_composite(composite, &layer.composite)
+                let gaussian_footprint_present = match &composite.kind {
+                    RuntimeCompositeKind::Layer { parameters, .. } => {
+                        parameters.gaussian_footprint().is_some()
+                    }
+                    _ => false,
+                };
+                (self.has_gaussian || !gaussian_footprint_present)
+                    && same_source_composite(composite, &layer.composite)
                     && proof_reads(pass, &proof)
                         .map(|read| read.resource)
                         .eq(expected_reads)
@@ -675,6 +694,7 @@ impl ClosedExecutableGraphFacts {
                     self.has_convolution,
                     &proof,
                 )
+                && gaussian::steps_are_exact(plan, &self.filter_steps, self.has_gaussian, &proof)
                 && offset::steps_are_exact(plan, &self.filter_steps, self.has_offset, &proof)
                 && backdrops_are_exact
         })();
@@ -995,6 +1015,32 @@ fn filter_steps_match(
         account.work(RenderWork::GraphNodeVisits, 1)?;
         let equal = match (a, b) {
             (
+                ExecutableFilterStepFacts::Gaussian {
+                    passes: a,
+                    source: a_source,
+                    result: a_result,
+                },
+                ExecutableFilterStepFacts::Gaussian {
+                    passes: b,
+                    source: b_source,
+                    result: b_result,
+                },
+            ) => {
+                if a_source != b_source || a_result != b_result || a.len() != b.len() {
+                    false
+                } else if a.same_allocation(b) {
+                    true
+                } else {
+                    for (a, b) in a.iter().zip(b.iter()) {
+                        account.work(RenderWork::GraphEdgeVisits, 1)?;
+                        if a != b {
+                            return Ok(false);
+                        }
+                    }
+                    true
+                }
+            }
+            (
                 ExecutableFilterStepFacts::Convolution {
                     passes: a,
                     source: a_source,
@@ -1073,6 +1119,27 @@ fn filter_step_order_is_exact(
                     if !proof_relationships_equal(
                         plan.passes.get(cursor..end)?.iter().map(|p| p.id),
                         ids,
+                        proof,
+                        |a, b| a == b,
+                    ) {
+                        return None;
+                    }
+                    step_index += 1;
+                    cursor = end;
+                }
+                RuntimePassKind::Gaussian(_) => {
+                    let ExecutableFilterStepFacts::Gaussian { passes, .. } =
+                        expected.get(step_index)?
+                    else {
+                        return None;
+                    };
+                    if passes.is_empty() {
+                        return None;
+                    }
+                    let end = cursor.checked_add(passes.len())?;
+                    if !proof_relationships_equal(
+                        plan.passes.get(cursor..end)?.iter().map(|p| p.id),
+                        passes.iter().copied(),
                         proof,
                         |a, b| a == b,
                     ) {
@@ -1673,6 +1740,7 @@ fn validate_closed_pass_accounting<'proof>(
             validate_closed_read(plan, maps, &mut accounting, pass, read, position)?;
         }
         validate_closed_result(plan, maps, &mut accounting, pass)?;
+        gaussian::composite_footprint_is_exact(pass, plan, maps)?;
         pass_releases.clear()?;
         if pass.releases.iter().any(|resource| {
             !proof.work(RenderWork::GraphEdgeVisits, 1)
@@ -1833,6 +1901,20 @@ impl ProofBounds {
                         bounds.shadows += 1;
                     }
                 }
+                RuntimePassKind::Gaussian(work)
+                    if matches!(
+                        work.stage(),
+                        crate::frame::GaussianStage::Constant
+                            | crate::frame::GaussianStage::RebaseSource
+                            | crate::frame::GaussianStage::PassThrough
+                            | crate::frame::GaussianStage::Prepare
+                    ) =>
+                {
+                    bounds.steps += 1;
+                    if work.stage() == crate::frame::GaussianStage::Constant {
+                        bounds.contexts += 1;
+                    }
+                }
                 RuntimePassKind::Convolution(work)
                     if matches!(
                         work.stage(),
@@ -1868,6 +1950,7 @@ struct ClosedGraphTraversal<'plan, 'proof> {
     drop_shadows: ProofVec<ExecutableDropShadowFacts>,
     filter_steps: ProofVec<ExecutableFilterStepFacts>,
     has_convolution: bool,
+    has_gaussian: bool,
     has_offset: bool,
     backdrops: ProofVec<ExecutableBackdropFacts>,
     expected_resources: ProofSet<'proof, RuntimeResourceId>,
@@ -1935,6 +2018,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 RenderResource::RetainedCpuBytes,
             )?,
             has_convolution: false,
+            has_gaussian: false,
             has_offset: false,
             backdrops: ProofVec::new(
                 proof.account,
@@ -1987,6 +2071,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             drop_shadows: self.drop_shadows.into_shared(self.proof.account)?,
             filter_steps: self.filter_steps.into_shared(self.proof.account)?,
             has_convolution: self.has_convolution,
+            has_gaussian: self.has_gaussian,
             has_offset: self.has_offset,
             backdrops: self.backdrops.into_shared(self.proof.account)?,
         }))
@@ -2016,6 +2101,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 self.visit_ordinary_filter(pass)
             }
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
+            RuntimePassKind::Gaussian(_) => self.visit_gaussian(),
             RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::CopyBackdrop => self.visit_backdrop(pass),
             RuntimePassKind::Composite(Some(composite))
@@ -2308,6 +2394,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
     fn visit_ordinary_filter(&mut self, pass: &RuntimePass) -> Option<()> {
         match &pass.kind {
             RuntimePassKind::Convolution(_) => self.visit_convolution(),
+            RuntimePassKind::Gaussian(_) => self.visit_gaussian(),
             RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::ColorFilter(Some(filter)) => self.visit_color_filter(pass, filter),
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
@@ -2451,6 +2538,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 RuntimePassKind::ColorFilter(Some(_))
                     | RuntimePassKind::BlurHorizontal(Some(_))
                     | RuntimePassKind::Convolution(_)
+                    | RuntimePassKind::Gaussian(_)
                     | RuntimePassKind::Offset(_)
             ) {
                 break;
@@ -5431,9 +5519,9 @@ fn dispatch_pass_semantics(
                 .then_some(DispatchPassSemantics::ClosedExecutable)
         }
         RuntimePassKind::VelloCapture(_) => None,
-        RuntimePassKind::Convolution(_) | RuntimePassKind::Offset(_) => {
-            Some(DispatchPassSemantics::ClosedExecutable)
-        }
+        RuntimePassKind::Convolution(_)
+        | RuntimePassKind::Gaussian(_)
+        | RuntimePassKind::Offset(_) => Some(DispatchPassSemantics::ClosedExecutable),
         RuntimePassKind::CopyBackdrop
         | RuntimePassKind::ColorFilter(Some(_))
         | RuntimePassKind::DropShadowColorize(Some(_)) => Some(DispatchPassSemantics::FuturePass),

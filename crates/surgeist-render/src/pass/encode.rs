@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 #[path = "encode/convolution.rs"]
 mod convolution;
+#[path = "encode/gaussian.rs"]
+mod gaussian;
 #[path = "encode/offset.rs"]
 mod offset;
 
@@ -21,8 +23,8 @@ use super::super::{
     shader::{
         BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
         CompositeParameterBytes, ConvolutionParameterBytes, DevicePassCache,
-        DropShadowParameterBytes, OffsetParameterBytes, PassCacheCommitPreparation,
-        PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
+        DropShadowParameterBytes, GaussianParameterBytes, OffsetParameterBytes,
+        PassCacheCommitPreparation, PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
         ProvisionalCompositePassObjects, ProvisionalCorePassObjects,
         ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate, ShaderCompositePathKey,
     },
@@ -44,10 +46,10 @@ use super::{
     },
     parameters::backdrop_blur_edge_uniform_bytes,
     prepare::{
-        PreparedColorFilterOperationBinding, PreparedConvolutionWeightsBinding, PreparedGraph,
-        PreparedKernelBinding, PreparedOffsetParameterBinding, PreparedResourceBinding,
-        PreparedSpatialFilterPassObjects, PreparedTextureBinding, RuntimePassPreparationRequest,
-        VELLO_CAPTURE_TEXTURE_USAGES,
+        PreparedColorFilterOperationBinding, PreparedConvolutionWeightsBinding,
+        PreparedGaussianParameterBinding, PreparedGraph, PreparedKernelBinding,
+        PreparedOffsetParameterBinding, PreparedResourceBinding, PreparedSpatialFilterPassObjects,
+        PreparedTextureBinding, RuntimePassPreparationRequest, VELLO_CAPTURE_TEXTURE_USAGES,
     },
 };
 
@@ -61,7 +63,8 @@ pub(super) fn filter_step_passes<'a>(
             ExecutableFilterStepFacts::Offset { rebase, .. } => 1 + usize::from(rebase.is_some()),
             ExecutableFilterStepFacts::Blur { .. } => 2,
             ExecutableFilterStepFacts::DropShadow { .. } => 4,
-            ExecutableFilterStepFacts::Convolution { passes, .. } => passes.len().max(1),
+            ExecutableFilterStepFacts::Convolution { passes, .. }
+            | ExecutableFilterStepFacts::Gaussian { passes, .. } => passes.len().max(1),
         };
         (0..count).map(move |index| {
             if index == 0 {
@@ -88,7 +91,8 @@ pub(super) fn filter_step_passes<'a>(
                 } => [*horizontal, *vertical, *colorize, *merge]
                     .get(index)
                     .copied(),
-                ExecutableFilterStepFacts::Convolution { passes, .. } => passes.get(index).copied(),
+                ExecutableFilterStepFacts::Convolution { passes, .. }
+                | ExecutableFilterStepFacts::Gaussian { passes, .. } => passes.get(index).copied(),
             };
             pass.ok_or_else(|| {
                 preparation_error("filter receipt contains an empty convolution chain")
@@ -225,6 +229,7 @@ pub(super) enum GraphScheduledEncodingKind {
     CopyBackdrop,
     ColorFilter,
     Convolution,
+    Gaussian,
     Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
@@ -242,6 +247,7 @@ pub(super) enum GraphScheduledEncodingKind {
 pub(crate) enum ScheduledFilterRawFact {
     Color,
     Convolution,
+    Gaussian,
     Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
@@ -262,6 +268,8 @@ pub(super) enum CustomSpineEncodingState {
 pub(crate) struct CustomSpineEncodingSummary {
     pub(crate) offset_pass_count: usize,
     pub(crate) offset_parameters_and_resources_are_exact: bool,
+    pub(crate) gaussian_pass_count: usize,
+    pub(crate) gaussian_parameters_and_resources_are_exact: bool,
     pub(crate) convolution_pass_count: usize,
     pub(crate) convolution_parameters_and_resources_are_exact: bool,
     pub(crate) encodes_custom_passes_in_order: bool,
@@ -330,6 +338,8 @@ pub(crate) struct CustomSpineEncodingSummary {
 struct CustomSpineEncodingProgress {
     offset_pass_count: usize,
     offset_parameters_and_resources_are_exact: bool,
+    gaussian_pass_count: usize,
+    gaussian_parameters_and_resources_are_exact: bool,
     convolution_pass_count: usize,
     convolution_parameters_and_resources_are_exact: bool,
     scheduled: AccountedVec<GraphScheduledEncodingKind>,
@@ -396,6 +406,8 @@ impl CustomSpineEncodingProgress {
         Ok(Self {
             offset_pass_count: 0,
             offset_parameters_and_resources_are_exact: true,
+            gaussian_pass_count: 0,
+            gaussian_parameters_and_resources_are_exact: true,
             convolution_pass_count: 0,
             convolution_parameters_and_resources_are_exact: true,
             scheduled: account.temporary(expected_pass_count)?,
@@ -485,6 +497,9 @@ impl CustomSpineEncodingProgress {
             offset_pass_count: self.offset_pass_count,
             offset_parameters_and_resources_are_exact: self
                 .offset_parameters_and_resources_are_exact,
+            gaussian_pass_count: self.gaussian_pass_count,
+            gaussian_parameters_and_resources_are_exact: self
+                .gaussian_parameters_and_resources_are_exact,
             convolution_pass_count: self.convolution_pass_count,
             convolution_parameters_and_resources_are_exact: self
                 .convolution_parameters_and_resources_are_exact,
@@ -632,6 +647,7 @@ fn scheduled_filter_raw_facts(
         .filter_map(|kind| match kind {
             GraphScheduledEncodingKind::ColorFilter => Some(ScheduledFilterRawFact::Color),
             GraphScheduledEncodingKind::Convolution => Some(ScheduledFilterRawFact::Convolution),
+            GraphScheduledEncodingKind::Gaussian => Some(ScheduledFilterRawFact::Gaussian),
             GraphScheduledEncodingKind::Offset => Some(ScheduledFilterRawFact::Offset),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
                 Some(ScheduledFilterRawFact::BlurHorizontalRgba)
@@ -792,6 +808,7 @@ impl CustomSpineEncodingSummary {
     fn proves_complete_submission(&self) -> bool {
         let common = (self.offset_pass_count == 0
             || self.offset_parameters_and_resources_are_exact)
+            && (self.gaussian_pass_count == 0 || self.gaussian_parameters_and_resources_are_exact)
             && self.encodes_custom_passes_in_order
             && (self.convolution_pass_count == 0
                 || self.convolution_parameters_and_resources_are_exact)
@@ -826,6 +843,7 @@ impl CustomSpineEncodingSummary {
             .saturating_add(self.drop_shadow_merge_count);
         let spatial_pass_count = spatial_pass_count
             .saturating_add(self.convolution_pass_count)
+            .saturating_add(self.gaussian_pass_count)
             .saturating_add(self.offset_pass_count);
         let exact_base = self.layer_composite_count == 0
             && self.color_filter_count == 0
@@ -883,6 +901,7 @@ impl CustomSpineEncodingSummary {
         let exact_spatial_filter = self.copy_backdrop_count == 0
             && (self.blur_pass_count > 0
                 || self.convolution_pass_count > 0
+                || self.gaussian_pass_count > 0
                 || self.offset_pass_count > 0)
             && exact_layers
             && exact_color_filters
@@ -1032,6 +1051,7 @@ struct PreparedPassEncodingRequest {
     releases: SharedValue<Vec<RuntimeResourceId>>,
     kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     convolution_parameters: Option<ConvolutionParameterBytes>,
+    gaussian_parameters: Option<GaussianParameterBytes>,
     offset_parameters: Option<OffsetParameterBytes>,
     convolution_weights: Option<RuntimePassId>,
 }
@@ -1047,6 +1067,7 @@ struct CompletedPassReleases {
     kernels: SharedValue<Vec<GaussianKernelKey>>,
     color_buffer_taken: bool,
     offset_buffer_taken: bool,
+    gaussian_buffer_taken: bool,
 }
 
 /// Scheduled bindings from the graph whose frame resolved their exact leases.
@@ -1056,6 +1077,9 @@ struct ResolvedPassReleases<'graph> {
     kernels: SharedValue<Vec<GaussianKernelKey>>,
     releases_color_filter_operation: bool,
     releases_offset_parameters: bool,
+    releases_gaussian_parameters: bool,
+    gaussian_parameter_bindings:
+        &'graph mut PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
     offset_parameter_bindings: &'graph mut PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     resource_bindings: &'graph mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
     kernel_bindings: &'graph mut PassMap<GaussianKernelKey, PreparedKernelBinding>,
@@ -1077,6 +1101,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
         let kernel_releases = request.kernel_releases.clone();
         let releases_color_filter_operation = request.color_filter_operations.is_some();
         let releases_offset_parameters = request.offset_parameters.is_some();
+        let releases_gaussian_parameters = request.gaussian_parameters.is_some();
         let convolution_release = request
             .convolution_weights
             .map(|owner| -> Result<Option<RuntimePassId>> {
@@ -1142,7 +1167,18 @@ impl<'graph> ResolvedPassReleases<'graph> {
             ));
         }
 
+        if releases_gaussian_parameters
+            && graph
+                .gaussian_parameter_bindings
+                .get(&pass, account)?
+                .is_none_or(|binding| binding.buffer.is_none())
+        {
+            return Err(preparation_error(
+                "prepared Gaussian uniform release is stale or missing",
+            ));
+        }
         let PreparedGraph {
+            gaussian_parameter_bindings,
             offset_parameter_bindings,
             resource_bindings,
             kernel_bindings,
@@ -1194,6 +1230,8 @@ impl<'graph> ResolvedPassReleases<'graph> {
             kernels: kernel_releases,
             releases_color_filter_operation,
             releases_offset_parameters,
+            releases_gaussian_parameters,
+            gaussian_parameter_bindings,
             offset_parameter_bindings,
             resource_bindings,
             kernel_bindings,
@@ -1238,6 +1276,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 &mut first_missing,
             );
         }
+        if self.releases_gaussian_parameters {
+            let binding = self
+                .gaussian_parameter_bindings
+                .maintenance_get_mut(&self.pass)
+                .and_then(|binding| binding.buffer.take());
+            Self::drop_required_binding(
+                binding,
+                "Gaussian uniform missing after atomic resource release",
+                &mut first_missing,
+            );
+        }
         if self.releases_offset_parameters {
             let binding = self
                 .offset_parameter_bindings
@@ -1269,6 +1318,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
             kernels: self.kernels,
             color_buffer_taken: self.releases_color_filter_operation,
             offset_buffer_taken: self.releases_offset_parameters,
+            gaussian_buffer_taken: self.releases_gaussian_parameters,
         })
     }
 
@@ -1291,6 +1341,7 @@ struct CompletedReleaseFacts {
     kernels: bool,
     color_buffer: bool,
     offset_buffer: bool,
+    gaussian_buffer: bool,
 }
 
 impl CompletedPassReleases {
@@ -1303,6 +1354,7 @@ impl CompletedPassReleases {
             kernels: exact_source,
             color_buffer: exact_source && self.color_buffer_taken,
             offset_buffer: exact_source && self.offset_buffer_taken,
+            gaussian_buffer: exact_source && self.gaussian_buffer_taken,
         }
     }
 }
@@ -1323,6 +1375,7 @@ impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
             releases: request.runtime.releases.clone(),
             kernel_releases: request.kernel_releases.clone(),
             convolution_parameters: request.convolution_parameters.clone(),
+            gaussian_parameters: request.gaussian_parameters.clone(),
             offset_parameters: request.offset_parameters.clone(),
             convolution_weights: request.convolution_weights,
         }
@@ -1755,6 +1808,7 @@ fn graph_scheduled_encoding_order_is_exact(
             RuntimePassKind::CopyBackdrop => GraphScheduledEncodingKind::CopyBackdrop,
             RuntimePassKind::ColorFilter(Some(_)) => GraphScheduledEncodingKind::ColorFilter,
             RuntimePassKind::Convolution(_) => GraphScheduledEncodingKind::Convolution,
+            RuntimePassKind::Gaussian(_) => GraphScheduledEncodingKind::Gaussian,
             RuntimePassKind::Offset(_) => GraphScheduledEncodingKind::Offset,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
@@ -2233,6 +2287,16 @@ impl<'device> PreparedGraph<'device> {
                     released.resources && released.offset_buffer;
                 progress.offset_pass_count = progress.offset_pass_count.saturating_add(1);
                 progress.record_custom_completion(GraphScheduledEncodingKind::Offset)
+            }
+            RuntimePassKind::Gaussian(_) => {
+                self.encode_gaussian(encoder, request, account)?;
+                let released = self
+                    .complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                progress.gaussian_parameters_and_resources_are_exact &=
+                    released.resources && released.kernels && released.gaussian_buffer;
+                progress.gaussian_pass_count = progress.gaussian_pass_count.saturating_add(1);
+                progress.record_custom_completion(GraphScheduledEncodingKind::Gaussian)
             }
             RuntimePassKind::Convolution(_) => {
                 self.encode_convolution(encoder, request, account)?;
@@ -4579,6 +4643,14 @@ impl<'device> PreparedGraph<'device> {
             if binding.lease.is_some() {
                 return Err(preparation_error(
                     "graph submission retains a convolution coefficient lease",
+                ));
+            }
+        }
+        for binding in self.gaussian_parameter_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.buffer.is_some() {
+                return Err(preparation_error(
+                    "graph submission retains an unresolved Gaussian uniform",
                 ));
             }
         }
