@@ -1564,6 +1564,12 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
     let session = host.stop().into_session().unwrap();
     let (mut host, permit) =
         attach_attribute_recovery_fixture(session, target, element, &cancel, 4_500);
+    // This probe limits the native Source, after accepting the nested 7,500
+    // unit callback result. Its formerly independent conversion now consumes
+    // the same guest allowance: two values, one buffer and 7,500 copied units.
+    super::super::guest::tests::conversion_admission::extend_guest_allowance_for_callback_conversion(
+        &host, 7_500,
+    );
     let result = host.in_document(&permit, |scope| {
         let script = "protectedTarget.setAttribute('onclick', 'outer')";
         scope
@@ -1761,6 +1767,70 @@ pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attrib
             .attribute(&"onclick".into()),
         Some(&"later!".into()),
     );
+    let session = host.stop().into_session().unwrap();
+    let (host, permit) =
+        attach_attribute_recovery_fixture(session, target, element, &cancel, 20_000);
+    early_conversion_cancellation_abandons_without_replay(host, permit, &cancel, element);
+}
+
+fn early_conversion_cancellation_abandons_without_replay(
+    mut host: DocumentScriptHost,
+    permit: DocumentScriptPermit,
+    cancel: &Arc<AtomicBool>,
+    element: surgeist_dom::NodeId,
+) {
+    let calls = Rc::new(Cell::new(0));
+    let result = host.in_document(&permit, |scope| {
+        let count = calls.clone();
+        let stop = cancel.clone();
+        let callback = scope.function(&Callback::new(move |_, _| {
+            count.set(count.get() + 1);
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(surgeist_bindings_js::Completion::Undefined)
+        }))?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(
+                &"stopAfterAttributeCallback"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            ),
+            &callback,
+        )?;
+        scope
+            .evaluate(
+                &"protectedTarget.setAttribute('onclick', 'early')"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )
+            .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("cancellation inside ToString must refuse the new canonical conversion retention");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
+                DomHostedRuntimeError::Cancelled
+            ))
+        ))
+    ));
+    assert_eq!(calls.get(), 1);
+    drop(failure);
+    let mut session = host.stop().into_session().unwrap();
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    assert!(session.dom().pending_source_edit().is_none());
+    assert_eq!(calls.get(), 1, "abandonment must not replay guest coercion");
+    assert_eq!(
+        session
+            .snapshot()
+            .node(element)
+            .unwrap()
+            .attribute(&"onclick".into()),
+        Some(&"later!".into())
+    );
 }
 
 fn assert_csp_event_counts(
@@ -1846,12 +1916,30 @@ fn pause_guest_attribute(
     script: &str,
 ) -> Rc<Cell<usize>> {
     let calls = Rc::new(Cell::new(0));
+    let armed = Rc::new(Cell::new(false));
+    let arm = armed.clone();
+    let stop = cancel.clone();
+    let _observation = host
+        .engine
+        .as_ref()
+        .unwrap()
+        .preparation
+        .observe_conversion_admission(move |work| {
+            if matches!(
+                work,
+                surgeist_bindings_js::conversion::Work::CodeUnit
+                    | surgeist_bindings_js::conversion::Work::Value
+            ) && arm.replace(false)
+            {
+                stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
     let result = host.in_document(permit, |scope| {
         let calls = calls.clone();
-        let stop = cancel.clone();
+        let arm = armed.clone();
         let function = scope.function(&Callback::new(move |_, _| {
             calls.set(calls.get() + 1);
-            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            arm.set(true);
             Ok(surgeist_bindings_js::Completion::Undefined)
         }))?;
         let global = scope.global()?;
@@ -1871,12 +1959,18 @@ fn pause_guest_attribute(
     let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
         panic!("expected terminal guest host failure, got {result:?}");
     };
-    assert!(matches!(
+    assert!(
+        matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::Cancelled))
+            ))
+        ),
+        "expected original cancellation after {script}: {:?}; native={:?}; calls={}",
         failure.cause::<DocumentGuestEventError>(),
-        Some(DocumentGuestEventError::Document(
-            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::Cancelled))
-        ))
-    ));
+        failure.cause::<DocumentScriptNativeError>(),
+        calls.get()
+    );
     assert_eq!(calls.get(), 1);
     calls
 }

@@ -176,8 +176,7 @@ impl<'scope> Scope<'scope> {
         self.check_active()?;
         if !data
             .storage
-            .account
-            .owner
+            .owner()
             .ptr_eq(&Rc::downgrade(&self.operations.owner_state()))
         {
             return Err(self.operations.refuse(Error::ForeignOwner));

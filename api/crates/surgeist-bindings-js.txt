@@ -154,15 +154,26 @@ pub const surgeist_bindings_js::conversion::types::UNDEFINED: surgeist_bindings_
 pub const surgeist_bindings_js::conversion::types::UNRESTRICTED_DOUBLE: surgeist_bindings_js::conversion::Type<f64>
 pub const surgeist_bindings_js::conversion::types::UNRESTRICTED_FLOAT: surgeist_bindings_js::conversion::Type<f32>
 pub const surgeist_bindings_js::conversion::types::USV_STRING: surgeist_bindings_js::conversion::Type<surgeist_bindings_js::UsvString>
+pub enum surgeist_bindings_js::conversion::AdmissionError
+pub surgeist_bindings_js::conversion::AdmissionError::Reentrant
+pub surgeist_bindings_js::conversion::AdmissionError::Refused(surgeist_bindings_js::conversion::LocalRefusal)
+impl core::error::Error for surgeist_bindings_js::conversion::AdmissionError
+pub fn surgeist_bindings_js::conversion::AdmissionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_bindings_js::conversion::AdmissionError
+pub fn surgeist_bindings_js::conversion::AdmissionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_bindings_js::conversion::ArgumentValue<T>
 pub surgeist_bindings_js::conversion::ArgumentValue::Missing
 pub surgeist_bindings_js::conversion::ArgumentValue::Present(T)
 pub enum surgeist_bindings_js::conversion::CleanupFault
+pub surgeist_bindings_js::conversion::CleanupFault::HostPhaseCompletion
+pub surgeist_bindings_js::conversion::CleanupFault::HostStorageRelease
+pub surgeist_bindings_js::conversion::CleanupFault::LocalStorageRelease(surgeist_bindings_js::conversion::LocalRefusal)
 pub surgeist_bindings_js::conversion::CleanupFault::PhaseLedger(surgeist_bindings_js::conversion::LedgerError)
 pub surgeist_bindings_js::conversion::CleanupFault::PhaseOwnerMismatch
 pub surgeist_bindings_js::conversion::CleanupFault::StorageRelease(surgeist_bindings_js::conversion::LedgerError)
 impl surgeist_bindings_js::conversion::CleanupFault
 pub fn surgeist_bindings_js::conversion::CleanupFault::ledger_error(self) -> core::option::Option<surgeist_bindings_js::conversion::LedgerError>
+pub fn surgeist_bindings_js::conversion::CleanupFault::local_error(self) -> core::option::Option<surgeist_bindings_js::conversion::LocalRefusal>
 pub fn surgeist_bindings_js::conversion::CleanupFault::stage(self) -> surgeist_bindings_js::conversion::CleanupStage
 pub enum surgeist_bindings_js::conversion::CleanupPrimary
 pub surgeist_bindings_js::conversion::CleanupPrimary::CallbackPanicked
@@ -221,10 +232,23 @@ pub struct surgeist_bindings_js::conversion::Argument<D: surgeist_bindings_js::c
 impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conversion::Argument<D>
 pub fn surgeist_bindings_js::conversion::Argument<D>::declaration(&self) -> &'static str
 pub fn surgeist_bindings_js::conversion::Argument<D>::index(&self) -> usize
+pub struct surgeist_bindings_js::conversion::BufferRequest
+impl surgeist_bindings_js::conversion::BufferRequest
+pub fn surgeist_bindings_js::conversion::BufferRequest::backing_bytes(self) -> usize
+pub fn surgeist_bindings_js::conversion::BufferRequest::payload_bytes(self) -> u64
 pub struct surgeist_bindings_js::conversion::CleanupFailure
 impl surgeist_bindings_js::conversion::CleanupFailure
 pub fn surgeist_bindings_js::conversion::CleanupFailure::cleanup(&self) -> surgeist_bindings_js::conversion::CleanupFault
+pub fn surgeist_bindings_js::conversion::CleanupFailure::host_error(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 pub fn surgeist_bindings_js::conversion::CleanupFailure::primary(&self) -> core::option::Option<&surgeist_bindings_js::conversion::CleanupPrimary>
+impl core::error::Error for surgeist_bindings_js::conversion::CleanupFailure
+pub fn surgeist_bindings_js::conversion::CleanupFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_bindings_js::conversion::CleanupFailure
+pub fn surgeist_bindings_js::conversion::CleanupFailure::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_bindings_js::conversion::CleanupObservation
+impl surgeist_bindings_js::conversion::CleanupObservation
+pub fn surgeist_bindings_js::conversion::CleanupObservation::host_error(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+pub fn surgeist_bindings_js::conversion::CleanupObservation::status(&self) -> surgeist_bindings_js::conversion::CleanupStatus
 pub struct surgeist_bindings_js::conversion::CleanupStatus
 impl surgeist_bindings_js::conversion::CleanupStatus
 pub fn surgeist_bindings_js::conversion::CleanupStatus::failures(self) -> core::option::Option<u64>
@@ -250,6 +274,7 @@ impl<'scope> surgeist_bindings_js::conversion::Conversion<'_, 'scope>
 pub fn surgeist_bindings_js::conversion::Conversion<'_, 'scope>::toggle_event_init<Projection: 'static, Element>(&mut self, input: core::option::Option<&surgeist_bindings_js::Value<'scope>>, select_element: impl core::ops::function::FnOnce(&Projection) -> core::option::Option<Element>) -> core::result::Result<surgeist_bindings_js::conversion::ToggleEventOptions<'scope, Element>, surgeist_bindings_js::conversion::Failure>
 pub struct surgeist_bindings_js::conversion::ConversionAccount(_)
 impl surgeist_bindings_js::conversion::ConversionAccount
+pub fn surgeist_bindings_js::conversion::ConversionAccount::cleanup_observation(&self) -> surgeist_bindings_js::conversion::CleanupObservation
 pub fn surgeist_bindings_js::conversion::ConversionAccount::cleanup_status(&self) -> surgeist_bindings_js::conversion::CleanupStatus
 pub fn surgeist_bindings_js::conversion::ConversionAccount::new(scope: &mut surgeist_bindings_js::Scope<'_>, ledger: surgeist_ledger::shared::SharedOperation<surgeist_bindings_js::conversion::Work, surgeist_bindings_js::conversion::Resource>, parent: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<surgeist_bindings_js::conversion::Work, surgeist_bindings_js::conversion::Resource>, tariffs: surgeist_ledger::Tariffs<surgeist_bindings_js::conversion::Work, surgeist_bindings_js::conversion::Resource>) -> core::result::Result<Self, surgeist_bindings_js::Error>
 pub const fn surgeist_bindings_js::conversion::ConversionAccount::retained_body_bytes() -> usize
@@ -273,8 +298,14 @@ pub fn surgeist_bindings_js::conversion::Failure::kind(&self) -> surgeist_bindin
 impl core::convert::From<surgeist_bindings_js::conversion::Failure> for surgeist_bindings_js::Error
 pub fn surgeist_bindings_js::Error::from(failure: surgeist_bindings_js::conversion::Failure) -> Self
 impl core::error::Error for surgeist_bindings_js::conversion::Failure
+pub fn surgeist_bindings_js::conversion::Failure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_bindings_js::conversion::Failure
 pub fn surgeist_bindings_js::conversion::Failure::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_bindings_js::conversion::Hosted<H>
+impl<H: surgeist_bindings_js::conversion::Host> surgeist_bindings_js::conversion::Hosted<H>
+pub fn surgeist_bindings_js::conversion::Hosted<H>::install<B: 'static>(self, scope: &mut surgeist_bindings_js::Scope<'_>, limits: surgeist_ledger::Limits<surgeist_bindings_js::conversion::Work, surgeist_bindings_js::conversion::Resource>, backing: B) -> core::result::Result<surgeist_bindings_js::conversion::ConversionAccount, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::conversion::Hosted<H>::new(host: H) -> Self
+pub fn surgeist_bindings_js::conversion::Hosted<H>::storage_bytes<B: 'static>(&self) -> core::option::Option<usize>
 pub struct surgeist_bindings_js::conversion::IntegerType
 impl surgeist_bindings_js::conversion::IntegerType
 pub const fn surgeist_bindings_js::conversion::IntegerType::new(kind: surgeist_bindings_js::IntegerKind, mode: surgeist_bindings_js::IntegerMode) -> Self
@@ -282,6 +313,14 @@ pub fn surgeist_bindings_js::conversion::IntegerType::nullable(self) -> surgeist
 pub fn surgeist_bindings_js::conversion::IntegerType::sequence(self) -> surgeist_bindings_js::conversion::Sequence<Self>
 impl surgeist_bindings_js::conversion::Descriptor for surgeist_bindings_js::conversion::IntegerType
 pub type surgeist_bindings_js::conversion::IntegerType::Output = surgeist_bindings_js::IntegerValue
+pub struct surgeist_bindings_js::conversion::LocalRefusal
+impl surgeist_bindings_js::conversion::LocalRefusal
+pub fn surgeist_bindings_js::conversion::LocalRefusal::change(self) -> surgeist_ledger::Change<surgeist_bindings_js::conversion::Work, surgeist_bindings_js::conversion::Resource>
+pub fn surgeist_bindings_js::conversion::LocalRefusal::current(self) -> u64
+pub fn surgeist_bindings_js::conversion::LocalRefusal::reason(self) -> surgeist_ledger::RefusalReason
+impl core::error::Error for surgeist_bindings_js::conversion::LocalRefusal
+impl core::fmt::Display for surgeist_bindings_js::conversion::LocalRefusal
+pub fn surgeist_bindings_js::conversion::LocalRefusal::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_bindings_js::conversion::Nullable<D>(_)
 impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conversion::Nullable<D>
 pub fn surgeist_bindings_js::conversion::Nullable<D>::sequence(self) -> surgeist_bindings_js::conversion::Sequence<Self>
@@ -341,6 +380,9 @@ pub surgeist_bindings_js::conversion::WorkTable::SequenceMove: T
 pub surgeist_bindings_js::conversion::WorkTable::Value: T
 impl<T: core::marker::Copy> surgeist_bindings_js::conversion::WorkTable<T>
 pub const fn surgeist_bindings_js::conversion::WorkTable<T>::splat(value: T) -> Self
+pub trait surgeist_bindings_js::conversion::BufferRetention: 'static
+pub type surgeist_bindings_js::conversion::BufferRetention::Error: core::error::Error + 'static
+pub fn surgeist_bindings_js::conversion::BufferRetention::release(self) -> core::result::Result<(), Self::Error>
 pub trait surgeist_bindings_js::conversion::Descriptor: surgeist_bindings_js::conversion::composition::sealed::Convert<Self::Output>
 pub type surgeist_bindings_js::conversion::Descriptor::Output
 impl surgeist_bindings_js::conversion::Descriptor for surgeist_bindings_js::conversion::IntegerType
@@ -351,6 +393,13 @@ impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conv
 pub type surgeist_bindings_js::conversion::Sequence<D>::Output = alloc::vec::Vec<surgeist_bindings_js::conversion::Converted<<D as surgeist_bindings_js::conversion::Descriptor>::Output>>
 impl<T> surgeist_bindings_js::conversion::Descriptor for surgeist_bindings_js::conversion::Type<T>
 pub type surgeist_bindings_js::conversion::Type<T>::Output = T
+pub trait surgeist_bindings_js::conversion::Host: 'static
+pub type surgeist_bindings_js::conversion::Host::Buffer: surgeist_bindings_js::conversion::BufferRetention<Error = Self::CleanupError>
+pub type surgeist_bindings_js::conversion::Host::CleanupError: core::error::Error + 'static
+pub fn surgeist_bindings_js::conversion::Host::begin_phase(&self) -> core::result::Result<core::option::Option<surgeist_ledger::phase_observation::PhaseObservation>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::conversion::Host::charge(&self, work: surgeist_bindings_js::conversion::Work, units: u64) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::conversion::Host::end_phase(&self, marker: surgeist_ledger::phase_observation::PhaseObservation) -> core::result::Result<(), Self::CleanupError>
+pub fn surgeist_bindings_js::conversion::Host::retain_buffer(&self, request: surgeist_bindings_js::conversion::BufferRequest) -> core::result::Result<Self::Buffer, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::conversion::trusted_policy_callback_result(kind: surgeist_bindings_js::TrustedTypeKind) -> surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::TrustedTypeData>>
 pub type surgeist_bindings_js::conversion::LedgerError = surgeist_ledger::Error<surgeist_bindings_js::conversion::Work, surgeist_bindings_js::conversion::Resource>
 pub mod surgeist_bindings_js::css
@@ -360,7 +409,9 @@ pub const fn surgeist_bindings_js::css::CssNamespaceLimits::new(calls: u64, copi
 impl core::default::Default for surgeist_bindings_js::css::CssNamespaceLimits
 pub fn surgeist_bindings_js::css::CssNamespaceLimits::default() -> Self
 pub fn surgeist_bindings_js::css::callback_storage_bytes<Storage>() -> core::option::Option<usize>
+pub const fn surgeist_bindings_js::css::callback_target_bytes<Storage>() -> usize
 pub fn surgeist_bindings_js::css::install_window_css<Storage: 'static>(scope: &mut surgeist_bindings_js::Scope<'_>, limits: surgeist_bindings_js::css::CssNamespaceLimits, callback_backing: Storage, failure_backing: Storage) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::css::install_window_css_hosted<H: surgeist_bindings_js::conversion::Host, B: 'static, Storage: 'static>(scope: &mut surgeist_bindings_js::Scope<'_>, limits: surgeist_bindings_js::css::CssNamespaceLimits, hosted: surgeist_bindings_js::conversion::Hosted<H>, conversion_backing: B, callback_backing: Storage, failure_backing: Storage) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub mod surgeist_bindings_js::declarations
 pub enum surgeist_bindings_js::declarations::DocumentReadyState
 pub surgeist_bindings_js::declarations::DocumentReadyState::Complete
@@ -457,7 +508,9 @@ pub const fn surgeist_bindings_js::dom_exception::DomExceptionLimits::new(argume
 impl core::default::Default for surgeist_bindings_js::dom_exception::DomExceptionLimits
 pub fn surgeist_bindings_js::dom_exception::DomExceptionLimits::default() -> Self
 pub fn surgeist_bindings_js::dom_exception::constructor_storage_bytes<Storage>() -> core::option::Option<usize>
+pub fn surgeist_bindings_js::dom_exception::constructor_target_bytes<Storage>() -> core::option::Option<usize>
 pub fn surgeist_bindings_js::dom_exception::install<Storage: 'static>(scope: &mut surgeist_bindings_js::Scope<'_>, limits: surgeist_bindings_js::dom_exception::DomExceptionLimits, backing: Storage) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::dom_exception::install_hosted<H: surgeist_bindings_js::conversion::Host, B: 'static, Storage: 'static>(scope: &mut surgeist_bindings_js::Scope<'_>, limits: surgeist_bindings_js::dom_exception::DomExceptionLimits, hosted: surgeist_bindings_js::conversion::Hosted<H>, conversion_backing: B, constructor_backing: Storage) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub mod surgeist_bindings_js::preparation
 pub enum surgeist_bindings_js::preparation::BufferKind
 pub surgeist_bindings_js::preparation::BufferKind::Bytes
@@ -553,6 +606,7 @@ pub surgeist_bindings_js::Error::BackendUnavailable
 pub surgeist_bindings_js::Error::ByteStringOutOfRange
 pub surgeist_bindings_js::Error::CallbackPanicked
 pub surgeist_bindings_js::Error::CallbackRealmUnavailable
+pub surgeist_bindings_js::Error::ConversionAdmission(surgeist_bindings_js::conversion::AdmissionError)
 pub surgeist_bindings_js::Error::ConversionCleanup(surgeist_bindings_js::conversion::CleanupFailure)
 pub surgeist_bindings_js::Error::ConversionLedger(surgeist_bindings_js::conversion::LedgerError)
 pub surgeist_bindings_js::Error::DomExceptionUnavailable

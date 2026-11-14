@@ -5,7 +5,12 @@ mod account;
 mod composition;
 pub mod declarations;
 mod failure;
+mod hosted;
+#[cfg(test)]
+mod hosted_execution;
 mod listener;
+mod local;
+pub(crate) mod registry;
 mod security_policy_violation;
 mod sequence;
 #[cfg(test)]
@@ -15,8 +20,6 @@ mod trusted_types;
 
 use std::rc::Rc;
 
-use surgeist_ledger::Change;
-
 use crate::idl::string::ByteStringStep;
 use crate::{
     ByteString, DomString, Error, Exception, ExceptionPhase, IntegerKind, IntegerMode,
@@ -24,14 +27,16 @@ use crate::{
 };
 
 pub use account::{
-    CleanupStatus, ConversionAccount, Converted, LedgerError, Resource, ResourceTable, Work,
-    WorkTable,
+    CleanupObservation, CleanupStatus, ConversionAccount, Converted, LedgerError, Resource,
+    ResourceTable, Work, WorkTable,
 };
 pub use composition::{Argument, ArgumentValue, Descriptor, Nullable};
 pub use failure::{
     CleanupFailure, CleanupFault, CleanupPrimary, CleanupStage, Failure, FailureKind, Rule,
 };
+pub use hosted::{BufferRequest, BufferRetention, Host, Hosted};
 pub use listener::StandaloneListenerOptions;
+pub use local::{AdmissionError, LocalRefusal};
 pub use security_policy_violation::{
     SecurityPolicyViolationEventDisposition, SecurityPolicyViolationEventOptions,
 };
@@ -164,29 +169,21 @@ pub struct Conversion<'borrow, 'scope> {
 }
 
 impl<'scope> Conversion<'_, 'scope> {
-    fn charge(&mut self, changes: &[Change<Work, Resource>]) -> Result<(), Error> {
-        self.scope.check_active()?;
-        self.account
-            .ledger
-            .apply_batch(self.account.scope, changes)
-            .map_err(|error| self.scope.operations.refuse(Error::ConversionLedger(error)))
-    }
-
     fn work(&mut self, work: Work, amount: u64) -> Result<(), Error> {
+        self.scope.check_active()?;
         if amount == 0 {
-            return self.scope.check_active();
+            return Ok(());
         }
-        self.charge(&[Change::Work(work, amount)])
+        self.account
+            .work(work, amount)
+            .map_err(|error| self.scope.operations.refuse(error))
     }
 
     fn reserve(&mut self, bytes: u64) -> Result<Storage, Error> {
-        if bytes != 0 {
-            self.charge(&[Change::Acquire(Resource::BufferBytes, bytes)])?;
-        }
-        Ok(Storage {
-            account: self.account.clone(),
-            bytes,
-        })
+        self.scope.check_active()?;
+        self.account
+            .reserve(bytes)
+            .map_err(|error| self.scope.operations.refuse(error))
     }
 
     fn host(&self, error: Error) -> Failure {
@@ -203,10 +200,7 @@ impl<'scope> Conversion<'_, 'scope> {
     fn plain<T>(&self, value: T) -> Converted<T> {
         Converted {
             value,
-            storage: Storage {
-                account: self.account.clone(),
-                bytes: 0,
-            },
+            storage: self.account.empty(),
         }
     }
 

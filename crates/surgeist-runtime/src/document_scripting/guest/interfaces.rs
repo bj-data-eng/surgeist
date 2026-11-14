@@ -21,7 +21,7 @@ use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
     WellKnownSymbol,
     conversion::{
-        ArgumentValue, ConversionAccount, ResourceTable, WorkTable,
+        ArgumentValue, ConversionAccount, Hosted, ResourceTable, WorkTable,
         declarations::{event_constructor_0_event_init_dict, event_constructor_0_type},
     },
 };
@@ -215,6 +215,9 @@ impl PublicEventBindings {
             (inbox, registry)
         };
         let global = script.target.global();
+        let conversion_host = script
+            .preparation
+            .conversion_host(ConversionOrigin::General);
         script
             .process
             .execution()
@@ -225,6 +228,7 @@ impl PublicEventBindings {
                     permit,
                     admission,
                     (inbox, registry, global),
+                    conversion_host,
                 ))
             })?
     }
@@ -239,25 +243,38 @@ impl PublicEventBindings {
             surgeist_dom::DomRegistryId,
             DomHostedGlobalId,
         ),
+        conversion_host: crate::document_scripting::preparation::NativeConversionHost,
     ) -> Result<Self, DocumentGuestEventError> {
         let fund = |bytes| {
             admission
                 .budget
                 .reserve(AccountScope::Adapter, owner, bytes)
         };
-        let account_bytes = size_of::<Callbacks>()
-            .checked_add(ConversionAccount::standalone_backing_bytes()?)
+        let dom_exception_metadata_bytes =
+            Hosted::new(conversion_host.for_origin(ConversionOrigin::DomException))
+                .storage_bytes::<GuestBacking>()
+                .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let hosted = Hosted::new(conversion_host);
+        let metadata_bytes = hosted
+            .storage_bytes::<GuestBacking>()
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let backing = fund(account_bytes)?;
+        let account_bytes = size_of::<Callbacks>()
+            .checked_add(metadata_bytes)
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let mut backing = fund(account_bytes)?;
+        let metadata = backing.split_off(metadata_bytes)?;
         let work = admission.limits.work;
         let buffer_bytes = u64::try_from(admission.limits.storage_bytes)
             .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
-        let conversion = ConversionAccount::standalone(
+        let conversion = hosted.install(
             scope,
-            WorkTable::splat(work),
-            ResourceTable {
-                BufferBytes: buffer_bytes,
-            },
+            surgeist_ledger::Limits::new(
+                WorkTable::splat(work),
+                ResourceTable {
+                    BufferBytes: buffer_bytes,
+                },
+            ),
+            metadata,
         )?;
         let document_id = permit.document;
         let callbacks = Rc::new(Callbacks {
@@ -447,7 +464,8 @@ impl PublicEventBindings {
             .include(size_of::<OriginBindings>())?
             .include(OriginAuthority::STORAGE_BYTES)?
             .include(
-                dom_exception::constructor_storage_bytes::<GuestBacking>()
+                dom_exception::constructor_target_bytes::<GuestBacking>()
+                    .and_then(|bytes| bytes.checked_add(dom_exception_metadata_bytes))
                     .ok_or(DocumentScriptNativeError::StorageLimit)?,
             )?;
         Ok(Self {
@@ -481,6 +499,7 @@ impl PublicEventBindings {
         dom_exception_limits: DomExceptionLimits,
         (global, document, registry): (DomHostedGlobalId, DocumentId, surgeist_dom::DomRegistryId),
         admission: OriginAdmission,
+        conversion_host: preparation::NativeConversionHost,
     ) -> Result<(), DocumentGuestEventError> {
         let fund = |bytes| admission.take(events, bytes);
         let backing = fund(size_of::<OriginBindings>())?;
@@ -497,13 +516,24 @@ impl PublicEventBindings {
                 _backing: fund(bytes)?,
             })
         };
-        dom_exception::install(
+        let hosted = Hosted::new(conversion_host);
+        let metadata_bytes = hosted
+            .storage_bytes::<GuestBacking>()
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let target_bytes = dom_exception::constructor_target_bytes::<GuestBacking>()
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let mut constructor_backing = fund(
+            target_bytes
+                .checked_add(metadata_bytes)
+                .ok_or(DocumentScriptNativeError::StorageLimit)?,
+        )?;
+        let conversion_backing = constructor_backing.split_off(metadata_bytes)?;
+        dom_exception::install_hosted(
             scope,
             dom_exception_limits,
-            fund(
-                dom_exception::constructor_storage_bytes::<GuestBacking>()
-                    .ok_or(DocumentScriptNativeError::StorageLimit)?,
-            )?,
+            hosted,
+            conversion_backing,
+            constructor_backing,
         )?;
         let target = install_target_prototype(scope, &capture)?;
         install_event_interface(scope, Interface::Target, &target, &capture)?;

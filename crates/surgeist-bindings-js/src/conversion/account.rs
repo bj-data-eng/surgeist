@@ -68,14 +68,77 @@ impl CleanupStatus {
     }
 }
 
-pub(super) struct Account {
-    pub(super) owner: Weak<OwnerState>,
-    pub(super) ledger: SharedOperation<Work, Resource>,
-    pub(super) scope: surgeist_ledger::Scope,
-    cleanup: Cell<CleanupStatus>,
+pub(super) enum Account {
+    Ledger {
+        owner: Weak<OwnerState>,
+        ledger: SharedOperation<Work, Resource>,
+        scope: surgeist_ledger::Scope,
+        cleanup: Cell<CleanupStatus>,
+    },
+    Hosted(Box<dyn super::hosted::Factory>),
 }
 
 impl Account {
+    pub(super) fn owner(&self) -> &Weak<OwnerState> {
+        match self {
+            Self::Ledger { owner, .. } => owner,
+            Self::Hosted(host) => host.owner(),
+        }
+    }
+
+    pub(super) fn work(&self, work: Work, units: u64) -> Result<(), Error> {
+        match self {
+            Self::Ledger { ledger, scope, .. } => ledger
+                .apply_batch(*scope, &[Change::Work(work, units)])
+                .map_err(Error::ConversionLedger),
+            Self::Hosted(host) => host.work(work, units),
+        }
+    }
+
+    pub(super) fn reserve(self: &Rc<Self>, bytes: u64) -> Result<Storage, Error> {
+        match self.as_ref() {
+            Self::Ledger { ledger, scope, .. } => {
+                if bytes != 0 {
+                    ledger
+                        .apply_batch(*scope, &[Change::Acquire(Resource::BufferBytes, bytes)])
+                        .map_err(Error::ConversionLedger)?;
+                }
+                Ok(Storage::Ledger {
+                    account: self.clone(),
+                    bytes,
+                })
+            }
+            Self::Hosted(host) => host.reserve(bytes),
+        }
+    }
+
+    pub(super) fn empty(self: &Rc<Self>) -> Storage {
+        match self.as_ref() {
+            Self::Ledger { .. } => Storage::Ledger {
+                account: self.clone(),
+                bytes: 0,
+            },
+            Self::Hosted(host) => host.empty(),
+        }
+    }
+
+    fn begin_phase(&self) -> Result<Option<PhaseObservation>, Error> {
+        match self {
+            Self::Ledger { ledger, scope, .. } => ledger
+                .begin_phase(*scope)
+                .map(Some)
+                .map_err(Error::ConversionLedger),
+            Self::Hosted(host) => host.begin_phase(),
+        }
+    }
+
+    fn cleanup_status(&self) -> CleanupStatus {
+        match self {
+            Self::Ledger { cleanup, .. } => cleanup.get(),
+            Self::Hosted(host) => host.cleanup_status(),
+        }
+    }
+
     pub(super) fn fault(&self, stage: CleanupStage, ledger: LedgerError) {
         let fault = match stage {
             CleanupStage::StorageRelease => CleanupFault::StorageRelease(ledger),
@@ -85,29 +148,85 @@ impl Account {
     }
 
     fn record_fault(&self, fault: CleanupFault) {
-        self.cleanup.set(self.cleanup.get().record(fault));
-        if let Some(owner) = self.owner.upgrade() {
-            owner.record_cleanup(fault);
+        if let Self::Ledger { owner, cleanup, .. } = self {
+            cleanup.set(cleanup.get().record(fault));
+            if let Some(owner) = owner.upgrade() {
+                owner.record_cleanup(fault);
+            }
         }
     }
 
     pub(super) fn release(&self, bytes: u64) {
-        if bytes != 0
-            && let Err(error) = self
-                .ledger
-                .apply_batch(self.scope, &[Change::Release(Resource::BufferBytes, bytes)])
-        {
-            self.fault(CleanupStage::StorageRelease, error);
+        match self {
+            Self::Ledger { ledger, scope, .. } => {
+                if bytes != 0
+                    && let Err(error) =
+                        ledger.apply_batch(*scope, &[Change::Release(Resource::BufferBytes, bytes)])
+                {
+                    self.fault(CleanupStage::StorageRelease, error);
+                }
+            }
+            Self::Hosted(host) => {
+                if let Some(owner) = host.owner().upgrade() {
+                    owner.fail(Error::RegistryConflict);
+                }
+            }
         }
     }
 
     fn end_phase(&self, marker: PhaseObservation) {
-        if self.ledger.end_phase(marker).is_err() {
-            // The marker and participant are exclusively constructed together.
-            // A rejected marker is a typed ownership defect, never a panic.
-            self.record_fault(CleanupFault::PhaseOwnerMismatch);
-        } else if let Err(error) = self.ledger.usage(self.scope) {
-            self.fault(CleanupStage::PhaseCompletion, error);
+        match self {
+            Self::Ledger { ledger, scope, .. } => {
+                if ledger.end_phase(marker).is_err() {
+                    // The marker and participant are constructed together.
+                    self.record_fault(CleanupFault::PhaseOwnerMismatch);
+                } else if let Err(error) = ledger.usage(*scope) {
+                    self.fault(CleanupStage::PhaseCompletion, error);
+                }
+            }
+            Self::Hosted(host) => host.end_phase(marker),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum Observation {
+    Ledger(Rc<Account>),
+    Hosted {
+        state: Rc<super::hosted::StorageState>,
+        record: Rc<dyn super::registry::CleanupRecord>,
+    },
+}
+
+/// Read-only cleanup facts, retaining accounting custody through late releases.
+/// Custody follows engine-free storage state and the original cleanup record.
+#[derive(Clone)]
+pub struct CleanupObservation {
+    inner: Observation,
+}
+
+impl CleanupObservation {
+    pub(super) fn hosted(
+        state: Rc<super::hosted::StorageState>,
+        record: Rc<dyn super::registry::CleanupRecord>,
+    ) -> Self {
+        Self {
+            inner: Observation::Hosted { state, record },
+        }
+    }
+
+    pub fn status(&self) -> CleanupStatus {
+        match &self.inner {
+            Observation::Ledger(account) => account.cleanup_status(),
+            Observation::Hosted { state, .. } => state.cleanup_status(),
+        }
+    }
+
+    /// The first typed host release or phase error, when one was recorded.
+    pub fn host_error(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.inner {
+            Observation::Ledger(_) => None,
+            Observation::Hosted { record, .. } => record.error(),
         }
     }
 }
@@ -149,7 +268,7 @@ impl ConversionAccount {
             .share();
         let owner = scope.operations.owner_state();
         let participant = ledger.root();
-        Ok(Self(Rc::new(Account {
+        Ok(Self(Rc::new(Account::Ledger {
             owner: Rc::downgrade(&owner),
             ledger,
             scope: participant,
@@ -168,7 +287,7 @@ impl ConversionAccount {
         let owner = scope.operations.owner_state();
         let child = ScopeLedger::child(&mut ledger, parent, "js-conversion", limits, tariffs)
             .map_err(|error| scope.operations.refuse(Error::ConversionLedger(error)))?;
-        Ok(Self(Rc::new(Account {
+        Ok(Self(Rc::new(Account::Ledger {
             owner: Rc::downgrade(&owner),
             ledger,
             scope: child,
@@ -177,7 +296,16 @@ impl ConversionAccount {
     }
 
     pub fn cleanup_status(&self) -> CleanupStatus {
-        self.0.cleanup.get()
+        self.0.cleanup_status()
+    }
+
+    pub fn cleanup_observation(&self) -> CleanupObservation {
+        match self.0.as_ref() {
+            Account::Ledger { .. } => CleanupObservation {
+                inner: Observation::Ledger(self.0.clone()),
+            },
+            Account::Hosted(host) => host.observation(),
+        }
     }
 
     /// Describes the conversion result after its local storage and phase guard
@@ -198,17 +326,17 @@ impl ConversionAccount {
     ) -> Result<T, Failure> {
         let owner = scope.operations.owner_state();
         owner.available().map_err(Failure)?;
-        if !self.0.owner.ptr_eq(&Rc::downgrade(&owner)) {
+        if !self.0.owner().ptr_eq(&Rc::downgrade(&owner)) {
             return Err(Failure(scope.operations.refuse(Error::ForeignOwner)));
         }
         scope.check_active().map_err(Failure)?;
-        let marker =
-            self.0.ledger.begin_phase(self.0.scope).map_err(|error| {
-                Failure(scope.operations.refuse(Error::ConversionLedger(error)))
-            })?;
+        let marker = self
+            .0
+            .begin_phase()
+            .map_err(|error| Failure(scope.operations.refuse(error)))?;
         let mut phase = PhaseGuard {
             account: self.0.clone(),
-            marker: Some(marker),
+            marker,
         };
         let result = action(&mut Conversion {
             scope,
@@ -240,14 +368,37 @@ impl Drop for PhaseGuard {
     }
 }
 
-pub(super) struct Storage {
-    pub(super) account: Rc<Account>,
-    pub(super) bytes: u64,
+pub(super) enum Storage {
+    Ledger {
+        account: Rc<Account>,
+        bytes: u64,
+    },
+    Hosted {
+        state: Rc<super::hosted::StorageState>,
+        bytes: u64,
+        receipt: Option<Box<dyn super::hosted::BufferReceipt>>,
+    },
+}
+
+impl Storage {
+    pub(super) fn owner(&self) -> &Weak<OwnerState> {
+        match self {
+            Self::Ledger { account, .. } => account.owner(),
+            Self::Hosted { state, .. } => state.owner(),
+        }
+    }
 }
 
 impl Drop for Storage {
     fn drop(&mut self) {
-        self.account.release(self.bytes);
+        match self {
+            Self::Ledger { account, bytes } => account.release(*bytes),
+            Self::Hosted {
+                state,
+                bytes,
+                receipt,
+            } => state.release(*bytes, receipt.take()),
+        }
     }
 }
 

@@ -6,14 +6,14 @@ use surgeist_css::serialization::{CssSerializationError, CssomIdentifierLimits};
 use surgeist_ledger::{Limits, Operation, SharedOperation, Tariffs};
 
 use crate::conversion::{
-    ArgumentValue, ConversionAccount, Resource, Work,
+    ArgumentValue, ConversionAccount, Host, Hosted, Resource, Work,
     declarations::{
         WINDOW_CSS_ESCAPE_ARITY, WINDOW_CSS_ESCAPE_NAME, WINDOW_CSS_NAME, css_escape_0_ident,
     },
 };
 use crate::{
     Arguments, Callback, Completion, Error, FunctionMetadata, HostFailureSlot, ObjectPrototype,
-    PropertyDescriptor, PropertyKey, RecordFailure, Scope, WellKnownSymbol,
+    PropertyDescriptor, PropertyKey, RecordFailure, Scope, Value, WellKnownSymbol,
 };
 
 /// Per-realm conversion admission and per-call native identifier limits.
@@ -40,6 +40,17 @@ impl CssNamespaceLimits {
             buffer_bytes,
             identifier,
         }
+    }
+
+    fn conversion_limits(self) -> Limits<Work, Resource> {
+        Limits::from_fn(
+            |work| match work {
+                Work::Argument | Work::Value => self.calls,
+                Work::CodeUnit => self.copied_units,
+                _ => 0,
+            },
+            |_| self.buffer_bytes,
+        )
     }
 }
 
@@ -92,11 +103,19 @@ impl<Storage: 'static> Escape<Storage> {
 /// The host keeps the separate native failure custody funded using
 /// [`HostFailureSlot::storage_bytes`].
 pub fn callback_storage_bytes<Storage>() -> Option<usize> {
-    size_of::<Escape<Storage>>()
+    callback_target_bytes::<Storage>()
         .checked_add(ConversionAccount::retained_body_bytes())?
         .checked_add(SharedOperation::<Work, Resource>::reserved_backing_bytes(
             2,
         )?)
+}
+
+/// Requested callback target body, excluding conversion-account setup and
+/// separate native failure custody. A hosted installation funds conversion
+/// setup using [`Hosted::storage_bytes`] and failure custody using
+/// [`HostFailureSlot::storage_bytes`].
+pub const fn callback_target_bytes<Storage>() -> usize {
+    size_of::<Escape<Storage>>()
 }
 
 /// Installs the standard namespace in the entered, host-authenticated Window.
@@ -113,15 +132,7 @@ pub fn install_window_css<Storage: 'static>(
     failure_backing: Storage,
 ) -> Result<(), Error> {
     let global = scope.global()?;
-    let css_key = PropertyKey::String(WINDOW_CSS_NAME);
-    let conversion_limits = Limits::from_fn(
-        |work| match work {
-            Work::Argument | Work::Value => limits.calls,
-            Work::CodeUnit => limits.copied_units,
-            _ => 0,
-        },
-        |_| limits.buffer_bytes,
-    );
+    let conversion_limits = limits.conversion_limits();
     let ledger = Operation::with_reserved_scopes("window-css", conversion_limits, 2)
         .map_err(Error::ConversionLedger)?
         .share();
@@ -132,9 +143,54 @@ pub fn install_window_css<Storage: 'static>(
         conversion_limits,
         Tariffs::identity(),
     )?;
+    install_account(
+        scope,
+        global,
+        limits.identifier,
+        conversion,
+        callback_backing,
+        failure_backing,
+    )
+}
+
+/// Installs the namespace with producer-local caps and admission delegated to
+/// the supplied host. Conversion setup backing funds [`Hosted::storage_bytes`];
+/// callback and failure backing fund [`callback_target_bytes`] and
+/// [`HostFailureSlot::storage_bytes`] independently.
+///
+/// # Errors
+/// Returns the original collision, resource or backend refusal.
+pub fn install_window_css_hosted<H: Host, B: 'static, Storage: 'static>(
+    scope: &mut Scope<'_>,
+    limits: CssNamespaceLimits,
+    hosted: Hosted<H>,
+    conversion_backing: B,
+    callback_backing: Storage,
+    failure_backing: Storage,
+) -> Result<(), Error> {
+    let global = scope.global()?;
+    let conversion = hosted.install(scope, limits.conversion_limits(), conversion_backing)?;
+    install_account(
+        scope,
+        global,
+        limits.identifier,
+        conversion,
+        callback_backing,
+        failure_backing,
+    )
+}
+
+fn install_account<'scope, Storage: 'static>(
+    scope: &mut Scope<'scope>,
+    global: Value<'scope>,
+    identifier: CssomIdentifierLimits,
+    conversion: ConversionAccount,
+    callback_backing: Storage,
+    failure_backing: Storage,
+) -> Result<(), Error> {
     let escape = Escape {
         conversion,
-        identifier: limits.identifier,
+        identifier,
         failure: HostFailureSlot::new(&scope.realm_authority()?, failure_backing)?,
         _backing: callback_backing,
     };
@@ -170,7 +226,7 @@ pub fn install_window_css<Storage: 'static>(
     )?;
     scope.define_new_property(
         &global,
-        css_key,
+        PropertyKey::String(WINDOW_CSS_NAME),
         PropertyDescriptor::Data {
             value: &namespace,
             writable: true,
@@ -190,5 +246,33 @@ mod tests {
         let expected =
             size_of::<Escape<[u8; 3]>>() + ConversionAccount::retained_body_bytes() + ledger;
         assert_eq!(callback_storage_bytes::<[u8; 3]>(), Some(expected));
+    }
+
+    #[test]
+    fn hosted_callback_target_excludes_independently_funded_conversion_setup() {
+        assert_eq!(
+            callback_target_bytes::<[u8; 3]>(),
+            size_of::<Escape<[u8; 3]>>()
+        );
+        assert_eq!(callback_target_bytes::<()>(), size_of::<Escape<()>>());
+    }
+
+    #[test]
+    fn conversion_caps_keep_calls_units_and_live_buffers_independent() {
+        let limits = CssNamespaceLimits::new(7, 11, 13, CssomIdentifierLimits::default())
+            .conversion_limits();
+        assert_eq!(limits.work(Work::Argument), 7);
+        assert_eq!(limits.work(Work::Value), 7);
+        assert_eq!(limits.work(Work::CodeUnit), 11);
+        for work in [
+            Work::EnumerationLookup,
+            Work::DictionaryMember,
+            Work::IteratorOperation,
+            Work::SequenceItem,
+            Work::SequenceMove,
+        ] {
+            assert_eq!(limits.work(work), 0);
+        }
+        assert_eq!(limits.live(Resource::BufferBytes), 13);
     }
 }

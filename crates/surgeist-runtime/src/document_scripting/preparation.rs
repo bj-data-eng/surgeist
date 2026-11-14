@@ -1,7 +1,10 @@
 //! One preparation policy across native setup and the original guest attachment.
 
-use super::guest::{AccountScope, CaptureBacking, DispatchFailure, GuestBudget, capture_refusal};
+use super::guest::{
+    AccountScope, CaptureBacking, ConversionOrigin, DispatchFailure, GuestBudget, capture_refusal,
+};
 use super::*;
+use surgeist_bindings_js::conversion::{BufferRequest, BufferRetention, Host};
 use surgeist_bindings_js::preparation::{Admission, Controller, Request, Retention, Work};
 
 /// Installed policy and its attachment transition. Neither owns the native
@@ -86,6 +89,149 @@ pub(super) enum Backing {
 pub(super) struct NativeBacking {
     canonical: DomHostedRuntimeRetention,
     cap: CapReservation,
+}
+
+/// Original Runtime admission for binding conversion. The descriptor uses the
+/// existing policy state and follows its one-time guest attachment transition.
+pub(super) struct NativeConversionHost {
+    state: Rc<State>,
+    origin: ConversionOrigin,
+}
+
+impl NativeConversionHost {
+    pub(super) fn for_origin(&self, origin: ConversionOrigin) -> Self {
+        Self {
+            state: self.state.clone(),
+            origin,
+        }
+    }
+}
+
+pub(super) enum ConversionBacking {
+    Native(NativeBacking),
+    Guest(guest::GuestBacking),
+}
+
+#[derive(Debug)]
+pub(super) enum ConversionCleanupError {
+    Accounting(guest::AccountingError),
+    Native(Error),
+}
+
+impl fmt::Display for ConversionCleanupError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Accounting(error) => error.fmt(formatter),
+            Self::Native(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for ConversionCleanupError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Accounting(error) => Some(error),
+            Self::Native(error) => Some(error),
+        }
+    }
+}
+
+impl BufferRetention for ConversionBacking {
+    type Error = ConversionCleanupError;
+
+    fn release(self) -> Result<(), Self::Error> {
+        match self {
+            Self::Native(NativeBacking { canonical, cap }) => {
+                drop(canonical);
+                cap.release().map_err(ConversionCleanupError::Native)
+            }
+            Self::Guest(backing) => backing
+                .release()
+                .map_err(ConversionCleanupError::Accounting),
+        }
+    }
+}
+
+impl Host for NativeConversionHost {
+    type CleanupError = ConversionCleanupError;
+    type Buffer = ConversionBacking;
+
+    fn charge(
+        &self,
+        work: surgeist_bindings_js::conversion::Work,
+        units: u64,
+    ) -> Result<(), Error> {
+        let native = self.state.native()?;
+        if let Some(guest) = self.state.guest.get() {
+            if native
+                .cancellation
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                return Err(capture_refusal(&guest.refusal, DomError::Cancelled.into()));
+            }
+            // Conversion can run under NativeRead's existing Session loan.
+            guest
+                .budget
+                .charge_conversion(self.origin, work, units)
+                .map_err(|error| capture_refusal(&guest.refusal, error))?;
+            #[cfg(test)]
+            observe_conversion_admission(&self.state, work);
+            return Ok(());
+        }
+        (|| {
+            let units = usize::try_from(units)
+                .map_err(|_| DocumentScriptNativeError::RepresentationExhausted)?;
+            let mut session = native
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            native_admit_work(&mut session, &native, units)
+        })()
+        .map_err(|error| native_refusal(&self.state.failures, error))
+    }
+
+    fn retain_buffer(&self, request: BufferRequest) -> Result<Self::Buffer, Error> {
+        self.state
+            .conversion_backing(self.origin, request.backing_bytes())
+    }
+
+    fn begin_phase(&self) -> Result<Option<surgeist_ledger::PhaseObservation>, Error> {
+        self.state.guest.get().map_or(Ok(None), |guest| {
+            guest
+                .budget
+                .begin_conversion_phase(self.origin)
+                .map(Some)
+                .map_err(|error| capture_refusal(&guest.refusal, error.into()))
+        })
+    }
+
+    fn end_phase(
+        &self,
+        marker: surgeist_ledger::PhaseObservation,
+    ) -> Result<(), Self::CleanupError> {
+        let guest = self
+            .state
+            .guest
+            .get()
+            .ok_or(ConversionCleanupError::Accounting(
+                surgeist_ledger::Error::ForeignScope,
+            ))?;
+        guest
+            .budget
+            .finish_conversion_phase(marker)
+            .map_err(ConversionCleanupError::Accounting)
+    }
+}
+
+fn native_admit_work(
+    session: &mut DomSession,
+    native: &NativeOwner,
+    units: usize,
+) -> Result<(), DocumentScriptNativeError> {
+    session
+        .hosted_execution()
+        .admit_script_work(&session.dom(), units, &native.cancellation)
+        .map_err(DocumentScriptNativeError::from)
 }
 
 impl Retention for Backing {
@@ -178,6 +324,20 @@ fn policy(
 }
 
 impl Prepared {
+    #[cfg(test)]
+    pub(super) fn observe_conversion_admission(
+        &self,
+        accepted: impl Fn(surgeist_bindings_js::conversion::Work) + 'static,
+    ) -> ConversionAdmissionObservation {
+        let observer = ConversionAdmissionObserver {
+            state: Rc::downgrade(&self.state),
+            accepted: Rc::new(accepted),
+        };
+        ConversionAdmissionObservation {
+            previous: CONVERSION_ADMISSION_OBSERVER.with(|slot| slot.replace(Some(observer))),
+        }
+    }
+
     /// Exact additional Rust bodies for this policy. The caller's existing
     /// fixed reservation is separate and must not already include these bytes.
     pub(super) fn setup_storage_bytes() -> Result<usize, DocumentScriptNativeError> {
@@ -253,6 +413,21 @@ impl Prepared {
         &self.controller
     }
 
+    pub(super) fn conversion_host(&self, origin: ConversionOrigin) -> NativeConversionHost {
+        NativeConversionHost {
+            state: self.state.clone(),
+            origin,
+        }
+    }
+
+    pub(super) fn reserve_conversion_metadata(
+        &self,
+        origin: ConversionOrigin,
+        bytes: usize,
+    ) -> Result<ConversionBacking, Error> {
+        self.state.conversion_backing(origin, bytes)
+    }
+
     pub(super) fn total_with(&self, additional: usize) -> Option<usize> {
         self.state.quota.total_with(additional)
     }
@@ -301,12 +476,82 @@ impl Prepared {
     }
 }
 
+#[cfg(test)]
+struct ConversionAdmissionObserver {
+    state: Weak<State>,
+    accepted: Rc<dyn Fn(surgeist_bindings_js::conversion::Work)>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CONVERSION_ADMISSION_OBSERVER: RefCell<Option<ConversionAdmissionObserver>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) struct ConversionAdmissionObservation {
+    previous: Option<ConversionAdmissionObserver>,
+}
+
+#[cfg(test)]
+impl Drop for ConversionAdmissionObservation {
+    fn drop(&mut self) {
+        CONVERSION_ADMISSION_OBSERVER.with(|slot| {
+            slot.replace(self.previous.take());
+        });
+    }
+}
+
+#[cfg(test)]
+fn observe_conversion_admission(state: &Rc<State>, work: surgeist_bindings_js::conversion::Work) {
+    let accepted = CONVERSION_ADMISSION_OBSERVER.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .filter(|observer| observer.state.ptr_eq(&Rc::downgrade(state)))
+            .map(|observer| observer.accepted.clone())
+    });
+    // Neither the observer registry nor the original Ledger is loaned here.
+    if let Some(accepted) = accepted {
+        accepted(work);
+    }
+}
+
 impl State {
     fn native(&self) -> Result<Rc<NativeOwner>, Error> {
         if let Some(error) = self.quota.cleanup.get() {
             return Err(error.clone());
         }
         self.native.upgrade().ok_or(Error::ExpiredIdentity)
+    }
+
+    fn conversion_backing(
+        &self,
+        origin: ConversionOrigin,
+        bytes: usize,
+    ) -> Result<ConversionBacking, Error> {
+        let native = self.native()?;
+        if let Some(guest) = self.guest.get() {
+            return guest
+                .budget
+                .reserve(AccountScope::Conversion(origin), &native, bytes)
+                .map(ConversionBacking::Guest)
+                .map_err(|error| capture_refusal(&guest.refusal, error));
+        }
+        let cap = self
+            .quota
+            .reserve(bytes)
+            .map_err(|error| native_refusal(&self.failures, error))?;
+        let canonical = (|| {
+            let mut session = native
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            session
+                .hosted_execution()
+                .retain_script_payload(&mut session.dom(), bytes, &native.cancellation)
+                .map_err(DocumentScriptNativeError::from)
+        })()
+        .map_err(|error| native_refusal(&self.failures, error))?;
+        Ok(ConversionBacking::Native(NativeBacking { canonical, cap }))
     }
 
     fn admit(&self, request: Request) -> Result<Backing, Error> {

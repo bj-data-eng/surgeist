@@ -144,12 +144,22 @@ scalars, enumerations, nullable values, synchronous sequences and complete
 brand-free dictionaries.
 `Conversion::value` accepts the sealed descriptor family, including
 `IntegerType`; nullable descriptors preserve an inner type that includes
-undefined and cannot be wrapped in a second nullable descriptor. A `ConversionAccount` attaches an authenticated child to a caller-owned
-Ledger operation. Its `run` method borrows the entered scope; `Converted` outputs
+undefined and cannot be wrapped in a second nullable descriptor. A
+`ConversionAccount` attaches an authenticated child to a caller-owned Ledger
+operation, or delegates admission to an enclosing host through `Hosted`.
+Hosted accounts check producer-local caps before invoking the host, then commit
+accepted work and storage without a second fallible admission. The host receives
+conversion work in its original dimensions and buffer requests including the
+concrete release-record body. Its phase hooks follow the enclosing profile.
+The allocation-free builder reports setup bodies before installation.
+Its `run` method borrows the entered scope; `Converted` outputs
 retain their requested Rust buffer charges until their payloads are destroyed.
 Charges cover binding work and storage, excluding engine instructions and heap
 allocation. Timing follows the Ledger operation's profiling configuration.
-The existing primitive methods remain available without this account.
+`cleanup_observation` preserves cleanup facts and the original typed host source
+after account or execution teardown. Result custody and observations share the
+admitted setup extent until their last owner retires. The existing primitive
+methods remain available without this account.
 
 The [generated descriptors](src/conversion/declarations.rs) derive dictionary
 member order, argument indices, optionality and defaults from the same authored

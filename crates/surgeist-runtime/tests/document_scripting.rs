@@ -1225,11 +1225,15 @@ fn native_window_dom_exception_admission_and_hook_collision() {
                 .collect();
             scope.evaluate(&source).map(drop)
         });
-        let Err(DocumentScriptError::Script(Error::ConversionLedger(first))) = failure else {
+        let Err(DocumentScriptError::Script(Error::ConversionAdmission(
+            surgeist_bindings_js::conversion::AdmissionError::Refused(first),
+        ))) = failure
+        else {
             panic!("constructor did not report the configured conversion refusal");
         };
-        let Err(DocumentScriptError::Script(Error::ConversionLedger(checkpoint))) =
-            host.checkpoint()
+        let Err(DocumentScriptError::Script(Error::ConversionAdmission(
+            surgeist_bindings_js::conversion::AdmissionError::Refused(checkpoint),
+        ))) = host.checkpoint()
         else {
             panic!("checkpoint did not retain the terminal conversion refusal");
         };
@@ -1265,11 +1269,15 @@ fn native_window_dom_exception_meters_typed_diagnostics() {
                 .dom_exception(DomExceptionName::AbortError, &[0xd800, 0, 0xdc00])
                 .map(drop)
         });
-        let Err(DocumentScriptError::Script(Error::ConversionLedger(first))) = failure else {
+        let Err(DocumentScriptError::Script(Error::ConversionAdmission(
+            surgeist_bindings_js::conversion::AdmissionError::Refused(first),
+        ))) = failure
+        else {
             panic!("typed diagnostic did not report the configured conversion refusal");
         };
-        let Err(DocumentScriptError::Script(Error::ConversionLedger(checkpoint))) =
-            host.checkpoint()
+        let Err(DocumentScriptError::Script(Error::ConversionAdmission(
+            surgeist_bindings_js::conversion::AdmissionError::Refused(checkpoint),
+        ))) = host.checkpoint()
         else {
             panic!("checkpoint did not retain the typed diagnostic refusal");
         };
@@ -1404,7 +1412,9 @@ fn native_window_css_admission() {
         host.in_document(&permit, |scope| scope
             .evaluate(&ESCAPE.encode_utf16().collect::<Vec<_>>())
             .map(drop)),
-        Err(DocumentScriptError::Script(Error::ConversionLedger(_)))
+        Err(DocumentScriptError::Script(Error::ConversionAdmission(
+            surgeist_bindings_js::conversion::AdmissionError::Refused(_)
+        )))
     ));
     host.stop().into_session().unwrap();
 
@@ -1418,7 +1428,9 @@ fn native_window_css_admission() {
             host.in_document(&permit, |scope| scope
                 .evaluate(&ESCAPE.encode_utf16().collect::<Vec<_>>())
                 .map(drop)),
-            Err(DocumentScriptError::Script(Error::ConversionLedger(_)))
+            Err(DocumentScriptError::Script(Error::ConversionAdmission(
+                surgeist_bindings_js::conversion::AdmissionError::Refused(_)
+            )))
         ));
         host.stop().into_session().unwrap();
     }
