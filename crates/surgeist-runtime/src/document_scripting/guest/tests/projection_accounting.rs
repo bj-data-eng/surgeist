@@ -28,14 +28,21 @@ fn host(mode: ProfileMode, node_work: u64) -> DocumentScriptHost {
 }
 
 fn projection(report: &DocumentGuestAccountingReport) -> &Observation {
-    let [root, projection, capture] = report.scopes.as_slice() else {
-        panic!("expected adapter, projection and binding preparation scopes");
+    let [root, projection, capture, conversion, css, dom_exception] = report.scopes.as_slice()
+    else {
+        panic!("expected original adapter, projection, preparation and conversion scopes");
     };
     assert_eq!(root.name, "runtime-guest");
     assert_eq!(projection.name, "node-projection");
     assert_eq!(projection.parent, Some(root.scope));
     assert_eq!(capture.name, "binding-preparation");
     assert_eq!(capture.parent, Some(root.scope));
+    assert_eq!(conversion.name, "js-conversion");
+    assert_eq!(css.name, "window-css");
+    assert_eq!(dom_exception.name, "dom-exception");
+    for child in [conversion, css, dom_exception] {
+        assert_eq!(child.parent, Some(root.scope));
+    }
     projection
 }
 

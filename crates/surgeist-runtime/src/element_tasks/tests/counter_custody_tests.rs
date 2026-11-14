@@ -2,7 +2,9 @@
 use super::*;
 use surgeist_dom::{DomResource, DomSourceEdit, DomSourceEventRequest, DomSourceLimits};
 
-const SOURCE_BYTES: usize = 262_144;
+// Source setup retains the original materializations and their registry paths.
+// Give that setup headroom before measuring the counter's exact released body.
+const SOURCE_BYTES: usize = 1_048_576;
 
 fn available_source_payload(dom: &Dom, request: &DomSourceEventRequest) -> usize {
     // Place the cut on this same original Source observation. The expected

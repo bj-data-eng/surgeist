@@ -469,10 +469,7 @@ impl Capture {
         retained.shadow_reactions = reaction_queue;
         retained.reaction_failure = reaction_queue.map(|_| reaction_failure);
         retained.reply = match result {
-            Ok(result) if result.get().is_some() => AttributeReply::Converted {
-                result,
-                _account: self.callbacks.clone(),
-            },
+            Ok(result) if result.get().is_some() => AttributeReply::Converted { result },
             Ok(_) => AttributeReply::Mismatch(AttributeMismatchProgress::default()),
             Err(failure) => match Error::from(failure) {
                 error @ Error::Exception(_) => AttributeReply::Abrupt(error),

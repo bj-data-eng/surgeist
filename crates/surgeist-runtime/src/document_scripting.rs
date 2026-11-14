@@ -712,12 +712,11 @@ impl PreparedDocumentScriptHost {
         let source_failure_bytes = SourceFailureSlot::storage_bytes();
         let liveness_bytes =
             DomDocumentScriptRegistration::storage_bytes() + REGISTRATION_ACCESS_BYTES;
-        let css_bytes = css::callback_storage_bytes::<DomHostedRuntimeRetention>()
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let css_bytes = css::callback_target_bytes::<DomHostedRuntimeRetention>();
         let css_failure_bytes =
             HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes();
         let dom_exception_bytes =
-            dom_exception::constructor_storage_bytes::<DomHostedRuntimeRetention>()
+            dom_exception::constructor_target_bytes::<DomHostedRuntimeRetention>()
                 .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let window_event_bytes = window_event::WindowEvent::storage_bytes();
         let timer_limits = owner.timer_limits.get();
@@ -817,6 +816,24 @@ impl PreparedDocumentScriptHost {
             )
         };
         let preparation = preparation::Prepared::install(&mut process, owner, &authority, bytes)?;
+        let css_hosted = surgeist_bindings_js::conversion::Hosted::new(
+            preparation.conversion_host(guest::ConversionOrigin::WindowCss),
+        );
+        let css_metadata = preparation.reserve_conversion_metadata(
+            guest::ConversionOrigin::WindowCss,
+            css_hosted
+                .storage_bytes::<preparation::ConversionBacking>()
+                .ok_or(DocumentScriptNativeError::StorageLimit)?,
+        )?;
+        let dom_exception_hosted = surgeist_bindings_js::conversion::Hosted::new(
+            preparation.conversion_host(guest::ConversionOrigin::DomException),
+        );
+        let dom_exception_metadata = preparation.reserve_conversion_metadata(
+            guest::ConversionOrigin::DomException,
+            dom_exception_hosted
+                .storage_bytes::<preparation::ConversionBacking>()
+                .ok_or(DocumentScriptNativeError::StorageLimit)?,
+        )?;
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
         let window_event = window_event::WindowEvent::new(window_event_backing);
@@ -860,15 +877,19 @@ impl PreparedDocumentScriptHost {
                 permit,
                 window_relations_backing,
             )?;
-            css::install_window_css(
+            css::install_window_css_hosted(
                 scope,
                 owner.css_limits.get(),
+                css_hosted,
+                css_metadata,
                 css_backing,
                 css_failure_backing,
             )?;
-            dom_exception::install(
+            dom_exception::install_hosted(
                 scope,
                 owner.dom_exception_limits.get(),
+                dom_exception_hosted,
+                dom_exception_metadata,
                 dom_exception_backing,
             )?;
             window_event.install(scope)?;
@@ -1260,12 +1281,16 @@ impl DocumentScriptHost {
         };
         let realm = engine.process.execution().create_realm()?;
         if let Some((events, admission)) = engine.guest_events.as_ref().zip(admission) {
+            let conversion_host = engine
+                .preparation
+                .conversion_host(guest::ConversionOrigin::DomException);
             events.install_origin(
                 &mut engine.process,
                 &realm,
                 self.native.dom_exception_limits.get(),
                 (origin.global(), origin.document(), registry),
                 admission,
+                conversion_host,
             )?;
         }
         engine.creations.0 = Some(Box::new(CreationRealm {

@@ -1,9 +1,11 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
 mod accounting;
-use accounting::AccountingError;
+pub(super) use accounting::AccountingError;
 pub(crate) use accounting::GuestBacking;
-pub(super) use accounting::{AccountScope, CaptureBacking, GuestBudget, capture_refusal};
+pub(super) use accounting::{
+    AccountScope, CaptureBacking, ConversionOrigin, GuestBudget, capture_refusal,
+};
 pub use accounting::{
     DocumentGuestAccounting, DocumentGuestAccountingReport, DocumentGuestResource,
     DocumentGuestWork,
@@ -456,8 +458,6 @@ enum AttributeReply {
         result: surgeist_bindings_js::conversion::Converted<
             Option<surgeist_bindings_js::TrustedTypeData>,
         >,
-        // Keeps the original setup debit alive if the engine retires first.
-        _account: Rc<interfaces::Callbacks>,
     },
     Abrupt(Error),
     Accepted {
@@ -652,12 +652,20 @@ impl GuestEvents {
         dom_exception_limits: DomExceptionLimits,
         origin: (DomHostedGlobalId, DocumentId, surgeist_dom::DomRegistryId),
         admission: OriginAdmission,
+        conversion_host: preparation::NativeConversionHost,
     ) -> Result<(), DocumentScriptError> {
         let public = self.public.as_ref().ok_or(Error::RegistryConflict)?;
         process
             .execution()
             .in_realm(realm, |scope| {
-                Ok(public.install_origin(scope, self, dom_exception_limits, origin, admission))
+                Ok(public.install_origin(
+                    scope,
+                    self,
+                    dom_exception_limits,
+                    origin,
+                    admission,
+                    conversion_host,
+                ))
             })?
             .map_err(creation_realm_error)
     }

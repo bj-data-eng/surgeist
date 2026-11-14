@@ -3,7 +3,8 @@
 use super::*;
 use crate::document_scripting::preparation::CapReservation;
 use surgeist_ledger::{
-    Change, Limits, Operation, ProfileMode, Scope as LedgerScope, SharedOperation, Tariffs,
+    Change, Limits, Operation, PhaseObservation, ProfileMode, Scope as LedgerScope,
+    SharedOperation, Tariff, Tariffs,
 };
 
 surgeist_ledger::dimensions! {
@@ -11,6 +12,22 @@ surgeist_ledger::dimensions! {
     pub enum DocumentGuestWork => WorkTable {
         /// One admitted unit at an existing Runtime guest admission point.
         Adapter,
+        /// One attempt to convert a JS value through a selected IDL type.
+        ConversionValue,
+        /// One payload code unit copied, validated, or normalized.
+        ConversionCodeUnit,
+        /// One lookup in a bounded declared enumeration.
+        ConversionEnumerationLookup,
+        /// One declared argument presence/default decision.
+        ConversionArgument,
+        /// One dictionary member visited, before reading guest properties.
+        ConversionDictionaryMember,
+        /// One iterator property read or invocation, before entering guest code.
+        ConversionIteratorOperation,
+        /// One yielded sequence item, before reading its value.
+        ConversionSequenceItem,
+        /// One previously accepted element moved to a growing Rust buffer.
+        ConversionSequenceMove,
     }
 }
 
@@ -52,6 +69,9 @@ pub(in crate::document_scripting) struct Accounting {
     root: LedgerScope,
     projection: LedgerScope,
     preparation_scope: LedgerScope,
+    conversion: LedgerScope,
+    window_css_conversion: LedgerScope,
+    dom_exception_conversion: LedgerScope,
     profiling: bool,
     reserved_storage: usize,
     cleanup_error: Cell<Option<AccountingError>>,
@@ -63,17 +83,53 @@ pub(in crate::document_scripting) struct Accounting {
 }
 
 #[derive(Clone, Copy)]
+pub(in crate::document_scripting) enum ConversionOrigin {
+    General,
+    WindowCss,
+    DomException,
+}
+
+#[derive(Clone, Copy)]
 pub(in crate::document_scripting) enum AccountScope {
     Adapter,
     Projection,
     Preparation,
+    Conversion(ConversionOrigin),
+}
+
+fn adapter_work_limits(work: u64) -> WorkTable<u64> {
+    WorkTable {
+        Adapter: work,
+        ..WorkTable::splat(0)
+    }
+}
+
+fn conversion_tariffs() -> Tariffs<DocumentGuestWork, DocumentGuestResource> {
+    Tariffs::from_fn(
+        |_| Tariff::new(DocumentGuestWork::Adapter, 1),
+        |resource| Tariff::new(resource, 1),
+    )
+}
+
+fn conversion_work(work: surgeist_bindings_js::conversion::Work) -> DocumentGuestWork {
+    use surgeist_bindings_js::conversion::Work;
+    match work {
+        Work::Value => DocumentGuestWork::ConversionValue,
+        Work::CodeUnit => DocumentGuestWork::ConversionCodeUnit,
+        Work::EnumerationLookup => DocumentGuestWork::ConversionEnumerationLookup,
+        Work::Argument => DocumentGuestWork::ConversionArgument,
+        Work::DictionaryMember => DocumentGuestWork::ConversionDictionaryMember,
+        Work::IteratorOperation => DocumentGuestWork::ConversionIteratorOperation,
+        Work::SequenceItem => DocumentGuestWork::ConversionSequenceItem,
+        Work::SequenceMove => DocumentGuestWork::ConversionSequenceMove,
+    }
 }
 
 #[derive(Clone)]
 pub(in crate::document_scripting) struct GuestBudget(Rc<Accounting>);
 
 impl GuestBudget {
-    const SCOPES: usize = 3;
+    const SCOPES: usize = 6;
 
     pub(in crate::document_scripting) fn setup_bytes(
         mode: ProfileMode,
@@ -92,7 +148,10 @@ impl GuestBudget {
             .map_err(|_| DocumentScriptNativeError::StorageLimit)?;
         let mut operation = Operation::with_reserved_profile(
             "runtime-guest",
-            Limits::new(WorkTable::splat(limits.work), ResourceTable::splat(bytes)),
+            Limits::new(
+                adapter_work_limits(limits.work),
+                ResourceTable::splat(bytes),
+            ),
             Self::SCOPES,
             mode,
         )?;
@@ -109,11 +168,32 @@ impl GuestBudget {
             Limits::unlimited(),
             Tariffs::identity(),
         )?;
+        let conversion = operation.child(
+            root,
+            "js-conversion",
+            Limits::unlimited(),
+            conversion_tariffs(),
+        )?;
+        let window_css_conversion = operation.child(
+            root,
+            "window-css",
+            Limits::unlimited(),
+            conversion_tariffs(),
+        )?;
+        let dom_exception_conversion = operation.child(
+            root,
+            "dom-exception",
+            Limits::unlimited(),
+            conversion_tariffs(),
+        )?;
         Ok(Self(Rc::new(Accounting {
             ledger: operation.share(),
             root,
             projection,
             preparation_scope,
+            conversion,
+            window_css_conversion,
+            dom_exception_conversion,
             profiling: mode != ProfileMode::Off,
             reserved_storage: limits.storage_bytes,
             cleanup_error: Cell::new(None),
@@ -171,6 +251,53 @@ impl GuestBudget {
     ) -> Result<(), DocumentGuestEventError> {
         self.0
             .apply(scope, Change::Work(DocumentGuestWork::Adapter, units))
+    }
+
+    pub(in crate::document_scripting) fn charge_conversion(
+        &self,
+        origin: ConversionOrigin,
+        work: surgeist_bindings_js::conversion::Work,
+        units: u64,
+    ) -> Result<(), DocumentGuestEventError> {
+        self.0.apply(
+            AccountScope::Conversion(origin),
+            Change::Work(conversion_work(work), units),
+        )
+    }
+
+    pub(in crate::document_scripting) fn begin_conversion_phase(
+        &self,
+        origin: ConversionOrigin,
+    ) -> Result<PhaseObservation, AccountingError> {
+        if let Some(error) = self.0.cleanup_error.get() {
+            return Err(error);
+        }
+        self.0
+            .ledger
+            .begin_phase(self.0.scope(AccountScope::Conversion(origin)))
+    }
+
+    pub(in crate::document_scripting) fn finish_conversion_phase(
+        &self,
+        marker: PhaseObservation,
+    ) -> Result<(), AccountingError> {
+        // Completion must consume the original marker even after an earlier
+        // cleanup fault; that fault retains precedence over later defects.
+        let result = self
+            .0
+            .ledger
+            .end_phase(marker)
+            .map_err(|_| AccountingError::ForeignScope)
+            .and_then(|()| self.0.ledger.usage(self.0.root).map(|_| ()));
+        if let Err(error) = result
+            && self.0.cleanup_error.get().is_none()
+        {
+            self.0.cleanup_error.set(Some(error));
+        }
+        match self.0.cleanup_error.get() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     pub(in crate::document_scripting) fn check_work(
@@ -323,7 +450,7 @@ impl GuestBudget {
         let limits = self.0.ledger.limits(self.0.root).unwrap();
         let work = self.work().unwrap().checked_add(remaining).unwrap();
         let limits = Limits::new(
-            WorkTable::splat(work),
+            adapter_work_limits(work),
             ResourceTable::splat(limits.live(DocumentGuestResource::BackingBytes)),
         );
         self.0.ledger.set_limits(self.0.root, limits).unwrap();
@@ -336,6 +463,11 @@ impl Accounting {
             AccountScope::Adapter => self.root,
             AccountScope::Projection => self.projection,
             AccountScope::Preparation => self.preparation_scope,
+            AccountScope::Conversion(origin) => match origin {
+                ConversionOrigin::General => self.conversion,
+                ConversionOrigin::WindowCss => self.window_css_conversion,
+                ConversionOrigin::DomException => self.dom_exception_conversion,
+            },
         }
     }
 
@@ -431,14 +563,12 @@ pub(in crate::document_scripting) fn capture_refusal(
 impl CaptureBacking {
     pub(in crate::document_scripting) fn release(self) -> Result<(), Error> {
         let Self { backing, refusal } = self;
-        let account = backing.account.clone();
-        drop(backing);
-        match account.cleanup_error.get() {
-            Some(error) => Err(match refusal.upgrade() {
+        match backing.release() {
+            Err(error) => Err(match refusal.upgrade() {
                 Some(refusal) => capture_refusal(&refusal, error.into()),
                 None => Error::ExpiredIdentity,
             }),
-            None => Ok(()),
+            Ok(()) => Ok(()),
         }
     }
 }
@@ -456,6 +586,15 @@ pub(crate) struct GuestBacking {
 }
 
 impl GuestBacking {
+    pub(in crate::document_scripting) fn release(self) -> Result<(), AccountingError> {
+        let account = self.account.clone();
+        drop(self);
+        match account.cleanup_error.get() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
     pub(in crate::document_scripting) fn retained_bytes(&self) -> usize {
         self.canonical.retained_bytes()
     }
@@ -492,5 +631,345 @@ impl Drop for GuestBacking {
         {
             self.account.cleanup_error.set(Some(error));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use surgeist_bindings_js::conversion::Work;
+    use surgeist_ledger::{Dimension, EventFilter, RefusalReason};
+
+    // Independent conversion contract: eight distinct semantic counts retain
+    // their own child units while each consumes one original adapter unit.
+    const CONVERSION_COUNTS: [(Work, DocumentGuestWork, u64); 8] = [
+        (Work::Value, DocumentGuestWork::ConversionValue, 1),
+        (Work::CodeUnit, DocumentGuestWork::ConversionCodeUnit, 2),
+        (
+            Work::EnumerationLookup,
+            DocumentGuestWork::ConversionEnumerationLookup,
+            3,
+        ),
+        (Work::Argument, DocumentGuestWork::ConversionArgument, 4),
+        (
+            Work::DictionaryMember,
+            DocumentGuestWork::ConversionDictionaryMember,
+            5,
+        ),
+        (
+            Work::IteratorOperation,
+            DocumentGuestWork::ConversionIteratorOperation,
+            6,
+        ),
+        (
+            Work::SequenceItem,
+            DocumentGuestWork::ConversionSequenceItem,
+            7,
+        ),
+        (
+            Work::SequenceMove,
+            DocumentGuestWork::ConversionSequenceMove,
+            8,
+        ),
+    ];
+
+    fn budget() -> (GuestBudget, DomSession, Arc<AtomicBool>) {
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let (mut session, _) =
+            crate::document_scripting::cross_realm_tests::hosted_session(&cancellation, 0);
+        let mode = ProfileMode::Summary { timing: false };
+        let canonical = session
+            .hosted_execution()
+            .retain_script_payload(
+                &mut session.dom(),
+                GuestBudget::setup_bytes(mode).unwrap(),
+                &cancellation,
+            )
+            .unwrap();
+        let budget = GuestBudget::new(
+            DocumentGuestEventLimits {
+                storage_bytes: 10,
+                work: 20,
+                pending_exception_reports: 0,
+                dispatch: DomEventDispatchLimits {
+                    path_items: 0,
+                    snapshot_listeners: 0,
+                    failure_records: 0,
+                    callbacks: 0,
+                    work: 0,
+                },
+                node_retirement: DomNodeRetirementLimits::new(0, 0),
+                source_edits: DomSourceLimits::new(0, 0, 0, 0, 0, 0, 0),
+            },
+            mode,
+            canonical,
+        )
+        .unwrap();
+        (budget, session, cancellation)
+    }
+
+    #[test]
+    fn original_conversion_scopes_complete_after_cleanup_failure() {
+        let (budget, mut session, cancellation) = budget();
+        for (origin, name) in [
+            (ConversionOrigin::General, "js-conversion"),
+            (ConversionOrigin::WindowCss, "window-css"),
+            (ConversionOrigin::DomException, "dom-exception"),
+        ] {
+            let marker = budget.begin_conversion_phase(origin).unwrap();
+            budget.charge_conversion(origin, Work::Value, 1).unwrap();
+            budget.finish_conversion_phase(marker).unwrap();
+            let report = budget.observation().snapshot().unwrap().unwrap();
+            let scope = report
+                .scopes
+                .iter()
+                .find(|scope| scope.name == name)
+                .unwrap();
+            assert_eq!(scope.usage.work(DocumentGuestWork::ConversionValue), 1);
+            assert_eq!(scope.phases, 1);
+        }
+        assert_eq!(budget.work().unwrap(), 3);
+        let report = budget.observation().snapshot().unwrap().unwrap();
+        assert_eq!(report.scopes.len(), 6);
+        let limits = budget.0.ledger.limits(budget.0.root).unwrap();
+        for dimension in DocumentGuestWork::ALL {
+            assert_eq!(
+                limits.work(*dimension),
+                if *dimension == DocumentGuestWork::Adapter {
+                    20
+                } else {
+                    0
+                }
+            );
+        }
+
+        let scope = AccountScope::Conversion(ConversionOrigin::General);
+        let mut backing = budget
+            .reserve_with(scope, 10, || {
+                session
+                    .hosted_execution()
+                    .retain_script_payload(&mut session.dom(), 10, &cancellation)
+                    .map_err(DocumentScriptNativeError::from)
+            })
+            .unwrap();
+        let split = backing.split_off(4).unwrap();
+        assert_eq!(budget.used(), 10);
+        assert_eq!(budget.work().unwrap(), 4);
+        split.release().unwrap();
+        assert_eq!(budget.used(), 6);
+        backing.release().unwrap();
+        assert_eq!(budget.used(), 0);
+
+        let marker = budget
+            .begin_conversion_phase(ConversionOrigin::General)
+            .unwrap();
+        let backing = budget
+            .reserve_with(scope, 4, || {
+                session
+                    .hosted_execution()
+                    .retain_script_payload(&mut session.dom(), 4, &cancellation)
+                    .map_err(DocumentScriptNativeError::from)
+            })
+            .unwrap();
+        // Make the release receipt disagree with its real Ledger custody. The
+        // drop must expose that typed defect rather than erase it or panic.
+        budget
+            .0
+            .ledger
+            .apply(
+                budget.0.scope(scope),
+                Change::Release(DocumentGuestResource::BackingBytes, 4),
+            )
+            .unwrap();
+        let error = backing.release().unwrap_err();
+        assert!(matches!(
+            error,
+            AccountingError::Refused(refusal) if refusal.reason == RefusalReason::Underflow
+        ));
+        assert_eq!(budget.finish_conversion_phase(marker), Err(error));
+        let report = budget.0.ledger.snapshot().unwrap().unwrap();
+        let general = report
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "js-conversion")
+            .unwrap();
+        assert_eq!(general.phases, 2);
+        assert_eq!(budget.observation().snapshot(), Err(error));
+    }
+
+    #[test]
+    fn foreign_conversion_phase_keeps_its_typed_ownership_error() {
+        let (first, _session, _cancellation) = budget();
+        let (second, _other_session, _other_cancellation) = budget();
+        let marker = first
+            .begin_conversion_phase(ConversionOrigin::General)
+            .unwrap();
+        assert_eq!(
+            second.finish_conversion_phase(marker),
+            Err(AccountingError::ForeignScope)
+        );
+        let report = second.0.ledger.snapshot().unwrap().unwrap();
+        assert!(report.scopes.iter().all(|scope| scope.phases == 0));
+    }
+
+    #[test]
+    fn conversion_dimensions_share_the_exact_original_work_allowance() {
+        for mode in [
+            ProfileMode::Off,
+            ProfileMode::Summary { timing: false },
+            ProfileMode::Summary { timing: true },
+            ProfileMode::Detailed {
+                timing: true,
+                event_limit: 32,
+                filter: EventFilter::All,
+            },
+        ] {
+            for limit in [37, 36] {
+                let mut operation = Operation::with_reserved_profile(
+                    "runtime-guest",
+                    Limits::new(adapter_work_limits(limit), ResourceTable::splat(0)),
+                    2,
+                    mode,
+                )
+                .unwrap();
+                let root = operation.root();
+                let child = operation
+                    .child(
+                        root,
+                        "js-conversion",
+                        Limits::unlimited(),
+                        conversion_tariffs(),
+                    )
+                    .unwrap();
+                let marker = operation.begin_phase(child).unwrap();
+                // Buffer reservation retains its existing allocation work.
+                operation
+                    .apply(child, Change::Work(DocumentGuestWork::Adapter, 1))
+                    .unwrap();
+                for (work, expected, units) in CONVERSION_COUNTS {
+                    let result = operation.apply(child, Change::Work(conversion_work(work), units));
+                    if limit == 36 && work == Work::SequenceMove {
+                        let Err(AccountingError::Refused(refusal)) = result else {
+                            panic!("one unit short must refuse the aggregate conversion work");
+                        };
+                        assert_eq!(refusal.scope, root);
+                        assert_eq!(refusal.change, Change::Work(DocumentGuestWork::Adapter, 8));
+                        assert_eq!(refusal.current, 29);
+                        assert_eq!(refusal.reason, RefusalReason::Limit { limit: 36 });
+                        assert_eq!(operation.usage(child).unwrap().work(expected), 0);
+                    } else {
+                        result.unwrap();
+                        assert_eq!(operation.usage(child).unwrap().work(expected), units);
+                    }
+                }
+                operation.end_phase(marker).unwrap();
+                let aggregate = operation.usage(root).unwrap();
+                assert_eq!(
+                    aggregate.work(DocumentGuestWork::Adapter),
+                    if limit == 37 { 37 } else { 29 }
+                );
+                for dimension in DocumentGuestWork::ALL {
+                    if *dimension != DocumentGuestWork::Adapter {
+                        assert_eq!(aggregate.work(*dimension), 0);
+                    }
+                }
+                let report = operation.snapshot().unwrap();
+                if mode == ProfileMode::Off {
+                    assert!(report.is_none());
+                } else {
+                    let report = report.unwrap();
+                    assert_eq!(report.scopes[1].phases, 1);
+                    for (work, expected, units) in CONVERSION_COUNTS {
+                        assert_eq!(
+                            report.scopes[1].usage.work(expected),
+                            if limit == 36 && work == Work::SequenceMove {
+                                0
+                            } else {
+                                units
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn conversion_origins_keep_raw_attribution_and_share_live_backing() {
+        let mut operation = Operation::with_reserved_profile(
+            "runtime-guest",
+            Limits::new(adapter_work_limits(6), ResourceTable::splat(10)),
+            4,
+            ProfileMode::Summary { timing: false },
+        )
+        .unwrap();
+        let root = operation.root();
+        let mut children = Vec::new();
+        for (name, work, bytes) in [
+            ("js-conversion", 1, 2),
+            ("window-css", 2, 3),
+            ("dom-exception", 3, 5),
+        ] {
+            let child = operation
+                .child(root, name, Limits::unlimited(), conversion_tariffs())
+                .unwrap();
+            operation
+                .apply(child, Change::Work(conversion_work(Work::Value), work))
+                .unwrap();
+            operation
+                .apply(
+                    child,
+                    Change::Acquire(DocumentGuestResource::BackingBytes, bytes),
+                )
+                .unwrap();
+            children.push((child, work, bytes));
+        }
+        assert_eq!(
+            operation
+                .usage(root)
+                .unwrap()
+                .work(DocumentGuestWork::Adapter),
+            6
+        );
+        assert_eq!(
+            operation
+                .usage(root)
+                .unwrap()
+                .live(DocumentGuestResource::BackingBytes),
+            10
+        );
+        assert!(matches!(
+            operation.apply(children[0].0, Change::Acquire(DocumentGuestResource::BackingBytes, 1)),
+            Err(AccountingError::Refused(refusal))
+                if refusal.scope == root
+                    && refusal.reason == RefusalReason::Limit { limit: 10 }
+        ));
+        let report = operation.snapshot().unwrap().unwrap();
+        for (child, work, bytes) in children {
+            let origin = report
+                .scopes
+                .iter()
+                .find(|scope| scope.scope == child)
+                .unwrap();
+            assert_eq!(origin.usage.work(DocumentGuestWork::ConversionValue), work);
+            assert_eq!(origin.usage.work(DocumentGuestWork::Adapter), 0);
+            assert_eq!(
+                origin.usage.live(DocumentGuestResource::BackingBytes),
+                bytes
+            );
+            operation
+                .apply(
+                    child,
+                    Change::Release(DocumentGuestResource::BackingBytes, bytes),
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            operation
+                .usage(root)
+                .unwrap()
+                .live(DocumentGuestResource::BackingBytes),
+            0
+        );
     }
 }

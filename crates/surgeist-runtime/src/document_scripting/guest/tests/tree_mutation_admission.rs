@@ -67,8 +67,11 @@ pub(in crate::document_scripting) fn normalized_operands_admit_exact_backing_and
         + 2 * size_of::<usize>()
         + 3 * size_of::<u16>();
     // One buffer reservation, two operand visits, one native text reservation
-    // and the exact three UTF16 copy steps. Conversion has its own account.
+    // and the exact three UTF16 copy steps in the native normalized operands.
     let normalized_work = 1 + 2 + 1 + 3;
+    // Both operands visit the original conversion account. The accepted first
+    // string adds one buffer reservation and three UTF16 conversion copy units.
+    let conversion_work = 2 + 1 + 3;
     let (mut control, permit, observed) = fixture();
     // The outer call captures its receiver, two selected operands and their
     // buffer. The observation callback captures its receiver with no buffer.
@@ -91,7 +94,7 @@ pub(in crate::document_scripting) fn normalized_operands_admit_exact_backing_and
     // Their private backend record sizes are independently qualified by Bindings;
     // probe one frame with only the evaluation slot and incoming receiver root,
     // then require exactly two copies of that extent during normalization.
-    let work = normalized_work + 5 + 4 + 2;
+    let work = normalized_work + conversion_work + 5 + 4 + 2;
     let events = control.guest_events().unwrap();
     let before_frame = events.budget.used();
     control

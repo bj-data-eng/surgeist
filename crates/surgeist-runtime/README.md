@@ -361,13 +361,21 @@ Owning containers and backend reaping release their corresponding custody.
 Refusal precedes the reached preparation or guest entry. Release faults reach
 the binding terminal cleanup report.
 
+The `js-conversion`, `window-css` and `dom-exception` children retain the eight
+binding conversion work dimensions. Their tariffs charge the root adapter
+budget once while each producer enforces its own conversion caps. Live payload
+and concrete release-record storage use the same canonical retention as other
+guest backing. Conversion phase timings include reached guest coercion, getter
+and iterator execution. Retained converted values keep their backing through
+replacement overlap and account teardown.
+
 Initial process and realm construction use funded setup. One installed policy
 covers native hooks and timers, then attaches the original guest operation when
 a registry is enabled. Native preparation, live Source projection/report bodies
 and the reserved guest allowance share the host storage cap. Source and native
 retirement also retain their domain work limits. Reports describe Rust adapter
-work and backing. V8 owns its execution and heap behavior, and Web IDL conversion
-retains its conversion-specific account.
+work and backing. V8 owns its execution and heap behavior. Conversion policies
+installed during native setup join the original guest budget on activation.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's
 registered creation realm, including borrowed calls. Native Text and Comment
