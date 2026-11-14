@@ -26,6 +26,11 @@ The [convolution contract](docs/convolution.md) describes parameter admission,
 source and result domains, anisotropic grids, edge modes, color and alpha math,
 precision, accounting and typed refusals.
 
+Prepared [native Gaussian blur](docs/gaussian.md) admits independent standard
+deviations and authentic finite, constant or periodic sources. It preserves
+independent domains, full outer transforms and color semantics through bounded
+float32 GPU accumulation and atomic publication.
+
 Prepared [native offset](docs/offset.md) translates the captured input inside
 independent source, filter and result domains. It preserves numeric
 premultiplied color and the full outer affine, with exact aligned copies and

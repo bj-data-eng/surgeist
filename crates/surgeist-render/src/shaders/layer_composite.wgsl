@@ -16,6 +16,8 @@ struct CompositeParameters {
     mask_extend: u32,
     // Clip presence, mask value and application bits, source coordinate space, operator code.
     presence: vec4<u32>,
+    // Gaussian-only O cell clip in actual source-allocation texel coordinates.
+    source_operation_clip: vec4<f32>,
 }
 
 @group(0) @binding(0)
@@ -90,7 +92,7 @@ fn sample_source(destination_position: vec2<f32>) -> vec4<f32> {
     let extent = vec2<f32>(spatial.source_destination_extents.xy);
     let inside = all(texel >= vec2<f32>(0.0)) && all(texel < extent);
     var sampled: vec4<f32>;
-    if (parameters.presence.z == 1u) {
+    if ((parameters.presence.z & 1u) != 0u) {
         // Surface-grid sources share the destination's device-pixel lattice.
         // Load that pixel directly so composition cannot smooth it again.
         sampled = load_surface_source(texel, extent);
@@ -104,6 +106,33 @@ fn sample_source(destination_position: vec2<f32>) -> vec4<f32> {
     let bounded = select(vec4<f32>(0.0), clamp(sampled, vec4<f32>(0.0), vec4<f32>(1.0)), inside);
     let alpha = bounded.a;
     return vec4<f32>(min(bounded.rgb, vec3<f32>(alpha)), alpha);
+}
+
+// Reconstruct the authored Gaussian operation coverage with the exact source
+// lattice, clamp-to-edge bilinear kernel, and center-inside allocation guard.
+// Source alpha cannot identify this geometric footprint (it may be transparent).
+fn operation_cell_coverage(index: vec2<i32>, extent: vec2<i32>) -> f32 {
+    let cell = vec2<f32>(clamp(index, vec2<i32>(0), extent - vec2<i32>(1)));
+    let clip = parameters.source_operation_clip;
+    let overlap = clamp(min(cell + vec2<f32>(1.0), clip.zw) - max(cell, clip.xy), vec2<f32>(0.0), vec2<f32>(1.0));
+    return overlap.x * overlap.y;
+}
+
+fn gaussian_operation_coverage(destination_position: vec2<f32>) -> f32 {
+    let texel = source_texel(destination_position);
+    let extent = vec2<f32>(spatial.source_destination_extents.xy);
+    if any(texel < vec2<f32>(0.0)) || any(texel >= extent) { return 0.0; }
+    let integer_extent = vec2<i32>(spatial.source_destination_extents.xy);
+    if (parameters.presence.z & 1u) != 0u {
+        return operation_cell_coverage(vec2<i32>(floor(texel)), integer_extent);
+    }
+    let normalized = clamp(texel / extent, vec2<f32>(0.0), vec2<f32>(1.0));
+    let coordinate = normalized * extent - vec2<f32>(0.5);
+    let base = vec2<i32>(floor(coordinate));
+    let fraction = fract(coordinate);
+    let top = mix(operation_cell_coverage(base, integer_extent), operation_cell_coverage(base + vec2<i32>(1, 0), integer_extent), fraction.x);
+    let bottom = mix(operation_cell_coverage(base + vec2<i32>(0, 1), integer_extent), operation_cell_coverage(base + vec2<i32>(1, 1), integer_extent), fraction.x);
+    return mix(top, bottom, fraction.y);
 }
 
 fn load_parent(destination_position: vec2<f32>) -> vec4<f32> {
@@ -423,8 +452,27 @@ fn composite_against_parent(source: vec4<f32>, backdrop: vec4<f32>) -> vec4<f32>
     return vec4<f32>(min(clamp(premultiplied, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(alpha)), alpha);
 }
 
+fn operation_composite(source: vec4<f32>, backdrop: vec4<f32>, destination_position: vec2<f32>) -> vec4<f32> {
+    let complete = composite_against_parent(source, backdrop);
+    // These six effective operators discard transparent source areas. The
+    // source already contains O coverage, so restore only uncovered destination.
+    let operation = parameters.presence.w;
+    let destructive = operation == 1u || operation == 2u || operation == 5u
+        || operation == 6u || operation == 7u || operation == 10u;
+    if (parameters.presence.z & 2u) != 0u && destructive
+        && parameters.blend != 6u && operation != PLUS_LIGHTER_OPERATOR {
+        let covered = complete + (1.0 - gaussian_operation_coverage(destination_position)) * backdrop;
+        // Storage/interpolation rounding can make covered source alpha slightly
+        // exceed its analytic coverage. Restore valid premultiplication here,
+        // before the authored whole-operation clip interpolates this result.
+        let alpha = clamp(covered.a, 0.0, 1.0);
+        return vec4<f32>(clamp(covered.rgb, vec3<f32>(0.0), vec3<f32>(alpha)), alpha);
+    }
+    return complete;
+}
+
 fn destination_composite(source: vec4<f32>, destination_position: vec2<f32>) -> vec4<f32> {
-    return composite_against_parent(source, load_parent(destination_position));
+    return operation_composite(source, load_parent(destination_position), destination_position);
 }
 
 fn covered_destination_composite(
@@ -433,7 +481,7 @@ fn covered_destination_composite(
     coverage: f32,
 ) -> vec4<f32> {
     let backdrop = load_parent(destination_position);
-    let complete = composite_against_parent(source, backdrop);
+    let complete = operation_composite(source, backdrop, destination_position);
     let amount = clamp(coverage, 0.0, 1.0);
     return (1.0 - amount) * backdrop + amount * complete;
 }

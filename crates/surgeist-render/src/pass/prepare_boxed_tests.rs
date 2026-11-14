@@ -702,3 +702,79 @@ fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_sou
         assert_eq!(measure(exact, true), exact);
     }
 }
+
+#[test]
+fn immutable_preparation_plan_fixed_backing_admits_exact_bytes_and_releases_on_drop() {
+    let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
+    let mut backend = Backend::new(
+        crate::ResourceCacheBudget::DISABLED,
+        device_cpu,
+        RenderAccountingOptions::new(),
+    )
+    .unwrap();
+    let identity = pollster::block_on(backend.select_device(None))
+        .unwrap()
+        .unwrap();
+    let caps = backend.device_capabilities(identity).unwrap();
+    let ready = backend
+        .ready_device_state_borrow_for_test(identity)
+        .unwrap();
+    let bytes = size_of::<RuntimeGraphPreparationPlan>() as u64;
+    for exact in [false, true] {
+        let setup = Account::for_test();
+        let source = source(0, &caps, &setup);
+        let (lowered, ..) = view(&source).parts();
+        let plan = RuntimeGraphPreparationPlan::try_derive(
+            lowered,
+            source.working_format(),
+            &caps,
+            ready.device_for_test(),
+            &setup,
+        )
+        .unwrap();
+        // Inner request allocations retain their actual producer custody. This
+        // consumer admits only the additional fixed immutable plan allocation.
+        let baseline = RendererCpu::new(RenderAccountingOptions::new())
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let limit = baseline + bytes - u64::from(!exact);
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_retained_bytes(limit)),
+        )
+        .unwrap();
+        let storage =
+            crate::accounting::StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+        let result = OwnedBox::new(plan, &storage);
+        if exact {
+            let owned = result.unwrap();
+            assert_eq!(owned.working_format, source.working_format());
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes),
+                baseline + bytes
+            );
+            drop(owned);
+        } else {
+            assert!(
+                matches!(result.unwrap_err().accounting_diagnostic(),Some(crate::RenderAccountingError::CpuRefused {
+                quantity:crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),current,amount,
+                reason:crate::RenderRefusalReason::Limit {limit:actual},..
+            }) if current==baseline && amount==bytes && actual==limit)
+            );
+        }
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            baseline
+        );
+        assert_eq!(cpu.snapshot().unwrap().fault(), None);
+    }
+}

@@ -1,7 +1,9 @@
+mod gaussian;
 use super::convolution::{
     ConvolutionMapping, ConvolutionStage, empty_source_spatial, intersection, require_spatial,
     source_domain_is_empty,
 };
+use super::gaussian::{GaussianMapping, GaussianStage};
 use super::offset::{OffsetMapping, OffsetStage};
 use crate::accounting::{Account, AccountedVec, RenderWork, SharedValue};
 use std::ops::ControlFlow;
@@ -116,7 +118,7 @@ pub(super) enum SemanticResourceRole {
     ImportedImage,
     BackdropCopy,
     FilterIntermediate,
-    ConvolutionFloat,
+    FilterFloat,
     ShadowImage,
     CompositeResult,
 }
@@ -180,6 +182,7 @@ pub(super) enum SemanticPassIntent {
     DropShadowColorize,
     Convolution(ConvolutionStage),
     Offset(OffsetStage),
+    Gaussian(GaussianStage),
     Composite,
     Present,
 }
@@ -473,6 +476,7 @@ pub(super) struct SemanticCompositePlan {
     pub(super) pass: SemanticPassId,
     pub(super) kind: SemanticCompositeKind,
     pub(super) source_captured_before_outer_semantics: bool,
+    pub(super) gaussian_footprint: Option<super::gaussian::GaussianOutputFootprint>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -487,6 +491,12 @@ pub(super) struct SemanticConvolutionPlan {
     pub(super) operation: crate::PreparedConvolution,
     pub(super) mapping: ConvolutionMapping,
     pub(super) stage: ConvolutionStage,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SemanticGaussianPlan {
+    pub(super) pass: SemanticPassId,
+    pub(super) facts: super::gaussian::GaussianPassFacts,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -530,6 +540,7 @@ pub(crate) struct GpuRenderGraph {
     pub(super) filter_steps: AccountedVec<SemanticFilterStepPlan>,
     pub(super) convolutions: AccountedVec<SemanticConvolutionPlan>,
     pub(super) offsets: AccountedVec<SemanticOffsetPlan>,
+    pub(super) gaussians: AccountedVec<SemanticGaussianPlan>,
     pub(super) backdrop_reads: AccountedVec<SemanticBackdropRead>,
     pub(super) imports: AccountedVec<SemanticImportPlan>,
 }
@@ -811,6 +822,7 @@ impl SemanticGraphBuilder {
             | SemanticPassIntent::DropShadowColorize
             | SemanticPassIntent::Convolution(_)
             | SemanticPassIntent::Offset(_)
+            | SemanticPassIntent::Gaussian(_)
             | SemanticPassIntent::Composite => {
                 self.validate_transform_pass_shape(intent, reads, result)?;
             }
@@ -910,6 +922,13 @@ impl SemanticGraphBuilder {
                     | ConvolutionStage::Finalize => 2,
                     _ => 1,
                 }
+        } else if let SemanticPassIntent::Gaussian(stage) = intent {
+            reads.len()
+                == match stage {
+                    GaussianStage::Constant => 0,
+                    GaussianStage::Accumulate { first: false, .. } => 2,
+                    _ => 1,
+                }
         } else if intent == SemanticPassIntent::Composite {
             reads.len() >= 2
         } else {
@@ -924,7 +943,11 @@ impl SemanticGraphBuilder {
                 | ConvolutionStage::PassThrough
                 | ConvolutionStage::Resolve,
             ) => SemanticResourceRole::FilterIntermediate,
-            SemanticPassIntent::Convolution(_) => SemanticResourceRole::ConvolutionFloat,
+            SemanticPassIntent::Convolution(_) => SemanticResourceRole::FilterFloat,
+            SemanticPassIntent::Gaussian(
+                GaussianStage::Prepare | GaussianStage::Accumulate { .. },
+            ) => SemanticResourceRole::FilterFloat,
+            SemanticPassIntent::Gaussian(_) => SemanticResourceRole::FilterIntermediate,
             SemanticPassIntent::CopyBackdrop => SemanticResourceRole::BackdropCopy,
             SemanticPassIntent::DropShadowColorize => SemanticResourceRole::ShadowImage,
             SemanticPassIntent::Composite => SemanticResourceRole::CompositeResult,
@@ -1211,6 +1234,7 @@ impl SemanticGraphBuilder {
             filter_steps: self.account.retained(0)?,
             convolutions: self.account.retained(0)?,
             offsets: self.account.retained(0)?,
+            gaussians: self.account.retained(0)?,
             backdrop_reads: self.account.retained(0)?,
             imports: self.account.retained(0)?,
         })
@@ -1302,6 +1326,7 @@ pub(super) struct SemanticOuterClip {
 
 #[derive(Clone, Debug, PartialEq)]
 struct SemanticCommandPlanningState {
+    context: FrameContext,
     parent_locality: CaptureParentLocality,
     span_scope: SemanticVelloSpanScope,
     capture_transform: Transform,
@@ -1396,6 +1421,7 @@ pub(super) struct SemanticFrameGraphPlanner<'a> {
     filter_steps: AccountedVec<SemanticFilterStepPlan>,
     convolutions: AccountedVec<SemanticConvolutionPlan>,
     offsets: AccountedVec<SemanticOffsetPlan>,
+    gaussians: AccountedVec<SemanticGaussianPlan>,
     backdrop_reads: AccountedVec<SemanticBackdropRead>,
     imports: AccountedVec<SemanticImportPlan>,
     resolved_mask_imports: AccountedVec<(ResolvedMaskUploadKey, PlannedGraphResource)>,
@@ -1447,6 +1473,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             filter_steps: account.retained(0)?,
             convolutions: account.retained(0)?,
             offsets: account.retained(0)?,
+            gaussians: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1480,6 +1507,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             commands,
             parent,
             SemanticCommandPlanningState {
+                context,
                 parent_locality: CaptureParentLocality::External,
                 span_scope: SemanticVelloSpanScope::CurrentParent,
                 capture_transform: mapping.capture_transform,
@@ -1509,6 +1537,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.filter_steps = planner.filter_steps;
         graph.convolutions = planner.convolutions;
         graph.offsets = planner.offsets;
+        graph.gaussians = planner.gaussians;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1549,6 +1578,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             filter_steps: account.retained(0)?,
             convolutions: account.retained(0)?,
             offsets: account.retained(0)?,
+            gaussians: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1651,6 +1681,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.filter_steps = planner.filter_steps;
         graph.convolutions = planner.convolutions;
         graph.offsets = planner.offsets;
+        graph.gaussians = planner.gaussians;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1708,6 +1739,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         // without recursive destruction.
         let mut pending: AccountedVec<CommandContinuation> = self.account.temporary(0)?;
         loop {
+            self.context = frame.state.context;
             let command = frame.commands.get(frame.next_command);
             if let Some(command) = command {
                 self.account.work(RenderWork::CommandVisits, 1)?;
@@ -1752,7 +1784,13 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 let inverse = destination_to_layer_local_mapping(layer_to_destination)?;
                 // A singular own geometric clip has no operation coverage. A singular
                 // source without that clip remains a transparent source operation.
-                if inverse.is_none() && layer.clip.is_some() {
+                if inverse.is_none()
+                    && (layer.clip.is_some()
+                        || matches!(
+                            layer.foreground_filters,
+                            Some(crate::command::NormalizedForegroundEffect::Gaussian(_))
+                        ))
+                {
                     frame.state.parent_locality = CaptureParentLocality::External;
                     continue;
                 }
@@ -1840,7 +1878,13 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     source_forced_empty,
                     source_is_coverage,
                 };
-                let source = if source_forced_empty || source_is_coverage {
+                let source = if source_forced_empty
+                    && matches!(
+                        completion.layer.foreground_filters,
+                        Some(crate::command::NormalizedForegroundEffect::Gaussian(_))
+                    ) {
+                    None
+                } else if source_forced_empty || source_is_coverage {
                     Some(
                         self.declare_transparent_parent(frame.parent.spatial)?
                             .current,
@@ -1854,6 +1898,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         }
                         Some(crate::command::NormalizedForegroundEffect::Offset(operation)) => {
                             self.prepare_offset_source(children, operation, layer_to_surface)?
+                        }
+                        Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) => {
+                            self.prepare_gaussian_source(children, *foreground, layer_to_surface)?
                         }
                         _ => self.prepare_layer_source(
                             children,
@@ -1894,6 +1941,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 return Ok(completed);
             };
             frame = continuation.frame;
+            self.context = frame.state.context;
             frame.parent = match continuation.group {
                 None => completed,
                 Some(group) => self.finish_group_source(
@@ -2049,6 +2097,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     crate::command::NormalizedForegroundEffect::Offset(operation) => {
                         super::offset::domains_are_empty(operation)
                     }
+                    crate::command::NormalizedForegroundEffect::Gaussian(foreground) => {
+                        super::gaussian::source_is_empty(foreground.source)
+                    }
                     crate::command::NormalizedForegroundEffect::Css(_) => false,
                 });
         if let Some(backdrop) = layer
@@ -2064,9 +2115,19 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 capture_space.source_space(),
             )?;
         }
+        if let Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) =
+            &layer.foreground_filters
+            && !source_forced_empty
+        {
+            source = self.apply_gaussian(source, *foreground, layer_to_surface)?;
+        }
         if let Some(effect) = &layer.foreground_filters
             && let Some(group) = source
             && !source_forced_empty
+            && !matches!(
+                effect,
+                crate::command::NormalizedForegroundEffect::Gaussian(_)
+            )
         {
             source = match effect {
                 crate::command::NormalizedForegroundEffect::Css(filters) => {
@@ -2083,13 +2144,42 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 crate::command::NormalizedForegroundEffect::Offset(operation) => {
                     self.apply_offset(group, operation, layer_to_surface)?
                 }
+                crate::command::NormalizedForegroundEffect::Gaussian(_) => Some(group),
             };
         }
         if source.is_none()
             && layer.foreground_filters.is_some()
             && !layer.composition.transparent_source_preserves_parent()
         {
-            source = Some(self.declare_transparent_parent(parent.spatial)?.current);
+            if let Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) =
+                &layer.foreground_filters
+            {
+                let output = super::gaussian::result_domain(foreground.source);
+                if !super::gaussian::empty(output) {
+                    let spatial =
+                        super::gaussian::require_spatial(self.context, output, layer_to_surface)?;
+                    let mapping = GaussianMapping::new(None, spatial, [None; 2]).with_output_clip(
+                        output,
+                        spatial,
+                        self.account,
+                    )?;
+                    source = Some(self.declare_gaussian_pass(
+                        &[],
+                        crate::gaussian::GaussianForeground {
+                            operation: foreground.operation,
+                            source: crate::gaussian::GaussianSourceDescriptor::Constant {
+                                color: crate::Color::TRANSPARENT,
+                                filter: foreground.source.filter(),
+                                result: foreground.source.result(),
+                            },
+                        },
+                        mapping,
+                        GaussianStage::Constant,
+                    )?);
+                }
+            } else {
+                source = Some(self.declare_transparent_parent(parent.spatial)?.current);
+            }
         }
         let Some(source) = source else {
             return Ok(parent);
@@ -2115,7 +2205,11 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             None => None,
         };
         let additional_sources = alpha_mask.as_ref().map(|(_, resource)| *resource);
-        self.composite_into_parent(
+        let source_bounds_operation = matches!(
+            layer.foreground_filters,
+            Some(crate::command::NormalizedForegroundEffect::Gaussian(_))
+        );
+        let result = self.composite_into_parent(
             parent,
             source,
             additional_sources.as_slice(),
@@ -2140,7 +2234,32 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     .transpose()?,
             },
             true,
-        )
+        )?;
+        if source_bounds_operation {
+            let footprint = self
+                .gaussians
+                .last()
+                .filter(|entry| {
+                    Some(entry.pass) == source.producer
+                        && matches!(
+                            entry.facts.stage(),
+                            GaussianStage::Constant
+                                | GaussianStage::PassThrough
+                                | GaussianStage::Resolve
+                        )
+                })
+                .map(|entry| entry.facts.mapping().output_footprint())
+                .ok_or_else(|| {
+                    Error::new(
+                        BackendErrorCode::RenderFailed,
+                        "Gaussian final composition lost its output footprint",
+                    )
+                })?;
+            if let Some(plan) = self.composites.last_mut() {
+                plan.gaussian_footprint = Some(footprint);
+            }
+        }
+        Ok(result)
     }
 
     #[cfg(test)]
@@ -2185,6 +2304,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             children,
             parent,
             SemanticCommandPlanningState {
+                context: self.context,
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
                 capture_transform: Transform::identity(),
@@ -2224,6 +2344,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             children,
             parent,
             SemanticCommandPlanningState {
+                context: self.context,
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
                 capture_transform: Transform::identity(),
@@ -2449,7 +2570,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             ConvolutionStage::RebaseSource
             | ConvolutionStage::PassThrough
             | ConvolutionStage::Resolve => SemanticResourceRole::FilterIntermediate,
-            _ => SemanticResourceRole::ConvolutionFloat,
+            _ => SemanticResourceRole::FilterFloat,
         };
         let result = graph_build(
             self.builder
@@ -2551,6 +2672,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             contribution.commands,
             source_parent,
             SemanticCommandPlanningState {
+                context: self.context,
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
                 capture_transform: if capture_space == CaptureBoundsCoordinateSpace::SurfaceGrid {
@@ -2793,6 +2915,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         pass: merge,
                         kind: SemanticCompositeKind::DropShadow,
                         source_captured_before_outer_semantics: true,
+                        gaussian_footprint: None,
                     })?;
                     source = PlannedGraphResource {
                         id: result_id,
@@ -3012,6 +3135,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             pass,
             kind,
             source_captured_before_outer_semantics,
+            gaussian_footprint: None,
         })?;
         Ok(PlannedGraphParent {
             current: PlannedGraphResource {

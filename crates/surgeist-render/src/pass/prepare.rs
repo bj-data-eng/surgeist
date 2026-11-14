@@ -26,7 +26,8 @@ use super::super::{
         ColorFilterOperationBytes, ColorFilterPassKeyRefs, CompositeParameterBytes,
         CompositePassKeyRefs, ConvolutionParameterBytes, ConvolutionPassKeyRefs,
         CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache, DropShadowColorizePassKeyRefs,
-        DropShadowParameterBytes, OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
+        DropShadowParameterBytes, GaussianParameterBytes, GaussianPassKeyRefs,
+        OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
         ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
@@ -125,6 +126,7 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) kernel: Option<GaussianKernelKey>,
     pub(super) kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
     pub(super) convolution_parameters: Option<ConvolutionParameterBytes>,
+    pub(super) gaussian_parameters: Option<GaussianParameterBytes>,
     pub(super) offset_parameters: Option<OffsetParameterBytes>,
     pub(super) convolution_weights: Option<RuntimePassId>,
 }
@@ -183,8 +185,13 @@ impl RuntimeGraphPreparationPlan {
             ));
         }
         let mut prepared_resources = prepare_runtime_resources(lowered, capabilities, account)?;
-        let pass_facts =
-            analyze_runtime_passes(lowered, &prepared_resources.resource_by_id, device, account)?;
+        let pass_facts = analyze_runtime_passes(
+            lowered,
+            &prepared_resources.resource_by_id,
+            capabilities,
+            device,
+            account,
+        )?;
         validate_prepared_graph_lifetimes(
             lowered,
             &prepared_resources.resource_by_id,
@@ -305,22 +312,16 @@ fn prepare_runtime_resource_allocation(
 ) -> Result<RuntimeAllocationRequest> {
     let extent = resource.spatial.device_extent;
     match (&resource.format, &resource.import) {
-        (RuntimeResourceFormat::ConvolutionRgba32Float, None)
-            if resource.role == RuntimeResourceRole::ConvolutionFloat
+        (RuntimeResourceFormat::FilterRgba32Float, None)
+            if resource.role == RuntimeResourceRole::FilterFloat
                 && matches!(resource.producer, RuntimeResourceProducer::Pass(_)) =>
         {
-            let descriptor = EffectTextureDescriptor::try_convolution_float32(
+            let descriptor = EffectTextureDescriptor::try_filter_float32(
                 extent,
                 wgpu::TextureUsages::RENDER_ATTACHMENT
                     .union(wgpu::TextureUsages::TEXTURE_BINDING)
                     .union(wgpu::TextureUsages::COPY_SRC)
                     .union(wgpu::TextureUsages::COPY_DST),
-            )?;
-            capabilities.validate_effect_texture_allocation(
-                extent,
-                None,
-                descriptor.texture_format(),
-                descriptor.usage(),
             )?;
             Ok(RuntimeAllocationRequest::EffectTexture(descriptor))
         }
@@ -406,6 +407,7 @@ struct RuntimePassAnalysis {
 fn analyze_runtime_passes(
     lowered: &LoweredGraphPlan,
     resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    capabilities: &DeviceCapabilities,
     device: &wgpu::Device,
     account: &Account,
 ) -> Result<RuntimePassAnalysis> {
@@ -413,7 +415,9 @@ fn analyze_runtime_passes(
     let mut kernel_bound = 0usize;
     for (position, pass) in lowered.passes.iter().enumerate() {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        if runtime_blur_for_kernel(&pass.kind).is_some() {
+        if runtime_blur_for_kernel(&pass.kind).is_some()
+            || matches!(&pass.kind, RuntimePassKind::Gaussian(work) if matches!(work.stage(), crate::frame::GaussianStage::Accumulate { .. }))
+        {
             kernel_bound = kernel_bound
                 .checked_add(1)
                 .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
@@ -446,6 +450,22 @@ fn analyze_runtime_passes(
             &mut facts,
             account,
         )?;
+        match &pass.kind {
+            RuntimePassKind::Gaussian(work)
+                if matches!(
+                    work.stage(),
+                    crate::frame::GaussianStage::Prepare
+                        | crate::frame::GaussianStage::Accumulate { .. }
+                ) =>
+            {
+                capabilities.validate_filter_float32(crate::RuntimeOperation::GaussianRendering)?;
+            }
+            RuntimePassKind::Convolution(work) if !work.operation().is_passthrough() => {
+                capabilities
+                    .validate_filter_float32(crate::RuntimeOperation::ConvolutionRendering)?;
+            }
+            _ => {}
+        }
         analyze_runtime_kernel(pass, device, &mut facts, account)?;
         drop(pass_reads);
     }
@@ -599,6 +619,47 @@ fn analyze_runtime_kernel(
     facts: &mut RuntimePassAnalysis,
     account: &Account,
 ) -> Result<()> {
+    if let RuntimePassKind::Gaussian(work) = &pass.kind {
+        let crate::frame::GaussianStage::Accumulate { axis, .. } = work.stage() else {
+            return Ok(());
+        };
+        let geometry = work.mapping().geometry(axis).ok_or_else(|| {
+            preparation_error("Gaussian accumulation has no checked axis geometry")
+        })?;
+        let key = geometry.key();
+        let alignment = device.limits().min_storage_buffer_offset_alignment;
+        if alignment == 0 || 256 % alignment != 0 {
+            return Err(preparation_error(
+                "Gaussian coefficient batches cannot meet device buffer-offset alignment",
+            ));
+        }
+        facts.kernel_by_pass.insert_with(pass.id, key, account)?;
+        match facts.kernels.position(&key, account)? {
+            Ok(index) => facts.kernels.entries[index].1.last_use = pass.id,
+            Err(index) => {
+                let plan = GaussianKernelPlan::try_new_with_limits(
+                    geometry,
+                    GaussianKernelBufferLimits::from_device_limits(&device.limits()),
+                    account,
+                )?;
+                if plan.key() != key {
+                    return Err(preparation_error(
+                        "Gaussian realization changed its checked axis identity",
+                    ));
+                }
+                facts.kernels.insert_at_reserved(
+                    index,
+                    key,
+                    RuntimeKernelPreparationRequest {
+                        key,
+                        plan,
+                        last_use: pass.id,
+                    },
+                )?;
+            }
+        }
+        return Ok(());
+    }
     let Some(blur) = runtime_blur_for_kernel(&pass.kind) else {
         return Ok(());
     };
@@ -738,17 +799,24 @@ fn prepare_runtime_pass_requests(
             }
             _ => None,
         };
+        let gaussian_parameters = match &pass.kind {
+            RuntimePassKind::Gaussian(operation) => {
+                Some(super::gaussian::parameters(operation, account)?)
+            }
+            _ => None,
+        };
         let offset_parameters = match &pass.kind {
             RuntimePassKind::Offset(operation) => {
                 Some(super::offset::parameters(operation, account)?)
             }
             _ => None,
         };
-        if offset_parameters.is_some() {
+        if offset_parameters.is_some() || gaussian_parameters.is_some() {
             validate_offset_uniform_limits(uniform_limits)?;
         }
         if (spatial_uniform.is_some()
             || convolution_parameters.is_some()
+            || gaussian_parameters.is_some()
             || offset_parameters.is_some())
             != pass.cache_keys.is_some()
         {
@@ -776,6 +844,7 @@ fn prepare_runtime_pass_requests(
                 kernel: facts.kernel_by_pass.get(&pass.id, account)?.copied(),
                 kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
                 convolution_parameters,
+                gaussian_parameters,
                 offset_parameters,
                 convolution_weights: None,
             });
@@ -895,6 +964,11 @@ pub(super) struct PreparedConvolutionWeightsBinding {
 
 pub(super) struct PreparedOffsetParameterBinding {
     pub(super) bytes: OffsetParameterBytes,
+    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
+}
+
+pub(super) struct PreparedGaussianParameterBinding {
+    pub(super) bytes: GaussianParameterBytes,
     pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
 }
 
@@ -1215,7 +1289,7 @@ impl<'source> GraphPreparationSource<'source> {
 }
 
 pub(crate) struct PreparedGraph<'device> {
-    pub(super) plan: RuntimeGraphPreparationPlan,
+    pub(super) plan: crate::accounting::OwnedBox<RuntimeGraphPreparationPlan>,
     pub(super) base_execution: Option<BaseExecutionFacts>,
     pub(super) composition_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) color_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
@@ -1226,6 +1300,8 @@ pub(crate) struct PreparedGraph<'device> {
     pub(super) convolution_weight_bindings:
         PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
     pub(super) offset_parameter_bindings: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
+    pub(super) gaussian_parameter_bindings:
+        PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
     pub(super) color_filter_operation_bindings:
         PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     pub(super) spatial_filter_pass_objects:
@@ -1342,20 +1418,57 @@ fn create_offset_parameter_binding(
     })
 }
 
-fn create_color_filter_operation_bindings(
+fn create_gaussian_parameter_binding(
+    generation: &Generation,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bytes: &GaussianParameterBytes,
+    account: &Account,
+) -> Result<PreparedGaussianParameterBinding> {
+    let buffer = generation.allocation_with_upload(
+        GenerationClass::PassBuffers,
+        256,
+        256,
+        Some(account),
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist Gaussian checked texel uniform"),
+                size: 256,
+                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        },
+    )?;
+    queue.write_buffer(&buffer, 0, bytes.as_bytes());
+    Ok(PreparedGaussianParameterBinding {
+        bytes: bytes.clone(),
+        buffer: Some(buffer),
+    })
+}
+
+struct PreparedOperationParameterBindings {
+    color_filters: PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
+    offsets: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
+    gaussians: PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
+}
+
+fn create_operation_parameter_bindings(
     generation: &Generation,
     plan: &RuntimeGraphPreparationPlan,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     account: &Account,
-) -> Result<(
-    PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
-    PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
-)> {
+) -> Result<PreparedOperationParameterBindings> {
     let mut count = 0usize;
     let mut offset_count = 0usize;
+    let mut gaussian_count = 0usize;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
+        if request.gaussian_parameters.is_some() {
+            gaussian_count = gaussian_count
+                .checked_add(1)
+                .ok_or(crate::RenderAccountingError::Invariant)?;
+        }
         if request.offset_parameters.is_some() {
             offset_count = offset_count
                 .checked_add(1)
@@ -1369,8 +1482,24 @@ fn create_color_filter_operation_bindings(
     }
     let mut bindings = PassMap::new(account, count)?;
     let mut offset_bindings = PassMap::new(account, offset_count)?;
+    let mut gaussian_bindings = PassMap::new(account, gaussian_count)?;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
+        if let Some(bytes) = request.gaussian_parameters.as_ref() {
+            if !matches!(request.runtime.kind, RuntimePassKind::Gaussian(_)) {
+                return Err(preparation_error(
+                    "prepared Gaussian bytes have no exact runtime pass",
+                ));
+            }
+            let Err(slot) = gaussian_bindings.position(&request.runtime.id, account)? else {
+                return Err(preparation_error(
+                    "one Gaussian pass acquired duplicate uniforms",
+                ));
+            };
+            let binding =
+                create_gaussian_parameter_binding(generation, device, queue, bytes, account)?;
+            gaussian_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
+        }
         if let Some(bytes) = request.offset_parameters.as_ref() {
             if !matches!(request.runtime.kind, RuntimePassKind::Offset(_)) {
                 return Err(preparation_error(
@@ -1428,7 +1557,11 @@ fn create_color_filter_operation_bindings(
             },
         )?;
     }
-    Ok((bindings, offset_bindings))
+    Ok(PreparedOperationParameterBindings {
+        color_filters: bindings,
+        offsets: offset_bindings,
+        gaussians: gaussian_bindings,
+    })
 }
 
 fn realize_prepared_graph_passes(
@@ -1548,6 +1681,22 @@ fn realize_prepared_graph_pass(
                     pass_cache,
                     account,
                     OffsetPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+                .require_encoding_ready()?;
+            Ok(None)
+        }
+        RuntimePassKind::Gaussian(_) => {
+            update
+                .realize_gaussian_pass(
+                    device,
+                    pass_cache,
+                    account,
+                    GaussianPassKeyRefs {
                         samplers: keys.samplers(),
                         layout: keys.layout(),
                         shader: keys.shader(),
@@ -1972,6 +2121,10 @@ impl<'device> PreparedGraph<'device> {
                     account,
                 )?,
             };
+            // Prepared requests are immutable across acquisition/encoding waits.
+            // Admit their actual fixed backing before any native acquisition;
+            // mutable leases and FrameResourceScope keep their existing owner.
+            let plan = crate::accounting::OwnedBox::new(plan, &account.storage())?;
             resources.preflight_graph_acquisitions(&plan.allocation_preflights, Some(account))?;
 
             let mut frame_scope = resources.begin_frame(Some(account))?;
@@ -1992,14 +2145,17 @@ impl<'device> PreparedGraph<'device> {
                 capabilities,
                 account,
             )?;
-            let (color_filter_operation_bindings, offset_parameter_bindings) =
-                create_color_filter_operation_bindings(
-                    frame_scope.generation(),
-                    &plan,
-                    device,
-                    queue,
-                    account,
-                )?;
+            let PreparedOperationParameterBindings {
+                color_filters: color_filter_operation_bindings,
+                offsets: offset_parameter_bindings,
+                gaussians: gaussian_parameter_bindings,
+            } = create_operation_parameter_bindings(
+                frame_scope.generation(),
+                &plan,
+                device,
+                queue,
+                account,
+            )?;
             let pass_realization = realize_prepared_graph_passes(
                 &plan,
                 device,
@@ -2026,6 +2182,7 @@ impl<'device> PreparedGraph<'device> {
                 convolution_weight_bindings: acquired_resources.convolution_weight_bindings,
                 color_filter_operation_bindings,
                 offset_parameter_bindings,
+                gaussian_parameter_bindings,
                 spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
                 pass_cache_update: pass_realization.update,
                 frame_scope: Some(frame_scope),
@@ -2055,15 +2212,15 @@ impl<'device> PreparedGraph<'device> {
             reason = "graph encoding consumes the typed prepared graph generation for stale-binding checks"
         )
     )]
-    pub(crate) const fn generation(&self) -> RuntimeGraphGeneration {
+    pub(crate) fn generation(&self) -> RuntimeGraphGeneration {
         self.plan.generation
     }
 
-    pub(crate) const fn working_format(&self) -> WorkingFormat {
+    pub(crate) fn working_format(&self) -> WorkingFormat {
         self.plan.working_format
     }
 
-    pub(crate) const fn output_format(&self) -> Format {
+    pub(crate) fn output_format(&self) -> Format {
         self.plan.output_format
     }
 
@@ -2074,7 +2231,7 @@ impl<'device> PreparedGraph<'device> {
             reason = "graph encoding consumes the typed prepared root and terminal identities"
         )
     )]
-    pub(crate) const fn root_and_final(&self) -> (RuntimeResourceId, RuntimePassId) {
+    pub(crate) fn root_and_final(&self) -> (RuntimeResourceId, RuntimePassId) {
         (self.plan.root_working_image, self.plan.final_present)
     }
 
@@ -2656,8 +2813,14 @@ mod reconstructed_key_accounting_tests {
             let cpu = RendererCpu::new(options).unwrap();
             let (result, _, report, fault) = FrameFixture::new(&cpu, options)
                 .run_sync(|attempt| {
-                    analyze_runtime_passes(&lowered, &resources, device, attempt.account())
-                        .map(drop)
+                    analyze_runtime_passes(
+                        &lowered,
+                        &resources,
+                        &DeviceCapabilities::from_test_facts(true, true, 16_384),
+                        device,
+                        attempt.account(),
+                    )
+                    .map(drop)
                 })
                 .unwrap()
                 .into_parts();

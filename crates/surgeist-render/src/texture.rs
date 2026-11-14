@@ -5,7 +5,7 @@ pub(crate) enum EffectTextureRole {
     Capture,
     Working,
     Coverage,
-    ConvolutionFloat32,
+    FilterFloat32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -68,12 +68,12 @@ impl EffectTextureDescriptor {
 
     /// Signed convolution intermediates use non-filtering texture loads and
     /// retain full f32 range independently of the ordinary working format.
-    pub(crate) fn try_convolution_float32(
+    pub(crate) fn try_filter_float32(
         physical_size: PhysicalSize,
         usage: wgpu::TextureUsages,
     ) -> Result<Self> {
         Self::try_new(
-            EffectTextureRole::ConvolutionFloat32,
+            EffectTextureRole::FilterFloat32,
             None,
             wgpu::TextureFormat::Rgba32Float,
             physical_size,
@@ -124,7 +124,7 @@ impl EffectTextureDescriptor {
             return Err(Error::invalid_value(
                 "effect texture format",
                 format!("{texture_format:?}"),
-                "must be Rgba16Float, Rgba8Unorm, or convolution Rgba32Float",
+                "must be Rgba16Float, Rgba8Unorm, or filter Rgba32Float",
             ));
         }
 
@@ -167,7 +167,7 @@ impl EffectTextureDescriptor {
                 return Err(Error::invalid_value(
                     "effect texture format",
                     format!("{:?}", self.texture_format),
-                    "must be Rgba16Float, Rgba8Unorm, or convolution Rgba32Float",
+                    "must be Rgba16Float, Rgba8Unorm, or filter Rgba32Float",
                 ));
             }
         };
@@ -202,7 +202,7 @@ impl EffectTextureDescriptor {
             EffectTextureRole::Capture => "Surgeist retained capture texture",
             EffectTextureRole::Working => "Surgeist retained working texture",
             EffectTextureRole::Coverage => "Surgeist retained coverage texture",
-            EffectTextureRole::ConvolutionFloat32 => "Surgeist retained convolution f32 texture",
+            EffectTextureRole::FilterFloat32 => "Surgeist retained filter f32 texture",
         }
     }
 }
@@ -332,11 +332,11 @@ impl TextureFormatExt for Format {
 mod effect_texture_tests {
     use super::*;
     #[test]
-    fn convolution_float32_is_independent_and_accounts_sixteen_bytes_per_texel() {
+    fn filter_float32_is_independent_and_accounts_sixteen_bytes_per_texel() {
         let usage = WorkingFormat::HighPrecision.required_usages();
         let size = PhysicalSize::new(3, 5);
-        let convolution = EffectTextureDescriptor::try_convolution_float32(size, usage).unwrap();
-        assert_eq!(convolution.role(), EffectTextureRole::ConvolutionFloat32);
+        let convolution = EffectTextureDescriptor::try_filter_float32(size, usage).unwrap();
+        assert_eq!(convolution.role(), EffectTextureRole::FilterFloat32);
         assert_eq!(convolution.working_format(), None);
         assert_eq!(
             convolution.texture_format(),
@@ -349,10 +349,9 @@ mod effect_texture_tests {
         assert_eq!(ordinary.texture_format(), wgpu::TextureFormat::Rgba16Float);
         assert_ne!(convolution.cache_key(), ordinary.cache_key());
         assert!(
-            EffectTextureDescriptor::try_convolution_float32(PhysicalSize::new(0, 1), usage)
-                .is_err()
+            EffectTextureDescriptor::try_filter_float32(PhysicalSize::new(0, 1), usage).is_err()
         );
-        let huge = EffectTextureDescriptor::try_convolution_float32(
+        let huge = EffectTextureDescriptor::try_filter_float32(
             PhysicalSize::new(u32::MAX, u32::MAX),
             usage,
         )

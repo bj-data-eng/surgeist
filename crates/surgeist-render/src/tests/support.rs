@@ -324,6 +324,26 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
         .layer(Layer::new().with_offset(offset), |scene| {
             scene.fill(offset_bounds, Color::BLACK);
         });
+    let gaussian_bounds = Rect::new(12.0, 0.0, 2.0, 2.0);
+    let mut gaussian_source = Scene::new();
+    gaussian_source.fill(gaussian_bounds, Color::BLACK);
+    let gaussian = crate::prepare_gaussian(
+        crate::GaussianInput::new().with_standard_deviation(0.5),
+        crate::FilterColorSpace::Srgb,
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
+    scene
+        .gaussian_layer(
+            Layer::new(),
+            gaussian,
+            crate::GaussianSource::finite(
+                gaussian_source,
+                crate::FilterDomains::try_new(gaussian_bounds, gaussian_bounds, gaussian_bounds)
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
     scene
         .normalize(
             Capabilities::CURRENT,

@@ -148,7 +148,7 @@ pub(crate) struct DeviceCapabilities {
     pub(super) reduced_precision: bool,
     pub(super) high_precision_features: wgpu::TextureFormatFeatures,
     pub(super) reduced_precision_features: wgpu::TextureFormatFeatures,
-    pub(super) convolution_float32_features: wgpu::TextureFormatFeatures,
+    pub(super) filter_float32_features: wgpu::TextureFormatFeatures,
     pub(super) max_effect_texture_dimension_2d: u32,
 }
 
@@ -168,7 +168,7 @@ impl DeviceCapabilities {
             ),
             high_precision_features,
             reduced_precision_features,
-            convolution_float32_features: adapter
+            filter_float32_features: adapter
                 .get_texture_format_features(wgpu::TextureFormat::Rgba32Float),
             max_effect_texture_dimension_2d: device.limits().max_texture_dimension_2d,
         }
@@ -183,7 +183,7 @@ impl DeviceCapabilities {
             EffectPrecisionCapabilities::new(
                 self.high_precision,
                 self.reduced_precision,
-                self.convolution_float32_features
+                self.filter_float32_features
                     .allowed_usages
                     .contains(WorkingFormat::HighPrecision.required_usages()),
             ),
@@ -257,10 +257,37 @@ impl DeviceCapabilities {
         texture_format: wgpu::TextureFormat,
         usage: wgpu::TextureUsages,
     ) -> Result<()> {
+        self.validate_effect_texture_allocation_for(
+            RuntimeOperation::ConvolutionRendering,
+            requested,
+            working_format,
+            texture_format,
+            usage,
+        )
+    }
+
+    pub(crate) fn validate_filter_float32(&self, operation: RuntimeOperation) -> Result<()> {
+        self.validate_effect_texture_allocation_for(
+            operation,
+            PhysicalSize::new(1, 1),
+            None,
+            wgpu::TextureFormat::Rgba32Float,
+            WorkingFormat::HighPrecision.required_usages(),
+        )
+    }
+
+    fn validate_effect_texture_allocation_for(
+        &self,
+        operation: RuntimeOperation,
+        requested: PhysicalSize,
+        working_format: Option<WorkingFormat>,
+        texture_format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
+    ) -> Result<()> {
         self.validate_effect_texture_extent(requested)?;
         let (features, policy) = match texture_format {
             wgpu::TextureFormat::Rgba32Float => (
-                self.convolution_float32_features,
+                self.filter_float32_features,
                 EffectQualityPolicy::RequireHighPrecision,
             ),
             wgpu::TextureFormat::Rgba16Float => (
@@ -275,7 +302,7 @@ impl DeviceCapabilities {
                 return Err(Error::invalid_value(
                     "effect texture format",
                     format!("{texture_format:?}"),
-                    "must be Rgba16Float, Rgba8Unorm, or convolution Rgba32Float",
+                    "must be Rgba16Float, Rgba8Unorm, or filter Rgba32Float",
                 ));
             }
         };
@@ -293,7 +320,7 @@ impl DeviceCapabilities {
                     WorkingFormat::ReducedPrecision => self.reduced_precision,
                 }
         });
-        let convolution_support = texture_format != wgpu::TextureFormat::Rgba32Float
+        let filter_float32_support = texture_format != wgpu::TextureFormat::Rgba32Float
             || features
                 .allowed_usages
                 .contains(WorkingFormat::HighPrecision.required_usages());
@@ -304,7 +331,7 @@ impl DeviceCapabilities {
                 .flags
                 .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
         if complete_working_support
-            && convolution_support
+            && filter_float32_support
             && exact_usage_support
             && filterable_support
         {
@@ -313,7 +340,7 @@ impl DeviceCapabilities {
 
         Err(Error::runtime_unavailable(
             if texture_format == wgpu::TextureFormat::Rgba32Float {
-                RuntimeCapabilityUnavailable::convolution_float32_unavailable()
+                RuntimeCapabilityUnavailable::filter_float32_unavailable(operation)
             } else {
                 RuntimeCapabilityUnavailable::effect_format_unavailable(policy)
             },
@@ -777,10 +804,28 @@ mod error_context_tests {
     use super::*;
 
     #[test]
-    fn convolution_float32_accepts_nonfilterable_full_usages_and_rejects_missing_capability() {
+    fn unavailable_float32_retains_the_reached_native_filter_operation() {
+        let mut capabilities = DeviceCapabilities::from_test_facts(true, true, 64);
+        capabilities.filter_float32_features.allowed_usages = wgpu::TextureUsages::empty();
+        for operation in [
+            RuntimeOperation::GaussianRendering,
+            RuntimeOperation::ConvolutionRendering,
+        ] {
+            let error = capabilities.validate_filter_float32(operation).unwrap_err();
+            let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+            assert_eq!(diagnostic.operation(), operation);
+            assert_eq!(
+                diagnostic.reason(),
+                RuntimeCapabilityUnavailableReason::FilterFloat32Unavailable
+            );
+        }
+    }
+
+    #[test]
+    fn filter_float32_accepts_nonfilterable_full_usages_and_rejects_missing_capability() {
         let mut capabilities = DeviceCapabilities::from_test_facts(true, true, 64);
         let usage = WorkingFormat::HighPrecision.required_usages();
-        capabilities.convolution_float32_features = wgpu::TextureFormatFeatures {
+        capabilities.filter_float32_features = wgpu::TextureFormatFeatures {
             allowed_usages: usage,
             flags: wgpu::TextureFormatFeatureFlags::empty(),
         };
@@ -799,7 +844,7 @@ mod error_context_tests {
             crate::ErrorCode::RuntimeCapabilityUnavailable
         );
         capabilities
-            .convolution_float32_features
+            .filter_float32_features
             .allowed_usages
             .remove(wgpu::TextureUsages::COPY_SRC);
         let unavailable = check(

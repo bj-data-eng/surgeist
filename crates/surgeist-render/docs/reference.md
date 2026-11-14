@@ -894,6 +894,11 @@ escapes; an unchanged-input raised-budget retry starts fresh.
 
 ## Frame accounting
 
+Prepared GPU requests have their own admitted fixed CPU backing. Their immutable
+plan stays owned across acquisition and encoding waits; mutable native leases
+retain their existing frame resource owner. Refusal and cancellation release both
+through ordinary guarded disposal.
+
 Configure `RenderAccountingOptions` through `Options::with_accounting` before
 `Renderer::new`. Limits, profile mode and clock are fixed for that Renderer and
 reach lifetime owners before native initialization. Defaults are checked-unlimited
@@ -908,6 +913,19 @@ limits with `RenderProfile::Off`. A frame uses three disjoint Ledger owners:
 Work units describe actual visits and invocations. Unordered source traversal can
 vary comparison/probe totals between otherwise equal inputs; those comparisons
 remain measured in their owning domain.
+
+Native Gaussian reports `ScheduledGaussianSamples` as scheduled accumulation
+cells times actual coefficient records, plus reached preparation, raw-rebase and
+periodic reconstruction fetch opportunities. Exterior transparent taps remain
+scheduled. `ScheduledFilterTexels` separately counts each reached output cell;
+zero axes, identity and constant routes omit their unreachable kernel work.
+
+Native [Gaussian blur](gaussian.md) uses `ScheduledGaussianSamples` for actual
+scheduled source/partial fetch opportunities, including four per periodic output
+cell, and `ScheduledFilterTexels` for actual preparation, rebase, axis/batch and
+resolve cells including horizontal halo rows. Constants and omitted axes incur
+only reached work. Its coefficient generation and cache comparisons use the
+existing `KernelSampleVisits` owner.
 
 Native [offset](offset.md) reports `ScheduledOffsetSamples` as actual scheduled
 offset cells times the selected fixed reconstruction footprint (1, 4 or 16), plus
@@ -1240,6 +1258,13 @@ position generation. An empty axis retains its admitted work, and the
 stops the planner at the corresponding check or calculation.
 
 ## Preparation accounting
+
+`prepare_gaussian` uses `RenderAttemptKind::Gaussian` and the same central
+context. It inspects one filter operation and each reached standard deviation in
+X/Y order. A successful call reaches two `CoordinateVisits`; a nonfinite value
+retains the reached prefix. Both coordinates are checked before a negative value
+selects disabled input. The immutable result is inline with no coefficient
+backing or import lease; actual device-grid and kernel work belongs to the frame.
 
 `prepare_offset` uses `RenderAttemptKind::Offset` and the same central context.
 It inspects one filter operation, dx and dy, then six coordinates/extents for

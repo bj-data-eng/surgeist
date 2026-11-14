@@ -229,6 +229,9 @@ fn core_pass_program_sampling(
         ),
         ShaderProgramKey::CopyBackdrop
         | ShaderProgramKey::Convolution
+        | ShaderProgramKey::Gaussian
+        | ShaderProgramKey::GaussianSource
+        | ShaderProgramKey::GaussianConstant
         | ShaderProgramKey::Offset
         | ShaderProgramKey::ColorFilter
         | ShaderProgramKey::BlurHorizontal { .. }
@@ -320,7 +323,7 @@ pub(super) fn validate_convolution_pass_keys(
         is_working_format(format)
             || matches!(
                 format,
-                ShaderTextureFormatKey::ConvolutionRgba32Float
+                ShaderTextureFormatKey::FilterRgba32Float
                     | ShaderTextureFormatKey::VelloCaptureRgba8Unorm
             )
     };
@@ -341,14 +344,14 @@ pub(super) fn validate_convolution_pass_keys(
         || !layout_eq(&keys.shader.layout, keys.layout, observer)?
         || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
         || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
-        || keys.shader.working_format != Some(ShaderTextureFormatKey::ConvolutionRgba32Float)
+        || keys.shader.working_format != Some(ShaderTextureFormatKey::FilterRgba32Float)
         || keys.shader.output_format != Some(target_format)
         || source.binding_role != ShaderBindingRoleKey::ConvolutionSource
         || auxiliary.binding_role != ShaderBindingRoleKey::ConvolutionAuxiliary
         || !valid_input(source.source_format)
         || !valid_input(auxiliary.source_format)
         || !(is_working_format(target_format)
-            || target_format == ShaderTextureFormatKey::ConvolutionRgba32Float)
+            || target_format == ShaderTextureFormatKey::FilterRgba32Float)
     {
         return Err(convolution_cache_error(
             "convolution keys disagree across bindings, programs, or formats",
@@ -358,6 +361,98 @@ pub(super) fn validate_convolution_pass_keys(
 }
 
 pub(super) fn convolution_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct GaussianPassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+    pub(super) program: ShaderProgramKey,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct GaussianPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_gaussian_pass_keys(
+    keys: GaussianPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<GaussianPassDescription> {
+    let program = keys.layout.program;
+    let roles: &[ShaderBindingRoleKey] = match program {
+        ShaderProgramKey::Gaussian => &[
+            ShaderBindingRoleKey::GaussianSource,
+            ShaderBindingRoleKey::GaussianAuxiliary,
+        ],
+        ShaderProgramKey::GaussianSource => &[ShaderBindingRoleKey::GaussianSource],
+        ShaderProgramKey::GaussianConstant => &[],
+        _ => {
+            return Err(gaussian_cache_error(
+                "Gaussian keys require a Gaussian program",
+            ));
+        }
+    };
+    let data: &[ShaderDataBindingKey] = if program == ShaderProgramKey::Gaussian {
+        &[
+            ShaderDataBindingKey::GaussianParameters,
+            ShaderDataBindingKey::GaussianKernel,
+        ]
+    } else {
+        &[ShaderDataBindingKey::GaussianParameters]
+    };
+    let target_format = keys.pipeline.target_format;
+    if keys.layout.sampled_textures.len() != roles.len() {
+        return Err(gaussian_cache_error(
+            "Gaussian texture bindings disagree with the program",
+        ));
+    }
+    for (texture, role) in keys.layout.sampled_textures.iter().zip(roles) {
+        binding_visit(observer)?;
+        if (program == ShaderProgramKey::Gaussian
+            && texture.source_format != ShaderTextureFormatKey::FilterRgba32Float)
+            || texture.binding_role != *role
+            || !(is_working_format(texture.source_format)
+                || matches!(
+                    texture.source_format,
+                    ShaderTextureFormatKey::FilterRgba32Float
+                        | ShaderTextureFormatKey::VelloCaptureRgba8Unorm
+                ))
+        {
+            return Err(gaussian_cache_error(
+                "Gaussian texture role or format is invalid",
+            ));
+        }
+    }
+    if keys.shader.program != program
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(keys.layout.data_bindings.as_slice(), data, observer)?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(ShaderTextureFormatKey::FilterRgba32Float)
+        || keys.shader.output_format != Some(target_format)
+        || !(is_working_format(target_format)
+            || target_format == ShaderTextureFormatKey::FilterRgba32Float)
+        || (program == ShaderProgramKey::Gaussian
+            && target_format != ShaderTextureFormatKey::FilterRgba32Float)
+    {
+        return Err(gaussian_cache_error(
+            "Gaussian keys disagree across bindings, programs, or formats",
+        ));
+    }
+    Ok(GaussianPassDescription {
+        target_format,
+        program,
+    })
+}
+
+pub(super) fn gaussian_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
 }
 
@@ -1155,7 +1250,7 @@ mod convolution_key_tests {
     fn fixture() -> (BindGroupLayoutKey, ShaderModuleKey, RenderPipelineKey) {
         let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
         let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
-        let format = ShaderTextureFormatKey::ConvolutionRgba32Float;
+        let format = ShaderTextureFormatKey::FilterRgba32Float;
         let layout = BindGroupLayoutKey::new(
             &cpu,
             None,
@@ -1209,7 +1304,7 @@ mod convolution_key_tests {
         assert!(validate(&layout, &shader, &wrong).is_err());
         let sampler = SamplerKey::new(
             ShaderBindingRoleKey::ConvolutionSource,
-            ShaderTextureFormatKey::ConvolutionRgba32Float,
+            ShaderTextureFormatKey::FilterRgba32Float,
             ShaderSamplingFilterKey::Nearest,
             ShaderSamplingEdgeKey::ClampToExtent,
             None,
@@ -1280,7 +1375,7 @@ mod offset_key_tests {
                 ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
                 true,
             ),
-            (ShaderTextureFormatKey::ConvolutionRgba32Float, false),
+            (ShaderTextureFormatKey::FilterRgba32Float, false),
             (ShaderTextureFormatKey::VelloCaptureRgba8Unorm, false),
             (ShaderTextureFormatKey::OutputRgba8Unorm, false),
         ] {
@@ -1392,5 +1487,106 @@ mod offset_key_tests {
             )
             .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod gaussian_key_tests {
+    use super::*;
+    use crate::accounting::RendererCpu;
+
+    #[test]
+    fn gaussian_programs_require_their_real_texture_and_buffer_bindings() {
+        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let float = ShaderTextureFormatKey::FilterRgba32Float;
+        for (program, textures, data) in [
+            (
+                ShaderProgramKey::Gaussian,
+                vec![
+                    (ShaderBindingRoleKey::GaussianSource, float),
+                    (ShaderBindingRoleKey::GaussianAuxiliary, float),
+                ],
+                vec![
+                    ShaderDataBindingKey::GaussianParameters,
+                    ShaderDataBindingKey::GaussianKernel,
+                ],
+            ),
+            (
+                ShaderProgramKey::GaussianSource,
+                vec![(ShaderBindingRoleKey::GaussianSource, float)],
+                vec![ShaderDataBindingKey::GaussianParameters],
+            ),
+            (
+                ShaderProgramKey::GaussianConstant,
+                vec![],
+                vec![ShaderDataBindingKey::GaussianParameters],
+            ),
+        ] {
+            let layout = BindGroupLayoutKey::new(&cpu, None, program, &textures, &data).unwrap();
+            let shader = ShaderModuleKey::new(
+                &cpu,
+                None,
+                program,
+                layout.clone(),
+                &[],
+                Some(float),
+                Some(float),
+            )
+            .unwrap();
+            let pipeline =
+                RenderPipelineKey::new(&cpu, None, shader.clone(), layout.clone(), &[], float)
+                    .unwrap();
+            assert!(
+                validate_gaussian_pass_keys(
+                    GaussianPassKeyRefs {
+                        samplers: &[],
+                        layout: &layout,
+                        shader: &shader,
+                        pipeline: &pipeline
+                    },
+                    None
+                )
+                .is_ok()
+            );
+            let mut foreign = shader.clone();
+            foreign.program = ShaderProgramKey::Convolution;
+            assert!(
+                validate_gaussian_pass_keys(
+                    GaussianPassKeyRefs {
+                        samplers: &[],
+                        layout: &layout,
+                        shader: &foreign,
+                        pipeline: &pipeline
+                    },
+                    None
+                )
+                .is_err()
+            );
+            // An extra storage binding is a different real resource contract.
+            let wrong_layout = BindGroupLayoutKey::new(
+                &cpu,
+                None,
+                program,
+                &textures,
+                &[
+                    ShaderDataBindingKey::GaussianParameters,
+                    ShaderDataBindingKey::ConvolutionWeights,
+                ],
+            )
+            .unwrap();
+            assert!(
+                validate_gaussian_pass_keys(
+                    GaussianPassKeyRefs {
+                        samplers: &[],
+                        layout: &wrong_layout,
+                        shader: &shader,
+                        pipeline: &pipeline
+                    },
+                    None
+                )
+                .is_err()
+            );
+        }
     }
 }

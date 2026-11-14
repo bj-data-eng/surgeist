@@ -331,6 +331,7 @@ pub(crate) enum NormalizedForegroundEffect {
     Css(SharedValue<FilterList>),
     Convolution(crate::PreparedConvolution),
     Offset(crate::PreparedOffset),
+    Gaussian(crate::gaussian::GaussianForeground),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1339,6 +1340,13 @@ impl NormalizedLayer {
                 PrimitiveOperation::LayerFilter,
             ))?;
             Some(match filter {
+                LayerFilter::Gaussian(gaussian) => {
+                    capabilities.ensure_supported(UnsupportedPrimitive::new(
+                        PrimitiveFamily::Filters,
+                        PrimitiveOperation::GpuGaussianFilterExecution,
+                    ))?;
+                    NormalizedForegroundEffect::Gaussian(*gaussian)
+                }
                 LayerFilter::Offset(offset) => {
                     capabilities.ensure_supported(UnsupportedPrimitive::new(
                         PrimitiveFamily::Filters,

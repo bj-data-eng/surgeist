@@ -15,6 +15,152 @@ use crate::{
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::image::{Extend, ImageQuality};
 
+/// Qualified rebased facts shared by Gaussian planning and the exact shader wire.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct GaussianParameterFacts {
+    pub(crate) stage: u32,
+    pub(crate) source_size: [u32; 2],
+    pub(crate) target_size: [u32; 2],
+    pub(crate) source_base: [i32; 2],
+    pub(crate) source_clip: [f64; 4],
+    pub(crate) output_clip: [f64; 4],
+    pub(crate) periodic_base: [f64; 2],
+    pub(crate) periodic_step: [f64; 2],
+    pub(crate) edge_mode: u32,
+    pub(crate) periodic: bool,
+    pub(crate) direct: bool,
+    pub(crate) axis: u32,
+    pub(crate) first_tap: u32,
+    pub(crate) tap_count: u32,
+    pub(crate) first: bool,
+    pub(crate) linear: bool,
+    pub(crate) converted: bool,
+    pub(crate) color: [f32; 4],
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct GaussianParameterBytes([u8; 256]);
+
+impl GaussianParameterBytes {
+    pub(crate) fn try_new(facts: GaussianParameterFacts, account: &Account) -> Result<Self> {
+        let invalid = |value| {
+            Error::from(crate::GaussianPreparationError::Numeric {
+                phase: crate::GaussianNumericPhase::GridMapping,
+                value,
+            })
+        };
+        if facts.stage > 5
+            || facts.edge_mode > 3
+            || facts.axis > 1
+            || (facts.stage == 3
+                && (facts.tap_count == 0
+                    || facts.tap_count > 32
+                    || facts.first_tap.checked_add(facts.tap_count).is_none()))
+        {
+            return Err(invalid(f64::from(facts.stage)));
+        }
+        for size in facts.target_size.into_iter().chain(if facts.stage == 5 {
+            [0; 2]
+        } else {
+            facts.source_size
+        }) {
+            // Every reached fragment center and its unit-cell boundary must be
+            // represented exactly; frame qualification proves map/tap endpoints.
+            if size > 8_388_608 {
+                return Err(invalid(f64::from(size)));
+            }
+        }
+        let mut words = [[0_u32; 4]; 16];
+        words[0] = [
+            facts.source_size[0],
+            facts.source_size[1],
+            facts.target_size[0],
+            facts.target_size[1],
+        ];
+        words[1] = [
+            u32::from_ne_bytes(facts.source_base[0].to_ne_bytes()),
+            u32::from_ne_bytes(facts.source_base[1].to_ne_bytes()),
+            0,
+            0,
+        ];
+        let mut floats = |row: usize, values: [f64; 4]| -> Result<()> {
+            for (slot, value) in words[row].iter_mut().zip(values) {
+                let uploaded = account.coordinate(|| value as f32)?;
+                if !value.is_finite()
+                    || !(uploaded == 0.0 || uploaded.is_normal())
+                    || (value != 0.0 && uploaded == 0.0)
+                {
+                    return Err(invalid(value));
+                }
+                *slot = uploaded.to_bits();
+            }
+            Ok(())
+        };
+        let needs_source_clip = !facts.periodic && matches!(facts.stage, 1 | 2);
+        let needs_output_clip = matches!(facts.stage, 1 | 4 | 5);
+        for (needed, row, clip, size) in [
+            (needs_source_clip, 2, facts.source_clip, facts.source_size),
+            (needs_output_clip, 3, facts.output_clip, facts.target_size),
+        ] {
+            if needed {
+                if clip[0] < 0.0
+                    || clip[1] < 0.0
+                    || clip[2] < clip[0]
+                    || clip[3] < clip[1]
+                    || clip[2] > f64::from(size[0])
+                    || clip[3] > f64::from(size[1])
+                {
+                    return Err(invalid(clip[0]));
+                }
+                floats(row, clip)?;
+            }
+        }
+        if facts.periodic && matches!(facts.stage, 1 | 4) && !facts.source_size.contains(&0) {
+            if facts.periodic_step.into_iter().any(|value| value <= 0.0) {
+                return Err(invalid(facts.periodic_step[0]));
+            }
+            floats(
+                4,
+                [
+                    facts.periodic_base[0],
+                    facts.periodic_base[1],
+                    facts.periodic_step[0],
+                    facts.periodic_step[1],
+                ],
+            )?;
+        }
+        words[5] = [facts.stage, facts.first_tap, facts.tap_count, facts.axis];
+        words[6] = [
+            facts.edge_mode,
+            u32::from(facts.periodic),
+            u32::from(facts.direct),
+            u32::from(facts.first),
+        ];
+        words[7] = [u32::from(facts.converted), u32::from(facts.linear), 0, 0];
+        if facts.stage == 5 {
+            for value in facts.color {
+                if !value.is_finite() || value < 0.0 || value > 1.0 {
+                    return Err(invalid(f64::from(value)));
+                }
+            }
+            if facts.color[..3].iter().any(|value| *value > facts.color[3]) {
+                return Err(invalid(f64::from(facts.color[3])));
+            }
+            words[8] = facts.color.map(f32::to_bits);
+        }
+        account.work(RenderWork::SerializedBytes, 256)?;
+        let mut bytes = [0; 256];
+        for (index, word) in words.into_iter().flatten().enumerate() {
+            bytes[index * 4..index * 4 + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        Ok(Self(bytes))
+    }
+
+    pub(crate) const fn as_bytes(&self) -> &[u8; 256] {
+        &self.0
+    }
+}
+
 /// Qualified rebased texel coordinates for the exact offset uniform block.
 pub(crate) struct OffsetParameterFacts {
     pub(crate) translation: [f64; 2],
@@ -813,16 +959,18 @@ impl BlurEdgeParameterBytes {
     }
 }
 
-/// Exact 112-byte WGSL composite parameter block.
+/// Exact 128-byte WGSL composite parameter block.
 ///
 /// The byte ranges are fixed as follows: source-texel linear coefficients `0..16`,
 /// source-texel and mask-normalized translations `16..32`, mask-normalized
 /// linear coefficients `32..48`, image dimensions and pixelated lattice factors `48..64`, normalized
 /// texel-center facts `64..80`, opacity/blend/quality/extend `80..96`, and
 /// clip presence, mask value and application bits, source coordinate space and basic operator code `96..112`.
+/// Gaussian source-cell operation coverage occupies `112..128`; its presence is bit 1
+/// of the source-space word. Other sources retain a zero row.
 /// SourceOver is operator code zero; the separate local Plus mix code ignores it.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct CompositeParameterBytes([u8; 112]);
+pub(crate) struct CompositeParameterBytes([u8; 128]);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct CompositeMaskParameterFacts {
@@ -871,6 +1019,7 @@ struct CompositeMap {
 struct CompositeParameterFacts {
     affine: [f64; 6],
     source_space: CompositeSourceSpace,
+    source_operation_clip: Option<[f64; 4]>,
     opacity: f32,
     composition: LayerComposition,
     has_clip: bool,
@@ -1240,6 +1389,9 @@ impl CompositeParameterBytes {
             CompositeParameterFacts {
                 affine: parameters.destination_to_layer_local().affine().as_array(),
                 source_space: parameters.source_space(),
+                source_operation_clip: parameters
+                    .gaussian_footprint()
+                    .map(|footprint| footprint.output_clip()),
                 opacity: parameters.opacity(),
                 composition: parameters.composition(),
                 has_clip: parameters.has_clip(),
@@ -1255,6 +1407,7 @@ impl CompositeParameterBytes {
         let CompositeParameterFacts {
             affine: destination_to_local,
             source_space,
+            source_operation_clip,
             opacity,
             composition,
             has_clip,
@@ -1264,6 +1417,21 @@ impl CompositeParameterBytes {
         } = facts;
         validate_composite_grid(source, false, account)?;
         validate_composite_grid(destination, true, account)?;
+        let source_operation_clip = source_operation_clip.map(|clip| -> Result<[f32; 4]> {
+            if clip[0] < 0.0 || clip[1] < 0.0 || clip[2] < clip[0] || clip[3] < clip[1]
+                || clip[2] > f64::from(source.extent[0]) || clip[3] > f64::from(source.extent[1]) {
+                return Err(composite_mapping_error("Gaussian operation clip must fit its actual source grid"));
+            }
+            let mut narrowed = [0.0; 4];
+            for (destination, value) in narrowed.iter_mut().zip(clip) {
+                *destination = account.coordinate(|| value as f32)?;
+                if !value.is_finite() || !((*destination == 0.0) || destination.is_normal())
+                    || (value != 0.0 && *destination == 0.0) {
+                    return Err(composite_mapping_error("Gaussian operation clip must retain finite normal source texel coordinates"));
+                }
+            }
+            Ok(narrowed)
+        }).transpose()?;
         let local_mapping = if source_space == CompositeSourceSpace::LayerLocal || mask.is_some() {
             Some(composite_local_map(
                 destination_to_local,
@@ -1344,8 +1512,8 @@ impl CompositeParameterBytes {
                 })
             })
             .transpose()?;
-        account.work(RenderWork::SerializedBytes, 112)?;
-        let mut bytes = [0_u8; 112];
+        account.work(RenderWork::SerializedBytes, 128)?;
+        let mut bytes = [0_u8; 128];
         for (index, value) in source_mapping.linear.into_iter().enumerate() {
             write_f32(&mut bytes, index * 4, value);
         }
@@ -1396,9 +1564,13 @@ impl CompositeParameterBytes {
         write_u32(
             &mut bytes,
             104,
-            match source_space {
+            (match source_space {
                 CompositeSourceSpace::LayerLocal => 0,
                 CompositeSourceSpace::SurfaceGrid => 1,
+            }) | if source_operation_clip.is_some() {
+                2
+            } else {
+                0
             },
         );
         write_u32(
@@ -1406,17 +1578,22 @@ impl CompositeParameterBytes {
             108,
             operator_parameter_code(composition.operator()),
         );
+        if let Some(clip) = source_operation_clip {
+            for (index, value) in clip.into_iter().enumerate() {
+                write_f32(&mut bytes, 112 + index * 4, value);
+            }
+        }
         Ok(Self(bytes))
     }
 
     #[must_use]
-    pub(crate) const fn as_bytes(&self) -> &[u8; 112] {
+    pub(crate) const fn as_bytes(&self) -> &[u8; 128] {
         &self.0
     }
 
     #[cfg(test)]
     #[must_use]
-    pub(crate) const fn into_bytes_for_test(self) -> [u8; 112] {
+    pub(crate) const fn into_bytes_for_test(self) -> [u8; 128] {
         self.0
     }
 }
@@ -1437,7 +1614,7 @@ pub(crate) struct CompositeParameterGpuVectorFactsForTest {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
     facts: CompositeParameterGpuVectorFactsForTest,
-) -> Result<[u8; 112]> {
+) -> Result<[u8; 128]> {
     if !facts.opacity.is_finite() {
         return Err(Error::invalid_value(
             "composite opacity",
@@ -1469,6 +1646,7 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
                 facts.layer_point[1] - 0.5,
             ],
             source_space: CompositeSourceSpace::LayerLocal,
+            source_operation_clip: None,
             opacity: facts.opacity.clamp(0.0, 1.0),
             composition: facts.composition,
             has_clip: facts.has_clip,
@@ -1525,11 +1703,11 @@ const fn operator_parameter_code(operator: Option<PorterDuffOperator>) -> u32 {
     }
 }
 
-fn write_f32(bytes: &mut [u8; 112], offset: usize, value: f32) {
+fn write_f32(bytes: &mut [u8; 128], offset: usize, value: f32) {
     bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
 }
 
-fn write_u32(bytes: &mut [u8; 112], offset: usize, value: u32) {
+fn write_u32(bytes: &mut [u8; 128], offset: usize, value: u32) {
     bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
 }
 
@@ -1611,6 +1789,7 @@ mod surface_grid_parameter_tests {
                 CompositeParameterFacts {
                     affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                     source_space: CompositeSourceSpace::LayerLocal,
+                    source_operation_clip: None,
                     opacity: 1.0,
                     composition: LayerComposition::from_blend(blend),
                     has_clip: false,
@@ -1648,6 +1827,7 @@ mod surface_grid_parameter_tests {
                 CompositeParameterFacts {
                     affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                     source_space: CompositeSourceSpace::SurfaceGrid,
+                    source_operation_clip: None,
                     opacity: 0.625,
                     composition: LayerComposition::try_porter_duff(operator, BlendMode::Color)
                         .unwrap(),
@@ -1687,6 +1867,7 @@ mod surface_grid_parameter_tests {
             CompositeParameterFacts {
                 affine: [0.4, 0.0, 0.0, 0.5, 0.0, 0.0],
                 source_space: CompositeSourceSpace::SurfaceGrid,
+                source_operation_clip: None,
                 opacity: 1.0,
                 composition: LayerComposition::from_blend(BlendMode::Normal),
                 has_clip: false,
@@ -2029,6 +2210,7 @@ mod accounting_tests {
                     CompositeParameterFacts {
                         affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                         source_space: CompositeSourceSpace::LayerLocal,
+                        source_operation_clip: None,
                         opacity: 1.0,
                         composition: LayerComposition::from_blend(BlendMode::Normal),
                         has_clip: false,
@@ -2267,6 +2449,7 @@ mod rebased_composite_parameter_tests {
         CompositeParameterFacts {
             affine: [1.0, 0.0, 0.0, 1.0, origin, 0.0],
             source_space: CompositeSourceSpace::LayerLocal,
+            source_operation_clip: None,
             opacity: 1.0,
             composition: LayerComposition::from_blend(BlendMode::Normal),
             has_clip: false,
@@ -2385,6 +2568,169 @@ mod rebased_composite_parameter_tests {
                     .work(RenderWork::SerializedBytes),
                 0,
                 "case {invalid}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod gaussian_parameter_tests {
+    use super::*;
+
+    fn facts() -> GaussianParameterFacts {
+        GaussianParameterFacts {
+            stage: 4,
+            source_size: [3, 2],
+            target_size: [8, 4],
+            source_base: [-7, 9],
+            source_clip: [0.0, 0.0, 3.0, 2.0],
+            output_clip: [0.25, 0.5, 7.75, 3.5],
+            periodic_base: [2.5, 1.25],
+            periodic_step: [1.2, 1.6],
+            edge_mode: 1,
+            periodic: true,
+            direct: false,
+            axis: 1,
+            first_tap: 32,
+            tap_count: 17,
+            first: false,
+            linear: true,
+            converted: true,
+            color: [0.0; 4],
+        }
+    }
+
+    #[test]
+    fn gaussian_wire_preserves_declared_rebased_maps_and_zero_reserved_words() {
+        let bytes = GaussianParameterBytes::try_new(facts(), &Account::for_test()).unwrap();
+        let word =
+            |offset: usize| u32::from_le_bytes(bytes.0[offset..offset + 4].try_into().unwrap());
+        assert_eq!(word(0), 3);
+        assert_eq!(word(8), 8);
+        assert_eq!(i32::from_le_bytes(bytes.0[16..20].try_into().unwrap()), -7);
+        assert_eq!(f32::from_bits(word(48)), 0.25);
+        assert_eq!(f32::from_bits(word(64)), 2.5);
+        assert_eq!(f32::from_bits(word(72)), 1.2);
+        assert_eq!([word(80), word(84), word(88), word(92)], [4, 32, 17, 1]);
+        assert_eq!([word(96), word(100), word(104), word(108)], [1, 1, 0, 0]);
+        assert_eq!([word(112), word(116)], [1, 1]);
+        assert!(bytes.0[120..].iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn gaussian_wire_refuses_reached_coordinate_narrowing_and_oversized_batches() {
+        for bad in [f64::INFINITY, f64::NAN, f64::MAX, f64::MIN_POSITIVE] {
+            let mut input = facts();
+            input.periodic_step[0] = bad;
+            assert!(GaussianParameterBytes::try_new(input, &Account::for_test()).is_err());
+        }
+        let mut input = facts();
+        input.stage = 3;
+        input.tap_count = 33;
+        assert!(GaussianParameterBytes::try_new(input, &Account::for_test()).is_err());
+        input.tap_count = 1;
+        input.first_tap = u32::MAX;
+        assert!(GaussianParameterBytes::try_new(input, &Account::for_test()).is_err());
+        input.first_tap = 0;
+        input.target_size[0] = 8_388_609;
+        assert!(GaussianParameterBytes::try_new(input, &Account::for_test()).is_err());
+    }
+
+    #[test]
+    fn gaussian_constant_and_raw_copy_skip_unreachable_coordinate_payloads() {
+        let mut input = facts();
+        input.stage = 5;
+        input.source_size = [u32::MAX; 2];
+        input.source_clip = [f64::NAN; 4];
+        input.periodic_step = [f64::NAN; 2];
+        input.color = [0.25, 0.125, 0.0, 0.5];
+        let bytes = GaussianParameterBytes::try_new(input, &Account::for_test()).unwrap();
+        assert_eq!(&bytes.0[128..132], &0.25_f32.to_le_bytes());
+        input.stage = 0;
+        input.source_size = [3, 2];
+        input.output_clip = [f64::NAN; 4];
+        assert!(GaussianParameterBytes::try_new(input, &Account::for_test()).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod gaussian_composite_parameter_tests {
+    use super::*;
+
+    fn facts(
+        clip: Option<[f64; 4]>,
+        source_space: CompositeSourceSpace,
+    ) -> CompositeParameterFacts {
+        CompositeParameterFacts {
+            affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            source_space,
+            source_operation_clip: clip,
+            opacity: 1.0,
+            composition: LayerComposition::from_blend(BlendMode::Normal),
+            has_clip: false,
+            mask: None,
+            source: CompositeGridFacts {
+                origin: [0.0; 2],
+                scale: 1.0,
+                extent: [3, 2],
+            },
+            destination: CompositeGridFacts {
+                origin: [0.0; 2],
+                scale: 1.0,
+                extent: [3, 2],
+            },
+        }
+    }
+
+    #[test]
+    fn gaussian_operation_wire_encodes_rebased_fractional_clip_without_replacing_source_space() {
+        for (space, low_bit) in [
+            (CompositeSourceSpace::LayerLocal, 0),
+            (CompositeSourceSpace::SurfaceGrid, 1),
+        ] {
+            let bytes = CompositeParameterBytes::try_from_facts(
+                facts(Some([0.25, 0.5, 2.75, 1.5]), space),
+                &Account::for_test(),
+            )
+            .unwrap();
+            assert_eq!(
+                u32::from_le_bytes(bytes.0[104..108].try_into().unwrap()),
+                low_bit | 2
+            );
+            for (actual, expected) in bytes.0[112..128]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip([0.25_f32, 0.5, 2.75, 1.5])
+            {
+                assert_eq!(f32::from_le_bytes(*actual), expected);
+            }
+            let ordinary =
+                CompositeParameterBytes::try_from_facts(facts(None, space), &Account::for_test())
+                    .unwrap();
+            assert_eq!(
+                u32::from_le_bytes(ordinary.0[104..108].try_into().unwrap()),
+                low_bit
+            );
+            assert!(ordinary.0[112..].iter().all(|byte| *byte == 0));
+        }
+    }
+
+    #[test]
+    fn gaussian_operation_wire_rejects_clips_outside_actual_source_or_unrepresentable_narrowing() {
+        for clip in [
+            [-0.25, 0.0, 2.0, 1.0],
+            [0.0, 0.0, 3.25, 1.0],
+            [0.0, 0.0, 2.0, 2.25],
+            [0.0, 0.0, f64::NAN, 1.0],
+            [f64::MIN_POSITIVE, 0.0, 2.0, 1.0],
+        ] {
+            assert!(
+                CompositeParameterBytes::try_from_facts(
+                    facts(Some(clip), CompositeSourceSpace::LayerLocal),
+                    &Account::for_test()
+                )
+                .is_err()
             );
         }
     }

@@ -1,16 +1,11 @@
 use super::{Error, Result};
-use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
+use crate::accounting::{
+    Account, AccountedVec, RenderPhase, RenderResource, RenderWork, SharedValue,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) enum GaussianKernelSamplingForm {
     PairedLinear,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "base graph retains the validated non-filtering kernel route for exact sampling"
-        )
-    )]
     FullNearest,
 }
 
@@ -46,6 +41,110 @@ pub(crate) struct GaussianKernelPlan {
     key: GaussianKernelKey,
     upload_bytes: SharedValue<Vec<u8>>,
     byte_len: u64,
+}
+
+/// Allocation-free geometry for the native exact-offset sampling route.
+/// The coefficient owner retains the key and every derived size together so
+/// consumers cannot substitute an independently calculated radius or count.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct GaussianKernelGeometry {
+    key: GaussianKernelKey,
+    device_standard_deviation: f64,
+    sample_count: u32,
+    byte_len: u64,
+    weight_bytes: usize,
+    serialized_bytes: usize,
+}
+
+impl GaussianKernelGeometry {
+    pub(crate) fn try_new(
+        standard_deviation: f64,
+        raster_scale: f64,
+        support_multiple: f64,
+        sampling_form: GaussianKernelSamplingForm,
+        account: &Account,
+    ) -> Result<Self> {
+        let account = account.at(RenderPhase::Kernel);
+        account.phase(RenderPhase::Kernel, || {
+            for (value, allow_zero) in [
+                (standard_deviation, true),
+                (raster_scale, false),
+                (support_multiple, false),
+            ] {
+                account.work(RenderWork::CoordinateVisits, 1)?;
+                if !value.is_finite() || value < 0.0 || (!allow_zero && value == 0.0) {
+                    return Err(native_geometry_error(value));
+                }
+            }
+            let device_standard_deviation =
+                account.coordinate(|| standard_deviation * raster_scale)?;
+            if !device_standard_deviation.is_finite()
+                || (standard_deviation > 0.0 && device_standard_deviation == 0.0)
+            {
+                return Err(native_geometry_error(device_standard_deviation));
+            }
+            let support = account.coordinate(|| device_standard_deviation * support_multiple)?;
+            if !support.is_finite() || support > f64::from(u32::MAX) {
+                return Err(native_geometry_error(support));
+            }
+            // Every integer through 2^24 has an exact f32 representation. Merely
+            // checking the last offset's round trip would admit larger even radii
+            // whose intervening integer tap offsets are not representable.
+            let support_radius = account.coordinate(|| support.ceil() as u32)?;
+            if support_radius > 1 << 24 {
+                return Err(native_geometry_error(f64::from(support_radius)));
+            }
+            let sample_count = gaussian_sample_count(support_radius, sampling_form)?;
+            let weight_count = usize::try_from(support_radius)
+                .ok()
+                .and_then(|radius| radius.checked_add(1))
+                .ok_or_else(|| native_geometry_error(f64::from(support_radius)))?;
+            let weight_bytes = weight_count
+                .checked_mul(size_of::<f64>())
+                .filter(|&bytes| bytes <= isize::MAX as usize)
+                .ok_or_else(|| native_geometry_error(f64::from(support_radius)))?;
+            let byte_len = u64::from(sample_count) * 8;
+            let serialized_bytes = usize::try_from(byte_len)
+                .ok()
+                .filter(|&bytes| bytes <= isize::MAX as usize)
+                .ok_or_else(|| native_geometry_error(f64::from(sample_count)))?;
+            Ok(Self {
+                key: GaussianKernelKey::from_exact_plan(
+                    standard_deviation.to_bits(),
+                    raster_scale.to_bits(),
+                    support_multiple.to_bits(),
+                    support_radius,
+                    sampling_form,
+                ),
+                device_standard_deviation,
+                sample_count,
+                byte_len,
+                weight_bytes,
+                serialized_bytes,
+            })
+        })
+    }
+
+    pub(crate) const fn key(self) -> GaussianKernelKey {
+        self.key
+    }
+    pub(crate) const fn support_radius(self) -> u32 {
+        self.key.support_radius
+    }
+    pub(crate) const fn sample_count(self) -> u32 {
+        self.sample_count
+    }
+    pub(crate) const fn byte_len(self) -> u64 {
+        self.byte_len
+    }
+}
+
+fn native_geometry_error(value: f64) -> Error {
+    crate::GaussianPreparationError::Numeric {
+        phase: crate::GaussianNumericPhase::KernelExtent,
+        value,
+    }
+    .into()
 }
 
 impl PartialEq for GaussianKernelPlan {
@@ -86,6 +185,45 @@ impl GaussianKernelBufferLimits {
 }
 
 impl GaussianKernelPlan {
+    pub(crate) fn try_new_with_limits(
+        geometry: GaussianKernelGeometry,
+        limits: GaussianKernelBufferLimits,
+        account: &Account,
+    ) -> Result<Self> {
+        account.phase(RenderPhase::Kernel, || {
+            let account = account.at(RenderPhase::Kernel);
+            validate_buffer_byte_len(geometry.byte_len(), limits)?;
+            // Check forward budgets without billing coefficient calculations or
+            // serialization that have not happened. Actual loops below remain
+            // the sole work producers and actual allocations own their holds.
+            let weight_visits = 3 * u64::from(geometry.support_radius()) + 2;
+            account.preview_work([
+                (
+                    RenderWork::KernelSampleVisits,
+                    weight_visits + u64::from(geometry.sample_count()),
+                ),
+                (RenderWork::SerializedBytes, geometry.byte_len()),
+            ])?;
+            account.preview(RenderResource::ScratchCpuBytes, geometry.weight_bytes)?;
+            let retained_bytes = geometry
+                .serialized_bytes
+                .checked_add(SharedValue::<Vec<u8>>::allocation_size())
+                .ok_or_else(|| native_geometry_error(f64::from(geometry.sample_count)))?;
+            account.preview(RenderResource::RetainedCpuBytes, retained_bytes)?;
+            let positive_weights = NormalizedGaussianWeights::try_new(
+                geometry.device_standard_deviation,
+                geometry.support_radius(),
+                &account,
+            )?;
+            let upload_bytes = positive_weights.serialize(geometry.key.sampling_form, &account)?;
+            Ok(Self {
+                key: geometry.key,
+                upload_bytes: SharedValue::from_accounted(upload_bytes, &account.storage())?,
+                byte_len: geometry.byte_len(),
+            })
+        })
+    }
+
     pub(crate) fn matches_in(&self, other: &Self, account: &Account) -> Result<bool> {
         if self.key != other.key
             || self.byte_len != other.byte_len
@@ -176,18 +314,22 @@ impl GaussianKernelPlan {
     }
 
     pub(crate) fn validate_buffer_limits(&self, limits: GaussianKernelBufferLimits) -> Result<()> {
-        if self.byte_len == 0
-            || self.byte_len > limits.max_buffer_size
-            || self.byte_len > limits.max_storage_buffer_binding_size
-        {
-            return Err(Error::invalid_value(
-                "Gaussian kernel buffer byte length",
-                self.byte_len,
-                "must be positive and no greater than the selected device buffer and storage-binding limits",
-            ));
-        }
-        Ok(())
+        validate_buffer_byte_len(self.byte_len, limits)
     }
+}
+
+fn validate_buffer_byte_len(byte_len: u64, limits: GaussianKernelBufferLimits) -> Result<()> {
+    if byte_len == 0
+        || byte_len > limits.max_buffer_size
+        || byte_len > limits.max_storage_buffer_binding_size
+    {
+        return Err(Error::invalid_value(
+            "Gaussian kernel buffer byte length",
+            byte_len,
+            "must be positive and no greater than the selected device buffer and storage-binding limits",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_gaussian_geometry(
@@ -292,24 +434,7 @@ impl NormalizedGaussianWeights {
     }
 
     fn sample_count(&self, sampling_form: GaussianKernelSamplingForm) -> Result<u32> {
-        let support_radius = self.support_radius;
-        match sampling_form {
-            GaussianKernelSamplingForm::FullNearest => support_radius
-                .checked_mul(2)
-                .and_then(|count| count.checked_add(1)),
-            GaussianKernelSamplingForm::PairedLinear => support_radius
-                .checked_add(1)
-                .and_then(|count| count.checked_div(2))
-                .and_then(|pairs| pairs.checked_mul(2))
-                .and_then(|paired| paired.checked_add(1)),
-        }
-        .ok_or_else(|| {
-            Error::invalid_value(
-                "Gaussian kernel sample count",
-                support_radius,
-                "must fit in u32",
-            )
-        })
+        gaussian_sample_count(self.support_radius, sampling_form)
     }
 
     fn serialize(
@@ -372,6 +497,29 @@ impl NormalizedGaussianWeights {
     }
 }
 
+fn gaussian_sample_count(
+    support_radius: u32,
+    sampling_form: GaussianKernelSamplingForm,
+) -> Result<u32> {
+    match sampling_form {
+        GaussianKernelSamplingForm::FullNearest => support_radius
+            .checked_mul(2)
+            .and_then(|count| count.checked_add(1)),
+        GaussianKernelSamplingForm::PairedLinear => support_radius
+            .checked_add(1)
+            .and_then(|count| count.checked_div(2))
+            .and_then(|pairs| pairs.checked_mul(2))
+            .and_then(|paired| paired.checked_add(1)),
+    }
+    .ok_or_else(|| {
+        Error::invalid_value(
+            "Gaussian kernel sample count",
+            support_radius,
+            "must fit in u32",
+        )
+    })
+}
+
 fn paired_gaussian_sample(
     first: u32,
     &[first_weight, second_weight]: &[f64; 2],
@@ -415,6 +563,241 @@ fn append_kernel_sample(
 mod tests {
     use super::*;
     use crate::accounting::{FrameFixture, RenderAccountingOptions, RenderLimits, RendererCpu};
+
+    fn native_plan(
+        sigma: f64,
+        scale: f64,
+        support: f64,
+        form: GaussianKernelSamplingForm,
+        limits: GaussianKernelBufferLimits,
+        account: &Account,
+    ) -> Result<GaussianKernelPlan> {
+        let geometry = GaussianKernelGeometry::try_new(sigma, scale, support, form, account)?;
+        GaussianKernelPlan::try_new_with_limits(geometry, limits, account)
+    }
+
+    #[test]
+    fn native_four_sigma_samples_match_independently_derived_rational_weights() {
+        // For s=1/sqrt(2 ln 2), g(k)=2^(-k²); halving s yields
+        // g(k)=2^(-4k²). These rational expectations do not evaluate exp or
+        // normalize production coefficients to obtain their oracle.
+        let sigma = 1.0 / (2.0 * std::f64::consts::LN_2).sqrt();
+        for (scale, expected) in [
+            (
+                1.0,
+                &[
+                    32768.0 / 69761.0,
+                    16384.0 / 69761.0,
+                    2048.0 / 69761.0,
+                    64.0 / 69761.0,
+                    1.0 / 139522.0,
+                ][..],
+            ),
+            (
+                0.5,
+                &[32768.0 / 36865.0, 2048.0 / 36865.0, 1.0 / 73730.0][..],
+            ),
+        ] {
+            let account = Account::for_test();
+            let plan = native_plan(
+                sigma,
+                scale,
+                4.0,
+                GaussianKernelSamplingForm::FullNearest,
+                GaussianKernelBufferLimits::for_test(72, 72),
+                &account,
+            )
+            .unwrap();
+            let records = plan.upload_bytes().as_chunks::<8>().0;
+            assert_eq!(records.len(), 2 * expected.len() - 1);
+            for (index, record) in records.iter().enumerate() {
+                let [a, b, c, d, w, x, y, z] = *record;
+                let offset = f32::from_le_bytes([a, b, c, d]);
+                let weight = f32::from_le_bytes([w, x, y, z]);
+                let positive_index = index.div_ceil(2);
+                let sign = if index == 0 || index % 2 == 1 {
+                    1.0
+                } else {
+                    -1.0
+                };
+                assert_eq!(offset, sign * positive_index as f32);
+                assert!((f64::from(weight) - expected[positive_index]).abs() < 3.0e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn native_exact_bytes_admit_and_either_one_under_device_limit_refuses_before_weights() {
+        for (buffer, binding, succeeds) in [(72, 72, true), (71, 72, false), (72, 71, false)] {
+            let options = RenderAccountingOptions::new();
+            let cpu = RendererCpu::new(options).unwrap();
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let plan = native_plan(
+                        1.0,
+                        1.0,
+                        4.0,
+                        GaussianKernelSamplingForm::FullNearest,
+                        GaussianKernelBufferLimits::for_test(buffer, binding),
+                        attempt.account(),
+                    )?;
+                    assert_eq!(plan.byte_len(), 72);
+                    Ok(())
+                })
+                .unwrap()
+                .into_parts();
+            assert_eq!(result.is_ok(), succeeds);
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::CoordinateVisits), 6);
+            assert_eq!(
+                usage.work(RenderWork::KernelSampleVisits),
+                if succeeds { 23 } else { 0 }
+            );
+            assert_eq!(
+                usage.work(RenderWork::SerializedBytes),
+                if succeeds { 72 } else { 0 }
+            );
+            assert_eq!(usage.work(RenderWork::ResourceAllocationRequests), 0);
+            let cpu_usage = report.renderer_cpu().unwrap().usage();
+            if !succeeds {
+                assert_eq!(
+                    cpu_usage.peak(RenderResource::ScratchCpuBytes),
+                    cpu_usage.opening_live(RenderResource::ScratchCpuBytes)
+                );
+            }
+            for resource in [
+                RenderResource::RetainedCpuBytes,
+                RenderResource::ScratchCpuBytes,
+            ] {
+                assert_eq!(cpu_usage.live(resource), cpu_usage.opening_live(resource));
+            }
+        }
+    }
+
+    #[test]
+    fn native_known_work_refusal_performs_no_weight_visits_or_serialization() {
+        for (work, limit) in [
+            (RenderWork::KernelSampleVisits, 22),
+            (RenderWork::SerializedBytes, 71),
+        ] {
+            let options = RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap());
+            let cpu = RendererCpu::new(options).unwrap();
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    native_plan(
+                        1.0,
+                        1.0,
+                        4.0,
+                        GaussianKernelSamplingForm::FullNearest,
+                        GaussianKernelBufferLimits::for_test(72, 72),
+                        attempt.account(),
+                    )
+                    .map(drop)
+                })
+                .unwrap()
+                .into_parts();
+            let error = result.unwrap_err();
+            let Some(crate::RenderAccountingError::Refused(refusal)) =
+                error.accounting_diagnostic()
+            else {
+                panic!("expected central work-budget refusal");
+            };
+            assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(work));
+            assert_eq!(refusal.current(), 0);
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::KernelSampleVisits), 0);
+            assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
+            let usage = report.renderer_cpu().unwrap().usage();
+            assert_eq!(
+                usage.peak(RenderResource::ScratchCpuBytes),
+                usage.opening_live(RenderResource::ScratchCpuBytes)
+            );
+        }
+    }
+
+    #[test]
+    fn native_geometry_proves_all_integer_offsets_and_composed_density_before_allocation() {
+        let account = Account::for_test();
+        let exact = GaussianKernelGeometry::try_new(
+            f64::from(1 << 22),
+            1.0,
+            4.0,
+            GaussianKernelSamplingForm::FullNearest,
+            &account,
+        )
+        .unwrap();
+        assert_eq!(exact.support_radius(), 1 << 24);
+        assert_eq!(exact.sample_count(), (1 << 25) + 1);
+        assert_eq!(exact.byte_len(), u64::from((1_u32 << 25) + 1) * 8);
+        for (sigma, scale) in [
+            (f64::from((1 << 22) + 1), 1.0),
+            (f64::MAX, 2.0),
+            (1.0, f64::INFINITY),
+            (f64::from_bits(1), 0.5),
+        ] {
+            let error = GaussianKernelGeometry::try_new(
+                sigma,
+                scale,
+                4.0,
+                GaussianKernelSamplingForm::FullNearest,
+                &account,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error.gaussian_diagnostic(),
+                Some(crate::GaussianPreparationError::Numeric {
+                    phase: crate::GaussianNumericPhase::KernelExtent,
+                    ..
+                })
+            ));
+        }
+        assert_eq!(
+            account.work_count(RenderWork::KernelSampleVisits).unwrap(),
+            0
+        );
+        assert_eq!(account.work_count(RenderWork::SerializedBytes).unwrap(), 0);
+        let half = GaussianKernelGeometry::try_new(
+            1.0,
+            0.5,
+            4.0,
+            GaussianKernelSamplingForm::FullNearest,
+            &account,
+        )
+        .unwrap();
+        let full = GaussianKernelGeometry::try_new(
+            1.0,
+            1.0,
+            4.0,
+            GaussianKernelSamplingForm::FullNearest,
+            &account,
+        )
+        .unwrap();
+        assert_ne!(half.key(), full.key());
+    }
+
+    #[test]
+    fn native_shared_plan_releases_only_after_the_last_upload_owner() {
+        let account = Account::for_test();
+        let plan = native_plan(
+            1.0,
+            1.0,
+            4.0,
+            GaussianKernelSamplingForm::FullNearest,
+            GaussianKernelBufferLimits::for_test(72, 72),
+            &account,
+        )
+        .unwrap();
+        let alive = plan.upload_bytes.allocation_liveness_for_test();
+        let clone = plan.clone();
+        drop(plan);
+        assert!(alive());
+        assert_eq!(clone.upload_bytes().len(), 72);
+        drop(clone);
+        assert!(!alive());
+    }
 
     // Independent 70-digit decimal exp(-x²/2), normalized by
     // 1 + 2Σ exp(-x²/2), rounded to serialized f32 values.

@@ -90,6 +90,9 @@ dimensions! {
         /// Offset output-scissor cells times the selected fixed sampling footprint,
         /// plus scheduled raw-rebase fetch opportunities. Includes transparent taps.
         ScheduledOffsetSamples,
+        /// Native Gaussian scheduled cells times actual coefficient/fetch opportunities,
+        /// including exterior transparent samples and periodic reconstruction.
+        ScheduledGaussianSamples,
         /// Nonempty native compute dispatch calls issued by the internal raster engine.
         RasterDispatches,
         /// Logical internal Vello raster passes actually encoded.
@@ -222,10 +225,11 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::ColorFilterProjection)
             || self.supported_for(RenderAttemptKind::Convolution)
             || self.supported_for(RenderAttemptKind::Offset)
+            || self.supported_for(RenderAttemptKind::Gaussian)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
-            RenderAttemptKind::Offset => {
+            RenderAttemptKind::Offset | RenderAttemptKind::Gaussian => {
                 matches!(self, Self::FilterOperationVisits | Self::CoordinateVisits)
             }
             RenderAttemptKind::Convolution => matches!(
@@ -319,6 +323,7 @@ impl RenderWork {
                         | Self::ScheduledFilterTexels
                         | Self::ScheduledConvolutionTaps
                         | Self::ScheduledOffsetSamples
+                        | Self::ScheduledGaussianSamples
                         | Self::RasterDispatches
                         | Self::VelloPasses
                         | Self::ImagePasses
@@ -943,6 +948,8 @@ pub enum RenderAttemptKind {
     Convolution,
     /// Standalone native image-space offset admission.
     Offset,
+    /// Standalone resolved native Gaussian admission.
+    Gaussian,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

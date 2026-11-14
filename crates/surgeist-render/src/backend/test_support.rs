@@ -1041,7 +1041,7 @@ impl DeviceCapabilities {
             reduced_precision,
             high_precision_features: complete_features(high_precision),
             reduced_precision_features: complete_features(reduced_precision),
-            convolution_float32_features: complete_features(high_precision),
+            filter_float32_features: complete_features(high_precision),
             max_effect_texture_dimension_2d,
         }
     }
@@ -1191,6 +1191,29 @@ impl Backend {
             "GPU device resources are unavailable",
         )?;
         Ok((&ready.device, &ready.queue))
+    }
+
+    pub(crate) fn override_device_filter_float32_fact_for_test(
+        &mut self,
+        identity: DeviceSlotIdentity,
+        supported: bool,
+    ) -> bool {
+        let Some(state) = self.device_states.get_mut(identity.slot()) else {
+            return false;
+        };
+        if state.generation != identity.generation {
+            return false;
+        }
+        state.observe_terminal();
+        if state.terminal().is_some() {
+            return false;
+        }
+        state.capabilities.filter_float32_features.allowed_usages = if supported {
+            WorkingFormat::HighPrecision.required_usages()
+        } else {
+            wgpu::TextureUsages::empty()
+        };
+        true
     }
 
     pub(crate) fn override_device_effect_precision_facts_for_test(
@@ -2221,7 +2244,7 @@ fn composition_prepare_vector_draw_textures(
 fn composition_vector_parameter_bytes(
     mask: Option<&CompositionGpuMaskTextureForTest<'_>>,
     draw: CompositionGpuVectorDrawForTest,
-) -> Result<[u8; 112]> {
+) -> Result<[u8; 128]> {
     let mask_bounds = mask.map_or([0.0, 0.0, 1.0, 1.0], |mask| {
         [
             mask.bounds.x(),

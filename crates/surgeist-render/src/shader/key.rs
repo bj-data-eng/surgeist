@@ -30,6 +30,9 @@ pub(crate) enum ShaderProgramKey {
     CopyBackdrop,
     ColorFilter,
     Convolution,
+    Gaussian,
+    GaussianSource,
+    GaussianConstant,
     Offset,
     BlurHorizontal {
         source_alpha: bool,
@@ -47,7 +50,7 @@ pub(crate) enum ShaderProgramKey {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum ShaderTextureFormatKey {
     VelloCaptureRgba8Unorm,
-    ConvolutionRgba32Float,
+    FilterRgba32Float,
     ClipCoverageRgba8Unorm,
     WorkingHighPrecisionRgba16Float,
     WorkingReducedPrecisionRgba8Unorm,
@@ -78,6 +81,8 @@ impl ShaderTextureFormatKey {
 pub(crate) enum ShaderBindingRoleKey {
     CaptureSource,
     ConvolutionSource,
+    GaussianSource,
+    GaussianAuxiliary,
     OffsetSource,
     ConvolutionAuxiliary,
     CompletedParent,
@@ -196,6 +201,7 @@ impl ShaderMaskSamplingKey {
 pub(crate) enum ShaderDataBindingKey {
     SpatialUniform,
     ConvolutionParameters,
+    GaussianParameters,
     OffsetParameters,
     ConvolutionWeights,
     ColorFilterOperations,

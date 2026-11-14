@@ -205,8 +205,8 @@ fn validate_chain(
     let prepared = result_resource(
         first,
         resources,
-        RuntimeResourceRole::ConvolutionFloat,
-        RuntimeResourceFormat::ConvolutionRgba32Float,
+        RuntimeResourceRole::FilterFloat,
+        RuntimeResourceFormat::FilterRgba32Float,
     )?;
     if !grid_is_exact(prepared.spatial, mapping.source_grid_extent())
         || prepared.expected_reads != batches.checked_add(1)?
@@ -234,8 +234,8 @@ fn validate_chain(
         let sum = result_resource(
             pass,
             resources,
-            RuntimeResourceRole::ConvolutionFloat,
-            RuntimeResourceFormat::ConvolutionRgba32Float,
+            RuntimeResourceRole::FilterFloat,
+            RuntimeResourceFormat::FilterRgba32Float,
         )?;
         if !grid_is_exact(sum.spatial, mapping.result_grid_extent())
             || sum.expected_reads != 1
@@ -262,8 +262,8 @@ fn validate_chain(
     let finalized = result_resource(
         finalize,
         resources,
-        RuntimeResourceRole::ConvolutionFloat,
-        RuntimeResourceFormat::ConvolutionRgba32Float,
+        RuntimeResourceRole::FilterFloat,
+        RuntimeResourceFormat::FilterRgba32Float,
     )?;
     let resolve = at(finalize_index.checked_add(1)?)?;
     if !grid_is_exact(finalized.spatial, mapping.result_grid_extent())
