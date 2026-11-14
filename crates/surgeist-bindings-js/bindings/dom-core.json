@@ -409,6 +409,18 @@
       ]
     },
     {
+      "id": "HTMLFontElement.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "htmlfontelement",
+      "block": 0,
+      "sha256": "0e2715545ee88d3fb5c3d462215cec7a9e0e1d7e77bf8587addafdd4c90bea84",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlfontelement",
+      "entries": [
+        "HTMLFontElement"
+      ]
+    },
+    {
       "id": "HTMLMetaElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "htmlmetaelement",
@@ -4203,6 +4215,89 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLFontElement",
+      "kind": "interface",
+      "name": "HTMLFontElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLFontElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "color",
+          "readonly": false,
+          "id": "HTMLFontElement.color"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "face",
+          "readonly": false,
+          "id": "HTMLFontElement.face"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "size",
+          "readonly": false,
+          "id": "HTMLFontElement.size"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "HTMLMetaElement",
@@ -8242,6 +8337,90 @@
     "HTMLHRElement.obsolete.width/set": {
       "kind": "native",
       "adapter": "htmlhrelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFontElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlfontelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFontElement.color/get": {
+      "kind": "native",
+      "adapter": "htmlfontelement.color.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFontElement.color/set": {
+      "kind": "native",
+      "adapter": "htmlfontelement.color.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFontElement.face/get": {
+      "kind": "native",
+      "adapter": "htmlfontelement.face.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFontElement.face/set": {
+      "kind": "native",
+      "adapter": "htmlfontelement.face.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFontElement.size/get": {
+      "kind": "native",
+      "adapter": "htmlfontelement.size.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFontElement.size/set": {
+      "kind": "native",
+      "adapter": "htmlfontelement.size.set",
       "producers": [
         {
           "owner": "surgeist-dom",

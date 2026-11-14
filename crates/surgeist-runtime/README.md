@@ -343,6 +343,9 @@ captured identities retained until wrapper presentation.
 HTMLBRElement and HTMLHRElement expose their specified string and boolean
 reflections, including their obsolete members, through the same Source and
 reaction adapter.
+HTMLFontElement reflects color, face and size through that adapter. Only color
+applies its specified null-to-empty DOMString conversion. The reflected values
+remain raw attribute strings.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous

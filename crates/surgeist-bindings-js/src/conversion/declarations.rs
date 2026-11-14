@@ -1782,3 +1782,8 @@ pub fn html_element_outer_text_setter() -> Type<DomString> {
 pub fn html_title_element_text_setter() -> Type<DomString> {
     types::DOM_STRING
 }
+
+/// Selected setter conversion for `HTMLFontElement.color`.
+pub fn html_font_element_color_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
