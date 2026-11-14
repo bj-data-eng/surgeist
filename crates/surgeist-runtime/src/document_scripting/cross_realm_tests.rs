@@ -21,6 +21,7 @@ mod node_relations;
 mod normalize;
 mod processing_instruction;
 mod scoped_registries;
+mod slot;
 mod split_text;
 mod template_content;
 mod title_text;
@@ -368,6 +369,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     template_content::template_attributes_reflect_the_live_native_element();
     title_text::title_text_uses_direct_native_children_and_original_replacement();
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
+    slot::slot_members_read_the_canonical_named_assignment();
     element_reflection::element_reflections_use_the_exact_native_attributes();
     element_attributes::element_attribute_methods_observe_and_remove_canonical_attributes();
     toggle_attribute::element_toggle_attribute_uses_one_canonical_edit();
