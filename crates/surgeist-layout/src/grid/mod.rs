@@ -41,6 +41,10 @@ mod intrinsic_stage;
 mod lane_repeat;
 mod lanes;
 mod named;
+mod observation;
+pub(crate) use observation::{
+    OrdinaryGridObservation, OrdinaryGridObservationCompletion, OrdinaryGridObservationRun,
+};
 mod placement;
 mod subgrid;
 #[cfg(test)]
@@ -204,6 +208,11 @@ impl<Node: Copy, S: LayoutScalar> GridChild<'_, Node, S> {
     }
 }
 
+pub(crate) enum GridRequest<'input, Node, S: LayoutScalar> {
+    Child(GridChild<'input, Node, S>),
+    Observation(Box<OrdinaryGridObservation<'input, Node, S>>),
+}
+
 pub(crate) struct GridContinuation<'input, Node, S: LayoutScalar> {
     node: Node,
     input: ComputeInputOf<S>,
@@ -217,7 +226,7 @@ pub(crate) struct GridContinuation<'input, Node, S: LayoutScalar> {
 type GridStart<'input, Node, S, M> =
     LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, GridContinuation<'input, Node, S>>, S, M>;
 type GridStep<'input, Node, S, M> =
-    LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, GridChild<'input, Node, S>>, S, M>;
+    LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, GridRequest<'input, Node, S>>, S, M>;
 
 pub(crate) fn begin_grid_computation<'input, Tree, M>(
     tree: &mut Tree,
@@ -264,9 +273,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
         loop {
             let result = if let Some(pass) = self.pass.as_mut() {
                 match pass {
+                    GridPassWork::Observation(_) => {
+                        let Some(GridPassWork::Observation(source)) = self.pass.take() else {
+                            unreachable!()
+                        };
+                        return Ok(ControlFlow::Continue(GridRequest::Observation(source)));
+                    }
+                    GridPassWork::Observed(_) => {
+                        let Some(GridPassWork::Observed(result)) = self.pass.take() else {
+                            unreachable!()
+                        };
+                        *result
+                    }
                     GridPassWork::Placement(pass) => {
                         if let Some(child) = pass.next(tree)? {
-                            return Ok(ControlFlow::Continue(child));
+                            return Ok(ControlFlow::Continue(GridRequest::Child(child)));
                         }
                         let Some(GridPassWork::Placement(pass)) = self.pass.take() else {
                             unreachable!("completed Grid placement");
@@ -275,9 +296,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     }
                     GridPassWork::Accepted(accepted) => {
                         if let ControlFlow::Continue((node, input)) = accepted.advance(tree)? {
-                            return Ok(ControlFlow::Continue(GridChild {
+                            return Ok(ControlFlow::Continue(GridRequest::Child(GridChild {
                                 phase: GridChildPhase::AcceptedTrack { node, input },
-                            }));
+                            })));
                         }
                         let Some(GridPassWork::Accepted(accepted)) = self.pass.take() else {
                             unreachable!("completed accepted Grid track sizing");
@@ -296,9 +317,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     GridTrackPassPhase::Repeat(repeat) => {
                         let expansion = match repeat.advance(tree, self.node)? {
                             ControlFlow::Continue((node, input)) => {
-                                return Ok(ControlFlow::Continue(GridChild {
+                                return Ok(ControlFlow::Continue(GridRequest::Child(GridChild {
                                     phase: GridChildPhase::Track { node, input },
-                                }));
+                                })));
                             }
                             ControlFlow::Break(expansion) => expansion,
                         };
@@ -317,9 +338,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                                 .sizing
                                 .advance(tree, self.node, &tracks.source.track_input())?
                         {
-                            return Ok(ControlFlow::Continue(GridChild {
+                            return Ok(ControlFlow::Continue(GridRequest::Child(GridChild {
                                 phase: GridChildPhase::Track { node, input },
-                            }));
+                            })));
                         }
                         let Some(GridTrackPassPhase::Sizing(tracks)) = self.tracks.take() else {
                             unreachable!("sized tracks own the prepared pass")
@@ -342,9 +363,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     GridTrackPassPhase::LaneExtent(lanes) => {
                         let extent = match lanes.advance(tree)? {
                             ControlFlow::Continue(child) => {
-                                return Ok(ControlFlow::Continue(GridChild {
+                                return Ok(ControlFlow::Continue(GridRequest::Child(GridChild {
                                     phase: GridChildPhase::InitialLanePacking(child),
-                                }));
+                                })));
                             }
                             ControlFlow::Break(extent) => extent,
                         };
@@ -388,6 +409,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
         }
     }
 
+    pub(crate) fn accept_observation<M>(
+        &mut self,
+        completion: OrdinaryGridObservationCompletion<'input, Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let result = completion.finish()?;
+        self.pass = Some(GridPassWork::Observed(Box::new(result)));
+        Ok(())
+    }
+
     pub(crate) fn accept_child<Tree, M>(
         &mut self,
         tree: &mut Tree,
@@ -424,6 +454,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                 accepted.accept(output)
             }
             GridPassWork::Placement(pass) => pass.accept(tree, child, output),
+            GridPassWork::Observation(_) | GridPassWork::Observed(_) => {
+                unreachable!("observation has its own completion")
+            }
         }
     }
 }
@@ -673,16 +706,22 @@ where
     else {
         unreachable!("a child-layout probe returns its child observation");
     };
-    Ok(GridChildrenLayout {
-        visible_content_size: observation.visible_content_size,
-        contributions: observation.contributions,
-        baselines: observation.baselines,
-        baseline_groups: GridBaselineGroups {
-            rows: Vec::new(),
-            columns: Vec::new(),
-        },
-        executed_baselines: None,
-    })
+    Ok(observation.into_children())
+}
+
+impl<S: LayoutScalar> GridChildrenObservation<S> {
+    fn into_children<Node>(self) -> GridChildrenLayout<Node, S> {
+        GridChildrenLayout {
+            visible_content_size: self.visible_content_size,
+            contributions: self.contributions,
+            baselines: self.baselines,
+            baseline_groups: GridBaselineGroups {
+                rows: Vec::new(),
+                columns: Vec::new(),
+            },
+            executed_baselines: None,
+        }
+    }
 }
 
 fn needs_intrinsic_auto_observation<S: LayoutScalar>(
@@ -1254,12 +1293,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
     }
 
     fn finish<M>(self) -> GridComputeOutcome<Node, S, M> {
-        let layout = match self.children {
-            Some(GridPassChildren::Positioned(children)) => children.finish()?,
-            Some(GridPassChildren::EmptyLanes(layout)) => *layout,
-            _ => unreachable!("Grid finishes after all child placement"),
-        };
+        let layout = finish_grid_children(self.children)?;
         self.output.finish(Some((self.scroll_box, layout)))
+    }
+}
+
+fn finish_grid_children<Node, S: LayoutScalar, M>(
+    children: Option<GridPassChildren<'_, Node, S>>,
+) -> LayoutResultOf<Node, GridChildrenLayout<Node, S>, S, M>
+where
+    Node: Copy + Eq,
+{
+    match children {
+        Some(GridPassChildren::Positioned(children)) => children.finish(),
+        Some(GridPassChildren::EmptyLanes(layout)) => Ok(*layout),
+        _ => unreachable!("Grid finishes after all child placement"),
     }
 }
 
@@ -1341,6 +1389,10 @@ where
         };
     match source.finish(tree, node, resolved, extent)? {
         ControlFlow::Break(result) => Ok(result),
+        ControlFlow::Continue(GridPassWork::Observation(source)) => source.compute(tree),
+        ControlFlow::Continue(GridPassWork::Observed(_)) => {
+            unreachable!("a synchronous drain has no retained observation result")
+        }
         ControlFlow::Continue(GridPassWork::Placement(pass)) => pass.compute(tree),
         ControlFlow::Continue(GridPassWork::Accepted(mut accepted)) => {
             while let ControlFlow::Continue((child, request)) = accepted.advance(tree)? {
@@ -1906,6 +1958,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
         })
         .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+        let source_constants = constants;
         let constants = constants.for_used_scroll_box(scroll_box);
         let child_input = GridChildLayoutInput {
             execution_input: input,
@@ -1929,20 +1982,44 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
             placements: &placements,
         };
         if stacking.is_none() && !input.run_mode().is_perform_layout() {
-            let child_layout =
-                observe_grid_child_layout(tree, node, GridOverflowLayout::Ordinary(child_input))?;
-            return GridPassOutput {
-                node,
-                input,
-                style,
-                constants,
-                output_size,
-                content_size,
-                report,
-                observes_contained_baseline,
-            }
-            .finish(Some((scroll_box, child_layout)))
-            .map(ControlFlow::Break);
+            return Ok(ControlFlow::Continue(GridPassWork::Observation(Box::new(
+                OrdinaryGridObservation {
+                    source_constants,
+                    source_stage: stage,
+                    source: GridAcceptedSource {
+                        output: GridPassOutput {
+                            node,
+                            input,
+                            style,
+                            constants,
+                            output_size,
+                            content_size,
+                            report,
+                            observes_contained_baseline,
+                        },
+                        scroll_box,
+                        context: child_input.context,
+                        column_tracks,
+                        row_tracks,
+                        parent_context,
+                        subgrid_report,
+                        placements,
+                        sizing_phases,
+                        stacking_operation: None,
+                        fully_contained: contained_size.width.is_some()
+                            && contained_size.height.is_some(),
+                    },
+                    resolved: GridTrackResolution {
+                        sizing_phases,
+                        columns,
+                        rows,
+                        column_preparation,
+                        row_preparation,
+                        receipt,
+                    },
+                    prepared_available,
+                },
+            ))));
         }
         let FinalGridTrackPreparation { tracks, receiver } =
             begin_final_grid_tracks(tree, node, &child_input)?;
@@ -1985,6 +2062,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
 }
 
 enum GridPassWork<'input, Node, S: LayoutScalar> {
+    Observation(Box<OrdinaryGridObservation<'input, Node, S>>),
+    Observed(Box<GridComputeResult<Node, S>>),
     Accepted(Box<GridAcceptedSizing<'input, Node, S>>),
     Placement(Box<GridPass<'input, Node, S>>),
 }

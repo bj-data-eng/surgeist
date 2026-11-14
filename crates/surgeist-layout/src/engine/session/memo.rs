@@ -171,6 +171,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
         self.table.profile == Profile::Scoped
     }
 
+    pub(super) fn ordinary_effect_index(&self, index: usize) -> Option<usize> {
+        (self.table.profile == Profile::Ordinary && self.table.eligible[index]).then_some(index)
+    }
+
     pub(super) fn shares_samples(&self) -> bool {
         self.table.profile == Profile::Ordinary
     }
@@ -406,10 +410,12 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
                 crate::LayoutInputViewOf::InlineText(_)
                 | crate::LayoutInputViewOf::TextControl(_) => continue,
             };
-            // Hidden leaves have only ordinary staged geometry and clear effects.
-            // Other hidden subtrees, shape providers and inline participants
-            // retain their own placement paths.
-            eligible[index] = (style.display != crate::Display::None
+            // Ordinary hidden traversal retains only typed clear/geometry
+            // effects in the enclosing completion. Its descendants must still
+            // satisfy the same numeric/Box closure; native and scoped custody
+            // are not inferred from a node's hidden ancestor.
+            eligible[index] = (profile == Profile::Ordinary
+                || style.display != crate::Display::None
                 || graph.children[index].is_empty())
                 && style.float_exclusion != crate::FloatExclusion::Shape
                 && graph.children[index].iter().all(|&child| eligible[child]);
@@ -912,3 +918,7 @@ mod scoped_tests;
 #[cfg(test)]
 #[path = "numeric_control_memo_tests.rs"]
 mod numeric_control_tests;
+
+#[cfg(test)]
+#[path = "hidden_memo_tests.rs"]
+mod hidden_tests;
