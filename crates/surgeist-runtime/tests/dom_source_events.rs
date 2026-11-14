@@ -3054,7 +3054,12 @@ struct ByteOverlap {
 
 #[test]
 fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal() {
-    const TIGHT_BYTES: usize = 700_000;
+    // Leave room for sparse materialization-registry shapes across test schedules.
+    // On 64-bit layouts the 16,384-row path/gather bank costs 2,097,200 bytes,
+    // leaving 786,384 bytes for the independent job graph. A live parent path
+    // plus a fresh child bank alone cost 3,801,136 bytes, exceeding this cap.
+    // The control below independently requires standalone admission to succeed.
+    const TIGHT_BYTES: usize = 11 * 256 * 1024;
     let cancel = AtomicBool::new(false);
     let ordinary = source_limits();
     let tight = DomSourceLimits::new(
@@ -3067,7 +3072,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
         ordinary.nested_operations(),
     );
     let event_limits = DomEventDispatchLimits {
-        path_items: 4096,
+        path_items: 16_384,
         snapshot_listeners: 4,
         failure_records: 4,
         ..dispatch_limits()
