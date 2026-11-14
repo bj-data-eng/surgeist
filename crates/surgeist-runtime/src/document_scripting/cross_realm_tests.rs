@@ -2,6 +2,7 @@ mod adjacent_element;
 mod adjacent_text;
 mod authored_toggle;
 mod break_elements;
+mod data_time;
 mod declarative_shadow;
 mod document_import;
 mod document_type;
@@ -380,6 +381,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     structural_alignment::structural_alignment_reflects_canonical_attributes();
     list_compact::list_compact_reflects_canonical_presence();
     param::param_members_reflect_canonical_attributes();
+    data_time::data_and_time_reflect_canonical_attributes();
+    data_time::data_time_families_preserve_native_and_web_idl_contracts();
     param::param_family_preserves_native_and_web_idl_contracts();
     list_compact::list_compact_families_preserve_native_and_web_idl_contracts();
     structural_alignment::structural_alignment_families_preserve_native_and_web_idl_contracts();

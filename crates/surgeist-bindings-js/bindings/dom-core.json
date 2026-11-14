@@ -529,6 +529,30 @@
       ]
     },
     {
+      "id": "HTMLDataElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmldataelement",
+      "block": 0,
+      "sha256": "53dce3b63850c1d1bef9f47c4b7d682270d2453c73fe96470883e61e5ed8cd64",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldataelement",
+      "entries": [
+        "HTMLDataElement"
+      ]
+    },
+    {
+      "id": "HTMLTimeElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmltimeelement",
+      "block": 0,
+      "sha256": "14e91e566bd616818d5850a13e30dd1e0e3a5bd8a681e3c958397a9a0fd266ca",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmltimeelement",
+      "entries": [
+        "HTMLTimeElement"
+      ]
+    },
+    {
       "id": "HTMLFontElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlfontelement",
@@ -4674,6 +4698,90 @@
           "name": "valueType",
           "readonly": false,
           "id": "HTMLParamElement.valueType"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLDataElement",
+      "kind": "interface",
+      "name": "HTMLDataElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLDataElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "value",
+          "readonly": false,
+          "id": "HTMLDataElement.value"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLTimeElement",
+      "kind": "interface",
+      "name": "HTMLTimeElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLTimeElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "dateTime",
+          "readonly": false,
+          "id": "HTMLTimeElement.dateTime"
         }
       ],
       "inherits": "HTMLElement"
@@ -9097,6 +9205,78 @@
     "HTMLParamElement.valueType/set": {
       "kind": "native",
       "adapter": "htmlparamelement.valuetype.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDataElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmldataelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDataElement.value/get": {
+      "kind": "native",
+      "adapter": "htmldataelement.value.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLDataElement.value/set": {
+      "kind": "native",
+      "adapter": "htmldataelement.value.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTimeElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmltimeelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTimeElement.dateTime/get": {
+      "kind": "native",
+      "adapter": "htmltimeelement.datetime.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLTimeElement.dateTime/set": {
+      "kind": "native",
+      "adapter": "htmltimeelement.datetime.set",
       "producers": [
         {
           "owner": "surgeist-dom",
