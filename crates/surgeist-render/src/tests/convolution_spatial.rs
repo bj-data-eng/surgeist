@@ -6,6 +6,54 @@ use crate::{
 };
 
 #[test]
+fn overflowing_capture_resampling_refuses_before_publication() {
+    let (mut renderer, mut surface) = renderer_and_surface(2, 2);
+    let domain = bounds(2, 1);
+    let baseline =
+        pollster::block_on(renderer.render(&mut surface, &Scene::new(), Parameters::default()))
+            .unwrap();
+    let before = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    let convolution = operation(
+        ConvolutionInput::new(&[1.0])
+            .with_order(1.0, None)
+            .with_unit_length(1.0e38, None),
+        domain,
+        FilterColorSpace::Srgb,
+    );
+    let mut scene = Scene::new();
+    scene.layer(
+        Layer::new()
+            .with_convolution(convolution)
+            .with_transform(Transform::try_new([16.0, 0.0, 0.0, 16.0, 0.0, 0.0]).unwrap()),
+        |child| {
+            child.image(
+                image(2, 1, vec![255, 0, 0, 255, 0, 0, 255, 255]),
+                domain,
+                crate::ImageFit::Stretch,
+            );
+        },
+    );
+    // The sole input-grid center is finite (5e37), but its actual capture
+    // coordinate multiplies by density16 and overflows f32 before floor/i32.
+    // This tests typed admission, not a claim of wrong pixels on this GPU.
+    assert!(((1.0e38_f32 * 0.5) * 16.0).is_infinite());
+    let error = pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect_err("unrepresentable capture arithmetic must refuse before submission");
+    assert!(matches!(
+        error.convolution_diagnostic(),
+        Some(crate::ConvolutionPreparationError::Numeric {
+            phase: crate::ConvolutionNumericPhase::GridMapping,
+            ..
+        })
+    ));
+    assert_eq!(renderer.stats(), baseline);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn explicit_kernel_grid_materializes_finite_input_before_edge_extension() {
     let (mut renderer, mut surface) = renderer_and_surface(2, 1);
     let domain = bounds(2, 1);
