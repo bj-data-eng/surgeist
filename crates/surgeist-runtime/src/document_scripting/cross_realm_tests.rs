@@ -372,6 +372,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     meta_reflection::meta_reflections_read_and_mutate_the_live_native_element();
     slot::slot_members_read_the_canonical_named_assignment();
     break_elements::break_elements_reflect_canonical_attributes();
+    break_elements::break_element_families_preserve_native_and_web_idl_contracts();
     super::guest::tests::slot_admission::slot_sequences_admit_exact_work_and_backing();
     super::guest::tests::slot_admission::slot_queries_and_assign_preserve_native_refusal();
     super::guest::tests::slot_admission::slot_queries_consume_the_enclosing_attribute_source();

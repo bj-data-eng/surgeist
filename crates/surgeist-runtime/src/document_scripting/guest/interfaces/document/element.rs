@@ -277,6 +277,8 @@ impl ElementBindings {
                 capture,
             )?;
             match interface {
+                "HTMLBRElement" => super::break_elements::install_br(scope, &prototype, capture)?,
+                "HTMLHRElement" => super::break_elements::install_hr(scope, &prototype, capture)?,
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLSlotElement" => super::slot::install(scope, &prototype, capture)?,
                 "HTMLTemplateElement" => super::template::install(scope, &prototype, capture)?,

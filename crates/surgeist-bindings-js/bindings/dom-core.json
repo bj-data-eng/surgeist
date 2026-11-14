@@ -361,6 +361,54 @@
       "entries": ["HTMLTitleElement"]
     },
     {
+      "id": "HTMLBRElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlbrelement",
+      "block": 0,
+      "sha256": "2289d19100da59e565bca1f057a827553320be7c7ad0e2dad29b3c6fec4c7248",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlbrelement",
+      "entries": [
+        "HTMLBRElement"
+      ]
+    },
+    {
+      "id": "HTMLBRElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLBRElement&#45;partial",
+      "block": 0,
+      "sha256": "ca19514fbd706d8582e63f27735cf66721e09a57e1e3edd34386aa9dabc0d54b",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-br-clear",
+      "entries": [
+        "HTMLBRElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLHRElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlhrelement",
+      "block": 0,
+      "sha256": "94a5cb4d88df8e9fd939d1f8b60d7ed5d4b0be60859da9b3e2e3ac10aa0d119a",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlhrelement",
+      "entries": [
+        "HTMLHRElement"
+      ]
+    },
+    {
+      "id": "HTMLHRElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLHRElement&#45;partial",
+      "block": 0,
+      "sha256": "1a505eabb879302e43fda0fc66115a2bc6704a007e7cf8b67d0e8e32c64cd349",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-hr-align",
+      "entries": [
+        "HTMLHRElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLMetaElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "htmlmetaelement",
@@ -3981,6 +4029,180 @@
         }
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLBRElement",
+      "kind": "interface",
+      "name": "HTMLBRElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLBRElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLBRElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLBRElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "clear",
+          "readonly": false,
+          "id": "HTMLBRElement.obsolete.clear"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLHRElement",
+      "kind": "interface",
+      "name": "HTMLHRElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLHRElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLHRElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLHRElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLHRElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "color",
+          "readonly": false,
+          "id": "HTMLHRElement.obsolete.color"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "noShade",
+          "readonly": false,
+          "id": "HTMLHRElement.obsolete.noShade"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "size",
+          "readonly": false,
+          "id": "HTMLHRElement.obsolete.size"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLHRElement.obsolete.width"
+        }
+      ],
+      "partial": true
     },
     {
       "id": "HTMLMetaElement",
@@ -7854,6 +8076,179 @@
       "kind": "native",
       "adapter": "htmltitleelement.text.set",
       "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "set_text_content"}],
+      "requirements": []
+    },
+    "HTMLBRElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlbrelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLBRElement.obsolete.clear/get": {
+      "kind": "native",
+      "adapter": "htmlbrelement.clear.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLBRElement.obsolete.clear/set": {
+      "kind": "native",
+      "adapter": "htmlbrelement.clear.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlhrelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.align/get": {
+      "kind": "native",
+      "adapter": "htmlhrelement.align.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.align/set": {
+      "kind": "native",
+      "adapter": "htmlhrelement.align.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.color/get": {
+      "kind": "native",
+      "adapter": "htmlhrelement.color.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.color/set": {
+      "kind": "native",
+      "adapter": "htmlhrelement.color.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.noShade/get": {
+      "kind": "native",
+      "adapter": "htmlhrelement.noshade.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.noShade/set": {
+      "kind": "native",
+      "adapter": "htmlhrelement.noshade.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.size/get": {
+      "kind": "native",
+      "adapter": "htmlhrelement.size.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.size/set": {
+      "kind": "native",
+      "adapter": "htmlhrelement.size.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.width/get": {
+      "kind": "native",
+      "adapter": "htmlhrelement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHRElement.obsolete.width/set": {
+      "kind": "native",
+      "adapter": "htmlhrelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
       "requirements": []
     },
     "HTMLMetaElement.constructor:0/construct": {
