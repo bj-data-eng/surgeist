@@ -34,7 +34,11 @@ fn framed_float_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
 
 fn assert_framed_float_geometry<S: LayoutScalar>(depth: u32) {
     let tree = framed_float_chain::<S>(depth);
-    let batch = compute_layout(&tree, 0, standalone()).expect("framed floats must lay out");
+    assert_framed_float_tree_geometry(&tree, depth);
+}
+
+fn assert_framed_float_tree_geometry<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, depth: u32) {
+    let batch = compute_layout(tree, 0, standalone()).expect("framed floats must lay out");
     let terminal = 2 * depth + 1;
     assert_eq!(batch.node_layouts().len(), (terminal + 1) as usize);
     // Each float establishes its own formatting context and contains the
@@ -123,3 +127,46 @@ deep_framed_float_test!(
     f64,
     assert_framed_float_refusal
 );
+
+fn assert_framed_float_terminal_work<S: LayoutScalar>() {
+    // Every added level has the same sixty-unit inline and automatic block
+    // request variants, with no provider, margins, clearance or scrollbar
+    // retries. Each distinct source observation has one actual-body path to
+    // the terminal. Reusing completed observations therefore permits affine
+    // terminal work even though total work across all nodes can be quadratic.
+    let counts = [2, 3, 5].map(|depth| {
+        let tree = framed_float_chain::<S>(depth);
+        tree.reset_measurement_queries_for(2 * depth + 1);
+        assert_framed_float_tree_geometry(&tree, depth);
+        (depth, tree.measurement_queries())
+    });
+    assert!(
+        counts.windows(2).all(|pair| pair[0].1 <= pair[1].1),
+        "terminal work must be nondecreasing: {counts:?}"
+    );
+    assert!(
+        counts[2].1 - counts[1].1 <= 2 * (counts[1].1 - counts[0].1),
+        "two additional levels add at most twice the terminal work of one: {counts:?}"
+    );
+}
+
+#[test]
+fn framed_float_terminal_work_is_bounded_per_source_observation_f32() {
+    // The existing two-MiB tests cover stack use; isolate repeated work here.
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_framed_float_terminal_work::<f32>)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn framed_float_terminal_work_is_bounded_per_source_observation_f64() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(assert_framed_float_terminal_work::<f64>)
+        .unwrap()
+        .join()
+        .unwrap();
+}

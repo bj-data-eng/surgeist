@@ -57,13 +57,19 @@ enum PublicMeasurementOf<S: LayoutScalar> {
     FromInput(fn(LeafMeasureInputOf<S>) -> Size<S>),
 }
 
+#[derive(Clone, Copy, Debug)]
+struct MeasurementQueryRecording {
+    node: Option<u32>,
+    count: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct PublicLayoutTreeOf<S: LayoutScalar = DefaultScalar> {
     children: HashMap<u32, Vec<u32>>,
     layout_inputs: HashMap<u32, LayoutInputOf<S>>,
     measurements: HashMap<u32, PublicMeasurementOf<S>>,
     non_box_input: NodeInputOf<S>,
-    measurement_queries: std::cell::Cell<Option<usize>>,
+    measurement_queries: std::cell::Cell<Option<MeasurementQueryRecording>>,
 }
 
 impl<S: LayoutScalar> Default for PublicLayoutTreeOf<S> {
@@ -80,13 +86,26 @@ impl<S: LayoutScalar> Default for PublicLayoutTreeOf<S> {
 
 impl<S: LayoutScalar> PublicLayoutTreeOf<S> {
     pub fn reset_measurement_queries(&self) {
-        self.measurement_queries.set(Some(0));
+        self.measurement_queries
+            .set(Some(MeasurementQueryRecording {
+                node: None,
+                count: 0,
+            }));
+    }
+
+    pub fn reset_measurement_queries_for(&self, node: u32) {
+        self.measurement_queries
+            .set(Some(MeasurementQueryRecording {
+                node: Some(node),
+                count: 0,
+            }));
     }
 
     pub fn measurement_queries(&self) -> usize {
         self.measurement_queries
             .get()
             .expect("measurement query recording enabled")
+            .count
     }
 
     pub fn new() -> Self {
@@ -179,8 +198,11 @@ impl<S: LayoutScalar> LayoutTree for PublicLayoutTreeOf<S> {
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
-        if let Some(count) = self.measurement_queries.get() {
-            self.measurement_queries.set(Some(count + 1));
+        if let Some(mut recording) = self.measurement_queries.get()
+            && recording.node.is_none_or(|target| target == node)
+        {
+            recording.count += 1;
+            self.measurement_queries.set(Some(recording));
         }
         self.measurements.contains_key(&node)
     }
