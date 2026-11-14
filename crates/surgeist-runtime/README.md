@@ -340,6 +340,9 @@ fresh flattened arrays and manual assignment through native Source operations.
 Element and Text assignedSlot getters use fresh open-root observations. Query
 work and temporary buffers join the original native and guest admission, with
 captured identities retained until wrapper presentation.
+HTMLBRElement and HTMLHRElement expose their specified string and boolean
+reflections, including their obsolete members, through the same Source and
+reaction adapter.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous

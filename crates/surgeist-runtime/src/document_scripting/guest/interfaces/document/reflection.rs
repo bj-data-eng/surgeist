@@ -11,6 +11,7 @@ use surgeist_html::bounded::attributes::{
     popover_keyword_with, template_shadow_root_mode_keyword_with,
     template_shadow_root_slot_assignment_keyword_with,
 };
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 #[derive(Clone, Copy)]
 pub(super) enum Reflection {
@@ -28,6 +29,8 @@ pub(super) enum Receiver {
     Element,
     Html,
     Template,
+    Br,
+    Hr,
     Meta,
     Slot,
 }
@@ -43,14 +46,9 @@ impl Receiver {
                     .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
             }),
             Self::Template => node.as_template().is_some(),
-            Self::Meta => node.as_element().is_some_and(|element| {
-                let name = element.name();
-                !element.has_failed_construction_interface()
-                    && name.local_name().code_units() == ascii(b"meta")
-                    && name
-                        .namespace_uri()
-                        .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
-            }),
+            Self::Br => html_element_is(node, KnownHtmlElement::Br),
+            Self::Hr => html_element_is(node, KnownHtmlElement::Hr),
+            Self::Meta => html_element_is(node, KnownHtmlElement::Meta),
             Self::Slot => super::slot::is_slot(node),
         }
     }
@@ -60,10 +58,19 @@ impl Receiver {
             Self::Element => const { &ascii(b"Element required") },
             Self::Html => const { &ascii(b"HTMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
+            Self::Br => const { &ascii(b"HTMLBRElement required") },
+            Self::Hr => const { &ascii(b"HTMLHRElement required") },
             Self::Meta => const { &ascii(b"HTMLMetaElement required") },
             Self::Slot => const { &ascii(b"HTMLSlotElement required") },
         }
     }
+}
+
+fn html_element_is(node: DomNode<'_>, expected: KnownHtmlElement) -> bool {
+    node.as_element().is_some_and(|element| {
+        !element.has_failed_construction_interface()
+            && KnownHtmlElement::from_name(element.name()) == Some(expected)
+    })
 }
 
 pub(super) type Member = (

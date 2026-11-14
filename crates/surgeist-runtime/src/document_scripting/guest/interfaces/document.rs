@@ -13,6 +13,7 @@ const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
 mod attr;
 mod attr_factory;
+mod break_elements;
 mod character_data;
 mod document_type;
 mod dom_implementation;
