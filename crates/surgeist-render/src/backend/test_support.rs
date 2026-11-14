@@ -978,6 +978,10 @@ impl ReadyDeviceStateBorrowForTest<'_> {
         self.queue
     }
 
+    pub(crate) fn engine_for_test(&self) -> &VelloEngineState {
+        self.engine
+    }
+
     pub(crate) fn checked_pipeline_for_test(&self) -> &wgpu::ComputePipeline {
         self.engine.checked_pipeline_for_test()
     }

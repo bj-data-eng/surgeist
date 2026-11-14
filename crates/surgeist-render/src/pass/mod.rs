@@ -1,6 +1,8 @@
 mod close;
 mod convolution;
 mod encode;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod finish_custody_tests;
 mod gaussian;
 mod lower;
 mod model;
