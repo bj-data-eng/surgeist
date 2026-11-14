@@ -2,10 +2,11 @@
 use super::*;
 use crate::frame::{GaussianAxis, GaussianPassFacts, GaussianStage};
 
-struct Chain {
-    count: usize,
-    source: Option<RuntimeResourceId>,
-    result: RuntimeResourceId,
+pub(super) struct Chain {
+    pub(super) count: usize,
+    pub(super) source: Option<RuntimeResourceId>,
+    pub(super) original: Option<RuntimeResourceId>,
+    pub(super) result: RuntimeResourceId,
 }
 
 impl ClosedGraphTraversal<'_, '_> {
@@ -14,6 +15,9 @@ impl ClosedGraphTraversal<'_, '_> {
         let RuntimePassKind::Gaussian(work) = &first.kind else {
             return None;
         };
+        if work.purpose() == crate::frame::GaussianPurpose::ConsumedAlpha {
+            return self.visit_native_shadow();
+        }
         let constant = work.stage() == GaussianStage::Constant;
         let context = if constant {
             None
@@ -130,7 +134,7 @@ pub(super) fn steps_are_exact(
     exact.is_some() && !proof.invalid.get()
 }
 
-fn validate_chain(
+pub(super) fn validate_chain(
     plan: &LoweredGraphPlan,
     cursor: usize,
     context: Option<ExecutableCompositionContext>,
@@ -151,8 +155,9 @@ fn validate_chain(
             let resource = resources.get(&c.current).copied()?;
             if resource.producer != RuntimeResourceProducer::Pass(c.producer)
                 || resource.format != RuntimeResourceFormat::Working(plan.working_format)
-                || resource.expected_reads != 1
-                || resource.last_use != first.id
+                || ((initial.purpose() == crate::frame::GaussianPurpose::Standalone
+                    || initial.stage() == GaussianStage::RebaseSource)
+                    && (resource.expected_reads != 1 || resource.last_use != first.id))
                 || !matches!(
                     resource.role,
                     RuntimeResourceRole::FilterIntermediate
@@ -182,6 +187,7 @@ fn validate_chain(
         return Some(Chain {
             count: 1,
             source: None,
+            original: None,
             result: result.id,
         });
     }
@@ -197,10 +203,13 @@ fn validate_chain(
         )?);
         index = index.checked_add(1)?;
         let rebased = current?;
-        if rebased.expected_reads != 1 || rebased.last_use != at(index)?.id {
+        if initial.purpose() == crate::frame::GaussianPurpose::Standalone
+            && (rebased.expected_reads != 1 || rebased.last_use != at(index)?.id)
+        {
             return None;
         }
     }
+    let original = current.map(|resource| resource.id);
     let pass = at(index)?;
     let RuntimePassKind::Gaussian(work) = &pass.kind else {
         return None;
@@ -220,6 +229,7 @@ fn validate_chain(
         return Some(Chain {
             count: index.checked_add(1)?,
             source,
+            original,
             result: result.id,
         });
     }
@@ -318,6 +328,7 @@ fn validate_chain(
     Some(Chain {
         count: index.checked_add(1)?,
         source,
+        original,
         result: result.id,
     })
 }
@@ -325,8 +336,9 @@ fn same_operation(a: &GaussianPassFacts, b: &GaussianPassFacts, proof: &ProofCon
     proof.work(RenderWork::GraphNodeVisits, 1)
         && a.operation() == b.operation()
         && a.source() == b.source()
+        && a.purpose() == b.purpose()
 }
-fn stage<'a>(
+pub(super) fn stage<'a>(
     pass: &RuntimePass,
     initial: &GaussianPassFacts,
     expected: GaussianStage,
@@ -473,14 +485,22 @@ pub(super) fn composite_footprint_is_exact(
     }
     let expected = match &source_pass.kind {
         RuntimePassKind::Gaussian(work)
-            if matches!(
-                work.stage(),
-                GaussianStage::Constant | GaussianStage::PassThrough | GaussianStage::Resolve
-            ) =>
+            if work.purpose() == crate::frame::GaussianPurpose::Standalone
+                && matches!(
+                    work.stage(),
+                    GaussianStage::Constant | GaussianStage::PassThrough | GaussianStage::Resolve
+                ) =>
         {
-            Some(work.mapping())
+            Some((
+                work.mapping().target_spatial(),
+                work.mapping().output_clip(),
+            ))
         }
         RuntimePassKind::Gaussian(_) => return None,
+        RuntimePassKind::NativeShadowMerge(work) => Some((
+            work.mapping().target_spatial(),
+            work.mapping().output_clip(),
+        )),
         _ => None,
     };
     let mut source_releases = 0usize;
@@ -496,15 +516,14 @@ pub(super) fn composite_footprint_is_exact(
     }
     match (parameters.filter_footprint(), expected) {
         (None, None) => Some(()),
-        (Some(footprint), Some(mapping))
+        (Some(footprint), Some((spatial, output_clip)))
             if source.expected_reads == 1
                 && source.last_use == pass.id
                 && source_releases == 1
                 && RuntimeSpatialDescriptor::from_graph(footprint.source_spatial())
                     == source.spatial
-                && source.spatial
-                    == RuntimeSpatialDescriptor::from_graph(mapping.target_spatial())
-                && footprint.output_clip() == mapping.output_clip() =>
+                && source.spatial == RuntimeSpatialDescriptor::from_graph(spatial)
+                && footprint.output_clip() == output_clip =>
         {
             Some(())
         }

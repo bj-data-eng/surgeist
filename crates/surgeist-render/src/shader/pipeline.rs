@@ -18,7 +18,7 @@ use super::{
         BlurAxis, BlurInput, BlurPassDescription, ColorFilterPassDescription,
         CompositePassDescription, ConvolutionPassDescription, CopyBackdropPassDescription,
         CorePassDescription, CorePassProgram, DropShadowColorizePassDescription,
-        GaussianPassDescription, OffsetPassDescription,
+        GaussianPassDescription, NativeShadowPassDescription, OffsetPassDescription,
     },
 };
 
@@ -31,7 +31,13 @@ pub(super) const CONVOLUTION_WGSL: &str = concat!(
 );
 pub(super) const GAUSSIAN_WGSL: &str = concat!(
     include_str!("../shaders/native_filter_color.wgsl"),
+    include_str!("../shaders/native_periodic.wgsl"),
     include_str!("../shaders/gaussian.wgsl")
+);
+pub(super) const NATIVE_SHADOW_WGSL: &str = concat!(
+    include_str!("../shaders/native_filter_color.wgsl"),
+    include_str!("../shaders/native_periodic.wgsl"),
+    include_str!("../shaders/native_shadow.wgsl"),
 );
 const OFFSET_WGSL: &str = concat!(
     include_str!("../shaders/cubic.wgsl"),
@@ -793,6 +799,132 @@ pub(super) fn create_offset_render_pipeline(
             fragment: Some(wgpu::FragmentState {
                 module: shader,
                 entry_point: Some("fragment_main"),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
+pub(super) fn create_native_shadow_bind_group_layout(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: NativeShadowPassDescription,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    let texture = |binding| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    let all_entries = [
+        texture(0),
+        texture(1),
+        wgpu::BindGroupLayoutEntry {
+            binding: 2,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(256),
+            },
+            count: None,
+        },
+    ];
+    let entries: &[wgpu::BindGroupLayoutEntry] =
+        match (description.original, description.shifted_alpha) {
+            (super::ShaderNativeShadowSourceKey::Constant, false) => &all_entries[2..],
+            (super::ShaderNativeShadowSourceKey::Constant, true) => &all_entries[1..],
+            (_, false) => &[all_entries[0], all_entries[2]],
+            (_, true) => &all_entries,
+        };
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist native shadow bindings"),
+            entries,
+        })
+    })
+}
+
+pub(super) fn create_native_shadow_shader_module(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist native shadow shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(NATIVE_SHADOW_WGSL)),
+        })
+    })
+}
+
+pub(super) fn create_native_shadow_render_pipeline(
+    generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
+    device: &wgpu::Device,
+    description: NativeShadowPassDescription,
+    layout: &wgpu::BindGroupLayout,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Surgeist native shadow pipeline layout"),
+            bind_group_layouts: &[Some(layout)],
+            immediate_size: 0,
+        })
+    })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist native shadow pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vertex_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(match (description.original, description.shifted_alpha) {
+                    (super::ShaderNativeShadowSourceKey::Finite, true) => "finite_main",
+                    (super::ShaderNativeShadowSourceKey::Finite, false) => "finite_original_main",
+                    (super::ShaderNativeShadowSourceKey::Periodic, true) => "periodic_main",
+                    (super::ShaderNativeShadowSourceKey::Periodic, false) => {
+                        "periodic_original_main"
+                    }
+                    (super::ShaderNativeShadowSourceKey::Constant, true) => "constant_main",
+                    (super::ShaderNativeShadowSourceKey::Constant, false) => {
+                        "constant_original_main"
+                    }
+                }),
                 targets: &[Some(target)],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
@@ -1807,5 +1939,111 @@ mod gaussian_pipeline_gpu_tests {
             pollster::block_on(validation.pop()).is_none(),
             "actual Gaussian entry points must accept their exact resource layouts"
         );
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod native_shadow_shader_tests {
+    use super::*;
+    use crate::shader::ShaderNativeShadowSourceKey;
+
+    #[test]
+    fn native_shadow_shader_validates_exact_uniform_and_concrete_branch_bindings() {
+        let module = wgpu::naga::front::wgsl::parse_str(NATIVE_SHADOW_WGSL)
+            .unwrap_or_else(|error| panic!("{}", error.emit_to_string(NATIVE_SHADOW_WGSL)));
+        let info = wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap();
+        let uniform = module
+            .global_variables
+            .iter()
+            .find(|(_, variable)| {
+                variable
+                    .binding
+                    .as_ref()
+                    .is_some_and(|binding| binding.binding == 2)
+            })
+            .unwrap()
+            .1;
+        let wgpu::naga::TypeInner::Struct { span, .. } = module.types[uniform.ty].inner else {
+            panic!("merge parameters must have the declared uniform schema");
+        };
+        assert_eq!(span, 256);
+        for (entry_index, entry) in module.entry_points.iter().enumerate() {
+            if entry.stage != wgpu::naga::ShaderStage::Fragment {
+                continue;
+            }
+            let mut used: Vec<_> = module
+                .global_variables
+                .iter()
+                .filter_map(|(handle, variable)| {
+                    let binding = variable.binding.as_ref()?;
+                    (!info.get_entry_point(entry_index)[handle].is_empty())
+                        .then_some(binding.binding)
+                })
+                .collect();
+            used.sort_unstable();
+            let expected: &[u32] = match entry.name.as_str() {
+                "finite_main" | "periodic_main" => &[0, 1, 2],
+                "finite_original_main" | "periodic_original_main" => &[0, 2],
+                "constant_main" => &[1, 2],
+                "constant_original_main" => &[2],
+                _ => panic!("unrecognized native merge entry point"),
+            };
+            assert_eq!(used, expected, "{}", entry.name);
+        }
+    }
+
+    #[test]
+    fn native_shadow_gpu_creates_all_branch_pipelines_in_both_working_formats() {
+        let mut renderer =
+            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let (device, _) = renderer.default_wgpu_device_queue().unwrap();
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let account = Account::for_test();
+        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = account.cpu().unwrap();
+        let shader =
+            create_native_shadow_shader_module(&generation, cpu, Some(&account), device).unwrap();
+        for target_format in [
+            ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+            ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
+        ] {
+            for original in [
+                ShaderNativeShadowSourceKey::Finite,
+                ShaderNativeShadowSourceKey::Periodic,
+                ShaderNativeShadowSourceKey::Constant,
+            ] {
+                for shifted_alpha in [false, true] {
+                    let description = NativeShadowPassDescription {
+                        target_format,
+                        original,
+                        shifted_alpha,
+                    };
+                    let layout = create_native_shadow_bind_group_layout(
+                        &generation,
+                        cpu,
+                        Some(&account),
+                        device,
+                        description,
+                    )
+                    .unwrap();
+                    create_native_shadow_render_pipeline(
+                        &generation,
+                        cpu,
+                        Some(&account),
+                        device,
+                        description,
+                        &layout,
+                        &shader,
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        assert!(pollster::block_on(validation.pop()).is_none());
     }
 }

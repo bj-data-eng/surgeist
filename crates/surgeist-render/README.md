@@ -31,6 +31,11 @@ deviations and authentic finite, constant or periodic sources. It preserves
 independent domains, full outer transforms and color semantics through bounded
 float32 GPU accumulation and atomic publication.
 
+Prepared [native drop shadow](docs/native-shadow.md) preserves a single original
+capture above an alpha-only Gaussian, finite displacement and colored flood. It
+keeps independent stage domains, working color, bounded outer composition and
+atomic resource lifetime.
+
 Prepared [native offset](docs/offset.md) translates the captured input inside
 independent source, filter and result domains. It preserves numeric
 premultiplied color and the full outer affine, with exact aligned copies and
@@ -124,6 +129,7 @@ and the full first-success walkthrough.
 | [How-to](docs/how-to.md) | Exercise native presentation and check the browser compilation boundary. |
 | [Reference](docs/reference.md) | Find public interfaces, features, diagnostics, and verification commands. |
 | [Native convolution](docs/convolution.md) | Prepare and execute resolved convolution with explicit domains, grids and numeric policy. |
+| [Native resolved drop shadow](docs/native-shadow.md) | Blur alpha, displace its finite result and merge the unchanged original above a colored shadow. |
 | [Native offset](docs/offset.md) | Translate finite captured images with independent clipping and resolved reconstruction intent. |
 | [Explanation](docs/explanation.md) | Understand execution routes, publication, precision, and ownership. |
 

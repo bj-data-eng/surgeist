@@ -4,6 +4,7 @@ mod encode;
 mod gaussian;
 mod lower;
 mod model;
+mod native_shadow;
 mod offset;
 mod parameters;
 mod prepare;

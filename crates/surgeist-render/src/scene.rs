@@ -204,6 +204,33 @@ impl Scene {
         Ok(self)
     }
 
+    /// Appends a native shadow, replacing the layer's exclusive foreground effect.
+    ///
+    /// Preserves outer transform, isolation, clip, mask, opacity and composition.
+    /// Finite input includes supported same-layer backdrop. Constant and periodic
+    /// input reject same-layer backdrop before anything is appended.
+    pub fn drop_shadow_layer(
+        &mut self,
+        layer: Layer,
+        operation: PreparedDropShadow,
+        source: DropShadowSource,
+    ) -> Result<&mut Self> {
+        if source.descriptor().is_infinite() && layer.backdrop_filter().is_some() {
+            return Err(DropShadowPreparationError::InfiniteSourceBackdrop.into());
+        }
+        let (child, source) = source.into_parts();
+        self.commands.push(Command::Layer {
+            layer: Box::new(
+                layer.with_native_shadow(crate::native_shadow::DropShadowForeground {
+                    operation,
+                    source,
+                }),
+            ),
+            children: child.commands.into(),
+        });
+        Ok(self)
+    }
+
     /// Applies an ordered stack of resolved masks to one isolated group of children.
     ///
     /// Supply masks from top to bottom. Coverage combines from bottom to top,

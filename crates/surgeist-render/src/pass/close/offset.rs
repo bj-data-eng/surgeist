@@ -109,6 +109,9 @@ fn validate_chain(
     let RuntimePassKind::Offset(work) = &first.kind else {
         return None;
     };
+    if work.purpose() != crate::frame::OffsetPurpose::Standalone {
+        return None;
+    }
     let source = resources.get(&context.current).copied()?;
     if source.producer != RuntimeResourceProducer::Pass(context.producer)
         || source.format != RuntimeResourceFormat::Working(plan.working_format)
@@ -160,7 +163,7 @@ fn validate_chain(
     })
 }
 
-fn validate_stage<'a>(
+pub(super) fn validate_stage<'a>(
     pass: &RuntimePass,
     work: &GraphLoweringOffset,
     source: &RuntimeResourceRequest,
@@ -229,7 +232,7 @@ fn validate_stage<'a>(
     Some(result)
 }
 
-fn mapping_is_exact(
+pub(super) fn mapping_is_exact(
     work: &GraphLoweringOffset,
     source: RuntimeSpatialDescriptor,
     result: RuntimeSpatialDescriptor,
@@ -393,7 +396,7 @@ fn contains(outer: Rect, inner: Rect) -> bool {
         && outer.max().x() >= inner.max().x()
         && outer.max().y() >= inner.max().y()
 }
-fn intersection(a: Rect, b: Rect) -> Rect {
+pub(super) fn intersection(a: Rect, b: Rect) -> Rect {
     let x = a.x().max(b.x());
     let y = a.y().max(b.y());
     Rect::new(

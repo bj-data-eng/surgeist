@@ -45,6 +45,17 @@ pub(crate) enum GaussianStage {
     Constant,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GaussianPurpose {
+    Standalone,
+    ConsumedAlpha,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GaussianChannels {
+    Rgba,
+    Alpha,
+}
+
 /// Immutable checked pass facts shared by semantic planning, lowering and
 /// runtime. One admitted payload retains the accounting custody until its final
 /// graph or runtime reference is released. Cloning only shares that payload.
@@ -57,6 +68,7 @@ struct GaussianPassData {
     source: crate::gaussian::GaussianSourceDescriptor,
     mapping: GaussianMapping,
     stage: GaussianStage,
+    purpose: GaussianPurpose,
 }
 impl GaussianPassFacts {
     pub(super) fn try_new(
@@ -65,16 +77,55 @@ impl GaussianPassFacts {
         stage: GaussianStage,
         storage: &crate::accounting::StorageAccount,
     ) -> Result<Self> {
+        Self::try_new_for_purpose(
+            foreground,
+            mapping,
+            stage,
+            GaussianPurpose::Standalone,
+            storage,
+        )
+    }
+    pub(super) fn try_new_for_purpose(
+        foreground: crate::gaussian::GaussianForeground,
+        mapping: GaussianMapping,
+        stage: GaussianStage,
+        purpose: GaussianPurpose,
+        storage: &crate::accounting::StorageAccount,
+    ) -> Result<Self> {
         SharedValue::new(
             GaussianPassData {
                 operation: foreground.operation,
                 source: foreground.source,
                 mapping,
                 stage,
+                purpose,
             },
             storage,
         )
         .map(Self)
+    }
+    #[cfg(test)]
+    pub(crate) fn with_purpose_for_test(
+        &self,
+        purpose: GaussianPurpose,
+        account: &Account,
+    ) -> Result<Self> {
+        Self::try_new_for_purpose(
+            self.foreground(),
+            self.mapping(),
+            self.stage(),
+            purpose,
+            &account.storage(),
+        )
+    }
+    pub(crate) fn purpose(&self) -> GaussianPurpose {
+        self.0.purpose
+    }
+    pub(crate) fn channels(&self) -> GaussianChannels {
+        match self.0.purpose {
+            GaussianPurpose::Standalone => GaussianChannels::Rgba,
+            GaussianPurpose::ConsumedAlpha => GaussianChannels::Alpha,
+        }
     }
     pub(crate) fn operation(&self) -> &crate::PreparedGaussian {
         &self.0.operation

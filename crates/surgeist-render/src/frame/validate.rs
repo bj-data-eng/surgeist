@@ -18,6 +18,7 @@ pub(super) fn validate_semantic_frame_graph(
     validate_convolution_metadata(graph, account)?;
     validate_offset_metadata(graph, account)?;
     validate_gaussian_metadata(graph, account)?;
+    validate_native_shadow_metadata(graph, account)?;
     if any_node(&graph.passes, account, |pass| {
         Ok(
             matches!(pass.intent, SemanticPassIntent::VelloCapture { .. })
@@ -258,10 +259,14 @@ fn validate_convolution_metadata(
     let mut count = 0_usize;
     let mut offset_count = 0_usize;
     let mut gaussian_count = 0_usize;
+    let mut shadow_count = 0_usize;
     for pass in &graph.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if matches!(pass.intent, SemanticPassIntent::Convolution(_)) {
             count += 1;
+        }
+        if pass.intent == SemanticPassIntent::NativeShadowMerge {
+            shadow_count += 1;
         }
         if matches!(pass.intent, SemanticPassIntent::Gaussian(_)) {
             gaussian_count += 1;
@@ -276,6 +281,9 @@ fn validate_convolution_metadata(
     if gaussian_count != graph.gaussians.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
+    if shadow_count != graph.native_shadows.len() {
+        return Err(GraphValidationError::InvalidPassArity);
+    }
     if offset_count != graph.offsets.len() {
         return Err(GraphValidationError::InvalidPassArity);
     }
@@ -288,12 +296,31 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
     while let Some(first) = graph.gaussians.get(cursor) {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         let foreground = first.facts.foreground();
+        let purpose = first.facts.purpose();
         let start = first.pass.index.0;
         let initial_pass = graph
             .passes
             .get(first.pass.index.as_usize()?)
             .ok_or(GraphValidationError::UnknownPass(first.pass))?;
         let mut source = initial_pass.reads.first().copied();
+        if first.facts.stage() == GaussianStage::RebaseSource
+            && purpose == super::GaussianPurpose::ConsumedAlpha
+            && graph
+                .passes
+                .get(first.pass.index.as_usize()? + 1)
+                .is_some_and(|p| p.intent == SemanticPassIntent::NativeShadowMerge)
+        {
+            if !first.facts.mapping().proves_exact(
+                &foreground.operation,
+                foreground.source,
+                first.facts.stage(),
+                account,
+            )? {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            cursor += 1;
+            continue;
+        }
         let prepare_cursor = if first.facts.stage() == GaussianStage::RebaseSource {
             cursor + 1
         } else {
@@ -318,7 +345,8 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
                 .gaussians
                 .get(cursor)
                 .ok_or(GraphValidationError::InvalidPassArity)?;
-            if entry.facts.foreground() != foreground
+            if entry.facts.purpose() != purpose
+                || entry.facts.foreground() != foreground
                 || entry.facts.stage() != stage
                 || entry.pass.index.0
                     != start
@@ -506,6 +534,7 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
             .get(low)
             .filter(|entry| {
                 entry.pass == producer
+                    && entry.facts.purpose() == super::GaussianPurpose::Standalone
                     && matches!(
                         entry.facts.stage(),
                         GaussianStage::Constant
@@ -514,6 +543,24 @@ fn validate_gaussian_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
                     )
             })
             .map(|entry| entry.facts.mapping().output_footprint());
+        let mut low = 0;
+        let mut high = graph.native_shadows.len();
+        while low < high {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let middle = low + (high - low) / 2;
+            if graph.native_shadows[middle].pass.index.0 < producer.index.0 {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        let expected = expected.or_else(|| {
+            graph
+                .native_shadows
+                .get(low)
+                .filter(|entry| entry.pass == producer)
+                .map(|entry| entry.facts.mapping().output_footprint())
+        });
         if composite.filter_footprint != expected
             || (expected.is_some()
                 && !matches!(composite.kind, SemanticCompositeKind::Layer { .. }))
@@ -584,15 +631,26 @@ fn validate_offset_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphB
                 {
                     return Err(GraphValidationError::InvalidPassResultRole);
                 }
-                OffsetMapping::try_new(
-                    &entry.operation,
-                    spatial(source_descriptor),
-                    spatial(result_descriptor),
-                    account,
-                )?
+                match entry.purpose {
+                    super::OffsetPurpose::Standalone => OffsetMapping::try_new(
+                        &entry.operation,
+                        spatial(source_descriptor),
+                        spatial(result_descriptor),
+                        account,
+                    ),
+                    super::OffsetPurpose::CoveredAlphaDeferred => OffsetMapping::try_covered_alpha(
+                        &entry.operation,
+                        spatial(source_descriptor),
+                        spatial(result_descriptor),
+                        account,
+                    ),
+                }?
                 .ok_or(GraphValidationError::InvalidPassArity)?
             }
             OffsetStage::RebaseSource => {
+                if entry.purpose != super::OffsetPurpose::Standalone {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
                 let source_bounds = source_descriptor.logical_bounds.rect();
                 if source_descriptor.role != SemanticResourceRole::CompositeResult
                     || result_descriptor.logical_bounds.rect() != d
@@ -1134,6 +1192,245 @@ fn edges_equal<T: PartialEq>(
         }
     }
     Ok(true)
+}
+
+/// The fixed two-branch shadow route proves the retained raw original, the
+/// already-covered F alpha producer, deferred offset and the final O consumer.
+fn validate_native_shadow_metadata(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> GraphBuildResult<()> {
+    use super::{GaussianPurpose, GaussianStage, NativeShadowOriginal, OffsetPurpose, OffsetStage};
+    let mut previous = None;
+    for entry in &graph.native_shadows {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if previous.is_some_and(|p| p >= entry.pass.index.0) {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        previous = Some(entry.pass.index.0);
+        let map = entry.facts.mapping();
+        if !map.proves_exact(entry.facts.operation(), entry.facts.source(), account)? {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        let pass = graph
+            .passes
+            .get(entry.pass.index.as_usize()?)
+            .filter(|p| p.id == entry.pass)
+            .ok_or(GraphValidationError::UnknownPass(entry.pass))?;
+        let has_original = map.original_kind() != NativeShadowOriginal::Constant;
+        if pass.intent != SemanticPassIntent::NativeShadowMerge
+            || pass.reads.len() != usize::from(has_original) + usize::from(map.has_shifted_alpha())
+        {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+        let SemanticPassResult::Resource(result) = pass.result else {
+            return Err(GraphValidationError::InvalidPassArity);
+        };
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let output = graph
+            .resources
+            .get(result.index.as_usize()?)
+            .ok_or(GraphValidationError::UnknownResource(result))?;
+        if output.descriptor.role != SemanticResourceRole::FilterIntermediate
+            || super::lower::GraphLoweringSpatialDescriptor::from_semantic(output.descriptor)
+                != map.target_spatial()
+        {
+            return Err(GraphValidationError::InvalidPassResultRole);
+        }
+        let raw = if has_original {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let id = pass.reads[0];
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let resource = graph
+                .resources
+                .get(id.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(id))?;
+            if Some(super::lower::GraphLoweringSpatialDescriptor::from_semantic(
+                resource.descriptor,
+            )) != map.original_mapping().source_spatial()
+                || resource.releasable_after != Some(entry.pass)
+            {
+                return Err(GraphValidationError::InvalidPassResultRole);
+            }
+            Some(id)
+        } else {
+            None
+        };
+        if map.has_shifted_alpha() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let alpha_id = pass.reads[usize::from(has_original)];
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let alpha = graph
+                .resources
+                .get(alpha_id.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(alpha_id))?;
+            let Some(SemanticResourceProducer::Pass(offset_pass)) = alpha.producer else {
+                return Err(GraphValidationError::InvalidPassArity);
+            };
+            let offset_index = ordered_metadata_index(
+                &graph.offsets,
+                offset_pass.index.0,
+                |p| p.pass.index.0,
+                account,
+            )?;
+            let offset = graph
+                .offsets
+                .get(offset_index)
+                .filter(|p| p.pass == offset_pass)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            let filter = entry.facts.source().filter();
+            let domains = crate::FilterDomains::try_new(
+                filter,
+                filter,
+                super::gaussian::result_domain(entry.facts.source()),
+            )?;
+            if offset.purpose != OffsetPurpose::CoveredAlphaDeferred
+                || offset.stage != OffsetStage::Sample
+                || offset.operation != entry.facts.operation().offset(domains)
+                || offset.pass.index.0.checked_add(1) != Some(entry.pass.index.0)
+                || alpha.descriptor.expected_reads != 1
+                || alpha.releasable_after != Some(entry.pass)
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let offset_node = graph
+                .passes
+                .get(offset_pass.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownPass(offset_pass))?;
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let gaussian_id = *offset_node
+                .reads
+                .first()
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let gaussian_resource = graph
+                .resources
+                .get(gaussian_id.index.as_usize()?)
+                .ok_or(GraphValidationError::UnknownResource(gaussian_id))?;
+            let Some(SemanticResourceProducer::Pass(gaussian_pass)) = gaussian_resource.producer
+            else {
+                return Err(GraphValidationError::InvalidPassArity);
+            };
+            let last_index = ordered_metadata_index(
+                &graph.gaussians,
+                gaussian_pass.index.0,
+                |p| p.pass.index.0,
+                account,
+            )?;
+            let last = graph
+                .gaussians
+                .get(last_index)
+                .filter(|p| p.pass == gaussian_pass)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            if last.facts.purpose() != GaussianPurpose::ConsumedAlpha
+                || !matches!(
+                    last.facts.stage(),
+                    GaussianStage::Constant | GaussianStage::PassThrough | GaussianStage::Resolve
+                )
+                || last.facts.operation() != &entry.facts.operation().gaussian()
+                || last.facts.source() != entry.facts.source().for_filter_output()
+                || gaussian_pass.index.0.checked_add(1) != Some(offset_pass.index.0)
+                || gaussian_resource.descriptor.expected_reads != 1
+                || gaussian_resource.releasable_after != Some(offset_pass)
+            {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let mut first_index = last_index;
+            while first_index > 0 {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let before = &graph.gaussians[first_index - 1];
+                let current = &graph.gaussians[first_index];
+                if before.pass.index.0.checked_add(1) != Some(current.pass.index.0)
+                    || before.facts.purpose() != GaussianPurpose::ConsumedAlpha
+                    || before.facts.foreground() != last.facts.foreground()
+                {
+                    break;
+                }
+                first_index -= 1;
+            }
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let first = &graph.gaussians[first_index];
+            let first_pass = &graph.passes[first.pass.index.as_usize()?];
+            let retained = if first.facts.stage() == GaussianStage::RebaseSource {
+                match first_pass.result {
+                    SemanticPassResult::Resource(id) => Some(id),
+                    _ => return Err(GraphValidationError::InvalidPassArity),
+                }
+            } else {
+                account.work(
+                    RenderWork::GraphEdgeVisits,
+                    usize::from(!first_pass.reads.is_empty()),
+                )?;
+                first_pass.reads.first().copied()
+            };
+            if retained != raw {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            if let Some(raw) = raw {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let resource = &graph.resources[raw.index.as_usize()?];
+                if resource.descriptor.expected_reads != 2 || resource.recorded_reads != 2 {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
+            }
+        }
+    }
+    // Every consumed pass must reach this exact fixed route. The ordinary
+    // Gaussian and offset closures retain their one-consumer contracts.
+    for gaussian in &graph.gaussians {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if gaussian.facts.purpose() != GaussianPurpose::ConsumedAlpha {
+            continue;
+        }
+        let next_index = gaussian.pass.index.as_usize()? + 1;
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let next = graph
+            .passes
+            .get(next_index)
+            .ok_or(GraphValidationError::InvalidPassArity)?;
+        if !matches!(
+            next.intent,
+            SemanticPassIntent::Gaussian(_)
+                | SemanticPassIntent::Offset(OffsetStage::Sample)
+                | SemanticPassIntent::NativeShadowMerge
+        ) {
+            return Err(GraphValidationError::InvalidPassArity);
+        }
+    }
+    for offset in &graph.offsets {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if offset.purpose == OffsetPurpose::CoveredAlphaDeferred {
+            let next = graph
+                .passes
+                .get(offset.pass.index.as_usize()? + 1)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            if next.intent != SemanticPassIntent::NativeShadowMerge {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn ordered_metadata_index<T>(
+    items: &[T],
+    key: u32,
+    id: impl Fn(&T) -> u32,
+    account: &Account,
+) -> GraphBuildResult<usize> {
+    let mut low = 0;
+    let mut high = items.len();
+    while low < high {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let middle = low + (high - low) / 2;
+        if id(&items[middle]) < key {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    Ok(low)
 }
 
 #[cfg(test)]

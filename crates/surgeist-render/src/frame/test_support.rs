@@ -150,6 +150,7 @@ impl GpuRenderGraph {
             convolutions: copy_backing(&self.convolutions, account)?,
             offsets: copy_backing(&self.offsets, account)?,
             gaussians: copy_backing(&self.gaussians, account)?,
+            native_shadows: copy_backing(&self.native_shadows, account)?,
             backdrop_reads: copy_backing(&self.backdrop_reads, account)?,
             imports: copy_backing(&self.imports, account)?,
         })
@@ -1275,6 +1276,7 @@ pub(crate) fn semantic_graph_base_initialization_observation_for_test(
             | SemanticPassIntent::Convolution(_)
             | SemanticPassIntent::Offset(_)
             | SemanticPassIntent::Gaussian(_)
+            | SemanticPassIntent::NativeShadowMerge
             | SemanticPassIntent::Composite
             | SemanticPassIntent::Present => None,
         });

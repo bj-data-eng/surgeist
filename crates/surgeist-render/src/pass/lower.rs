@@ -463,6 +463,9 @@ fn runtime_pass_kind(
                 .transpose()?,
         ),
         GraphLoweringPassKind::Offset(offset) => RuntimePassKind::Offset(offset.clone()),
+        GraphLoweringPassKind::NativeShadowMerge(work) => {
+            RuntimePassKind::NativeShadowMerge(work.clone())
+        }
         GraphLoweringPassKind::Gaussian(gaussian) => RuntimePassKind::Gaussian(gaussian.clone()),
         GraphLoweringPassKind::Convolution(convolution) => {
             RuntimePassKind::Convolution(convolution.clone())
@@ -808,6 +811,8 @@ const fn runtime_read_role(role: GraphLoweringReadRole) -> RuntimeReadRole {
         GraphLoweringReadRole::GaussianSource => RuntimeReadRole::GaussianSource,
         GraphLoweringReadRole::GaussianAuxiliary => RuntimeReadRole::GaussianAuxiliary,
         GraphLoweringReadRole::OffsetSource => RuntimeReadRole::OffsetSource,
+        GraphLoweringReadRole::NativeShadowOriginal => RuntimeReadRole::NativeShadowOriginal,
+        GraphLoweringReadRole::NativeShadowAlpha => RuntimeReadRole::NativeShadowAlpha,
         GraphLoweringReadRole::ConvolutionAuxiliary => RuntimeReadRole::ConvolutionAuxiliary,
         GraphLoweringReadRole::BlurredSourceAlpha => RuntimeReadRole::BlurredSourceAlpha,
         GraphLoweringReadRole::CompositeParent => RuntimeReadRole::CompositeParent,
@@ -838,6 +843,8 @@ pub(super) const fn shader_binding_role(role: RuntimeReadRole) -> ShaderBindingR
         RuntimeReadRole::GaussianSource => ShaderBindingRoleKey::GaussianSource,
         RuntimeReadRole::GaussianAuxiliary => ShaderBindingRoleKey::GaussianAuxiliary,
         RuntimeReadRole::OffsetSource => ShaderBindingRoleKey::OffsetSource,
+        RuntimeReadRole::NativeShadowOriginal => ShaderBindingRoleKey::NativeShadowOriginal,
+        RuntimeReadRole::NativeShadowAlpha => ShaderBindingRoleKey::NativeShadowAlpha,
         RuntimeReadRole::ConvolutionAuxiliary => ShaderBindingRoleKey::ConvolutionAuxiliary,
         RuntimeReadRole::BlurredSourceAlpha => ShaderBindingRoleKey::BlurredSourceAlpha,
         RuntimeReadRole::CompositeParent => ShaderBindingRoleKey::CompositeParent,
@@ -861,7 +868,8 @@ const fn runtime_read_uses_shader_sampler(kind: &RuntimePassKind, role: RuntimeR
     match kind {
         RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
-        | RuntimePassKind::Offset(_) => false,
+        | RuntimePassKind::Offset(_)
+        | RuntimePassKind::NativeShadowMerge(_) => false,
         RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { .. },
             ..
@@ -981,6 +989,7 @@ pub(super) fn runtime_pass_cache_keys(
             RuntimePassKind::Convolution(_)
                 | RuntimePassKind::Gaussian(_)
                 | RuntimePassKind::Offset(_)
+                | RuntimePassKind::NativeShadowMerge(_)
         ) {
             Some(match result {
                 RuntimeResultBinding::Resource(resource) => resource_format(resource)?
@@ -1029,6 +1038,7 @@ fn shader_program(kind: &RuntimePassKind) -> Result<ShaderProgramKey> {
         RuntimePassKind::Convolution(_) => Ok(ShaderProgramKey::Convolution),
         RuntimePassKind::Gaussian(operation) => Ok(super::gaussian::shader_program(operation)),
         RuntimePassKind::Offset(_) => Ok(ShaderProgramKey::Offset),
+        RuntimePassKind::NativeShadowMerge(work) => Ok(super::native_shadow::shader_program(work)),
         RuntimePassKind::BlurHorizontal(Some(blur)) => Ok(ShaderProgramKey::BlurHorizontal {
             source_alpha: blur.input == RuntimeBlurInput::SourceAlpha,
             edge: shader_sampling_edge(blur.edge),
@@ -1085,6 +1095,7 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         | RuntimePassKind::Present => &[SpatialUniform],
         RuntimePassKind::ColorFilter(Some(_)) => &[SpatialUniform, ColorFilterOperations],
         RuntimePassKind::Offset(_) => &[ShaderDataBindingKey::OffsetParameters],
+        RuntimePassKind::NativeShadowMerge(_) => &[ShaderDataBindingKey::NativeShadowParameters],
         RuntimePassKind::Gaussian(operation) => super::gaussian::data_bindings(operation),
         RuntimePassKind::Convolution(_) => &[
             ShaderDataBindingKey::ConvolutionParameters,

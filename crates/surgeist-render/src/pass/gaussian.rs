@@ -65,27 +65,32 @@ pub(super) fn parameters(
     } else {
         [0.0; 4]
     };
-    GaussianParameterBytes::try_new(
-        GaussianParameterFacts {
-            stage,
-            source_size: map.source_extent(),
-            target_size: map.target_extent(),
-            source_base: map.source_base(),
-            source_clip: map.source_clip(),
-            output_clip: map.output_clip(),
-            periodic_base: map.periodic_base(),
-            periodic_step: map.periodic_step(),
-            edge_mode,
-            periodic: map.periodic(),
-            direct: map.direct(),
-            axis,
-            first_tap,
-            tap_count,
-            first,
-            linear: work.operation().color_space() == FilterColorSpace::LinearSrgb,
-            converted: map.converted(),
-            color,
-        },
-        account,
-    )
+    let facts = GaussianParameterFacts {
+        stage,
+        source_size: map.source_extent(),
+        target_size: map.target_extent(),
+        source_base: map.source_base(),
+        source_clip: map.source_clip(),
+        output_clip: map.output_clip(),
+        periodic_base: map.periodic_base(),
+        periodic_step: map.periodic_step(),
+        edge_mode,
+        periodic: map.periodic(),
+        direct: map.direct(),
+        axis,
+        first_tap,
+        tap_count,
+        first,
+        linear: work.operation().color_space() == FilterColorSpace::LinearSrgb,
+        converted: map.converted(),
+        color,
+    };
+    match work.channels() {
+        crate::frame::GaussianChannels::Rgba => GaussianParameterBytes::try_new(facts, account),
+        crate::frame::GaussianChannels::Alpha => GaussianParameterBytes::try_new_for_channels(
+            facts,
+            crate::frame::GaussianChannels::Alpha,
+            account,
+        ),
+    }
 }

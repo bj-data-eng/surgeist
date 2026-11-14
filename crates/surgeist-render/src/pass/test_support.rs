@@ -1333,6 +1333,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::Convolution(_)
             | RuntimePassKind::Gaussian(_)
             | RuntimePassKind::Offset(_)
+            | RuntimePassKind::NativeShadowMerge(_)
             | RuntimePassKind::BlurHorizontal(_)
             | RuntimePassKind::BlurVertical(_)
             | RuntimePassKind::DropShadowColorize(_)
@@ -3178,6 +3179,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         | RuntimePassKind::Convolution(_)
         | RuntimePassKind::Gaussian(_)
         | RuntimePassKind::Offset(_)
+        | RuntimePassKind::NativeShadowMerge(_)
         | RuntimePassKind::ColorFilter(_)
         | RuntimePassKind::BlurHorizontal(_)
         | RuntimePassKind::BlurVertical(_)
@@ -4552,7 +4554,7 @@ fn spatial_filter_graph_observation(
         spatial_filter_preparable_graph_for_test(lowered, &Account::for_test()).ok()?;
     let closed = &preparable.closed;
     Some(SpatialFilterGraphObservationForTest {
-        pass_order: spatial_filter_pass_tags(&closed.facts),
+        pass_order: spatial_filter_pass_tags(&closed.facts, &closed.lowered)?,
         ordinary_blur_uses_transparent_black: blur_edges_are_exact(closed),
         drop_shadow_uses_source_alpha_and_continuous_offset: spatial_filter_shadow_facts_are_exact(
             closed,
@@ -4870,7 +4872,7 @@ fn backdrop_filter_chain_observation(
         .is_some_and(|facts| facts.has_only_linear_mirror_sampler && facts.has_exact_data_bindings)
     });
     Some(BackdropFilterChainObservationForTest {
-        pass_order: spatial_filter_pass_tags(facts),
+        pass_order: spatial_filter_pass_tags(facts, &preparable.closed.lowered)?,
         every_backdrop_blur_uses_mirror: !facts.blurs.is_empty()
             && facts
                 .blurs
@@ -4900,10 +4902,24 @@ fn backdrop_filter_chain_observation(
 #[cfg(test)]
 fn spatial_filter_pass_tags(
     facts: &ClosedExecutableGraphFacts,
-) -> Vec<SpatialFilterPassTagForTest> {
+    plan: &LoweredGraphPlan,
+) -> Option<Vec<SpatialFilterPassTagForTest>> {
     let mut tags = Vec::new();
     for step in &facts.filter_steps {
         match step {
+            ExecutableFilterStepFacts::NativeShadow { passes, .. } => {
+                for id in passes.iter() {
+                    let pass = plan.passes.iter().find(|pass| pass.id == *id)?;
+                    tags.push(match &pass.kind {
+                        RuntimePassKind::Gaussian(_) => SpatialFilterPassTagForTest::Gaussian,
+                        RuntimePassKind::Offset(_) => SpatialFilterPassTagForTest::Offset,
+                        RuntimePassKind::NativeShadowMerge(_) => {
+                            SpatialFilterPassTagForTest::NativeShadow
+                        }
+                        _ => return None,
+                    });
+                }
+            }
             ExecutableFilterStepFacts::Offset { .. } => {
                 tags.push(SpatialFilterPassTagForTest::Offset);
             }
@@ -4935,7 +4951,7 @@ fn spatial_filter_pass_tags(
             }
         }
     }
-    tags
+    Some(tags)
 }
 
 #[cfg(test)]
@@ -5329,6 +5345,8 @@ fn observe_layer_composition(
             | RuntimeReadRole::CompletedParent
             | RuntimeReadRole::FilterSource
             | RuntimeReadRole::OffsetSource
+            | RuntimeReadRole::NativeShadowOriginal
+            | RuntimeReadRole::NativeShadowAlpha
             | RuntimeReadRole::ConvolutionSource
             | RuntimeReadRole::GaussianSource
             | RuntimeReadRole::GaussianAuxiliary
@@ -6145,7 +6163,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 13];
+    let mut vocabulary = [false; 14];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6157,6 +6175,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && !vocabulary[10]
         && !vocabulary[11]
         && !vocabulary[12]
+        && !vocabulary[13]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6528,7 +6547,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 13];
+    let mut vocabulary = [false; 14];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6890,6 +6909,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::Convolution(_) => 10,
         RuntimePassKind::Offset(_) => 11,
         RuntimePassKind::Gaussian(_) => 12,
+        RuntimePassKind::NativeShadowMerge(_) => 13,
     }
 }
 

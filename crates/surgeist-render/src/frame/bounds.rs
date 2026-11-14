@@ -561,7 +561,10 @@ impl SemanticSourceContribution {
             && (layer.clip.is_some()
                 || matches!(
                     layer.foreground_filters,
-                    Some(crate::command::NormalizedForegroundEffect::Gaussian(_))
+                    Some(
+                        crate::command::NormalizedForegroundEffect::Gaussian(_)
+                            | crate::command::NormalizedForegroundEffect::NativeShadow(_)
+                    )
                 ))
         {
             // Own clip coverage collapses under the complete ancestor mapping.
@@ -576,8 +579,10 @@ impl SemanticSourceContribution {
             ));
         }
         let gaussian_source_unreachable = layer.foreground_filters.as_ref().is_some_and(|effect| {
-            matches!(effect, crate::command::NormalizedForegroundEffect::Gaussian(foreground)
-                if super::gaussian::source_is_empty(foreground.source) || super::gaussian::empty(super::gaussian::result_domain(foreground.source)))
+            super::bounded_filter_source(effect).is_some_and(|source| {
+                super::gaussian::source_is_empty(source)
+                    || super::gaussian::empty(super::gaussian::result_domain(source))
+            })
         });
         let children = if gaussian_source_unreachable {
             RenderCommands::new_in(account.retained(0)?, account)?
@@ -621,47 +626,47 @@ impl SemanticSourceContribution {
         };
         let mut child_context = context;
         let mut child_transform = layer_to_surface;
-        let child_domain =
-            if let Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) =
-                &layer.foreground_filters
-            {
-                match foreground.source {
-                    crate::gaussian::GaussianSourceDescriptor::Periodic { period, .. }
-                        if !super::gaussian::empty(super::gaussian::result_domain(
-                            foreground.source,
-                        )) && !children.is_empty()
-                            && layer.opacity > 0.0
-                            && !singular_source
-                            && !layer
-                                .mask
-                                .as_ref()
-                                .is_some_and(RenderLayerMask::annihilates_source) =>
-                    {
-                        let capture = super::gaussian::PeriodCapture::try_new(
-                            context,
-                            period,
-                            layer_to_surface,
-                            account,
-                        )?;
-                        child_context = capture.context;
-                        child_transform = capture.transform;
-                        SemanticContributionDomain::RootOutputBounded(LogicalBounds::try_from_rect(
-                            period,
-                            "Gaussian period domain",
-                        )?)
-                    }
-                    crate::gaussian::GaussianSourceDescriptor::Finite { .. } => {
-                        SemanticContributionDomain::RootOutputBounded(LogicalBounds::try_from_rect(
-                            super::gaussian::finite_domain(foreground.source)
-                                .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0)),
-                            "Gaussian finite source domain",
-                        )?)
-                    }
-                    _ => child_domain,
+        let child_domain = if let Some(source) = layer
+            .foreground_filters
+            .as_ref()
+            .and_then(super::bounded_filter_source)
+        {
+            match source {
+                crate::gaussian::GaussianSourceDescriptor::Periodic { period, .. }
+                    if !super::gaussian::empty(super::gaussian::result_domain(source))
+                        && !children.is_empty()
+                        && layer.opacity > 0.0
+                        && !singular_source
+                        && !layer
+                            .mask
+                            .as_ref()
+                            .is_some_and(RenderLayerMask::annihilates_source) =>
+                {
+                    let capture = super::gaussian::PeriodCapture::try_new(
+                        context,
+                        period,
+                        layer_to_surface,
+                        account,
+                    )?;
+                    child_context = capture.context;
+                    child_transform = capture.transform;
+                    SemanticContributionDomain::RootOutputBounded(LogicalBounds::try_from_rect(
+                        period,
+                        "Gaussian period domain",
+                    )?)
                 }
-            } else {
-                child_domain
-            };
+                crate::gaussian::GaussianSourceDescriptor::Finite { .. } => {
+                    SemanticContributionDomain::RootOutputBounded(LogicalBounds::try_from_rect(
+                        super::gaussian::finite_domain(source)
+                            .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0)),
+                        "Gaussian finite source domain",
+                    )?)
+                }
+                _ => child_domain,
+            }
+        } else {
+            child_domain
+        };
         Ok(CommandQualification::Children {
             layer: LayerQualification {
                 layer,
@@ -708,8 +713,10 @@ impl SemanticSourceContribution {
                 if super::offset::domains_are_empty(operation))
         });
         let empty_gaussian = layer.foreground_filters.as_ref().is_some_and(|effect| {
-            matches!(effect, crate::command::NormalizedForegroundEffect::Gaussian(foreground)
-                if super::gaussian::source_is_empty(foreground.source) || super::gaussian::empty(super::gaussian::result_domain(foreground.source)))
+            super::bounded_filter_source(effect).is_some_and(|source| {
+                super::gaussian::source_is_empty(source)
+                    || super::gaussian::empty(super::gaussian::result_domain(source))
+            })
         });
         if empty_offset
             || empty_gaussian
@@ -775,6 +782,13 @@ impl SemanticSourceContribution {
                     )?);
             }
             Some(crate::command::NormalizedForegroundEffect::Offset(_)) => {}
+            Some(crate::command::NormalizedForegroundEffect::NativeShadow(foreground)) => {
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::gaussian::result_domain(foreground.source),
+                        "native shadow primitive result",
+                    )?);
+            }
             Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) => {
                 // O is the operation footprint, including transparent Copy.
                 source_bounds =
@@ -812,38 +826,39 @@ impl SemanticSourceContribution {
         {
             // The parent image fixes operation membership, independently of
             // source support, opacity, masks, or the source transform's rank.
-            let mut affected =
-                if let Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) =
-                    &layer.foreground_filters
-                {
-                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
-                        super::gaussian::result_domain(foreground.source),
-                        "Gaussian operation result",
-                    )?)
-                    .try_transform(layer.transform, "Gaussian operation transform")?
-                } else {
-                    match domain {
-                        SemanticContributionDomain::RootOutputBounded(bounds) => {
-                            SemanticSourceBounds::from_logical_bounds(bounds)
-                        }
-                        SemanticContributionDomain::LocalUnbounded => {
-                            match destination_to_layer_local_mapping(local_to_surface)? {
-                                Some(inverse) => {
-                                    SemanticSourceBounds::from_logical_bounds(context.output_bounds)
-                                        .try_transform(
-                                            inverse.affine,
-                                            "local finite operation domain",
-                                        )?
-                                }
-                                // A singular source mapping cannot remove the current
-                                // parent image's finite operation membership.
-                                None => {
-                                    SemanticSourceBounds::from_logical_bounds(context.output_bounds)
-                                }
+            let mut affected = if let Some(source) = layer
+                .foreground_filters
+                .as_ref()
+                .and_then(super::bounded_filter_source)
+            {
+                SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                    super::gaussian::result_domain(source),
+                    "Gaussian operation result",
+                )?)
+                .try_transform(layer.transform, "Gaussian operation transform")?
+            } else {
+                match domain {
+                    SemanticContributionDomain::RootOutputBounded(bounds) => {
+                        SemanticSourceBounds::from_logical_bounds(bounds)
+                    }
+                    SemanticContributionDomain::LocalUnbounded => {
+                        match destination_to_layer_local_mapping(local_to_surface)? {
+                            Some(inverse) => {
+                                SemanticSourceBounds::from_logical_bounds(context.output_bounds)
+                                    .try_transform(
+                                        inverse.affine,
+                                        "local finite operation domain",
+                                    )?
+                            }
+                            // A singular source mapping cannot remove the current
+                            // parent image's finite operation membership.
+                            None => {
+                                SemanticSourceBounds::from_logical_bounds(context.output_bounds)
                             }
                         }
                     }
-                };
+                }
+            };
             if let Some(clip) = layer.clip.as_ref() {
                 affected = affected.try_intersect(
                     SemanticSourceBounds::try_for_clip(clip, account)?

@@ -50,6 +50,7 @@ mod geometry;
 mod gpu_transaction;
 mod image;
 mod layer;
+mod native_shadow;
 mod offset;
 mod paint;
 #[cfg(feature = "render-paint")]
@@ -121,6 +122,10 @@ pub use layer::{
     BlendMode, Filter, Layer, LayerComposition, MaskLuminanceSpace, PorterDuffOperator,
     ResolvedLayerAlphaMask, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
     Shadow, ShadowKind, ShadowList,
+};
+pub use native_shadow::{
+    DropShadowInput, DropShadowNumericPhase, DropShadowPreparationError, DropShadowSource,
+    PreparedDropShadow, prepare_drop_shadow,
 };
 pub use offset::{
     OffsetInput, OffsetNumericPhase, OffsetParameter, OffsetPreparationError, PreparedOffset,

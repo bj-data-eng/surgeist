@@ -932,6 +932,13 @@ offset cells times the selected fixed reconstruction footprint (1, 4 or 16), plu
 one opportunity per required raw-rebase cell. Transparent exterior taps remain
 scheduled samples. `ScheduledFilterTexels` separately includes each offset and
 rebase output cell; there are no coefficient visits or coefficient uploads.
+Native [resolved drop shadow](native-shadow.md) reuses those Gaussian/offset
+counters and adds `ScheduledShadowSamples` for each actual merge opportunity:
+finite original1, periodic original4, constant original0, plus shifted alpha1
+when present, per output cell. Its one retained raw capture survives both alpha
+preparation and original merge. `ScheduledFilterTexels` includes the actual
+merge, with no fictional projection or flood pass.
+
 Resource probes include complete registered-entry validation, idle summaries and
 repeated explicit entry lookups as well as candidate selection. Forward registry
 audits spend the current attempt's allowance before inspecting each entry; a
@@ -1258,6 +1265,13 @@ position generation. An empty axis retains its admitted work, and the
 stops the planner at the corresponding check or calculation.
 
 ## Preparation accounting
+
+`prepare_drop_shadow` uses `RenderAttemptKind::DropShadow` and the same central
+context. It admits one filter operation, finite dx/dy, finite X/Y deviations and
+finite unit-range flood opacity, reaching five `CoordinateVisits` on success.
+Shared Gaussian/offset helpers preserve owning typed causes without nested public
+attempts or duplicate scalar charges. The admitted shadow is inline, with no
+coefficient backing or native handle.
 
 `prepare_gaussian` uses `RenderAttemptKind::Gaussian` and the same central
 context. It inspects one filter operation and each reached standard deviation in

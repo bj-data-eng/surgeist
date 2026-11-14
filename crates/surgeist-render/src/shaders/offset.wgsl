@@ -38,8 +38,10 @@ fn source_cell(index: vec2<i32>) -> vec4<f32> {
     if (any(index < vec2<i32>(0)) || any(index >= vec2<i32>(textureDimensions(source_texture)))) {
         return vec4<f32>(0.0);
     }
-    return textureLoad(source_texture, index, 0)
-        * cell_coverage(vec2<f32>(index), parameters.source_clip);
+    let value = textureLoad(source_texture, index, 0);
+    // The native shadow producer has already applied F coverage to this cell.
+    if parameters.modes.z != 0u { return value; }
+    return value * cell_coverage(vec2<f32>(index), parameters.source_clip);
 }
 
 fn reconstruct(coordinate: vec2<f32>) -> vec4<f32> {
@@ -90,6 +92,12 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
         }
         return textureLoad(source_texture, index, 0);
     }
-    return reconstruct(coordinate)
+    let reconstructed = reconstruct(coordinate);
+    if parameters.modes.z != 0u {
+        // Clamp signed cubic alpha at the sampling owner, then defer O coverage
+        // until the original-over-shadow merge has completed.
+        return vec4<f32>(0.0, 0.0, 0.0, clamp(reconstructed.a, 0.0, 1.0));
+    }
+    return reconstructed
         * cell_coverage(input.position.xy - vec2<f32>(0.5), parameters.result_clip);
 }

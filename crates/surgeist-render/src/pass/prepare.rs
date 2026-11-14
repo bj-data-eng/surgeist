@@ -27,8 +27,9 @@ use super::super::{
         CompositePassKeyRefs, ConvolutionParameterBytes, ConvolutionPassKeyRefs,
         CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache, DropShadowColorizePassKeyRefs,
         DropShadowParameterBytes, GaussianParameterBytes, GaussianPassKeyRefs,
-        OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
-        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
+        NativeShadowParameterBytes, NativeShadowPassKeyRefs, OffsetParameterBytes,
+        OffsetPassKeyRefs, PassSpatialUniformBytes, ProvisionalCopyBackdropPassObjects,
+        ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -128,6 +129,7 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) convolution_parameters: Option<ConvolutionParameterBytes>,
     pub(super) gaussian_parameters: Option<GaussianParameterBytes>,
     pub(super) offset_parameters: Option<OffsetParameterBytes>,
+    pub(super) native_shadow_parameters: Option<NativeShadowParameterBytes>,
     pub(super) convolution_weights: Option<RuntimePassId>,
 }
 
@@ -458,7 +460,14 @@ fn analyze_runtime_passes(
                         | crate::frame::GaussianStage::Accumulate { .. }
                 ) =>
             {
-                capabilities.validate_filter_float32(crate::RuntimeOperation::GaussianRendering)?;
+                capabilities.validate_filter_float32(match work.purpose() {
+                    crate::frame::GaussianPurpose::Standalone => {
+                        crate::RuntimeOperation::GaussianRendering
+                    }
+                    crate::frame::GaussianPurpose::ConsumedAlpha => {
+                        crate::RuntimeOperation::NativeDropShadowRendering
+                    }
+                })?;
             }
             RuntimePassKind::Convolution(work) if !work.operation().is_passthrough() => {
                 capabilities
@@ -811,13 +820,23 @@ fn prepare_runtime_pass_requests(
             }
             _ => None,
         };
-        if offset_parameters.is_some() || gaussian_parameters.is_some() {
+        let native_shadow_parameters = match &pass.kind {
+            RuntimePassKind::NativeShadowMerge(operation) => {
+                Some(super::native_shadow::parameters(operation, account)?)
+            }
+            _ => None,
+        };
+        if offset_parameters.is_some()
+            || gaussian_parameters.is_some()
+            || native_shadow_parameters.is_some()
+        {
             validate_offset_uniform_limits(uniform_limits)?;
         }
         if (spatial_uniform.is_some()
             || convolution_parameters.is_some()
             || gaussian_parameters.is_some()
-            || offset_parameters.is_some())
+            || offset_parameters.is_some()
+            || native_shadow_parameters.is_some())
             != pass.cache_keys.is_some()
         {
             return Err(preparation_error(
@@ -846,6 +865,7 @@ fn prepare_runtime_pass_requests(
                 convolution_parameters,
                 gaussian_parameters,
                 offset_parameters,
+                native_shadow_parameters,
                 convolution_weights: None,
             });
     }
@@ -964,6 +984,11 @@ pub(super) struct PreparedConvolutionWeightsBinding {
 
 pub(super) struct PreparedOffsetParameterBinding {
     pub(super) bytes: OffsetParameterBytes,
+    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
+}
+
+pub(super) struct PreparedNativeShadowParameterBinding {
+    pub(super) bytes: NativeShadowParameterBytes,
     pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
 }
 
@@ -1300,6 +1325,8 @@ pub(crate) struct PreparedGraph<'device> {
     pub(super) convolution_weight_bindings:
         PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
     pub(super) offset_parameter_bindings: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
+    pub(super) native_shadow_parameter_bindings:
+        PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     pub(super) gaussian_parameter_bindings:
         PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
     pub(super) color_filter_operation_bindings:
@@ -1418,6 +1445,34 @@ fn create_offset_parameter_binding(
     })
 }
 
+fn create_native_shadow_parameter_binding(
+    generation: &Generation,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bytes: &NativeShadowParameterBytes,
+    account: &Account,
+) -> Result<PreparedNativeShadowParameterBinding> {
+    let buffer = generation.allocation_with_upload(
+        GenerationClass::PassBuffers,
+        256,
+        256,
+        Some(account),
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist native_shadow checked texel uniform"),
+                size: 256,
+                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        },
+    )?;
+    queue.write_buffer(&buffer, 0, bytes.as_bytes());
+    Ok(PreparedNativeShadowParameterBinding {
+        bytes: bytes.clone(),
+        buffer: Some(buffer),
+    })
+}
+
 fn create_gaussian_parameter_binding(
     generation: &Generation,
     device: &wgpu::Device,
@@ -1449,6 +1504,7 @@ fn create_gaussian_parameter_binding(
 struct PreparedOperationParameterBindings {
     color_filters: PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     offsets: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
+    native_shadows: PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
     gaussians: PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
 }
 
@@ -1461,6 +1517,7 @@ fn create_operation_parameter_bindings(
 ) -> Result<PreparedOperationParameterBindings> {
     let mut count = 0usize;
     let mut offset_count = 0usize;
+    let mut native_shadow_count = 0usize;
     let mut gaussian_count = 0usize;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -1474,6 +1531,11 @@ fn create_operation_parameter_bindings(
                 .checked_add(1)
                 .ok_or(crate::RenderAccountingError::Invariant)?;
         }
+        if request.native_shadow_parameters.is_some() {
+            native_shadow_count = native_shadow_count
+                .checked_add(1)
+                .ok_or(crate::RenderAccountingError::Invariant)?;
+        }
         if request.color_filter_operations.is_some() {
             count = count
                 .checked_add(1)
@@ -1482,6 +1544,7 @@ fn create_operation_parameter_bindings(
     }
     let mut bindings = PassMap::new(account, count)?;
     let mut offset_bindings = PassMap::new(account, offset_count)?;
+    let mut native_shadow_bindings = PassMap::new(account, native_shadow_count)?;
     let mut gaussian_bindings = PassMap::new(account, gaussian_count)?;
     for request in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -1514,6 +1577,21 @@ fn create_operation_parameter_bindings(
             let binding =
                 create_offset_parameter_binding(generation, device, queue, bytes, account)?;
             offset_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
+        }
+        if let Some(bytes) = request.native_shadow_parameters.as_ref() {
+            if !matches!(request.runtime.kind, RuntimePassKind::NativeShadowMerge(_)) {
+                return Err(preparation_error(
+                    "prepared native_shadow bytes have no exact runtime pass",
+                ));
+            }
+            let Err(slot) = native_shadow_bindings.position(&request.runtime.id, account)? else {
+                return Err(preparation_error(
+                    "one native_shadow pass acquired more than one uniform buffer",
+                ));
+            };
+            let binding =
+                create_native_shadow_parameter_binding(generation, device, queue, bytes, account)?;
+            native_shadow_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
         }
         let Some(bytes) = request.color_filter_operations.as_ref() else {
             continue;
@@ -1560,6 +1638,7 @@ fn create_operation_parameter_bindings(
     Ok(PreparedOperationParameterBindings {
         color_filters: bindings,
         offsets: offset_bindings,
+        native_shadows: native_shadow_bindings,
         gaussians: gaussian_bindings,
     })
 }
@@ -1681,6 +1760,22 @@ fn realize_prepared_graph_pass(
                     pass_cache,
                     account,
                     OffsetPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+                .require_encoding_ready()?;
+            Ok(None)
+        }
+        RuntimePassKind::NativeShadowMerge(_) => {
+            update
+                .realize_native_shadow_pass(
+                    device,
+                    pass_cache,
+                    account,
+                    NativeShadowPassKeyRefs {
                         samplers: keys.samplers(),
                         layout: keys.layout(),
                         shader: keys.shader(),
@@ -2149,6 +2244,7 @@ impl<'device> PreparedGraph<'device> {
                 color_filters: color_filter_operation_bindings,
                 offsets: offset_parameter_bindings,
                 gaussians: gaussian_parameter_bindings,
+                native_shadows: native_shadow_parameter_bindings,
             } = create_operation_parameter_bindings(
                 frame_scope.generation(),
                 &plan,
@@ -2183,6 +2279,7 @@ impl<'device> PreparedGraph<'device> {
                 color_filter_operation_bindings,
                 offset_parameter_bindings,
                 gaussian_parameter_bindings,
+                native_shadow_parameter_bindings,
                 spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
                 pass_cache_update: pass_realization.update,
                 frame_scope: Some(frame_scope),

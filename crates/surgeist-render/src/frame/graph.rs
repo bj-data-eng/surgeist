@@ -1,4 +1,5 @@
 mod gaussian;
+mod native_shadow;
 use super::convolution::{
     ConvolutionMapping, ConvolutionStage, empty_source_spatial, intersection, require_spatial,
     source_domain_is_empty,
@@ -183,6 +184,7 @@ pub(super) enum SemanticPassIntent {
     Convolution(ConvolutionStage),
     Offset(OffsetStage),
     Gaussian(GaussianStage),
+    NativeShadowMerge,
     Composite,
     Present,
 }
@@ -500,11 +502,18 @@ pub(super) struct SemanticGaussianPlan {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(super) struct SemanticNativeShadowPlan {
+    pub(super) pass: SemanticPassId,
+    pub(super) facts: super::NativeShadowPassFacts,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticOffsetPlan {
     pub(super) pass: SemanticPassId,
     pub(super) operation: crate::PreparedOffset,
     pub(super) mapping: OffsetMapping,
     pub(super) stage: OffsetStage,
+    pub(super) purpose: super::OffsetPurpose,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -541,6 +550,7 @@ pub(crate) struct GpuRenderGraph {
     pub(super) convolutions: AccountedVec<SemanticConvolutionPlan>,
     pub(super) offsets: AccountedVec<SemanticOffsetPlan>,
     pub(super) gaussians: AccountedVec<SemanticGaussianPlan>,
+    pub(super) native_shadows: AccountedVec<SemanticNativeShadowPlan>,
     pub(super) backdrop_reads: AccountedVec<SemanticBackdropRead>,
     pub(super) imports: AccountedVec<SemanticImportPlan>,
 }
@@ -823,6 +833,7 @@ impl SemanticGraphBuilder {
             | SemanticPassIntent::Convolution(_)
             | SemanticPassIntent::Offset(_)
             | SemanticPassIntent::Gaussian(_)
+            | SemanticPassIntent::NativeShadowMerge
             | SemanticPassIntent::Composite => {
                 self.validate_transform_pass_shape(intent, reads, result)?;
             }
@@ -929,6 +940,8 @@ impl SemanticGraphBuilder {
                     GaussianStage::Accumulate { first: false, .. } => 2,
                     _ => 1,
                 }
+        } else if intent == SemanticPassIntent::NativeShadowMerge {
+            reads.len() <= 2
         } else if intent == SemanticPassIntent::Composite {
             reads.len() >= 2
         } else {
@@ -947,7 +960,9 @@ impl SemanticGraphBuilder {
             SemanticPassIntent::Gaussian(
                 GaussianStage::Prepare | GaussianStage::Accumulate { .. },
             ) => SemanticResourceRole::FilterFloat,
-            SemanticPassIntent::Gaussian(_) => SemanticResourceRole::FilterIntermediate,
+            SemanticPassIntent::Gaussian(_) | SemanticPassIntent::NativeShadowMerge => {
+                SemanticResourceRole::FilterIntermediate
+            }
             SemanticPassIntent::CopyBackdrop => SemanticResourceRole::BackdropCopy,
             SemanticPassIntent::DropShadowColorize => SemanticResourceRole::ShadowImage,
             SemanticPassIntent::Composite => SemanticResourceRole::CompositeResult,
@@ -1235,6 +1250,7 @@ impl SemanticGraphBuilder {
             convolutions: self.account.retained(0)?,
             offsets: self.account.retained(0)?,
             gaussians: self.account.retained(0)?,
+            native_shadows: self.account.retained(0)?,
             backdrop_reads: self.account.retained(0)?,
             imports: self.account.retained(0)?,
         })
@@ -1422,6 +1438,7 @@ pub(super) struct SemanticFrameGraphPlanner<'a> {
     convolutions: AccountedVec<SemanticConvolutionPlan>,
     offsets: AccountedVec<SemanticOffsetPlan>,
     gaussians: AccountedVec<SemanticGaussianPlan>,
+    native_shadows: AccountedVec<SemanticNativeShadowPlan>,
     backdrop_reads: AccountedVec<SemanticBackdropRead>,
     imports: AccountedVec<SemanticImportPlan>,
     resolved_mask_imports: AccountedVec<(ResolvedMaskUploadKey, PlannedGraphResource)>,
@@ -1474,6 +1491,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             convolutions: account.retained(0)?,
             offsets: account.retained(0)?,
             gaussians: account.retained(0)?,
+            native_shadows: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1538,6 +1556,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.convolutions = planner.convolutions;
         graph.offsets = planner.offsets;
         graph.gaussians = planner.gaussians;
+        graph.native_shadows = planner.native_shadows;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1579,6 +1598,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             convolutions: account.retained(0)?,
             offsets: account.retained(0)?,
             gaussians: account.retained(0)?,
+            native_shadows: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
             imports: account.retained(0)?,
             resolved_mask_imports: account.retained(0)?,
@@ -1682,6 +1702,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.convolutions = planner.convolutions;
         graph.offsets = planner.offsets;
         graph.gaussians = planner.gaussians;
+        graph.native_shadows = planner.native_shadows;
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
@@ -1788,7 +1809,10 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     && (layer.clip.is_some()
                         || matches!(
                             layer.foreground_filters,
-                            Some(crate::command::NormalizedForegroundEffect::Gaussian(_))
+                            Some(
+                                crate::command::NormalizedForegroundEffect::Gaussian(_)
+                                    | crate::command::NormalizedForegroundEffect::NativeShadow(_)
+                            )
                         ))
                 {
                     frame.state.parent_locality = CaptureParentLocality::External;
@@ -1881,7 +1905,10 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 let source = if source_forced_empty
                     && matches!(
                         completion.layer.foreground_filters,
-                        Some(crate::command::NormalizedForegroundEffect::Gaussian(_))
+                        Some(
+                            crate::command::NormalizedForegroundEffect::Gaussian(_)
+                                | crate::command::NormalizedForegroundEffect::NativeShadow(_)
+                        )
                     ) {
                     None
                 } else if source_forced_empty || source_is_coverage {
@@ -1902,6 +1929,13 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) => {
                             self.prepare_gaussian_source(children, *foreground, layer_to_surface)?
                         }
+                        Some(crate::command::NormalizedForegroundEffect::NativeShadow(
+                            foreground,
+                        )) => self.prepare_native_shadow_source(
+                            children,
+                            *foreground,
+                            layer_to_surface,
+                        )?,
                         _ => self.prepare_layer_source(
                             children,
                             layer_to_surface,
@@ -2100,6 +2134,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     crate::command::NormalizedForegroundEffect::Gaussian(foreground) => {
                         super::gaussian::source_is_empty(foreground.source)
                     }
+                    crate::command::NormalizedForegroundEffect::NativeShadow(foreground) => {
+                        super::gaussian::source_is_empty(foreground.source)
+                    }
                     crate::command::NormalizedForegroundEffect::Css(_) => false,
                 });
         if let Some(backdrop) = layer
@@ -2121,12 +2158,19 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         {
             source = self.apply_gaussian(source, *foreground, layer_to_surface)?;
         }
+        if let Some(crate::command::NormalizedForegroundEffect::NativeShadow(foreground)) =
+            &layer.foreground_filters
+            && !source_forced_empty
+        {
+            source = self.apply_native_shadow(source, *foreground, layer_to_surface)?;
+        }
         if let Some(effect) = &layer.foreground_filters
             && let Some(group) = source
             && !source_forced_empty
             && !matches!(
                 effect,
                 crate::command::NormalizedForegroundEffect::Gaussian(_)
+                    | crate::command::NormalizedForegroundEffect::NativeShadow(_)
             )
         {
             source = match effect {
@@ -2144,14 +2188,30 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 crate::command::NormalizedForegroundEffect::Offset(operation) => {
                     self.apply_offset(group, operation, layer_to_surface)?
                 }
-                crate::command::NormalizedForegroundEffect::Gaussian(_) => Some(group),
+                crate::command::NormalizedForegroundEffect::Gaussian(_)
+                | crate::command::NormalizedForegroundEffect::NativeShadow(_) => Some(group),
             };
         }
         if source.is_none()
             && layer.foreground_filters.is_some()
             && !layer.composition.transparent_source_preserves_parent()
         {
-            if let Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) =
+            if let Some(crate::command::NormalizedForegroundEffect::NativeShadow(foreground)) =
+                &layer.foreground_filters
+            {
+                source = self.apply_native_shadow(
+                    None,
+                    crate::native_shadow::DropShadowForeground {
+                        operation: foreground.operation,
+                        source: crate::gaussian::GaussianSourceDescriptor::Constant {
+                            color: crate::Color::TRANSPARENT,
+                            filter: foreground.source.filter(),
+                            result: foreground.source.result(),
+                        },
+                    },
+                    layer_to_surface,
+                )?;
+            } else if let Some(crate::command::NormalizedForegroundEffect::Gaussian(foreground)) =
                 &layer.foreground_filters
             {
                 let output = super::gaussian::result_domain(foreground.source);
@@ -2207,7 +2267,10 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         let additional_sources = alpha_mask.as_ref().map(|(_, resource)| *resource);
         let source_bounds_operation = matches!(
             layer.foreground_filters,
-            Some(crate::command::NormalizedForegroundEffect::Gaussian(_))
+            Some(
+                crate::command::NormalizedForegroundEffect::Gaussian(_)
+                    | crate::command::NormalizedForegroundEffect::NativeShadow(_)
+            )
         );
         let result = self.composite_into_parent(
             parent,
@@ -2236,25 +2299,34 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             true,
         )?;
         if source_bounds_operation {
-            let footprint = self
-                .gaussians
-                .last()
-                .filter(|entry| {
-                    Some(entry.pass) == source.producer
-                        && matches!(
-                            entry.facts.stage(),
-                            GaussianStage::Constant
-                                | GaussianStage::PassThrough
-                                | GaussianStage::Resolve
-                        )
-                })
-                .map(|entry| entry.facts.mapping().output_footprint())
-                .ok_or_else(|| {
-                    Error::new(
-                        BackendErrorCode::RenderFailed,
-                        "Gaussian final composition lost its output footprint",
-                    )
-                })?;
+            let footprint = if matches!(
+                layer.foreground_filters,
+                Some(crate::command::NormalizedForegroundEffect::NativeShadow(_))
+            ) {
+                self.native_shadows
+                    .last()
+                    .filter(|entry| Some(entry.pass) == source.producer)
+                    .map(|entry| entry.facts.mapping().output_footprint())
+            } else {
+                self.gaussians
+                    .last()
+                    .filter(|entry| {
+                        Some(entry.pass) == source.producer
+                            && matches!(
+                                entry.facts.stage(),
+                                GaussianStage::Constant
+                                    | GaussianStage::PassThrough
+                                    | GaussianStage::Resolve
+                            )
+                    })
+                    .map(|entry| entry.facts.mapping().output_footprint())
+            }
+            .ok_or_else(|| {
+                Error::new(
+                    BackendErrorCode::RenderFailed,
+                    "Gaussian final composition lost its output footprint",
+                )
+            })?;
             if let Some(plan) = self.composites.last_mut() {
                 plan.filter_footprint = Some(footprint);
             }
@@ -2415,6 +2487,25 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         mapping: OffsetMapping,
         stage: OffsetStage,
     ) -> Result<PlannedGraphResource> {
+        self.declare_offset_pass_for_purpose(
+            source,
+            spatial,
+            operation,
+            mapping,
+            stage,
+            super::OffsetPurpose::Standalone,
+        )
+    }
+
+    fn declare_offset_pass_for_purpose(
+        &mut self,
+        source: PlannedGraphResource,
+        spatial: NonEmptyFrameSpatialPlan,
+        operation: &crate::PreparedOffset,
+        mapping: OffsetMapping,
+        stage: OffsetStage,
+        purpose: super::OffsetPurpose,
+    ) -> Result<PlannedGraphResource> {
         // Admit the actual metadata slot before declaring its graph effects.
         self.offsets.grow(1)?;
         let result = graph_build(
@@ -2436,6 +2527,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             operation: *operation,
             mapping,
             stage,
+            purpose,
         })?;
         Ok(PlannedGraphResource {
             id: result,

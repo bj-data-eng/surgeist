@@ -1,5 +1,7 @@
 //! Centrally admitted native image-space translation parameters.
-use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
+use crate::accounting::{
+    Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+};
 use crate::{Error, FilterDomains, ImageRendering, Result};
 
 /// Offset parameter whose resolved value is invalid.
@@ -93,7 +95,7 @@ impl Default for OffsetInput {
 /// planning the frame. This value owns no heap payload or native GPU resource.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PreparedOffset {
-    input: OffsetInput,
+    displacement: OffsetDisplacement,
     domains: FilterDomains,
 }
 
@@ -103,16 +105,47 @@ impl PreparedOffset {
     }
 
     pub(crate) const fn dx(self) -> f64 {
-        self.input.dx
+        self.displacement.input.dx
     }
 
     pub(crate) const fn dy(self) -> f64 {
-        self.input.dy
+        self.displacement.input.dy
     }
 
     pub(crate) const fn rendering(self) -> ImageRendering {
-        self.input.rendering
+        self.displacement.input.rendering
     }
+}
+
+/// Finite displacement and reconstruction intent shared by native effects.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct OffsetDisplacement {
+    input: OffsetInput,
+}
+impl OffsetDisplacement {
+    pub(crate) const fn with_domains(self, domains: FilterDomains) -> PreparedOffset {
+        PreparedOffset {
+            displacement: self,
+            domains,
+        }
+    }
+}
+
+/// Admits scalar displacement inside an already charged native operation.
+pub(crate) fn prepare_offset_displacement_in(
+    input: OffsetInput,
+    account: &Account,
+) -> Result<OffsetDisplacement> {
+    for (parameter, value) in [
+        (OffsetParameter::Dx, input.dx),
+        (OffsetParameter::Dy, input.dy),
+    ] {
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        if !value.is_finite() {
+            return Err(OffsetPreparationError::InvalidParameter { parameter, value }.into());
+        }
+    }
+    Ok(OffsetDisplacement { input })
 }
 
 /// Admits one finite native image-space offset through central accounting.
@@ -132,17 +165,7 @@ pub fn prepare_offset(
         |account| {
             account.phase(RenderPhase::Preparation, || {
                 account.work(RenderWork::FilterOperationVisits, 1)?;
-                for (parameter, value) in [
-                    (OffsetParameter::Dx, input.dx),
-                    (OffsetParameter::Dy, input.dy),
-                ] {
-                    account.work(RenderWork::CoordinateVisits, 1)?;
-                    if !value.is_finite() {
-                        return Err(
-                            OffsetPreparationError::InvalidParameter { parameter, value }.into(),
-                        );
-                    }
-                }
+                let displacement = prepare_offset_displacement_in(input, account)?;
                 for (role, rect) in [
                     ("source", domains.source()),
                     ("filter", domains.filter()),
@@ -170,7 +193,7 @@ pub fn prepare_offset(
                         }
                     }
                 }
-                Ok(PreparedOffset { input, domains })
+                Ok(displacement.with_domains(domains))
             })
         },
     )
