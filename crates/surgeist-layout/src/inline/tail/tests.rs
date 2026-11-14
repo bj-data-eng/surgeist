@@ -531,3 +531,127 @@ fn actual_provider_failure_during_a_losing_tail_trial_keeps_original_context() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn actual_tail_walk_receipts_reject_count_terminal_prefix_frontier_and_domain_changes() {
+    fn walk(
+        query: &MixedInlineRunInputOf<f64>,
+        control: NumericWalkControl,
+        mut band: impl FnMut(f64) -> f64,
+        clear: impl FnMut(f64, PostLineClearIntent) -> f64,
+    ) -> (NumericSequence<f64>, NumericWalkOutcome) {
+        let supplied = project_inline_participants(&query.participants);
+        let mut sequence = NumericSequence::new(query, true);
+        let boundaries = numeric_line_boundaries(query);
+        let outcome = walk_numeric_sequence(
+            NumericWalkInput {
+                input: query,
+                supplied: &supplied,
+                available: 60.0,
+                receiver_source: ReceiverSourceMode::Deferred,
+            },
+            &mut sequence,
+            &mut boundaries.into_iter().peekable(),
+            control,
+            |start, _| {
+                Ok::<_, std::convert::Infallible>(LogicalLineBandQueryResultOf {
+                    inline_start: 0.0,
+                    inline_end: band(start),
+                    next_transition: None,
+                })
+            },
+            clear,
+        )
+        .unwrap();
+        (sequence, outcome)
+    }
+    let query = input::<f64>(
+        &[60.0, 30.0, 30.0, 10.0],
+        &[],
+        Direction::Ltr,
+        crate::TextWrapStyle::AvoidShortLastLine,
+    );
+    let (ordinary, _) = walk(
+        &query,
+        NumericWalkControl::group(None, None),
+        |_| 60.0,
+        |block, _| block,
+    );
+    let entry = NumericSequence::new(&query, true).checkpoint();
+    let mut preparation = prepare_group_reference(&ordinary, entry).unwrap();
+    let (baseline, outcome) = walk(
+        &query,
+        trial_control(&preparation.reference, None),
+        |_| 60.0,
+        |block, _| block,
+    );
+    let baseline = finish_trial(&baseline, entry, &preparation.reference, outcome).unwrap();
+    preparation.reference.frontier = Some(baseline.value.frontier);
+    let control = trial_control(&preparation.reference, None);
+    let (count, outcome) = walk(&query, control, |_| 30.0, |block, _| block);
+    assert!(outcome == NumericWalkOutcome::CountExceeded);
+    assert_eq!(count.selected_lines.len(), 4);
+    assert!(finish_trial(&count, entry, &preparation.reference, outcome).is_none());
+    let changed_prefix = input::<f64>(
+        &[50.0, 30.0, 30.0, 10.0],
+        &[],
+        Direction::Ltr,
+        crate::TextWrapStyle::AvoidShortLastLine,
+    );
+    let (prefix, outcome) = walk(&changed_prefix, control, |_| 60.0, |block, _| block);
+    assert_eq!(prefix.selected_lines.len(), 3);
+    assert!(finish_trial(&prefix, entry, &preparation.reference, outcome).is_none());
+    let (frontier, outcome) = walk(
+        &query,
+        control,
+        |_| 60.0,
+        |block, _| if block == 10.0 { 11.0 } else { block },
+    );
+    assert!(frontier.selected_lines[..1] == baseline.value.group.lines[..1]);
+    assert!(frontier.tail_frontier != preparation.reference.frontier);
+    assert!(finish_trial(&frontier, entry, &preparation.reference, outcome).is_none());
+    let (domain, outcome) = walk(
+        &query,
+        control,
+        |start| if start >= 20.0 { 5.0 } else { 60.0 },
+        |block, _| block,
+    );
+    assert_eq!(domain.selected_lines.len(), 3);
+    assert!(domain.tail_frontier == preparation.reference.frontier);
+    assert!(final_pair(&domain.selected_lines).is_none());
+    assert!(finish_trial(&domain, entry, &preparation.reference, outcome).is_none());
+    // Two independently authored actual groups have equal formatted count,
+    // but a Forced terminal cannot authenticate a Paragraph reference.
+    let paragraph = input::<f64>(
+        &[30.0, 30.0, 10.0, 10.0],
+        &[],
+        Direction::Ltr,
+        crate::TextWrapStyle::AvoidShortLastLine,
+    );
+    let (ordinary, _) = walk(
+        &paragraph,
+        NumericWalkControl::group(None, None),
+        |_| 60.0,
+        |block, _| block,
+    );
+    let reference = prepare_group_reference(&ordinary, entry).unwrap();
+    let forced = input::<f64>(
+        &[30.0, 30.0, 10.0, 10.0],
+        &[2],
+        Direction::Ltr,
+        crate::TextWrapStyle::AvoidShortLastLine,
+    );
+    let (terminal, outcome) = walk(
+        &forced,
+        trial_control(&reference.reference, None),
+        |_| 60.0,
+        |block, _| block,
+    );
+    assert!(outcome == NumericWalkOutcome::GroupComplete);
+    assert_eq!(terminal.selected_lines.len(), 2);
+    assert_eq!(
+        terminal.selected_lines.last().unwrap().ending,
+        surgeist_text::LineEnd::Forced
+    );
+    assert!(finish_trial(&terminal, entry, &reference.reference, outcome).is_none());
+}

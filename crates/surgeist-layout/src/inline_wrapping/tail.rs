@@ -79,32 +79,81 @@ pub(crate) fn choose_tail<T, E>(
     reference: TailPair,
     mut run: impl FnMut(TailGoal) -> Result<Option<TailTrial<T>>, E>,
 ) -> Result<Option<TailWinner<T>>, E> {
-    if !reference.eligible_auto() {
+    let Some(mut selection) = TailSelection::new(reference) else {
         return Ok(None);
+    };
+    while let Some(goal) = selection.next_goal() {
+        selection.accept(run(goal)?);
     }
-    let mut winner: Option<TailWinner<T>> = None;
-    let mut previous = None;
-    // A finite search portfolio, not a shortness cutoff or a group-size cap.
-    for step in 0..=16 {
-        let fraction = f64::from(step) / 16.0;
-        let goal = TailGoal(
-            (1.0 - fraction) * reference.last.fullness()
-                + fraction * reference.penultimate.fullness(),
+    Ok(selection.finish())
+}
+
+/// Finite Tail goals and ranking shared by suspended and synchronous owners.
+/// Only adjacent equal goals are skipped; equal scores keep the first trial.
+pub(crate) struct TailSelection<T> {
+    reference: TailPair,
+    step: u8,
+    previous: Option<TailGoal>,
+    pending: Option<TailGoal>,
+    winner: Option<TailWinner<T>>,
+}
+
+impl<T> TailSelection<T> {
+    pub(crate) fn new(reference: TailPair) -> Option<Self> {
+        reference.eligible_auto().then_some(Self {
+            reference,
+            step: 0,
+            previous: None,
+            pending: None,
+            winner: None,
+        })
+    }
+
+    pub(crate) fn next_goal(&mut self) -> Option<TailGoal> {
+        assert!(
+            self.pending.is_none(),
+            "the previous Tail goal owns a trial receipt"
         );
-        if previous == Some(goal) {
-            continue;
+        while self.step <= 16 {
+            let fraction = f64::from(self.step) / 16.0;
+            self.step += 1;
+            let goal = TailGoal(
+                (1.0 - fraction) * self.reference.last.fullness()
+                    + fraction * self.reference.penultimate.fullness(),
+            );
+            if self.previous == Some(goal) {
+                continue;
+            }
+            self.previous = Some(goal);
+            self.pending = Some(goal);
+            return Some(goal);
         }
-        previous = Some(goal);
-        let Some(trial) = run(goal)? else { continue };
-        if trial.pair.admission(reference) == TailAdmission::Improved
-            && winner
+        None
+    }
+
+    pub(crate) fn accept(&mut self, trial: Option<TailTrial<T>>) {
+        let goal = self
+            .pending
+            .take()
+            .expect("a Tail trial answers the pending goal");
+        let Some(trial) = trial else { return };
+        if trial.pair.admission(self.reference) == TailAdmission::Improved
+            && self
+                .winner
                 .as_ref()
                 .is_none_or(|prior| trial.pair.minimum() > prior.trial.pair.minimum())
         {
-            winner = Some(TailWinner { goal, trial });
+            self.winner = Some(TailWinner { goal, trial });
         }
     }
-    Ok(winner)
+
+    pub(crate) fn finish(self) -> Option<TailWinner<T>> {
+        assert!(
+            self.pending.is_none() && self.step > 16,
+            "all Tail goals were answered"
+        );
+        self.winner
+    }
 }
 
 #[cfg(test)]

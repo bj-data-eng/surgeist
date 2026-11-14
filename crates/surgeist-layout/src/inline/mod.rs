@@ -3349,15 +3349,19 @@ pub(super) fn numeric_fit_supports_continuation<S: LayoutScalar>(
 ) -> bool {
     matches!(
         style,
-        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable | crate::TextWrapStyle::Balance
+        crate::TextWrapStyle::Auto
+            | crate::TextWrapStyle::Stable
+            | crate::TextWrapStyle::Balance
+            | crate::TextWrapStyle::AvoidShortLastLine
     ) || crate::layout_math::normal_available_size(available).is_none()
 }
 
 enum NumericRunOwner<S: LayoutScalar> {
     Ordinary(NumericWalk),
-    // Balance retains its reference groups and finite portfolio. Keep that
+    // Quality owners retain reference groups and finite portfolios. Keep that
     // state off the common request frame; ordinary runs need no allocation.
     Balance(Box<balance::NumericBalance<S>>),
+    Tail(Box<tail::NumericTail<S>>),
 }
 
 pub(super) struct NumericRun<S: LayoutScalar> {
@@ -3389,9 +3393,13 @@ impl<S: LayoutScalar> NumericRun<S> {
         let boundaries = numeric_line_boundaries(&input);
         let balanced = input.text_wrap_style == crate::TextWrapStyle::Balance
             && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
-        let sequence = NumericSequence::new(&input, observe || balanced);
+        let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
+            && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
+        let sequence = NumericSequence::new(&input, observe || balanced || repair_tail);
         let owner = if balanced {
             NumericRunOwner::Balance(Box::new(balance::NumericBalance::new(&sequence)))
+        } else if repair_tail {
+            NumericRunOwner::Tail(Box::new(tail::NumericTail::new(&sequence)))
         } else {
             NumericRunOwner::Ordinary(NumericWalk::new(&sequence, NumericWalkControl::auto()))
         };
@@ -3423,6 +3431,9 @@ impl<S: LayoutScalar> NumericRun<S> {
             receiver_source: ReceiverSourceMode::Deferred,
         };
         let step = match &mut self.owner {
+            NumericRunOwner::Tail(tail) => {
+                tail.advance(request, &mut self.sequence, &self.boundaries, band, clear)?
+            }
             NumericRunOwner::Balance(balance) => {
                 balance.advance(request, &mut self.sequence, &self.boundaries, band, clear)?
             }
@@ -3489,8 +3500,10 @@ where
         )
             -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
 {
-    if input.text_wrap_style == crate::TextWrapStyle::Balance
-        && crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
+    if matches!(
+        input.text_wrap_style,
+        crate::TextWrapStyle::Balance | crate::TextWrapStyle::AvoidShortLastLine
+    ) && crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
     {
         let mut run = NumericRun::from_resolved(input, supplied, available, observe_formatted);
         while let Some(demand) = run.advance(&mut band_source, &mut clear_source)? {
@@ -3499,11 +3512,9 @@ where
         return run.finish();
     }
     let mut line_boundaries = numeric_line_boundaries(&input).into_iter().peekable();
-    let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
-        && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
     let pretty = input.text_wrap_style == crate::TextWrapStyle::Pretty
         && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
-    let mut sequence = NumericSequence::new(&input, observe_formatted || repair_tail || pretty);
+    let mut sequence = NumericSequence::new(&input, observe_formatted || pretty);
     let receiver_source = std::cell::RefCell::new(receiver_source);
     let request = NumericWalkInput {
         input: &input,
@@ -3511,16 +3522,7 @@ where
         available,
         receiver_source: ReceiverSourceMode::Immediate(&receiver_source),
     };
-    if repair_tail {
-        let boundaries = line_boundaries.collect::<Vec<_>>();
-        tail::repair_numeric_tail(
-            request,
-            &boundaries,
-            &mut sequence,
-            &mut band_source,
-            &mut clear_source,
-        )?;
-    } else if pretty {
+    if pretty {
         let boundaries = line_boundaries.collect::<Vec<_>>();
         pretty::layout_pretty_sequence(
             request,
