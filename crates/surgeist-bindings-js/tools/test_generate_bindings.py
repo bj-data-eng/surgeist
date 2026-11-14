@@ -325,7 +325,7 @@ class ValueLoweringTests(unittest.TestCase):
         model = g.lower_values(g.load())
         self.assertEqual([d["name"] for d in model["dictionaries"]],
                          ["GetRootNodeOptions", "ElementCreationOptions", "ImportNodeOptions",
-                          "ShadowRootInit", "EventInit", "EventListenerOptions"])
+                          "ShadowRootInit", "EventInit", "EventListenerOptions", "AssignedNodesOptions"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
                          ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState", "DocumentVisibilityState"])
         # No member may be discarded. Signal and source combinations outside

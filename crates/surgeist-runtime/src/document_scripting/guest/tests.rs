@@ -19,6 +19,7 @@ pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod projection_accounting;
 pub(in crate::document_scripting) mod registered_origin;
 pub(in crate::document_scripting) mod shadow_root;
+pub(in crate::document_scripting) mod slot_admission;
 pub(in crate::document_scripting) mod tree_mutation_admission;
 pub(in crate::document_scripting) mod trusted_policy;
 

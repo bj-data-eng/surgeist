@@ -32,6 +32,8 @@ mod scope;
 mod scope_tests;
 mod script;
 mod show_modal;
+#[cfg(test)]
+mod slot_input_tests;
 mod synchronous_node;
 pub use synchronous_node::{
     DomPreparedElementName, DomShadowReactionRoute, DomSourceCustomElementReturn,
@@ -371,18 +373,36 @@ impl Dom {
         })
     }
     /// Begin exactly one requested edit through the original canonical engine.
-    pub fn begin_source_edit(
+    pub fn begin_source_edit<Backing>(
         &mut self,
-        edit: DomSourceEdit,
+        input: impl Into<DomSourceInput<Backing>>,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomError> {
-        self.begin_source_root(
-            OperationRoot::Edit([edit.command]),
-            formation::allocated_arc(BatchIdentity),
-            limits,
-            cancel,
-        )
+        match input.into().kind {
+            SourceInputKind::Edit(edit) => self.begin_source_root(
+                OperationRoot::Edit([edit.command]),
+                formation::allocated_arc(BatchIdentity),
+                limits,
+                cancel,
+            ),
+            SourceInputKind::PreparedSlot(prepared) => {
+                let DomPreparedSlotAssignment { command, backing } = prepared;
+                let (mut native, local): (Option<_>, Option<_>) = backing.unzip();
+                // The nested entry drops its command before returning any
+                // formation failure. Neither receipt can expire first. On
+                // success the native transfer commits before local release.
+                let result = self.begin_source_root_with_input(
+                    OperationRoot::Edit([command]),
+                    formation::allocated_arc(BatchIdentity),
+                    limits,
+                    &mut native,
+                    cancel,
+                );
+                drop(local);
+                result
+            }
+        }
     }
     #[cfg(test)]
     pub(crate) fn begin_source_commands(
@@ -405,8 +425,39 @@ impl Dom {
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, DomError> {
+        self.begin_source_root_with_input(commands, owner, limits, &mut None, cancel)
+    }
+    fn begin_source_root_with_input(
+        &mut self,
+        commands: OperationRoot,
+        owner: Arc<BatchIdentity>,
+        limits: DomSourceLimits,
+        input: &mut Option<crate::DomHostedRuntimeRetention>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceLease<'_>, DomError> {
         self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
+        let input_bytes = match input.as_ref() {
+            Some(retained) => {
+                let [Command::AssignSlot { incoming, .. }] = &*commands else {
+                    return Err(DomError::RepresentationExhausted);
+                };
+                let bytes = incoming
+                    .capacity()
+                    .checked_mul(size_of::<crate::NodeOperand>())
+                    .ok_or(DomError::RepresentationExhausted)?;
+                if retained.retained_bytes() != bytes {
+                    return Err(DomError::RepresentationExhausted);
+                }
+                retained.validate_source(
+                    self.hosted_source
+                        .as_ref()
+                        .ok_or(DomError::HostedSourceUnavailable)?,
+                )?;
+                bytes
+            }
+            None => 0,
+        };
         self.next_source_operation
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
@@ -432,17 +483,22 @@ impl Dom {
         } else {
             limits
         };
-        let formed =
-            Draft::new_source_root(self, owner, &commands, commands.capacity(), limits, cancel)
-                .and_then(|(draft, command)| {
-                    let aux = self
-                        .source_retained_stack_bytes()?
-                        .checked_add(
-                            self.source_dispatch_custody_bytes(|| draft.source_step(cancel))?,
-                        )
-                        .ok_or(DomError::RepresentationExhausted)?;
-                    Ok((draft, command, aux))
-                });
+        let formed = Draft::new_source_root_with_input(
+            self,
+            owner,
+            &commands,
+            commands.capacity(),
+            input_bytes,
+            limits,
+            cancel,
+        )
+        .and_then(|(draft, command)| {
+            let aux = self
+                .source_retained_stack_bytes()?
+                .checked_add(self.source_dispatch_custody_bytes(|| draft.source_step(cancel))?)
+                .ok_or(DomError::RepresentationExhausted)?;
+            Ok((draft, command, aux))
+        });
         let (draft, command_storage, canonical_aux_bytes) = match formed {
             Ok(formed) => formed,
             Err(error) => {
@@ -520,20 +576,39 @@ impl Dom {
         });
         let admitted = (|| {
             op.custody_bytes = self.source_owner_custody_bytes()?;
-            op.refresh_admission(cancel)
+            op.refresh_admission(cancel)?;
+            let command_bytes = op
+                .command_storage
+                .bytes
+                .checked_add(input_bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
+            let custody_bytes = op
+                .custody_bytes
+                .checked_sub(input_bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
+            Ok((command_bytes, custody_bytes))
         })();
-        if let Err(error) = admitted {
-            if nested {
-                self.source_operation = self.source_parents.pop();
+        let (command_bytes, custody_bytes) = match admitted {
+            Ok(transfer) => transfer,
+            Err(error) => {
+                if nested {
+                    self.source_operation = self.source_parents.pop();
+                }
+                #[cfg(test)]
+                self.observe_source_lifecycle();
+                return Err(error);
             }
-            #[cfg(test)]
-            self.observe_source_lifecycle();
-            return Err(error);
-        }
+        };
         let next = self
             .next_source_operation
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
+        // This is an equal-size change of owner, not another allocation or
+        // reservation. All arithmetic and admission finished above. Keep this
+        // fence free of callbacks, work, allocation and fallible operations.
+        op.command_storage.bytes = command_bytes;
+        op.custody_bytes = custody_bytes;
+        drop(input.take());
         self.source_operation = Some(op);
         #[cfg(test)]
         self.observe_source_lifecycle();

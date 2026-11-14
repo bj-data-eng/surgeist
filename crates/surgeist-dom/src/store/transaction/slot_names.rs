@@ -324,12 +324,12 @@ impl Index {
             used: 3,
             suffix: Suffix::Utf16(value.map_or(&[], DocumentString::code_units)),
         };
-        let group = self.forest.lookup(
+        let group = self.forest.lookup_with(
             self.roots[kind],
             &query,
-            |group| {
+            |group, step| {
                 self.facts
-                    .get(group.representative)
+                    .get_with(group.representative, &mut || step())?
                     .and_then(|fact| fact.name(kind))
                     .map(encoded)
                     .ok_or(DomError::RepresentationExhausted)
@@ -363,7 +363,7 @@ impl Index {
         step()?;
         let fact = self
             .facts
-            .get(node)
+            .get_with(node, &mut || step())?
             .and_then(|fact| fact.light.as_ref())
             .ok_or(DomError::RepresentationExhausted)?;
         self.first_name(root, fact.value.as_ref(), 0, &mut step)
@@ -392,7 +392,7 @@ impl Index {
         step()?;
         let name = self
             .facts
-            .get(slot)
+            .get_with(slot, &mut || step())?
             .and_then(|fact| fact.slot.as_ref())
             .ok_or(DomError::RepresentationExhausted)?;
         if self.first_name(name.scope, name.value.as_ref(), 0, &mut step)? != Some(slot) {
@@ -403,12 +403,12 @@ impl Index {
             used: 3,
             suffix: Suffix::Utf16(name.value.as_ref().map_or(&[], DocumentString::code_units)),
         };
-        let group = self.forest.lookup(
+        let group = self.forest.lookup_with(
             self.roots[1],
             &query,
-            |group| {
+            |group, step| {
                 self.facts
-                    .get(group.representative)
+                    .get_with(group.representative, &mut || step())?
                     .and_then(|fact| fact.light.as_ref())
                     .map(encoded)
                     .ok_or(DomError::RepresentationExhausted)

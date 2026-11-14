@@ -4,6 +4,7 @@
 pub mod surgeist_bindings_js
 pub mod surgeist_bindings_js::conversion
 pub mod surgeist_bindings_js::conversion::declarations
+pub fn surgeist_bindings_js::conversion::declarations::assigned_nodes_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_append_data_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_data_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_delete_data_0_count() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
@@ -109,6 +110,8 @@ pub fn surgeist_bindings_js::conversion::declarations::html_collection_item_0_in
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_named_item_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_inner_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::html_element_outer_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_slot_element_assigned_elements_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>>
+pub fn surgeist_bindings_js::conversion::declarations::html_slot_element_assigned_nodes_0_options() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>>
 pub fn surgeist_bindings_js::conversion::declarations::html_title_element_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::import_node_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::ImportNodeOptions>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -444,6 +447,8 @@ pub surgeist_bindings_js::declarations::SlotAssignmentMode::Named
 impl surgeist_bindings_js::declarations::SlotAssignmentMode
 pub fn surgeist_bindings_js::declarations::SlotAssignmentMode::as_code_units(self) -> &'static [u16]
 pub fn surgeist_bindings_js::declarations::SlotAssignmentMode::from_code_units(units: &[u16]) -> core::option::Option<Self>
+pub struct surgeist_bindings_js::declarations::AssignedNodesOptions
+pub surgeist_bindings_js::declarations::AssignedNodesOptions::flatten: bool
 pub struct surgeist_bindings_js::declarations::ElementCreationOptions
 pub surgeist_bindings_js::declarations::ElementCreationOptions::custom_element_registry: core::option::Option<core::option::Option<surgeist_bindings_js::CustomElementRegistryIdentity>>
 pub surgeist_bindings_js::declarations::ElementCreationOptions::is: core::option::Option<surgeist_bindings_js::DomString>

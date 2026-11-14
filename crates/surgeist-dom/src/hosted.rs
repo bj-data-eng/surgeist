@@ -2013,13 +2013,28 @@ mod tests;
 
 /// Relative Source projection of actual original Host/Window/focus/watcher allocations.
 /// This weak storage observation grants no execution authority and cannot keep
-/// a disposed issuer alive. Drop represented backing before this guard.
+/// a disposed issuer alive. Drop represented backing before this guard, or
+/// transfer it through prepared Source input adoption to native command custody.
 #[derive(Debug)]
 pub struct DomHostedRuntimeRetention {
     pub(crate) shared: Weak<Shared>,
     pub(crate) bytes: usize,
 }
 impl DomHostedRuntimeRetention {
+    pub(crate) fn validate_source(&self, source: &SourceObservation) -> Result<(), DomError> {
+        if !self.shared.ptr_eq(&source.shared) {
+            return Err(DomError::HostedSourceUnavailable);
+        }
+        let shared = self
+            .shared
+            .upgrade()
+            .ok_or(DomError::HostedSourceUnavailable)?;
+        source
+            .validate_issuer(shared.id)
+            .map_err(|_| DomError::HostedSourceUnavailable)?;
+        Ok(())
+    }
+
     /// The already admitted extent represented by this guard.
     pub const fn retained_bytes(&self) -> usize {
         self.bytes

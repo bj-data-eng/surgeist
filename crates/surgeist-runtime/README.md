@@ -335,6 +335,11 @@ Native ShadowRoots inherit DocumentFragment and expose their canonical host,
 mode, focus delegation, slot assignment, clonability and serializability.
 Element.shadowRoot exposes open roots. Node root reads and event paths use
 canonical identities and preserve closed-root visibility and retargeting.
+HTMLSlotElement reflects its canonical name and exposes stored assignment arrays,
+fresh flattened arrays and manual assignment through native Source operations.
+Element and Text assignedSlot getters use fresh open-root observations. Query
+work and temporary buffers join the original native and guest admission, with
+captured identities retained until wrapper presentation.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous

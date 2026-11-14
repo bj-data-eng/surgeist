@@ -292,12 +292,12 @@ impl Capture {
         tree_completion(scope, &events, result)
     }
 
-    pub(in crate::document_scripting::guest::interfaces) fn apply_tree_edit<'scope>(
+    pub(in crate::document_scripting::guest::interfaces) fn apply_tree_edit<'scope, Backing>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        edit: DomSourceEdit,
+        edit: impl Into<surgeist_dom::DomSourceInput<Backing>>,
         completion: Completion<'scope>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let drive =
@@ -312,12 +312,12 @@ impl Capture {
         )
     }
 
-    pub(super) fn drive_guest_tree_edit(
+    pub(super) fn drive_guest_tree_edit<Backing>(
         &self,
         owner: &NativeOwner,
         events: &GuestEvents,
         realm: RealmId,
-        edit: DomSourceEdit,
+        edit: impl Into<surgeist_dom::DomSourceInput<Backing>>,
     ) -> Result<GuestTreeDrive, DocumentGuestEventError> {
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;

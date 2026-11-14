@@ -131,6 +131,27 @@ impl<'a> OrderView<'a> {
             },
         }
     }
+    fn node_with(
+        self,
+        key: Key,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<NodeRead<'a>, DomError> {
+        match self.read {
+            Read::State(state, owner) => match key {
+                Key::Existing(id) => {
+                    Ok(
+                        NodeRead::canonical(state.node_with(owner, id, &mut || step())?)
+                            .in_state(state, owner),
+                    )
+                }
+                Key::Created(_) => Err(DomError::UnavailableCreation),
+            },
+            _ => {
+                step()?;
+                self.node(key)
+            }
+        }
+    }
     pub fn parent(
         self,
         key: Key,
@@ -139,18 +160,18 @@ impl<'a> OrderView<'a> {
     ) -> Result<Option<ParentLink>, DomError> {
         step()?;
         let key = self.normalize(key);
-        if let Some(position) = self.position(key) {
+        if let Some(position) = self.positions.position_with(key, &mut || step())? {
             return Ok(Some(ParentLink {
                 parent: position.parent,
                 edge: Edge::Child(position.ordinal),
             }));
         }
         if mode == Mode::ShadowIncluding {
-            let node = self.node(key)?;
+            let node = self.node_with(key, step)?;
             if matches!(node.kind(), KindRead::ShadowRoot(_))
                 && let Some(host) = node.host()
             {
-                let reciprocal = match self.node(host) {
+                let reciprocal = match self.node_with(host, step) {
                     Ok(node) => node.shadow_root().map(|root| self.normalize(root)) == Some(key),
                     Err(DomError::StaleNode) => false,
                     Err(error) => return Err(error),
@@ -581,7 +602,10 @@ impl Members {
         step: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Link, DomError> {
         step()?;
-        self.nodes.get(id.0).copied().ok_or(DomError::StaleNode)
+        self.nodes
+            .get_with(id.0, &mut || step())?
+            .copied()
+            .ok_or(DomError::StaleNode)
     }
     fn height(&self, id: Option<MemberId>) -> u8 {
         id.and_then(|id| self.nodes.get(id.0))
@@ -688,14 +712,19 @@ impl Members {
         if delta > 1 {
             let left = self.get(node.left.ok_or(DomError::StaleNode)?, edit.step)?;
             if self.height(left.left) < self.height(left.right) {
-                node.left = Some(self.rotate_left(custody, node.left.unwrap(), edit)?);
+                node.left =
+                    Some(self.rotate_left(custody, node.left.ok_or(DomError::StaleNode)?, edit)?);
                 self.save(custody, id, node, edit)?;
             }
             self.rotate_right(custody, id, edit)
         } else if delta < -1 {
             let right = self.get(node.right.ok_or(DomError::StaleNode)?, edit.step)?;
             if self.height(right.right) < self.height(right.left) {
-                node.right = Some(self.rotate_right(custody, node.right.unwrap(), edit)?);
+                node.right = Some(self.rotate_right(
+                    custody,
+                    node.right.ok_or(DomError::StaleNode)?,
+                    edit,
+                )?);
                 self.save(custody, id, node, edit)?;
             }
             self.rotate_left(custody, id, edit)

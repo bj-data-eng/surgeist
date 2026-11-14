@@ -23,6 +23,7 @@ impl Admission<'_> {
 pub(in crate::store) struct Initial {
     limits: crate::DomSourceLimits,
     bytes: Cell<usize>,
+    prepaid_input_bytes: usize,
     units: Cell<usize>,
     work: Work,
     ancestors: Option<Arc<crate::source::callback::CallbackWork>>,
@@ -69,6 +70,7 @@ impl Initial {
         Self {
             limits,
             bytes: Cell::new(0),
+            prepaid_input_bytes: 0,
             units: Cell::new(0),
             work: Work::Local(Cell::new(0)),
             ancestors: None,
@@ -86,6 +88,7 @@ impl Initial {
         Self {
             limits,
             bytes: Cell::new(0),
+            prepaid_input_bytes: 0,
             units: Cell::new(0),
             work: Work::Shared { work, identity },
             ancestors: None,
@@ -263,10 +266,24 @@ impl Draft {
         limits: crate::DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<(Self, Payload), DomError> {
-        let initial = Initial::new(limits).with_ancestors(
+        Self::new_source_root_with_input(dom, owner, commands, command_capacity, 0, limits, cancel)
+    }
+    /// The exact operand bank is still funded by its original Runtime receipt
+    /// during formation. Its Source command extent is adopted at installation.
+    pub(in crate::store) fn new_source_root_with_input(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        commands: &[Command],
+        command_capacity: usize,
+        prepaid_input_bytes: usize,
+        limits: crate::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(Self, Payload), DomError> {
+        let mut initial = Initial::new(limits).with_ancestors(
             dom.source_work_ancestors(None),
             dom.source_work_ancestor_custody(None),
         );
+        initial.prepaid_input_bytes = prepaid_input_bytes;
         Self::new_source_initial(
             dom,
             owner,
@@ -372,7 +389,13 @@ impl Draft {
         // quota policy. Meter the actual scan before any Draft retention or ID
         // issuance; later execution cannot reduce raw duplicate input counts.
         dom.admit_batch_inputs(commands, || initial.step(cancel))?;
-        let command_payload = super::storage::commands(commands, || initial.step(cancel))?;
+        let mut command_payload = super::storage::commands(commands, || initial.step(cancel))?;
+        // Preserve the full input scan and its work. Only this authenticated
+        // bank's physical bytes are already present in Runtime owner custody.
+        command_payload.bytes = command_payload
+            .bytes
+            .checked_sub(initial.prepaid_input_bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
         // Canonical capture and transaction storage are controlled by the
         // paired ledger. This separate envelope contains only external inputs
         // and owner obligations, so a root alias cannot duplicate its payload.

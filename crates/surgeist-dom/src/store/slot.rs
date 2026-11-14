@@ -152,10 +152,11 @@ impl State {
                 .next(Key::Existing(root), Key::Existing(key), work)?,
             None => self.slot_index.first(Key::Existing(root), work)?,
         };
-        Ok(next.map(|key| match key {
-            Key::Existing(id) => id,
-            Key::Created(_) => unreachable!("published Slot identity"),
-        }))
+        next.map(|key| match key {
+            Key::Existing(id) => Ok(id),
+            Key::Created(_) => Err(DomError::UnavailableCreation),
+        })
+        .transpose()
     }
     pub(super) fn slot_reference_count(&self) -> usize {
         self.counts
@@ -274,7 +275,7 @@ impl Draft {
                 .node(key)?
                 .assigned_nodes()
                 .get(index)
-                .expect("assigned node");
+                .ok_or(DomError::StaleNode)?;
             let mut slottable = self.slottable_fields_mut(node, cancel)?;
             slottable.assigned_slot = Some(key);
             slottable.commit(cancel)?;
@@ -357,7 +358,7 @@ impl Draft {
                         .node(target)?
                         .manual_nodes()
                         .get(previous_ordinal)
-                        .expect("previous manual node");
+                        .ok_or(DomError::StaleNode)?;
                     let mut slottable = self.slottable_fields_mut(key, cancel)?;
                     slottable.manual_slot = None;
                     slottable.commit(cancel)?;
@@ -365,24 +366,30 @@ impl Draft {
                 }
                 A::BeginPendingManualSet => R::Applied,
                 A::ReadIncomingManualAssignment { ordinal } => {
-                    referred = self.node(nodes[ordinal])?.manual_slot();
+                    referred = self
+                        .node(*nodes.get(ordinal).ok_or(DomError::IndexSize)?)?
+                        .manual_slot();
                     R::ManualAssignmentPresent(referred.is_some())
                 }
                 A::RemoveIncomingFromReferredManualSet { ordinal } => {
-                    let key = referred.expect("actual preceding read");
+                    let key = referred.ok_or(DomError::StaleNode)?;
                     for _ in self.node(key)?.manual_nodes().iter() {
                         self.source_step(cancel)?;
                     }
+                    let node = *nodes.get(ordinal).ok_or(DomError::IndexSize)?;
                     self.relations_retain(
                         key,
                         RelationField::ManualNodes,
-                        |value| value != nodes[ordinal],
+                        |value| value != node,
                         cancel,
                     )?;
                     R::Applied
                 }
                 A::SetIncomingManualAssignmentToTarget { ordinal } => {
-                    let mut slottable = self.slottable_fields_mut(nodes[ordinal], cancel)?;
+                    let mut slottable = self.slottable_fields_mut(
+                        *nodes.get(ordinal).ok_or(DomError::IndexSize)?,
+                        cancel,
+                    )?;
                     slottable.manual_slot = Some(target);
                     slottable.commit(cancel)?;
                     R::Applied
@@ -390,11 +397,11 @@ impl Draft {
                 A::AppendIncomingToPendingSet { ordinal } => {
                     // The ordered set append adds nothing for a node the pending set holds. The
                     // pending set keeps no identity index, so each comparison is a source step.
-                    let node = nodes[ordinal];
+                    let node = *nodes.get(ordinal).ok_or(DomError::IndexSize)?;
                     let mut present = false;
                     for index in 0..pending.len() {
                         self.source_step(cancel)?;
-                        if pending[index] == node {
+                        if pending.get(index).copied().ok_or(DomError::IndexSize)? == node {
                             present = true;
                             break;
                         }
@@ -432,9 +439,7 @@ impl Draft {
                 }
                 A::Complete => break,
             };
-            cursor
-                .reply(reply)
-                .expect("reply for the actual performed source action");
+            cursor.reply(reply).map_err(|_| DomError::StaleNode)?;
         }
         Ok(())
     }
@@ -579,7 +584,7 @@ impl Draft {
                 .signal_slots
                 .iter()
                 .position(|value| value == signal_key)
-                .expect("queued slot signal");
+                .ok_or(DomError::StaleNode)?;
             self.queue_retired_signal_remove(index, signal_key, document, cancel)?;
             self.source_step(cancel)?;
             if let Some(id) = self.published_id(key) {
