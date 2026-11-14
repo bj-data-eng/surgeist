@@ -4,6 +4,7 @@ mod authored_toggle;
 mod break_elements;
 mod data_time;
 mod declarative_shadow;
+mod details_reflections;
 mod document_import;
 mod document_type;
 mod dom_implementation;
@@ -388,6 +389,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     pre_width::pre_width_reflects_the_canonical_signed_attribute();
     li_reflections::li_members_reflect_canonical_attributes();
     list_reflections::list_members_reflect_canonical_attributes();
+    details_reflections::details_members_reflect_canonical_attributes();
+    details_reflections::details_properties_preserve_native_and_web_idl_contracts();
     list_reflections::list_families_preserve_native_and_web_idl_contracts();
     li_reflections::li_family_preserves_native_and_web_idl_contracts();
     pre_width::pre_width_family_preserves_native_and_web_idl_contracts();
