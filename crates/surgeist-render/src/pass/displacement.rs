@@ -336,8 +336,7 @@ pub(super) struct DisplacementLeaseBinding {
 pub(super) struct PreparedDisplacementBinding {
     pub(super) preparation: SharedValue<DisplacementPreparation>,
     pub(super) resources: crate::accounting::AccountedVec<DisplacementLeaseBinding>,
-    pub(super) uniform: crate::accounting::OwnedGpu<wgpu::Buffer>,
-    pub(super) consumed: bool,
+    pub(super) uniform: super::buffer_custody::PassBufferCustody,
 }
 #[cfg(test)]
 impl Drop for PreparedDisplacementBinding {
@@ -347,36 +346,28 @@ impl Drop for PreparedDisplacementBinding {
 }
 impl PreparedDisplacementBinding {
     pub(super) fn acquire(
+        owner: RuntimePassId,
         preparation: &SharedValue<DisplacementPreparation>,
         frame: &mut crate::resource::FrameResourceScope,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        (device, queue): (&wgpu::Device, &wgpu::Queue),
         capabilities: &crate::backend::DeviceCapabilities,
         generation: &crate::accounting::Generation,
         account: &Account,
     ) -> Result<Self> {
         let resources = account.retained(preparation.reads.len())?;
-        let uniform = generation.allocation_with_upload(
-            crate::accounting::GenerationClass::PassBuffers,
-            256,
-            256,
-            Some(account),
-            || {
-                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist retained displacement uniform"),
-                    size: 256,
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                });
-                queue.write_buffer(&buffer, 0, preparation.parameters.as_bytes());
-                buffer
-            },
+        let uniform = super::buffer_custody::PassBufferCustody::acquire(
+            owner,
+            super::buffer_custody::PassBufferRole::Displacement,
+            preparation.parameters.as_bytes(),
+            device,
+            queue,
+            generation,
+            account,
         )?;
         let mut binding = Self {
             preparation: preparation.clone(),
             resources,
             uniform,
-            consumed: false,
         };
         for read in preparation.reads.iter() {
             account.work(RenderWork::GraphEdgeVisits, 1)?;

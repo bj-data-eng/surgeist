@@ -52,6 +52,10 @@ mod offset_transactions;
 mod outline;
 #[cfg(not(target_arch = "wasm32"))]
 mod parameter_custody;
+#[cfg(not(target_arch = "wasm32"))]
+mod parameter_custody_budget;
+#[cfg(not(target_arch = "wasm32"))]
+mod parameter_custody_families;
 mod platform;
 mod porter_duff;
 mod repeating_gradients;

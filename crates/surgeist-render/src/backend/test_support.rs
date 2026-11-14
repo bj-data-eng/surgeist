@@ -1372,6 +1372,20 @@ impl Backend {
         state.ready().map(ReadyDeviceState::borrow_for_test)
     }
 
+    pub(crate) fn set_device_gpu_byte_limit_for_test(
+        &mut self,
+        identity: DeviceSlotIdentity,
+        scope: crate::RenderGenerationScope,
+        limit: u64,
+    ) -> Result<()> {
+        let ready = self
+            .ready_device_state_borrow_for_test(identity)
+            .ok_or(crate::RenderAccountingError::Invariant)?;
+        ready
+            .generation_for_test()
+            .set_gpu_byte_limit_for_test(scope, limit)
+    }
+
     pub(crate) fn seed_device_pass_cache_sampler_for_test(
         &mut self,
         identity: DeviceSlotIdentity,

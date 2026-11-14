@@ -1,7 +1,11 @@
 //! Generation-scoped observations of actual native parameter owners.
-use super::{PreparedGraph, RuntimePassId};
+use super::{
+    PreparedGraph, RuntimePassId,
+    buffer_custody::{PassBufferCustody, PassBufferRole},
+    prepare::AcquiredGraphBindings,
+};
 use crate::accounting::{
-    Generation, GenerationClass, GpuObjectKind, OwnedGpu, RenderGenerationIdentity, RenderResource,
+    Generation, GenerationClass, GpuObjectKind, RenderGenerationIdentity, RenderResource,
 };
 use std::{
     cell::RefCell,
@@ -16,6 +20,12 @@ pub(crate) enum ParameterFamilyForTest {
     Morphology,
     NativeShadow,
     Offset,
+    Displacement,
+    Convolution,
+    Spatial,
+    Composite,
+    CssShadow,
+    BlurEdge,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParameterStageForTest {
@@ -23,6 +33,8 @@ pub(crate) enum ParameterStageForTest {
     Encoded,
     BeforeSubmit,
     Submitted,
+    AccountingReady,
+    Disposing,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ParameterBufferForTest {
@@ -31,12 +43,14 @@ pub(crate) struct ParameterBufferForTest {
     pub(crate) native_identity: u64,
     pub(crate) bytes: u64,
     pub(crate) usage: wgpu::BufferUsages,
+    pub(crate) consumed: bool,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct ParameterSnapshotForTest {
     pub(crate) stage: ParameterStageForTest,
-    // None means only generation custody is observable at this owner boundary.
+    // None is used only when there is no aggregate at this exact boundary.
     pub(crate) buffers: Option<Vec<ParameterBufferForTest>>,
+    pub(crate) disposing: Option<ParameterBufferForTest>,
     pub(crate) pass_buffer_bytes: u64,
     pub(crate) command_encoder_objects: u64,
     pub(crate) command_buffer_objects: u64,
@@ -82,6 +96,7 @@ fn record(
     generation: &Generation,
     stage: ParameterStageForTest,
     buffers: Option<Vec<ParameterBufferForTest>>,
+    disposing: Option<ParameterBufferForTest>,
 ) {
     let objects = |kind| {
         generation
@@ -95,6 +110,7 @@ fn record(
         .push(ParameterSnapshotForTest {
             stage,
             buffers,
+            disposing,
             pass_buffer_bytes: generation
                 .class_usage(GenerationClass::PassBuffers)
                 .unwrap()
@@ -103,76 +119,94 @@ fn record(
             command_buffer_objects: objects(GpuObjectKind::CommandBuffer),
         });
 }
-pub(super) fn record_scope(generation: &Generation, stage: ParameterStageForTest) {
-    if let Some(observation) = observer(generation) {
-        record(&observation, generation, stage, None);
-    }
-}
-fn append(
-    output: &mut Vec<ParameterBufferForTest>,
+fn descriptor(
     family: ParameterFamilyForTest,
     pass: RuntimePassId,
-    buffer: &Option<OwnedGpu<wgpu::Buffer>>,
-) {
-    if let Some(buffer) = buffer {
-        let mut identity = std::collections::hash_map::DefaultHasher::new();
-        std::ops::Deref::deref(buffer).hash(&mut identity);
-        output.push(ParameterBufferForTest {
-            family,
-            pass,
-            native_identity: identity.finish(),
-            bytes: buffer.size(),
-            usage: buffer.usage(),
-        });
+    custody: &PassBufferCustody,
+) -> ParameterBufferForTest {
+    let buffer = custody.native_for_test();
+    let mut identity = std::collections::hash_map::DefaultHasher::new();
+    std::ops::Deref::deref(buffer).hash(&mut identity);
+    ParameterBufferForTest {
+        family,
+        pass,
+        native_identity: identity.finish(),
+        bytes: buffer.size(),
+        usage: buffer.usage(),
+        consumed: custody.is_consumed(),
     }
+}
+pub(super) fn record_owner(
+    custody: &AcquiredGraphBindings,
+    generation: &Generation,
+    stage: ParameterStageForTest,
+) {
+    let Some(observation) = observer(generation) else {
+        return;
+    };
+    let mut buffers = Vec::new();
+    macro_rules! append {
+        ($field:ident, $family:ident) => {
+            for (pass, binding) in custody.$field.entries.iter() {
+                buffers.push(descriptor(
+                    ParameterFamilyForTest::$family,
+                    *pass,
+                    &binding.buffer,
+                ));
+            }
+        };
+    }
+    append!(color_filter_operation_bindings, ColorOperation);
+    append!(gaussian_parameter_bindings, Gaussian);
+    append!(morphology_parameter_bindings, Morphology);
+    append!(native_shadow_parameter_bindings, NativeShadow);
+    append!(offset_parameter_bindings, Offset);
+    append!(convolution_parameter_bindings, Convolution);
+    append!(spatial_parameter_bindings, Spatial);
+    append!(composite_parameter_bindings, Composite);
+    append!(css_shadow_parameter_bindings, CssShadow);
+    append!(blur_edge_parameter_bindings, BlurEdge);
+    for (pass, binding) in custody.displacement_bindings.entries.iter() {
+        buffers.push(descriptor(
+            ParameterFamilyForTest::Displacement,
+            *pass,
+            &binding.uniform,
+        ));
+    }
+    record(&observation, generation, stage, Some(buffers), None);
+}
+pub(super) fn record_disposing(
+    pass: RuntimePassId,
+    role: PassBufferRole,
+    custody: &PassBufferCustody,
+) {
+    let generation = custody.native_for_test().generation();
+    let Some(observation) = observer(generation) else {
+        return;
+    };
+    let family = match role {
+        PassBufferRole::ColorOperation => ParameterFamilyForTest::ColorOperation,
+        PassBufferRole::Gaussian => ParameterFamilyForTest::Gaussian,
+        PassBufferRole::Morphology => ParameterFamilyForTest::Morphology,
+        PassBufferRole::NativeShadow => ParameterFamilyForTest::NativeShadow,
+        PassBufferRole::Offset => ParameterFamilyForTest::Offset,
+        PassBufferRole::Displacement => ParameterFamilyForTest::Displacement,
+        PassBufferRole::Convolution => ParameterFamilyForTest::Convolution,
+        PassBufferRole::Spatial => ParameterFamilyForTest::Spatial,
+        PassBufferRole::Composite => ParameterFamilyForTest::Composite,
+        PassBufferRole::CssShadow => ParameterFamilyForTest::CssShadow,
+        PassBufferRole::BlurEdge => ParameterFamilyForTest::BlurEdge,
+    };
+    record(
+        &observation,
+        generation,
+        ParameterStageForTest::Disposing,
+        None,
+        Some(descriptor(family, pass, custody)),
+    );
 }
 impl PreparedGraph<'_> {
     pub(crate) fn observe_parameter_custody_for_test(&self, stage: ParameterStageForTest) {
-        let generation = self.resources.generation();
-        let Some(observation) = observer(generation) else {
-            return;
-        };
-        let mut buffers = Vec::new();
-        for (pass, binding) in self.color_filter_operation_bindings.entries.iter() {
-            append(
-                &mut buffers,
-                ParameterFamilyForTest::ColorOperation,
-                *pass,
-                &binding.buffer,
-            );
-        }
-        for (pass, binding) in self.gaussian_parameter_bindings.entries.iter() {
-            append(
-                &mut buffers,
-                ParameterFamilyForTest::Gaussian,
-                *pass,
-                &binding.buffer,
-            );
-        }
-        for (pass, binding) in self.morphology_parameter_bindings.entries.iter() {
-            append(
-                &mut buffers,
-                ParameterFamilyForTest::Morphology,
-                *pass,
-                &binding.buffer,
-            );
-        }
-        for (pass, binding) in self.native_shadow_parameter_bindings.entries.iter() {
-            append(
-                &mut buffers,
-                ParameterFamilyForTest::NativeShadow,
-                *pass,
-                &binding.buffer,
-            );
-        }
-        for (pass, binding) in self.offset_parameter_bindings.entries.iter() {
-            append(
-                &mut buffers,
-                ParameterFamilyForTest::Offset,
-                *pass,
-                &binding.buffer,
-            );
-        }
-        record(&observation, generation, stage, Some(buffers));
+        record_owner(&self.acquired_bindings, self.resources.generation(), stage);
     }
 }

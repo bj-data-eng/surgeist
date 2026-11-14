@@ -78,20 +78,21 @@ impl PreparedGraph<'_> {
             .displacement_bindings
             .get(&request.id, account)?
             .ok_or_else(|| preparation_error("displacement concrete custody is missing"))?;
-        if binding.consumed
+        if binding.uniform.is_consumed()
             || !preparation.same_allocation(&binding.preparation)
             || preparation.parameters != super::super::displacement::parameters(work, account)?
             || binding.resources.len() != preparation.reads.len()
-            || binding.uniform.size() != 256
-            || !binding
-                .uniform
-                .usage()
-                .contains(wgpu::BufferUsages::UNIFORM)
         {
             return Err(preparation_error(
                 "displacement concrete uniform or upload custody changed",
             ));
         }
+        let uniform = binding.uniform.active(
+            request.id,
+            PassBufferRole::Displacement,
+            256,
+            self.resources.generation(),
+        )?;
         let scope = self
             .frame_scope
             .as_ref()
@@ -105,7 +106,7 @@ impl PreparedGraph<'_> {
         }
         entries.append_slot()?.write(wgpu::BindGroupEntry {
             binding: 2,
-            resource: binding.uniform.as_entire_binding(),
+            resource: uniform.as_entire_binding(),
         });
         for (actual, expected) in binding.resources.iter().zip(preparation.reads.iter()) {
             account.work(RenderWork::GraphEdgeVisits, 1)?;

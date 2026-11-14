@@ -104,6 +104,7 @@ impl PreparedGraph<'_> {
             ));
         }
         let binding = self
+            .acquired_bindings
             .native_shadow_parameter_bindings
             .get(&request.id, account)?
             .ok_or_else(|| preparation_error("native shadow has no prepared uniform owner"))?;
@@ -113,14 +114,12 @@ impl PreparedGraph<'_> {
                 "native shadow prepared uniform bytes differ from its request",
             ));
         }
-        let uniform = binding.buffer.as_ref().ok_or_else(|| {
-            preparation_error("native shadow uniform is missing or already released")
-        })?;
-        if uniform.size() != 256 || !uniform.usage().contains(wgpu::BufferUsages::UNIFORM) {
-            return Err(preparation_error(
-                "native shadow uniform has an invalid concrete allocation",
-            ));
-        }
+        let uniform = binding.buffer.active(
+            request.id,
+            PassBufferRole::NativeShadow,
+            256,
+            self.resources.generation(),
+        )?;
         let keys = request
             .cache_keys
             .as_ref()

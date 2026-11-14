@@ -19,6 +19,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+// Both displacement uniforms remain2*256. The full graph also retains Layer
+// spatial48, composite128 and Present spatial48 under the same actual owner.
+const ALL_PARAMETER_BYTES: u64 = 2 * 256 + 48 + 128 + 48;
+
 fn scene() -> Scene {
     let mut scene = Scene::new();
     scene
@@ -264,8 +268,8 @@ fn public_displacement_exact_backing_and_uniforms_survive_both_submission_bounda
             .iter()
             .find(|s| s.stage == DisplacementUniformStageForTest::BeforeSubmit)
             .unwrap();
-        assert_eq!(prepared.pass_buffer_bytes, 512);
-        assert_eq!(pending.pass_buffer_bytes, 512);
+        assert_eq!(prepared.pass_buffer_bytes, ALL_PARAMETER_BYTES);
+        assert_eq!(pending.pass_buffer_bytes, ALL_PARAMETER_BYTES);
         assert_eq!(pending.command_encoder_objects, 0);
         assert_eq!(pending.command_buffer_objects, 1);
         assert_eq!(pending.uniforms.len(), 2);
@@ -320,7 +324,7 @@ fn public_displacement_exact_backing_and_uniforms_survive_both_submission_bounda
             .iter()
             .find(|s| s.stage == DisplacementUniformStageForTest::Submitted)
             .unwrap();
-        assert_eq!(post.pass_buffer_bytes, 512);
+        assert_eq!(post.pass_buffer_bytes, ALL_PARAMETER_BYTES);
         assert_eq!(post.command_buffer_objects, 0);
         let mut post_ids = post
             .uniforms
@@ -419,7 +423,7 @@ fn public_displacement_cancel_disposes_native_commands_before_the_same_retained_
                 DisplacementUniformStageForTest::BeforeSubmit
             };
             let held = observed.iter().find(|s| s.stage == stage).unwrap();
-            assert_eq!(held.pass_buffer_bytes, 512);
+            assert_eq!(held.pass_buffer_bytes, ALL_PARAMETER_BYTES);
             assert_eq!(held.command_buffer_objects, u64::from(!after_submission));
             let mut ids = held
                 .uniforms

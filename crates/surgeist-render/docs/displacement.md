@@ -161,8 +161,9 @@ distinct typed roles, generations, read counts and final uses. The existing
 ResourceManager, frame leases and Generation ledger own their physical backing.
 Raw upload preserves exact immutable-image identity and unique CPU import
 custody, independently of the source texture. Arrays live in accounted shared
-payloads rather than Layer or frame future fields. Native uniform backing stays
-with the pending transaction after logical consumption. Rejection, cancellation
+payloads rather than Layer or frame future fields. Native uniform backing shares
+the graph's [parameter-buffer custody](reference.md#device-generation-custody)
+and stays with the pending transaction after logical consumption. Rejection, cancellation
 and device failure preserve previous successful pixels/statistics; identical
 input can retry after a recoverable refusal.
 
@@ -196,10 +197,10 @@ opportunities, including conditional/exterior opportunities:
 
 These counts describe scheduled work, not observed hardware instructions.
 Pass-through/source realization uses existing filter-texel/image-pass accounting
-and records0 in all four columns. Missing cached assets and new displacement
-uniform buffers are checked together at the generation root, then at their real
-Cache/Effects and External/PassBuffers scopes. Actual allocation checks remain
-active after preview; retained idle backing remains charged.
+and records0 in all four columns. Missing cached assets and all graph parameter
+buffers, including displacement uniforms, are checked together at the generation
+root, then at their real cache and External/PassBuffers scopes. Actual allocation
+checks remain active after preview; retained idle backing remains charged.
 
 `DisplacementPreparationError` distinguishes invalid scale, map size/payload,
 map domain, reached mapping/table/index arithmetic, empty periods and rejected

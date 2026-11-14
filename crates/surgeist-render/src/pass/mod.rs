@@ -1,3 +1,4 @@
+mod buffer_custody;
 mod close;
 mod convolution;
 mod displacement;
@@ -23,7 +24,7 @@ mod offset;
 mod parameter_custody_observation;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) use parameter_custody_observation::{
-    ParameterFamilyForTest, ParameterProbeForTest, ParameterStageForTest,
+    ParameterFamilyForTest, ParameterProbeForTest, ParameterSnapshotForTest, ParameterStageForTest,
 };
 mod parameters;
 mod prepare;

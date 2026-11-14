@@ -6073,6 +6073,7 @@ impl<'device> PreparedGraph<'device> {
             })
             .expect("the color-filter shader-failure fixture requires a prepared color pass");
         let removed = self
+            .acquired_bindings
             .color_filter_operation_bindings
             .remove_with(&pass, account)?;
         assert!(
