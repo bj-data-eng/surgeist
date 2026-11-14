@@ -297,6 +297,7 @@ impl ElementBindings {
                     super::list_compact::install_directory(scope, &prototype, capture)?
                 }
                 "HTMLFontElement" => super::font::install(scope, &prototype, capture)?,
+                "HTMLLIElement" => super::li::install(scope, &prototype, capture)?,
                 "HTMLMetaElement" => super::meta::install(scope, &prototype, capture)?,
                 "HTMLParamElement" => super::param::install(scope, &prototype, capture)?,
                 "HTMLPreElement" => super::pre::install(scope, &prototype, capture)?,

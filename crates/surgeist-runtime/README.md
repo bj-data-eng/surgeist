@@ -361,6 +361,9 @@ HTMLPreElement.width reflects a signed long on pre, listing and xmp elements.
 Reads use the admitted native integer parser and return zero for missing,
 invalid or out-of-range attributes. Setters apply Web IDL long conversion and
 write the canonical integer string through the Source and reaction adapter.
+HTMLLIElement.value uses the same signed-long reflection of the value attribute,
+independently of the list item's computed ordinal. Its obsolete type member
+reflects the raw type attribute as a DOMString through that adapter.
 `Element.attachShadow` converts its options before revalidating the live host.
 Native Source attaches a new open or closed root or reuses a declarative root
 of the same mode. Disconnection callbacks join the enclosing synchronous
