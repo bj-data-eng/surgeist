@@ -22,6 +22,7 @@ mod node_namespace;
 mod node_position;
 mod node_relations;
 mod normalize;
+mod param;
 mod processing_instruction;
 mod scoped_registries;
 mod slot;
@@ -378,6 +379,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     font_element::font_members_reflect_canonical_attributes();
     structural_alignment::structural_alignment_reflects_canonical_attributes();
     list_compact::list_compact_reflects_canonical_presence();
+    param::param_members_reflect_canonical_attributes();
     list_compact::list_compact_families_preserve_native_and_web_idl_contracts();
     structural_alignment::structural_alignment_families_preserve_native_and_web_idl_contracts();
     font_element::font_family_preserves_native_and_web_idl_contracts();
