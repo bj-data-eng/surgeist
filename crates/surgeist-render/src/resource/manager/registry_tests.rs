@@ -755,7 +755,7 @@ fn preflight_reserves_distinct_idle_entries_before_previewing_fresh_bytes_at_cap
     let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
     let requests = [request.clone(), request.clone(), request];
 
-    for (count, probes) in [(2, 12), (3, 16)] {
+    for (count, probes) in [(2, 12), (3, 18)] {
         let mut context = context(u64::MAX);
         let result = context.run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
             manager.preflight_graph_acquisitions(&requests[..count], Some(account))
@@ -1065,4 +1065,97 @@ fn registry_provisional_abort_observes_its_predicate_and_removal_after_refusal()
         context.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Refused
     );
+}
+
+#[test]
+fn repeated_physical_requests_cannot_reserve_one_idle_texture_twice_at_the_effects_limit() {
+    let manager = ResourceManager::default();
+    let key = ResourceCacheKey::EffectTexture(descriptor().cache_key());
+    let mut frame = manager.begin_frame(None).unwrap();
+    let resource = frame.acquire(key, 4).unwrap();
+    frame.release(resource).unwrap();
+    drop(frame.finish());
+    let before = manager.observation_for_test();
+    let facts = registry_facts(&manager);
+    manager
+        .generation()
+        .set_effects_gpu_byte_limit_for_test(4)
+        .unwrap();
+    let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
+    manager
+        .preflight_graph_acquisitions(std::slice::from_ref(&request), None)
+        .unwrap();
+    let error = manager
+        .preflight_graph_acquisitions(&[request.clone(), request], None)
+        .unwrap_err();
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::GenerationRefused {
+            quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+            current: 4,
+            amount: 4,
+            reason: RenderRefusalReason::Limit { limit: 4 }
+        })
+    );
+    assert_eq!(manager.observation_for_test(), before);
+    assert_eq!(registry_facts(&manager), facts);
+    assert_eq!(manager.observation_for_test().payload_creation_attempts, 1);
+    manager.generation().ensure_healthy().unwrap();
+    manager
+        .generation()
+        .set_effects_gpu_byte_limit_for_test(8)
+        .unwrap();
+    let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
+    manager
+        .preflight_graph_acquisitions(&[request.clone(), request], None)
+        .unwrap();
+    assert_eq!(manager.observation_for_test(), before);
+    assert_eq!(registry_facts(&manager), facts);
+}
+
+#[test]
+fn complete_physical_preflight_refuses_effects_child_before_first_payload_and_preserves_retry() {
+    let manager = ResourceManager::default();
+    manager
+        .generation()
+        .set_effects_gpu_byte_limit_for_test(7)
+        .unwrap();
+    let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
+    let requests = [request.clone(), request];
+    let before = manager.observation_for_test();
+    let facts = registry_facts(&manager);
+    let error = manager
+        .preflight_graph_acquisitions(&requests, None)
+        .unwrap_err();
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::GenerationRefused {
+            quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+            current: 0,
+            amount: 8,
+            reason: RenderRefusalReason::Limit { limit: 7 }
+        })
+    );
+    assert_eq!(manager.observation_for_test().payload_creation_attempts, 0);
+    assert_eq!(manager.observation_for_test(), before);
+    assert_eq!(registry_facts(&manager), facts);
+    manager.generation().ensure_healthy().unwrap();
+    manager
+        .generation()
+        .set_effects_gpu_byte_limit_for_test(8)
+        .unwrap();
+    manager
+        .preflight_graph_acquisitions(&requests, None)
+        .unwrap();
+    assert_eq!(manager.observation_for_test().payload_creation_attempts, 0);
+    let mut frame = manager.begin_frame(None).unwrap();
+    let key = ResourceCacheKey::EffectTexture(descriptor().cache_key());
+    let first = frame.acquire(key.clone(), 4).unwrap();
+    let second = frame.acquire(key, 4).unwrap();
+    assert_ne!(first.resource_identity(), second.resource_identity());
+    assert_eq!(manager.observation_for_test().payload_creation_attempts, 2);
+    frame.release(first).unwrap();
+    frame.release(second).unwrap();
+    drop(frame.finish());
+    manager.generation().ensure_healthy().unwrap();
 }

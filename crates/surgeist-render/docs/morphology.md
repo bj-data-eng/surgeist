@@ -187,10 +187,38 @@ the copy route preserves the input/output coverage contract without RGB transfer
 
 Closed graph facts authenticate source kind, operator, color context, table
 levels and spans, query completion, formats, generations, actual reads and final
-footprint provenance. Each output has one producer and distinct backing from its
-reads. A table survives both its query and the next table build; a previous query
-output survives its refinement. Old tables and query outputs release after their
-exact last use. All table levels need not remain live simultaneously.
+footprint provenance. Each logical output has one producer and distinct physical
+backing from its active reads. A table survives both its query and the next table
+build; a previous query output survives its refinement. Logical outputs retire
+after their exact last use. Their backing uses a bounded set of physical slots,
+rather than allocating and retaining a texture for every level.
+
+Finite table slots have capacity `[max(Dx,Ox),Dy]`; query slots have capacity
+`[Ox,max(Dy,Oy)]`, where D and O are the actual input/output raster extents.
+Periodic slots use the captured period's extent. Logical finite tables still
+shrink to valid starts; uniforms, viewport, scissor and all loads use those
+logical regions. Physical padding is charged and may be cleared, but valid
+sampling cannot read it. No view is assumed to crop a texture in X/Y.
+
+Checked inclusive producer/last-read intervals determine reuse: an old occupant
+must finish before the new producer begins. At most two table-capacity and two
+query-capacity slots suffice per chain; equal classes share slots by actual
+overlap and can need fewer. Compatible nonoverlapping chains reuse the same slots
+across a frame.
+Different capacity classes retain their actual aggregate, so this is
+not a whole-renderer four-texture or driver-memory promise. Prepare/table/query
+levels share real native textures through ordered separate render passes; active
+reads and writes never alias within a pass.
+
+Each physical slot has one real lease through submission, resolved once after
+its last logical occupant. Retiring a logical level does not refund or recreate
+its backing. Normal cleanup can retain the few capacity entries idle under the
+existing cache budget; those bytes remain visible. Preflight includes actual
+resident cache entries and each missing physical slot once, including its owning
+generation scope. A separately admitted CPU backing owns the prepared graph's
+binding tables and lease tokens; the frame scope retains native-resource
+custody. Per-pass uniforms and native objects remain separate real costs and can
+grow with the number of draws.
 
 Dimensions depend on source/output extents, rather than radius-sized padding.
 Huge positive scaling is consumed only by proved semantic bounds: full-period
@@ -253,8 +281,10 @@ with the original Scene and shared immutable Images. See
 The new request, operator, preparation, source, receiver and diagnostic APIs are
 additions. Adding `GpuMorphologyFilterExecution` to the existing exhaustive public
 `PrimitiveOperation` enum is source-breaking for downstream exhaustive matches,
-including facade consumers. There are no compatibility aliases or changes to
-that enum's exhaustiveness. Existing [Gaussian](gaussian.md), [offset](offset.md)
+including facade consumers. The required `ScheduledMorphologySamples` field on
+`RenderWorkTable<T>` also requires updates to exhaustive struct literals and
+patterns. There are no compatibility aliases or changes to exhaustiveness.
+Existing [Gaussian](gaussian.md), [offset](offset.md)
 and [native shadow](native-shadow.md) retain their operation-specific semantics.
 
 The semantic sources are the [morphology clause](https://drafts.csswg.org/filter-effects-1/#feMorphologyElement),

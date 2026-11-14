@@ -246,6 +246,8 @@ impl PreparedGraph<'_> {
             encoder,
             target_binding.view(),
             SpatialPassDrawBindings {
+                #[cfg(test)]
+                target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline: objects.render_pipeline(),
                 bind_group: &bindings,
             },

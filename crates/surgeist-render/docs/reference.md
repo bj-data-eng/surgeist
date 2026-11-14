@@ -693,7 +693,9 @@ color phases, last-use custody and typed numeric qualifications.
 concrete semantic operation; active float32 runtime refusal identifies
 `RuntimeOperation::MorphologyRendering`. Adding
 `PrimitiveOperation::GpuMorphologyFilterExecution` extends the existing exhaustive
-public enum and is source-breaking for downstream exhaustive matches.
+public enum and is source-breaking for downstream exhaustive matches. The new
+required `RenderWorkTable<T>::ScheduledMorphologySamples` field also requires
+updates to exhaustive struct literals and patterns.
 
 ## Image sampling
 

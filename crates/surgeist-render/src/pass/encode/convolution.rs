@@ -91,6 +91,7 @@ impl PreparedGraph<'_> {
             .convolution_weights
             .ok_or_else(|| preparation_error("convolution has no coefficient owner"))?;
         let weights = self
+            .acquired_bindings
             .convolution_weight_bindings
             .get(&owner, account)?
             .and_then(|binding| binding.lease.as_ref())
@@ -179,6 +180,8 @@ impl PreparedGraph<'_> {
             encoder,
             target_binding.view(),
             SpatialPassDrawBindings {
+                #[cfg(test)]
+                target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline: objects.render_pipeline(),
                 bind_group: &bindings,
             },

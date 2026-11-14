@@ -5,6 +5,7 @@ mod gaussian;
 mod lower;
 mod model;
 mod morphology;
+mod morphology_scratch;
 mod native_shadow;
 mod offset;
 mod parameters;
@@ -395,3 +396,13 @@ impl ExecutableGraphWorkingFormatRequest {
         }
     }
 }
+
+#[cfg(test)]
+#[expect(
+    unused_imports,
+    reason = "test-only physical custody observations form one intentional pass front door"
+)]
+pub(crate) use morphology_scratch::{
+    MorphologyLogicalAssignmentForTest, MorphologyPaddingClearGuardForTest,
+    MorphologyPhysicalSlotForTest, MorphologySlotObservationForTest,
+};

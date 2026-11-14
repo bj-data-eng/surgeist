@@ -992,6 +992,12 @@ impl ReadyDeviceStateBorrowForTest<'_> {
         self.resources.observation_for_test()
     }
 
+    pub(crate) fn resource_manager_observation_reader_for_test(
+        &self,
+    ) -> std::rc::Rc<dyn Fn() -> ResourceManagerObservationForTest> {
+        self.resources.observation_reader_for_test()
+    }
+
     pub(crate) fn resource_cache_budget_for_test(&self) -> ResourceCacheBudget {
         self.resources.budget_for_test()
     }

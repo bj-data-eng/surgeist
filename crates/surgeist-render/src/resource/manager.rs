@@ -485,11 +485,11 @@ impl ResourceManagerState {
                     "must have remaining identity space for every prepared allocation",
                 )
             })?;
-            allocation_bytes.push(request.byte_len)?;
+            allocation_bytes.push((request.key.generation_class(), request.byte_len))?;
         }
 
         self.generation
-            .preview_cache_allocations(allocation_bytes.iter().copied(), observer)
+            .preview_classified_cache_allocations(allocation_bytes.iter().copied(), observer)
             .map_err(Self::allocation_preflight_error)?;
         self.entries.reserve(allocation_bytes.len(), &self.cpu)
     }

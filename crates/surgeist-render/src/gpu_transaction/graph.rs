@@ -346,6 +346,8 @@ impl GpuOperationTransaction {
         command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
         account: &Account,
     ) -> Result<()> {
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        super::test_support::before_graph_submit_for_test(&self.lease).await;
         account.phase(RenderPhase::Submit, || {
             command_buffer
                 .submit(queue, Some(&account.at(RenderPhase::Submit)))

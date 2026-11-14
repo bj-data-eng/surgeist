@@ -951,3 +951,711 @@ fn public_morphology_variable_finite_peak_is_bounded_with_default_retention() {
 fn public_morphology_variable_finite_peak_is_bounded_with_disabled_retention() {
     bounded_morphology_peak_witness(false, ResourceCacheBudget::DISABLED);
 }
+
+// Physical-custody acceptance cases supplement the committed peak regressions
+// above. Expected descriptor bytes below come from fixture geometry, not an
+// observed peak or the slot allocator's output.
+fn physical_alpha(width: u32) -> Vec<u8> {
+    (0..width).map(|x| (32 + (37 * x) % 224) as u8).collect()
+}
+
+fn physical_scene(width: u32, output: u32, periodic: bool, radius: f64) -> Scene {
+    let input = bounds(width, 1);
+    let result = bounds(output, 1);
+    let source = source_scene(
+        image(
+            width,
+            1,
+            physical_alpha(width)
+                .into_iter()
+                .flat_map(|a| [255, 255, 255, a])
+                .collect(),
+        ),
+        input,
+    );
+    let source = if periodic {
+        MorphologySource::periodic(source, input, result, result).unwrap()
+    } else {
+        MorphologySource::finite(
+            source,
+            FilterDomains::try_new(input, input, result).unwrap(),
+        )
+    };
+    let mut scene = Scene::new();
+    scene
+        .morphology_layer(
+            Layer::new(),
+            operation(
+                MorphologyInput::new()
+                    .with_operator(MorphologyOperator::Dilate)
+                    .with_radii(radius, 0.25),
+                FilterColorSpace::Srgb,
+            ),
+            source,
+        )
+        .unwrap();
+    scene
+}
+
+fn physical_baseline(width: u32) -> Scene {
+    let domain = bounds(width, 1);
+    finite_scene(
+        source_scene(
+            image(width, 1, [0, 255, 0, 255].repeat(width as usize)),
+            domain,
+        ),
+        FilterDomains::try_new(domain, domain, domain).unwrap(),
+        operation(MorphologyInput::new(), FilterColorSpace::Srgb),
+        Layer::new(),
+    )
+}
+
+fn physical_renderer(width: u32, retention: ResourceCacheBudget) -> (Renderer, Surface) {
+    let mut renderer = pollster::block_on(Renderer::new(
+        Options::default()
+            .with_effect_quality_policy(crate::EffectQualityPolicy::RequireHighPrecision)
+            .with_resource_cache_budget(retention)
+            .with_accounting(
+                RenderAccountingOptions::new()
+                    .with_profile(RenderProfile::Summary { timing: false }),
+            ),
+    ))
+    .unwrap();
+    let surface =
+        pollster::block_on(renderer.create_headless(Size::new(f64::from(width), 1.0), 1.0))
+            .unwrap();
+    (renderer, surface)
+}
+
+fn assert_physical_pixels(
+    pixels: &crate::ImageBuffer,
+    input: u32,
+    output: u32,
+    periodic: bool,
+    radius: i64,
+) {
+    let alpha = physical_alpha(input);
+    for x in 0..output {
+        let expected = (-radius..=radius)
+            .map(|dx| {
+                let i = i64::from(x) + dx;
+                if periodic {
+                    alpha[i.rem_euclid(i64::from(input)) as usize]
+                } else if (0..i64::from(input)).contains(&i) {
+                    alpha[i as usize]
+                } else {
+                    0
+                }
+            })
+            .max()
+            .unwrap();
+        assert_pixel(pixels, x, 0, [255, 255, 255, expected], 2);
+    }
+}
+
+fn assert_provider_planes(
+    observed: &crate::resource::ResourceManagerObservationForTest,
+    float_classes: &[(u32, usize)],
+    working_classes: &[(u32, usize)],
+    capture_classes: &[(u32, usize)],
+) {
+    let classes = [
+        (wgpu::TextureFormat::Rgba32Float, 16, float_classes),
+        (wgpu::TextureFormat::Rgba16Float, 8, working_classes),
+        (wgpu::TextureFormat::Rgba8Unorm, 4, capture_classes),
+    ];
+    let mut count = 0;
+    let mut bytes = 0;
+    for (format, stride, sizes) in classes {
+        for &(width, expected) in sizes {
+            let entries: Vec<_> = observed
+                .effect_textures
+                .iter()
+                .filter(|entry| {
+                    entry.format == format && entry.extent == crate::PhysicalSize::new(width, 1)
+                })
+                .collect();
+            assert_eq!(
+                entries.len(),
+                expected,
+                "actual {format:?} {width}x1 provider entries"
+            );
+            for entry in entries {
+                assert_eq!(entry.bytes, u64::from(width) * stride);
+                // Vello writes its RGBA8 capture through storage bindings;
+                // working and morphology scratch planes are render targets.
+                // All three descriptor owners retain sampled and copy access.
+                let write_usage = if format == wgpu::TextureFormat::Rgba8Unorm {
+                    wgpu::TextureUsages::STORAGE_BINDING
+                } else {
+                    wgpu::TextureUsages::RENDER_ATTACHMENT
+                };
+                assert_eq!(
+                    entry.usage,
+                    write_usage
+                        | wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::COPY_SRC
+                        | wgpu::TextureUsages::COPY_DST
+                );
+            }
+            count += expected;
+            bytes += u64::from(width) * stride * expected as u64;
+        }
+    }
+    assert_eq!(
+        observed.effect_textures.len(),
+        count,
+        "no unclassified Effects backing"
+    );
+    assert_eq!(observed.effects_gpu_bytes, bytes);
+    assert_eq!(observed.effects_registered_bytes, bytes);
+}
+
+fn float_identities(
+    observed: &crate::resource::ResourceManagerObservationForTest,
+) -> Vec<(crate::resource::ResourceIdentity, u64)> {
+    let mut identities: Vec<_> = observed
+        .effect_textures
+        .iter()
+        .filter(|entry| entry.format == wgpu::TextureFormat::Rgba32Float)
+        .map(|entry| (entry.resource, entry.native_identity))
+        .collect();
+    identities.sort_by_key(|(resource, _)| resource.get());
+    identities
+}
+
+fn reach_before_submission<F: Future>(
+    mut future: Pin<&mut F>,
+    gate: &crate::gpu_transaction::test_support::GraphBeforeSubmissionGateGuardForTest,
+    device: &wgpu::Device,
+) -> u64 {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        assert!(
+            future
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending(),
+            "the real encoded graph must remain held before queue submission"
+        );
+        if let Some(generation) = gate.reached_generation() {
+            assert_eq!(gate.submissions(), 0);
+            return generation;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "encoded graph did not reach its owned pre-submit gate"
+        );
+        device.poll(wgpu::PollType::Poll).unwrap();
+        std::thread::yield_now();
+    }
+}
+
+#[test]
+fn public_morphology_exact_physical_effects_limits_refuse_before_acquisition_and_retry() {
+    for (periodic, width, slots, exact) in [(true, 64, 2, 5376), (false, 65, 3, 6500)] {
+        for retention in [ResourceCacheBudget::DEFAULT, ResourceCacheBudget::DISABLED] {
+            let (mut renderer, mut surface) = physical_renderer(width, retention);
+            let before = render(&mut renderer, &mut surface, &physical_baseline(width));
+            let stats = renderer.stats();
+            let texture = published(&surface);
+            let publications = surface.headless_publication_count_for_test();
+            let reader = renderer
+                .default_ready_device_state_borrow_for_test()
+                .unwrap()
+                .resource_manager_observation_reader_for_test();
+            let opening = reader();
+            let opening_bytes = if retention == ResourceCacheBudget::DEFAULT {
+                52 * u64::from(width)
+            } else {
+                0
+            };
+            assert_eq!(opening.effects_gpu_bytes, opening_bytes);
+            assert_eq!(opening.effects_registered_bytes, opening_bytes);
+            assert_eq!(opening.effects_idle_bytes, opening_bytes);
+            assert!(float_identities(&opening).is_empty());
+            renderer
+                .set_default_device_effects_gpu_byte_limit_for_test(exact - 1)
+                .unwrap();
+            let scene = physical_scene(width, width, periodic, 32.0);
+            let error =
+                pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+                    .unwrap_err();
+            assert!(
+                matches!(
+                    error.accounting_diagnostic(),
+                    Some(crate::RenderAccountingError::GenerationRefused {
+                        quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                        ..
+                    })
+                ),
+                "{error:?}"
+            );
+            let refused = reader();
+            assert_eq!(
+                refused.payload_creation_attempts,
+                opening.payload_creation_attempts
+            );
+            assert_eq!(refused.effects_allocations, opening.effects_allocations);
+            assert_eq!(refused.effect_textures, opening.effect_textures);
+            assert_eq!(refused.effects_gpu_bytes, opening_bytes);
+            assert_eq!(renderer.stats(), stats);
+            assert_eq!(published(&surface), texture);
+            assert_eq!(surface.headless_publication_count_for_test(), publications);
+            assert_eq!(
+                pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+                before
+            );
+            assert_frame_leases_released(&mut renderer);
+            renderer
+                .set_default_device_effects_gpu_byte_limit_for_test(exact)
+                .unwrap();
+            let signal = renderer.default_device_signal_for_test().unwrap();
+            let device = renderer
+                .default_ready_device_state_borrow_for_test()
+                .unwrap()
+                .device_for_test()
+                .clone();
+            let gate = GraphSubmissionGateGuardForTest::install(signal);
+            {
+                let mut future =
+                    Box::pin(renderer.render(&mut surface, &scene, Parameters::default()));
+                reach_submission(future.as_mut(), &gate, &device);
+                let held = reader();
+                assert_provider_planes(&held, &[(width, slots)], &[(width, 6)], &[(width, 1)]);
+                assert_eq!(held.effects_gpu_bytes, exact);
+                assert!(
+                    held.effect_textures
+                        .iter()
+                        .all(|entry| entry.leased && entry.resolved)
+                );
+                gate.release();
+                finish(future.as_mut(), &device).unwrap();
+            }
+            drop(gate);
+            assert_eq!(
+                renderer.stats().effect_precision,
+                Some(crate::EffectPrecision::High)
+            );
+            assert_eq!(
+                renderer
+                    .last_attempt()
+                    .unwrap()
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::Submissions),
+                1
+            );
+            assert_eq!(
+                surface.headless_publication_count_for_test(),
+                publications + 1
+            );
+            assert_physical_pixels(
+                &pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+                width,
+                width,
+                periodic,
+                32,
+            );
+            assert_frame_leases_released(&mut renderer);
+        }
+    }
+}
+
+#[test]
+fn public_morphology_unsubmitted_and_submitted_cancellation_retain_fixed_physical_slots() {
+    use crate::gpu_transaction::test_support::GraphBeforeSubmissionGateGuardForTest;
+    for cancel_after_submit in [false, true] {
+        let (mut renderer, mut surface) = physical_renderer(65, ResourceCacheBudget::DISABLED);
+        let before = render(&mut renderer, &mut surface, &physical_baseline(65));
+        let stats = renderer.stats();
+        let texture = published(&surface);
+        let publications = surface.headless_publication_count_for_test();
+        let ready = renderer
+            .default_ready_device_state_borrow_for_test()
+            .unwrap();
+        let device = ready.device_for_test().clone();
+        let reader = ready.resource_manager_observation_reader_for_test();
+        let signal = renderer.default_device_signal_for_test().unwrap();
+        let before_gate = GraphBeforeSubmissionGateGuardForTest::install(Arc::clone(&signal));
+        let after_gate = GraphSubmissionGateGuardForTest::install(Arc::clone(&signal));
+        let scene = physical_scene(65, 65, false, 32.0);
+        {
+            let mut future = Box::pin(renderer.render(&mut surface, &scene, Parameters::default()));
+            let generation = reach_before_submission(future.as_mut(), &before_gate, &device);
+            assert_eq!(signal.active_generation_for_test(), Some(generation));
+            let encoded = reader();
+            assert_provider_planes(&encoded, &[(65, 3)], &[(65, 6)], &[(65, 1)]);
+            assert!(
+                encoded
+                    .effect_textures
+                    .iter()
+                    .all(|entry| entry.leased && entry.resolved)
+            );
+            let identities = float_identities(&encoded);
+            assert_eq!(identities.len(), 3);
+            assert_eq!(after_gate.submissions(), 0);
+            if cancel_after_submit {
+                before_gate.release();
+                assert_eq!(
+                    reach_submission(future.as_mut(), &after_gate, &device),
+                    generation
+                );
+                let submitted = reader();
+                assert_provider_planes(&submitted, &[(65, 3)], &[(65, 6)], &[(65, 1)]);
+                assert_eq!(float_identities(&submitted), identities);
+                assert_eq!(submitted.effects_gpu_bytes, encoded.effects_gpu_bytes);
+                assert_eq!(before_gate.submissions(), 1);
+            }
+            drop(future);
+        }
+        drop((before_gate, after_gate));
+        assert_eq!(signal.active_generation_for_test(), None);
+        assert_eq!(renderer.stats(), stats);
+        assert_eq!(surface.headless_publication_count_for_test(), publications);
+        assert_eq!(published(&surface), texture);
+        assert_eq!(
+            pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+            before
+        );
+        assert_frame_leases_released(&mut renderer);
+        assert_eq!(reader().effects_gpu_bytes, 0);
+        assert_physical_pixels(
+            &render(&mut renderer, &mut surface, &scene),
+            65,
+            65,
+            false,
+            32,
+        );
+        assert_frame_leases_released(&mut renderer);
+    }
+}
+
+fn verify_physical_plane_budget(
+    scene: &Scene,
+    output: u32,
+    floats: &[(u32, usize)],
+    working: &[(u32, usize)],
+    captures: &[(u32, usize)],
+    exact: u64,
+) -> crate::ImageBuffer {
+    let (mut renderer, mut surface) = physical_renderer(output, ResourceCacheBudget::DISABLED);
+    let before = render(&mut renderer, &mut surface, &physical_baseline(output));
+    let stats = renderer.stats();
+    let texture = published(&surface);
+    let publications = surface.headless_publication_count_for_test();
+    let ready = renderer
+        .default_ready_device_state_borrow_for_test()
+        .unwrap();
+    let device = ready.device_for_test().clone();
+    let reader = ready.resource_manager_observation_reader_for_test();
+    let opening = reader();
+    assert_eq!(opening.effects_gpu_bytes, 0);
+    renderer
+        .set_default_device_effects_gpu_byte_limit_for_test(exact - 1)
+        .unwrap();
+    let error = pollster::block_on(renderer.render(&mut surface, scene, Parameters::default()))
+        .unwrap_err();
+    assert!(
+        matches!(
+            error.accounting_diagnostic(),
+            Some(crate::RenderAccountingError::GenerationRefused {
+                quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                ..
+            })
+        ),
+        "{error:?}"
+    );
+    let refused = reader();
+    assert_eq!(
+        refused.payload_creation_attempts,
+        opening.payload_creation_attempts
+    );
+    assert_eq!(refused.effects_allocations, opening.effects_allocations);
+    assert_eq!(renderer.stats(), stats);
+    assert_eq!(published(&surface), texture);
+    assert_eq!(surface.headless_publication_count_for_test(), publications);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before
+    );
+    assert_frame_leases_released(&mut renderer);
+    renderer
+        .set_default_device_effects_gpu_byte_limit_for_test(exact)
+        .unwrap();
+    let gate = GraphSubmissionGateGuardForTest::install(
+        renderer.default_device_signal_for_test().unwrap(),
+    );
+    {
+        let mut future = Box::pin(renderer.render(&mut surface, scene, Parameters::default()));
+        reach_submission(future.as_mut(), &gate, &device);
+        let held = reader();
+        assert_provider_planes(&held, floats, working, captures);
+        assert_eq!(held.effects_gpu_bytes, exact);
+        let ids = float_identities(&held);
+        let mut hashes: Vec<_> = ids.iter().map(|(_, native)| *native).collect();
+        hashes.sort_unstable();
+        hashes.dedup();
+        assert_eq!(
+            hashes.len(),
+            ids.len(),
+            "physical slots must own distinct real native textures"
+        );
+        gate.release();
+        finish(future.as_mut(), &device).unwrap();
+    }
+    drop(gate);
+    assert_eq!(
+        renderer.stats().effect_precision,
+        Some(crate::EffectPrecision::High)
+    );
+    assert_eq!(
+        renderer
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::Submissions),
+        1
+    );
+    assert_eq!(
+        surface.headless_publication_count_for_test(),
+        publications + 1
+    );
+    let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_frame_leases_released(&mut renderer);
+    assert_eq!(reader().effects_gpu_bytes, 0);
+    pixels
+}
+
+#[test]
+fn public_morphology_distinct_table_query_capacities_acquire_four_exact_planes() {
+    let scene = physical_scene(65, 33, false, 32.0);
+    // Three source working planes65, three output/root working planes33,
+    // one65-cell RGBA8 capture. T slots are65 and Q slots33; neither class
+    // can borrow the other's capacity merely because its logical width fits.
+    let nonfloat = (3 * 65 + 3 * 33) * 8 + 65 * 4;
+    let float = 2 * 65 * 16 + 2 * 33 * 16;
+    assert_eq!((nonfloat, float), (2612, 3136));
+    let pixels = verify_physical_plane_budget(
+        &scene,
+        33,
+        &[(65, 2), (33, 2)],
+        &[(65, 3), (33, 3)],
+        &[(65, 1)],
+        nonfloat + float,
+    );
+    assert_physical_pixels(&pixels, 65, 33, false, 32);
+}
+
+fn physical_siblings(first: (u32, bool), second: (u32, bool), output: u32) -> Scene {
+    let mut scene = Scene::new();
+    // Ordinary wrappers are transparent. The two morphology receivers remain
+    // ordered siblings in one frame and one actual graph submission.
+    scene.layer(Layer::new(), |children| {
+        *children = physical_scene(first.0, output, first.1, 32.0)
+    });
+    scene.layer(Layer::new(), |children| {
+        *children = physical_scene(second.0, output, second.1, 32.0)
+    });
+    scene
+}
+
+fn assert_sibling_pixels(
+    pixels: &crate::ImageBuffer,
+    first: (u32, bool),
+    second: (u32, bool),
+    output: u32,
+) {
+    let maximum = |width: u32, periodic: bool, x: u32| {
+        let alpha = physical_alpha(width);
+        (-32_i64..=32)
+            .map(|dx| {
+                let i = i64::from(x) + dx;
+                if periodic {
+                    alpha[i.rem_euclid(i64::from(width)) as usize]
+                } else if (0..i64::from(width)).contains(&i) {
+                    alpha[i as usize]
+                } else {
+                    0
+                }
+            })
+            .max()
+            .unwrap()
+    };
+    for x in 0..output {
+        let bottom = f64::from(maximum(first.0, first.1, x)) / 255.0;
+        let top = f64::from(maximum(second.0, second.1, x)) / 255.0;
+        let alpha = ((top + bottom * (1.0 - top)) * 255.0).round() as u8;
+        assert_pixel(pixels, x, 0, [255, 255, 255, alpha], 3);
+    }
+}
+
+#[test]
+fn public_morphology_compatible_sibling_routes_share_two_frame_wide_native_slots() {
+    let scene = physical_siblings((64, true), (64, true), 64);
+    // Root1 + each chain's source3/resolve1/final-composite1 gives11 working
+    // planes. Each chain captures once; its two float slots can be reassigned
+    // to the second chain after the first's final morphology read.
+    let nonfloat = 11 * 64 * 8 + 2 * 64 * 4;
+    let float = 2 * 64 * 16;
+    assert_eq!((nonfloat, float), (6144, 2048));
+    let pixels = verify_physical_plane_budget(
+        &scene,
+        64,
+        &[(64, 2)],
+        &[(64, 11)],
+        &[(64, 2)],
+        nonfloat + float,
+    );
+    assert_sibling_pixels(&pixels, (64, true), (64, true), 64);
+}
+
+#[test]
+fn public_morphology_different_sibling_capacity_classes_keep_their_actual_sum() {
+    let scene = physical_siblings((64, true), (65, false), 65);
+    // The64-cell period needs2 slots and the65-cell variable finite route3.
+    // Their descriptor classes differ, so all five real backings remain
+    // charged. Working planes: first source3 at64; root1, second source3,
+    // and both resolve/final-composite pairs at65, totaling8 at65.
+    let nonfloat = (3 * 64 + 8 * 65) * 8 + (64 + 65) * 4;
+    let float = 2 * 64 * 16 + 3 * 65 * 16;
+    assert_eq!((nonfloat, float), (6212, 5168));
+    let pixels = verify_physical_plane_budget(
+        &scene,
+        65,
+        &[(64, 2), (65, 3)],
+        &[(64, 3), (65, 8)],
+        &[(64, 1), (65, 1)],
+        nonfloat + float,
+    );
+    assert_sibling_pixels(&pixels, (64, true), (65, false), 65);
+}
+
+#[test]
+fn public_morphology_changed_radius_reuses_warm_capacity_without_level_backings() {
+    let (mut renderer, mut surface) = physical_renderer(64, ResourceCacheBudget::DEFAULT);
+    let first = physical_scene(64, 64, true, 32.0);
+    assert_physical_pixels(
+        &render(&mut renderer, &mut surface, &first),
+        64,
+        64,
+        true,
+        32,
+    );
+    let ready = renderer
+        .default_ready_device_state_borrow_for_test()
+        .unwrap();
+    let device = ready.device_for_test().clone();
+    let reader = ready.resource_manager_observation_reader_for_test();
+    let warm = reader();
+    assert_provider_planes(&warm, &[(64, 2)], &[(64, 6)], &[(64, 1)]);
+    assert_eq!(warm.effects_gpu_bytes, 5376);
+    assert_eq!(warm.effects_idle_bytes, 5376);
+    let identities = float_identities(&warm);
+    renderer
+        .set_default_device_effects_gpu_byte_limit_for_test(5376)
+        .unwrap();
+    let scene = physical_scene(64, 64, true, 8.0);
+    let gate = GraphSubmissionGateGuardForTest::install(
+        renderer.default_device_signal_for_test().unwrap(),
+    );
+    {
+        let mut future = Box::pin(renderer.render(&mut surface, &scene, Parameters::default()));
+        reach_submission(future.as_mut(), &gate, &device);
+        let held = reader();
+        assert_provider_planes(&held, &[(64, 2)], &[(64, 6)], &[(64, 1)]);
+        assert_eq!(float_identities(&held), identities);
+        assert_eq!(held.effects_allocations, warm.effects_allocations);
+        gate.release();
+        finish(future.as_mut(), &device).unwrap();
+    }
+    drop(gate);
+    let report = renderer.last_attempt().unwrap();
+    let generation = report.generation().unwrap().unwrap();
+    assert_eq!(
+        generation.scope_opening(
+            crate::RenderGenerationScope::Effects,
+            RenderResource::GpuBytes
+        ),
+        5376
+    );
+    assert_eq!(
+        generation.scope_opening(
+            crate::RenderGenerationScope::Effects,
+            RenderResource::RegisteredCacheGpuBytes
+        ),
+        5376
+    );
+    assert_physical_pixels(
+        &pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        64,
+        64,
+        true,
+        8,
+    );
+    let closing = reader();
+    assert_eq!(float_identities(&closing), identities);
+    assert_eq!(closing.effects_allocations, warm.effects_allocations);
+    assert_eq!(closing.effects_gpu_bytes, 5376);
+    assert_eq!(closing.effects_idle_bytes, 5376);
+    assert_frame_leases_released(&mut renderer);
+}
+
+#[test]
+fn public_morphology_capacity_padding_canaries_cannot_enter_logical_extrema() {
+    let input = bounds(65, 1);
+    let output = bounds(33, 1);
+    let (mut renderer, mut surface) = renderer_and_surface(33, 1);
+    for format in [
+        crate::resource::WorkingFormat::HighPrecision,
+        crate::resource::WorkingFormat::ReducedPrecision,
+    ] {
+        for operator in [MorphologyOperator::Dilate, MorphologyOperator::Erode] {
+            let scene = finite_scene(
+                source_scene(image(65, 1, [255, 255, 255, 128].repeat(65)), input),
+                FilterDomains::try_new(input, input, output).unwrap(),
+                operation(
+                    MorphologyInput::new()
+                        .with_operator(operator)
+                        .with_radii(16.0, 0.25),
+                    FilterColorSpace::Srgb,
+                ),
+                Layer::new(),
+            );
+            for sentinel in [-2.0, 2.0] {
+                // The actual scratch attachment clear initializes capacity padding
+                // to an impossible input value. Its logical viewport/scissor then
+                // overwrites only the current valid table/query region.
+                let _canary =
+                    crate::pass::MorphologyPaddingClearGuardForTest::install(wgpu::Color {
+                        r: sentinel,
+                        g: sentinel,
+                        b: sentinel,
+                        a: sentinel,
+                    });
+                pollster::block_on(renderer.render_with_exact_graph_working_format_for_test(
+                    &mut surface,
+                    &scene,
+                    Parameters::default(),
+                    format,
+                ))
+                .unwrap();
+                let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+                for x in 0..33 {
+                    // Inclusive R16 erosion reaches finite exterior only for x<16;
+                    // every dilation window intersects the uniform half-alpha row.
+                    let expected = if operator == MorphologyOperator::Erode && x < 16 {
+                        [0, 0, 0, 0]
+                    } else {
+                        [255, 255, 255, 128]
+                    };
+                    assert_pixel(&pixels, x, 0, expected, 2);
+                }
+                assert_frame_leases_released(&mut renderer);
+            }
+        }
+    }
+}

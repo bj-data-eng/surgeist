@@ -646,6 +646,22 @@ impl MorphologyPassFacts {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         Ok(self.0.route == other.0.route)
     }
+    /// Physical scratch capacity classes derived from the already closed route.
+    pub(crate) fn capacity_extents(&self) -> Option<([u32; 2], [u32; 2])> {
+        let data = &*self.0.route.0;
+        if !matches!(data.kind, MorphologyRouteKind::Active(_)) {
+            return None;
+        }
+        let input = grid::extent(data.original?);
+        if data.period.is_some() {
+            return Some((input, input));
+        }
+        let output = grid::extent(data.result);
+        Some((
+            [input[0].max(output[0]), input[1]],
+            [output[0], input[1].max(output[1])],
+        ))
+    }
     pub(crate) fn needs_float32(&self) -> bool {
         self.0.stage.float_output()
     }

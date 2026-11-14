@@ -1,3 +1,6 @@
+use super::morphology_scratch::{
+    MorphologyScratchBindings, MorphologyScratchPlan, ScratchAssignmentRef,
+};
 use super::{PassMap, PassSet};
 #[cfg(test)]
 #[path = "prepare_boxed_tests.rs"]
@@ -153,6 +156,7 @@ pub(super) struct RuntimeGraphPreparationPlan {
     pub(super) root_working_image: RuntimeResourceId,
     pub(super) final_present: RuntimePassId,
     pub(super) allocation_preflights: AccountedVec<ResourceAllocationPreflight>,
+    pub(super) morphology_scratch: MorphologyScratchPlan,
 }
 
 impl RuntimeGraphPreparationPlan {
@@ -215,6 +219,30 @@ impl RuntimeGraphPreparationPlan {
             account.work(RenderWork::GraphNodeVisits, 1)?;
             kernels.append_slot()?.write(kernel);
         }
+        let morphology_scratch =
+            MorphologyScratchPlan::try_new(&prepared_resources.resources, &passes, account)?;
+        if !morphology_scratch.proves_exact(&prepared_resources.resources, &passes, account)? {
+            return Err(preparation_error(
+                "morphology scratch physical plan is not exact",
+            ));
+        }
+        for resource in &prepared_resources.resources {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            if morphology_scratch
+                .assignment_for(resource.runtime.id, account)?
+                .is_none()
+            {
+                prepared_resources
+                    .allocation_preflights
+                    .push(resource.allocation.preflight(account)?)?;
+            }
+        }
+        for slot in &morphology_scratch.slots {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            prepared_resources.allocation_preflights.push(
+                ResourceAllocationPreflight::effect_texture(slot.descriptor)?,
+            )?;
+        }
         for kernel in &kernels {
             account.work(RenderWork::GraphNodeVisits, 1)?;
             prepared_resources
@@ -239,6 +267,7 @@ impl RuntimeGraphPreparationPlan {
             root_working_image: lowered.root_working_image,
             final_present: lowered.final_present,
             allocation_preflights: prepared_resources.allocation_preflights,
+            morphology_scratch,
         })
     }
 }
@@ -273,9 +302,6 @@ fn prepare_runtime_resources<'a>(
         validate_runtime_resource_request(resource, lowered.working_format, capabilities)?;
         let allocation =
             prepare_runtime_resource_allocation(resource, lowered.working_format, capabilities)?;
-        prepared
-            .allocation_preflights
-            .push(allocation.preflight(account)?)?;
         prepared.resources.push(RuntimeResourcePreparationRequest {
             runtime: resource.clone(),
             allocation,
@@ -984,6 +1010,22 @@ fn runtime_blur_for_kernel(kind: &RuntimePassKind) -> Option<&RuntimeBlur> {
 
 pub(super) struct PreparedResourceBinding {
     pub(super) allocation: RuntimeAllocationRequest,
+    pub(super) backing: PreparedResourceBacking,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DedicatedLeaseSlot(usize);
+impl DedicatedLeaseSlot {
+    pub(super) const fn index(self) -> usize {
+        self.0
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PreparedResourceBacking {
+    Dedicated { slot: DedicatedLeaseSlot },
+    MorphologyScratch { assignment: ScratchAssignmentRef },
+}
+pub(super) struct DedicatedLeaseEntry {
+    pub(super) resource: RuntimeResourceId,
     pub(super) lease: Option<ResourceLease>,
 }
 
@@ -1339,10 +1381,7 @@ pub(crate) struct PreparedGraph<'device> {
     pub(super) color_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) spatial_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) backdrop_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
-    pub(super) resource_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
-    pub(super) kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
-    pub(super) convolution_weight_bindings:
-        PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+    pub(super) acquired_bindings: crate::accounting::OwnedBox<AcquiredGraphBindings>,
     pub(super) offset_parameter_bindings: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
     pub(super) native_shadow_parameter_bindings:
         PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
@@ -1369,10 +1408,81 @@ pub(crate) struct PreparedGraph<'device> {
     _ready_device: PhantomData<&'device ResourceManager>,
 }
 
-struct AcquiredGraphBindings {
-    runtime_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
-    gaussian_kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
-    convolution_weight_bindings: PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+pub(super) struct AcquiredGraphBindings {
+    pub(super) runtime_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    pub(super) dedicated_lease_slots: AccountedVec<DedicatedLeaseEntry>,
+    pub(super) morphology_scratch_bindings: MorphologyScratchBindings,
+    pub(super) gaussian_kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
+    pub(super) convolution_weight_bindings:
+        PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+}
+
+impl AcquiredGraphBindings {
+    pub(super) fn dedicated_lease(
+        &self,
+        slot: DedicatedLeaseSlot,
+        resource: RuntimeResourceId,
+        account: &Account,
+    ) -> Result<&ResourceLease> {
+        dedicated_lease_at(&self.dedicated_lease_slots, slot, resource, account)
+    }
+    #[cfg(test)]
+    pub(super) fn dedicated_lease_for_test(
+        &self,
+        resource: RuntimeResourceId,
+    ) -> Option<&ResourceLease> {
+        let binding = self
+            .runtime_bindings
+            .entries
+            .iter()
+            .find(|(id, _)| *id == resource)?
+            .1
+            .backing;
+        let PreparedResourceBacking::Dedicated { slot } = binding else {
+            return None;
+        };
+        let entry = self.dedicated_lease_slots.get(slot.index())?;
+        (entry.resource == resource)
+            .then_some(entry.lease.as_ref())
+            .flatten()
+    }
+}
+pub(super) fn dedicated_lease_at<'a>(
+    entries: &'a [DedicatedLeaseEntry],
+    slot: DedicatedLeaseSlot,
+    resource: RuntimeResourceId,
+    account: &Account,
+) -> Result<&'a ResourceLease> {
+    account.work(RenderWork::ResourceProbes, 1)?;
+    let entry = entries
+        .get(slot.index())
+        .ok_or_else(|| preparation_error("dedicated lease slot is missing"))?;
+    if entry.resource != resource {
+        return Err(preparation_error(
+            "dedicated lease slot belongs to another logical resource",
+        ));
+    }
+    entry
+        .lease
+        .as_ref()
+        .ok_or_else(|| preparation_error("dedicated lease binding is stale or already released"))
+}
+#[cfg(test)]
+pub(super) fn take_dedicated_lease_for_test(
+    runtime: &mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    dedicated: &mut AccountedVec<DedicatedLeaseEntry>,
+    resource: RuntimeResourceId,
+) -> Option<ResourceLease> {
+    let PreparedResourceBacking::Dedicated { slot } =
+        runtime.maintenance_get_mut(&resource)?.backing
+    else {
+        return None;
+    };
+    dedicated.renderer_maintenance(RenderWork::ResourceProbes, 1);
+    let entry = dedicated.get_mut(slot.index())?;
+    (entry.resource == resource)
+        .then(|| entry.lease.take())
+        .flatten()
 }
 
 fn acquire_prepared_graph_resources(
@@ -1382,38 +1492,88 @@ fn acquire_prepared_graph_resources(
     queue: &wgpu::Queue,
     capabilities: &DeviceCapabilities,
     account: &Account,
-) -> Result<AcquiredGraphBindings> {
-    let mut runtime_bindings = PassMap::new(account, plan.resources.len())?;
-    let mut gaussian_kernel_bindings = PassMap::new(account, plan.kernels.len())?;
-    let mut convolution_weight_bindings = PassMap::new(account, plan.convolution_weights.len())?;
+) -> Result<crate::accounting::OwnedBox<AcquiredGraphBindings>> {
+    account.work(RenderWork::CoordinateVisits, 1)?;
+    let dedicated_count = plan
+        .resources
+        .len()
+        .checked_sub(plan.morphology_scratch.assignments.len())
+        .ok_or_else(|| preparation_error("scratch assignments exceed logical resource requests"))?;
+    // One unique owner keeps all physical binding families together. Admit its
+    // actual fixed backing and reserved maps before acquiring any native lease.
+    let mut bindings = crate::accounting::OwnedBox::new(
+        AcquiredGraphBindings {
+            runtime_bindings: PassMap::new(account, plan.resources.len())?,
+            dedicated_lease_slots: account.retained(dedicated_count)?,
+            morphology_scratch_bindings: MorphologyScratchBindings::reserve(
+                &plan.morphology_scratch,
+                account,
+            )?,
+            gaussian_kernel_bindings: PassMap::new(account, plan.kernels.len())?,
+            convolution_weight_bindings: PassMap::new(account, plan.convolution_weights.len())?,
+        },
+        &account.storage(),
+    )?;
     for request in &plan.resources {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        let Err(slot) = runtime_bindings.position(&request.runtime.id, account)? else {
+        let Err(slot) = bindings
+            .runtime_bindings
+            .position(&request.runtime.id, account)?
+        else {
             return Err(preparation_error(
                 "one runtime resource acquired more than one concrete binding",
             ));
         };
-        let lease = request
-            .allocation
-            .acquire(frame_scope, device, queue, capabilities)?;
-        runtime_bindings.insert_at_reserved(
+        let backing = match plan
+            .morphology_scratch
+            .assignment_for(request.runtime.id, account)?
+        {
+            Some(assignment) => PreparedResourceBacking::MorphologyScratch {
+                assignment: ScratchAssignmentRef::new(assignment),
+            },
+            None => {
+                let slot = DedicatedLeaseSlot(bindings.dedicated_lease_slots.len());
+                let lease = request
+                    .allocation
+                    .acquire(frame_scope, device, queue, capabilities)?;
+                bindings
+                    .dedicated_lease_slots
+                    .append_slot()?
+                    .write(DedicatedLeaseEntry {
+                        resource: request.runtime.id,
+                        lease: Some(lease),
+                    });
+                PreparedResourceBacking::Dedicated { slot }
+            }
+        };
+        bindings.runtime_bindings.insert_at_reserved(
             slot,
             request.runtime.id,
             PreparedResourceBinding {
                 allocation: request.allocation.clone(),
-                lease: Some(lease),
+                backing,
             },
         )?;
     }
+    bindings.morphology_scratch_bindings.acquire(
+        &plan.morphology_scratch,
+        frame_scope,
+        device,
+        capabilities,
+        account,
+    )?;
     for request in &plan.kernels {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        let Err(slot) = gaussian_kernel_bindings.position(&request.key, account)? else {
+        let Err(slot) = bindings
+            .gaussian_kernel_bindings
+            .position(&request.key, account)?
+        else {
             return Err(preparation_error(
                 "one Gaussian kernel acquired more than one concrete binding",
             ));
         };
         let lease = frame_scope.acquire_gaussian_kernel_buffer(device, &request.plan)?;
-        gaussian_kernel_bindings.insert_at_reserved(
+        bindings.gaussian_kernel_bindings.insert_at_reserved(
             slot,
             request.key,
             PreparedKernelBinding { lease: Some(lease) },
@@ -1422,7 +1582,7 @@ fn acquire_prepared_graph_resources(
     for request in &plan.convolution_weights {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         let lease = frame_scope.acquire_convolution_weights(device, queue, &request.plan)?;
-        convolution_weight_bindings.insert_with(
+        bindings.convolution_weight_bindings.insert_with(
             request.owner,
             PreparedConvolutionWeightsBinding {
                 lease: Some(lease),
@@ -1431,11 +1591,7 @@ fn acquire_prepared_graph_resources(
             account,
         )?;
     }
-    Ok(AcquiredGraphBindings {
-        runtime_bindings,
-        gaussian_kernel_bindings,
-        convolution_weight_bindings,
-    })
+    Ok(bindings)
 }
 
 fn create_offset_parameter_binding(
@@ -2363,9 +2519,7 @@ impl<'device> PreparedGraph<'device> {
                 color_filter_execution,
                 spatial_filter_execution,
                 backdrop_execution,
-                resource_bindings: acquired_resources.runtime_bindings,
-                kernel_bindings: acquired_resources.gaussian_kernel_bindings,
-                convolution_weight_bindings: acquired_resources.convolution_weight_bindings,
+                acquired_bindings: acquired_resources,
                 color_filter_operation_bindings,
                 offset_parameter_bindings,
                 gaussian_parameter_bindings,
@@ -2481,6 +2635,117 @@ impl PreparedGraph<'_> {
         Ok(request)
     }
 
+    pub(super) fn activate_morphology_scratch(
+        &mut self,
+        pass: RuntimePassId,
+        account: &Account,
+    ) -> Result<()> {
+        let request = self.require_current_pass(pass, account)?;
+        for read in &request.runtime.reads {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let binding = self
+                .acquired_bindings
+                .runtime_bindings
+                .get(&read.resource, account)?
+                .ok_or_else(|| preparation_error("scratch activation read binding is missing"))?;
+            if let PreparedResourceBacking::MorphologyScratch { assignment } = &binding.backing {
+                let assignment = assignment.index();
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if self
+                    .plan
+                    .morphology_scratch
+                    .assignments
+                    .get(assignment)
+                    .ok_or_else(|| preparation_error("scratch read assignment is absent"))?
+                    .resource
+                    != read.resource
+                {
+                    return Err(preparation_error(
+                        "scratch activation read has a forged logical identity",
+                    ));
+                }
+                self.acquired_bindings
+                    .morphology_scratch_bindings
+                    .validate_read(
+                        &self.plan.morphology_scratch,
+                        assignment,
+                        self.next_pass,
+                        account,
+                    )?;
+            }
+        }
+        let target = match request.runtime.result {
+            super::model::RuntimeResultBinding::Resource(resource) => self
+                .acquired_bindings
+                .runtime_bindings
+                .get(&resource, account)?
+                .and_then(|binding| match &binding.backing {
+                    PreparedResourceBacking::MorphologyScratch { assignment } => {
+                        Some((resource, assignment.index()))
+                    }
+                    _ => None,
+                }),
+            _ => None,
+        };
+        if let Some((resource, index)) = target {
+            account.work(RenderWork::ResourceProbes, 4)?;
+            let assignment = self
+                .plan
+                .morphology_scratch
+                .assignments
+                .get(index)
+                .ok_or_else(|| preparation_error("scratch activation assignment is absent"))?;
+            let state = self
+                .acquired_bindings
+                .morphology_scratch_bindings
+                .logical
+                .get(index)
+                .ok_or_else(|| preparation_error("scratch activation logical state is absent"))?;
+            let slot = self
+                .acquired_bindings
+                .morphology_scratch_bindings
+                .slots
+                .get(assignment.slot)
+                .ok_or_else(|| preparation_error("scratch activation physical slot is absent"))?;
+            if assignment.resource != resource
+                || assignment.producer != self.next_pass
+                || state.activated
+                || state.retired
+                || slot.occupant.is_some()
+                || slot.resolved
+                || self
+                    .plan
+                    .morphology_scratch
+                    .slots
+                    .get(assignment.slot)
+                    .map(|planned| planned.descriptor)
+                    != Some(slot.descriptor)
+            {
+                return Err(preparation_error(
+                    "scratch target slot is occupied, stale or scheduled at another producer",
+                ));
+            }
+            self.acquired_bindings.morphology_scratch_bindings.logical[index].activated = true;
+            self.acquired_bindings.morphology_scratch_bindings.slots[assignment.slot].occupant =
+                Some(index);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn morphology_slot_observation_for_test(
+        &self,
+        account: &Account,
+    ) -> Result<super::morphology_scratch::MorphologySlotObservationForTest> {
+        self.acquired_bindings.morphology_scratch_bindings.observe(
+            &self.plan.morphology_scratch,
+            self.frame_scope
+                .as_ref()
+                .ok_or_else(|| preparation_error("scratch observation frame is closed"))?,
+            account,
+        )
+    }
+
     pub(crate) fn texture_binding_for_pass(
         &self,
         pass: RuntimePassId,
@@ -2503,12 +2768,35 @@ impl PreparedGraph<'_> {
             ));
         }
         let binding = self
-            .resource_bindings
+            .acquired_bindings
+            .runtime_bindings
             .get(&resource, account)?
             .ok_or_else(|| preparation_error("prepared runtime resource binding is missing"))?;
-        let lease = binding.lease.as_ref().ok_or_else(|| {
-            preparation_error("prepared runtime resource binding is stale or already released")
-        })?;
+        let (lease, scratch_capacity) = match &binding.backing {
+            PreparedResourceBacking::Dedicated { slot } => (
+                self.acquired_bindings
+                    .dedicated_lease(*slot, resource, account)?,
+                None,
+            ),
+            PreparedResourceBacking::MorphologyScratch { assignment } => {
+                let plan = &self.plan.morphology_scratch;
+                let logical = plan
+                    .assignments
+                    .get(assignment.index())
+                    .ok_or_else(|| preparation_error("scratch logical assignment is missing"))?;
+                if logical.resource != resource {
+                    return Err(preparation_error(
+                        "scratch binding names the wrong logical identity",
+                    ));
+                }
+                self.acquired_bindings
+                    .morphology_scratch_bindings
+                    .validate_read(plan, assignment.index(), self.next_pass, account)?;
+                account.work(RenderWork::ResourceProbes, 1)?;
+                let slot = &self.acquired_bindings.morphology_scratch_bindings.slots[logical.slot];
+                (&slot.lease, Some(slot.descriptor))
+            }
+        };
         let frame_scope = self
             .frame_scope
             .as_ref()
@@ -2522,6 +2810,7 @@ impl PreparedGraph<'_> {
         Ok(PreparedTextureBinding {
             runtime_resource: resource,
             allocation_resource: lease.resource_identity(),
+            scratch_capacity,
             texture,
             view,
         })
@@ -2537,7 +2826,8 @@ impl PreparedGraph<'_> {
             return Ok(None);
         };
         let binding = self
-            .kernel_bindings
+            .acquired_bindings
+            .gaussian_kernel_bindings
             .get(&kernel, account)?
             .ok_or_else(|| preparation_error("prepared Gaussian kernel binding is missing"))?;
         let lease = binding.lease.as_ref().ok_or_else(|| {
@@ -2618,6 +2908,7 @@ impl PreparedPassView<'_> {
 pub(crate) struct PreparedTextureBinding<'prepared> {
     runtime_resource: RuntimeResourceId,
     allocation_resource: ResourceIdentity,
+    pub(super) scratch_capacity: Option<EffectTextureDescriptor>,
     texture: &'prepared wgpu::Texture,
     view: &'prepared wgpu::TextureView,
 }

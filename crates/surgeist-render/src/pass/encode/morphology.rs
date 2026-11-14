@@ -215,6 +215,12 @@ impl PreparedGraph<'_> {
             encoder,
             target_binding.view(),
             SpatialPassDrawBindings {
+                #[cfg(test)]
+                target_kind_for_test: if work.needs_float32() {
+                    SpatialPassTargetForTest::MorphologyScratch
+                } else {
+                    SpatialPassTargetForTest::Dedicated
+                },
                 pipeline: objects.render_pipeline(),
                 bind_group: &bindings,
             },
