@@ -24,6 +24,7 @@ pub(super) mod element;
 mod element_factory;
 mod font;
 mod fragment;
+mod html_document;
 mod li;
 mod list_compact;
 mod lists;
@@ -379,6 +380,7 @@ impl DocumentPrototypes {
         tree::install_adoption(scope, &document, funding.capture)?;
         tree::install_import(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
+        html_document::install(scope, &document, funding.capture)?;
         let document_names = tree_mutations::unscopables(scope, &document)?;
         parent_node::install(
             scope,

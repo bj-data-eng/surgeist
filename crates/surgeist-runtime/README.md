@@ -302,6 +302,16 @@ The Window's readonly own `document` getter returns its canonical Document
 wrapper. The Document exposes the base Node reads for identity, connectivity,
 parent, owner and root. The standard Document constructor uses the original
 native Global and retains each created Document in its creation realm.
+Document.head and body select the first direct HTML head or body/frameset of an
+HTML html root. Body assignment validates nullable HTMLElement input before
+native hierarchy processing, then replaces the current body or appends beneath
+the existing document element. An append beneath an SVG root does not change
+the body's null getter result there. Document.dir reflects the current HTML
+root's direction attribute. The five body-color properties forward raw strings
+only to a selected body, with null-to-empty conversion; frameset and absent
+targets retain their empty/no-op behavior. String conversion finishes before
+the current target is selected. These writes use the original Source and
+reaction adapters.
 `Document.doctype` follows the live tree and projects the native DocumentType
 in its creation realm. Its name and identifiers preserve exact UTF-16.
 Document and Window listeners share the native registry. Borrowed
