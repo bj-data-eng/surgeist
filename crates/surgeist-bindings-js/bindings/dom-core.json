@@ -553,6 +553,30 @@
       ]
     },
     {
+      "id": "HTMLPreElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlpreelement",
+      "block": 0,
+      "sha256": "969893d7fd9b559a0edf33731ecc3070abe55169dd45adb0c06dc407a8d9d419",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlpreelement",
+      "entries": [
+        "HTMLPreElement"
+      ]
+    },
+    {
+      "id": "HTMLPreElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLPreElement&#45;partial",
+      "block": 0,
+      "sha256": "145bb2bef06c39261121ea81ffb4b82506cc852ccf4932fd4a4f58e996359d5e",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-pre-width",
+      "entries": [
+        "HTMLPreElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLFontElement.source",
       "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
       "anchor": "htmlfontelement",
@@ -4785,6 +4809,57 @@
         }
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLPreElement",
+      "kind": "interface",
+      "name": "HTMLPreElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLPreElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLPreElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLPreElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "long"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLPreElement.obsolete.width"
+        }
+      ],
+      "partial": true
     },
     {
       "id": "HTMLFontElement",
@@ -9277,6 +9352,52 @@
     "HTMLTimeElement.dateTime/set": {
       "kind": "native",
       "adapter": "htmltimeelement.datetime.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLPreElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlpreelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLPreElement.obsolete.width/get": {
+      "kind": "native",
+      "adapter": "htmlpreelement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs",
+          "symbol": "integer_long_work_bound"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/microsyntax/numeric.rs",
+          "symbol": "parse_integer_long"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLPreElement.obsolete.width/set": {
+      "kind": "native",
+      "adapter": "htmlpreelement.width.set",
       "producers": [
         {
           "owner": "surgeist-dom",
