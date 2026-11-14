@@ -77,6 +77,7 @@ impl PreparedGraph<'_> {
             ));
         }
         let binding = self
+            .acquired_bindings
             .offset_parameter_bindings
             .get(&request.id, account)?
             .ok_or_else(|| preparation_error("offset has no prepared uniform owner"))?;
@@ -86,15 +87,12 @@ impl PreparedGraph<'_> {
                 "offset uniform bytes differ from its prepared request",
             ));
         }
-        let uniform = binding
-            .buffer
-            .as_ref()
-            .ok_or_else(|| preparation_error("offset uniform is missing or already released"))?;
-        if uniform.size() != 256 || !uniform.usage().contains(wgpu::BufferUsages::UNIFORM) {
-            return Err(preparation_error(
-                "offset prepared uniform has an invalid concrete allocation",
-            ));
-        }
+        let uniform = binding.buffer.active(
+            request.id,
+            PassBufferRole::Offset,
+            256,
+            self.resources.generation(),
+        )?;
         let keys = request
             .cache_keys
             .as_ref()

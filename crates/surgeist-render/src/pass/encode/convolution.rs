@@ -120,21 +120,20 @@ impl PreparedGraph<'_> {
                 keys.pipeline(),
             )?;
         objects.require_encoding_ready()?;
-        let uniform = self.resources.generation().allocation_with_upload(
-            GenerationClass::PassBuffers,
+        let binding = self
+            .acquired_bindings
+            .convolution_parameter_bindings
+            .get(&request.id, account)?
+            .ok_or_else(|| preparation_error("convolution parameter custody is missing"))?;
+        if binding.bytes != *parameters {
+            return Err(preparation_error("convolution parameter bytes differ"));
+        }
+        let uniform = binding.buffer.active(
+            request.id,
+            PassBufferRole::Convolution,
             256,
-            256,
-            Some(account),
-            || {
-                self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist convolution checked grid uniform"),
-                    size: 256,
-                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                    mapped_at_creation: false,
-                })
-            },
+            self.resources.generation(),
         )?;
-        self.queue.write_buffer(&uniform, 0, parameters.as_bytes());
         account.work(RenderWork::ShaderBindingVisits, 4)?;
         let bindings =
             self.resources

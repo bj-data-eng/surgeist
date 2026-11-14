@@ -1,8 +1,10 @@
 use crate::accounting::{
-    Account, AccountedVec, GenerationClass, GpuObjectKind, OwnedGpu, RenderPhase, RenderWork,
-    SharedValue,
+    Account, AccountedVec, GpuObjectKind, OwnedGpu, RenderPhase, RenderWork, SharedValue,
 };
 
+use super::buffer_custody::{PassBufferRole, PassBufferRoles};
+#[cfg(test)]
+use crate::accounting::GenerationClass;
 use std::sync::Arc;
 
 #[path = "encode/convolution.rs"]
@@ -42,7 +44,6 @@ use super::super::{
     },
 };
 use super::{
-    PassMap,
     close::{ExecutableFilterStepFacts, ExecutableVelloCaptureFacts, preparation_error},
     model::{
         RuntimeBlurInput, RuntimeColorFilter, RuntimeComposite, RuntimeCompositeKind,
@@ -53,10 +54,7 @@ use super::{
     },
     parameters::backdrop_blur_edge_uniform_bytes,
     prepare::{
-        PreparedColorFilterOperationBinding, PreparedConvolutionWeightsBinding,
-        PreparedGaussianParameterBinding, PreparedGraph, PreparedKernelBinding,
-        PreparedMorphologyParameterBinding, PreparedNativeShadowParameterBinding,
-        PreparedOffsetParameterBinding, PreparedResourceBacking, PreparedResourceBinding,
+        PreparedGraph, PreparedResourceBacking, PreparedResourceBinding,
         PreparedSpatialFilterPassObjects, PreparedTextureBinding, RuntimePassPreparationRequest,
         VELLO_CAPTURE_TEXTURE_USAGES,
     },
@@ -1031,29 +1029,31 @@ pub(crate) struct PendingGraphEncoding {
 #[must_use = "prepared graph frame state must commit only after graph transaction success"]
 pub(crate) struct PendingPreparedFrameCommit {
     pub(super) frame_scope: FrameResourceScope,
+    acquired_bindings: crate::accounting::OwnedBox<super::prepare::AcquiredGraphBindings>,
     pass_cache_update: ProvisionalDevicePassCacheUpdate,
-    displacement_custody:
-        Option<crate::accounting::OwnedBox<super::prepare::AcquiredGraphBindings>>,
 }
-
-/// Owns the checked cache reservation and prepared frame between graph
-/// readiness checks.
 #[must_use = "accounting-ready prepared graph state must be committed or aborted on drop"]
 pub(crate) struct AccountingReadyPreparedFrameCommit<'cache> {
     frame_scope: FrameResourceScope,
+    acquired_bindings: crate::accounting::OwnedBox<super::prepare::AcquiredGraphBindings>,
     pass_cache_update: ReadyPassCacheUpdate<'cache>,
-    displacement_custody:
-        Option<crate::accounting::OwnedBox<super::prepare::AcquiredGraphBindings>>,
 }
-
 impl PendingPreparedFrameCommit {
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn observe_parameter_custody_for_test(&self, stage: super::ParameterStageForTest) {
+        super::parameter_custody_observation::record_owner(
+            &self.acquired_bindings,
+            self.frame_scope.generation(),
+            stage,
+        );
+    }
     #[cfg(test)]
     pub(crate) fn observe_displacement_uniforms_for_test(
         &self,
         stage: super::DisplacementUniformStageForTest,
     ) {
         super::displacement_observation::record(
-            self.displacement_custody.as_deref(),
+            Some(&self.acquired_bindings),
             self.frame_scope.generation(),
             stage,
         );
@@ -1065,79 +1065,65 @@ impl PendingPreparedFrameCommit {
     ) -> Result<AccountingReadyPreparedFrameCommit<'cache>> {
         let Self {
             frame_scope,
+            acquired_bindings,
             pass_cache_update,
-            displacement_custody,
         } = self;
         let pass_cache_update = match pass_cache_update.prepare_commit(pass_cache, account) {
             PassCacheCommitPreparation::Ready(update) => update,
             PassCacheCommitPreparation::Rejected { update, error } => {
-                // The frame scope releases before the provisional cache handles.
                 drop(frame_scope);
-                drop(displacement_custody);
+                drop(acquired_bindings);
                 drop(update);
                 return Err(error);
             }
         };
         let ready = AccountingReadyPreparedFrameCommit {
             frame_scope,
+            acquired_bindings,
             pass_cache_update,
-            displacement_custody,
         };
-        validate_displacement_custody(ready.displacement_custody.as_deref(), account)?;
+        ready
+            .acquired_bindings
+            .validate_consumed_parameters(ready.frame_scope.generation(), account)?;
         ready.frame_scope.ensure_commit_ready(&[])?;
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        ready.observe_parameter_custody_for_test();
         Ok(ready)
     }
 }
-
 impl AccountingReadyPreparedFrameCommit<'_> {
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    fn observe_parameter_custody_for_test(&self) {
+        super::parameter_custody_observation::record_owner(
+            &self.acquired_bindings,
+            self.frame_scope.generation(),
+            super::ParameterStageForTest::AccountingReady,
+        );
+    }
     pub(crate) fn ensure_commit_ready(&mut self, account: &Account) -> Result<()> {
-        validate_displacement_custody(self.displacement_custody.as_deref(), account)?;
+        self.acquired_bindings
+            .validate_consumed_parameters(self.frame_scope.generation(), account)?;
         self.pass_cache_update.recheck(account)?;
         self.frame_scope.ensure_commit_ready(&[])
     }
-
     pub(crate) fn commit(self) -> Result<FrameCleanup> {
         let Self {
             frame_scope,
+            acquired_bindings,
             pass_cache_update,
-            displacement_custody,
         } = self;
-        let frame_cleanup = frame_scope.finish_checked()?;
+        let cleanup = match frame_scope.finish_checked() {
+            Ok(cleanup) => cleanup,
+            Err(error) => {
+                drop(acquired_bindings);
+                drop(pass_cache_update);
+                return Err(error);
+            }
+        };
         pass_cache_update.commit();
-        drop(displacement_custody);
-        Ok(frame_cleanup)
+        drop(acquired_bindings);
+        Ok(cleanup)
     }
-}
-
-fn validate_displacement_custody(
-    custody: Option<&super::prepare::AcquiredGraphBindings>,
-    account: &Account,
-) -> Result<()> {
-    if let Some(custody) = custody {
-        for binding in custody.displacement_bindings.values() {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if !binding.consumed
-                || binding.uniform.size() != 256
-                || !binding
-                    .uniform
-                    .usage()
-                    .contains(wgpu::BufferUsages::UNIFORM)
-            {
-                return Err(preparation_error(
-                    "pending displacement uniform custody is incomplete",
-                ));
-            }
-            for resource in &binding.resources {
-                account.work(RenderWork::ResourceProbes, 1)?;
-                if resource.lease.is_some() {
-                    return Err(preparation_error(
-                        "pending displacement resource lease is unresolved",
-                    ));
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 #[must_use = "graph submission state must remain owned by one transaction payload"]
@@ -1223,18 +1209,14 @@ impl FinishedGraphSubmissionDraft<'_> {
                 drop(command_buffer);
                 drop(pending);
                 drop(frame_scope);
-                drop(pass_cache_update);
                 drop(prepared);
+                drop(pass_cache_update);
                 return Err(preparation_error(
                     "completed graph submission owner extraction failed",
                 ));
             }
         };
-        let displacement_custody = if prepared.acquired_bindings.displacement_bindings.is_empty() {
-            None
-        } else {
-            Some(prepared.acquired_bindings)
-        };
+        let acquired_bindings = prepared.acquired_bindings;
         let PendingGraphEncoding {
             summary: _,
             resources: capture_resources,
@@ -1247,7 +1229,7 @@ impl FinishedGraphSubmissionDraft<'_> {
                 prepared_frame: PendingPreparedFrameCommit {
                     frame_scope,
                     pass_cache_update,
-                    displacement_custody,
+                    acquired_bindings,
                 },
             },
         })
@@ -1275,6 +1257,7 @@ struct PreparedPassEncodingRequest {
     native_shadow_parameters: Option<NativeShadowParameterBytes>,
     convolution_weights: Option<RuntimePassId>,
     displacement: Option<SharedValue<super::displacement::DisplacementPreparation>>,
+    required_parameters: PassBufferRoles,
 }
 
 /// Created only after dedicated leases resolve and scratch logical occupants
@@ -1286,12 +1269,7 @@ struct CompletedPassReleases {
     pass: RuntimePassId,
     resources: SharedValue<Vec<RuntimeResourceId>>,
     kernels: SharedValue<Vec<GaussianKernelKey>>,
-    color_buffer_taken: bool,
-    offset_buffer_taken: bool,
-    gaussian_buffer_taken: bool,
-    morphology_buffer_taken: bool,
-    native_shadow_buffer_taken: bool,
-    displacement_consumed: bool,
+    consumed_parameters: PassBufferRoles,
 }
 
 /// Scheduled bindings from the graph whose frame resolved their exact leases.
@@ -1299,31 +1277,12 @@ struct ResolvedPassReleases<'graph> {
     pass: RuntimePassId,
     resources: SharedValue<Vec<RuntimeResourceId>>,
     kernels: SharedValue<Vec<GaussianKernelKey>>,
-    releases_color_filter_operation: bool,
-    releases_offset_parameters: bool,
-    releases_gaussian_parameters: bool,
-    releases_morphology_parameters: bool,
-    releases_native_shadow_parameters: bool,
-    native_shadow_parameter_bindings:
-        &'graph mut PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
-    gaussian_parameter_bindings:
-        &'graph mut PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
-    morphology_parameter_bindings:
-        &'graph mut PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
-    offset_parameter_bindings: &'graph mut PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
-    resource_bindings: &'graph mut PassMap<RuntimeResourceId, PreparedResourceBinding>,
-    dedicated_lease_slots: &'graph mut AccountedVec<super::prepare::DedicatedLeaseEntry>,
+    bindings: &'graph mut super::prepare::AcquiredGraphBindings,
     scratch_plan: &'graph super::morphology_scratch::MorphologyScratchPlan,
-    scratch_bindings: &'graph mut super::morphology_scratch::MorphologyScratchBindings,
     ordinal: usize,
-    kernel_bindings: &'graph mut PassMap<GaussianKernelKey, PreparedKernelBinding>,
-    color_filter_operation_bindings:
-        &'graph mut PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
-    convolution_weight_bindings:
-        &'graph mut PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
+    generation: &'graph crate::accounting::Generation,
+    required_parameters: PassBufferRoles,
     convolution_release: Option<RuntimePassId>,
-    displacement_bindings:
-        &'graph mut PassMap<RuntimePassId, super::displacement::PreparedDisplacementBinding>,
     releases_displacement: bool,
 }
 
@@ -1337,11 +1296,11 @@ impl<'graph> ResolvedPassReleases<'graph> {
         let request = graph.require_current_pass(pass, account)?;
         let resource_releases = request.runtime.releases.clone();
         let kernel_releases = request.kernel_releases.clone();
-        let releases_color_filter_operation = request.color_filter_operations.is_some();
-        let releases_offset_parameters = request.offset_parameters.is_some();
-        let releases_gaussian_parameters = request.gaussian_parameters.is_some();
-        let releases_morphology_parameters = request.morphology_parameters.is_some();
-        let releases_native_shadow_parameters = request.native_shadow_parameters.is_some();
+        let required_parameters = graph.acquired_bindings.validate_active_parameters(
+            request,
+            graph.resources.generation(),
+            account,
+        )?;
         let releases_displacement = request.displacement.is_some();
         let displacement_preparation = request.displacement.clone();
         let convolution_release = request
@@ -1369,7 +1328,7 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 .displacement_bindings
                 .get(&pass, account)?
                 .ok_or_else(|| preparation_error("displacement release custody is missing"))?;
-            if binding.consumed
+            if binding.uniform.is_consumed()
                 || !displacement_preparation
                     .as_ref()
                     .is_some_and(|preparation| preparation.same_allocation(&binding.preparation))
@@ -1434,77 +1393,15 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 ));
             }
         }
-        if releases_color_filter_operation
-            && graph
-                .color_filter_operation_bindings
-                .get(&pass, account)?
-                .is_none_or(|binding| binding.buffer.is_none())
-        {
-            return Err(preparation_error(
-                "prepared color-filter operation release is stale or missing",
-            ));
-        }
-
-        if releases_offset_parameters
-            && graph
-                .offset_parameter_bindings
-                .get(&pass, account)?
-                .is_none_or(|binding| binding.buffer.is_none())
-        {
-            return Err(preparation_error(
-                "prepared offset uniform release is stale or missing",
-            ));
-        }
-
-        if releases_gaussian_parameters
-            && graph
-                .gaussian_parameter_bindings
-                .get(&pass, account)?
-                .is_none_or(|binding| binding.buffer.is_none())
-        {
-            return Err(preparation_error(
-                "prepared Gaussian uniform release is stale or missing",
-            ));
-        }
-        if releases_morphology_parameters
-            && graph
-                .morphology_parameter_bindings
-                .get(&pass, account)?
-                .is_none_or(|binding| binding.buffer.is_none())
-        {
-            return Err(preparation_error(
-                "prepared Morphology uniform release is stale or missing",
-            ));
-        }
-        if releases_native_shadow_parameters
-            && graph
-                .native_shadow_parameter_bindings
-                .get(&pass, account)?
-                .is_none_or(|binding| binding.buffer.is_none())
-        {
-            return Err(preparation_error(
-                "prepared native shadow uniform release is stale or missing",
-            ));
-        }
         let PreparedGraph {
-            gaussian_parameter_bindings,
-            morphology_parameter_bindings,
-            native_shadow_parameter_bindings,
-            offset_parameter_bindings,
             acquired_bindings,
             plan,
-            color_filter_operation_bindings,
             frame_scope,
+            resources,
             ..
         } = graph;
-        let super::prepare::AcquiredGraphBindings {
-            runtime_bindings: resource_bindings,
-            dedicated_lease_slots,
-            morphology_scratch_bindings: scratch_bindings,
-            gaussian_kernel_bindings: kernel_bindings,
-            convolution_weight_bindings,
-            displacement_bindings,
-        } = &mut **acquired_bindings;
+        let generation = resources.generation();
+        let bindings = &mut **acquired_bindings;
         let mut leases = account.temporary(
             resource_releases.len()
                 + kernel_releases.len()
@@ -1513,14 +1410,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
         )?;
         for resource in &resource_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
-            let binding = resource_bindings.get(resource, account)?.ok_or_else(|| {
-                preparation_error("prepared resource release is unavailable after validation")
-            })?;
+            let binding = bindings
+                .runtime_bindings
+                .get(resource, account)?
+                .ok_or_else(|| {
+                    preparation_error("prepared resource release is unavailable after validation")
+                })?;
             if let PreparedResourceBacking::Dedicated { slot } = &binding.backing {
                 leases
                     .append_slot()?
                     .write(super::prepare::dedicated_lease_at(
-                        dedicated_lease_slots,
+                        &bindings.dedicated_lease_slots,
                         *slot,
                         *resource,
                         account,
@@ -1529,7 +1429,8 @@ impl<'graph> ResolvedPassReleases<'graph> {
         }
         for kernel in &kernel_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
-            let lease = kernel_bindings
+            let lease = bindings
+                .gaussian_kernel_bindings
                 .get(kernel, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .ok_or_else(|| {
@@ -1538,16 +1439,20 @@ impl<'graph> ResolvedPassReleases<'graph> {
             leases.append_slot()?.write(lease);
         }
         if let Some(owner) = convolution_release {
-            let lease = convolution_weight_bindings
+            let lease = bindings
+                .convolution_weight_bindings
                 .get(&owner, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .ok_or_else(|| preparation_error("convolution release became unavailable"))?;
             leases.append_slot()?.write(lease);
         }
         if releases_displacement {
-            let binding = displacement_bindings.get(&pass, account)?.ok_or_else(|| {
-                preparation_error("displacement release custody became unavailable")
-            })?;
+            let binding = bindings
+                .displacement_bindings
+                .get(&pass, account)?
+                .ok_or_else(|| {
+                    preparation_error("displacement release custody became unavailable")
+                })?;
             for resource in &binding.resources {
                 leases.append_slot()?.write(
                     resource.lease.as_ref().ok_or_else(|| {
@@ -1565,34 +1470,25 @@ impl<'graph> ResolvedPassReleases<'graph> {
             pass,
             resources: resource_releases,
             kernels: kernel_releases,
-            releases_color_filter_operation,
-            releases_offset_parameters,
-            releases_gaussian_parameters,
-            releases_morphology_parameters,
-            releases_native_shadow_parameters,
-            gaussian_parameter_bindings,
-            morphology_parameter_bindings,
-            native_shadow_parameter_bindings,
-            offset_parameter_bindings,
-            resource_bindings,
-            dedicated_lease_slots,
+            bindings,
             scratch_plan: &plan.morphology_scratch,
-            scratch_bindings,
             ordinal,
-            kernel_bindings,
-            color_filter_operation_bindings,
-            convolution_weight_bindings,
+            generation,
+            required_parameters,
             convolution_release,
-            displacement_bindings,
             releases_displacement,
         })
     }
 
-    fn take_bindings(self) -> Result<CompletedPassReleases> {
+    fn consume_bindings(self) -> Result<CompletedPassReleases> {
         let mut first_missing = None;
         if self.releases_displacement {
-            match self.displacement_bindings.maintenance_get_mut(&self.pass) {
-                Some(binding) if !binding.consumed => {
+            match self
+                .bindings
+                .displacement_bindings
+                .maintenance_get_mut(&self.pass)
+            {
+                Some(binding) if !binding.uniform.is_consumed() => {
                     for resource in binding.resources.iter_mut() {
                         Self::drop_required_binding(
                             resource.lease.take(),
@@ -1600,7 +1496,6 @@ impl<'graph> ResolvedPassReleases<'graph> {
                             &mut first_missing,
                         );
                     }
-                    binding.consumed = true;
                 }
                 _ => {
                     first_missing
@@ -1609,15 +1504,17 @@ impl<'graph> ResolvedPassReleases<'graph> {
             }
         }
         for resource in self.resources.iter() {
-            let binding = self.resource_bindings.maintenance_get_mut(resource);
+            let binding = self.bindings.runtime_bindings.maintenance_get_mut(resource);
             match binding {
                 Some(PreparedResourceBinding {
                     backing: PreparedResourceBacking::Dedicated { slot },
                     ..
                 }) => {
-                    self.dedicated_lease_slots
+                    self.bindings
+                        .dedicated_lease_slots
                         .renderer_maintenance(RenderWork::ResourceProbes, 1);
                     let lease = self
+                        .bindings
                         .dedicated_lease_slots
                         .get_mut(slot.index())
                         .filter(|entry| entry.resource == *resource)
@@ -1633,7 +1530,8 @@ impl<'graph> ResolvedPassReleases<'graph> {
                     ..
                 }) => {
                     if self
-                        .scratch_bindings
+                        .bindings
+                        .morphology_scratch_bindings
                         .retire(self.scratch_plan, assignment.index(), self.ordinal)
                         .is_err()
                     {
@@ -1649,7 +1547,8 @@ impl<'graph> ResolvedPassReleases<'graph> {
         }
         for kernel in self.kernels.iter() {
             let binding = self
-                .kernel_bindings
+                .bindings
+                .gaussian_kernel_bindings
                 .maintenance_get_mut(kernel)
                 .and_then(|binding| binding.lease.take());
             Self::drop_required_binding(
@@ -1658,63 +1557,9 @@ impl<'graph> ResolvedPassReleases<'graph> {
                 &mut first_missing,
             );
         }
-        if self.releases_color_filter_operation {
-            let binding = self
-                .color_filter_operation_bindings
-                .maintenance_get_mut(&self.pass)
-                .and_then(|binding| binding.buffer.take());
-            Self::drop_required_binding(
-                binding,
-                "prepared color-filter operation release is unavailable after atomic resolution",
-                &mut first_missing,
-            );
-        }
-        if self.releases_gaussian_parameters {
-            let binding = self
-                .gaussian_parameter_bindings
-                .maintenance_get_mut(&self.pass)
-                .and_then(|binding| binding.buffer.take());
-            Self::drop_required_binding(
-                binding,
-                "Gaussian uniform missing after atomic resource release",
-                &mut first_missing,
-            );
-        }
-        if self.releases_morphology_parameters {
-            let binding = self
-                .morphology_parameter_bindings
-                .maintenance_get_mut(&self.pass)
-                .and_then(|binding| binding.buffer.take());
-            Self::drop_required_binding(
-                binding,
-                "Morphology uniform missing after atomic resource release",
-                &mut first_missing,
-            );
-        }
-        if self.releases_native_shadow_parameters {
-            let binding = self
-                .native_shadow_parameter_bindings
-                .maintenance_get_mut(&self.pass)
-                .and_then(|binding| binding.buffer.take());
-            Self::drop_required_binding(
-                binding,
-                "native shadow uniform missing after atomic resource release",
-                &mut first_missing,
-            );
-        }
-        if self.releases_offset_parameters {
-            let binding = self
-                .offset_parameter_bindings
-                .maintenance_get_mut(&self.pass)
-                .and_then(|binding| binding.buffer.take());
-            Self::drop_required_binding(
-                binding,
-                "offset uniform missing after atomic resource release",
-                &mut first_missing,
-            );
-        }
         if let Some(owner) = self.convolution_release {
             let lease = self
+                .bindings
                 .convolution_weight_bindings
                 .maintenance_get_mut(&owner)
                 .and_then(|binding| binding.lease.take());
@@ -1727,16 +1572,16 @@ impl<'graph> ResolvedPassReleases<'graph> {
         if let Some(message) = first_missing {
             return Err(preparation_error(message));
         }
+        let consumed_parameters = self.bindings.consume_parameters(
+            self.pass,
+            self.required_parameters,
+            self.generation,
+        )?;
         Ok(CompletedPassReleases {
             pass: self.pass,
             resources: self.resources,
             kernels: self.kernels,
-            color_buffer_taken: self.releases_color_filter_operation,
-            offset_buffer_taken: self.releases_offset_parameters,
-            gaussian_buffer_taken: self.releases_gaussian_parameters,
-            morphology_buffer_taken: self.releases_morphology_parameters,
-            native_shadow_buffer_taken: self.releases_native_shadow_parameters,
-            displacement_consumed: self.releases_displacement,
+            consumed_parameters,
         })
     }
 
@@ -1769,16 +1614,31 @@ impl CompletedPassReleases {
     fn prove_for(self, request: &PreparedPassEncodingRequest) -> CompletedReleaseFacts {
         let exact_source = self.pass == request.id
             && self.resources.same_allocation(&request.releases)
-            && self.kernels.same_allocation(&request.kernel_releases);
+            && self.kernels.same_allocation(&request.kernel_releases)
+            && self.consumed_parameters == request.required_parameters;
         CompletedReleaseFacts {
             resources: exact_source,
             kernels: exact_source,
-            color_buffer: exact_source && self.color_buffer_taken,
-            offset_buffer: exact_source && self.offset_buffer_taken,
-            gaussian_buffer: exact_source && self.gaussian_buffer_taken,
-            morphology_buffer: exact_source && self.morphology_buffer_taken,
-            native_shadow_buffer: exact_source && self.native_shadow_buffer_taken,
-            displacement: exact_source && self.displacement_consumed,
+            color_buffer: exact_source
+                && self
+                    .consumed_parameters
+                    .contains(PassBufferRole::ColorOperation),
+            offset_buffer: exact_source
+                && self.consumed_parameters.contains(PassBufferRole::Offset),
+            gaussian_buffer: exact_source
+                && self.consumed_parameters.contains(PassBufferRole::Gaussian),
+            morphology_buffer: exact_source
+                && self
+                    .consumed_parameters
+                    .contains(PassBufferRole::Morphology),
+            native_shadow_buffer: exact_source
+                && self
+                    .consumed_parameters
+                    .contains(PassBufferRole::NativeShadow),
+            displacement: exact_source
+                && self
+                    .consumed_parameters
+                    .contains(PassBufferRole::Displacement),
         }
     }
 }
@@ -1805,6 +1665,7 @@ impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
             native_shadow_parameters: request.native_shadow_parameters.clone(),
             convolution_weights: request.convolution_weights,
             displacement: request.displacement.clone(),
+            required_parameters: request.declared_parameter_roles(),
         }
     }
 }
@@ -1903,6 +1764,7 @@ struct PreparedColorFilterEncoding<'prepared> {
 }
 
 struct LayerCompositeSemantic<'prepared> {
+    pass: RuntimePassId,
     transform: Transform,
     parameters: &'prepared RuntimeLayerCompositeParameters,
     parent: RuntimeReadBinding,
@@ -2569,6 +2431,8 @@ impl<'device> PreparedGraph<'device> {
         };
         self.custom_spine_encoding_state = Some(CustomSpineEncodingState::Complete);
         self.custom_spine_completed_session = Some(Arc::clone(&session));
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        self.observe_parameter_custody_for_test(super::ParameterStageForTest::Encoded);
         Ok(PendingGraphEncoding {
             summary,
             resources: PendingVelloResourceCommit::from_aggregate(leases),
@@ -3409,96 +3273,89 @@ impl<'device> PreparedGraph<'device> {
         }
     }
 
-    fn create_core_pass_spatial_uniform_buffer(
+    fn core_pass_spatial_uniform_buffer(
         &self,
+        pass: RuntimePassId,
         bytes: &PassSpatialUniformBytes,
         account: &Account,
-    ) -> Result<OwnedGpu<wgpu::Buffer>> {
-        let buffer = self.resources.generation().allocation(
-            GenerationClass::PassBuffers,
-            bytes.as_bytes().len() as u64,
-            Some(account),
-            || {
-                self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist core pass spatial uniform"),
-                    size: bytes.as_bytes().len() as u64,
-                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                    mapped_at_creation: false,
-                })
-            },
-        )?;
-        account.work(RenderWork::UploadBytes, bytes.as_bytes().len())?;
-        self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        Ok(buffer)
+    ) -> Result<&wgpu::Buffer> {
+        let binding = self
+            .acquired_bindings
+            .spatial_parameter_bindings
+            .get(&pass, account)?
+            .ok_or_else(|| preparation_error("spatial parameter custody is missing"))?;
+        if binding.bytes != *bytes {
+            return Err(preparation_error("spatial parameter bytes differ"));
+        }
+        binding.buffer.active(
+            pass,
+            PassBufferRole::Spatial,
+            bytes.as_bytes().len(),
+            self.resources.generation(),
+        )
     }
-
-    fn create_layer_composite_parameter_buffer(
+    fn layer_composite_parameter_buffer(
         &self,
+        pass: RuntimePassId,
         bytes: &CompositeParameterBytes,
         account: &Account,
-    ) -> Result<OwnedGpu<wgpu::Buffer>> {
-        let buffer = self.resources.generation().allocation(
-            GenerationClass::PassBuffers,
-            bytes.as_bytes().len() as u64,
-            Some(account),
-            || {
-                self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist composition composite parameter uniform"),
-                    size: bytes.as_bytes().len() as u64,
-                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                    mapped_at_creation: false,
-                })
-            },
-        )?;
-        account.work(RenderWork::UploadBytes, bytes.as_bytes().len())?;
-        self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        Ok(buffer)
+    ) -> Result<&wgpu::Buffer> {
+        let binding = self
+            .acquired_bindings
+            .composite_parameter_bindings
+            .get(&pass, account)?
+            .ok_or_else(|| preparation_error("composite parameter custody is missing"))?;
+        if binding.bytes != *bytes {
+            return Err(preparation_error("composite parameter bytes differ"));
+        }
+        binding.buffer.active(
+            pass,
+            PassBufferRole::Composite,
+            bytes.as_bytes().len(),
+            self.resources.generation(),
+        )
     }
-
-    fn create_drop_shadow_parameter_buffer(
+    fn drop_shadow_parameter_buffer(
         &self,
+        pass: RuntimePassId,
         bytes: &DropShadowParameterBytes,
         account: &Account,
-    ) -> Result<OwnedGpu<wgpu::Buffer>> {
-        let buffer = self.resources.generation().allocation(
-            GenerationClass::PassBuffers,
-            bytes.as_bytes().len() as u64,
-            Some(account),
-            || {
-                self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist spatial-filter drop-shadow parameter uniform"),
-                    size: bytes.as_bytes().len() as u64,
-                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                    mapped_at_creation: false,
-                })
-            },
-        )?;
-        account.work(RenderWork::UploadBytes, bytes.as_bytes().len())?;
-        self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        Ok(buffer)
+    ) -> Result<&wgpu::Buffer> {
+        let binding = self
+            .acquired_bindings
+            .css_shadow_parameter_bindings
+            .get(&pass, account)?
+            .ok_or_else(|| preparation_error("CSS shadow parameter custody is missing"))?;
+        if binding.bytes != *bytes {
+            return Err(preparation_error("CSS shadow parameter bytes differ"));
+        }
+        binding.buffer.active(
+            pass,
+            PassBufferRole::CssShadow,
+            bytes.as_bytes().len(),
+            self.resources.generation(),
+        )
     }
-
-    fn create_backdrop_blur_edge_parameter_buffer(
+    fn backdrop_blur_edge_parameter_buffer(
         &self,
+        pass: RuntimePassId,
         bytes: &[u8; 16],
         account: &Account,
-    ) -> Result<OwnedGpu<wgpu::Buffer>> {
-        let buffer = self.resources.generation().allocation(
-            GenerationClass::PassBuffers,
-            bytes.len() as u64,
-            Some(account),
-            || {
-                self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist backdrop semantic backdrop edge uniform"),
-                    size: bytes.len() as u64,
-                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                    mapped_at_creation: false,
-                })
-            },
-        )?;
-        account.work(RenderWork::UploadBytes, bytes.len())?;
-        self.queue.write_buffer(&buffer, 0, bytes);
-        Ok(buffer)
+    ) -> Result<&wgpu::Buffer> {
+        let binding = self
+            .acquired_bindings
+            .blur_edge_parameter_bindings
+            .get(&pass, account)?
+            .ok_or_else(|| preparation_error("blur edge parameter custody is missing"))?;
+        if binding.bytes.as_bytes() != bytes {
+            return Err(preparation_error("blur edge parameter bytes differ"));
+        }
+        binding.buffer.active(
+            pass,
+            PassBufferRole::BlurEdge,
+            bytes.len(),
+            self.resources.generation(),
+        )
     }
 
     fn vello_capture_handoff<'prepared>(
@@ -3838,7 +3695,7 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
+        let uniform = self.core_pass_spatial_uniform_buffer(request.id, spatial, account)?;
         let bind_group =
             self.resources
                 .generation()
@@ -4003,14 +3860,18 @@ impl<'device> PreparedGraph<'device> {
                 ColorFilterOperationBufferLimits::from_device_limits(&self.device.limits()),
             )?;
         let operation_binding = self
+            .acquired_bindings
             .color_filter_operation_bindings
             .get(&request.id, account)?
             .ok_or_else(|| {
                 preparation_error("the color-filter operation buffer binding is missing")
             })?;
-        let operation_buffer = operation_binding.buffer.as_ref().ok_or_else(|| {
-            preparation_error("the color-filter operation buffer is stale or already released")
-        })?;
+        let operation_buffer = operation_binding.buffer.active(
+            request.id,
+            PassBufferRole::ColorOperation,
+            operation_bytes.as_bytes().len(),
+            self.resources.generation(),
+        )?;
         let exact = operation_bytes.matches_in(&expected_operation_bytes, account)?
             && operation_binding
                 .bytes
@@ -4037,7 +3898,7 @@ impl<'device> PreparedGraph<'device> {
     ) -> Result<ColorFilterEncodingFacts> {
         let prepared = self.prepare_color_filter_encoding(request, account)?;
         let spatial_buffer =
-            self.create_core_pass_spatial_uniform_buffer(prepared.spatial, account)?;
+            self.core_pass_spatial_uniform_buffer(request.id, prepared.spatial, account)?;
         let bind_group =
             self.resources
                 .generation()
@@ -4184,10 +4045,10 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
+        let spatial_buffer = self.core_pass_spatial_uniform_buffer(request.id, spatial, account)?;
         let edge_buffer = edge_bytes
             .as_ref()
-            .map(|bytes| self.create_backdrop_blur_edge_parameter_buffer(bytes, account))
+            .map(|bytes| self.backdrop_blur_edge_parameter_buffer(request.id, bytes, account))
             .transpose()?;
         let mut entries = account.temporary(4 + usize::from(edge_buffer.is_some()))?;
         entries.extend_from_slice(&[
@@ -4310,8 +4171,9 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
-        let parameter_buffer = self.create_drop_shadow_parameter_buffer(parameters, account)?;
+        let spatial_buffer = self.core_pass_spatial_uniform_buffer(request.id, spatial, account)?;
+        let parameter_buffer =
+            self.drop_shadow_parameter_buffer(request.id, parameters, account)?;
         let bind_group =
             self.resources
                 .generation()
@@ -4510,6 +4372,7 @@ impl<'device> PreparedGraph<'device> {
         }
         let normal_path = parameters.composition().is_source_over_normal();
         Ok(LayerCompositeSemantic {
+            pass: request.id,
             transform: *transform,
             parameters,
             parent,
@@ -4684,8 +4547,10 @@ impl<'device> PreparedGraph<'device> {
         expected_read_count: usize,
         account: &Account,
     ) -> Result<(OwnedGpu<wgpu::BindGroup>, bool)> {
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
-        let parameter_buffer = self.create_layer_composite_parameter_buffer(parameters, account)?;
+        let spatial_buffer =
+            self.core_pass_spatial_uniform_buffer(bindings.semantic.pass, spatial, account)?;
+        let parameter_buffer =
+            self.layer_composite_parameter_buffer(bindings.semantic.pass, parameters, account)?;
         let mut entries = account.temporary(expected_read_count.saturating_add(4))?;
         entries.append_slot()?.write(wgpu::BindGroupEntry {
             binding: 0,
@@ -4947,7 +4812,7 @@ impl<'device> PreparedGraph<'device> {
         let objects = self.core_pass_objects(keys, account)?;
         objects.require_encoding_ready()?;
         let sampler = objects.sampler()?;
-        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
+        let uniform = self.core_pass_spatial_uniform_buffer(request.id, spatial, account)?;
         let bind_group =
             self.resources
                 .generation()
@@ -5100,7 +4965,8 @@ impl<'device> PreparedGraph<'device> {
         pass: RuntimePassId,
         account: &Account,
     ) -> Result<CompletedPassReleases> {
-        let completed = ResolvedPassReleases::try_resolve(self, pass, account)?.take_bindings()?;
+        let completed =
+            ResolvedPassReleases::try_resolve(self, pass, account)?.consume_bindings()?;
         self.next_pass = self.next_pass.saturating_add(1);
         if self.next_pass == self.plan.passes.len()
             && !self
@@ -5185,47 +5051,8 @@ impl<'device> PreparedGraph<'device> {
                 ));
             }
         }
-        validate_displacement_custody(Some(&self.acquired_bindings), account)?;
-        for binding in self.gaussian_parameter_bindings.values() {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if binding.buffer.is_some() {
-                return Err(preparation_error(
-                    "graph submission retains an unresolved Gaussian uniform",
-                ));
-            }
-        }
-        for binding in self.morphology_parameter_bindings.values() {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if binding.buffer.is_some() {
-                return Err(preparation_error(
-                    "graph submission retains an unresolved Morphology uniform",
-                ));
-            }
-        }
-        for binding in self.native_shadow_parameter_bindings.values() {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if binding.buffer.is_some() {
-                return Err(preparation_error(
-                    "graph submission retains an unresolved native shadow uniform",
-                ));
-            }
-        }
-        for binding in self.offset_parameter_bindings.values() {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if binding.buffer.is_some() {
-                return Err(preparation_error(
-                    "graph submission retains an unresolved offset uniform",
-                ));
-            }
-        }
-        for binding in self.color_filter_operation_bindings.values() {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if binding.buffer.is_some() {
-                return Err(preparation_error(
-                    "the graph submission retains an unresolved operation buffer",
-                ));
-            }
-        }
+        self.acquired_bindings
+            .validate_consumed_parameters(self.resources.generation(), account)?;
         if self.pass_cache_update.is_none() || self.frame_scope.is_none() {
             return Err(preparation_error(
                 "the completed graph lost a required native submission owner",
@@ -5241,7 +5068,7 @@ impl<'device> PreparedGraph<'device> {
             reason = "graph encoding finishes a completely released prepared frame scope after execution"
         )
     )]
-    pub(crate) fn finish(mut self) -> Result<FrameCleanup> {
+    pub(crate) fn finish(mut self, account: &Account) -> Result<FrameCleanup> {
         if self.next_pass != self.plan.passes.len()
             || self
                 .acquired_bindings
@@ -5259,15 +5086,13 @@ impl<'device> PreparedGraph<'device> {
                 .gaussian_kernel_bindings
                 .values()
                 .any(|binding| binding.lease.is_some())
-            || self
-                .color_filter_operation_bindings
-                .values()
-                .any(|binding| binding.buffer.is_some())
         {
             return Err(preparation_error(
                 "prepared graph cannot finish before every pass and last-use release",
             ));
         }
+        self.acquired_bindings
+            .validate_consumed_parameters(self.resources.generation(), account)?;
         let _ = self.pass_cache_update.take();
         self.frame_scope
             .take()
@@ -5558,12 +5383,14 @@ mod repeated_proof_accounting_tests {
                     );
                     assert_eq!((refusal.current, refusal.amount), (exact - 1, 1));
                 }
-                // Two uniform buffers are constructed before this inspection;
-                // only a successful inspection permits the third constructor.
+                // Spatial and composite backing already exists from GpuPrepare.
+                // This exact entry search can create only its bind group, and
+                // a refused prefix must stop before that one constructor.
                 assert_eq!(
                     attempt.usage().work(RenderWork::ResourceAllocationRequests),
-                    if limit == exact { 3 } else { 2 }
+                    u64::from(limit == exact)
                 );
+                assert_eq!(attempt.usage().work(RenderWork::UploadBytes), 0);
                 // Returned native creation events belong to the generation;
                 // the attempt records only forward constructor requests.
                 assert_eq!(attempt.usage().work(RenderWork::GpuObjectsCreated), 0);
@@ -5823,19 +5650,34 @@ mod repeated_proof_accounting_tests {
                         prepared.acquired_bindings.runtime_bindings.entries[4].0,
                         source
                     );
-                    assert_eq!(prepared.color_filter_operation_bindings.len(), 1);
-                    assert_eq!(prepared.color_filter_operation_bindings.entries[0].0, pass);
+                    assert_eq!(
+                        prepared
+                            .acquired_bindings
+                            .color_filter_operation_bindings
+                            .len(),
+                        1
+                    );
+                    assert_eq!(
+                        prepared
+                            .acquired_bindings
+                            .color_filter_operation_bindings
+                            .entries[0]
+                            .0,
+                        pass
+                    );
                     let source_id = prepared
                         .acquired_bindings
                         .dedicated_lease_for_test(source)
                         .unwrap()
                         .resource_identity();
                     assert_eq!(
-                        prepared.color_filter_operation_bindings.entries[0]
+                        prepared
+                            .acquired_bindings
+                            .color_filter_operation_bindings
+                            .entries[0]
                             .1
                             .buffer
-                            .as_ref()
-                            .unwrap()
+                            .native_for_test()
                             .size(),
                         48
                     );
@@ -5869,12 +5711,14 @@ mod repeated_proof_accounting_tests {
                             .unwrap()
                             .work(RenderWork::ResourceProbes)
                     };
-                    // A search for index four among seven sorted keys compares
-                    // indices three, five and four. The color map has one key.
-                    // Validate source map3 + dedicated slot1 + color map1,
-                    // then collect the real lease through source map3 + slot1:
-                    // 3+1+1+3+1 = 9 forward probes before atomic resolution.
-                    for limit in [8, 9] {
+                    // Seven resource keys put the source at index four:
+                    // comparisons 3, 5, 4 plus its dedicated-slot probe.
+                    // Parameter validation inspects eleven byte roles, then
+                    // the five-entry spatial map's middle color key (1),
+                    // the single later composite key (1 absent), and color (1).
+                    // Collecting the lease repeats source3 + slot1:
+                    // 11+1+1+1+3+1+3+1 = 22 before atomic resolution.
+                    for limit in [21, 22] {
                         let cache_before = cache_custody();
                         let buffer_before = buffer_bytes();
                         let returns_before = texture_returns();
@@ -5885,14 +5729,21 @@ mod repeated_proof_accounting_tests {
                             measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
                                 prepared
                                     .complete_pass_inner(pass, &account.at(RenderPhase::Encode))
-                                    .map(|receipt| (receipt.pass, receipt.color_buffer_taken))
+                                    .map(|receipt| {
+                                        (
+                                            receipt.pass,
+                                            receipt
+                                                .consumed_parameters
+                                                .contains(PassBufferRole::ColorOperation),
+                                        )
+                                    })
                             });
                         let attempt = report.attempt().unwrap();
                         let usage = attempt.usage();
                         assert_eq!(usage.work(RenderWork::GraphNodeVisits), 1);
                         assert_eq!(usage.work(RenderWork::GraphEdgeVisits), 2);
                         assert_eq!(usage.work(RenderWork::ResourceProbes), limit);
-                        let succeeded = limit == 9;
+                        let succeeded = limit == 22;
                         if succeeded {
                             assert_eq!(result.unwrap(), (pass, true));
                             assert_eq!(attempt.refusal(), None);
@@ -5903,8 +5754,8 @@ mod repeated_proof_accounting_tests {
                                 refusal.quantity(),
                                 RenderQuantity::Work(RenderWork::ResourceProbes)
                             );
-                            assert_eq!((refusal.current(), refusal.amount()), (8, 1));
-                            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 8 });
+                            assert_eq!((refusal.current(), refusal.amount()), (21, 1));
+                            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 21 });
                             assert_eq!(
                                 result.unwrap_err().accounting_diagnostic(),
                                 Some(RenderAccountingError::Refused(refusal))
@@ -5919,23 +5770,26 @@ mod repeated_proof_accounting_tests {
                             (!succeeded).then_some(source_id)
                         );
                         assert_eq!(
-                            prepared.color_filter_operation_bindings.entries[0]
+                            prepared
+                                .acquired_bindings
+                                .color_filter_operation_bindings
+                                .entries[0]
                                 .1
                                 .buffer
-                                .as_ref()
-                                .map(|buffer| buffer.size()),
-                            (!succeeded).then_some(48)
+                                .native_for_test()
+                                .size(),
+                            48
                         );
                         assert_eq!(cache_custody(), cache_before);
-                        assert_eq!(buffer_before - buffer_bytes(), 48 * u64::from(succeeded));
+                        assert_eq!(buffer_before, buffer_bytes());
                         assert_eq!(texture_returns() - returns_before, u64::from(succeeded));
                         assert_eq!(
                             generation.cache_work(RenderWork::ResourceProbes).unwrap()
                                 - probes_before,
                             2 * u64::from(succeeded)
                         );
-                        // Final take: source map3 + dedicated slot1 + color map1.
-                        assert_eq!(cleanup_probes() - cleanup_before, 5 * u64::from(succeeded));
+                        // Final transitions: source3 + slot1 + color1 + spatial1.
+                        assert_eq!(cleanup_probes() - cleanup_before, 6 * u64::from(succeeded));
                     }
                     drop(prepared);
                     transaction
@@ -5951,7 +5805,7 @@ mod repeated_proof_accounting_tests {
     }
 
     #[test]
-    fn late_release_fault_continues_gaussian_and_color_takes() {
+    fn late_lease_fault_returns_other_leases_and_retains_parameter_backing() {
         use crate::RenderResource;
         use crate::accounting::{FrameFixture, RenderCpuScope, RenderProfile};
         use surgeist_ledger::Dimension;
@@ -6035,7 +5889,10 @@ mod repeated_proof_accounting_tests {
                             usize::from(!color)
                         );
                         assert_eq!(
-                            prepared.color_filter_operation_bindings.len(),
+                            prepared
+                                .acquired_bindings
+                                .color_filter_operation_bindings
+                                .len(),
                             usize::from(color)
                         );
                         prepared.next_pass = index;
@@ -6076,8 +5933,8 @@ mod repeated_proof_accounting_tests {
                         // the original map and observe the scheduled takes alone.
                         drop(
                             super::super::prepare::take_dedicated_lease_for_test(
-                                &mut *resolved.resource_bindings,
-                                &mut *resolved.dedicated_lease_slots,
+                                &mut resolved.bindings.runtime_bindings,
+                                &mut resolved.bindings.dedicated_lease_slots,
                                 source,
                             )
                             .unwrap(),
@@ -6085,7 +5942,8 @@ mod repeated_proof_accounting_tests {
                         if matches!(case, Case::MissingKernel) {
                             drop(
                                 resolved
-                                    .kernel_bindings
+                                    .bindings
+                                    .gaussian_kernel_bindings
                                     .maintenance_get_mut(kernel.as_ref().unwrap())
                                     .unwrap()
                                     .lease
@@ -6100,7 +5958,7 @@ mod repeated_proof_accounting_tests {
                         let probes_before = setup.work_count(RenderWork::ResourceProbes)?;
                         let edges_before = setup.work_count(RenderWork::GraphEdgeVisits)?;
 
-                        let error = resolved.take_bindings().err().unwrap();
+                        let error = resolved.consume_bindings().err().unwrap();
                         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
                         assert_eq!(
                             error.message(),
@@ -6115,10 +5973,13 @@ mod repeated_proof_accounting_tests {
                         );
                         if color {
                             assert!(
-                                prepared.color_filter_operation_bindings.entries[0]
+                                !prepared
+                                    .acquired_bindings
+                                    .color_filter_operation_bindings
+                                    .entries[0]
                                     .1
                                     .buffer
-                                    .is_none()
+                                    .is_consumed()
                             );
                         } else {
                             assert!(
@@ -6128,14 +5989,14 @@ mod repeated_proof_accounting_tests {
                                     .is_none()
                             );
                         }
-                        // The source map search takes three comparisons,
-                        // its dedicated slot record adds one, and the later
-                        // kernel/color binding adds one even after the fault.
-                        assert_eq!(cleanup_probes() - cleanup_before, 5);
+                        // The failed source transition still inspects map3 +
+                        // dedicated slot1. A later kernel adds one; parameters
+                        // remain Ready because lease retirement failed.
+                        assert_eq!(cleanup_probes() - cleanup_before, if color { 4 } else { 5 });
                         assert_eq!(setup.work_count(RenderWork::ResourceProbes)?, probes_before);
                         assert_eq!(setup.work_count(RenderWork::GraphEdgeVisits)?, edges_before);
                         assert_eq!(cache_custody(), cache_before);
-                        assert_eq!(bytes_before - operation_bytes(), if color { 48 } else { 0 });
+                        assert_eq!(bytes_before, operation_bytes());
                         let work_after = generation.usage()?;
                         for &work in RenderWork::ALL {
                             assert_eq!(work_after.work(work), work_before.work(work));
@@ -6157,7 +6018,7 @@ mod repeated_proof_accounting_tests {
 
     #[test]
     fn repeated_proof_color_completion_admits_all_probes_before_atomic_release() {
-        assert_color_completion_work(RenderWork::ResourceProbes, 44);
+        assert_color_completion_work(RenderWork::ResourceProbes, 58);
     }
 
     #[test]
@@ -6257,7 +6118,13 @@ mod repeated_proof_accounting_tests {
                     prepared.acquired_bindings.runtime_bindings.entries[5].0,
                     target
                 );
-                assert_eq!(prepared.color_filter_operation_bindings.len(), 1);
+                assert_eq!(
+                    prepared
+                        .acquired_bindings
+                        .color_filter_operation_bindings
+                        .len(),
+                    1
+                );
                 prepared.next_pass = index;
                 // The isolated step has the same active scheduler state as
                 // its real encode_custom_spine caller; no earlier pass receipt
@@ -6289,9 +6156,11 @@ mod repeated_proof_accounting_tests {
                     result.unwrap();
                     // Read-role1; texture maps3+2 and dedicated slots1+1;
                     // resource scans(5+6)*2; operation binding1; four shader
-                    // lookups; release preflight map3+slot1+color1; lease
-                    // input map3+slot1: 1+5+2+22+1+4+5+4 = 44. The
-                    // completed-release witness adds no forward lookup.
+                    // lookups; new spatial buffer lookup1. Release validates
+                    // eleven roles + spatial1 + absent composite1 + color1,
+                    // then source3+slot1 twice: 14+4+4 = 22.
+                    // 1+5+2+22+1+4+1+22 = 58. The completed-release
+                    // witness adds no forward lookup.
                     assert_eq!(report.attempt().unwrap().usage().work(work), exact);
                     assert_eq!(progress.completed_pass_count, 1);
                     assert!(progress.color_filter_operation_buffers_released);
@@ -6304,12 +6173,13 @@ mod repeated_proof_accounting_tests {
                     );
                     assert!(
                         prepared
+                            .acquired_bindings
                             .color_filter_operation_bindings
                             .get(&request.id, &setup)
                             .unwrap()
                             .unwrap()
                             .buffer
-                            .is_none()
+                            .is_consumed()
                     );
                 } else {
                     assert!(
@@ -6328,13 +6198,14 @@ mod repeated_proof_accounting_tests {
                             .is_some()
                     );
                     assert!(
-                        prepared
+                        !prepared
+                            .acquired_bindings
                             .color_filter_operation_bindings
                             .get(&request.id, &setup)
                             .unwrap()
                             .unwrap()
                             .buffer
-                            .is_some()
+                            .is_consumed()
                     );
                 }
                 // Probe refusal follows native encoding. Binding/operation

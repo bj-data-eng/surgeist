@@ -145,6 +145,7 @@ impl PreparedGraph<'_> {
             ));
         }
         let uniform_binding = self
+            .acquired_bindings
             .morphology_parameter_bindings
             .get(&request.id, account)?
             .ok_or_else(|| preparation_error("morphology uniform owner is missing"))?;
@@ -152,15 +153,12 @@ impl PreparedGraph<'_> {
         if uniform_binding.bytes != *bytes {
             return Err(preparation_error("morphology uniform bytes changed"));
         }
-        let uniform = uniform_binding
-            .buffer
-            .as_ref()
-            .ok_or_else(|| preparation_error("morphology uniform is stale"))?;
-        if uniform.size() != 256 || !uniform.usage().contains(wgpu::BufferUsages::UNIFORM) {
-            return Err(preparation_error(
-                "morphology uniform allocation is invalid",
-            ));
-        }
+        let uniform = uniform_binding.buffer.active(
+            request.id,
+            PassBufferRole::Morphology,
+            256,
+            self.resources.generation(),
+        )?;
         let keys = request
             .cache_keys
             .as_ref()

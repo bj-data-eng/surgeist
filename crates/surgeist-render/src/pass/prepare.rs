@@ -5,10 +5,7 @@ use super::{PassMap, PassSet};
 #[cfg(test)]
 #[path = "prepare_boxed_tests.rs"]
 mod boxed_tests;
-use crate::accounting::{
-    Account, AccountedVec, Generation, GenerationClass, OwnedGpu, RenderPhase, RenderWork,
-    SharedValue,
-};
+use crate::accounting::{Account, AccountedVec, OwnedGpu, RenderPhase, RenderWork, SharedValue};
 
 use std::{marker::PhantomData, sync::Arc};
 
@@ -50,6 +47,7 @@ use super::{
         preparation_error,
     },
     lower::{runtime_pass_cache_keys, runtime_resource_format},
+    model::RuntimeSamplingEdge,
     parameters::{
         prepare_blur_edge_parameters, prepare_color_filter_operations,
         prepare_drop_shadow_parameters, prepared_pass_composite_parameters,
@@ -136,6 +134,169 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) native_shadow_parameters: Option<NativeShadowParameterBytes>,
     pub(super) convolution_weights: Option<RuntimePassId>,
     pub(super) displacement: Option<SharedValue<super::displacement::DisplacementPreparation>>,
+}
+
+impl RuntimePassPreparationRequest {
+    pub(super) fn declared_parameter_roles(&self) -> PassBufferRoles {
+        let mut roles = PassBufferRoles::default();
+        macro_rules! role {
+            ($payload:ident, $role:ident) => {
+                if self.$payload.is_some() {
+                    roles.insert(PassBufferRole::$role);
+                }
+            };
+        }
+        role!(color_filter_operations, ColorOperation);
+        role!(gaussian_parameters, Gaussian);
+        role!(morphology_parameters, Morphology);
+        role!(native_shadow_parameters, NativeShadow);
+        role!(offset_parameters, Offset);
+        role!(displacement, Displacement);
+        role!(convolution_parameters, Convolution);
+        role!(spatial_uniform, Spatial);
+        role!(composite_parameters, Composite);
+        role!(drop_shadow_parameters, CssShadow);
+        role!(blur_edge_parameters, BlurEdge);
+        roles
+    }
+    fn parameter_layout(&self, account: &Account) -> Result<[(PassBufferRole, Option<usize>); 11]> {
+        use PassBufferRole as R;
+        let layout = [
+            (
+                R::ColorOperation,
+                self.color_filter_operations
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::Gaussian,
+                self.gaussian_parameters
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::Morphology,
+                self.morphology_parameters
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::NativeShadow,
+                self.native_shadow_parameters
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::Offset,
+                self.offset_parameters.as_ref().map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::Displacement,
+                self.displacement
+                    .as_ref()
+                    .map(|v| v.parameters.as_bytes().len()),
+            ),
+            (
+                R::Convolution,
+                self.convolution_parameters
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::Spatial,
+                self.spatial_uniform.as_ref().map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::Composite,
+                self.composite_parameters
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::CssShadow,
+                self.drop_shadow_parameters
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+            (
+                R::BlurEdge,
+                self.blur_edge_parameters
+                    .as_ref()
+                    .map(|v| v.as_bytes().len()),
+            ),
+        ];
+        let kind = &self.runtime.kind;
+        let native = matches!(
+            kind,
+            RuntimePassKind::Convolution(_)
+                | RuntimePassKind::Gaussian(_)
+                | RuntimePassKind::Morphology(_)
+                | RuntimePassKind::NativeShadowMerge(_)
+                | RuntimePassKind::Offset(_)
+                | RuntimePassKind::Displacement(_)
+        );
+        let expected = [
+            matches!(kind, RuntimePassKind::ColorFilter(Some(_))),
+            matches!(kind, RuntimePassKind::Gaussian(_)),
+            matches!(kind, RuntimePassKind::Morphology(_)),
+            matches!(kind, RuntimePassKind::NativeShadowMerge(_)),
+            matches!(kind, RuntimePassKind::Offset(_)),
+            matches!(kind, RuntimePassKind::Displacement(_)),
+            matches!(kind, RuntimePassKind::Convolution(_)),
+            self.runtime.cache_keys.is_some() && !native,
+            matches!(
+                kind,
+                RuntimePassKind::Composite(Some(RuntimeComposite {
+                    kind: RuntimeCompositeKind::Layer { .. },
+                    ..
+                }))
+            ),
+            matches!(kind, RuntimePassKind::DropShadowColorize(Some(_))),
+            matches!(kind, RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) if matches!(blur.edge, RuntimeSamplingEdge::SemanticBorderMirror(_))),
+        ];
+        for ((_, size), expected) in layout.iter().zip(expected) {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if size.is_some() != expected || size.is_some_and(|size| size == 0) {
+                return Err(preparation_error(
+                    "parameter byte roles differ from their runtime pass",
+                ));
+            }
+        }
+        Ok(layout)
+    }
+    pub(super) fn parameter_roles(&self, account: &Account) -> Result<PassBufferRoles> {
+        self.parameter_layout(account)?;
+        Ok(self.declared_parameter_roles())
+    }
+}
+
+fn parameter_buffer_preflights(
+    passes: &[RuntimePassPreparationRequest],
+    account: &Account,
+) -> Result<AccountedVec<u64>> {
+    let mut count = 0usize;
+    for pass in passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        for (_, size) in pass.parameter_layout(account)? {
+            if size.is_some() {
+                count = count
+                    .checked_add(1)
+                    .ok_or(crate::RenderAccountingError::Invariant)?;
+            }
+        }
+    }
+    let mut lengths = account.temporary(count)?;
+    for pass in passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        for (_, size) in pass.parameter_layout(account)? {
+            if let Some(size) = size {
+                lengths.append_slot()?.write(
+                    u64::try_from(size).map_err(|_| crate::RenderAccountingError::Invariant)?,
+                );
+            }
+        }
+    }
+    Ok(lengths)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1063,30 +1224,9 @@ pub(super) struct PreparedConvolutionWeightsBinding {
     pub(super) last_use: RuntimePassId,
 }
 
-pub(super) struct PreparedOffsetParameterBinding {
-    pub(super) bytes: OffsetParameterBytes,
-    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
-}
-
-pub(super) struct PreparedNativeShadowParameterBinding {
-    pub(super) bytes: NativeShadowParameterBytes,
-    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
-}
-
-pub(super) struct PreparedMorphologyParameterBinding {
-    pub(super) bytes: MorphologyParameterBytes,
-    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
-}
-
-pub(super) struct PreparedGaussianParameterBinding {
-    pub(super) bytes: GaussianParameterBytes,
-    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
-}
-
-pub(super) struct PreparedColorFilterOperationBinding {
-    pub(super) bytes: ColorFilterOperationBytes,
-    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
-}
+use super::buffer_custody::{
+    PassBufferCustody, PassBufferRole, PassBufferRoles, PreparedPassBuffer,
+};
 
 pub(super) enum PreparedSpatialFilterPassObjects {
     CopyBackdrop {
@@ -1407,15 +1547,6 @@ pub(crate) struct PreparedGraph<'device> {
     pub(super) spatial_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) backdrop_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
     pub(super) acquired_bindings: crate::accounting::OwnedBox<AcquiredGraphBindings>,
-    pub(super) offset_parameter_bindings: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
-    pub(super) native_shadow_parameter_bindings:
-        PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
-    pub(super) gaussian_parameter_bindings:
-        PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
-    pub(super) morphology_parameter_bindings:
-        PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
-    pub(super) color_filter_operation_bindings:
-        PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     pub(super) spatial_filter_pass_objects:
         PassMap<RuntimePassId, PreparedSpatialFilterPassObjects>,
     pub(super) pass_cache_update: Option<ProvisionalDevicePassCacheUpdate>,
@@ -1442,6 +1573,26 @@ pub(super) struct AcquiredGraphBindings {
         PassMap<RuntimePassId, PreparedConvolutionWeightsBinding>,
     pub(super) displacement_bindings:
         PassMap<RuntimePassId, super::displacement::PreparedDisplacementBinding>,
+    pub(super) offset_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<OffsetParameterBytes>>,
+    pub(super) native_shadow_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<NativeShadowParameterBytes>>,
+    pub(super) gaussian_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<GaussianParameterBytes>>,
+    pub(super) morphology_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<MorphologyParameterBytes>>,
+    pub(super) color_filter_operation_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<ColorFilterOperationBytes>>,
+    pub(super) spatial_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<PassSpatialUniformBytes>>,
+    pub(super) composite_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<CompositeParameterBytes>>,
+    pub(super) css_shadow_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<DropShadowParameterBytes>>,
+    pub(super) blur_edge_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<BlurEdgeParameterBytes>>,
+    pub(super) convolution_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<ConvolutionParameterBytes>>,
 }
 
 impl AcquiredGraphBindings {
@@ -1526,10 +1677,16 @@ fn acquire_prepared_graph_resources(
         .len()
         .checked_sub(plan.morphology_scratch.assignments.len())
         .ok_or_else(|| preparation_error("scratch assignments exceed logical resource requests"))?;
-    let mut displacement_count = 0;
+    let mut counts = [0usize; 11];
     for pass in &plan.passes {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        displacement_count += usize::from(pass.displacement.is_some());
+        for (role, size) in pass.parameter_layout(account)? {
+            if size.is_some() {
+                counts[role.index()] = counts[role.index()]
+                    .checked_add(1)
+                    .ok_or(crate::RenderAccountingError::Invariant)?;
+            }
+        }
     }
     // One unique owner keeps all physical binding families together. Admit its
     // actual fixed backing and reserved maps before acquiring any native lease.
@@ -1543,7 +1700,50 @@ fn acquire_prepared_graph_resources(
             )?,
             gaussian_kernel_bindings: PassMap::new(account, plan.kernels.len())?,
             convolution_weight_bindings: PassMap::new(account, plan.convolution_weights.len())?,
-            displacement_bindings: PassMap::new(account, displacement_count)?,
+            displacement_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Displacement.index()],
+            )?,
+            offset_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Offset.index()],
+            )?,
+            native_shadow_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::NativeShadow.index()],
+            )?,
+            gaussian_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Gaussian.index()],
+            )?,
+            morphology_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Morphology.index()],
+            )?,
+            color_filter_operation_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::ColorOperation.index()],
+            )?,
+            spatial_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Spatial.index()],
+            )?,
+            composite_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Composite.index()],
+            )?,
+            css_shadow_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::CssShadow.index()],
+            )?,
+            blur_edge_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::BlurEdge.index()],
+            )?,
+            convolution_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Convolution.index()],
+            )?,
         },
         &account.storage(),
     )?;
@@ -1626,15 +1826,81 @@ fn acquire_prepared_graph_resources(
     }
     let generation = frame_scope.generation().clone();
     for pass in &plan.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        macro_rules! acquire {
+            ($field:ident, $payload:ident, $role:ident) => {
+                if let Some(bytes) = &pass.$payload {
+                    account.work(RenderWork::ResourceProbes, 1)?;
+                    let buffer = PassBufferCustody::acquire(
+                        pass.runtime.id,
+                        PassBufferRole::$role,
+                        bytes.as_bytes(),
+                        device,
+                        queue,
+                        &generation,
+                        account,
+                    )?;
+                    if bindings
+                        .$field
+                        .insert_with(
+                            pass.runtime.id,
+                            PreparedPassBuffer {
+                                bytes: bytes.clone(),
+                                buffer,
+                            },
+                            account,
+                        )?
+                        .is_some()
+                    {
+                        return Err(preparation_error(
+                            "parameter pass has duplicate native custody",
+                        ));
+                    }
+                }
+            };
+        }
+        acquire!(offset_parameter_bindings, offset_parameters, Offset);
+        acquire!(
+            native_shadow_parameter_bindings,
+            native_shadow_parameters,
+            NativeShadow
+        );
+        acquire!(gaussian_parameter_bindings, gaussian_parameters, Gaussian);
+        acquire!(
+            morphology_parameter_bindings,
+            morphology_parameters,
+            Morphology
+        );
+        acquire!(
+            color_filter_operation_bindings,
+            color_filter_operations,
+            ColorOperation
+        );
+        acquire!(spatial_parameter_bindings, spatial_uniform, Spatial);
+        acquire!(
+            composite_parameter_bindings,
+            composite_parameters,
+            Composite
+        );
+        acquire!(
+            css_shadow_parameter_bindings,
+            drop_shadow_parameters,
+            CssShadow
+        );
+        acquire!(blur_edge_parameter_bindings, blur_edge_parameters, BlurEdge);
+        acquire!(
+            convolution_parameter_bindings,
+            convolution_parameters,
+            Convolution
+        );
         let Some(preparation) = &pass.displacement else {
             continue;
         };
-        account.work(RenderWork::GraphNodeVisits, 1)?;
         let binding = super::displacement::PreparedDisplacementBinding::acquire(
+            pass.runtime.id,
             preparation,
             frame_scope,
-            device,
-            queue,
+            (device, queue),
             capabilities,
             &generation,
             account,
@@ -1650,284 +1916,6 @@ fn acquire_prepared_graph_resources(
         }
     }
     Ok(bindings)
-}
-
-fn create_offset_parameter_binding(
-    generation: &Generation,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    bytes: &OffsetParameterBytes,
-    account: &Account,
-) -> Result<PreparedOffsetParameterBinding> {
-    let buffer = generation.allocation_with_upload(
-        GenerationClass::PassBuffers,
-        256,
-        256,
-        Some(account),
-        || {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Surgeist offset checked texel uniform"),
-                size: 256,
-                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                mapped_at_creation: false,
-            })
-        },
-    )?;
-    queue.write_buffer(&buffer, 0, bytes.as_bytes());
-    Ok(PreparedOffsetParameterBinding {
-        bytes: bytes.clone(),
-        buffer: Some(buffer),
-    })
-}
-
-fn create_native_shadow_parameter_binding(
-    generation: &Generation,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    bytes: &NativeShadowParameterBytes,
-    account: &Account,
-) -> Result<PreparedNativeShadowParameterBinding> {
-    let buffer = generation.allocation_with_upload(
-        GenerationClass::PassBuffers,
-        256,
-        256,
-        Some(account),
-        || {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Surgeist native_shadow checked texel uniform"),
-                size: 256,
-                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                mapped_at_creation: false,
-            })
-        },
-    )?;
-    queue.write_buffer(&buffer, 0, bytes.as_bytes());
-    Ok(PreparedNativeShadowParameterBinding {
-        bytes: bytes.clone(),
-        buffer: Some(buffer),
-    })
-}
-
-fn create_gaussian_parameter_binding(
-    generation: &Generation,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    bytes: &GaussianParameterBytes,
-    account: &Account,
-) -> Result<PreparedGaussianParameterBinding> {
-    let buffer = generation.allocation_with_upload(
-        GenerationClass::PassBuffers,
-        256,
-        256,
-        Some(account),
-        || {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Surgeist Gaussian checked texel uniform"),
-                size: 256,
-                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                mapped_at_creation: false,
-            })
-        },
-    )?;
-    queue.write_buffer(&buffer, 0, bytes.as_bytes());
-    Ok(PreparedGaussianParameterBinding {
-        bytes: bytes.clone(),
-        buffer: Some(buffer),
-    })
-}
-
-fn create_morphology_parameter_binding(
-    generation: &Generation,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    bytes: &MorphologyParameterBytes,
-    account: &Account,
-) -> Result<PreparedMorphologyParameterBinding> {
-    let buffer = generation.allocation_with_upload(
-        GenerationClass::PassBuffers,
-        256,
-        256,
-        Some(account),
-        || {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Surgeist Morphology checked texel uniform"),
-                size: 256,
-                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-                mapped_at_creation: false,
-            })
-        },
-    )?;
-    queue.write_buffer(&buffer, 0, bytes.as_bytes());
-    Ok(PreparedMorphologyParameterBinding {
-        bytes: bytes.clone(),
-        buffer: Some(buffer),
-    })
-}
-
-struct PreparedOperationParameterBindings {
-    color_filters: PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
-    offsets: PassMap<RuntimePassId, PreparedOffsetParameterBinding>,
-    native_shadows: PassMap<RuntimePassId, PreparedNativeShadowParameterBinding>,
-    gaussians: PassMap<RuntimePassId, PreparedGaussianParameterBinding>,
-    morphologies: PassMap<RuntimePassId, PreparedMorphologyParameterBinding>,
-}
-
-fn create_operation_parameter_bindings(
-    generation: &Generation,
-    plan: &RuntimeGraphPreparationPlan,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    account: &Account,
-) -> Result<PreparedOperationParameterBindings> {
-    let mut count = 0usize;
-    let mut offset_count = 0usize;
-    let mut native_shadow_count = 0usize;
-    let mut gaussian_count = 0usize;
-    let mut morphology_count = 0usize;
-    for request in &plan.passes {
-        account.work(RenderWork::GraphNodeVisits, 1)?;
-        if request.morphology_parameters.is_some() {
-            morphology_count = morphology_count
-                .checked_add(1)
-                .ok_or(crate::RenderAccountingError::Invariant)?;
-        }
-        if request.gaussian_parameters.is_some() {
-            gaussian_count = gaussian_count
-                .checked_add(1)
-                .ok_or(crate::RenderAccountingError::Invariant)?;
-        }
-        if request.offset_parameters.is_some() {
-            offset_count = offset_count
-                .checked_add(1)
-                .ok_or(crate::RenderAccountingError::Invariant)?;
-        }
-        if request.native_shadow_parameters.is_some() {
-            native_shadow_count = native_shadow_count
-                .checked_add(1)
-                .ok_or(crate::RenderAccountingError::Invariant)?;
-        }
-        if request.color_filter_operations.is_some() {
-            count = count
-                .checked_add(1)
-                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
-        }
-    }
-    let mut bindings = PassMap::new(account, count)?;
-    let mut offset_bindings = PassMap::new(account, offset_count)?;
-    let mut native_shadow_bindings = PassMap::new(account, native_shadow_count)?;
-    let mut gaussian_bindings = PassMap::new(account, gaussian_count)?;
-    let mut morphology_bindings = PassMap::new(account, morphology_count)?;
-    for request in &plan.passes {
-        account.work(RenderWork::GraphNodeVisits, 1)?;
-        if let Some(bytes) = request.gaussian_parameters.as_ref() {
-            if !matches!(request.runtime.kind, RuntimePassKind::Gaussian(_)) {
-                return Err(preparation_error(
-                    "prepared Gaussian bytes have no exact runtime pass",
-                ));
-            }
-            let Err(slot) = gaussian_bindings.position(&request.runtime.id, account)? else {
-                return Err(preparation_error(
-                    "one Gaussian pass acquired duplicate uniforms",
-                ));
-            };
-            let binding =
-                create_gaussian_parameter_binding(generation, device, queue, bytes, account)?;
-            gaussian_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
-        }
-        if let Some(bytes) = request.morphology_parameters.as_ref() {
-            if !matches!(request.runtime.kind, RuntimePassKind::Morphology(_)) {
-                return Err(preparation_error(
-                    "prepared Morphology bytes have no exact runtime pass",
-                ));
-            }
-            let Err(slot) = morphology_bindings.position(&request.runtime.id, account)? else {
-                return Err(preparation_error(
-                    "one Morphology pass acquired duplicate uniforms",
-                ));
-            };
-            let binding =
-                create_morphology_parameter_binding(generation, device, queue, bytes, account)?;
-            morphology_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
-        }
-        if let Some(bytes) = request.offset_parameters.as_ref() {
-            if !matches!(request.runtime.kind, RuntimePassKind::Offset(_)) {
-                return Err(preparation_error(
-                    "prepared offset bytes have no exact runtime pass",
-                ));
-            }
-            let Err(slot) = offset_bindings.position(&request.runtime.id, account)? else {
-                return Err(preparation_error(
-                    "one offset pass acquired more than one uniform buffer",
-                ));
-            };
-            let binding =
-                create_offset_parameter_binding(generation, device, queue, bytes, account)?;
-            offset_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
-        }
-        if let Some(bytes) = request.native_shadow_parameters.as_ref() {
-            if !matches!(request.runtime.kind, RuntimePassKind::NativeShadowMerge(_)) {
-                return Err(preparation_error(
-                    "prepared native_shadow bytes have no exact runtime pass",
-                ));
-            }
-            let Err(slot) = native_shadow_bindings.position(&request.runtime.id, account)? else {
-                return Err(preparation_error(
-                    "one native_shadow pass acquired more than one uniform buffer",
-                ));
-            };
-            let binding =
-                create_native_shadow_parameter_binding(generation, device, queue, bytes, account)?;
-            native_shadow_bindings.insert_at_reserved(slot, request.runtime.id, binding)?;
-        }
-        let Some(bytes) = request.color_filter_operations.as_ref() else {
-            continue;
-        };
-        if !matches!(request.runtime.kind, RuntimePassKind::ColorFilter(Some(_)))
-            || bytes.as_bytes().is_empty()
-        {
-            return Err(preparation_error(
-                "prepared color-filter bytes have no exact runtime pass",
-            ));
-        }
-        let size = u64::try_from(bytes.as_bytes().len()).map_err(|_| {
-            preparation_error("prepared color-filter buffer length does not fit u64")
-        })?;
-        let Err(slot) = bindings.position(&request.runtime.id, account)? else {
-            return Err(preparation_error(
-                "one color-filter pass acquired more than one operation buffer",
-            ));
-        };
-        let buffer = generation.allocation_with_upload(
-            GenerationClass::PassBuffers,
-            size,
-            bytes.as_bytes().len(),
-            Some(account),
-            || {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist color-filter ordered color-filter operations"),
-                    size,
-                    usage: wgpu::BufferUsages::STORAGE.union(wgpu::BufferUsages::COPY_DST),
-                    mapped_at_creation: false,
-                })
-            },
-        )?;
-        queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        bindings.insert_at_reserved(
-            slot,
-            request.runtime.id,
-            PreparedColorFilterOperationBinding {
-                bytes: bytes.clone(),
-                buffer: Some(buffer),
-            },
-        )?;
-    }
-    Ok(PreparedOperationParameterBindings {
-        color_filters: bindings,
-        offsets: offset_bindings,
-        native_shadows: native_shadow_bindings,
-        gaussians: gaussian_bindings,
-        morphologies: morphology_bindings,
-    })
 }
 
 fn realize_prepared_graph_passes(
@@ -2539,15 +2527,7 @@ impl<'device> PreparedGraph<'device> {
             // Admit their actual fixed backing before any native acquisition;
             // mutable leases and FrameResourceScope keep their existing owner.
             let plan = crate::accounting::OwnedBox::new(plan, &account.storage())?;
-            let mut pass_buffer_bytes = account.temporary(plan.passes.len())?;
-            for pass in &plan.passes {
-                if let Some(displacement) = &pass.displacement {
-                    account.work(RenderWork::GraphNodeVisits, 1)?;
-                    pass_buffer_bytes
-                        .append_slot()?
-                        .write(displacement.parameters.as_bytes().len() as u64);
-                }
-            }
+            let pass_buffer_bytes = parameter_buffer_preflights(&plan.passes, account)?;
             resources.preflight_graph_acquisitions(
                 &plan.allocation_preflights,
                 &pass_buffer_bytes,
@@ -2573,19 +2553,6 @@ impl<'device> PreparedGraph<'device> {
                 capabilities,
                 account,
             )?;
-            let PreparedOperationParameterBindings {
-                color_filters: color_filter_operation_bindings,
-                offsets: offset_parameter_bindings,
-                gaussians: gaussian_parameter_bindings,
-                morphologies: morphology_parameter_bindings,
-                native_shadows: native_shadow_parameter_bindings,
-            } = create_operation_parameter_bindings(
-                frame_scope.generation(),
-                &plan,
-                device,
-                queue,
-                account,
-            )?;
             let pass_realization = realize_prepared_graph_passes(
                 &plan,
                 device,
@@ -2608,11 +2575,6 @@ impl<'device> PreparedGraph<'device> {
                 spatial_filter_execution,
                 backdrop_execution,
                 acquired_bindings: acquired_resources,
-                color_filter_operation_bindings,
-                offset_parameter_bindings,
-                gaussian_parameter_bindings,
-                morphology_parameter_bindings,
-                native_shadow_parameter_bindings,
                 spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
                 pass_cache_update: pass_realization.update,
                 frame_scope: Some(frame_scope),
@@ -3049,6 +3011,22 @@ impl<'prepared> PreparedGaussianKernelBinding<'prepared> {
 #[cfg(test)]
 mod reconstructed_key_accounting_tests {
     use super::*;
+    #[test]
+    fn empty_parameter_request_slice_requires_no_native_backing_or_upload() {
+        let account = Account::for_test();
+        let lengths = parameter_buffer_preflights(&[], &account).unwrap();
+        assert!(lengths.is_empty());
+        assert_eq!(account.work_count(RenderWork::GraphNodeVisits).unwrap(), 0);
+        assert_eq!(account.work_count(RenderWork::ResourceProbes).unwrap(), 0);
+        assert_eq!(
+            account
+                .work_count(RenderWork::ResourceAllocationRequests)
+                .unwrap(),
+            0
+        );
+        assert_eq!(account.work_count(RenderWork::UploadBytes).unwrap(), 0);
+    }
+
     use crate::pass::test_support::{lower_filter_proof_fixture, measure_proof_work};
 
     fn terminal_fixture() -> LoweredGraphPlan {

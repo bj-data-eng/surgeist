@@ -39,6 +39,19 @@ pub(crate) struct ResourcePreparationObservationForTest {
 }
 
 impl Renderer {
+    pub(crate) fn set_default_device_gpu_byte_limit_for_test(
+        &mut self,
+        scope: RenderGenerationScope,
+        limit: u64,
+    ) -> Result<()> {
+        let identity = self
+            .default_device
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+        self.backend
+            .as_mut()
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?
+            .set_device_gpu_byte_limit_for_test(identity, scope, limit)
+    }
     pub(crate) fn set_default_device_effects_gpu_byte_limit_for_test(
         &mut self,
         limit: u64,
@@ -1302,15 +1315,12 @@ fn exercise_preparation_reuse(
     policy: EffectQualityPolicy,
 ) -> Result<(super::pass::PreparedGraphExerciseObservationForTest, bool)> {
     let (first_exercise, first_identities) = {
-        let mut prepared = backend.prepare_graph_resources(
-            identity,
-            lowered.clone(),
-            policy,
-            &Account::for_test(),
-        )?;
+        let account = Account::for_test();
+        let mut prepared =
+            backend.prepare_graph_resources(identity, lowered.clone(), policy, &account)?;
         let identities = prepared.allocation_identities_for_test();
         let exercise = prepared.exercise_for_test()?;
-        let _ = prepared.finish()?;
+        let _ = prepared.finish(&account)?;
         (exercise, identities)
     };
     let after_first = preparation_resource_observation(
@@ -1319,15 +1329,12 @@ fn exercise_preparation_reuse(
         "ready device disappeared after first complete preparation",
     )?;
     let second_identities = {
-        let mut prepared = backend.prepare_graph_resources(
-            identity,
-            lowered.clone(),
-            policy,
-            &Account::for_test(),
-        )?;
+        let account = Account::for_test();
+        let mut prepared =
+            backend.prepare_graph_resources(identity, lowered.clone(), policy, &account)?;
         let identities = prepared.allocation_identities_for_test();
         let _ = prepared.exercise_for_test()?;
-        let _ = prepared.finish()?;
+        let _ = prepared.finish(&account)?;
         identities
     };
     let after_second = preparation_resource_observation(
@@ -1349,13 +1356,10 @@ fn preparation_failure_cleanup(
     policy: EffectQualityPolicy,
 ) -> Result<bool> {
     let early_finish_failed = {
-        let prepared = backend.prepare_graph_resources(
-            identity,
-            lowered.clone(),
-            policy,
-            &Account::for_test(),
-        )?;
-        prepared.finish().is_err()
+        let account = Account::for_test();
+        let prepared =
+            backend.prepare_graph_resources(identity, lowered.clone(), policy, &account)?;
+        prepared.finish(&account).is_err()
     };
     let after_finish = preparation_resource_observation(
         backend,

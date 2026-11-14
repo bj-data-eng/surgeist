@@ -97,13 +97,13 @@ pub(super) fn record(
     if let Some(custody) = custody {
         for (pass, binding) in custody.displacement_bindings.entries.iter() {
             let mut native = std::collections::hash_map::DefaultHasher::new();
-            std::ops::Deref::deref(&binding.uniform).hash(&mut native);
+            std::ops::Deref::deref(binding.uniform.native_for_test()).hash(&mut native);
             uniforms.push(DisplacementUniformObservationForTest {
                 pass: *pass,
                 native_identity: native.finish(),
-                bytes: binding.uniform.size(),
-                usage: binding.uniform.usage(),
-                consumed: binding.consumed,
+                bytes: binding.uniform.native_for_test().size(),
+                usage: binding.uniform.native_for_test().usage(),
+                consumed: binding.uniform.is_consumed(),
             });
         }
     }
@@ -139,9 +139,9 @@ pub(super) fn record_disposing(binding: &super::displacement::PreparedDisplaceme
     let Some(observations) = OBSERVATIONS.with_borrow(Clone::clone) else {
         return;
     };
-    let generation = binding.uniform.generation();
+    let generation = binding.uniform.native_for_test().generation();
     let mut native = std::collections::hash_map::DefaultHasher::new();
-    std::ops::Deref::deref(&binding.uniform).hash(&mut native);
+    std::ops::Deref::deref(binding.uniform.native_for_test()).hash(&mut native);
     let pass_buffer_bytes = generation
         .class_usage(GenerationClass::PassBuffers)
         .expect("real pass-buffer custody remains observable")
@@ -157,9 +157,9 @@ pub(super) fn record_disposing(binding: &super::displacement::PreparedDisplaceme
             command_buffer_objects,
             disposing: Some(DisplacementUniformDisposalForTest {
                 native_identity: native.finish(),
-                bytes: binding.uniform.size(),
-                usage: binding.uniform.usage(),
-                consumed: binding.consumed,
+                bytes: binding.uniform.native_for_test().size(),
+                usage: binding.uniform.native_for_test().usage(),
+                consumed: binding.uniform.is_consumed(),
                 declared_reads: binding.preparation.reads.len(),
                 acquired_reads: binding
                     .resources

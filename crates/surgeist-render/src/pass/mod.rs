@@ -1,3 +1,4 @@
+mod buffer_custody;
 mod close;
 mod convolution;
 mod displacement;
@@ -19,6 +20,12 @@ mod morphology;
 mod morphology_scratch;
 mod native_shadow;
 mod offset;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod parameter_custody_observation;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) use parameter_custody_observation::{
+    ParameterFamilyForTest, ParameterProbeForTest, ParameterSnapshotForTest, ParameterStageForTest,
+};
 mod parameters;
 mod prepare;
 #[cfg(test)]

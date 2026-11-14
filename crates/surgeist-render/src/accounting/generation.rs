@@ -128,6 +128,9 @@ impl fmt::Debug for Generation {
     }
 }
 impl Generation {
+    pub(crate) fn same_owner(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
     pub(crate) fn new(options: RenderAccountingOptions) -> Result<Self> {
         let mut op = match options.clock {
             RenderClock::Platform => Operation::with_profile(
@@ -452,8 +455,17 @@ impl Generation {
 
     #[cfg(test)]
     pub(crate) fn set_effects_gpu_byte_limit_for_test(&self, limit: u64) -> Result<()> {
+        self.set_gpu_byte_limit_for_test(RenderGenerationScope::Effects, limit)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_gpu_byte_limit_for_test(
+        &self,
+        scope: RenderGenerationScope,
+        limit: u64,
+    ) -> Result<()> {
         self.ensure_healthy()?;
-        let scope = self.0.scopes[RenderGenerationScope::Effects.index()];
+        let scope = self.0.scopes[scope.index()];
         let current = self
             .0
             .ledger
@@ -750,6 +762,10 @@ impl Generation {
     #[cfg(test)]
     pub(crate) fn object_usage_for_test(&self, kind: GpuObjectKind) -> Result<GenerationUsage> {
         self.usage_at(kind.scope())
+    }
+    #[cfg(test)]
+    pub(crate) fn identity_for_test(&self) -> RenderGenerationIdentity {
+        self.0.identity.clone()
     }
     pub(crate) fn cache_bytes(&self) -> Result<u64> {
         Ok(self

@@ -143,6 +143,8 @@ fn exercise_failure(failure: u8) {
     };
     let probe = crate::pass::DisplacementUniformProbeForTest::new();
     let observations = probe.reader();
+    let parameter_probe = crate::pass::ParameterProbeForTest::new(generation);
+    let parameters = parameter_probe.reader();
     let mut prepared = PreparedGraph::try_prepare_spatial_filter(
         &spatial,
         working,
@@ -155,6 +157,7 @@ fn exercise_failure(failure: u8) {
     .unwrap()
     .with_vello_engine(ready.engine_for_test());
     prepared.observe_displacement_uniforms_for_test();
+    prepared.observe_parameter_custody_for_test(crate::pass::ParameterStageForTest::Prepared);
     drop(spatial);
     drop(graph);
     drop(scene);
@@ -200,9 +203,63 @@ fn exercise_failure(failure: u8) {
         encoded[1] > baseline[1],
         "the real finite source retains pending Vello capture assets"
     );
-    // Existing morphology uniforms retire at logical completion; this fixture
-    // covers the frame and pending capture custody beyond that point.
-    assert_eq!(encoded[2], baseline[2] + if failure < 3 { 0 } else { 512 });
+    use crate::pass::{ParameterFamilyForTest as Family, ParameterStageForTest as Stage};
+    // For the 2x2/radius1 finite source, each morphology axis builds Table1
+    // and Query1; Prepare + two pairs + Resolve is six 256-byte blocks.
+    // Displacement uses RealizeSource + Displace instead: two 256-byte blocks.
+    // Both graphs also have four spatial blocks (capture canonicalization,
+    // source span composite, bounded outer Layer composite, Present) and one
+    // outer Layer parameter block. These literals precede raw-owner inspection.
+    let native_count = if failure < 3 { 6 } else { 2 };
+    let native_family = if failure < 3 {
+        Family::Morphology
+    } else {
+        Family::Displacement
+    };
+    let expected_parameter_bytes = native_count * 256 + 4 * 48 + 128;
+    assert_eq!(encoded[2], baseline[2] + expected_parameter_bytes);
+    let parameter_observations = parameters();
+    let prepared_parameters = parameter_observations
+        .iter()
+        .find(|s| s.stage == Stage::Prepared)
+        .unwrap()
+        .buffers
+        .as_ref()
+        .unwrap();
+    let encoded_parameters = parameter_observations
+        .iter()
+        .find(|s| s.stage == Stage::Encoded)
+        .unwrap()
+        .buffers
+        .as_ref()
+        .unwrap();
+    for (family, bytes, count) in [
+        (native_family, 256, native_count),
+        (Family::Spatial, 48, 4),
+        (Family::Composite, 128, 1),
+    ] {
+        let actual: Vec<_> = prepared_parameters
+            .iter()
+            .filter(|b| b.family == family)
+            .collect();
+        assert_eq!(actual.len() as u64, count);
+        assert!(actual.iter().all(|b| b.bytes == bytes
+            && b.usage == (wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST)
+            && !b.consumed));
+    }
+    assert_eq!(prepared_parameters.len() as u64, native_count + 5);
+    assert_eq!(encoded_parameters.len(), prepared_parameters.len());
+    for before in prepared_parameters {
+        let after = encoded_parameters
+            .iter()
+            .find(|b| b.native_identity == before.native_identity)
+            .unwrap();
+        assert_eq!(
+            (after.family, after.pass, after.bytes, after.usage),
+            (before.family, before.pass, before.bytes, before.usage)
+        );
+        assert!(after.consumed);
+    }
     let limited_work = if failure == 2 {
         RenderWork::ResourceAllocationRequests
     } else {
@@ -278,6 +335,29 @@ fn exercise_failure(failure: u8) {
         .into_parts()
         .0
         .unwrap();
+    let terminal_parameters = parameters();
+    let disposals: Vec<_> = terminal_parameters
+        .iter()
+        .filter(|s| s.stage == Stage::Disposing)
+        .collect();
+    assert_eq!(disposals.len(), prepared_parameters.len());
+    for snapshot in disposals {
+        let disposed = snapshot.disposing.as_ref().unwrap();
+        assert!(
+            prepared_parameters
+                .iter()
+                .any(|before| before.native_identity == disposed.native_identity)
+        );
+        assert!(disposed.consumed && snapshot.pass_buffer_bytes > baseline[2]);
+        assert_eq!(
+            (
+                snapshot.command_encoder_objects,
+                snapshot.command_buffer_objects
+            ),
+            (0, 0),
+            "commands dispose before every actual parameter buffer"
+        );
+    }
     if failure >= 3 {
         let observations = observations();
         let prepared_ids: Vec<_> = observations

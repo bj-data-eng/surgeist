@@ -935,8 +935,10 @@ escapes; an unchanged-input raised-budget retry starts fresh.
 
 Prepared GPU requests have their own admitted fixed CPU backing. Their immutable
 plan stays owned across acquisition and encoding waits; mutable native leases
-retain their existing frame resource owner. Refusal and cancellation release both
-through ordinary guarded disposal.
+retain their existing frame resource owner. The acquired binding aggregate and
+its actual parameter buffers remain owned through submission and transaction
+cleanup. Their CPU storage stays admitted for that lifetime. Refusal and
+cancellation release these owners through ordinary guarded disposal.
 
 Configure `RenderAccountingOptions` through `Options::with_accounting` before
 `Renderer::new`. Limits, profile mode and clock are fixed for that Renderer and
@@ -1475,6 +1477,24 @@ their source buffers/views through their observed use. Native values drop before
 their shared custody token, and native constructors, Drop callbacks, submission,
 and awaits run without a Ledger/lifecycle lock. Driver retention after the last
 explicit Render owner ends is outside the measured domain.
+
+Graph parameter buffers remain charged to `PassBuffers` after their logical
+pass completes. Completion prevents further binding or repeated consumption;
+it does not release the actual buffer. The same acquired owner carries color
+operation storage and all native-filter, spatial, composition and CSS parameter
+uniforms through encoding, pending submission and terminal transaction cleanup.
+This applies to graphs without displacement as well. Unsubmitted commands drop
+before their backing on abort. Submitted transactions retain backing until their
+own cleanup; this is explicit Render custody, not a GPU-idle or driver-memory
+measurement.
+
+Parameter allocation and upload occur in `GpuPrepare`, once per actual buffer.
+`Encode` retains its validation, binding and draw work. Combined admission previews
+all parameter descriptor lengths together with actual cache misses at the
+generation root and their existing child scopes; real acquisitions still perform
+their own admission. Multi-pass residency therefore includes all retained
+parameter buffers, rather than only the current pass. Idle cache reuse preserves
+its existing classification and retention policy.
 
 `RegisteredCacheGpuBytes` classifies payload represented by current managed
 entries; `IdleCacheGpuBytes` classifies registered entries eligible for idle

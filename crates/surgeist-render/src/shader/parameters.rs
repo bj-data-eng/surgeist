@@ -1149,7 +1149,6 @@ impl BlurEdgeParameterBytes {
         Ok(Self(bytes))
     }
 
-    #[cfg(test)]
     #[must_use]
     pub(crate) const fn as_bytes(&self) -> &[u8; 16] {
         &self.0

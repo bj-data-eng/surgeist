@@ -878,6 +878,16 @@ fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acq
             convolution_weight_bindings: PassMap::new(&setup, plan.convolution_weights.len())
                 .unwrap(),
             displacement_bindings: PassMap::new(&setup, 0).unwrap(),
+            offset_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            native_shadow_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            gaussian_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            morphology_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            color_filter_operation_bindings: PassMap::new(&setup, 0).unwrap(),
+            spatial_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            composite_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            css_shadow_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            blur_edge_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
+            convolution_parameter_bindings: PassMap::new(&setup, 0).unwrap(),
         };
         assert!(!plan.morphology_scratch.slots.is_empty());
         assert!(bindings.morphology_scratch_bindings.slots.is_empty());
@@ -911,6 +921,11 @@ fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acq
             assert!(owned.runtime_bindings.is_empty());
             assert!(owned.gaussian_kernel_bindings.is_empty());
             assert!(owned.convolution_weight_bindings.is_empty());
+            // This actual empty parameter-map owner is the neutral helper
+            // case; no executable graph without its Present buffer is forged.
+            owned
+                .validate_consumed_parameters(ready.generation_for_test(), &setup)
+                .unwrap();
             assert_eq!(
                 cpu.snapshot()
                     .unwrap()
