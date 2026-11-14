@@ -116,25 +116,34 @@ fn unchanged(fixture: &mut HostedFixture, before: &DomSnapshot, usage: DomUsage)
 #[test]
 fn completed_native_fragment_has_active_and_never_hosted_destination_controls() {
     let mut fixture = HostedFixture::active();
+    let mut batch = DomBatch::new();
+    let native = batch.create_document();
+    let unbound = batch.create_html_document(&native, None);
+    let commit = fixture.session.dom().apply(batch, &cancel()).unwrap();
+    let unbound = commit.document(&unbound).unwrap();
     let source = fragment();
     let source_children: Vec<_> = source.root().children().collect();
     let source_element = source.node(&source_children[0]).unwrap();
     let source_text = source_element.children().next().unwrap();
-    for hosted in [true, false] {
-        let document = if hosted {
-            fixture.top.document()
-        } else {
-            fixture.closed
-        };
+    let original_global = fixture.top.global();
+    for (document, expected_registry, expected_global, fully_active) in [
+        (
+            fixture.top.document(),
+            fixture.registry,
+            Some(original_global),
+            true,
+        ),
+        (
+            fixture.closed,
+            DomRegistryBinding::Null,
+            Some(original_global),
+            false,
+        ),
+        (unbound, DomRegistryBinding::Null, None, false),
+    ] {
         let before = fixture.session.snapshot();
         let parent = body(&before, document);
         let target = target(&fixture, document, parent);
-        let expected_registry = if hosted {
-            fixture.registry
-        } else {
-            DomRegistryBinding::Null
-        };
-        let expected_global = hosted.then_some(fixture.top.global());
         let DomSourceDriveProgress::Complete(completion) = install(
             &mut fixture,
             &source,
@@ -196,7 +205,29 @@ fn completed_native_fragment_has_active_and_never_hosted_destination_controls() 
                 .unwrap()
                 .is_fully_active()
                 .unwrap(),
-            hosted
+            fully_active
+        );
+        assert_eq!(
+            current.relevant_global(document.node()).unwrap(),
+            expected_global
+        );
+        if !fully_active {
+            let closed = current.document(document).unwrap();
+            assert_eq!(
+                closed.metadata().document_environment().browsing_context(),
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
+            );
+            assert!(
+                !closed
+                    .metadata()
+                    .document_environment()
+                    .has_ever_had_navigable()
+            );
+            assert_eq!(closed.navigable(), None);
+        }
+        assert_eq!(
+            current.global_document(original_global).unwrap(),
+            fixture.top.document()
         );
         assert_eq!(current.incomplete_source_operation(), None);
         assert!(fixture.session.dom().pending_source_edit().is_none());

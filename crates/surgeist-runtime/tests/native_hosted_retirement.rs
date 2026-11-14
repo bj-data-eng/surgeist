@@ -678,12 +678,36 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
     };
     let parent = body(&session, document);
     let (target, details, queued) = queue_details(&mut session, document, parent);
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot.node(target).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(
+        snapshot.relevant_global(target).unwrap(),
+        Some(original.global())
+    );
+    let association = queued.queue_association().unwrap();
+    assert_eq!(association.document(), original.document());
+    assert_eq!(association.global(), original.global());
     if closed_start {
-        assert_eq!(queued.queue_association(), None);
-    } else {
-        let association = queued.queue_association().unwrap();
-        assert_eq!(association.document(), original.document());
-        assert_eq!(association.global(), original.global());
+        assert_ne!(document, original.document());
+        let closed = snapshot.document(document).unwrap();
+        assert_eq!(
+            closed.metadata().document_environment().browsing_context(),
+            surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
+        );
+        assert!(
+            !closed
+                .metadata()
+                .document_environment()
+                .has_ever_had_navigable()
+        );
+        assert!(!closed.is_fully_active().unwrap());
+        assert_eq!(
+            closed.metadata().custom_element_registry(),
+            surgeist_dom::DomRegistryBinding::Null
+        );
     }
     let mut context = ReentryContext {
         element_tasks: details,
@@ -789,8 +813,9 @@ fn adoption_retirement_case(retire_before_resume: bool, same_edit: bool, closed_
     );
     assert_eq!(context.edits.len(), canonical_edits + callbacks - 1);
     if retire_before_resume {
-        // The original path and queued task Document stay unchanged. Eligibility
-        // follows that same distinct Document's current inactive state.
+        // The task keeps original's Global/Document and its captured path.
+        // Listener eligibility follows destination's retirement-time
+        // node-Document, which became inactive before this resume.
         assert_eq!(context.edits.len(), canonical_edits);
     } else {
         assert!(matches!(
