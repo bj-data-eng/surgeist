@@ -11487,38 +11487,38 @@
     "Document.obsolete.clear:0/call": {
       "kind": "native",
       "adapter": "document.clear.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The source-defined no-op method needs its authenticated Document receiver adapter; the tree-property accessors do not install this method.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-clear"
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/legacy.rs",
+          "symbol": "legacy_document_operation"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Document.obsolete.captureEvents:0/call": {
       "kind": "native",
       "adapter": "document.captureevents.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The source-defined no-op method needs its authenticated Document receiver adapter; the tree-property accessors do not install this method.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-captureevents"
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/legacy.rs",
+          "symbol": "legacy_document_operation"
         }
-      ]
+      ],
+      "requirements": []
     },
     "Document.obsolete.releaseEvents:0/call": {
       "kind": "native",
       "adapter": "document.releaseevents.call",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The source-defined no-op method needs its authenticated Document receiver adapter; the tree-property accessors do not install this method.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-releaseevents"
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/legacy.rs",
+          "symbol": "legacy_document_operation"
         }
-      ]
+      ],
+      "requirements": []
     }
   },
   "semantics": {

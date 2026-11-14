@@ -478,6 +478,10 @@ The unstarted native HTML language contracts select WHATWG HTML commit snapshot 
 | `obsolete` | [obsolete](html-language-obsolete--877d6146487f--66870e9cdabe.md) |
 | `sandboxing` | [flag definitions and directive parsing](html-sandboxing--877d6146487f.md) |
 
+The [HTMLDocument constructor alias](html-document-constructor-alias--877d6146487f.md) retains its complete
+prose definition from repository source raw97492–97494 of this same edition.
+The capture identifies the repository-source bytes and paragraph hash.
+
 The [being-rendered definition and two notes](html-being-rendered--877d6146487f.md)
 add a bounded selection from the same snapshot’s rendering introduction.
 For HTML list-owner and ordinal interpretation, supplied participation means

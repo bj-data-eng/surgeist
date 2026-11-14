@@ -312,6 +312,12 @@ only to a selected body, with null-to-empty conversion; frameset and absent
 targets retain their empty/no-op behavior. String conversion finishes before
 the current target is selected. These writes use the original Source and
 reaction adapters.
+Document.clear(), captureEvents() and releaseEvents() implement their
+source-defined no-op algorithms after authenticating the current native
+Document. They return undefined and ignore additional arguments.
+Each installed Window's [HTMLDocument alias](../../references/html-document-constructor-alias--877d6146487f.md)
+refers to that realm's existing Document constructor. The alias is writable,
+configurable and nonenumerable.
 `Document.doctype` follows the live tree and projects the native DocumentType
 in its creation realm. Its name and identifiers preserve exact UTF-16.
 Document and Window listeners share the native registry. Borrowed
