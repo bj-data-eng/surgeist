@@ -576,7 +576,16 @@ impl<'input, Node: Copy, S: LayoutScalar> BlockChild<'input, Node, S> {
         }
     }
 
-    fn compute<Tree, M>(
+    /// The request of a scoped Block box child, which the request executor
+    /// continues without a native stack frame.
+    pub(crate) fn scoped_box_request(&self) -> Option<scope::ChildRequest<Node, S>> {
+        match self {
+            Self::InFlow(child) => child.scoped_box_request(),
+            Self::Positioned(_) => None,
+        }
+    }
+
+    pub(crate) fn compute<Tree, M>(
         self,
         tree: &mut Tree,
     ) -> ComputeResult<Node, BlockChildOutput<'input, Node, S>, S, M>

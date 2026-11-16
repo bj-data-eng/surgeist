@@ -1,13 +1,16 @@
 use std::{collections::TryReserveError, ops::ControlFlow};
 
 use super::memo::Capture;
-use super::{ChildAdmission, ChildCacheRequest, ComputeSession, FloatChildTrial, SessionResult};
+use super::{
+    ChildAdmission, ChildCacheRequest, ComputeSession, FloatChildTrial, ScopedChild,
+    ScopedChildStart, SessionResult,
+};
 use crate::block::intrinsic::{BlockAxisDemand, InlineContentChild};
 use crate::block::{
     BlockChildReceipt, BlockChildRequest, BlockComputation, BlockResult, PendingBlockChild,
     begin_block_computation,
 };
-use crate::engine::block_scope::ordinary;
+use crate::engine::block_scope::{ComputeResult, ComputeStop, ordinary};
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::flex::{FlexChild, FlexComputation, begin_flex_computation};
 use crate::grid::{
@@ -32,6 +35,7 @@ enum Request<'input, Node, S: LayoutScalar> {
         input: ComputeInputOf<S>,
         axis: PhysicalAxis,
     },
+    ScopedChild(ScopedChild<Node, S>),
     AdvanceBlock,
     AdvanceFlex,
     AdvanceGrid,
@@ -118,6 +122,8 @@ struct BlockRequest<'input, Node, S: LayoutScalar> {
     completion: ChildCompletion<Node, S>,
     projection: OutputProjection,
     child: Option<PendingBlockChild<'input, Node, S>>,
+    /// The scope frame depth of a scoped Block box; `None` for an ordinary one.
+    scope_depth: Option<usize>,
 }
 
 struct FlexRequest<'input, Node, S: LayoutScalar> {
@@ -187,6 +193,12 @@ impl<Node, S: LayoutScalar> PendingRequests<'_, Node, S> {
     }
 }
 
+type StopResult<Tree, T> = ComputeResult<
+    <Tree as Traverse>::Node,
+    T,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
 type SessionRequest<'input, Tree> =
     Request<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
 type SessionPending<'input, Tree> =
@@ -236,7 +248,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         query: crate::block::entry::EntryQuery<Tree::Node, Tree::Scalar>,
     ) -> SessionResult<Tree, crate::block::entry::EntryObservation<Tree::Node, Tree::Scalar>> {
-        match self.drive_requests(Request::Qualify(query))? {
+        match ordinary(self.drive_requests(Request::Qualify(query)))? {
             CompletedRequest::Entry(observation) => Ok(*observation),
             _ => unreachable!("entry operation returns entry facts"),
         }
@@ -247,19 +259,33 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
-        self.drive_requests(Request::Child {
+        ordinary(self.drive_requests(Request::Child {
             node,
             input,
             projection: OutputProjection::Layout,
-        })
+        }))
         .map(CompletedRequest::layout)
+    }
+
+    /// Computes a scoped Block box and its scoped Block descendants on the
+    /// request stack. A suspension keeps its scope frames in the scope request.
+    pub(super) fn drive_scoped_child(
+        &mut self,
+        child: ScopedChild<Tree::Node, Tree::Scalar>,
+    ) -> StopResult<Tree, ComputeOutputOf<Tree::Scalar>> {
+        let depth = child.depth;
+        let result = self.drive_requests(Request::ScopedChild(child));
+        if !matches!(result, Err(ComputeStop::NeedScope(_))) {
+            self.release_scope_frames(depth);
+        }
+        result.map(CompletedRequest::layout)
     }
 
     pub(super) fn drive_hidden(
         &mut self,
         request: HiddenRequest<Tree::Node>,
     ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
-        self.drive_requests(Request::Hidden(request, OutputProjection::Layout))
+        ordinary(self.drive_requests(Request::Hidden(request, OutputProjection::Layout)))
             .map(CompletedRequest::layout)
     }
 
@@ -269,22 +295,22 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         input: ComputeInputOf<Tree::Scalar>,
         axis: PhysicalAxis,
     ) -> SessionResult<Tree, Tree::Scalar> {
-        self.drive_requests(Request::Axis { node, input, axis })
+        ordinary(self.drive_requests(Request::Axis { node, input, axis }))
             .map(CompletedRequest::axis)
     }
 
     fn drive_requests(
         &mut self,
         request: SessionRequest<'input, Tree>,
-    ) -> SessionResult<Tree, CompletedRequest<'input, Tree::Node, Tree::Scalar>> {
+    ) -> StopResult<Tree, CompletedRequest<'input, Tree::Node, Tree::Scalar>> {
         let mut pending = PendingRequests::new();
         let mut staged = Vec::new();
         let result = self.drive_staged_requests(request, &mut pending, &mut staged);
-        result.map_err(|mut error| {
+        result.map_err(|mut stop| {
             while let Some(mut trial) = staged.pop() {
-                error = trial.session.unwind_blocks(trial.pending.blocks, error);
+                stop = trial.session.unwind_blocks(trial.pending.blocks, stop);
             }
-            self.unwind_blocks(pending.blocks, error)
+            self.unwind_blocks(pending.blocks, stop)
         })
     }
 
@@ -293,7 +319,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         mut request: SessionRequest<'input, Tree>,
         pending: &mut SessionPending<'input, Tree>,
         staged: &mut Vec<StagedTrial<'input, Tree>>,
-    ) -> SessionResult<Tree, CompletedRequest<'input, Tree::Node, Tree::Scalar>> {
+    ) -> StopResult<Tree, CompletedRequest<'input, Tree::Node, Tree::Scalar>> {
         loop {
             let progress = if let Some(active) = staged.last_mut() {
                 active.session.run_requests(request, &mut active.pending)?
@@ -345,7 +371,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         query: crate::block::entry::EntryQuery<Tree::Node, Tree::Scalar>,
         staged: &mut Vec<StagedTrial<'input, Tree>>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         staged
             .try_reserve(1)
             .map_err(|_| reserve_error(query.node))?;
@@ -367,7 +393,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         source: Box<crate::block::entry::EntryFloat<'input, Tree::Node, Tree::Scalar>>,
         staged: &mut Vec<StagedTrial<'input, Tree>>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let (node, input) = source.request();
         staged.try_reserve(1).map_err(|_| reserve_error(node))?;
         let parent = staged
@@ -410,7 +436,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         progress: RequestProgress<'input, Tree::Node, Tree::Scalar>,
         staged: &mut Vec<StagedTrial<'input, Tree>>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let RequestProgress::GridObservation(source) = progress else {
             unreachable!("the observation phase owns its source");
         };
@@ -434,7 +460,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         request: SessionRequest<'input, Tree>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let Request::GridObservationRun(mut run) = request else {
             unreachable!()
         };
@@ -470,7 +496,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         output: CompletedRequest<'input, Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
         staged: &mut Vec<StagedTrial<'input, Tree>>,
-    ) -> SessionResult<Tree, StagedProgress<'input, Tree>> {
+    ) -> StopResult<Tree, StagedProgress<'input, Tree>> {
         let Some(finished) = staged.pop() else {
             return Ok(ControlFlow::Break(output));
         };
@@ -531,7 +557,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     fn advance_entry_request(
         &mut self,
         request: SessionRequest<'input, Tree>,
-    ) -> SessionResult<Tree, EntryProgress<'input, Tree>> {
+    ) -> StopResult<Tree, EntryProgress<'input, Tree>> {
         let Request::Entry(entry) = request else {
             unreachable!("entry advancement receives the retained entry request");
         };
@@ -548,8 +574,8 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     fn unwind_blocks(
         &mut self,
         blocks: Vec<SessionBlock<'input, Tree>>,
-        mut error: crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError>,
-    ) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+        mut stop: ComputeStop<Tree::Node, Tree::Scalar, Tree::MeasureError>,
+    ) -> ComputeStop<Tree::Node, Tree::Scalar, Tree::MeasureError> {
         for frame in blocks.into_iter().rev() {
             if let Some((node, input)) = frame
                 .child
@@ -558,17 +584,25 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
             {
                 let _ = self.end_child_float_context(node, input);
             }
-            error = ordinary(frame.computation.finish(self, Err(error.into())))
+            stop = frame
+                .computation
+                .finish(self, Err(stop))
                 .expect_err("failed child leaves its Block owner failed");
+            // A suspension has already moved its frames into the scope request.
+            if let Some(depth) = frame.scope_depth
+                && !matches!(stop, ComputeStop::NeedScope(_))
+            {
+                self.release_scope_frames(depth);
+            }
         }
-        error
+        stop
     }
 
     fn run_requests(
         &mut self,
         mut request: SessionRequest<'input, Tree>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, RequestProgress<'input, Tree::Node, Tree::Scalar>> {
+    ) -> StopResult<Tree, RequestProgress<'input, Tree::Node, Tree::Scalar>> {
         loop {
             request = match request {
                 Request::Child {
@@ -595,14 +629,14 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                                 self.begin_grid(node, input, completion, projection, pending)?
                             }
                             _ => {
-                                let output = ordinary(
-                                    self.compute_uncached_layout_body(node, input, initial),
-                                )?;
+                                let output =
+                                    self.compute_uncached_layout_body(node, input, initial)?;
                                 self.complete_child_request(node, completion, projection, output)?
                             }
                         }
                     }
                 },
+                Request::ScopedChild(child) => self.begin_scoped_block(child, pending)?,
                 Request::Hidden(request, projection) => {
                     let children = HiddenChildren::begin(self, request)?;
                     self.advance_hidden(children, projection, pending)?
@@ -681,14 +715,15 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         completion: ChildCompletion<Tree::Node, Tree::Scalar>,
         projection: OutputProjection,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
-        match ordinary(begin_block_computation(self, node, input))? {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
+        match begin_block_computation(self, node, input)? {
             ControlFlow::Break(output) => {
                 self.finish_container_request(node, input, completion, projection, output)
             }
             ControlFlow::Continue(computation) => {
                 if pending.blocks.try_reserve(1).is_err() {
-                    return ordinary(computation.finish(self, Err(reserve_error(node).into())))
+                    return computation
+                        .finish(self, Err(reserve_error(node).into()))
                         .map(|output| projection.complete(output));
                 }
                 pending.blocks.push(BlockRequest {
@@ -696,6 +731,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     completion,
                     projection,
                     child: None,
+                    scope_depth: None,
                 });
                 Ok(Request::AdvanceBlock)
             }
@@ -706,19 +742,22 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         output: BlockChildReceipt<Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.blocks.last_mut().expect("active Block request");
         let child = parent.child.take().expect("pending Block child request");
-        ordinary(parent.computation.accept_child(self, child, output))?;
+        parent.computation.accept_child(self, child, output)?;
         Ok(Request::AdvanceBlock)
     }
 
     fn advance_block(
         &mut self,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.blocks.last_mut().expect("active Block request");
-        match ordinary(parent.computation.advance(self))? {
+        if parent.scope_depth.is_some() {
+            return self.advance_scoped_block(pending);
+        }
+        match parent.computation.advance(self)? {
             ControlFlow::Break(result) => self.complete_block(result, pending),
             ControlFlow::Continue(child) => {
                 let (request, child) = child.into_request();
@@ -765,11 +804,107 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         result: BlockResult<Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.blocks.pop().expect("completed Block request");
         let (node, input) = parent.computation.request();
-        let output = ordinary(parent.computation.finish(self, Ok(result)))?;
+        let output = parent.computation.finish(self, Ok(result))?;
+        if let Some(depth) = parent.scope_depth {
+            self.finish_uncached_layout(node, input, output)?;
+            self.release_scope_frames(depth);
+            return Ok(parent.projection.complete(output));
+        }
         self.finish_container_request(node, input, parent.completion, parent.projection, output)
+    }
+
+    /// Starts a scoped Block box whose scope frame is already pushed. A leaf
+    /// completes at once; a Block container keeps its computation on the
+    /// request stack, never on the native stack.
+    fn begin_scoped_block(
+        &mut self,
+        child: ScopedChild<Tree::Node, Tree::Scalar>,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
+        let ScopedChild { node, input, depth } = child;
+        let initial = self.begin_uncached_layout(node, input);
+        if initial.leaf || initial.style.display.inner_display() != Display::Block {
+            let output = self.compute_uncached_layout_body(node, input, initial)?;
+            self.release_scope_frames(depth);
+            return Ok(Request::Complete(CompletedRequest::Layout(output)));
+        }
+        match begin_block_computation(self, node, input)? {
+            ControlFlow::Break(output) => {
+                self.finish_uncached_layout(node, input, output)?;
+                self.release_scope_frames(depth);
+                Ok(Request::Complete(CompletedRequest::Layout(output)))
+            }
+            ControlFlow::Continue(computation) => {
+                if pending.blocks.try_reserve(1).is_err() {
+                    return computation
+                        .finish(self, Err(reserve_error(node).into()))
+                        .map(|output| OutputProjection::Layout.complete(output));
+                }
+                pending.blocks.push(BlockRequest {
+                    computation,
+                    completion: ChildCompletion {
+                        cache: None,
+                        capture: None,
+                    },
+                    projection: OutputProjection::Layout,
+                    child: None,
+                    scope_depth: Some(depth),
+                });
+                Ok(Request::AdvanceBlock)
+            }
+        }
+    }
+
+    /// Advances a scoped Block box. A scoped Block box child continues on the
+    /// request stack; every other child computes as it did in the synchronous
+    /// Block loop.
+    fn advance_scoped_block(
+        &mut self,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
+        loop {
+            let parent = pending.blocks.last_mut().expect("active Block request");
+            let child = match parent.computation.advance(self)? {
+                ControlFlow::Break(result) => return self.complete_block(result, pending),
+                ControlFlow::Continue(child) => child,
+            };
+            let Some(request) = child.scoped_box_request() else {
+                let (accepted, output) = child.compute(self)?;
+                parent.computation.accept_child(self, accepted, output)?;
+                continue;
+            };
+            let (_, accepted) = child.into_request();
+            pending
+                .order
+                .try_reserve(1)
+                .map_err(|_| reserve_error(request.node))?;
+            match self.begin_scoped_child(request)? {
+                ScopedChildStart::Output(output) => {
+                    parent.computation.accept_child(
+                        self,
+                        accepted,
+                        BlockChildReceipt::Layout(output),
+                    )?;
+                }
+                ScopedChildStart::Fallback { node, input } => {
+                    parent.child = Some(accepted);
+                    pending.order.push(PendingRequest::Block);
+                    return Ok(Request::Child {
+                        node,
+                        input,
+                        projection: OutputProjection::Layout,
+                    });
+                }
+                ScopedChildStart::Descend(child) => {
+                    parent.child = Some(accepted);
+                    pending.order.push(PendingRequest::Block);
+                    return Ok(Request::ScopedChild(child));
+                }
+            }
+        }
     }
 
     fn begin_flex(
@@ -779,7 +914,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         completion: ChildCompletion<Tree::Node, Tree::Scalar>,
         projection: OutputProjection,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         match begin_flex_computation(self, node, input)? {
             ControlFlow::Break(output) => {
                 self.finish_container_request(node, input, completion, projection, output)
@@ -809,7 +944,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     fn advance_flex(
         &mut self,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.flexes.last_mut().expect("active Flex request");
         match parent.computation.advance(self)? {
             ControlFlow::Break(output) => {
@@ -834,7 +969,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     fn schedule_flex_child(
         child: &FlexChild<'input, Tree::Node, Tree::Scalar>,
         order: &mut Vec<PendingRequest>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let (node, input) = child.request();
         order.try_reserve(1).map_err(|_| reserve_error(node))?;
         order.push(PendingRequest::Flex);
@@ -849,7 +984,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         output: CompletedRequest<'input, Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let GridObservationRequest {
             computation: mut run,
             child,
@@ -865,7 +1000,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         output: CompletedRequest<'input, Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.grids.last_mut().expect("active Grid request");
         match output {
             CompletedRequest::GridObservation(completion) => {
@@ -888,7 +1023,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         completion: ChildCompletion<Tree::Node, Tree::Scalar>,
         projection: OutputProjection,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         match begin_grid_computation(self, node, input)? {
             ControlFlow::Break(output) => {
                 self.finish_container_request(node, input, completion, projection, output)
@@ -920,7 +1055,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     fn advance_grid(
         &mut self,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.grids.last_mut().expect("active Grid request");
         match parent.computation.advance(self)? {
             ControlFlow::Break(output) => {
@@ -944,7 +1079,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         child: GridComputationRequest<'input, Tree::Node, Tree::Scalar>,
         pending_child: &mut Option<GridChild<'input, Tree::Node, Tree::Scalar>>,
         order: &mut Vec<PendingRequest>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         match child {
             GridComputationRequest::Child(child) => {
                 let (node, input) = child.request();
@@ -975,7 +1110,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         completion: ChildCompletion<Tree::Node, Tree::Scalar>,
         projection: OutputProjection,
         output: ComputeOutputOf<Tree::Scalar>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         self.finish_uncached_layout(node, input, output)?;
         self.complete_child_request(node, completion, projection, output)
     }
@@ -986,7 +1121,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         completion: ChildCompletion<Tree::Node, Tree::Scalar>,
         projection: OutputProjection,
         output: ComputeOutputOf<Tree::Scalar>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let ChildCompletion { cache, capture } = completion;
         if let Some(cache) = cache {
             cache.store(self, output)?;
@@ -1000,7 +1135,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         mut children: HiddenChildren<Tree::Node>,
         projection: OutputProjection,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         while let Some((node, input)) = children.next_box(self)? {
             match self.admit_child(node, input)? {
                 ChildAdmission::Hidden(request) => {
@@ -1028,7 +1163,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         input: ComputeInputOf<Tree::Scalar>,
         axis: PhysicalAxis,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let style = self.tree.node_input(node);
         let own = FlowAxes::new(style.writing_mode, style.direction);
         if !self.tree.has_leaf_measurement(node) {
@@ -1039,7 +1174,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 return self.advance_block_axis(demand, pending);
             }
             if self.bound.is_some() && self.child_count(node) != 0 {
-                return Err(crate::block::intrinsic::profile_error(node));
+                return Err(crate::block::intrinsic::profile_error(node).into());
             }
         }
         Ok(Request::Child {
@@ -1053,7 +1188,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         &mut self,
         mut parent: BlockAxisDemand<Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
-    ) -> SessionResult<Tree, SessionRequest<'input, Tree>> {
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         if let Some(child) = parent.next_child(self)? {
             let node = child.node;
             let input = child.input;
