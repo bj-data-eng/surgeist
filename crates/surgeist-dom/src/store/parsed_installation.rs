@@ -29,6 +29,13 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+thread_local! {
+    /// The questions an installation on this thread has put to the report for the document of a
+    /// tree, which a test counts against the roots of the report.
+    static TREE_DOCUMENT_ASKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 struct Control<'a> {
     limits: Limits,
     work: u64,
@@ -456,6 +463,8 @@ impl<'a> Source<'a> {
         root: HtmlNodeId,
         c: &mut Control<'_>,
     ) -> Result<Option<HtmlParseMetadataDocument<'a>>, Error> {
+        #[cfg(test)]
+        TREE_DOCUMENT_ASKS.with(|asks| asks.set(asks.get() + 1));
         let answer = report.tree_document(&root).map_err(|error| match error {
             surgeist_html_parser::HtmlParseTreeDocumentError::Unresolved(fault) => fault.into(),
             _ => Error::UnsupportedState { subject: root },
