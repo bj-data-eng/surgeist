@@ -24,17 +24,17 @@ struct Tally {
 }
 
 /// What the report answers for the templates and the shadow roots, by node.
-struct Records {
-    templates: std::collections::HashMap<HtmlNodeId, Vec<TemplateAnswer>>,
-    shadows: std::collections::HashMap<HtmlNodeId, Vec<(bool, bool, bool)>>,
+pub(super) struct Records {
+    pub(super) templates: std::collections::HashMap<HtmlNodeId, Vec<TemplateAnswer>>,
+    pub(super) shadows: std::collections::HashMap<HtmlNodeId, Vec<(bool, bool, bool)>>,
 }
 
-struct TemplateAnswer {
-    contents: HtmlNodeId,
-    markers: bool,
+pub(super) struct TemplateAnswer {
+    pub(super) contents: HtmlNodeId,
+    pub(super) markers: bool,
 }
 
-fn records(report: &crate::HtmlParseReport) -> Records {
+pub(super) fn records(report: &crate::HtmlParseReport) -> Records {
     let mut found = Records {
         templates: Default::default(),
         shadows: Default::default(),
@@ -206,7 +206,7 @@ const SOURCES: [&str; 10] = [
 
 /// The capture of an element named `context` that has no shadow root, in an ordinary Document, so
 /// that a template at the top of a fragment may attach one to the context element.
-fn shadow_context(context: &str) -> crate::HtmlFragmentContext {
+pub(super) fn shadow_context(context: &str) -> crate::HtmlFragmentContext {
     use crate::*;
     use surgeist_html::{
         construction::HtmlDocumentMode,
@@ -250,7 +250,7 @@ fn shadow_context(context: &str) -> crate::HtmlFragmentContext {
     HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap()).unwrap()
 }
 
-fn fragment_report(
+pub(super) fn fragment_report(
     source: &str,
     context: &str,
     shadow: bool,

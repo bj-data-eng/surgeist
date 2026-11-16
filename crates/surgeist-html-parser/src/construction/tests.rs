@@ -18,6 +18,7 @@ mod g2c_nonce;
 mod g2d_names;
 pub(super) mod g2d_origins;
 mod g2e_corpus;
+mod g2e_edges;
 mod g2e_tables;
 mod image_form;
 mod input;
