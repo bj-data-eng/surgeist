@@ -89,15 +89,11 @@ pub(crate) enum UnboundRow {
     FormAssociation,
     SelectFamily,
     Script,
-    Template,
     SvgScript,
-    /// Only a contextual report that allows declarative shadow roots has these
-    /// rows, so [`Self::ALL`] leaves it out.
-    Shadow,
 }
 #[cfg(test)]
 impl UnboundRow {
-    pub(crate) const ALL: [Self; 9] = [
+    pub(crate) const ALL: [Self; 8] = [
         Self::Textarea,
         Self::Output,
         Self::Input,
@@ -105,7 +101,6 @@ impl UnboundRow {
         Self::FormAssociation,
         Self::SelectFamily,
         Self::Script,
-        Self::Template,
         Self::SvgScript,
     ];
     /// A source that creates a row of this kind.
@@ -118,9 +113,7 @@ impl UnboundRow {
             }
             Self::SelectFamily => "<!doctype html><select><option>a</select>",
             Self::Script => "<!doctype html><script>a</script>",
-            Self::Template => "<!doctype html><template>a</template>",
             Self::SvgScript => "<!doctype html><svg><script/></svg>",
-            Self::Shadow => "<template shadowrootmode=open><p>B</p></template>",
         }
     }
     /// The node a row of this kind is bound to, if it is one.
@@ -133,9 +126,7 @@ impl UnboundRow {
             | (Self::FormAssociation, RetainedPayload::FormAssociation { node, .. })
             | (Self::SelectFamily, RetainedPayload::SelectFamily { node, .. })
             | (Self::Script, RetainedPayload::Script { node, .. })
-            | (Self::Template, RetainedPayload::Template { node, .. })
-            | (Self::SvgScript, RetainedPayload::SvgScript { node, .. })
-            | (Self::Shadow, RetainedPayload::Shadow { root: node, .. }) => Some(node),
+            | (Self::SvgScript, RetainedPayload::SvgScript { node, .. }) => Some(node),
             _ => None,
         }
     }
@@ -146,6 +137,29 @@ impl UnboundRow {
 }
 #[cfg(test)]
 impl FrozenArena {
+    /// Gives the first row of the table of templates the key of the record at 0, which is not an
+    /// element. Whether the table has a row.
+    pub(crate) fn rekey_template_for_test(&mut self) -> bool {
+        self.storage
+            .as_mut()
+            .is_some_and(|storage| storage.payloads.facts.templates.rekey_for_test(0, 0))
+    }
+    /// Gives the first row of the table of shadow states the key of the last record, which is not
+    /// a shadow root's contents. Whether the table has a row.
+    pub(crate) fn rekey_shadow_for_test(&mut self) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        let Some(last) = storage
+            .view
+            .len()
+            .checked_sub(1)
+            .and_then(|last| u32::try_from(last).ok())
+        else {
+            return false;
+        };
+        storage.payloads.facts.shadows.rekey_for_test(0, last)
+    }
     /// Leaves the first row of `kind` bound to no node, and unjoined, as a
     /// row that was never bound. Whether one was found.
     pub(crate) fn unbind_row_for_test(&mut self, kind: UnboundRow) -> bool {
@@ -461,12 +475,6 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_node(arena, owner, c)?;
                     }
                 }
-                RetainedPayload::Template { state, .. } => {
-                    checked_node(arena, state.contents, c)?;
-                    for node in [state.target, state.start, state.end].into_iter().flatten() {
-                        checked_node(arena, node, c)?;
-                    }
-                }
                 RetainedPayload::Script { metadata, .. } => {
                     for document in [
                         metadata.parser_document.as_ref(),
@@ -518,6 +526,8 @@ impl<'a> PreparedReportStorage<'a> {
         qualify_creation_rows(storage, arena, c)?;
         qualify_nonce_rows(storage, arena, c)?;
         qualify_media_rows(storage, arena, c)?;
+        qualify_template_rows(storage, arena, c)?;
+        qualify_shadow_rows(storage, arena, c)?;
         if closed_common {
             qualify_elements(storage, arena, c)?;
         }
@@ -759,7 +769,50 @@ fn qualify_media_rows(
     }
     Ok(())
 }
-
+/// Qualifies the rows of the table of templates: each names an element whose template contents
+/// the parse owns, and the contents and the insertion markers it holds resolve.
+fn qualify_template_rows(
+    storage: &FrozenStorage,
+    arena: &HtmlConstructionResult,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
+    for (node, state) in storage.payloads.facts.templates.iter() {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<template::TemplateMetadata>() as u64,
+        )?;
+        let record = checked_node(arena, node, c)?;
+        if !matches!(record.kind(), ConstructionNodeKind::Element(_)) {
+            return Err(SessionError::WrongToken);
+        }
+        checked_node(arena, state.contents, c)?;
+        for marker in [state.target, state.start, state.end].into_iter().flatten() {
+            checked_node(arena, marker, c)?;
+        }
+    }
+    Ok(())
+}
+/// Qualifies the rows of the table of shadow states: each names the contents of a shadow root,
+/// which is a record of this result.
+fn qualify_shadow_rows(
+    storage: &FrozenStorage,
+    arena: &HtmlConstructionResult,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
+    for (node, _) in storage.payloads.facts.shadows.iter() {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<context::ShadowState>() as u64,
+        )?;
+        let record = checked_node(arena, node, c)?;
+        if !matches!(record.kind(), ConstructionNodeKind::Fragment) {
+            return Err(SessionError::WrongToken);
+        }
+    }
+    Ok(())
+}
 /// Qualifies every element of a closed profile with the Null registry: the scope of its row in the
 /// table of creation states, if it has one, is the scope its classification gives, and an element
 /// whose name classifies it in the Hyperlink, Image, Style or Dialog family has exactly one row of
@@ -961,12 +1014,12 @@ enum MetadataNode {
     /// None of these can be published. Textarea, Output, Input, InputSource,
     /// FormAssociation, SelectFamily, Link and Details rows are pushed
     /// before the element is allocated and bound in the same creation, where
-    /// a failure is the incomplete-creation stop. Script, LookupRegistry and
-    /// Shadow rows are bound when their node is allocated, and a failure
-    /// before that is a stop. Template, PiAttributes,
-    /// SvgScript, Base and BaseDocument rows are required bound at freeze or
-    /// by their own checks below. Every report the test corpus
-    /// publishes passes this rule.
+    /// a failure is the incomplete-creation stop. Script rows are bound when
+    /// their node is allocated, and a failure before that is a stop.
+    /// PiAttributes, SvgScript, Base and BaseDocument rows are required bound
+    /// at freeze or by their own checks below. Every report the test corpus
+    /// publishes passes this rule. The rows of templates, shadow roots and
+    /// creation causes are in tables keyed by node, so none is unbound.
     Unbound,
     /// A row of a kind that is not issued as a record.
     None,
@@ -977,7 +1030,6 @@ fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
         // Notification eligibility is a parser proof, not authored state.
         // Details name/open remain canonical native attributes.
         RetainedPayload::Details { .. } => MetadataNode::None,
-        RetainedPayload::Shadow { root, .. } => bound(*root),
         RetainedPayload::BaseDocument { node, .. }
         | RetainedPayload::Hyperlink { node, .. }
         | RetainedPayload::Image { node, .. }
@@ -985,7 +1037,6 @@ fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
         | RetainedPayload::Dialog { node, .. } => MetadataNode::Bound(*node),
         RetainedPayload::Base { node, .. }
         | RetainedPayload::PiAttributes { node, .. }
-        | RetainedPayload::Template { node, .. }
         | RetainedPayload::SvgScript { node, .. }
         | RetainedPayload::Script { node, .. }
         | RetainedPayload::Link { node, .. }
@@ -1314,6 +1365,8 @@ impl ReportStorage {
             document: 0,
             creation: 0,
             nonce: 0,
+            template: 0,
+            shadow: 0,
             fault: None,
         }
     }
@@ -1422,6 +1475,10 @@ pub struct HtmlParseMetadataCursor<'a> {
     creation: usize,
     /// The next row of the table of nonces, read after the table of creation states.
     nonce: usize,
+    /// The next row of the table of templates, read after the table of nonces.
+    template: usize,
+    /// The next row of the table of shadow states, read after the table of templates.
+    shadow: usize,
     fault: Option<read::HtmlParseUnresolvedReference>,
 }
 #[expect(
@@ -1534,7 +1591,7 @@ impl<'a> HtmlParseMetadataCursor<'a> {
     fn advance_nonce(&mut self) -> HtmlParseMetadataStep<'a> {
         let nonces = &self.storage.payloads.facts.nonces;
         let (Some(node), Some(row)) = (nonces.node_at(self.nonce), nonces.row(self.nonce)) else {
-            return HtmlParseMetadataStep::Complete;
+            return self.advance_template();
         };
         self.nonce = self.nonce.saturating_add(1);
         let resolver = Resolver {
@@ -1543,6 +1600,50 @@ impl<'a> HtmlParseMetadataCursor<'a> {
             arena: self.arena,
         };
         match HtmlParseMetadata::issue_nonce(resolver, self.closed_common, node, row) {
+            Ok(record) => HtmlParseMetadataStep::Record(record),
+            Err(fault) => {
+                self.fault = Some(fault);
+                HtmlParseMetadataStep::Fault(fault)
+            }
+        }
+    }
+    /// The templates with a row in the table of templates, each one actual row.
+    fn advance_template(&mut self) -> HtmlParseMetadataStep<'a> {
+        let templates = &self.storage.payloads.facts.templates;
+        let (Some(node), Some(state)) = (
+            templates.node_at(self.template),
+            templates.row(self.template),
+        ) else {
+            return self.advance_shadow();
+        };
+        self.template = self.template.saturating_add(1);
+        let resolver = Resolver {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+        };
+        match HtmlParseMetadata::issue_template(resolver, self.closed_common, node, state) {
+            Ok(record) => HtmlParseMetadataStep::Record(record),
+            Err(fault) => {
+                self.fault = Some(fault);
+                HtmlParseMetadataStep::Fault(fault)
+            }
+        }
+    }
+    /// The shadow roots with a row in the table of shadow states, each one actual row.
+    fn advance_shadow(&mut self) -> HtmlParseMetadataStep<'a> {
+        let shadows = &self.storage.payloads.facts.shadows;
+        let (Some(node), Some(&state)) = (shadows.node_at(self.shadow), shadows.row(self.shadow))
+        else {
+            return HtmlParseMetadataStep::Complete;
+        };
+        self.shadow = self.shadow.saturating_add(1);
+        let resolver = Resolver {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+        };
+        match HtmlParseMetadata::issue_shadow(resolver, self.closed_common, node, state) {
             Ok(record) => HtmlParseMetadataStep::Record(record),
             Err(fault) => {
                 self.fault = Some(fault);
@@ -1762,6 +1863,9 @@ enum Refs<'a> {
         Option<HtmlParseMetadataDocument<'a>>,
     ),
     Template(HtmlParseTemplate<'a>),
+    /// A row of the table of shadow states: the state of the shadow root whose contents are the
+    /// record.
+    Shadow(context::ShadowState),
 }
 impl<'a> Refs<'a> {
     fn resolve_creation(
@@ -1891,12 +1995,6 @@ impl<'a> Refs<'a> {
                 r.optional_document(metadata.parser_document.as_ref())?,
                 r.optional_document(metadata.preparation_document.as_ref())?,
             ),
-            RetainedPayload::Template { state, .. } => Self::Template(HtmlParseTemplate {
-                contents: r.native(state.contents)?,
-                target: r.optional_native(state.target)?,
-                start: r.optional_native(state.start)?,
-                end: r.optional_native(state.end)?,
-            }),
             _ => Self::None,
         })
     }
@@ -2256,6 +2354,39 @@ impl<'a> HtmlParseMetadata<'a> {
             refs: Refs::Nonce(resolver.raw(row.raw)?),
         })
     }
+    /// The record of a template with a row in the table of templates, issued from that row.
+    fn issue_template(
+        resolver: Resolver<'a>,
+        closed_common: bool,
+        node: usize,
+        state: &template::TemplateMetadata,
+    ) -> Result<Self, Fault> {
+        Ok(Self {
+            node: resolver.native(node)?,
+            closed_common,
+            payload: None,
+            refs: Refs::Template(HtmlParseTemplate {
+                contents: resolver.native(state.contents)?,
+                target: resolver.optional_native(state.target)?,
+                start: resolver.optional_native(state.start)?,
+                end: resolver.optional_native(state.end)?,
+            }),
+        })
+    }
+    /// The record of a shadow root with a row in the table of shadow states, issued from that row.
+    fn issue_shadow(
+        resolver: Resolver<'a>,
+        closed_common: bool,
+        node: usize,
+        state: context::ShadowState,
+    ) -> Result<Self, Fault> {
+        Ok(Self {
+            node: resolver.native(node)?,
+            closed_common,
+            payload: None,
+            refs: Refs::Shadow(state),
+        })
+    }
     /// The record of a Document the parse owns, issued from its table row.
     fn issue_document(
         resolver: Resolver<'a>,
@@ -2455,8 +2586,8 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     pub fn shadow(&self) -> Option<(bool, bool, bool)> {
-        match self.payload? {
-            RetainedPayload::Shadow { state, .. } => Some((
+        match self.refs {
+            Refs::Shadow(state) => Some((
                 state.keep_registry_null,
                 state.declarative,
                 state.available_to_internals,

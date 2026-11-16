@@ -2061,7 +2061,8 @@ fn adopting_one_node_costs_the_same_lookup_work_however_many_payloads_are_unrela
     // others. Both are keyed by the node, so the work must not depend on how
     // many other payloads the document retains.
     let measure = |siblings: usize| {
-        let source = format!("<body>{}<b>x</b>", "<i>t</i>".repeat(siblings));
+        // Each `input` retains registry rows, which the adoption of the `b` does not read.
+        let source = format!("<body>{}<b>x</b>", "<input>".repeat(siblings));
         let request = request(&source);
         let (mut c, mut session, _proof, nodes) = graph(&request);
         let leaf = named(&nodes, "b", 0);

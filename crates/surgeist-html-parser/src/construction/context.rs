@@ -571,29 +571,9 @@ impl ParserArenaSession {
         if !c.detail().records_graph() {
             return Ok(());
         }
-        let mut root_slot = None;
-        let mut output_slot = None;
-        for (slot, payload) in storage.payloads.values.iter().enumerate() {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::ConstructionCause {
-                node: Some(node), ..
-            } = payload
-            {
-                if *node == root {
-                    if root_slot.is_some() {
-                        return Err(SessionError::WrongToken);
-                    }
-                    root_slot = Some(slot);
-                } else if *node == output {
-                    if output_slot.is_some() {
-                        return Err(SessionError::WrongToken);
-                    }
-                    output_slot = Some(slot);
-                }
-            }
-        }
-        let root_slot = root_slot.ok_or(SessionError::WrongToken)?;
-        let output_slot = output_slot.ok_or(SessionError::WrongToken)?;
+        let causes = &storage.payloads.facts.causes;
+        let root_row = causes.find(c, root)?.ok_or(SessionError::WrongToken)?;
+        let output_row = causes.find(c, output)?.ok_or(SessionError::WrongToken)?;
         let evidence = storage.evidence.as_mut().ok_or(SessionError::WrongToken)?;
         let cause = evidence.retain_captured_cause(
             c,
@@ -606,18 +586,11 @@ impl ParserArenaSession {
         // Both qualified replacements are admitted before either canonical
         // slot changes. Superseded source-less causes stay in the sole issuer.
         payload_write::<[provenance::ConstructionCauseRef; 2]>(c, 2)?;
-        let Some(RetainedPayload::ConstructionCause {
-            cause: root_cause, ..
-        }) = storage.payloads.values.get_mut(root_slot)
-        else {
+        let Some(root_cause) = storage.payloads.facts.causes.row_mut(root_row) else {
             return Err(latch_registry_row(c));
         };
         *root_cause = cause;
-        let Some(RetainedPayload::ConstructionCause {
-            cause: output_cause,
-            ..
-        }) = storage.payloads.values.get_mut(output_slot)
-        else {
+        let Some(output_cause) = storage.payloads.facts.causes.row_mut(output_row) else {
             return Err(latch_registry_row(c));
         };
         *output_cause = copy;
@@ -1190,14 +1163,14 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         let template = storage.index(c, template)?;
-        let (template_slot, _) = storage.template_slot(c, template)?;
+        let (template_row, _) = storage.template_row(c, template)?;
         let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(template)
             .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
-            // `template_slot` qualified this record as an element.
+            // `template_row` qualified this record as an element.
             return Err(latch_registry_row(c));
         };
         let mut mode = None;
@@ -1413,29 +1386,21 @@ impl ParserArenaSession {
         fragment.source_entries = fragment.source_entries.saturating_add(1);
         fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
         let result = (|| {
-            let prepared = storage.prepare_payload_slot_owned(c)?;
-            let shadow_slot = storage
+            storage.payloads.facts.shadows.admit(c, 1)?;
+            let root = storage.allocate_shadow_contents(c, properties, document, registry)?;
+            storage
                 .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::Shadow {
-                        root: None,
-                        state: ShadowState {
-                            keep_registry_null: keep_null,
-                            declarative: true,
-                            available_to_internals: true,
-                        },
+                .facts
+                .shadows
+                .push(
+                    root.index,
+                    ShadowState {
+                        keep_registry_null: keep_null,
+                        declarative: true,
+                        available_to_internals: true,
                     },
                 )
                 .map_err(|_| latch_registry_row(c))?;
-            payload_write::<Option<usize>>(c, 1)?;
-            let root = storage.allocate_shadow_contents(c, properties, document, registry)?;
-            let Some(RetainedPayload::Shadow { root: bound, .. }) =
-                storage.payloads.values.get_mut(shadow_slot)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            *bound = Some(root.index);
             let local_host = match storage.fragment_storage(c)?.effects.as_slice().get(slot) {
                 Some(ContextEffect::AttachShadow {
                     host: ShadowHostKey::Owned(host),
@@ -1506,9 +1471,7 @@ impl ParserArenaSession {
             if let Some(fragment) = storage.fragment.as_mut() {
                 fragment.unbound_effects = fragment.unbound_effects.saturating_sub(1);
             }
-            let Some(RetainedPayload::Template { state, .. }) =
-                storage.payloads.values.get_mut(template_slot)
-            else {
+            let Some(state) = storage.payloads.facts.templates.row_mut(template_row) else {
                 return Err(latch_registry_row(c));
             };
             state.contents = root.index;
@@ -1824,27 +1787,21 @@ impl SessionStorage {
             RegistryRef::Null => registry,
         })
     }
+    /// The state of the shadow root whose contents are the record at `root`. The search charges
+    /// the keys it reads.
     pub(super) fn shadow_state(
         &self,
         c: &mut ParseControl,
         root: usize,
     ) -> Result<ShadowState, SessionError> {
-        for payload in &self.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Shadow {
-                root: Some(actual),
-                state,
-            } = payload
-                && *actual == root
-            {
-                c.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    mem::size_of::<ShadowState>() as u64,
-                )?;
-                return Ok(*state);
-            }
-        }
-        Err(SessionError::ContextUnavailable)
+        let Some(state) = self.payloads.facts.shadows.get(c, root)? else {
+            return Err(SessionError::ContextUnavailable);
+        };
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<ShadowState>() as u64,
+        )?;
+        Ok(*state)
     }
     /// DOM clone step6, reached after the complete light-child traversal. The
     /// clone root and every field are actual same-owner native records.
@@ -1918,7 +1875,7 @@ impl SessionStorage {
                 ));
             }
         };
-        let prepared = self.prepare_payload_slot_owned(c)?;
+        self.payloads.facts.shadows.admit(c, 1)?;
         // Attach creates false available-to-internals for these actual
         // uncustomized same-owner clone producers; DOM clone copies only the
         // declarative and keep-null flags after attachment.
@@ -1927,18 +1884,13 @@ impl SessionStorage {
             keep_registry_null: state.keep_registry_null,
             available_to_internals: false,
         };
-        let fact = self
-            .payloads
-            .push_row(prepared, RetainedPayload::Shadow { root: None, state })
-            .map_err(|_| latch_registry_row(c))?;
-        payload_write::<Option<usize>>(c, 1)?;
         let document = document.try_clone(c)?;
         let root = self.allocate_shadow_contents(c, properties, document, registry)?;
-        let Some(RetainedPayload::Shadow { root: bound, .. }) = self.payloads.values.get_mut(fact)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        *bound = Some(root.index);
+        self.payloads
+            .facts
+            .shadows
+            .push(root.index, state)
+            .map_err(|_| latch_registry_row(c))?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         let host = self
             .construction

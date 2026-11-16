@@ -3313,46 +3313,6 @@ impl ParserArenaSession {
                 )?;
                 continue;
             }
-            if let RetainedPayload::ConstructionCause {
-                node: Some(node),
-                cause,
-            } = payload
-            {
-                cleanup_owner(c, &cause.control)?;
-                if cause.issuer.as_ptr() != Arc::as_ptr(&evidence.identity)
-                    || *node >= storage.construction.len()
-                {
-                    return Err(SessionError::WrongToken);
-                }
-                if evidence.records_source_map() {
-                    payload_write::<NativeAssociation>(c, 1)?;
-                    evidence
-                        .native
-                        .projection
-                        .as_mut()
-                        .ok_or(SessionError::WrongToken)?
-                        .reserve_geometric(c, 1)?;
-                    evidence
-                        .native
-                        .projection
-                        .as_mut()
-                        .ok_or(SessionError::WrongToken)?
-                        .try_push(
-                            c,
-                            NativeAssociation {
-                                group: None,
-                                relation: HtmlParseAssociationRelation::Creation,
-                                destination: NativeDestination::Node(*node),
-                                start: 0,
-                                end: 0,
-                                source: None,
-                                kind: None,
-                                cause: cause.index,
-                            },
-                        )?;
-                }
-                continue;
-            }
             let RetainedPayload::String {
                 value,
                 allocation,
@@ -3402,6 +3362,43 @@ impl ParserArenaSession {
                 &storage.payloads.values,
                 (node, row.raw, HtmlParseRawField::Nonce),
             )?;
+        }
+        // The cause of the creation of each node created while the parse records causes.
+        for (node, cause) in storage.payloads.facts.causes.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            cleanup_owner(c, &cause.control)?;
+            if cause.issuer.as_ptr() != Arc::as_ptr(&evidence.identity)
+                || node >= storage.construction.len()
+            {
+                return Err(SessionError::WrongToken);
+            }
+            if evidence.records_source_map() {
+                payload_write::<NativeAssociation>(c, 1)?;
+                evidence
+                    .native
+                    .projection
+                    .as_mut()
+                    .ok_or(SessionError::WrongToken)?
+                    .reserve_geometric(c, 1)?;
+                evidence
+                    .native
+                    .projection
+                    .as_mut()
+                    .ok_or(SessionError::WrongToken)?
+                    .try_push(
+                        c,
+                        NativeAssociation {
+                            group: None,
+                            relation: HtmlParseAssociationRelation::Creation,
+                            destination: NativeDestination::Node(node),
+                            start: 0,
+                            end: 0,
+                            source: None,
+                            kind: None,
+                            cause: cause.index,
+                        },
+                    )?;
+            }
         }
         // The strings of the fields of a record belong to the record, which are walked in order:
         // a non-element record's, and an element's name and attribute strings. Their groups are in the
@@ -3603,16 +3600,19 @@ impl ParseEvidence {
 }
 
 impl SessionStorage {
+    /// The causes of the creation of the `count` records about to be created, one for each when
+    /// the parse records its construction causes, with their rows admitted in the table of
+    /// causes. [`Self::push_node_causes`] writes the rows once the records exist.
     pub(super) fn prepare_node_causes(
         &mut self,
         c: &mut ParseControl,
         count: usize,
-    ) -> Result<[Option<usize>; 2], SessionError> {
+    ) -> Result<[Option<ConstructionCauseRef>; 2], SessionError> {
         if count > 2 {
             return Err(SessionError::WrongToken);
         }
-        let mut slots = [None; 2];
-        for entry in slots.iter_mut().take(count) {
+        let mut causes = [None, None];
+        for entry in causes.iter_mut().take(count) {
             let Some(evidence) = self.graph() else {
                 break;
             };
@@ -3621,19 +3621,32 @@ impl SessionStorage {
             }
             let cause = evidence.field_cause(c)?;
             let cause = evidence.cause_ref(cause, c)?;
-            // Native binding is a fixed write in the later allocation commit.
-            payload_write::<Option<usize>>(c, 1)?;
-            let prepared = self.prepare_payload_slot_owned(c)?;
-            let slot = self
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::ConstructionCause { node: None, cause },
-                )
-                .map_err(|_| latch_registry_row(c))?;
-            *entry = Some(slot);
+            self.payloads.facts.causes.admit(c, 1)?;
+            *entry = Some(cause);
         }
-        Ok(slots)
+        Ok(causes)
+    }
+    /// Writes the rows of the causes [`Self::prepare_node_causes`] admitted for the records created
+    /// from position `first`, in the order the records were created.
+    pub(super) fn push_node_causes(
+        &mut self,
+        c: &mut ParseControl,
+        first: usize,
+        causes: [Option<ConstructionCauseRef>; 2],
+    ) -> Result<(), SessionError> {
+        for (offset, cause) in causes.into_iter().enumerate() {
+            if let Some(cause) = cause {
+                let node = first
+                    .checked_add(offset)
+                    .ok_or_else(|| latch_registry_row(c))?;
+                self.payloads
+                    .facts
+                    .causes
+                    .push(node, cause)
+                    .map_err(|_| latch_registry_row(c))?;
+            }
+        }
+        Ok(())
     }
     pub(super) fn begin_node_copy(
         &mut self,

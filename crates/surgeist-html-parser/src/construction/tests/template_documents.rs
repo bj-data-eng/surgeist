@@ -59,15 +59,7 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
             ));
             assert!(input.is_some());
             assert_eq!(session.active().unwrap().construction.len(), 1);
-            assert!(
-                !session
-                    .active()
-                    .unwrap()
-                    .payloads
-                    .values
-                    .iter()
-                    .any(|entry| matches!(entry, RetainedPayload::Template { .. }))
-            );
+            assert_eq!(session.active().unwrap().payloads.facts.templates.len(), 0);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
