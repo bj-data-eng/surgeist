@@ -48,7 +48,9 @@ impl NodeContexts {
             Ok(documents) => documents,
             Err(error) => {
                 let owner = control.identity();
-                column.release(control, &owner, |_, _| Ok(()), |_| Ok(()))?;
+                // A refused release has latched its stop; the error that ended the creation is
+                // the first reported.
+                let _released = column.release(control, &owner, |_, _| Ok(()), |_| Ok(()));
                 return Err(error);
             }
         };
@@ -285,17 +287,16 @@ impl SessionStorage {
     }
 }
 
-/// Releases `named`, the table a freeze stopped building, and returns what the freeze ends with.
+/// Releases `named`, the table a freeze stopped building, and returns `error`, the first reported.
+/// A refused release has latched its stop on the controller, so it needs no second report.
 pub(super) fn abandon_table(
     c: &mut ParseControl,
     owner: &ControlIdentity,
     named: FamilyTable<u32>,
     error: SessionError,
 ) -> SessionError {
-    match named.release(c, owner, |_, _| Ok(())) {
-        Ok(()) => error,
-        Err(refused) => refused,
-    }
+    let _released = named.release(c, owner, |_, _| Ok(()));
+    error
 }
 
 /// The entry that names the document at `position` of the list.
