@@ -44,9 +44,11 @@ impl<'input, Node: Copy, S: LayoutScalar> SubgridChildParentContextInput<'input,
     }
 }
 
-/// An owned copy of one subgrid item's parent loan. The borrowed input is
-/// rebuilt from it for each scrollbar pass of the child, so the loan survives
-/// the suspension of the parent that granted it.
+/// An owned copy of one subgrid item's whole parent loan, retaining every
+/// parent track's minimum functions. The borrowed input is rebuilt from it for
+/// each scrollbar pass of the child, so the loan survives the suspension of
+/// the parent that granted it. Contextual requests share their parent's data
+/// instead (`SubgridItemLoan`).
 #[derive(Clone, Debug)]
 pub(in crate::grid) struct OwnedSubgridContext<'input, Node, S: LayoutScalar> {
     item: SubgridItemReport<Node>,
@@ -85,52 +87,7 @@ impl<'input, Node: Copy, S: LayoutScalar> OwnedSubgridContext<'input, Node, S> {
             .map(GridMinimumTrackFunctions::retain)
             .transpose()
             .map_err(SubgridChildContextError::MinimumFunctions)?;
-        Ok(Self::with_minimum_functions(
-            source,
-            column_minimum_functions,
-            row_minimum_functions,
-        ))
-    }
-
-    /// Retains the minimum functions of the parent tracks the item spans, on
-    /// the parent axes it inherits, as the inherited axes read them. A track
-    /// outside the span is never resolved, so it cannot reject the item.
-    pub(in crate::grid) fn spanned(
-        source: SubgridChildParentContextInput<'input, '_, Node, S>,
-    ) -> Result<Self, SubgridChildContextError<S>> {
-        let retain = |axis: GridAxisKind| {
-            let inherits = [source.item.column, source.item.row]
-                .into_iter()
-                .any(|report| report.can_inherit() && report.mapping.parent_axis == axis);
-            if !inherits {
-                return Ok(None);
-            }
-            let (start, end) = match axis {
-                GridAxisKind::Column => (source.area.column, source.area.column_end),
-                GridAxisKind::Row => (source.area.row, source.area.row_end),
-            };
-            source
-                .minimum_functions
-                .for_axis(axis)
-                .map(|functions| functions.retain_span(start, end))
-                .transpose()
-                .map_err(SubgridChildContextError::MinimumFunctions)
-        };
-        let column_minimum_functions = retain(GridAxisKind::Column)?;
-        let row_minimum_functions = retain(GridAxisKind::Row)?;
-        Ok(Self::with_minimum_functions(
-            source,
-            column_minimum_functions,
-            row_minimum_functions,
-        ))
-    }
-
-    fn with_minimum_functions(
-        source: SubgridChildParentContextInput<'input, '_, Node, S>,
-        column_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
-        row_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
-    ) -> Self {
-        Self {
+        Ok(Self {
             item: source.item,
             parent_baseline_references: source.parent_baseline_references,
             child_style: source.child_style.clone(),
@@ -150,7 +107,7 @@ impl<'input, Node: Copy, S: LayoutScalar> OwnedSubgridContext<'input, Node, S> {
             margin: source.margin,
             border: source.border,
             padding: source.padding,
-        }
+        })
     }
 
     pub(in crate::grid) fn container_input(&self) -> GridContainerInput<'input, S> {
@@ -181,6 +138,159 @@ impl<'input, Node: Copy, S: LayoutScalar> OwnedSubgridContext<'input, Node, S> {
             parent_named_columns: &self.named_columns,
             parent_named_rows: &self.named_rows,
             parent_area_facts: self.area_facts.as_ref(),
+            margin: self.margin,
+            border: self.border,
+            padding: self.padding,
+            scrollbar_gutter: Edges::ZERO,
+        }
+    }
+}
+
+/// What every subgrid item of one parent placement reads of its parent. It is
+/// copied once per placement and shared by the items' requests, so a parent
+/// with many subgrid items copies its tracks, names and geometry once.
+pub(in crate::grid) struct SubgridParentShare<Node, S: LayoutScalar> {
+    parent_baseline_references: crate::GridBaselineReferences,
+    columns: Vec<S>,
+    rows: Vec<S>,
+    column_minimum_functions: Option<OwnedMinimumTrackFunctions<S>>,
+    row_minimum_functions: Option<OwnedMinimumTrackFunctions<S>>,
+    gap: LogicalSizeOf<S>,
+    named_columns: NamedGridLines,
+    named_rows: NamedGridLines,
+    area_facts: Option<GridAreaNameFacts>,
+    column_geometry: Option<UsedGridAxisGeometryOf<S>>,
+    row_geometry: Option<UsedGridAxisGeometryOf<S>>,
+    refresh: Option<RefreshShare<Node, S>>,
+}
+
+/// What the baseline refresh adds to the share of its parent placement.
+pub(in crate::grid) struct RefreshShare<Node, S: LayoutScalar> {
+    pub(in crate::grid) ancestor_baseline_groups: FinalAncestorBaselineGroups<Node, S>,
+    pub(in crate::grid) template_area_expanded_axes: TemplateAreaExpandedAxes,
+    pub(in crate::grid) parent: Node,
+}
+
+impl<Node, S: LayoutScalar> SubgridParentShare<Node, S> {
+    pub(in crate::grid) fn column_geometry(&self) -> Option<&UsedGridAxisGeometryOf<S>> {
+        self.column_geometry.as_ref()
+    }
+
+    pub(in crate::grid) fn row_geometry(&self) -> Option<&UsedGridAxisGeometryOf<S>> {
+        self.row_geometry.as_ref()
+    }
+
+    pub(in crate::grid) fn refresh(&self) -> Option<&RefreshShare<Node, S>> {
+        self.refresh.as_ref()
+    }
+
+    /// Copies the per-parent facts of `source`. Only the `Vec` buffers are
+    /// reserved fallibly, and report an allocation error: the columns and
+    /// rows, and the tracks or facts of the minimum functions. Cloning the
+    /// elements (track sizing calculations), the named lines, the area facts,
+    /// the used geometry and the baseline groups allocates infallibly, as the
+    /// crate's other retained-context clones do.
+    pub(in crate::grid) fn new(
+        source: &SubgridChildParentContextInput<'_, '_, Node, S>,
+        column_geometry: Option<&UsedGridAxisGeometryOf<S>>,
+        row_geometry: Option<&UsedGridAxisGeometryOf<S>>,
+        refresh: Option<RefreshShare<Node, S>>,
+    ) -> Result<std::sync::Arc<Self>, SubgridChildContextError<S>>
+    where
+        Node: Copy,
+    {
+        let allocation = || {
+            SubgridChildContextError::MinimumFunctions(
+                GridMinimumFunctionRetentionError::Allocation,
+            )
+        };
+        let owned = |functions: Option<GridMinimumTrackFunctions<'_, S>>| {
+            functions
+                .map(OwnedMinimumTrackFunctions::new)
+                .transpose()
+                .map_err(SubgridChildContextError::MinimumFunctions)
+        };
+        Ok(std::sync::Arc::new(Self {
+            parent_baseline_references: source.parent_baseline_references,
+            columns: try_clone_slice(source.columns).map_err(|_| allocation())?,
+            rows: try_clone_slice(source.rows).map_err(|_| allocation())?,
+            column_minimum_functions: owned(source.minimum_functions.columns)?,
+            row_minimum_functions: owned(source.minimum_functions.rows)?,
+            gap: source.gap,
+            named_columns: source.parent_named_columns.clone(),
+            named_rows: source.parent_named_rows.clone(),
+            area_facts: source.parent_area_facts.cloned(),
+            column_geometry: column_geometry.cloned(),
+            row_geometry: row_geometry.cloned(),
+            refresh,
+        }))
+    }
+}
+
+/// One subgrid item's loan of its parent placement: the shared parent facts
+/// and the item's own. The borrowed input is rebuilt from it for each
+/// scrollbar pass of the child.
+pub(in crate::grid) struct SubgridItemLoan<'input, Node, S: LayoutScalar> {
+    share: std::sync::Arc<SubgridParentShare<Node, S>>,
+    item: SubgridItemReport<Node>,
+    child_style: GridItemProjection<'input, S>,
+    container: GridContainerInput<'input, S>,
+    area: GridArea<S>,
+    content_box_size: Size<S>,
+    margin: Edges<Option<S>>,
+    border: Edges<S>,
+    padding: Edges<S>,
+}
+
+impl<'input, Node: Copy, S: LayoutScalar> SubgridItemLoan<'input, Node, S> {
+    pub(in crate::grid) fn new(
+        share: std::sync::Arc<SubgridParentShare<Node, S>>,
+        source: &SubgridChildParentContextInput<'input, '_, Node, S>,
+    ) -> Self {
+        Self {
+            share,
+            item: source.item,
+            child_style: source.child_style.clone(),
+            container: source
+                .child_container
+                .expect("a retained subgrid loan has its original container"),
+            area: source.area,
+            content_box_size: source.content_box_size,
+            margin: source.margin,
+            border: source.border,
+            padding: source.padding,
+        }
+    }
+
+    pub(in crate::grid) fn share(&self) -> &SubgridParentShare<Node, S> {
+        &self.share
+    }
+
+    pub(in crate::grid) fn input(&self) -> SubgridChildParentContextInput<'input, '_, Node, S> {
+        let share = &*self.share;
+        SubgridChildParentContextInput {
+            item: self.item,
+            parent_baseline_references: share.parent_baseline_references,
+            child_style: &self.child_style,
+            child_container: Some(self.container),
+            area: self.area,
+            content_box_size: self.content_box_size,
+            columns: &share.columns,
+            rows: &share.rows,
+            minimum_functions: GridMinimumParentFunctions {
+                columns: share
+                    .column_minimum_functions
+                    .as_ref()
+                    .map(OwnedMinimumTrackFunctions::view),
+                rows: share
+                    .row_minimum_functions
+                    .as_ref()
+                    .map(OwnedMinimumTrackFunctions::view),
+            },
+            gap: share.gap,
+            parent_named_columns: &share.named_columns,
+            parent_named_rows: &share.named_rows,
+            parent_area_facts: share.area_facts.as_ref(),
             margin: self.margin,
             border: self.border,
             padding: self.padding,
@@ -855,9 +965,12 @@ type GridContextStep<'input, Node, S, M> =
 /// The cursor of the post-placement subgrid baseline refresh. Each item that
 /// needs context recomputes once, in source order, as a request the caller
 /// executes; its receipt then replaces the item's output and baselines.
-pub(in crate::grid) struct SubgridBaselineRefresh<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct SubgridBaselineRefresh<Node, S: LayoutScalar = Scalar> {
     next_index: usize,
     in_flight: Option<RefreshInFlight<S>>,
+    /// The parent facts the items' requests share, copied when the first
+    /// request is prepared.
+    parent_share: Option<std::sync::Arc<SubgridParentShare<Node, S>>>,
 }
 
 // Facts of the request in flight that its receipt needs again.
@@ -871,11 +984,12 @@ struct RefreshInFlight<S: LayoutScalar> {
     stage: GridSizingStage,
 }
 
-impl<S: LayoutScalar> SubgridBaselineRefresh<S> {
+impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
     pub(in crate::grid) const fn new() -> Self {
         Self {
             next_index: 0,
             in_flight: None,
+            parent_share: None,
         }
     }
 
@@ -884,12 +998,12 @@ impl<S: LayoutScalar> SubgridBaselineRefresh<S> {
     pub(in crate::grid) fn next<'input, Tree, M>(
         &mut self,
         tree: &mut Tree,
-        input: &SubgridBaselineRefreshInput<'_, <Tree as Traverse>::Node, S>,
-        pending_items: &[PendingGridItem<'input, <Tree as Traverse>::Node, S>],
+        input: &SubgridBaselineRefreshInput<'_, Node, S>,
+        pending_items: &[PendingGridItem<'input, Node, S>],
         item_space: impl Fn(&PendingGridItem<'input, Tree::Node, S>) -> GridItemLayoutSpace<S>,
-    ) -> GridContextStep<'input, <Tree as Traverse>::Node, S, M>
+    ) -> GridContextStep<'input, Node, S, M>
     where
-        Tree: Compute<'input, M, Scalar = S>,
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         debug_assert!(self.in_flight.is_none(), "a refresh request is outstanding");
         let container_flow_axes = FlowAxes::new(
@@ -955,15 +1069,24 @@ impl<S: LayoutScalar> SubgridBaselineRefresh<S> {
                 .sizing_stage
                 .mapped(container_flow_axes, child_flow_axes);
             let child = child_context_input.container();
-            let parent_context = match OwnedSubgridContext::spanned(child_context_input) {
-                Ok(context) => GridParentContextSource::refresh(
-                    context,
-                    input.ancestor_baseline_groups.clone(),
-                    input.template_area_expanded_axes,
-                    input.node,
-                    input.column_geometry.clone(),
-                    input.row_geometry.clone(),
-                ),
+            let share = match &self.parent_share {
+                Some(share) => Ok(share.clone()),
+                None => SubgridParentShare::new(
+                    &child_context_input,
+                    Some(input.column_geometry),
+                    Some(input.row_geometry),
+                    Some(RefreshShare {
+                        ancestor_baseline_groups: input.ancestor_baseline_groups.clone(),
+                        template_area_expanded_axes: input.template_area_expanded_axes,
+                        parent: input.node,
+                    }),
+                )
+                .inspect(|share| self.parent_share = Some(share.clone())),
+            };
+            let parent_context = match share {
+                Ok(share) => {
+                    GridParentContextSource::loan(SubgridItemLoan::new(share, &child_context_input))
+                }
                 Err(error) => GridParentContextSource::Rejected(error),
             };
             self.in_flight = Some(RefreshInFlight {
@@ -989,15 +1112,12 @@ impl<S: LayoutScalar> SubgridBaselineRefresh<S> {
     }
 
     /// Applies the receipt of the request `next` prepared.
-    pub(in crate::grid) fn accept<'input, Node, M>(
+    pub(in crate::grid) fn accept<'input, M>(
         &mut self,
         input: &SubgridBaselineRefreshInput<'_, Node, S>,
         pending_items: &mut [PendingGridItem<'input, Node, S>],
         result: GridComputeResult<Node, S>,
-    ) -> LayoutResultOf<Node, (), S, M>
-    where
-        Node: Copy + PartialEq,
-    {
+    ) -> LayoutResultOf<Node, (), S, M> {
         let RefreshInFlight {
             index,
             sizing,

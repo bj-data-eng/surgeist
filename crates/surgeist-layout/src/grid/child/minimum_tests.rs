@@ -258,7 +258,7 @@ fn original_function_retention_f64() {
     assert_original_function_retention::<f64>();
 }
 
-fn assert_span_retention_ignores_tracks_outside_the_span<S: LayoutScalar>() {
+fn assert_owned_functions_resolve_only_the_spans_read<S: LayoutScalar>() {
     let fixed = |value| {
         TrackSizingOf::minmax(
             MinTrackSizingOf::Auto,
@@ -282,14 +282,14 @@ fn assert_span_retention_ignores_tracks_outside_the_span<S: LayoutScalar>() {
     );
     let tracks = [fixed(10.0), fixed(20.0), overflowing, fixed(40.0)];
     let original = GridMinimumTrackFunctions::new(&tracks, Some(S::from_f64(largest)));
-    // Retaining every track resolves the overflowing one and fails; retaining
-    // only the span before it never reads it.
+    // Retaining every track resolves the overflowing one and fails. The owned
+    // copy resolves nothing, and a span before the overflowing track reads
+    // only the tracks it covers.
     assert!(original.retain().is_err());
-    let retained = original.retain_span(0, 2).unwrap();
-    assert_eq!(retained.len(), tracks.len());
-    let borrowed = GridMinimumTrackFunctions::from_qualified(&retained);
+    let owned = OwnedMinimumTrackFunctions::new(original).unwrap();
     assert_eq!(
-        borrowed
+        owned
+            .view()
             .mapped_span(0, 2, false)
             .unwrap()
             .span_facts(S::ZERO)
@@ -297,49 +297,54 @@ fn assert_span_retention_ignores_tracks_outside_the_span<S: LayoutScalar>() {
             .fixed_max_span(),
         Some(S::from_f64(30.0))
     );
-    // A span outside the tracks maps to nothing, as it does on the original.
-    let outside = original.retain_span(3, 5).unwrap();
     assert!(
-        GridMinimumTrackFunctions::from_qualified(&outside)
-            .mapped_span(3, 5, false)
-            .is_none()
+        owned
+            .view()
+            .mapped_span(2, 3, false)
+            .unwrap()
+            .span_facts(S::ZERO)
+            .is_err()
     );
+    // A span outside the tracks maps to nothing, as it does on the original.
+    assert!(owned.view().mapped_span(3, 5, false).is_none());
 
-    // Where every track resolves, a span mapped from the span retention reads
-    // the facts a span mapped from the original does, reversed or not.
+    // The owned view reads what the borrowed one reads, reversed or not, for
+    // original functions and for retained facts alike.
     let tracks = [fixed(10.0), fixed(20.0), fixed(30.0), fixed(40.0)];
     let original = GridMinimumTrackFunctions::new(&tracks, None);
-    let retained = original.retain_span(1, 3).unwrap();
-    let borrowed = GridMinimumTrackFunctions::from_qualified(&retained);
-    for reversed in [false, true] {
-        let expected = original.mapped_span(1, 3, reversed).unwrap();
-        let actual = borrowed.mapped_span(1, 3, reversed).unwrap();
-        for (start, end) in [(0, 2), (0, 1), (1, 2)] {
-            assert_eq!(
-                actual
-                    .mapped_span(start, end, false)
-                    .unwrap()
-                    .span_facts(S::from_f64(3.0))
-                    .unwrap(),
-                expected
-                    .mapped_span(start, end, false)
-                    .unwrap()
-                    .span_facts(S::from_f64(3.0))
-                    .unwrap(),
-                "reversed {reversed}, tracks {start}..{end}"
-            );
+    let retained = original.mapped_span(0, 3, true).unwrap().retain().unwrap();
+    let qualified = GridMinimumTrackFunctions::from_qualified(&retained);
+    for borrowed in [original, qualified] {
+        let owned = OwnedMinimumTrackFunctions::new(borrowed).unwrap();
+        for reversed in [false, true] {
+            for (start, end) in [(0, 3), (1, 3), (0, 1), (2, 3)] {
+                assert_eq!(
+                    owned
+                        .view()
+                        .mapped_span(start, end, reversed)
+                        .unwrap()
+                        .span_facts(S::from_f64(3.0))
+                        .unwrap(),
+                    borrowed
+                        .mapped_span(start, end, reversed)
+                        .unwrap()
+                        .span_facts(S::from_f64(3.0))
+                        .unwrap(),
+                    "reversed {reversed}, tracks {start}..{end}"
+                );
+            }
         }
     }
 }
 
 #[test]
-fn span_retention_ignores_tracks_outside_the_span_f32() {
-    assert_span_retention_ignores_tracks_outside_the_span::<f32>();
+fn owned_functions_resolve_only_the_spans_read_f32() {
+    assert_owned_functions_resolve_only_the_spans_read::<f32>();
 }
 
 #[test]
-fn span_retention_ignores_tracks_outside_the_span_f64() {
-    assert_span_retention_ignores_tracks_outside_the_span::<f64>();
+fn owned_functions_resolve_only_the_spans_read_f64() {
+    assert_owned_functions_resolve_only_the_spans_read::<f64>();
 }
 
 fn assert_cyclic_percentage_function_requalification<S: LayoutScalar>() {

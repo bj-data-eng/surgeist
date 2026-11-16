@@ -7,62 +7,18 @@ use super::*;
 pub(super) enum GridParentContextSource<'input, Node, S: LayoutScalar> {
     /// An ordinary Grid container inherits nothing.
     None,
-    /// The loan could not be retained; its pass reports the retention error.
+    /// The loan could not be copied; its pass reports the error.
     Rejected(SubgridChildContextError<S>),
-    /// A subgrid item placed by its parent's final geometry.
-    Final(Box<FinalParentContext<'input, Node, S>>),
-    /// A subgrid item refreshed with its parent's baseline groups.
-    Refresh(Box<RefreshParentContext<'input, Node, S>>),
-}
-
-pub(super) struct FinalParentContext<'input, Node, S: LayoutScalar> {
-    context: OwnedSubgridContext<'input, Node, S>,
-    column_geometry: Option<UsedGridAxisGeometryOf<S>>,
-    row_geometry: Option<UsedGridAxisGeometryOf<S>>,
-}
-
-pub(super) struct RefreshParentContext<'input, Node, S: LayoutScalar> {
-    context: OwnedSubgridContext<'input, Node, S>,
-    ancestor_baseline_groups: FinalAncestorBaselineGroups<Node, S>,
-    template_area_expanded_axes: TemplateAreaExpandedAxes,
-    parent: Node,
-    column_geometry: UsedGridAxisGeometryOf<S>,
-    row_geometry: UsedGridAxisGeometryOf<S>,
-}
-
-impl<'input, Node, S: LayoutScalar> GridParentContextSource<'input, Node, S> {
-    pub(super) fn final_geometry(
-        context: OwnedSubgridContext<'input, Node, S>,
-        column_geometry: Option<UsedGridAxisGeometryOf<S>>,
-        row_geometry: Option<UsedGridAxisGeometryOf<S>>,
-    ) -> Self {
-        Self::Final(Box::new(FinalParentContext {
-            context,
-            column_geometry,
-            row_geometry,
-        }))
-    }
-
-    pub(super) fn refresh(
-        context: OwnedSubgridContext<'input, Node, S>,
-        ancestor_baseline_groups: FinalAncestorBaselineGroups<Node, S>,
-        template_area_expanded_axes: TemplateAreaExpandedAxes,
-        parent: Node,
-        column_geometry: UsedGridAxisGeometryOf<S>,
-        row_geometry: UsedGridAxisGeometryOf<S>,
-    ) -> Self {
-        Self::Refresh(Box::new(RefreshParentContext {
-            context,
-            ancestor_baseline_groups,
-            template_area_expanded_axes,
-            parent,
-            column_geometry,
-            row_geometry,
-        }))
-    }
+    /// A subgrid item's loan of its parent placement, for its final layout or
+    /// for the refresh of its baselines.
+    Loan(Box<SubgridItemLoan<'input, Node, S>>),
 }
 
 impl<'input, Node: Copy + PartialEq, S: LayoutScalar> GridParentContextSource<'input, Node, S> {
+    pub(super) fn loan(loan: SubgridItemLoan<'input, Node, S>) -> Self {
+        Self::Loan(Box::new(loan))
+    }
+
     /// Rebuilds the inherited tracks for one scrollbar pass of `subject`, the
     /// child of `container`.
     pub(super) fn build<M>(
@@ -74,20 +30,26 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> GridParentContextSource<'i
         let context = match self {
             Self::None => return Ok(GridParentContext::none()),
             Self::Rejected(error) => Err(*error),
-            Self::Final(source) => subgrid_child_parent_context_with_geometry(
-                source.context.input().for_scrollbar_pass(constants),
-                source.column_geometry.as_ref(),
-                source.row_geometry.as_ref(),
-            ),
-            Self::Refresh(refresh) => {
-                subgrid_child_parent_context_from_ancestor_groups_with_geometry(
-                    refresh.context.input().for_scrollbar_pass(constants),
-                    &refresh.ancestor_baseline_groups,
-                    refresh.template_area_expanded_axes,
-                    refresh.parent,
-                    Some(&refresh.column_geometry),
-                    Some(&refresh.row_geometry),
-                )
+            Self::Loan(loan) => {
+                let share = loan.share();
+                let input = loan.input().for_scrollbar_pass(constants);
+                match share.refresh() {
+                    None => subgrid_child_parent_context_with_geometry(
+                        input,
+                        share.column_geometry(),
+                        share.row_geometry(),
+                    ),
+                    Some(refresh) => {
+                        subgrid_child_parent_context_from_ancestor_groups_with_geometry(
+                            input,
+                            &refresh.ancestor_baseline_groups,
+                            refresh.template_area_expanded_axes,
+                            refresh.parent,
+                            share.column_geometry(),
+                            share.row_geometry(),
+                        )
+                    }
+                }
             }
         };
         context.map_err(|error| subgrid_child_context_container_error(container, subject, error))

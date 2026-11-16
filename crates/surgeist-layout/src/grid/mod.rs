@@ -269,6 +269,18 @@ type GridStep<'input, Node, S, M> = LayoutResultOf<
     M,
 >;
 
+/// How a run of a Grid computation ended.
+enum GridRunEnd<Node, S: LayoutScalar> {
+    /// Size containment answered the run before any pass started. Like the
+    /// synchronous settlement, the run returns it as it is.
+    Contained(GridComputeResult<Node, S>),
+    /// A pass produced the result; its scrollbars may need another pass.
+    Passed(GridComputeResult<Node, S>),
+}
+
+type GridRunStep<'input, Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<GridRunEnd<Node, S>, GridRequest<'input, Node, S>>, S, M>;
+
 pub(crate) fn begin_grid_computation<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
@@ -428,12 +440,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
         loop {
             let result = match self.advance_run(tree)? {
                 ControlFlow::Continue(request) => return Ok(ControlFlow::Continue(request)),
-                ControlFlow::Break(result) => result,
+                ControlFlow::Break(GridRunEnd::Contained(result)) => result,
+                ControlFlow::Break(GridRunEnd::Passed(result)) => {
+                    if let Some(next) = retry_grid_scrollbars(self.node, self.pass_input, &result)?
+                    {
+                        self.pass_input = next;
+                        continue;
+                    }
+                    result
+                }
             };
-            if let Some(next) = retry_grid_scrollbars(self.node, self.pass_input, &result)? {
-                self.pass_input = next;
-                continue;
-            }
             let Some(entry) = self.entry.take() else {
                 return Ok(ControlFlow::Break(result));
             };
@@ -454,7 +470,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
 
     // Advances the active run, starting its size containment first. A run ends
     // with its result, before any scrollbar retry or following run.
-    fn advance_run<Tree, M>(&mut self, tree: &mut Tree) -> GridStep<'input, Node, S, M>
+    fn advance_run<Tree, M>(&mut self, tree: &mut Tree) -> GridRunStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -470,7 +486,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     self.invocation,
                     self.stage,
                 )? {
-                    ControlFlow::Break(result) => return Ok(ControlFlow::Break(result)),
+                    ControlFlow::Break(result) => {
+                        return Ok(ControlFlow::Break(GridRunEnd::Contained(result)));
+                    }
                     ControlFlow::Continue(size) => self.contained_size = Some(size),
                 }
             }
@@ -609,7 +627,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     }
                 }
             };
-            return Ok(ControlFlow::Break(result));
+            return Ok(ControlFlow::Break(GridRunEnd::Passed(result)));
         }
     }
 

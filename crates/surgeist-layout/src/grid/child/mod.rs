@@ -282,6 +282,9 @@ where
 pub(super) struct GridItemCollection<'input, Node, S: LayoutScalar> {
     next_index: usize,
     items: PendingGridItems<'input, Node, S>,
+    /// The parent facts the subgrid items' requests share, copied when the
+    /// first such item is reached.
+    parent_share: Option<std::sync::Arc<SubgridParentShare<Node, S>>>,
 }
 
 pub(super) enum GridFlowChild<'input, Node, S: LayoutScalar> {
@@ -344,6 +347,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
                 in_flow: Vec::new(),
                 absolute: Vec::new(),
             },
+            parent_share: None,
         }
     }
 
@@ -487,17 +491,25 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
             let (minimum, column_geometry, row_geometry) = match geometry {
                 FinalGridChildGeometry::Ordinary { columns, rows } => (
                     item.standalone_intrinsic_minimum,
-                    Some((*columns).clone()),
-                    Some((*rows).clone()),
+                    Some(*columns),
+                    Some(*rows),
                 ),
                 FinalGridChildGeometry::Lanes { .. } => (Size::NONE, None, None),
             };
             // The nested grid uses the current parent's track and scrollbar
-            // context, owned here so the request outlives this borrow.
+            // context. The request owns it, sharing the parent's facts with
+            // its siblings, so it outlives this borrow.
             let container = child_context.container();
-            let parent_context = match OwnedSubgridContext::spanned(child_context) {
-                Ok(context) => {
-                    GridParentContextSource::final_geometry(context, column_geometry, row_geometry)
+            let share = match &self.parent_share {
+                Some(share) => Ok(share.clone()),
+                None => {
+                    SubgridParentShare::new(&child_context, column_geometry, row_geometry, None)
+                        .inspect(|share| self.parent_share = Some(share.clone()))
+                }
+            };
+            let parent_context = match share {
+                Ok(share) => {
+                    GridParentContextSource::loan(SubgridItemLoan::new(share, &child_context))
                 }
                 Err(error) => GridParentContextSource::Rejected(error),
             };
@@ -1060,7 +1072,7 @@ pub(super) struct OrdinaryGridFinish<'input, Node, S: LayoutScalar> {
     executed_inventory: ExecutedBaselineInventory<Node, S>,
     ancestor_baseline_groups: FinalAncestorBaselineGroups<Node, S>,
     baseline_group_set: GridBaselineGroups<S>,
-    refresh: SubgridBaselineRefresh<S>,
+    refresh: SubgridBaselineRefresh<Node, S>,
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridFinish<'input, Node, S> {

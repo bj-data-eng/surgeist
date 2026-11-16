@@ -19,6 +19,75 @@ enum GridMinimumFunctionSource<'a, S: LayoutScalar> {
     Qualified(&'a [GridMinimumTrackFact<S>]),
 }
 
+/// An owned copy of a parent's sizing functions, so a suspended request can
+/// rebuild the borrowed view later. Only the functions are copied; resolving a
+/// track's function waits until a span of the view is read, so a track no item
+/// span reads is never resolved.
+#[derive(Clone, Debug)]
+pub(in crate::grid) struct OwnedMinimumTrackFunctions<S: LayoutScalar> {
+    source: OwnedMinimumFunctionSource<S>,
+    reversed: bool,
+}
+
+#[derive(Clone, Debug)]
+enum OwnedMinimumFunctionSource<S: LayoutScalar> {
+    Original {
+        tracks: Vec<TrackSizingOf<S>>,
+        basis: Option<S>,
+    },
+    Qualified(Vec<GridMinimumTrackFact<S>>),
+}
+
+impl<S: LayoutScalar> OwnedMinimumTrackFunctions<S> {
+    pub(in crate::grid) fn new(
+        functions: GridMinimumTrackFunctions<'_, S>,
+    ) -> Result<Self, GridMinimumFunctionRetentionError<S>> {
+        let allocation = GridMinimumFunctionRetentionError::Allocation;
+        let source = match functions.source {
+            GridMinimumFunctionSource::Original { tracks, basis } => {
+                OwnedMinimumFunctionSource::Original {
+                    tracks: try_clone_slice(tracks).map_err(|_| allocation)?,
+                    basis,
+                }
+            }
+            GridMinimumFunctionSource::Qualified(facts) => OwnedMinimumFunctionSource::Qualified(
+                try_clone_slice(facts).map_err(|_| allocation)?,
+            ),
+        };
+        Ok(Self {
+            source,
+            reversed: functions.reversed,
+        })
+    }
+
+    pub(in crate::grid) fn view(&self) -> GridMinimumTrackFunctions<'_, S> {
+        GridMinimumTrackFunctions {
+            source: match &self.source {
+                OwnedMinimumFunctionSource::Original { tracks, basis } => {
+                    GridMinimumFunctionSource::Original {
+                        tracks,
+                        basis: *basis,
+                    }
+                }
+                OwnedMinimumFunctionSource::Qualified(facts) => {
+                    GridMinimumFunctionSource::Qualified(facts)
+                }
+            },
+            reversed: self.reversed,
+        }
+    }
+}
+
+/// Copies a slice, reporting an allocation failure instead of aborting.
+pub(in crate::grid) fn try_clone_slice<T: Clone>(
+    slice: &[T],
+) -> Result<Vec<T>, std::collections::TryReserveError> {
+    let mut copy = Vec::new();
+    copy.try_reserve_exact(slice.len())?;
+    copy.extend_from_slice(slice);
+    Ok(copy)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::grid) struct GridMinimumTrackFact<S: LayoutScalar> {
     automatic: bool,
@@ -119,36 +188,6 @@ impl<'a, S: LayoutScalar> GridMinimumTrackFunctions<'a, S> {
                 self.fact(offset)
                     .map_err(GridMinimumFunctionRetentionError::Sizing)?,
             );
-        }
-        Ok(facts)
-    }
-
-    /// Retains the facts of the tracks in `start..end` only, in the positions
-    /// a full retention would give them, so a span mapped from the result
-    /// reads the same facts. Every other position holds an unread
-    /// placeholder, and no function outside the span is resolved.
-    pub(in crate::grid) fn retain_span(
-        self,
-        start: usize,
-        end: usize,
-    ) -> Result<Vec<GridMinimumTrackFact<S>>, GridMinimumFunctionRetentionError<S>> {
-        let len = self.len();
-        let mut facts = Vec::new();
-        facts
-            .try_reserve_exact(len)
-            .map_err(|_| GridMinimumFunctionRetentionError::Allocation)?;
-        let spanned = start < end && end <= len;
-        for offset in 0..len {
-            facts.push(if spanned && (start..end).contains(&offset) {
-                self.fact(offset)
-                    .map_err(GridMinimumFunctionRetentionError::Sizing)?
-            } else {
-                GridMinimumTrackFact {
-                    automatic: false,
-                    flexible: false,
-                    fixed: None,
-                }
-            });
         }
         Ok(facts)
     }

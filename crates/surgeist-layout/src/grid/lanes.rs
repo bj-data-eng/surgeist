@@ -3662,7 +3662,7 @@ pub(super) struct GridLanesFinish<'input, Node, S: LayoutScalar> {
     executed_inventory: ExecutedBaselineInventory<Node, S>,
     ancestor_baseline_groups: FinalAncestorBaselineGroups<Node, S>,
     current_grid_baseline_groups: GridBaselineGroups<S>,
-    refresh: SubgridBaselineRefresh<S>,
+    refresh: SubgridBaselineRefresh<Node, S>,
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> GridLanesFinish<'input, Node, S> {
