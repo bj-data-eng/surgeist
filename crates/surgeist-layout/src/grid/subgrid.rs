@@ -2612,7 +2612,7 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutionKey<'_, Node, S> 
     fn is(&self, identity: &WrapperResolutionIdentity<'_, '_, Node, S>) -> bool {
         self.node == identity.node
             && self.axis == identity.axis
-            && self.container == *identity.container
+            && self.container.same_container(identity.container)
             && self.parent_context == *identity.parent_context
             && self.prepared == identity.prepared
             && self.lane_track == identity.lane_track
@@ -2629,13 +2629,13 @@ type WrapperResolutionEntry<'input, Node, S> = (
 type WrapperResolutionResult<'input, Node, S, M> =
     LayoutResultOf<Node, WrapperResolution<'input, Node, S>, S, M>;
 
-/// The wrapper resolutions of one layout computation, which every visit of a
-/// wrapper with equal inputs shares.
-pub(crate) struct WrapperResolutionMemo<'input, Node, S: LayoutScalar> {
+/// The wrapper resolutions of one wrapper, which every visit of it with equal
+/// inputs shares.
+pub(crate) struct WrapperResolutions<'input, Node, S: LayoutScalar> {
     entries: Vec<WrapperResolutionEntry<'input, Node, S>>,
 }
 
-impl<Node, S: LayoutScalar> Default for WrapperResolutionMemo<'_, Node, S> {
+impl<Node, S: LayoutScalar> Default for WrapperResolutions<'_, Node, S> {
     fn default() -> Self {
         Self {
             entries: Vec::new(),
@@ -2643,13 +2643,7 @@ impl<Node, S: LayoutScalar> Default for WrapperResolutionMemo<'_, Node, S> {
     }
 }
 
-impl<Node, S: LayoutScalar> WrapperResolutionMemo<'_, Node, S> {
-    pub(crate) fn clear(&mut self) {
-        self.entries.clear();
-    }
-}
-
-impl<'input, Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutionMemo<'input, Node, S> {
+impl<'input, Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutions<'input, Node, S> {
     fn get(
         &self,
         identity: &WrapperResolutionIdentity<'_, '_, Node, S>,
@@ -2680,6 +2674,41 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutionMemo<'inp
             resolution.clone(),
         ));
         Ok(())
+    }
+}
+
+/// The wrapper resolutions of one layout computation, by the wrapper's index in
+/// the validated graph, so a visit reads only the entries of its own wrapper.
+pub(crate) struct WrapperResolutionMemo<'input, Node, S: LayoutScalar> {
+    by_wrapper: Vec<WrapperResolutions<'input, Node, S>>,
+}
+
+impl<Node, S: LayoutScalar> Default for WrapperResolutionMemo<'_, Node, S> {
+    fn default() -> Self {
+        Self {
+            by_wrapper: Vec::new(),
+        }
+    }
+}
+
+impl<'input, Node, S: LayoutScalar> WrapperResolutionMemo<'input, Node, S> {
+    pub(crate) fn clear(&mut self) {
+        self.by_wrapper.clear();
+    }
+
+    /// The resolutions of the wrapper at `index`, or `None` when the memo
+    /// cannot grow to hold it.
+    pub(crate) fn wrapper(
+        &mut self,
+        index: usize,
+    ) -> Option<&mut WrapperResolutions<'input, Node, S>> {
+        if self.by_wrapper.len() <= index {
+            self.by_wrapper
+                .try_reserve(index + 1 - self.by_wrapper.len())
+                .ok()?;
+            self.by_wrapper.resize_with(index + 1, Default::default);
+        }
+        self.by_wrapper.get_mut(index)
     }
 }
 
@@ -2880,7 +2909,7 @@ where
     };
     let reuse = !super::subgrid_reuse_disabled();
     let reused = tree
-        .wrapper_resolution_memo()
+        .wrapper_resolutions(node)
         .filter(|_| reuse)
         .and_then(|memo| memo.get(&identity));
     let resolution = match reused {
@@ -2906,7 +2935,7 @@ where
             resolution.effects = effects;
             let resolution = std::sync::Arc::new(resolution);
             if resolution.effects.is_some()
-                && let Some(memo) = tree.wrapper_resolution_memo().filter(|_| reuse)
+                && let Some(memo) = tree.wrapper_resolutions(node).filter(|_| reuse)
             {
                 memo.insert(&identity, &resolution)
                     .map_err(|_| allocation_error(node))?;

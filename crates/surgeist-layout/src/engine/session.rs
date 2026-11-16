@@ -2300,11 +2300,15 @@ where
         self.groups.is_none()
     }
 
-    fn wrapper_resolution_memo(
+    fn wrapper_resolutions(
         &mut self,
-    ) -> Option<&mut crate::grid::WrapperResolutionMemo<'input, Self::Node, Self::Scalar>> {
-        self.reuses_subgrid_computations()
-            .then_some(&mut self.wrappers)
+        node: Self::Node,
+    ) -> Option<&mut crate::grid::WrapperResolutions<'input, Self::Node, Self::Scalar>> {
+        if !self.reuses_subgrid_computations() {
+            return None;
+        }
+        let index = self.flow_graph?.index(node)?;
+        self.wrappers.wrapper(index)
     }
 
     fn text_computation(

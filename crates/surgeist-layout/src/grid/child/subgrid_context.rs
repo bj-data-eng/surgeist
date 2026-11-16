@@ -377,7 +377,7 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ContextualFingerprint<'inp
         };
         self.input == request.input
             && self.stage == request.stage
-            && self.container == request.child
+            && self.container.same_container(&request.child)
             && resolved(self.minimum, &self.container) == resolved(request.minimum, &request.child)
             && self.loan.item == next.item
             && self.loan.child_style == next.child_style

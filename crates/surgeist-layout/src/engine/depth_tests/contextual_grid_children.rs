@@ -464,43 +464,59 @@ fn subgrid_chain_leaf_refusal_surfaces_unchanged() {
     );
 }
 
-// Work bounds for a chain of nested subgrids. A level needs one contextual Grid
+// Work growth of a chain of nested subgrids. A level needs one contextual Grid
 // computation of its subgrid child for placement, which may probe the child's
 // standalone minimum once and refresh its baselines once, so those grow with
-// the depth. Intrinsic traversal prepares each wrapper once for each distinct
-// combination of axis, contribution purpose and sizing phase that the root
-// asks for, and a Grid Lanes level adds the contextual computations of its
-// lane candidates; both are a fixed number per level, at most the per-level
-// counts below. None of them may grow with the number of paths through the
-// chain.
+// the depth by at most one level's share. Intrinsic traversal prepares each
+// wrapper once for each distinct combination of axis, sizing stage and parent
+// tracks that the root asks for, and a Grid Lanes level adds the contextual
+// computations of its lane candidates. Each is a fixed number per level: the
+// counts below bound the growth from one depth to the next. None of them may
+// grow with the number of paths through the chain, which would make the growth
+// itself grow with the depth.
 const WRAPPER_PREPARATIONS_PER_LEVEL: usize = 24;
 const CONTEXTUAL_GRIDS_PER_LEVEL: usize = 14;
+const BASELINE_REFRESHES_PER_LEVEL: usize = 1;
+const MINIMUM_PROBES_PER_LEVEL: usize = 2;
+const WORK_DEPTHS: [u32; 4] = [2, 3, 4, 5];
 
-fn assert_subgrid_work_grows_linearly(name: &str, depth: u32, work: SubgridWork) {
-    let levels = depth as usize;
-    assert!(
-        work.contextual_grids <= CONTEXTUAL_GRIDS_PER_LEVEL * (levels + 1),
-        "{name} at depth {depth}: {} contextual Grid computations exceed {}",
-        work.contextual_grids,
-        CONTEXTUAL_GRIDS_PER_LEVEL * (levels + 1),
-    );
-    assert!(
-        work.baseline_refreshes <= levels,
-        "{name} at depth {depth}: {} baseline refreshes exceed {levels}",
-        work.baseline_refreshes,
-    );
-    assert!(
-        work.minimum_probes <= 2 * levels,
-        "{name} at depth {depth}: {} standalone-minimum probes exceed {}",
-        work.minimum_probes,
-        2 * levels,
-    );
-    assert!(
-        work.wrapper_preparations <= WRAPPER_PREPARATIONS_PER_LEVEL * (levels + 1),
-        "{name} at depth {depth}: {} wrapper preparations exceed {}",
-        work.wrapper_preparations,
-        WRAPPER_PREPARATIONS_PER_LEVEL * (levels + 1),
-    );
+fn assert_subgrid_work_grows_linearly(name: &str, work: &[SubgridWork]) {
+    for (depth, pair) in WORK_DEPTHS.iter().zip(work.windows(2)) {
+        let (lower, upper) = (pair[0], pair[1]);
+        for (what, lower, upper, limit) in [
+            (
+                "wrapper preparations",
+                lower.wrapper_preparations,
+                upper.wrapper_preparations,
+                WRAPPER_PREPARATIONS_PER_LEVEL,
+            ),
+            (
+                "contextual Grid computations",
+                lower.contextual_grids,
+                upper.contextual_grids,
+                CONTEXTUAL_GRIDS_PER_LEVEL,
+            ),
+            (
+                "baseline refreshes",
+                lower.baseline_refreshes,
+                upper.baseline_refreshes,
+                BASELINE_REFRESHES_PER_LEVEL,
+            ),
+            (
+                "standalone-minimum probes",
+                lower.minimum_probes,
+                upper.minimum_probes,
+                MINIMUM_PROBES_PER_LEVEL,
+            ),
+        ] {
+            assert!(
+                upper <= lower + limit,
+                "{name}: {what} grow from {lower} at depth {depth} to {upper} at depth {}, \
+                 more than {limit} for one level",
+                depth + 1,
+            );
+        }
+    }
 }
 
 fn subgrid_work_of<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> SubgridWork {
@@ -509,54 +525,60 @@ fn subgrid_work_of<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> SubgridWork
     take_subgrid_work()
 }
 
+/// The work of the chain at each of `WORK_DEPTHS`. The thread has a stack that
+/// holds the native recursion of the deepest chain.
+fn subgrid_work_by_depth<S: LayoutScalar>(
+    chain: impl Fn(u32) -> PublicLayoutTreeOf<S> + Send + 'static,
+) -> Vec<SubgridWork> {
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            WORK_DEPTHS
+                .iter()
+                .map(|&depth| subgrid_work_of(&chain(depth)))
+                .collect()
+        })
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
 #[test]
 fn subgrid_grid_chain_work_grows_linearly_with_depth() {
-    for depth in [2, 3, 4] {
-        for span in [Span::Whole, Span::SecondColumnFirstRow] {
-            assert_subgrid_work_grows_linearly(
-                "Grid chain",
-                depth,
-                subgrid_work_of::<f32>(&subgrid_grid_chain::<f32>(depth, span)),
-            );
-            assert_subgrid_work_grows_linearly(
-                "Grid chain",
-                depth,
-                subgrid_work_of::<f64>(&subgrid_grid_chain::<f64>(depth, span)),
-            );
-        }
+    for span in [Span::Whole, Span::SecondColumnFirstRow] {
+        assert_subgrid_work_grows_linearly(
+            "Grid chain",
+            &subgrid_work_by_depth(move |depth| subgrid_grid_chain::<f32>(depth, span)),
+        );
+        assert_subgrid_work_grows_linearly(
+            "Grid chain",
+            &subgrid_work_by_depth(move |depth| subgrid_grid_chain::<f64>(depth, span)),
+        );
     }
 }
 
 #[test]
 fn subgrid_lanes_chain_work_grows_linearly_with_depth() {
-    for depth in [2, 3, 4] {
-        assert_subgrid_work_grows_linearly(
-            "Grid Lanes chain",
-            depth,
-            subgrid_work_of::<f32>(&subgrid_lanes_chain::<f32>(depth)),
-        );
-        assert_subgrid_work_grows_linearly(
-            "Grid Lanes chain",
-            depth,
-            subgrid_work_of::<f64>(&subgrid_lanes_chain::<f64>(depth)),
-        );
-    }
+    assert_subgrid_work_grows_linearly(
+        "Grid Lanes chain",
+        &subgrid_work_by_depth(subgrid_lanes_chain::<f32>),
+    );
+    assert_subgrid_work_grows_linearly(
+        "Grid Lanes chain",
+        &subgrid_work_by_depth(subgrid_lanes_chain::<f64>),
+    );
 }
 
 #[test]
 fn one_axis_subgrid_chain_work_grows_linearly_with_depth() {
-    for depth in [2, 3, 4] {
-        assert_subgrid_work_grows_linearly(
-            "one-axis chain",
-            depth,
-            subgrid_work_of::<f32>(&standalone_minimum_chain::<f32>(depth)),
-        );
-        assert_subgrid_work_grows_linearly(
-            "one-axis chain",
-            depth,
-            subgrid_work_of::<f64>(&standalone_minimum_chain::<f64>(depth)),
-        );
-    }
+    assert_subgrid_work_grows_linearly(
+        "one-axis chain",
+        &subgrid_work_by_depth(standalone_minimum_chain::<f32>),
+    );
+    assert_subgrid_work_grows_linearly(
+        "one-axis chain",
+        &subgrid_work_by_depth(standalone_minimum_chain::<f64>),
+    );
 }
 
 // Intrinsic Grid chain. Node 0 is a 70x70 Grid with two automatic columns and
@@ -631,19 +653,14 @@ fn shallow_intrinsic_subgrid_chain_sizes_tracks_from_its_leaves() {
 
 #[test]
 fn intrinsic_subgrid_chain_work_grows_linearly_with_depth() {
-    for depth in [2, 3, 4] {
-        for work in [
-            subgrid_work_of::<f32>(&intrinsic_subgrid_chain::<f32>(depth)),
-            subgrid_work_of::<f64>(&intrinsic_subgrid_chain::<f64>(depth)),
-        ] {
-            // Intrinsic contributions reach the root through every level in a
-            // bounded number of traversals of the chain.
-            assert!(
-                work.wrapper_preparations <= WRAPPER_PREPARATIONS_PER_LEVEL * (depth as usize + 1),
-                "intrinsic chain at depth {depth}: {} wrapper preparations exceed {}",
-                work.wrapper_preparations,
-                WRAPPER_PREPARATIONS_PER_LEVEL * (depth as usize + 1),
-            );
-        }
-    }
+    // Intrinsic contributions reach the root through every level in a bounded
+    // number of traversals of the chain.
+    assert_subgrid_work_grows_linearly(
+        "intrinsic chain",
+        &subgrid_work_by_depth(intrinsic_subgrid_chain::<f32>),
+    );
+    assert_subgrid_work_grows_linearly(
+        "intrinsic chain",
+        &subgrid_work_by_depth(intrinsic_subgrid_chain::<f64>),
+    );
 }

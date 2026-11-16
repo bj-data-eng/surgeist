@@ -61,9 +61,10 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     }
     /// The subgrid wrapper resolutions of this computation, which every visit
     /// of a wrapper with equal inputs shares. Absence retains nothing.
-    fn wrapper_resolution_memo(
+    fn wrapper_resolutions(
         &mut self,
-    ) -> Option<&mut crate::grid::WrapperResolutionMemo<'input, Self::Node, Self::Scalar>> {
+        _node: Self::Node,
+    ) -> Option<&mut crate::grid::WrapperResolutions<'input, Self::Node, Self::Scalar>> {
         None
     }
     fn block_float_state(
