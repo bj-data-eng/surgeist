@@ -4,7 +4,7 @@ Read the [repository](../../../AGENTS.md), [CSS](../AGENTS.md) and
 [shared fuzz](../../surgeist-fuzz/AGENTS.md) guides.
 
 This verification package owns CSS fuzz cases, strict codecs, generators,
-independent expectations, seeds, imported-corpus records and known failures.
+independent expectations, seeds and imported-corpus records.
 Use only public `surgeist-css` and `surgeist-css-parser` front doors: no
 private parser copy, no fuzz-only production export, and no production
 dependency on this package or on `surgeist-fuzz`. The framework owns engines,
@@ -22,8 +22,7 @@ lane or widen a tolerance to make a run pass.
 Seeds under `seeds/` are generated: rerun
 `examples/materialize_seeds.rs` (source-qualified literals) or
 `examples/import_csstree.rs` (CSSTree corpus inputs) and inspect the diff;
-never hand-edit them or `corpus-import.toml`. `seeds/known-failures/` holds
-failing inputs and is not a fixture directory.
+never hand-edit them or `corpus-import.toml`.
 
 ## Command Inventory
 

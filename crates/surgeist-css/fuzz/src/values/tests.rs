@@ -131,7 +131,7 @@ fn every_literal_captures_replays_and_checks_its_lane_properties() {
             observed
         );
     }
-    assert_eq!(lanes.len(), 3, "rows, siblings and closures");
+    assert_eq!(lanes.len(), 4, "rows, siblings, closures and recipes");
     assert!(target.literal(ValueTarget::LITERALS).is_err());
 }
 
@@ -387,48 +387,6 @@ fn a_broken_coordinate_model_is_detected_replayed_and_reduced_through_a_recipe()
         panic!("recipe lane");
     };
     assert!(items.len() < 4);
-}
-
-/// Each known failure still reproduces its exact key, replays from canonical
-/// bytes and reduces without losing it. When the product behavior is corrected
-/// this test fails: move the case to the checked regressions and delete it here.
-#[test]
-fn known_failures_reproduce_replay_and_reduce_with_their_exact_keys() {
-    use std::{sync::atomic::AtomicBool, time::Duration};
-    use surgeist_fuzz::reduction::{ReductionLimits, ReductionStatus, reduce_direct};
-    let target = ValueTarget::new();
-    let expected = [
-        (AGREEMENT, "block-front-rejects-a-clean-value"),
-        (ROUND_TRIP, "serialization-does-not-reparse-cleanly"),
-    ];
-    assert_eq!(expected.len(), usize::from(ValueTarget::KNOWN_FAILURES));
-    for (id, (property, discriminator)) in expected.into_iter().enumerate() {
-        let known = target.known_failure(id as u8).unwrap();
-        let mut captured = Vec::new();
-        let observed = engine::evaluate_case(&target, &known, &mut |bytes| {
-            captured = bytes.to_vec();
-            Ok(())
-        })
-        .unwrap();
-        let wanted = key(property, discriminator);
-        assert_eq!(
-            observed.outcome.failure_key(),
-            Some(&wanted),
-            "known failure {id} no longer reproduces: {:?}",
-            observed.outcome.detail()
-        );
-        assert_eq!(
-            engine::replay(&target, &captured, &mut |_| Ok(())).unwrap(),
-            observed
-        );
-        let limits = ReductionLimits::new(400, Duration::from_secs(60), 1 << 20, 2).unwrap();
-        let report =
-            reduce_direct(&target, &captured, &wanted, limits, &AtomicBool::new(false)).unwrap();
-        assert_eq!(report.status(), ReductionStatus::Complete);
-        let best = report.canonical_input().unwrap_or(report.best_input());
-        assert_eq!(best, captured, "known failure {id} is already minimal");
-    }
-    assert!(target.known_failure(ValueTarget::KNOWN_FAILURES).is_err());
 }
 
 #[test]

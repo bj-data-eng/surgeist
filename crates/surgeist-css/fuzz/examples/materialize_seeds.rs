@@ -58,12 +58,5 @@ fn main() -> Result<(), Box<dyn Error>> {
         RulesTarget::LITERALS,
         |id| rules.literal(id),
     )?;
-    // Failing inputs are retained apart from the seeds, which all pass.
-    write(
-        &destination.join("known-failures"),
-        &values,
-        ValueTarget::KNOWN_FAILURES,
-        |id| values.known_failure(id),
-    )?;
     Ok(())
 }

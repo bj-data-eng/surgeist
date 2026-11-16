@@ -35,7 +35,7 @@ CSS/Color integration.
 | Verification and public-contract evidence | Tracked test modules in [src/](src/), rustdoc examples, and [tests/](tests/) |
 | Shared handwritten property inventories and their consumers | [tests/css/support/property_expectations/README.md](tests/css/support/property_expectations/README.md) and `records.rs` in that directory |
 | Corpus provenance, generated set, and maintenance owner | [tests/corpus/csstree/README.md](tests/corpus/csstree/README.md) and [tests/corpus/csstree/corpus.toml](tests/corpus/csstree/corpus.toml) |
-| Fuzz targets, seeds, imported corpus inputs and known failures | The separate [fuzz package](fuzz/README.md): its [AGENTS.md](fuzz/AGENTS.md), [fuzz.toml](fuzz/fuzz.toml) and [corpus-import.toml](fuzz/corpus-import.toml); it uses public front doors and is not a production dependency |
+| Fuzz targets, seeds and imported corpus inputs | The separate [fuzz package](fuzz/README.md): its [AGENTS.md](fuzz/AGENTS.md), [fuzz.toml](fuzz/fuzz.toml) and [corpus-import.toml](fuzz/corpus-import.toml); it uses public front doors and is not a production dependency |
 | CSS-owned expectation and oracle contracts | [tests/csstree/](tests/csstree/), [tests/css/support/csstree.rs](tests/css/support/csstree.rs), and [tests/css/support/csstree_adapters.rs](tests/css/support/csstree_adapters.rs) |
 
 [README.md](README.md) links usage, contract and attribution documentation.
