@@ -321,6 +321,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridFlowChild<'input, Node, S> {
 pub(super) struct ContextualGridItem<'input, Node, S: LayoutScalar> {
     prepared: PreparedGridItem<'input, Node, S>,
     request: Option<GridContextRequest<'input, Node, S>>,
+    /// The inputs of the request, for the baseline refresh to compare.
+    fingerprint: Option<Box<ContextualFingerprint<'input, Node, S>>>,
     child_axes: FlowAxes,
     stage: GridSizingStage,
 }
@@ -522,10 +524,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
                 stage,
                 parent_context,
             };
+            let fingerprint = ContextualFingerprint::of(&request).map(Box::new);
             return Ok(Some(GridFlowChild::Contextual(Box::new(
                 ContextualGridItem {
                     prepared,
                     request: Some(request),
+                    fingerprint,
                     child_axes,
                     stage,
                 },
@@ -577,6 +581,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
             prepared,
             child_axes,
             stage,
+            fingerprint,
             ..
         } = *item;
         let source = require_executed_baselines(
@@ -588,9 +593,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
             stage,
             result.executed_baselines,
         )?;
-        self.items
-            .in_flow
-            .push(prepared.finish(tree, node, input, result.output, Some(source))?);
+        let mut item = prepared.finish(tree, node, input, result.output, Some(source))?;
+        item.first_request = fingerprint;
+        self.items.in_flow.push(item);
         Ok(())
     }
 
@@ -743,6 +748,7 @@ impl<'input, Node: Copy, S: LayoutScalar> PreparedGridItem<'input, Node, S> {
             border,
             padding,
             overflow,
+            first_request: None,
         })
     }
 }
@@ -1414,6 +1420,9 @@ pub(super) struct PendingGridItem<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) border: Edges<S>,
     pub(super) padding: Edges<S>,
     pub(super) overflow: UsedOverflow,
+    /// The inputs of the item's contextual computation, kept until the
+    /// baseline refresh decides whether to repeat it.
+    pub(super) first_request: Option<Box<ContextualFingerprint<'input, Node, S>>>,
 }
 
 #[derive(Clone, Copy)]
