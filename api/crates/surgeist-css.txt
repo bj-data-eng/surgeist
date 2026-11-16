@@ -7248,11 +7248,11 @@ pub fn surgeist_css::values::box_model::CssMaxSizeValue::serialize_specified(&se
 pub struct surgeist_css::values::box_model::CssOverflowClipMargin
 impl surgeist_css::values::box_model::CssOverflowClipMargin
 pub const fn surgeist_css::values::box_model::CssOverflowClipMargin::authored_box_edge(&self) -> core::option::Option<surgeist_css::values::common::CssBoxEdgeKeyword>
-pub fn surgeist_css::values::box_model::CssOverflowClipMargin::authored_offset(&self) -> core::option::Option<&surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength, surgeist_css::numeric::CssNonNegative>>
+pub fn surgeist_css::values::box_model::CssOverflowClipMargin::authored_offset(&self) -> core::option::Option<&surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength>>
 pub const fn surgeist_css::values::box_model::CssOverflowClipMargin::box_edge(&self) -> surgeist_css::values::common::CssBoxEdgeKeyword
 pub fn surgeist_css::values::box_model::CssOverflowClipMargin::initial() -> Self
-pub fn surgeist_css::values::box_model::CssOverflowClipMargin::offset(&self) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength, surgeist_css::numeric::CssNonNegative>
-pub fn surgeist_css::values::box_model::CssOverflowClipMargin::try_new(authored_box_edge: core::option::Option<surgeist_css::values::common::CssBoxEdgeKeyword>, authored_offset: core::option::Option<surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength, surgeist_css::numeric::CssNonNegative>>) -> core::option::Option<Self>
+pub fn surgeist_css::values::box_model::CssOverflowClipMargin::offset(&self) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength>
+pub fn surgeist_css::values::box_model::CssOverflowClipMargin::try_new(authored_box_edge: core::option::Option<surgeist_css::values::common::CssBoxEdgeKeyword>, authored_offset: core::option::Option<surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength>>) -> core::option::Option<Self>
 impl surgeist_css::values::box_model::CssOverflowClipMargin
 pub fn surgeist_css::values::box_model::CssOverflowClipMargin::serialize_specified(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 impl core::cmp::Eq for surgeist_css::values::box_model::CssOverflowClipMargin
