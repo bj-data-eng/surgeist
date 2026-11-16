@@ -5,7 +5,8 @@ use super::block_units::{
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
 use super::descriptor_stream::{
     Value, ValueError, blank_end, byte_offset, collect_scope, consume_remaining, drive_block_items,
-    expect_exhausted, fail, from_component, from_here, locate_blank, location, value_failure,
+    expect_exhausted, fail, from_component, from_here, locate_blank, location, refuse_root_block,
+    value_failure,
 };
 use super::property_input::StreamExt;
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
@@ -955,6 +956,7 @@ pub(super) fn read_descriptor_value<'i>(
     numeric: &NumericInputContext<'_>,
 ) -> Value<'i, crate::rule::page::syntax::PageValueData> {
     use crate::rule::page::syntax::PageValueData as V;
+    refuse_root_block(input, numeric, "page", kind.as_str())?;
     let start = input.mark();
     let first = input.site();
     let components = collect_scope(input, numeric).map_err(|(error, at)| {

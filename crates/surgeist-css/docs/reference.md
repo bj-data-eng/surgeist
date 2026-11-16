@@ -169,7 +169,7 @@ behavior and whether the move changed it.
 | §5.4.3 parse a stylesheet uses §5.5.1 consume a stylesheet's contents (no top-level flag); CDO/CDC are discarded. | Unchanged top-level dispatch. | Unchanged |
 | §5.5.3 at the top level: a prelude whose first two non-whitespace values are a `--` ident and a colon consumes its block and returns nothing. | `--foo:hover {}` was a valid type-plus-pseudo-class rule; it is now dropped with `DropQualifiedRule`. | Behavior change |
 | §5.5.4 and §5.5.5 consume every block as block contents; a failed declaration is reconsumed as a qualified rule with a `;` stop token, and §7.1 makes rules invalid in a `<declaration-list>`. | Rule-list bodies moved under #1328. Declaration-list bodies (`@font-face`, keyframe blocks, `@font-palette-values`, `@color-profile`, `@font-feature-values` and its blocks) now drop a nested rule as one unit and keep the declarations around it; `@font-face` and keyframe blocks are no longer dropped whole. | Behavior change |
-| §5.5.6 rejects a non-custom declaration whose value holds a top-level `{}` block beside other tokens, and §5.5.5 keeps interleaved declarations as nested declaration runs. | Already implemented through the block-contents definition. | Unchanged |
+| §5.5.6 rejects a non-custom declaration whose value holds a top-level `{}` block beside other tokens, and §5.5.5 keeps interleaved declarations as nested declaration runs. | Implemented through the block-contents definition. The property-value text front, checked component construction, the `@supports`, `@import supports()` and `@when supports()` declaration tests, and the descriptor value fronts refuse the same values at the opening brace, whether or not the value holds a substitution function; strict reentry refuses a replacement of that form through the same grammar. | Unchanged |
 | §5.4.10 parse a comma-separated list of component values appends a group only while input remains, so a final comma followed by no token adds no group. | Media query lists, forgiving selector lists and `@font-face` `src` lists no longer report an empty final member; `@media screen,{}` keeps one clean query. Checked import and custom-media construction agree. | Behavior change |
 | §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `CssParser::parse_block_contents` is the single declaration-list front: it implements §5.5.5 "consume a block's contents" for style attributes, CSSOM `cssText` and raw lists. | Behavior change |
 | §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8, §5.4.9 and §5.4.10. | `CssRule::parse`, `CssDeclaration::parse`, `CssComponentValues::parse` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
@@ -845,6 +845,11 @@ values may be empty and contain nested curly punctuation.
 
 Importance comes only from the argument. Root `!` annotations, semicolons and
 stray closing delimiters reject the complete input even after `var()` or `env()`.
+A non-custom value that holds a top-level `{}` block beside any other
+non-whitespace value is rejected too, with an unexpected-token error on the
+block's opening brace, as [Syntax 3 §5.5.6](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration)
+step 8 and `parse_block_contents` do; a `{}` block as the entire value, a block
+nested in another component and a custom value are not affected.
 Rejection reports `RejectInput`; resource limits retain `StopAtNestingLimit`.
 Implicit EOF closures are reported only when the value survives validation.
 
@@ -861,7 +866,11 @@ grammar. Its `CssPropertyTarget` is a canonical known-property identity or a che
 custom-property name (`Property`), an explicit `CssPropertyGrammar` (`Grammar`), or a
 property in `@page` or margin-box context (`PageProperty`, `MarginProperty`);
 importance is supplied separately. Top-level annotations, declaration separators
-and trailing grammar tokens are errors. The result retains ordinary, CSS-wide
+and trailing grammar tokens are errors, as is a top-level `{}` block beside any
+other non-whitespace value of a non-custom property, located on the block. The
+checks run in this order: an implicit closure of the supplied components is
+reported first, so `{} var(--x` is refused for its closure and `{} var(--x)` for
+its brace. The result retains ordinary, CSS-wide
 and substitution-dependent values without resolving them.
 
 ```rust
@@ -2085,8 +2094,11 @@ qualifying `env()` family: all ten Counter Styles descriptors, outer
 blocks. Every `env()` in the value must qualify; one malformed `env()` is not
 rescued by another valid `env()`. An independently invalid `var()` does not veto
 a valid `env()`, while `var()` alone supplies no exception in these contexts.
-Root annotations and declaration boundaries are checked before admission.
-Matched nested blocks remain data. A root bang in an `env()` fallback is invalid,
+Root annotations and declaration boundaries are checked before admission, as is
+a top-level `{}` block beside any other non-whitespace value, which every
+descriptor value front refuses at the brace ([Syntax 3 §5.5.6](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration)
+step 8). A `{}` block that is the whole value, and blocks nested in other
+components, remain data. A root bang in an `env()` fallback is invalid,
 while a bang inside a nested function is retained as nested content.
 
 `CssCounterStyleDescriptorValue::view`, `CssFontFeatureDisplayValue::view`, and
@@ -4183,7 +4195,9 @@ from its descriptors.
 `CssColorProfileDescriptorValue::try_new` share the whole-value grammar.
 Valid `env()` qualifies for whole-grammar deferral under
 [Env 1 §3](https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function),
-including other tokens such as `var()` and matched blocks. A standalone `var()`
+including other tokens such as `var()` and blocks that are the whole value or
+nested in another component; a top-level `{}` block beside any other value is
+refused at the brace, as in every descriptor value front. A standalone `var()`
 does not qualify; quoted strings and URL data remain data. Pending values retain
 their components and origins. `reparse_after_substitution` accepts caller-supplied
 replacement components, rejects residual actual `var()`/`env()` functions,
@@ -10310,7 +10324,13 @@ whitespace, comment removal or escape processing. Root importance annotations
 are invalid method value syntax, even though the rule form permits them. These
 method syntax failures return `CssSupportsConstructionError` with the responsible
 original argument origin. Ordinary unsupported declarations still retain an
-authored test without a known typed view. Both arguments keep separate source
+authored test without a known typed view, as does a declaration of a non-custom
+name whose value holds a top-level `{}` block beside any other non-whitespace
+value (`(width: {} var(--x))`) in the rule, `@import supports()`, `@when
+supports()` and method fronts alike ([Syntax 3 §5.5.6](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration)
+step 8); a `{}` block as the entire value and a custom property name keep their
+result. A `style()` container feature validates no value and retains every
+authored value. Both arguments keep separate source
 snapshots. These APIs do not evaluate support or execute DOM operations.
 
 ### Surgeist named-support test child composition

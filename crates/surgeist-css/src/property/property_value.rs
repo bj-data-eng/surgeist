@@ -441,7 +441,9 @@ impl CssDeclaration {
     /// and allow empty values. Known grammars reject implicit closures in the
     /// original components, including CSS-wide and substitution-dependent values.
     /// Top-level annotations and declaration delimiters are rejected: importance
-    /// comes only from the separate argument.
+    /// comes only from the separate argument. So is a top-level `{}` block beside
+    /// any other non-whitespace value of a non-custom property, located on the
+    /// block, even when a substitution function defers the grammar.
     ///
     /// A [`CssPropertyTarget::PageProperty`] or [`CssPropertyTarget::MarginProperty`]
     /// checks the components as one authored Page declaration. It admits

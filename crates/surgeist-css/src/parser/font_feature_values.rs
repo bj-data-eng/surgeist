@@ -18,7 +18,7 @@ use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
 use super::syntax_types::{Attached, Stream, SyntaxError};
 use crate::component::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
     CssSerializedValue, CssValueOrigin, CssValueTokenRef,
 };
 use crate::declaration::{CssAuthoredDeclarationValue, CssSubstitutionDependentValue};
@@ -516,6 +516,19 @@ fn feature_data<'i>(
                 error(component, "nonnegative integer tokens"),
             ));
         }
+    }
+    // A `{}` block beside other values is no value, even one that defers to
+    // substitution (Syntax 3 section 5.5.6, step 8); the rule is the stream's.
+    if input.root_block_beside_values().is_some()
+        && let Some(block) = components.items().iter().find(|component| {
+            matches!(component.view(), CssComponentValueRef::Block(block)
+                if block.kind() == CssBlockKind::CurlyBracket)
+        })
+    {
+        return Err(SyntaxError::custom(
+            input.site(),
+            error(block, "nonnegative integer tokens"),
+        ));
     }
     if qualifies(components, numeric, input.site())? {
         return Ok(FontFeatureValueData::Pending(pending(input)));

@@ -1757,6 +1757,9 @@ fn parse_property_value_from_parser<'i>(
         }
     }
     parser.restore(start);
+    if !matches!(grammar, PropertyValueGrammar::Custom(_)) {
+        refuse_root_block_beside_values(parser)?;
+    }
     let body = parse_property_declaration_body_from_property_input(
         grammar,
         parser,
@@ -1765,6 +1768,23 @@ fn parse_property_value_from_parser<'i>(
     )?;
     parser.require_empty()?;
     Ok(body)
+}
+
+/// Syntax 3 section 5.5.6, step 8: the value of a non-custom declaration is no
+/// `{}` block beside other values, whether the grammar validates it or defers
+/// it to substitution. Every front that reads the value of a non-custom
+/// property as source text or components calls this before a body parser reads
+/// it; the failure is the unexpected opening brace. The stream does not move.
+fn refuse_root_block_beside_values<'i>(
+    parser: &mut syntax_types::Stream<'i>,
+) -> Result<
+    (),
+    crate::parser::syntax_types::SyntaxError<'i, crate::diagnostic::error::property::Error>,
+> {
+    match parser.root_block_beside_values() {
+        Some(block) => Err(block.unexpected(surgeist_css_parser::Token::OpenCurly)),
+        None => Ok(()),
+    }
 }
 
 fn parse_property_declaration_body_from_property_input<'i>(

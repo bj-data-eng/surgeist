@@ -647,7 +647,11 @@ fn parsed_admitted(
     let document = crate::syntax_consumption::source_window_document(first.source(), start..end)?;
     let mut input = document.root();
     let numeric = crate::numeric::expression::NumericInputContext::parsed(first.source());
-    let parsed = if parser_context.selects_svg_glyph(name) {
+    // A name that is no custom property name is refused a `{}` block beside
+    // other values, as `(width: {} 1px)` is: the test has no known view.
+    let parsed = if let Err(error) = super::refuse_root_block_beside_values(&mut input) {
+        Err(error)
+    } else if parser_context.selects_svg_glyph(name) {
         super::parse_svg_glyph_declaration_body_from_property_input(
             &mut input,
             &numeric,

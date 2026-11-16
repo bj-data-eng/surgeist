@@ -356,7 +356,11 @@ impl CssParser {
     ///
     /// Invalid grammar returns `None` with `RejectInput`; resource exhaustion
     /// uses `StopAtNestingLimit`. Implicit EOF closures are reported only on
-    /// retention.
+    /// retention. A non-custom value with a top-level `{}` block beside any
+    /// other non-whitespace value returns `None` with an unexpected-token
+    /// `RejectInput` on the block's opening brace, whether or not a
+    /// substitution function defers its validation; a custom value, and a `{}`
+    /// block as the entire value, are judged by their own grammar.
     ///
     /// A page or margin value has no source-text front: it is checked from owned
     /// components through [`CssDeclaration::try_from_components`], so
