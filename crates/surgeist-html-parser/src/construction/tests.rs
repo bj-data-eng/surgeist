@@ -10,6 +10,7 @@ mod body_recovery;
 mod child_order;
 mod element_guard;
 mod formatting;
+mod g2_d2;
 mod image_form;
 mod input;
 mod input_types;

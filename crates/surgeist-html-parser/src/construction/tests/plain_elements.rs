@@ -138,3 +138,28 @@ fn the_document_a_report_answers_for_a_node_is_the_one_its_column_named_at_publi
         }
     }
 }
+
+/// A tree whose root was created with no document names none: its root has no row in the table
+/// of named roots, the search for it costs no key when the table is empty, and every node of the
+/// tree is in no document. A fragment session created without a context has such trees.
+#[test]
+fn a_root_created_without_a_document_answers_unnamed() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    let kept = session.allocate_element(&mut c, html("p")).unwrap();
+    session.insert(&mut c, &root, &kept, None, None).unwrap();
+    let lone = session.allocate_element(&mut c, html("div")).unwrap();
+    let mut output = frozen(session, &mut c);
+    let storage = output.storage.as_ref().unwrap();
+    let contexts = &storage.payloads.facts.contexts;
+    for position in [0, lone.index] {
+        let (answer, probes) = contexts.tree_document(position, false);
+        assert!(matches!(answer, node_context::TreeDocument::Unnamed));
+        assert_eq!(probes, 0);
+    }
+    assert!(contexts.frozen_column.iter().all(|&entry| entry == 0));
+    assert!(contexts.named_document(kept.index).0.is_none());
+    output.release(&mut c).unwrap();
+    storage_zero(&c);
+}
