@@ -15,13 +15,13 @@ fn registry_rows(elements: usize, detail: crate::DetailSet) -> Option<usize> {
     Some(report.history().storage().payloads.values.len())
 }
 
-/// The registry rows one plain element holds: the string of its name and the string of its
-/// namespace, and with the detail of causes recorded the cause of its creation. The element has
-/// no nonce: its nonce is the empty nonce every element of its namespaces has, which no row holds.
-/// The oracle is the families an element has independently of its nonce.
+/// The registry rows one plain element holds: with the detail of causes recorded the cause of its
+/// creation, and none otherwise. The strings of its name and namespace are the record's own. The
+/// element has no nonce: its nonce is the empty nonce every element of its namespaces has, which
+/// no row holds. The oracle is the families an element has independently of its nonce.
 #[test]
 fn a_plain_element_holds_no_registry_row_for_its_nonce() {
-    for (detail, per_element) in [(crate::DetailSet::NONE, 2), (crate::DetailSet::ALL, 3)] {
+    for (detail, per_element) in [(crate::DetailSet::NONE, 0), (crate::DetailSet::ALL, 1)] {
         if !g2_d2::details().contains(&detail) {
             continue;
         }
