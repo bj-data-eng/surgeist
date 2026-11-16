@@ -7,3 +7,4 @@ mod declaration_importance;
 mod domain_declaration_contents;
 mod ordered_declaration_list_contract;
 mod raw_declaration_list;
+mod top_level_curly_block_value;

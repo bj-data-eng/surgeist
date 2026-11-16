@@ -178,17 +178,31 @@ fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
                 .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::RejectInput })
         );
     }
-    // Matched blocks are declaration-value data under whole env deferral.
+    // Syntax 3 §5.5.6 step 8: a top-level `{}` block beside another value is no
+    // declaration's value, so env() does not rescue it.
     let raw = CssAuthoredFontFaceDescriptorValue::parse(
         &CssParser::default(),
         "env(width){}",
+        Kind::FontWidth,
+    );
+    assert!(raw.syntax().is_none(), "{raw:?}");
+    assert!(
+        raw.diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.action() == CssRecoveryAction::RejectInput)
+    );
+    // A block nested in env() is declaration-value data under whole env
+    // deferral (Syntax 3 §7.2).
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "env(width,{})",
         Kind::FontWidth,
     );
     assert!(raw.is_clean(), "{raw:?}");
     let Some(surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Pending(pending)) =
         raw.syntax()
     else {
-        panic!("valid env defers font-width including its matched block");
+        panic!("valid env defers font-width including its nested block");
     };
     assert_eq!(
         pending
@@ -196,7 +210,7 @@ fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
             .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
-        "env(width){}"
+        "env(width,{})"
     );
     let source = "@font-face{font-width:env(width)!important;font-display:swap}";
     let sheet = one_font_face(source);

@@ -345,7 +345,15 @@ fn checked_failures_map_to_supplied_tokens_and_reject_declaration_annotations() 
     assert_eq!(origin.source().as_str(), "none");
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 4);
-    for value in ["normal!important", "dark;", "normal {}"] {
+    // Syntax 3 (2026 CRD) §5.5.6 step 8: a non-custom value with a top-level
+    // `{}` block and another value is no declaration's value, though var()
+    // defers the grammar; block contents drop it the same way.
+    for value in [
+        "normal!important",
+        "dark;",
+        "normal {}",
+        "{} var(--palette)",
+    ] {
         assert!(
             CssDeclaration::try_from_components(
                 &CssParser::default(),
@@ -389,25 +397,13 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
         "env(palette)",
         "var(--palette, {fallback})",
         "palette-mix(var(--palette), dark)",
-        // Syntax 3 (2026) §7.2 permits balanced blocks; Variables 1 §3
-        // defers the entire known-property grammar for a valid var() reference.
-        "{} var(--palette)",
     ] {
-        // Syntax 3 (2026 CRD) §5.5.6 step 8: block contents drop a non-custom
-        // declaration that holds a top-level `{}` block and another value, so
-        // only the checked component path admits that spelling.
-        let mut sources = vec![checked(symbolic)];
-        if symbolic.starts_with("{}") {
-            let report = CssParser::default()
-                .parse_block_contents(format!("font-palette:{symbolic}!important"));
-            assert!(report.syntax().is_empty(), "{symbolic}");
-            assert!(!report.is_clean(), "{symbolic}");
-        } else {
-            sources.insert(
-                0,
-                important_property_declaration(CssKnownProperty::FontPalette, symbolic),
-            );
-        }
+        // Variables 1 §3 defers the entire known-property grammar for a valid
+        // var() reference; Syntax 3 (2026) §7.2 admits nested blocks.
+        let sources = [
+            important_property_declaration(CssKnownProperty::FontPalette, symbolic),
+            checked(symbolic),
+        ];
         for source in sources {
             let before = source.clone();
             assert!(matches!(

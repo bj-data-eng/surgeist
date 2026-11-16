@@ -297,7 +297,8 @@ fn valid_env_defers_the_whole_value_including_nested_and_residual_var_tokens() {
         "f(env(choice, 7))",
         "env(choice) var(--later)",
         "env(choice) var()",
-        "env(choice){}", // Matched blocks remain declaration-value data.
+        "{env(choice)}",  // A whole-value block is declaration-value data.
+        "env(choice,{})", // So is a nested block.
     ] {
         admitted(&CssCounterStyleDescriptorValue::parse(
             &CssParser::default(),
@@ -309,6 +310,24 @@ fn valid_env_defers_the_whole_value_including_nested_and_residual_var_tokens() {
             source,
         ));
         admitted(&CssFontFeatureValue::parse(
+            &CssParser::default(),
+            source,
+            Feature::Stylistic,
+        ));
+    }
+    // Syntax 3 §5.5.6 step 8: a top-level `{}` block beside another value is no
+    // declaration's value, so valid env() does not rescue it.
+    for source in ["env(choice){}", "{x} env(choice)"] {
+        rejected(CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
+            source,
+            Counter::Range,
+        ));
+        rejected(CssFontFeatureDisplayValue::parse(
+            &CssParser::default(),
+            source,
+        ));
+        rejected(CssFontFeatureValue::parse(
             &CssParser::default(),
             source,
             Feature::Stylistic,

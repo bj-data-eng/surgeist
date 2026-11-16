@@ -1,5 +1,7 @@
-//! Matched blocks remain declaration-value data under whole-value substitution
-//! admission, including the palette owner's independent var permission.
+//! A `{}` block that is the whole value remains declaration-value data under
+//! whole-value substitution admission, including the palette owner's independent
+//! var permission (Syntax 3 §7.2). A `{}` block beside another value is no
+//! declaration's value in any front (Syntax 3 §5.5.6 step 8).
 use surgeist_css::CssParser;
 use surgeist_css::component::CssComponentValues;
 use surgeist_css::rule::CssRule;
@@ -33,18 +35,25 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
             };
             assert_eq!(rule.descriptors().len(), if whole { 3 } else { 2 });
             let fragment = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
-            assert!(
-                fragment.is_clean(),
-                "{}: {value}: {fragment:?}",
-                kind.as_str()
-            );
             let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
             let constructed = CssFontPaletteDescriptorValue::try_new(
                 kind,
                 components.clone(),
                 Default::default(),
-            )
-            .unwrap();
+            );
+            if !whole {
+                // The value fronts refuse the value the declaration front
+                // returns nothing for (§5.5.6 step 8), at the opening brace.
+                assert!(fragment.syntax().is_none(), "{}: {value}", kind.as_str());
+                assert!(constructed.is_err(), "{}: {value}", kind.as_str());
+                continue;
+            }
+            assert!(
+                fragment.is_clean(),
+                "{}: {value}: {fragment:?}",
+                kind.as_str()
+            );
+            let constructed = constructed.unwrap();
             assert_eq!(constructed.components(), &components);
             let mut admitted_values = vec![fragment.syntax().as_ref().unwrap(), &constructed];
             if whole {
