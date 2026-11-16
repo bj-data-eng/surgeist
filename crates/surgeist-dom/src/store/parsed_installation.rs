@@ -918,13 +918,25 @@ fn collect_fragment<'a>(
     }
     // The nodes of the fragment and of the contents of its shadow roots, in creation order.
     let mut roots: Vec<HtmlNodeId> = Vec::new();
-    c.reserve(&mut roots, 1 + source.shadow.len())?;
+    c.reserve(
+        &mut roots,
+        source
+            .shadow
+            .len()
+            .checked_add(1)
+            .ok_or(Error::RepresentationExhausted)?,
+    )?;
     roots.push(fragment.root().id());
     roots.extend(source.shadow.iter().map(|shadow| shadow.subject));
     let walked = source.add_trees(&roots, c);
     c.bytes = c
         .bytes
-        .checked_sub(roots.capacity() * size_of::<HtmlNodeId>())
+        .checked_sub(
+            roots
+                .capacity()
+                .checked_mul(size_of::<HtmlNodeId>())
+                .ok_or(Error::RepresentationExhausted)?,
+        )
         .ok_or(Error::RepresentationExhausted)?;
     walked?;
     collect_rows(report, source, c)
