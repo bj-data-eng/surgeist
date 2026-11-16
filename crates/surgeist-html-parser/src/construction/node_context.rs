@@ -31,6 +31,11 @@ pub(super) struct NodeContexts {
     pub(super) frozen_column: Vec<u32>,
 }
 
+/// A row of the table of named documents holds an entry the list of documents does not hold. A
+/// published parse is qualified once, so this is a defect of the report, not an answer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DanglingEntry;
+
 /// What a tree answers for its document.
 pub(super) enum TreeDocument<'a> {
     /// The root is a Document, which is its own document.
@@ -93,33 +98,42 @@ impl NodeContexts {
         self.column.as_ref()?.row(node).copied()
     }
     /// The document the tree rooted at `root` has, with the number of keys the search read.
-    /// `root_is_document` is whether the record is a Document.
+    /// `root_is_document` is whether the record is a Document. A row of the table whose entry the
+    /// list does not hold is [`DanglingEntry`].
     pub(super) fn tree_document(
         &self,
         root: usize,
         root_is_document: bool,
-    ) -> (TreeDocument<'_>, u64) {
+    ) -> Result<(TreeDocument<'_>, u64), DanglingEntry> {
         if root_is_document {
-            return (TreeDocument::Itself(root), 0);
+            return Ok((TreeDocument::Itself(root), 0));
         }
-        let (named, probes) = self.named_document(root);
-        (
+        let (named, probes) = self.named_document(root)?;
+        Ok((
             named.map_or(TreeDocument::Unnamed, TreeDocument::Named),
             probes,
-        )
+        ))
     }
     /// The document the record at `node` names in the table built when the parse was frozen, with
     /// the number of keys the search read: a root that is not a Document, or a link, whose own cell
-    /// named one. A link whose cell named none is in no document.
-    pub(super) fn named_document(&self, node: usize) -> (Option<&DocumentRef>, u64) {
+    /// named one. A node with no row, such as a link whose cell named none, is in no document; a
+    /// row whose entry the list does not hold is [`DanglingEntry`].
+    pub(super) fn named_document(
+        &self,
+        node: usize,
+    ) -> Result<(Option<&DocumentRef>, u64), DanglingEntry> {
         let Some(named) = &self.named else {
-            return (None, 0);
+            return Ok((None, 0));
         };
         let (found, probes) = named.find_published(node);
-        let document = found
-            .and_then(|index| named.row(index))
-            .and_then(|&entry| self.document(entry));
-        (document, probes)
+        let Some(index) = found else {
+            return Ok((None, probes));
+        };
+        named
+            .row(index)
+            .and_then(|&entry| self.document(entry))
+            .map(|document| (Some(document), probes))
+            .ok_or(DanglingEntry)
     }
     pub(super) fn release(
         self,
@@ -340,7 +354,7 @@ pub(super) fn document_of<'a>(
         arena.node_at(root)?.kind(),
         ConstructionNodeKind::Document(_)
     );
-    let (document, probes) = contexts.tree_document(root, is_document);
+    let (document, probes) = contexts.tree_document(root, is_document).ok()?;
     Some((document, hops.saturating_add(probes)))
 }
 

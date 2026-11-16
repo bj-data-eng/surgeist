@@ -182,7 +182,7 @@ fn check(report: &crate::HtmlParseReport, label: &str, tally: &mut Tally) {
             && element.link_flags().is_some()
         {
             tally.links += 1;
-            let own = contexts.named_document(position).0;
+            let own = contexts.named_document(position).unwrap().0;
             let own_id = match own {
                 Some(DocumentRef::Owned(d)) => {
                     Some(arena.node_at(*d).unwrap().as_node().unwrap().id())

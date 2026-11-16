@@ -394,7 +394,11 @@ impl<'a> PreparedReportStorage<'a> {
                     // requires one: the link's own cell named it when the parse was frozen. Not
                     // every node has one: nodes created without a document, such as implied and
                     // text nodes of a fragment, are in no document.
-                    let (document, probes) = storage.payloads.facts.contexts.named_document(node);
+                    let Ok((document, probes)) =
+                        storage.payloads.facts.contexts.named_document(node)
+                    else {
+                        return Err(latch_registry_row(c));
+                    };
                     c.charge(HtmlParseWorkCategory::RecordVisit, probes.saturating_add(1))?;
                     if document.is_none() {
                         return Err(SessionError::NodeDocumentUnavailable);
@@ -975,7 +979,12 @@ impl ReportStorage {
             .payloads
             .facts
             .contexts
-            .tree_document(record.position(), is_document);
+            .tree_document(record.position(), is_document)
+            .map_err(|_| {
+                HtmlParseTreeDocumentError::Unresolved(unresolved(
+                    read::HtmlParseUnresolvedKind::Fact,
+                ))
+            })?;
         let document = match found {
             node_context::TreeDocument::Itself(root) => Some(
                 resolver
@@ -1455,8 +1464,9 @@ impl<'a> Refs<'a> {
                     .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
                 let link = link.ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
                 // The document the link's own cell named when the parse was frozen.
-                let Some(current) = r.storage.payloads.facts.contexts.named_document(link).0 else {
-                    return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
+                let current = match r.storage.payloads.facts.contexts.named_document(link) {
+                    Ok((Some(current), _)) => current,
+                    _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
                 };
                 Self::Link {
                     parser_document: r.optional_document(parser_document.as_ref())?,

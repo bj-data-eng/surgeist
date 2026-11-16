@@ -154,12 +154,12 @@ fn a_root_created_without_a_document_answers_unnamed() {
     let storage = output.storage.as_ref().unwrap();
     let contexts = &storage.payloads.facts.contexts;
     for position in [0, lone.index] {
-        let (answer, probes) = contexts.tree_document(position, false);
+        let (answer, probes) = contexts.tree_document(position, false).unwrap();
         assert!(matches!(answer, node_context::TreeDocument::Unnamed));
         assert_eq!(probes, 0);
     }
     assert!(contexts.frozen_column.iter().all(|&entry| entry == 0));
-    assert!(contexts.named_document(kept.index).0.is_none());
+    assert!(contexts.named_document(kept.index).unwrap().0.is_none());
     output.release(&mut c).unwrap();
     storage_zero(&c);
 }
@@ -174,12 +174,8 @@ fn a_refused_release_after_a_stopped_freeze_leaves_the_first_error() {
     let mut other = control();
     let named = FamilyTable::<u32>::new(&mut other).unwrap();
     let owner = c.identity();
-    let ended = node_context::abandon_table(
-        &mut c,
-        &owner,
-        named,
-        SessionError::NodeDocumentUnavailable,
-    );
+    let ended =
+        node_context::abandon_table(&mut c, &owner, named, SessionError::NodeDocumentUnavailable);
     assert_eq!(ended, SessionError::NodeDocumentUnavailable);
     assert_eq!(
         c.stop(),
