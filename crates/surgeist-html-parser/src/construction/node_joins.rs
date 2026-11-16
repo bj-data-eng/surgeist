@@ -34,7 +34,6 @@ pub(super) enum Join {
     SelectFamily,
     Base,
     BaseDocument,
-    LookupRegistry,
     /// The `StyleOrder` row listing the style elements of the tree the record
     /// roots, while it is current; see `SessionStorage::style_order_floor`.
     StyleOrder,
@@ -74,11 +73,10 @@ slots!(Join, JOIN_COUNT, {
     SelectFamily => 9,
     Base => 10,
     BaseDocument => 11,
-    LookupRegistry => 12,
-    StyleOrder => 13,
-    ProcessingInstructionAttributes => 14,
-    SvgScript => 15,
-    Details => 16,
+    StyleOrder => 12,
+    ProcessingInstructionAttributes => 13,
+    SvgScript => 14,
+    Details => 15,
 });
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is

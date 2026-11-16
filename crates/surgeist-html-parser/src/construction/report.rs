@@ -90,7 +90,6 @@ pub(crate) enum UnboundRow {
     SelectFamily,
     Script,
     Template,
-    LookupRegistry,
     SvgScript,
     /// Only a contextual report that allows declarative shadow roots has these
     /// rows, so [`Self::ALL`] leaves it out.
@@ -98,7 +97,7 @@ pub(crate) enum UnboundRow {
 }
 #[cfg(test)]
 impl UnboundRow {
-    pub(crate) const ALL: [Self; 10] = [
+    pub(crate) const ALL: [Self; 9] = [
         Self::Textarea,
         Self::Output,
         Self::Input,
@@ -107,7 +106,6 @@ impl UnboundRow {
         Self::SelectFamily,
         Self::Script,
         Self::Template,
-        Self::LookupRegistry,
         Self::SvgScript,
     ];
     /// A source that creates a row of this kind.
@@ -121,7 +119,6 @@ impl UnboundRow {
             Self::SelectFamily => "<!doctype html><select><option>a</select>",
             Self::Script => "<!doctype html><script>a</script>",
             Self::Template => "<!doctype html><template>a</template>",
-            Self::LookupRegistry => "<!doctype html><p>a",
             Self::SvgScript => "<!doctype html><svg><script/></svg>",
             Self::Shadow => "<template shadowrootmode=open><p>B</p></template>",
         }
@@ -137,7 +134,6 @@ impl UnboundRow {
             | (Self::SelectFamily, RetainedPayload::SelectFamily { node, .. })
             | (Self::Script, RetainedPayload::Script { node, .. })
             | (Self::Template, RetainedPayload::Template { node, .. })
-            | (Self::LookupRegistry, RetainedPayload::LookupRegistry { node, .. })
             | (Self::SvgScript, RetainedPayload::SvgScript { node, .. })
             | (Self::Shadow, RetainedPayload::Shadow { root: node, .. }) => Some(node),
             _ => None,
@@ -477,109 +473,6 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_node(arena, owner, c)?;
                     }
                 }
-                RetainedPayload::LookupRegistry {
-                    node,
-                    registry,
-                    creation: Some(state),
-                } => {
-                    if closed_common
-                        && storage.fragment.is_none()
-                        && !matches!(registry, context::RegistryRef::Null)
-                    {
-                        return Err(SessionError::ContextUnavailable);
-                    }
-                    if closed_common && matches!(registry, context::RegistryRef::Null) {
-                        let ConstructionNodeKind::Element(element) = arena
-                            .node_at(node.ok_or(SessionError::WrongToken)?)
-                            .ok_or(SessionError::WrongToken)?
-                            .kind()
-                        else {
-                            return Err(SessionError::WrongToken);
-                        };
-                        let class = surgeist_html::bounded::native::element_classification_with(
-                            element.name(),
-                            |step| {
-                                match step {
-                                surgeist_html::bounded::native::HtmlElementNameRead::NamespaceHeader
-                                | surgeist_html::bounded::native::HtmlElementNameRead::LocalNameHeader => {
-                                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)
-                                }
-                                surgeist_html::bounded::native::HtmlElementNameRead::NamespacePair
-                                | surgeist_html::bounded::native::HtmlElementNameRead::LocalNamePair => {
-                                    c.charge_unit_literal_comparison()
-                                }
-                            }
-                            },
-                        )?;
-                        if class.common_scope() != state.common_scope {
-                            return Err(SessionError::WrongToken);
-                        }
-                        let subject = node.ok_or(SessionError::WrongToken)?;
-                        let family = match class {
-                            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
-                                surgeist_html::vocabulary::KnownHtmlElement::A
-                                | surgeist_html::vocabulary::KnownHtmlElement::Area,
-                            ) => 1,
-                            surgeist_html::elements::native::HtmlElementClass::FormAssociated(
-                                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image,
-                            ) => 2,
-                            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
-                                surgeist_html::vocabulary::KnownHtmlElement::Style,
-                            ) => 3,
-                            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
-                                surgeist_html::vocabulary::KnownHtmlElement::Dialog,
-                            ) => 4,
-                            _ => 0,
-                        };
-                        if family != 0 {
-                            let scan = |c: &mut ParseControl, charged: bool| {
-                                let mut count = 0usize;
-                                for candidate in &storage.payloads.values {
-                                    if charged {
-                                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                                    }
-                                    if matches!((family, candidate),
-                                        (1, RetainedPayload::Hyperlink { node, .. })
-                                        | (2, RetainedPayload::Image {node, ..})
-                                        | (3, RetainedPayload::Style {node, ..})
-                                        | (4, RetainedPayload::Dialog {node, ..}) if *node == subject)
-                                    {
-                                        // At most one per registry row.
-                                        count = count.saturating_add(1);
-                                    }
-                                }
-                                Ok::<_, SessionError>(count)
-                            };
-                            let join = match family {
-                                1 => Join::Hyperlink,
-                                2 => Join::Image,
-                                3 => Join::Style,
-                                _ => Join::Dialog,
-                            };
-                            // The join names the only row unless a second row of a
-                            // unique family ever joined a record; only then count by scan.
-                            let count = match storage.payloads.unique_row_count(c, subject, join)? {
-                                Some(count) => count,
-                                None => scan(c, true)?,
-                            };
-                            #[cfg(test)]
-                            {
-                                // An uncharged scan, so the check stays out of the work.
-                                assert_eq!(
-                                    count,
-                                    scan(c, false)?,
-                                    "join count of record {subject}"
-                                );
-                            }
-                            if count != 1 {
-                                return Err(SessionError::AssociatedFacts);
-                            }
-                        }
-                    }
-                    if let Some(saved) = state.saved_is {
-                        checked_raw(storage, saved, c)?;
-                    }
-                }
                 RetainedPayload::Template { state, .. } => {
                     checked_node(arena, state.contents, c)?;
                     for node in [state.target, state.start, state.end].into_iter().flatten() {
@@ -622,10 +515,21 @@ impl<'a> PreparedReportStorage<'a> {
                 return Err(latch_registry_row(c));
             }
         }
-        // The Documents the trees of the parse name, each held once.
-        for (_, document) in storage.payloads.facts.contexts.documents().iter() {
+        // The contexts the nodes of the parse name, each held once. A parse of an ordinary
+        // Document has no registry to name but Null.
+        for (_, context) in storage.payloads.facts.contexts.entries().iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            checked_document(storage, document, c)?;
+            checked_document(storage, &context.document, c)?;
+            if closed_common
+                && storage.fragment.is_none()
+                && !matches!(context.registry, context::RegistryRef::Null)
+            {
+                return Err(SessionError::ContextUnavailable);
+            }
+        }
+        qualify_creation_rows(storage, arena, c, closed_common)?;
+        if closed_common {
+            qualify_elements(storage, arena, c)?;
         }
         for (_, missing) in storage.payloads.facts.missing.iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -766,6 +670,145 @@ impl<'a> PreparedReportStorage<'a> {
         })
     }
 }
+/// The class of an element name, charging the reads that classify it.
+fn classify(
+    name: &surgeist_html::values::QualifiedName,
+    c: &mut ParseControl,
+) -> Result<surgeist_html::elements::native::HtmlElementClass, SessionError> {
+    Ok(surgeist_html::bounded::native::element_classification_with(
+        name,
+        |step| match step {
+            surgeist_html::bounded::native::HtmlElementNameRead::NamespaceHeader
+            | surgeist_html::bounded::native::HtmlElementNameRead::LocalNameHeader => {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+            }
+            surgeist_html::bounded::native::HtmlElementNameRead::NamespacePair
+            | surgeist_html::bounded::native::HtmlElementNameRead::LocalNamePair => {
+                c.charge_unit_literal_comparison()
+            }
+        },
+    )?)
+}
+/// Qualifies the rows of the table of creation states: each names an element, its saved is value
+/// resolves, and in a closed profile with the Null registry its common scope is the one the
+/// classification of its name gives.
+fn qualify_creation_rows(
+    storage: &FrozenStorage,
+    arena: &HtmlConstructionResult,
+    c: &mut ParseControl,
+    closed_common: bool,
+) -> Result<(), SessionError> {
+    let contexts = &storage.payloads.facts.contexts;
+    for (node, state) in storage.payloads.facts.creation.iter() {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<context::ElementCreationState>() as u64,
+        )?;
+        let record = checked_node(arena, node, c)?;
+        let ConstructionNodeKind::Element(element) = record.kind() else {
+            return Err(SessionError::WrongToken);
+        };
+        if closed_common {
+            let (null, probes) = contexts
+                .registry_is_null(node)
+                .map_err(|_| latch_registry_row(c))?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, probes)?;
+            if null && classify(element.name(), c)?.common_scope() != state.common_scope {
+                return Err(SessionError::WrongToken);
+            }
+        }
+        if let Some(saved) = state.saved_is {
+            checked_raw(storage, saved, c)?;
+        }
+    }
+    Ok(())
+}
+/// Qualifies that every element of a closed profile with the Null registry whose name classifies
+/// it in the Hyperlink, Image, Style or Dialog family has exactly one row of that family. The
+/// walk visits each record once and classifies each such element.
+fn qualify_elements(
+    storage: &FrozenStorage,
+    arena: &HtmlConstructionResult,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
+    let contexts = &storage.payloads.facts.contexts;
+    for subject in 0..arena.len() {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let record = arena.node_at(subject).ok_or(SessionError::ForeignNode)?;
+        let ConstructionNodeKind::Element(element) = record.kind() else {
+            continue;
+        };
+        if contexts.registered() {
+            let (null, probes) = contexts
+                .registry_is_null(subject)
+                .map_err(|_| latch_registry_row(c))?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, probes)?;
+            if !null {
+                continue;
+            }
+        }
+        let class = classify(element.name(), c)?;
+        let family = match class {
+            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                surgeist_html::vocabulary::KnownHtmlElement::A
+                | surgeist_html::vocabulary::KnownHtmlElement::Area,
+            ) => 1,
+            surgeist_html::elements::native::HtmlElementClass::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image,
+            ) => 2,
+            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                surgeist_html::vocabulary::KnownHtmlElement::Style,
+            ) => 3,
+            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                surgeist_html::vocabulary::KnownHtmlElement::Dialog,
+            ) => 4,
+            _ => 0,
+        };
+        if family == 0 {
+            continue;
+        }
+        let scan = |c: &mut ParseControl, charged: bool| {
+            let mut count = 0usize;
+            for candidate in &storage.payloads.values {
+                if charged {
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                }
+                if matches!((family, candidate),
+                    (1, RetainedPayload::Hyperlink { node, .. })
+                    | (2, RetainedPayload::Image {node, ..})
+                    | (3, RetainedPayload::Style {node, ..})
+                    | (4, RetainedPayload::Dialog {node, ..}) if *node == subject)
+                {
+                    // At most one per registry row.
+                    count = count.saturating_add(1);
+                }
+            }
+            Ok::<_, SessionError>(count)
+        };
+        let join = match family {
+            1 => Join::Hyperlink,
+            2 => Join::Image,
+            3 => Join::Style,
+            _ => Join::Dialog,
+        };
+        // The join names the only row unless a second row of a unique family ever joined a
+        // record; only then count by scan.
+        let count = match storage.payloads.unique_row_count(c, subject, join)? {
+            Some(count) => count,
+            None => scan(c, true)?,
+        };
+        #[cfg(test)]
+        {
+            // An uncharged scan, so the check stays out of the work.
+            assert_eq!(count, scan(c, false)?, "join count of record {subject}");
+        }
+        if count != 1 {
+            return Err(SessionError::AssociatedFacts);
+        }
+    }
+    Ok(())
+}
 fn checked_document(
     storage: &FrozenStorage,
     document: &DocumentRef,
@@ -894,7 +937,6 @@ fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
         | RetainedPayload::Dialog { node, .. } => MetadataNode::Bound(*node),
         RetainedPayload::Base { node, .. }
         | RetainedPayload::Nonce { node, .. }
-        | RetainedPayload::LookupRegistry { node, .. }
         | RetainedPayload::PiAttributes { node, .. }
         | RetainedPayload::Template { node, .. }
         | RetainedPayload::SvgScript { node, .. }
@@ -1001,6 +1043,120 @@ impl ReportStorage {
         };
         Ok(HtmlParseTreeDocument { document, probes })
     }
+    /// The custom element state and the saved `is` value of the element `node`: its row in the
+    /// table of creation states, and for an element with none the default its creation gives, which
+    /// is no custom element state and no saved `is` value. A node that is not an element has no
+    /// creation state.
+    pub(crate) fn node_creation(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<HtmlParseNodeRead<Option<HtmlParseCreation<'_>>>, HtmlParseNodeReadError> {
+        let storage = self.history.storage();
+        let arena = arena(storage);
+        let record = arena
+            .node_by_result_id(node)
+            .map_err(|_| HtmlParseNodeReadError::Foreign)?;
+        if !matches!(record.kind(), ConstructionNodeKind::Element(_)) {
+            return Ok(HtmlParseNodeRead {
+                value: None,
+                probes: 0,
+            });
+        }
+        let creation = &storage.payloads.facts.creation;
+        let (found, probes) = creation.find_published(record.position());
+        let value = match found {
+            None => Some(HtmlParseCreation {
+                state: surgeist_html::elements::native::HtmlCustomElementState::Uncustomized,
+                saved_is: None,
+            }),
+            Some(index) => {
+                let state = creation
+                    .row(index)
+                    .ok_or(HtmlParseNodeReadError::Unresolved(unresolved(
+                        read::HtmlParseUnresolvedKind::Fact,
+                    )))?;
+                let resolver = Resolver {
+                    history: &self.history,
+                    storage,
+                    arena,
+                };
+                let saved = state
+                    .saved_is
+                    .map(|slot| resolver.raw(slot))
+                    .transpose()
+                    .map_err(HtmlParseNodeReadError::Unresolved)?;
+                Some(HtmlParseCreation {
+                    state: state.state,
+                    saved_is: saved,
+                })
+            }
+        };
+        Ok(HtmlParseNodeRead { value, probes })
+    }
+    /// The common state of the element `node`, in a closed profile with the Null registry: the
+    /// scope of its row in the table of creation states, and for an element with none the scope of
+    /// its namespace. A node that is not an element has none.
+    pub(crate) fn node_common_state(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<
+        HtmlParseNodeRead<
+            Option<surgeist_html::elements::native::HtmlCommonState<core::convert::Infallible>>,
+        >,
+        HtmlParseNodeReadError,
+    > {
+        let storage = self.history.storage();
+        let arena = arena(storage);
+        let record = arena
+            .node_by_result_id(node)
+            .map_err(|_| HtmlParseNodeReadError::Foreign)?;
+        let ConstructionNodeKind::Element(element) = record.kind() else {
+            return Ok(HtmlParseNodeRead {
+                value: None,
+                probes: 0,
+            });
+        };
+        if !self.closed_common {
+            return Ok(HtmlParseNodeRead {
+                value: None,
+                probes: 0,
+            });
+        }
+        let (found, creation_probes) = storage
+            .payloads
+            .facts
+            .creation
+            .find_published(record.position());
+        let scope = match found {
+            Some(index) => {
+                storage
+                    .payloads
+                    .facts
+                    .creation
+                    .row(index)
+                    .ok_or(HtmlParseNodeReadError::Unresolved(unresolved(
+                        read::HtmlParseUnresolvedKind::Fact,
+                    )))?
+                    .common_scope
+            }
+            None if *element.name().namespace() == surgeist_html::values::Namespace::html() => {
+                surgeist_html::elements::native::HtmlCommonScope::Html
+            }
+            None => surgeist_html::elements::native::HtmlCommonScope::Element,
+        };
+        let (null, registry_probes) = storage
+            .payloads
+            .facts
+            .contexts
+            .registry_is_null(record.position())
+            .map_err(|_| {
+                HtmlParseNodeReadError::Unresolved(unresolved(read::HtmlParseUnresolvedKind::Fact))
+            })?;
+        Ok(HtmlParseNodeRead {
+            value: null.then(|| surgeist_html::elements::native::HtmlCommonState::new(scope)),
+            probes: creation_probes.saturating_add(registry_probes),
+        })
+    }
     /// The document of the tree that holds `node`, for tests that ask about a node whose root they
     /// do not know.
     #[cfg(test)]
@@ -1032,6 +1188,7 @@ impl ReportStorage {
             arena: arena(storage),
             next: 0,
             document: 0,
+            creation: 0,
             fault: None,
         }
     }
@@ -1054,6 +1211,57 @@ impl<'a> HtmlParseTreeDocument<'a> {
         self.probes
     }
 }
+/// The creation state of an element: the custom element state it was created with, and the `is`
+/// value it was created with, which later changes of its attributes do not rewrite.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlParseCreation<'a> {
+    state: surgeist_html::elements::native::HtmlCustomElementState,
+    saved_is: Option<&'a DocumentString>,
+}
+impl<'a> HtmlParseCreation<'a> {
+    /// The custom element state of the element.
+    pub fn state(&self) -> surgeist_html::elements::native::HtmlCustomElementState {
+        self.state
+    }
+    /// The `is` value the element was created with, if it had one.
+    pub fn saved_is(&self) -> Option<&'a DocumentString> {
+        self.saved_is
+    }
+}
+/// What a published report answers for one node, with the keys the searches for it read.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlParseNodeRead<T> {
+    value: T,
+    probes: u64,
+}
+impl<T> HtmlParseNodeRead<T> {
+    /// The answer.
+    pub fn value(&self) -> &T {
+        &self.value
+    }
+    /// The keys the searches read: zero for a node that is not asked for in any table.
+    pub fn probes(&self) -> u64 {
+        self.probes
+    }
+}
+/// Why a report cannot answer for a node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum HtmlParseNodeReadError {
+    /// The node belongs to another result.
+    Foreign,
+    /// A reference the node's row holds is not held by the report.
+    Unresolved(read::HtmlParseUnresolvedReference),
+}
+impl std::fmt::Display for HtmlParseNodeReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Foreign => f.write_str("the node belongs to another result"),
+            Self::Unresolved(fault) => fault.fmt(f),
+        }
+    }
+}
+impl std::error::Error for HtmlParseNodeReadError {}
 /// Why a report cannot answer for the document of a tree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -1083,6 +1291,8 @@ pub struct HtmlParseMetadataCursor<'a> {
     next: usize,
     /// The next row of the Document table, read after the registry rows.
     document: usize,
+    /// The next row of the table of creation states, read after the Document table.
+    creation: usize,
     fault: Option<read::HtmlParseUnresolvedReference>,
 }
 #[expect(
@@ -1139,7 +1349,7 @@ impl<'a> HtmlParseMetadataCursor<'a> {
             documents.node_at(self.document),
             documents.row(self.document),
         ) else {
-            return HtmlParseMetadataStep::Complete;
+            return self.advance_creation();
         };
         self.document = self.document.saturating_add(1);
         let resolver = Resolver {
@@ -1148,6 +1358,42 @@ impl<'a> HtmlParseMetadataCursor<'a> {
             arena: self.arena,
         };
         match HtmlParseMetadata::issue_document(resolver, self.closed_common, node, facts) {
+            Ok(record) => HtmlParseMetadataStep::Record(record),
+            Err(fault) => {
+                self.fault = Some(fault);
+                HtmlParseMetadataStep::Fault(fault)
+            }
+        }
+    }
+    /// The elements with a row in the table of creation states, each one actual row.
+    fn advance_creation(&mut self) -> HtmlParseMetadataStep<'a> {
+        let creation = &self.storage.payloads.facts.creation;
+        let (Some(node), Some(state)) =
+            (creation.node_at(self.creation), creation.row(self.creation))
+        else {
+            return HtmlParseMetadataStep::Complete;
+        };
+        self.creation = self.creation.saturating_add(1);
+        let resolver = Resolver {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+        };
+        let registry_is_null = match self.storage.payloads.facts.contexts.registry_is_null(node) {
+            Ok((null, _)) => null,
+            Err(_) => {
+                let fault = unresolved(read::HtmlParseUnresolvedKind::Fact);
+                self.fault = Some(fault);
+                return HtmlParseMetadataStep::Fault(fault);
+            }
+        };
+        match HtmlParseMetadata::issue_creation(
+            resolver,
+            self.closed_common,
+            node,
+            state,
+            registry_is_null,
+        ) {
             Ok(record) => HtmlParseMetadataStep::Record(record),
             Err(fault) => {
                 self.fault = Some(fault);
@@ -1334,7 +1580,13 @@ enum Refs<'a> {
         raw: &'a DocumentString,
         image_source: Option<&'a DocumentString>,
     },
-    Creation(Option<&'a DocumentString>),
+    /// A row of the table of creation states, with whether the registry of its element is Null.
+    Creation {
+        state: surgeist_html::elements::native::HtmlCustomElementState,
+        scope: surgeist_html::elements::native::HtmlCommonScope,
+        saved_is: Option<&'a DocumentString>,
+        registry_is_null: bool,
+    },
     Owner(Option<HtmlNode<'a>>),
     Dialog(HtmlParseDialog<'a>),
     Document {
@@ -1361,6 +1613,18 @@ enum Refs<'a> {
     Template(HtmlParseTemplate<'a>),
 }
 impl<'a> Refs<'a> {
+    fn resolve_creation(
+        r: Resolver<'a>,
+        state: &context::ElementCreationState,
+        registry_is_null: bool,
+    ) -> Result<Self, Fault> {
+        Ok(Self::Creation {
+            state: state.state,
+            scope: state.common_scope,
+            saved_is: state.saved_is.map(|slot| r.raw(slot)).transpose()?,
+            registry_is_null,
+        })
+    }
     fn resolve_document(
         r: Resolver<'a>,
         document: usize,
@@ -1398,10 +1662,6 @@ impl<'a> Refs<'a> {
                     _ => None,
                 },
             },
-            RetainedPayload::LookupRegistry {
-                creation: Some(state),
-                ..
-            } => Self::Creation(state.saved_is.map(|slot| r.raw(slot)).transpose()?),
             RetainedPayload::FormAssociation { state, .. } => {
                 Self::Owner(r.optional_native(state.owner)?)
             }
@@ -1817,6 +2077,21 @@ impl<'a> HtmlParseMetadata<'a> {
             refs: Refs::resolve(resolver, payload, node)?,
         })
     }
+    /// The record of an element with a row in the table of creation states, issued from that row.
+    fn issue_creation(
+        resolver: Resolver<'a>,
+        closed_common: bool,
+        node: usize,
+        state: &context::ElementCreationState,
+        registry_is_null: bool,
+    ) -> Result<Self, Fault> {
+        Ok(Self {
+            node: resolver.native(node)?,
+            closed_common,
+            payload: None,
+            refs: Refs::resolve_creation(resolver, state, registry_is_null)?,
+        })
+    }
     /// The record of a Document the parse owns, issued from its table row.
     fn issue_document(
         resolver: Resolver<'a>,
@@ -1832,28 +2107,27 @@ impl<'a> HtmlParseMetadata<'a> {
             refs: Refs::resolve_document(resolver, node, facts)?,
         })
     }
-    /// Exact creation subject in a completed ordinary offline or contextual
-    /// no-execution/no-interaction profile with actual Null lookup registry.
-    /// The source scope is retained at actual creation;
-    /// report preparation validates it through HTML's one bounded classifier.
-    /// This qualifies the profile's current null-only references, not native freshness.
+    /// The common state of the element a creation state row is held for, in a completed ordinary
+    /// offline or contextual no-execution/no-interaction profile with actual Null lookup registry.
+    /// The row retains the scope at actual creation; report preparation validates it through
+    /// HTML's one bounded classifier. This qualifies the profile's current null-only references,
+    /// not native freshness. An element with no row has no record, and
+    /// [`HtmlParseReport::common_state`](crate::HtmlParseReport::common_state) answers for it.
     pub fn common_state(
         &self,
     ) -> Option<surgeist_html::elements::native::HtmlCommonState<core::convert::Infallible>> {
         if !self.closed_common {
             return None;
         }
-        let RetainedPayload::LookupRegistry {
-            registry: context::RegistryRef::Null,
-            creation: Some(state),
+        let Refs::Creation {
+            scope,
+            registry_is_null: true,
             ..
-        } = self.payload?
+        } = self.refs
         else {
             return None;
         };
-        Some(surgeist_html::elements::native::HtmlCommonState::new(
-            state.common_scope,
-        ))
+        Some(surgeist_html::elements::native::HtmlCommonState::new(scope))
     }
 
     /// Fixed current Dialog state issued by the actual original controller.
@@ -1968,20 +2242,19 @@ impl<'a> HtmlParseMetadata<'a> {
             _ => None,
         }
     }
+    /// The creation state of the element a creation state row is held for: the elements with a
+    /// custom element name, an `is` attribute or a saved `is` value. An element with no row has no
+    /// record, and [`HtmlParseReport::creation`](crate::HtmlParseReport::creation) answers for it.
     pub fn creation(
         &self,
     ) -> Option<(
         surgeist_html::elements::native::HtmlCustomElementState,
         Option<&'a DocumentString>,
     )> {
-        match (self.payload?, self.refs) {
-            (
-                RetainedPayload::LookupRegistry {
-                    creation: Some(state),
-                    ..
-                },
-                Refs::Creation(saved),
-            ) => Some((state.state, saved)),
+        match self.refs {
+            Refs::Creation {
+                state, saved_is, ..
+            } => Some((state, saved_is)),
             _ => None,
         }
     }

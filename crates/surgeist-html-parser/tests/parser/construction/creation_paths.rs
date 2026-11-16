@@ -12,27 +12,30 @@ use surgeist_html_parser::{
     HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource, HtmlParseStop, HtmlSource,
 };
 
+/// The creation state of each element of the report named `local`, in tree order. The report
+/// answers by node: an element with the creation state of its namespace has no metadata record of
+/// it, and an element with another has one that agrees.
 fn creations(
     report: &HtmlParseReport,
     local: &str,
 ) -> Vec<(HtmlNodeId, HtmlCustomElementState, Option<DocumentString>)> {
-    let mut cursor = report.metadata();
+    let document = report.document().unwrap();
+    let mut pending = vec![document.root().id()];
     let mut rows = Vec::new();
-    loop {
-        match cursor.advance() {
-            HtmlParseMetadataStep::Record(record) => {
-                let node = record.node();
-                if matches!(node.kind(), HtmlNodeKind::Element(element)
-                    if element.name().local_name() == &DocumentString::from(local))
-                    && let Some((state, saved)) = record.creation()
-                {
-                    rows.push((node.id(), state, saved.cloned()));
-                }
-            }
-            HtmlParseMetadataStep::Skipped => {}
-            HtmlParseMetadataStep::Complete => break,
-            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+    while let Some(subject) = pending.pop() {
+        let node = document.node(&subject).unwrap();
+        if matches!(node.kind(), HtmlNodeKind::Element(element)
+            if element.name().local_name() == &DocumentString::from(local))
+        {
+            let answer = report.creation(&subject).unwrap();
+            let creation = answer
+                .value()
+                .expect("an element answers its creation state");
+            rows.push((subject, creation.state(), creation.saved_is().cloned()));
         }
+        let mut children: Vec<_> = node.children().collect();
+        children.reverse();
+        pending.extend(children);
     }
     rows
 }

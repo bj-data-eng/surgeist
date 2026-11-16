@@ -22,46 +22,46 @@ fn completed_null_registry_fragment_lends_actual_closed_common_state() {
     .unwrap();
     assert!(report.document_state().is_none());
     let mut found = [false; 2];
-    let mut cursor = report.metadata();
-    loop {
-        match cursor.advance() {
-            HtmlParseMetadataStep::Record(row) => {
-                if row.creation().is_none() {
-                    continue;
-                }
-                let HtmlNodeKind::Element(element) = row.node().kind() else {
-                    continue;
-                };
-                let local = element.name().local_name().code_units();
-                let (index, scope) = if local == [112] {
-                    (0, HtmlCommonScope::Html)
-                } else if local == [103] {
-                    (1, HtmlCommonScope::Element)
-                } else {
-                    continue;
-                };
-                let common = row
-                    .common_state()
-                    .expect("actual qualified contextual common tuple");
-                assert_eq!(common.scope(), scope);
-                assert!(common.element().reaction_queue_is_empty());
-                assert!(!common.element().click_in_progress());
-                assert_eq!(common.html().is_some(), index == 0);
-                if let Some(html) = common.html() {
-                    assert!(!html.has_previously_focused_element());
-                    assert!(!html.has_attached_internals());
-                    assert!(html.popover_is_hidden());
-                    assert!(!html.has_popover_trigger());
-                    assert!(!html.popover_is_hiding());
-                    assert!(!html.has_popover_toggle_task_tracker());
-                    assert!(!html.has_popover_close_watcher());
-                }
-                found[index] = true;
-            }
-            HtmlParseMetadataStep::Skipped => (),
-            HtmlParseMetadataStep::Complete => break,
-            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+    // The report answers by node: these elements have the creation state of their namespace, so
+    // no metadata record holds it.
+    let fragment = report.fragment().unwrap();
+    let mut pending = vec![fragment.root().id()];
+    while let Some(id) = pending.pop() {
+        let node = fragment.node(&id).unwrap();
+        pending.extend(node.children());
+        let HtmlNodeKind::Element(element) = node.kind() else {
+            assert!(report.creation(&id).unwrap().value().is_none());
+            assert!(report.common_state(&id).unwrap().value().is_none());
+            continue;
+        };
+        assert!(report.creation(&id).unwrap().value().is_some());
+        let local = element.name().local_name().code_units();
+        let (index, scope) = if local == [112] {
+            (0, HtmlCommonScope::Html)
+        } else if local == [103] {
+            (1, HtmlCommonScope::Element)
+        } else {
+            continue;
+        };
+        let common = report
+            .common_state(&id)
+            .unwrap()
+            .value()
+            .expect("actual qualified contextual common tuple");
+        assert_eq!(common.scope(), scope);
+        assert!(common.element().reaction_queue_is_empty());
+        assert!(!common.element().click_in_progress());
+        assert_eq!(common.html().is_some(), index == 0);
+        if let Some(html) = common.html() {
+            assert!(!html.has_previously_focused_element());
+            assert!(!html.has_attached_internals());
+            assert!(html.popover_is_hidden());
+            assert!(!html.has_popover_trigger());
+            assert!(!html.popover_is_hiding());
+            assert!(!html.has_popover_toggle_task_tracker());
+            assert!(!html.has_popover_close_watcher());
         }
+        found[index] = true;
     }
     assert_eq!(found, [true, true]);
 }

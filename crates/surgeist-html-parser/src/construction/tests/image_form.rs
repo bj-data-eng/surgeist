@@ -416,8 +416,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     let mut c = ParseControl::new(
         limits()
             .into_builder()
-            .auxiliary_entries(18)
-            .active_formatting_entries(18)
+            .auxiliary_entries(16)
+            .active_formatting_entries(16)
             .finish()
             .unwrap(),
         HtmlParseCancellation::new(),
@@ -439,13 +439,14 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     // the image's actual intended parent is the attached HTML container.
     let _body = session.allocate_implicit_body(&mut c, None).unwrap();
     // Root/html/body own three node-join cells, four field payload slots, four document facts, and four nonce slots.
-    // Two independent creation rows accompany those records.
+    // The two elements hold no creation row: their creation state is the default of their
+    // namespace and their lookup registry is their context's.
     // No auxiliary entry remains for the image's required metadata slot.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        18
+        16
     );
     let name_backing = tag.name.value.text().block().address();
     let original_origins: Vec<_> = tag
@@ -532,8 +533,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         result.err(),
         Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
-            limit: 18,
-            current: 18,
+            limit: 16,
+            current: 16,
             requested_delta: 2,
         }))
     );
@@ -942,8 +943,8 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             // Metadata, name and namespace are initialized;
             // the next actual record-ticket entry is the rejected slot.
             assert_eq!(session.active().unwrap().construction.len(), 3);
-            // 16 registry rows, 17 with the Document's row that the Document table holds.
-            assert_eq!(session.active().unwrap().payloads.values.len(), 16);
+            // 13 registry rows, 14 with the Document's row that the Document table holds.
+            assert_eq!(session.active().unwrap().payloads.values.len(), 13);
             assert!(
                 session
                     .active()

@@ -263,7 +263,7 @@ fn output_observations_reject_foreign_destination_and_unavailable_or_foreign_nod
 fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundary() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Three existing native records own three node-join cells.
-    for cap in [18, 19] {
+    for cap in [16, 17] {
         let source = crate::HtmlSource::utf8("<output>");
         let mut c = ParseControl::new(
             limits()
@@ -288,13 +288,13 @@ fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundar
             &[111, 117, 116, 112, 117, 116],
         ));
         session.allocate_implicit_body(&mut c, None).unwrap();
-        // Root/html/body retain two independent creation rows in addition to their previous 15 entries;
-        // Output next requires document/native preflight3 before its own creation, state and association rows.
+        // Root/html/body retain their 15 previous entries and no creation row;
+        // Output next requires document/native preflight3 before its own state and association rows.
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            18
+            16
         );
         let backing = tag.as_ref().unwrap().name.value.text().block().address();
         assert!(matches!(
@@ -453,7 +453,7 @@ fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retai
 
 #[test]
 fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanup() {
-    for remaining in [20, 21] {
+    for remaining in [19, 20] {
         let source = crate::HtmlSource::utf8("<output>A");
         let (mut c, mut session, output, mut lexer) = output_owner(&source, limits());
         let mut text = next_text(&mut lexer, &mut c);
@@ -465,10 +465,10 @@ fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanu
         destination.push_unit(81, &mut c).unwrap();
         destination.clear(&mut c).unwrap(); // capacity for1 exists before measured copying.
         // Getter visits: readiness1 + idle7 + index2; the registry scan of `find_output_state`,
-        // one visit per row up to and including the Output row, 4 (the Document has no registry
-        // row, so the scan passes one row fewer than a registry that held it); root+child2,
-        // Text1, leaf/parent/child-list3 (the leaf has no next sibling to read) =18. The scan
-        // passes two rows fewer than before: no row names the document of a node.
+        // one visit per row up to and including the Output row, 3 (the Document has no registry
+        // row, and no element has a lookup-registry row, so the scan passes the nonce rows of
+        // html and body and stops at the Output row); root+child2, Text1,
+        // leaf/parent/child-list3 (the leaf has no next sibling to read) =17.
         // Copies are one finite state byte plus one UTF16 unit =3.
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         let maximum = limits().work_credits();
@@ -477,12 +477,12 @@ fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanu
         let before = c.usage().clone();
         let result = session.append_output_value(&mut c, &output, &mut destination);
         assert_eq!(destination.units(), [65]);
-        if remaining == 21 {
+        if remaining == 20 {
             result.unwrap();
             assert_eq!(
                 c.usage().work(HtmlParseWorkCategory::RecordVisit)
                     - before.work(HtmlParseWorkCategory::RecordVisit),
-                18
+                17
             );
             assert_eq!(
                 c.usage().work(HtmlParseWorkCategory::CopyByte)

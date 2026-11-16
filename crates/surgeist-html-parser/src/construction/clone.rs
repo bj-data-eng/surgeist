@@ -22,7 +22,6 @@ struct CloneBindings {
     output: Option<usize>,
     script: Option<usize>,
     svg: Option<usize>,
-    registry: Option<usize>,
 }
 
 impl SessionStorage {
@@ -394,8 +393,8 @@ impl SessionStorage {
         if template {
             self.template_slot(c, source)?;
         }
-        let prepared = self.prepare_document_allocation(c, Some(document), template)?;
-        let bindings = self.prepare_clone_metadata(c, source)?;
+        let mut prepared = self.prepare_document_allocation(c, Some(document), template)?;
+        let bindings = self.prepare_clone_metadata(c, source, &mut prepared)?;
         let slot = self.field_slot(c, FieldRef::ElementName(source))?;
         let (name, name_slot) = self.copy_registered_field(c, slot)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -529,6 +528,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         source: usize,
+        prepared: &mut Option<template::PreparedDocuments>,
     ) -> Result<CloneBindings, SessionError> {
         payload_write::<CloneBindings>(c, 1)?;
         let mut result = CloneBindings::default();
@@ -544,7 +544,7 @@ impl SessionStorage {
         }
         {
             let registry = self.lookup_registry_ref(c, source)?;
-            let original = self.element_creation_state(c, source)?;
+            let row = self.creation_row(c, source)?;
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let ConstructionNodeKind::Element(element) = &self
                 .construction
@@ -559,6 +559,8 @@ impl SessionStorage {
                 element.name().namespace().uri(),
                 "http://www.w3.org/1999/xhtml",
             )?;
+            // The source has a row, or the default its namespace gives.
+            let original = row.unwrap_or(context::ElementCreationState::plain(html));
             let saved = if let Some(slot) = original.saved_is {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot)
@@ -577,19 +579,26 @@ impl SessionStorage {
             } else {
                 None
             };
-            payload_write::<Option<usize>>(c, 1)?;
-            result.registry = Some(self.retain_clone_metadata(
-                c,
-                RetainedPayload::LookupRegistry {
-                    node: None,
-                    registry,
-                    creation: Some(context::ElementCreationState {
-                        common_scope: original.common_scope,
-                        state: original.state,
-                        saved_is,
-                    }),
-                },
-            )?);
+            let prepared = prepared
+                .as_mut()
+                .ok_or(SessionError::NodeDocumentUnavailable)?;
+            // The clone's context names the source's registry, and a creation state that is not
+            // the default of its namespace has a row.
+            if !matches!(registry, context::RegistryRef::Null) {
+                let entry = prepared
+                    .context
+                    .ok_or(SessionError::NodeDocumentUnavailable)?;
+                prepared.context = Some(self.entry_with_registry(c, entry, registry)?);
+            }
+            let creation = context::ElementCreationState {
+                common_scope: original.common_scope,
+                state: original.state,
+                saved_is,
+            };
+            if creation != context::ElementCreationState::plain(html) {
+                self.payloads.facts.creation.admit(c, 1)?;
+                prepared.creation = Some(creation);
+            }
         }
         if let Some((_, state)) = find_form_association_state(&self.payloads, c, source)? {
             payload_write::<Option<usize>>(c, 1)?;
@@ -767,7 +776,6 @@ impl SessionStorage {
             bindings.output,
             bindings.script,
             bindings.svg,
-            bindings.registry,
         ]
         .into_iter()
         .flatten()
@@ -778,7 +786,6 @@ impl SessionStorage {
                 Some(
                     RetainedPayload::Details { node: bound, .. }
                     | RetainedPayload::Link { node: bound, .. }
-                    | RetainedPayload::LookupRegistry { node: bound, .. }
                     | RetainedPayload::FormAssociation { node: bound, .. }
                     | RetainedPayload::SelectFamily { node: bound, .. }
                     | RetainedPayload::Textarea { node: bound, .. }

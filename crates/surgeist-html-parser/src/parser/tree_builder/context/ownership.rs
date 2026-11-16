@@ -1480,29 +1480,13 @@ mod tests {
         let bindings: Vec<_> = (0..slots)
             .filter_map(|index| effects.registry_binding(index).unwrap())
             .collect();
-        // The internal html and literal p have the two actual registry rows.
-        let names: Vec<_> = bindings
-            .iter()
-            .map(|binding| {
-                let surgeist_html::construction::HtmlNodeKind::Element(element) =
-                    binding.node.kind()
-                else {
-                    panic!("actual E")
-                };
-                element.name().local_name().clone()
-            })
-            .collect();
-        assert_eq!(
-            names,
-            [
-                surgeist_html::values::DocumentString::from("html"),
-                surgeist_html::values::DocumentString::from("p")
-            ]
-        );
-        let effect_qualification =
-            slots as u64 + 2 * (1 + crate::construction::context::registry_binding_layout() as u64);
+        // The context's registry is Null, so no node of the parse has a binding; the slots are
+        // the rows of the table of the nodes the report asks for by their own key, which the
+        // qualification visits once each.
+        assert!(slots > 0);
+        assert!(bindings.is_empty());
+        let effect_qualification = slots as u64;
         drop(bindings);
-        drop(names);
         measured_parts.release().unwrap();
         // One request-authority call, eleven comparisons, their actual fixed
         // envelopes, then seven request fields, two joined fields and one

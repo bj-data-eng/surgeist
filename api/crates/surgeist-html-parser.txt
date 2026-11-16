@@ -334,6 +334,12 @@ pub surgeist_html_parser::HtmlParseMetadataStep::Complete
 pub surgeist_html_parser::HtmlParseMetadataStep::Fault(surgeist_html_parser::HtmlParseUnresolvedReference)
 pub surgeist_html_parser::HtmlParseMetadataStep::Record(surgeist_html_parser::HtmlParseMetadata<'a>)
 pub surgeist_html_parser::HtmlParseMetadataStep::Skipped
+#[non_exhaustive] pub enum surgeist_html_parser::HtmlParseNodeReadError
+pub surgeist_html_parser::HtmlParseNodeReadError::Foreign
+pub surgeist_html_parser::HtmlParseNodeReadError::Unresolved(surgeist_html_parser::HtmlParseUnresolvedReference)
+impl core::error::Error for surgeist_html_parser::HtmlParseNodeReadError
+impl core::fmt::Display for surgeist_html_parser::HtmlParseNodeReadError
+pub fn surgeist_html_parser::HtmlParseNodeReadError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_parser::HtmlParseOmissionKind
 pub surgeist_html_parser::HtmlParseOmissionKind::FramesetCharacter
 pub surgeist_html_parser::HtmlParseOmissionKind::IgnoredText
@@ -880,6 +886,10 @@ pub fn surgeist_html_parser::HtmlParseColorComputation<'a>::original_group(&self
 pub fn surgeist_html_parser::HtmlParseColorComputation<'a>::source(&self) -> surgeist_html_parser::HtmlParseColorValueSource
 pub fn surgeist_html_parser::HtmlParseColorComputation<'a>::standard_failure(&self) -> core::option::Option<surgeist_css::color::bounded::CssColorStandardFailure>
 pub fn surgeist_html_parser::HtmlParseColorComputation<'a>::value(&self) -> surgeist_color::value::Color
+pub struct surgeist_html_parser::HtmlParseCreation<'a>
+impl<'a> surgeist_html_parser::HtmlParseCreation<'a>
+pub fn surgeist_html_parser::HtmlParseCreation<'a>::saved_is(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
+pub fn surgeist_html_parser::HtmlParseCreation<'a>::state(&self) -> surgeist_html::internal::elements::custom_element_state::HtmlCustomElementState
 pub struct surgeist_html_parser::HtmlParseCspFailure<E>
 impl<E> surgeist_html_parser::HtmlParseCspFailure<E>
 pub fn surgeist_html_parser::HtmlParseCspFailure<E>::backend_error(&self) -> core::option::Option<&E>
@@ -1179,6 +1189,10 @@ pub fn surgeist_html_parser::HtmlParseMetadata<'a>::textarea_raw_value(&self) ->
 pub struct surgeist_html_parser::HtmlParseMetadataCursor<'a>
 impl<'a> surgeist_html_parser::HtmlParseMetadataCursor<'a>
 pub fn surgeist_html_parser::HtmlParseMetadataCursor<'a>::advance(&mut self) -> surgeist_html_parser::HtmlParseMetadataStep<'a>
+pub struct surgeist_html_parser::HtmlParseNodeRead<T>
+impl<T> surgeist_html_parser::HtmlParseNodeRead<T>
+pub fn surgeist_html_parser::HtmlParseNodeRead<T>::probes(&self) -> u64
+pub fn surgeist_html_parser::HtmlParseNodeRead<T>::value(&self) -> &T
 pub struct surgeist_html_parser::HtmlParseOmission<'a>
 impl<'a> surgeist_html_parser::HtmlParseOmission<'a>
 pub fn surgeist_html_parser::HtmlParseOmission<'a>::end(&self) -> usize
@@ -1226,7 +1240,9 @@ pub struct surgeist_html_parser::HtmlParseReport
 impl surgeist_html_parser::HtmlParseReport
 pub fn surgeist_html_parser::HtmlParseReport::allow_declarative_shadow_roots(&self) -> bool
 pub fn surgeist_html_parser::HtmlParseReport::captured_base_facts(&self) -> core::option::Option<&surgeist_html_semantics::base::HtmlCapturedBaseFacts>
+pub fn surgeist_html_parser::HtmlParseReport::common_state(&self, node: &surgeist_html::internal::construction::HtmlNodeId) -> core::result::Result<surgeist_html_parser::HtmlParseNodeRead<core::option::Option<surgeist_html::internal::elements::native_initialization::HtmlCommonState<core::convert::Infallible>>>, surgeist_html_parser::HtmlParseNodeReadError>
 pub fn surgeist_html_parser::HtmlParseReport::context(&self) -> core::option::Option<&surgeist_html_semantics::capture::HtmlFragmentContext>
+pub fn surgeist_html_parser::HtmlParseReport::creation(&self, node: &surgeist_html::internal::construction::HtmlNodeId) -> core::result::Result<surgeist_html_parser::HtmlParseNodeRead<core::option::Option<surgeist_html_parser::HtmlParseCreation<'_>>>, surgeist_html_parser::HtmlParseNodeReadError>
 pub fn surgeist_html_parser::HtmlParseReport::document(&self) -> core::option::Option<&surgeist_html::internal::construction::HtmlDocument>
 pub fn surgeist_html_parser::HtmlParseReport::document_base_facts(&self) -> core::option::Option<&surgeist_html_semantics::base::HtmlParseBaseFacts>
 pub fn surgeist_html_parser::HtmlParseReport::document_state(&self) -> core::option::Option<surgeist_html_parser::HtmlParseDocumentState>

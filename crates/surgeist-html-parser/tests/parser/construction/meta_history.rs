@@ -445,15 +445,19 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
     let mut subjects = Vec::new();
     loop {
         match cursor.advance() {
-            HtmlParseMetadataStep::Record(row) if row.creation().is_some() => {
+            // Each element answers its creation state by node, whether or not a record holds it,
+            // and has more than one record, so each is collected once.
+            HtmlParseMetadataStep::Record(row) => {
                 if let surgeist_html::construction::HtmlNodeKind::Element(element) =
                     row.node().kind()
                     && element.name().local_name() == &DocumentString::from("meta")
+                    && report.creation(&row.node().id()).unwrap().value().is_some()
+                    && !subjects.contains(&row.node().id())
                 {
                     subjects.push(row.node().id());
                 }
             }
-            HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => (),
+            HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
             HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }

@@ -394,8 +394,8 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
-                .auxiliary_entries(18)
-                .active_formatting_entries(18)
+                .auxiliary_entries(16)
+                .active_formatting_entries(16)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),
@@ -436,7 +436,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             stop,
             HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
-                current: 18,
+                current: 16,
                 requested_delta: 2,
                 ..
             }
@@ -446,8 +446,8 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             original
         );
         assert_eq!(session.active().unwrap().construction.len(), 3);
-        // 10 registry rows, 11 with the Document's row that the Document table holds.
-        assert_eq!(session.active().unwrap().payloads.values.len(), 10);
+        // 8 registry rows, 9 with the Document's row that the Document table holds.
+        assert_eq!(session.active().unwrap().payloads.values.len(), 8);
         assert!(session.active().unwrap().effects.form.is_none());
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();

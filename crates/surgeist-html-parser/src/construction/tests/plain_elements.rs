@@ -48,16 +48,9 @@ fn registry_rows(session: &ParserArenaSession) -> usize {
     session.active().unwrap().payloads.values.len()
 }
 
-/// The lookup registry rows the registry holds.
-fn lookup_registry_rows(session: &ParserArenaSession) -> usize {
-    session
-        .active()
-        .unwrap()
-        .payloads
-        .values
-        .iter()
-        .filter(|row| matches!(row, RetainedPayload::LookupRegistry { .. }))
-        .count()
+/// The rows of the table of creation states.
+fn creation_rows(session: &ParserArenaSession) -> usize {
+    session.active().unwrap().payloads.facts.creation.len()
 }
 
 #[test]
@@ -79,16 +72,10 @@ fn a_plain_element_holds_no_registry_row_for_its_context() {
 const PLAIN_ELEMENT_ROWS: usize = 5;
 
 #[test]
-fn a_plain_element_adds_no_lookup_registry_row() {
-    let rows =
-        |elements: usize| with_plain_elements(elements, |_, session| lookup_registry_rows(session));
-    let empty = rows(0);
-    for elements in [1, 16, 64] {
-        assert_eq!(
-            rows(elements) - empty,
-            0,
-            "{elements} plain elements added lookup registry rows"
-        );
+fn a_plain_element_adds_no_row_to_the_table_of_creation_states() {
+    let rows = |elements: usize| with_plain_elements(elements, |_, session| creation_rows(session));
+    for elements in [0, 1, 16, 64] {
+        assert_eq!(rows(elements), 0, "{elements} plain elements");
     }
 }
 

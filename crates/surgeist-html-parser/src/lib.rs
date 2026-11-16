@@ -120,10 +120,10 @@ pub use construction::read::{
     HtmlParseColorComputation, HtmlParseRangeComputation, HtmlParseRangeOperand,
 };
 pub use construction::report::{
-    HtmlParseBase, HtmlParseDialog, HtmlParseDialogDisposition, HtmlParseDialogMissing,
-    HtmlParseDocumentInteraction, HtmlParseMetadata, HtmlParseMetadataCursor,
-    HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlParseTemplate, HtmlParseTreeDocument,
-    HtmlParseTreeDocumentError,
+    HtmlParseBase, HtmlParseCreation, HtmlParseDialog, HtmlParseDialogDisposition,
+    HtmlParseDialogMissing, HtmlParseDocumentInteraction, HtmlParseMetadata,
+    HtmlParseMetadataCursor, HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlParseNodeRead,
+    HtmlParseNodeReadError, HtmlParseTemplate, HtmlParseTreeDocument, HtmlParseTreeDocumentError,
 };
 pub use construction::report::{
     HtmlParseBaseState, HtmlParseDocumentMeta, HtmlParseMetaDisposition, HtmlParseMetaMissing,

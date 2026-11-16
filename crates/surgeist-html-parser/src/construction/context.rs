@@ -33,7 +33,7 @@ impl DocumentRef {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum RegistryRef {
     Null,
     Captured(crate::HtmlCaptureRegistryId),
@@ -58,7 +58,7 @@ impl DocumentRef {
     }
 }
 impl RegistryRef {
-    fn try_clone(&self, c: &mut ParseControl) -> Result<Self, SessionError> {
+    pub(super) fn try_clone(&self, c: &mut ParseControl) -> Result<Self, SessionError> {
         if matches!(self, Self::Captured(_)) {
             c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         }
@@ -73,11 +73,27 @@ impl RegistryRef {
 
 /// No-definition DOM creation facts. The saved is slot has its own backing;
 /// current attributes and registry reassignment cannot rewrite it.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct ElementCreationState {
     pub(super) common_scope: surgeist_html::elements::native::HtmlCommonScope,
     pub(super) state: surgeist_html::elements::native::HtmlCustomElementState,
     pub(super) saved_is: Option<usize>,
+}
+
+impl ElementCreationState {
+    /// The creation state of an element that has no custom element name, no `is` attribute and
+    /// no saved is value: no custom element state, and the common scope of its namespace.
+    pub(super) const fn plain(html: bool) -> Self {
+        Self {
+            common_scope: if html {
+                surgeist_html::elements::native::HtmlCommonScope::Html
+            } else {
+                surgeist_html::elements::native::HtmlCommonScope::Element
+            },
+            state: surgeist_html::elements::native::HtmlCustomElementState::Uncustomized,
+            saved_is: None,
+        }
+    }
 }
 
 enum InternalIs<'a> {
@@ -439,23 +455,10 @@ impl ParserArenaSession {
         let root = self.allocate_implicit_html(c)?;
         let storage = self.active_mut()?;
         let registry = storage.captured_registry_ref(c, request.context().root_registry())?;
-        let prepared = storage.prepare_payload_slot_owned(c)?;
-        storage
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::LookupRegistry {
-                    node: Some(root.index),
-                    registry,
-                    creation: Some(ElementCreationState {
-                        common_scope: surgeist_html::elements::native::HtmlCommonScope::Html,
-                        state:
-                            surgeist_html::elements::native::HtmlCustomElementState::Uncustomized,
-                        saved_is: None,
-                    }),
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
+        // The implicit root is an element of the HTML namespace with no custom name and no saved
+        // is value, so its creation state is the default and the registry is its only context
+        // fact.
+        storage.set_registry(c, root.index, registry)?;
         let document = self.root(c)?;
         self.insert(c, &document, &root, None, None)?;
         let storage = self.active_mut()?;
@@ -775,16 +778,17 @@ impl SessionStorage {
         node: usize,
     ) -> Result<RegistryRef, SessionError> {
         c.require_identity(&self.control)?;
-        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if let Some(entry) = self
+            .payloads
+            .facts
+            .contexts
+            .cell(node)
+            .filter(|&entry| entry != 0)
+        {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::LookupRegistry {
-                node: Some(bound),
-                registry,
-                ..
-            }) = self.payloads.values.get(slot)
-                && *bound == node
-            {
-                return registry.try_clone(c);
+            if let Some(context) = self.payloads.facts.contexts.entry(entry) {
+                return context.registry.try_clone(c);
             }
         }
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -804,29 +808,52 @@ impl SessionStorage {
             crate::HtmlCaptureFact::Registry,
         ))
     }
+    /// The creation state of the element at `node` when it has a row in the table of creation
+    /// states: an element with a custom element name, an `is` attribute or a saved is value. The
+    /// search charges the keys it reads.
+    pub(super) fn creation_row(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<Option<ElementCreationState>, SessionError> {
+        c.require_identity(&self.control)?;
+        let Some(index) = self.payloads.facts.creation.find(c, node)? else {
+            return Ok(None);
+        };
+        let Some(&state) = self.payloads.facts.creation.row(index) else {
+            return Err(latch_registry_row(c));
+        };
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<ElementCreationState>() as u64,
+        )?;
+        Ok(Some(state))
+    }
+    /// The creation state of the element at `node`: its row when it has one, and otherwise the
+    /// default its namespace gives, which is no custom element state and no saved is value.
     pub(super) fn element_creation_state(
         &self,
         c: &mut ParseControl,
         node: usize,
     ) -> Result<ElementCreationState, SessionError> {
-        c.require_identity(&self.control)?;
-        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::LookupRegistry {
-                node: Some(bound),
-                creation: Some(state),
-                ..
-            }) = self.payloads.values.get(slot)
-                && *bound == node
-            {
-                c.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    mem::size_of::<ElementCreationState>() as u64,
-                )?;
-                return Ok(*state);
-            }
+        if let Some(state) = self.creation_row(c, node)? {
+            return Ok(state);
         }
-        Err(SessionError::ContextUnavailable)
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let ConstructionNodeKind::Element(element) = self
+            .construction
+            .node_at(node)
+            .ok_or_else(|| latch_registry_row(c))?
+            .kind()
+        else {
+            return Err(SessionError::ContextUnavailable);
+        };
+        let html = exact_ascii(
+            c,
+            element.name().namespace().uri(),
+            "http://www.w3.org/1999/xhtml",
+        )?;
+        Ok(ElementCreationState::plain(html))
     }
     /// Shared DOM create-element qualification for original and clone creation.
     /// A found definition requires a real reaction domain absent from this profile.
@@ -927,33 +954,31 @@ impl SessionStorage {
         } else {
             None
         };
-        // The payload slot below admits its complete creation metadata. This
-        // separate move writes the actual PreparedDocuments registry receiver.
-        payload_write::<Option<usize>>(c, 1)?;
-        let admission = self.prepare_payload_slot_owned(c)?;
-        let slot = self
-            .payloads
-            .push_row(
-                admission,
-                RetainedPayload::LookupRegistry {
-                    node: None,
-                    registry,
-                    creation: Some(ElementCreationState {
-                        common_scope: if html {
-                            surgeist_html::elements::native::HtmlCommonScope::Html
-                        } else {
-                            surgeist_html::elements::native::HtmlCommonScope::Element
-                        },
-                        state,
-                        saved_is,
-                    }),
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
-        prepared
+        let prepared = prepared
             .as_mut()
-            .ok_or(SessionError::NodeDocumentUnavailable)?
-            .registry = Some(slot);
+            .ok_or(SessionError::NodeDocumentUnavailable)?;
+        // The record's context names its registry. A registry that is not Null is another entry
+        // of the list than the Null of the document, named before the record exists.
+        if !matches!(registry, RegistryRef::Null) {
+            let entry = prepared
+                .context
+                .ok_or(SessionError::NodeDocumentUnavailable)?;
+            prepared.context = Some(self.entry_with_registry(c, entry, registry)?);
+        }
+        // Only an element whose creation state is not the default of its namespace has a row.
+        let creation = ElementCreationState {
+            common_scope: if html {
+                surgeist_html::elements::native::HtmlCommonScope::Html
+            } else {
+                surgeist_html::elements::native::HtmlCommonScope::Element
+            },
+            state,
+            saved_is,
+        };
+        if creation != ElementCreationState::plain(html) {
+            self.payloads.facts.creation.admit(c, 1)?;
+            prepared.creation = Some(creation);
+        }
         Ok(())
     }
     pub(super) fn adopt_registry(
@@ -1058,23 +1083,8 @@ impl SessionStorage {
             },
         };
         let effective = self.effective_global_registry(c, registry)?;
-        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values.get(slot),Some(RetainedPayload::LookupRegistry {node:Some(bound),..}) if *bound==node)
-            {
-                payload_write::<RegistryRef>(c, 1)?;
-                let Some(RetainedPayload::LookupRegistry { registry, .. }) =
-                    self.payloads.values.get_mut(slot)
-                else {
-                    return Err(latch_registry_row(c));
-                };
-                *registry = effective;
-                return Ok(());
-            }
-        }
-        Err(SessionError::ContextFactUnavailable(
-            crate::HtmlCaptureFact::Registry,
-        ))
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        self.set_registry(c, node, effective)
     }
 }
 
@@ -1443,25 +1453,13 @@ impl ParserArenaSession {
                 )
                 .map_err(|_| latch_registry_row(c))?;
             payload_write::<Option<usize>>(c, 1)?;
-            let root = storage.allocate_shadow_contents(c, properties, document)?;
+            let root = storage.allocate_shadow_contents(c, properties, document, registry)?;
             let Some(RetainedPayload::Shadow { root: bound, .. }) =
                 storage.payloads.values.get_mut(shadow_slot)
             else {
                 return Err(latch_registry_row(c));
             };
             *bound = Some(root.index);
-            let prepared = storage.prepare_payload_slot_owned(c)?;
-            storage
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::LookupRegistry {
-                        node: Some(root.index),
-                        registry,
-                        creation: None,
-                    },
-                )
-                .map_err(|_| latch_registry_row(c))?;
             let local_host = match storage.fragment_storage(c)?.effects.as_slice().get(slot) {
                 Some(ContextEffect::AttachShadow {
                     host: ShadowHostKey::Owned(host),
@@ -1957,35 +1955,14 @@ impl SessionStorage {
             .payloads
             .push_row(prepared, RetainedPayload::Shadow { root: None, state })
             .map_err(|_| latch_registry_row(c))?;
-        let prepared = self.prepare_payload_slot_owned(c)?;
-        let lookup = self
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::LookupRegistry {
-                    node: None,
-                    registry,
-                    creation: None,
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
-        payload_write::<Option<usize>>(c, 2)?;
+        payload_write::<Option<usize>>(c, 1)?;
         let document = document.try_clone(c)?;
-        let root = self.allocate_shadow_contents(c, properties, document)?;
+        let root = self.allocate_shadow_contents(c, properties, document, registry)?;
         let Some(RetainedPayload::Shadow { root: bound, .. }) = self.payloads.values.get_mut(fact)
         else {
             return Err(latch_registry_row(c));
         };
         *bound = Some(root.index);
-        let Some(RetainedPayload::LookupRegistry { node: bound, .. }) =
-            self.payloads.values.get_mut(lookup)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        *bound = Some(root.index);
-        self.payloads
-            .join_row(lookup)
-            .map_err(|_| latch_registry_row(c))?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         let host = self
             .construction
@@ -2077,23 +2054,28 @@ impl FrozenStorage {
         c: &mut ParseControl,
         index: usize,
     ) -> Result<crate::HtmlCapturedRegistry, SessionError> {
-        self.context_arena(c)?;
-        for payload in &self.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
-                node: Some(bound),
-                registry,
-                ..
-            } = payload
-                && *bound == index
-            {
-                let registry = registry.try_clone(c)?;
-                return self.context_registry(c, registry);
-            }
+        let arena = self.context_arena(c)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if !matches!(
+            arena.node_at(index).map(|node| node.kind()),
+            Some(ConstructionNodeKind::Element(_) | ConstructionNodeKind::Fragment)
+        ) {
+            return Err(SessionError::ContextFactUnavailable(
+                crate::HtmlCaptureFact::Registry,
+            ));
         }
-        Err(SessionError::ContextFactUnavailable(
-            crate::HtmlCaptureFact::Registry,
-        ))
+        let (registry, probes) = self
+            .payloads
+            .facts
+            .contexts
+            .published_registry(index)
+            .map_err(|_| latch_registry_row(c))?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, probes)?;
+        let registry = match registry {
+            Some(registry) => registry.try_clone(c)?,
+            None => RegistryRef::Null,
+        };
+        self.context_registry(c, registry)
     }
 }
 
@@ -2156,34 +2138,39 @@ impl FrozenArena {
     > {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let index = storage.context_index(c, node)?;
-        for payload in &storage.payloads.values {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let ConstructionNodeKind::Element(_) = storage
+            .context_arena(c)?
+            .node_at(index)
+            .ok_or(SessionError::ForeignNode)?
+            .kind()
+        else {
+            return Err(SessionError::ContextUnavailable);
+        };
+        let creation = &storage.payloads.facts.creation;
+        let (found, probes) = creation.find_published(index);
+        c.charge(HtmlParseWorkCategory::RecordVisit, probes)?;
+        let Some(state) = found.and_then(|row| creation.row(row)) else {
+            return Ok((
+                surgeist_html::elements::native::HtmlCustomElementState::Uncustomized,
+                None,
+            ));
+        };
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<ElementCreationState>() as u64,
+        )?;
+        let saved = if let Some(slot) = state.saved_is {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
-                node: Some(bound),
-                creation: Some(state),
-                ..
-            } = payload
-                && *bound == index
-            {
-                c.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    mem::size_of::<ElementCreationState>() as u64,
-                )?;
-                let saved = if let Some(slot) = state.saved_is {
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let Some(RetainedPayload::String { value, .. }) =
-                        storage.payloads.values.get(slot)
-                    else {
-                        return Err(SessionError::ContextUnavailable);
-                    };
-                    Some(value)
-                } else {
-                    None
-                };
-                return Ok((state.state, saved));
-            }
-        }
-        Err(SessionError::ContextUnavailable)
+            let Some(RetainedPayload::String { value, .. }) = storage.payloads.values.get(slot)
+            else {
+                return Err(SessionError::ContextUnavailable);
+            };
+            Some(value)
+        } else {
+            None
+        };
+        Ok((state.state, saved))
     }
 }
 impl FrozenArena {
@@ -2354,10 +2341,6 @@ impl FrozenArena {
 }
 // Fixed borrowed views over the actual frozen records. These are immutable
 // observations, not controller operations or a copied publication registry.
-#[cfg(test)]
-pub(crate) fn registry_binding_layout() -> usize {
-    mem::size_of::<usize>() + mem::size_of::<RegistryRef>()
-}
 pub struct HtmlParseEffects<'a> {
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
@@ -2407,8 +2390,11 @@ impl<'a> HtmlParseEffects<'a> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// The slots of the registry bindings: one for each node that the report asks for by its own
+    /// key, which are the roots, the links and the nodes whose registry is not Null. A slot that
+    /// is not a binding is skipped by [`Self::registry`].
     pub fn registry_slots(&self) -> usize {
-        self.storage.payloads.values.len()
+        self.storage.payloads.facts.contexts.named_len()
     }
     fn node(&self, index: usize) -> Result<HtmlNode<'a>, read::HtmlParseUnresolvedReference> {
         self.arena
@@ -2475,29 +2461,31 @@ impl<'a> HtmlParseEffects<'a> {
             }
         }))
     }
-    /// Exactly one canonical payload slot. The reader chooses its next index;
-    /// the lender never scans, clones a registry handle or duplicates facts.
+    /// Exactly one canonical slot of the table of the nodes the report asks for by their own key.
+    /// The reader chooses its next index; the lender never scans, clones a registry handle or
+    /// duplicates facts. Only a node whose registry is not Null is a binding.
     pub(crate) fn registry_binding(
         &self,
         index: usize,
     ) -> Result<Option<HtmlParseRegistryBinding<'a>>, read::HtmlParseUnresolvedReference> {
-        let Some(RetainedPayload::LookupRegistry {
-            node: Some(node),
-            registry,
-            ..
-        }) = self.storage.payloads.values.get(index)
-        else {
+        let contexts = &self.storage.payloads.facts.contexts;
+        let named = contexts.named_registry(index).map_err(|_| {
+            read::HtmlParseUnresolvedReference::new(read::HtmlParseUnresolvedKind::Fact)
+        })?;
+        let Some((node, registry)) = named else {
             return Ok(None);
         };
+        // A node whose registry is Null has no binding to lend.
+        let registry = match registry {
+            RegistryRef::Null => return Ok(None),
+            RegistryRef::Unavailable => HtmlParseRegistry::Unavailable,
+            RegistryRef::Captured(index) => {
+                HtmlParseRegistry::Captured(HtmlParseCapturedRegistry { id: index })
+            }
+        };
         Ok(Some(HtmlParseRegistryBinding {
-            node: self.node(*node)?,
-            registry: match registry {
-                RegistryRef::Null => HtmlParseRegistry::Null,
-                RegistryRef::Unavailable => HtmlParseRegistry::Unavailable,
-                RegistryRef::Captured(index) => {
-                    HtmlParseRegistry::Captured(HtmlParseCapturedRegistry { id: index })
-                }
-            },
+            node: self.node(node)?,
+            registry,
         }))
     }
 }
@@ -2594,22 +2582,24 @@ impl FrozenArena {
                 _ => return Err(SessionError::ContextUnavailable),
             }
         }
-        for payload in &storage.payloads.values {
+        let contexts = &storage.payloads.facts.contexts;
+        for index in 0..contexts.named_len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::LookupRegistry {
-                node: Some(node),
-                registry,
-                ..
-            } = payload
+            let Some((node, registry)) = contexts
+                .named_registry(index)
+                .map_err(|_| latch_registry_row(c))?
             else {
-                continue;
+                return Err(latch_registry_row(c));
             };
+            if matches!(registry, RegistryRef::Null) {
+                continue;
+            }
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
                 const { (mem::size_of::<usize>() + mem::size_of::<RegistryRef>()) as u64 },
             )?;
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            view.node(*node).map_err(|_| SessionError::ForeignNode)?;
+            view.node(node).map_err(|_| SessionError::ForeignNode)?;
             if let RegistryRef::Captured(index) = registry {
                 // Validate the stored identity without cloning it or requiring scope truth.
                 view.fragment
@@ -2633,9 +2623,9 @@ impl<'a> HtmlParseEffects<'a> {
     ) -> Result<Option<HtmlParseEffect<'a>>, read::HtmlParseUnresolvedReference> {
         self.get(index)
     }
-    /// The registry binding at `index`, or `None` for a row that is not one,
-    /// including one past the registry. A binding that names a node the report
-    /// cannot resolve is a fault.
+    /// The registry binding at `index`, or `None` for a slot that is not one, including one past
+    /// the last slot: a node with the Null registry has none. A binding that names a node the
+    /// report cannot resolve is a fault.
     pub fn registry(
         &self,
         index: usize,
@@ -2750,11 +2740,11 @@ mod tests {
             panic!("F keeps actual captured target document")
         };
         assert_eq!(&actual, request.context().target_document());
+        // The output Fragment names no registry of its own, so it has the Null registry of its
+        // context, which no row holds.
         assert_eq!(
-            frozen.lookup_registry(&mut c, &root).err(),
-            Some(SessionError::ContextFactUnavailable(
-                HtmlCaptureFact::Registry
-            ))
+            frozen.lookup_registry(&mut c, &root).unwrap(),
+            HtmlCapturedRegistry::Null
         );
         assert!(frozen.template_cache(&mut c, 0).unwrap().is_none());
         assert!(frozen.declarative_shadow(&mut c, 0).unwrap().is_none());
@@ -3700,7 +3690,7 @@ mod tests {
     }
 
     #[test]
-    fn creation_registry_preparation_admits_actual_prepared_receiver_and_one_payload_slot() {
+    fn creation_registry_preparation_of_a_plain_element_admits_no_row() {
         let mut builder = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
@@ -3745,15 +3735,8 @@ mod tests {
         let mut prepared = storage
             .prepare_document_allocation(&mut c, Some(DocumentRef::Owned(0)), false)
             .unwrap();
-        // Admit actual vector growth before measuring the separate fixed writes.
-        // No initialized slot or logical entry is manufactured by this reserve.
-        c.reserve_vector(
-            &mut storage.payloads.values,
-            &mut storage.payloads.allocation,
-            1,
-        )
-        .unwrap();
-        let entries = storage.payloads.values.len();
+        let rows = storage.payloads.values.len();
+        let creation_rows = storage.payloads.facts.creation.len();
         let bytes = c.usage().work(HtmlParseWorkCategory::CopyByte);
         let writes = c.usage().work(HtmlParseWorkCategory::RecordWrite);
         storage
@@ -3766,19 +3749,18 @@ mod tests {
                 &mut prepared,
             )
             .unwrap();
-        // RegistryRef read, actual Option<usize> receiver assignment, and the
-        // one fully admitted RetainedPayload copy. CreationState is inside that
-        // payload, not a second independently moved Option receiver.
-        let expected_bytes = mem::size_of::<RegistryRef>()
-            + mem::size_of::<Option<usize>>()
-            + mem::size_of::<RetainedPayload>();
+        // A plain element has a Null registry, which its document's entry names, and the creation
+        // state of its namespace, so only the read of its parent's registry moves a value: no row
+        // is admitted and nothing is written.
+        let expected_bytes = mem::size_of::<RegistryRef>();
         let actual_bytes = c.usage().work(HtmlParseWorkCategory::CopyByte) - bytes;
         assert_eq!(
             c.usage().work(HtmlParseWorkCategory::RecordWrite) - writes,
-            2
+            0
         );
-        assert_eq!(prepared.unwrap().registry, Some(entries));
-        assert_eq!(storage.payloads.values.len(), entries + 1);
+        assert!(prepared.as_ref().unwrap().creation.is_none());
+        assert_eq!(storage.payloads.values.len(), rows);
+        assert_eq!(storage.payloads.facts.creation.len(), creation_rows);
         let tag = input.take().unwrap();
         tag.name.release(&mut c).unwrap();
         release_token_attributes(tag.attributes, &mut c).unwrap();

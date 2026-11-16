@@ -489,7 +489,8 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
     // first children-change raw 1, two retired static postconnection list slots 2, node-document
     // rows of the root, the textarea and the text 3, lookup-registry and nonce rows 2 =14. The
     // Document's facts are a row of the Document table; a registry that held its row had 15, and
-    // 20 after the five reset slots below.
+    // 20 after the five reset slots below. The textarea holds no lookup-registry row, so the
+    // registry holds one row fewer than the 14 less the three document rows.
     // The finite auxiliary cap admits the initial lexical/topology staging,
     // measured from an unconstrained run, then exactly five reset slots;
     // the next reset retains the current raw and latches the slot cap.
@@ -522,8 +523,9 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         .unwrap();
     tokenizer.release(&mut c).unwrap();
     // The registry holds the 14 rows listed above less the three that named the documents of
-    // the nodes, which the parse holds once for their tree.
-    assert_eq!(session.active().unwrap().payloads.values.len(), 11);
+    // the nodes, which the parse holds once for their tree, and the lookup-registry row of the
+    // textarea, whose registry is its context's.
+    assert_eq!(session.active().unwrap().payloads.values.len(), 10);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -571,9 +573,9 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         }
     ));
     let storage = session.active().unwrap();
-    // The registry holds the 14 rows less the three that named documents, and the five reset
-    // slots, 16.
-    assert_eq!(storage.payloads.values.len(), 16);
+    // The registry holds the 14 rows less the three that named documents and the lookup-registry
+    // row of the textarea, and the five reset slots, 15.
+    assert_eq!(storage.payloads.values.len(), 15);
     let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
         panic!("original current raw retained")
     };
