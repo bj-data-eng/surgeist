@@ -91,6 +91,7 @@ mod range;
 pub(crate) use radio::InputGroupAttribute;
 mod mutation;
 mod nonce;
+use nonce::{NonceAtCreation, NonceRow};
 pub(crate) mod provenance;
 pub(crate) mod read;
 pub(crate) mod report;

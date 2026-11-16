@@ -2015,11 +2015,11 @@ fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unre
         );
         measured!("nonce", c, storage.nonce_slot(&mut c, script));
         measured!("style", c, storage.style_slot(&mut c, style));
-        // The association step reads the style's nonce row on its own.
+        // The association step reads the style's nonce on its own: its row, or the empty nonce.
         measured!(
             "association nonce",
             c,
-            storage.association_nonce_present(&mut c, style)
+            storage.association_nonce_row(&mut c, style)
         );
         measured!(
             "image update",

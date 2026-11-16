@@ -1491,11 +1491,12 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn nonce_only_append_preserves_first_base_frozen_response() {
+    fn nonce_only_change_preserves_first_base_frozen_response() {
         // Base freezes for a new first href-bearing element or its href change.
-        // Appending nonce exercises the actual independent installed-attribute
-        // hook and shared merge owner without satisfying either Base trigger.
-        let request = request("<base href=A>");
+        // Replacing the nonce of an element whose token carried one exercises the actual
+        // independent installed-attribute hook without satisfying either Base trigger. An
+        // element holds a row for its nonce only when its token carried the attribute.
+        let request = request("<base href=A nonce=x>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
         let mut lexer =

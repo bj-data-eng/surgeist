@@ -417,6 +417,21 @@ impl HtmlParseReport {
     > {
         self.storage.node_common_state(node)
     }
+    /// The cryptographic nonce of the element `node`. An element whose token carried a `nonce`
+    /// attribute, a clone of one, and `html` and `body` have a row in the report, and any other
+    /// element of the HTML, SVG or MathML namespace has the empty nonce. A node that is not an
+    /// element and an element of another namespace have none.
+    pub fn cryptographic_nonce(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<
+        crate::construction::report::HtmlParseNodeRead<
+            Option<&surgeist_html::values::DocumentString>,
+        >,
+        crate::construction::report::HtmlParseNodeReadError,
+    > {
+        self.storage.node_nonce(node)
+    }
     /// The document of the tree rooted at `root`. Every node of a tree has the document of its
     /// root, so a report holds the document of each root and not of each node: a Document root is
     /// its own document, and any other root is found among the roots that name one. A node that
@@ -540,7 +555,7 @@ mod tests {
 
     #[test]
     fn details_publication_keeps_native_attributes_and_skips_private_eligibility() {
-        use crate::construction::report::{HtmlParseMetadataDocument, HtmlParseMetadataStep};
+        use crate::construction::report::HtmlParseMetadataDocument;
         use surgeist_html::construction::HtmlNodeKind;
         let literal =
             "<!doctype html><details name=g open>A</details><details name=g open>B</details>";
@@ -583,30 +598,20 @@ mod tests {
             );
         }
         let usage = report.usage().clone();
-        let mut nonce_counts = [0; 2];
-        let mut cursor = report.metadata();
-        loop {
-            match cursor.advance() {
-                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
-                HtmlParseMetadataStep::Record(record) => {
-                    for (index, id) in details.iter().enumerate() {
-                        if record.node().id() == *id {
-                            // The private Details marker emits no record; ordinary
-                            // creation has an independent no-definition record.
-                            if let Some(nonce) = record.cryptographic_nonce() {
-                                assert_eq!(nonce.code_units(), &[]);
-                                nonce_counts[index] += 1;
-                            } else {
-                                let creation = record.creation().unwrap();
-                                assert_eq!(creation.0, surgeist_html::elements::native::HtmlCustomElementState::Uncustomized);
-                                assert!(creation.1.is_none());
-                            }
-                        }
-                    }
-                }
-                HtmlParseMetadataStep::Skipped => {}
-                HtmlParseMetadataStep::Complete => break,
-            }
+        // The private Details marker emits no record, and an element that has the default creation
+        // state and no `nonce` attribute emits none either: the report answers both by node.
+        for id in &details {
+            let nonce = report.cryptographic_nonce(id).unwrap();
+            assert_eq!(
+                *nonce.value(),
+                Some(&surgeist_html::values::DocumentString::default())
+            );
+            let creation = report.creation(id).unwrap().value().unwrap();
+            assert_eq!(
+                creation.state(),
+                surgeist_html::elements::native::HtmlCustomElementState::Uncustomized
+            );
+            assert!(creation.saved_is().is_none());
         }
         // Both elements are in the tree of the Document, which names itself.
         for id in &details {
@@ -615,7 +620,6 @@ mod tests {
                 matches!(found.document(), Some(HtmlParseMetadataDocument::Owned(owner)) if owner.id() == document.root().id())
             );
         }
-        assert_eq!(nonce_counts, [1, 1]);
         assert_eq!(report.usage(), &usage);
         assert_eq!(report.source().as_utf8(), Some(literal));
     }

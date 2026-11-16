@@ -45,8 +45,31 @@ impl SessionStorage {
             "http://www.w3.org/1999/xhtml",
         )? && exact_ascii(control, Some(name.local_name()), "template")?;
         let units = name_units(control, &name)?;
-        let node =
-            self.allocate_native(control, NewRecord::Element(name, None), template, 0, units)?;
+        let nonce = if exact_ascii(
+            control,
+            name.namespace().uri(),
+            "http://www.w3.org/1999/xhtml",
+        )? && (exact_ascii(control, Some(name.local_name()), "html")?
+            || exact_ascii(control, Some(name.local_name()), "body")?)
+        {
+            NonceAtCreation::Root
+        } else {
+            let mut found = NonceAtCreation::Absent;
+            for attribute in attributes.as_slice() {
+                if exact_ascii(control, Some(attribute.name().local_name()), "nonce")? {
+                    found = NonceAtCreation::Token;
+                    break;
+                }
+            }
+            found
+        };
+        let node = self.allocate_native(
+            control,
+            NewRecord::Element(name, None, nonce),
+            template,
+            0,
+            units,
+        )?;
         self.payloads.preexisting_units += units;
         // The attributes are appended as the storage appends any, each counting its own units and
         // slot.
@@ -136,23 +159,23 @@ impl SessionStorage {
         // any new nonce backing; successful elements still bind the slot
         // before their native record can be published.
         let named;
-        let element_name = match &kind {
+        let nonce = match &kind {
             #[cfg(test)]
-            NewRecord::Element(name, ..) => Some(name),
-            NewRecord::NamedElement(id, ..) => {
+            NewRecord::Element(name, _, nonce) => Some((name, *nonce)),
+            NewRecord::NamedElement(id, _, nonce) => {
                 named = self
                     .construction
                     .name(id)
                     .map_err(|_| latch_registry_row(control))?
                     .clone();
-                Some(&named)
+                Some((&named, *nonce))
             }
             _ => None,
         };
-        let nonce_slot = self.prepare_nonce(control, element_name)?;
-        if nonce_slot.is_some() {
-            payload_write::<Option<usize>>(control, 1)?;
-        }
+        let nonce_raw = match nonce {
+            Some((name, at)) if at.has_row() => Some(self.prepare_nonce(control, name, at)?),
+            _ => None,
+        };
         let index = self.construction.len();
         control.reserve_vector_geometric(
             &mut self.payloads.node_joins,
@@ -188,15 +211,8 @@ impl SessionStorage {
         }
         self.push_context_cells(count)
             .map_err(|_| latch_registry_row(control))?;
-        if let Some(slot) = nonce_slot {
-            let Some(RetainedPayload::Nonce { node, .. }) = self.payloads.values.get_mut(slot)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            *node = Some(index);
-            self.payloads
-                .join_row(slot)
-                .map_err(|_| latch_registry_row(control))?;
+        if let Some(raw) = nonce_raw {
+            self.push_nonce_row(control, index, raw)?;
         }
         for (offset, slot) in cause_slots.into_iter().enumerate().take(count) {
             if let Some(slot) = slot {
@@ -391,12 +407,22 @@ impl SessionStorage {
                     return Err(stop.into());
                 }
             };
-            let node = self.allocate_html_payload_prepared(
+            let nonce = Self::html_nonce_at_creation(control, name.value.text(), &attributes);
+            let nonce = match nonce {
+                Ok(nonce) => nonce,
+                Err(error) => {
+                    name.release(control)?;
+                    empty.release(control)?;
+                    return Err(error);
+                }
+            };
+            let node = self.allocate_html_element(
                 control,
                 name.value,
                 Some(name.origins),
                 empty,
                 prepared,
+                nonce,
             )?;
             match creation {
                 OrderedCreation::Details { metadata } => {
@@ -477,7 +503,9 @@ impl SessionStorage {
                     if self.effects.form.is_some() {
                         self.drain_form_effects(control)?;
                     }
-                    self.initial_nonce_attribute(control, node.index, position)?;
+                    if nonce.has_row() {
+                        self.initial_nonce_attribute(control, node.index, position)?;
+                    }
                     match creation {
                         OrderedCreation::Details { .. } => {
                             self.initial_details_attribute(control, node.index, position)?
@@ -616,8 +644,32 @@ impl SessionStorage {
         control: &mut ParseControl,
         name: FrozenUtf16,
         origins: Option<OwnedVec<HtmlParseTextOrigin>>,
+        attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
+        prepared: Option<template::PreparedDocuments>,
+    ) -> Result<ParserNode, SessionError> {
+        let nonce = match Self::html_nonce_at_creation(control, name.text(), &attributes) {
+            Ok(nonce) => nonce,
+            Err(error) => {
+                name.release(control)?;
+                if let Some(origins) = origins {
+                    origins.release(control)?;
+                }
+                release_token_attributes(attributes, control)?;
+                return Err(error);
+            }
+        };
+        self.allocate_html_element(control, name, origins, attributes, prepared, nonce)
+    }
+    /// Creates the element of the HTML namespace that a token names and appends its attributes,
+    /// with the row of its nonce if `nonce` says it has one.
+    fn allocate_html_element(
+        &mut self,
+        control: &mut ParseControl,
+        name: FrozenUtf16,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
         mut attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
         prepared: Option<template::PreparedDocuments>,
+        nonce: NonceAtCreation,
     ) -> Result<ParserNode, SessionError> {
         let result = (|| {
             let (name, name_ticket) = self.register_string(control, name, origins)?;
@@ -640,7 +692,7 @@ impl SessionStorage {
             let node_index = self.construction.len();
             let node = self.allocate_prepared_owned(
                 control,
-                NewRecord::NamedElement(name_id, link_flags),
+                NewRecord::NamedElement(name_id, link_flags, nonce),
                 template,
                 0,
                 0,
@@ -673,7 +725,9 @@ impl SessionStorage {
             let retired = self.holds.retire_name_index(control);
             installed?;
             retired?;
-            self.initial_nonce_attributes(control, node.index)?;
+            if nonce.has_row() {
+                self.initial_nonce_attributes(control, node.index)?;
+            }
             self.initial_associated_state(control, node.index)?;
             self.initial_meta_attributes(control, node.index)?;
             self.association_initial_attributes(control, node.index)?;

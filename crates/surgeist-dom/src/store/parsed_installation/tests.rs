@@ -169,14 +169,16 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
     .unwrap();
     let environment = environment(&mut dom);
     // The `a` element holds the record of its hyperlink state beside the records of the
-    // Document and the nonces of the elements; an element with the creation state of its
-    // namespace holds no record of it.
+    // Document and the nonces of `html` and `body`, whose rows are reserved at creation; an
+    // element with the creation state and the nonce of its namespace holds no record.
     let report = report_for("<!doctype html><a>private</a>");
-    // This literal has seven source subjects and six metadata records: the nonces of `html`,
-    // `head`, `body` and `a`, the hyperlink state of `a` and the Document. The first five records
-    // name five of the subjects, so the selected geometric banks hold eight Rows while metadata
-    // grows from four to eight. Both metadata allocations coexist during copying;
-    // the peak is their sum, not a final-occupancy receipt from the allocator.
+    // This literal has seven source subjects and four metadata records: the nonces of `html` and
+    // `body`, the hyperlink state of `a` and the Document. The walk of the tree adds the seven
+    // subjects before the records are read, so the selected geometric bank holds eight Rows, and
+    // the cells of the row map are one for each of the seven nodes of the result, while metadata
+    // grows from two to four. Both metadata allocations coexist during copying; the peak is their
+    // sum, not a final-occupancy receipt from the allocator. The walk's own scratch is returned
+    // before the records are read.
     // The original envelope also reserves the two actual mandatory shared
     // output Vec payload headers before collection. This is future-backing
     // reservation, not a claim that those allocations overlap this copy.
@@ -190,9 +192,12 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
             HtmlParseMetadataStep::Complete => break,
         }
     }
-    assert_eq!(records, 6);
+    assert_eq!(records, 4);
+    let nodes = report.document().unwrap().usage().nodes();
+    assert_eq!(nodes, 7);
     let peak = 8 * size_of::<Row<'_>>()
-        + (4 + 8) * size_of::<HtmlParseMetadata<'_>>()
+        + nodes * size_of::<u32>()
+        + (2 + 4) * size_of::<HtmlParseMetadata<'_>>()
         + size_of::<Vec<DomParsedHtmlBinding>>()
         + size_of::<Vec<DomParsedHtmlCapturedBinding>>();
     let before = dom.snapshot();
@@ -1476,5 +1481,340 @@ fn installation_work_grows_linearly_with_the_nodes() {
             items / 2
         );
         previous = work;
+    }
+}
+
+/// The nodes a walk of `report` reaches: the Document or fragment root, the children, the
+/// contents of every template and the contents of every declarative shadow root, by the record
+/// position of each id.
+fn reachable_positions(report: &HtmlParseReport) -> Vec<usize> {
+    let root = match (report.document(), report.fragment()) {
+        (Some(document), _) => document.root(),
+        (None, Some(fragment)) => fragment.root(),
+        (None, None) => panic!("a report holds a tree"),
+    };
+    let node = |id: &surgeist_html::construction::HtmlNodeId| match report.document() {
+        Some(document) => document.node(id).unwrap(),
+        None => report.fragment().unwrap().node(id).unwrap(),
+    };
+    let mut positions = Vec::new();
+    let mut pending = vec![root.id()];
+    while let Some(id) = pending.pop() {
+        positions.push(id.position());
+        let current = node(&id);
+        pending.extend(current.children());
+        pending.extend(current.template_contents());
+        pending.extend(
+            current
+                .declarative_shadow_root()
+                .map(|shadow| shadow.contents()),
+        );
+    }
+    positions
+}
+
+/// Every node an installation reads has a record position below the node count of its result,
+/// which is the length of the row map, so no id of the result can name a cell the map lacks: the
+/// nodes the parser removed or moved, a template's contents, the nodes of a table the parser
+/// foster-parented and of an adoption agency run keep the records they were created with.
+#[test]
+fn every_node_of_a_document_has_a_cell_in_the_row_map() {
+    for html in [
+        "<!doctype html><p>a<p>b",
+        "<!doctype html><b>1<p>2</b>3</p><a name=x>4<a>5",
+        "<!doctype html><table>text<tr><td>x</table><b><table><b>y</table>",
+        "<!doctype html><template><div><template><i>n</i></template></div></template>",
+        "<!doctype html><svg><g><title>t</title></g></svg><math><mi>m</mi></math>",
+        "<!doctype html><select><option>a<option>b</select>",
+    ] {
+        let report = report_for(html);
+        let nodes = report.document().unwrap().usage().nodes();
+        let positions = reachable_positions(&report);
+        let mut seen = vec![false; nodes];
+        for position in &positions {
+            assert!(*position < nodes, "{html}: position {position} of {nodes}");
+            assert!(!seen[*position], "{html}: two nodes at {position}");
+            seen[*position] = true;
+        }
+        // The installation maps every reachable node of the result.
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(
+            DomLimits::new(
+                4096,
+                1_000_000,
+                4096,
+                4096,
+                4096,
+                32,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let environment = environment(&mut dom);
+        let before = dom.snapshot();
+        let prepared = dom
+            .prepare_parsed_html_installation(
+                before.stamp(),
+                report.clone(),
+                environment.clone(),
+                Limits::new(4096, 100_000_000, 16_000_000, 100_000_000),
+                &cancel,
+            )
+            .unwrap();
+        // The inert Document of a template is mapped beside the nodes the walk reaches.
+        let mapped = prepared.bindings.len();
+        assert!(mapped >= positions.len(), "{html}");
+        drop(prepared);
+        dom.prepare_parsed_html_installation(
+            before.stamp(),
+            report.clone(),
+            environment.clone(),
+            Limits::new(mapped, 100_000_000, 16_000_000, 100_000_000),
+            &cancel,
+        )
+        .unwrap();
+        assert!(matches!(
+            dom.prepare_parsed_html_installation(
+                before.stamp(),
+                report,
+                environment,
+                Limits::new(mapped - 1, 100_000_000, 16_000_000, 100_000_000),
+                &cancel,
+            ),
+            Err(Error::ResourceLimit {
+                resource: Resource::MappedNodes,
+                ..
+            })
+        ));
+    }
+}
+
+/// The same holds for the trees of a contextual parse: the implicit root, the nodes of the
+/// output fragment, the contents of a template and of a declarative shadow root.
+#[test]
+fn every_node_of_a_fragment_has_a_cell_in_the_row_map() {
+    use surgeist_html_parser::HtmlFragmentParseRequest;
+    use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut batch = DomBatch::new();
+    let doc = batch.create_document();
+    let host = batch.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "div");
+    batch.insert_before(&host, &doc, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let document = commit.document(&doc).unwrap();
+    let host = commit.created(&host).unwrap().unwrap();
+    let before = dom.snapshot();
+    let capture = before
+        .html_capture(
+            document,
+            None,
+            HtmlCaptureLimits::new(256, 1024, 1024, 65536, 256, 0, 0, 16_777_216),
+            crate::DomHtmlCaptureLimits::new(256, 1_000_000),
+            &cancel,
+        )
+        .unwrap();
+    let context =
+        HtmlFragmentContext::element(capture.capture(), &capture.subject(host).unwrap()).unwrap();
+    let report = Arc::new(
+        HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(
+                "<template shadowrootmode=open><p>S</p></template><template><b>T</b></template>\
+                 <i>x</i>",
+            ),
+            context,
+            parser_limits(),
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert,
+            true,
+        )
+        .unwrap()
+        .parse()
+        .unwrap(),
+    );
+    let nodes = report.fragment().unwrap().usage().nodes();
+    let positions = reachable_positions(&report);
+    assert!(positions.iter().all(|&position| position < nodes));
+    let mut sorted = positions.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(sorted.len(), positions.len(), "two nodes share a position");
+    let prepared = dom
+        .prepare_parsed_html(
+            before.stamp(),
+            report,
+            None,
+            Some(&capture),
+            Limits::new(256, 10_000_000, 16_000_000, 100_000_000),
+            &cancel,
+        )
+        .unwrap();
+    // The nodes of the fragment are mapped by their cells, with the nodes of the parser's own
+    // Document and the captured nodes the context names, so the walk reaches no more than the
+    // installation maps.
+    assert!(prepared.bindings.len() >= positions.len());
+    drop(prepared);
+    // The rows hold each node the walk reaches once. The elements are in creation order, except
+    // the template and the host that the effects of the parse add first, and the contents of the
+    // shadow root and of the template follow the nodes of their own trees.
+    let mut control = Control {
+        limits: Limits::new(256, 100_000_000, 16_000_000, 100_000_000),
+        work: 0,
+        bytes: 0,
+        peak_bytes: 0,
+        cancel: &cancel,
+    };
+    let parsed = Arc::new(
+        surgeist_html_parser::HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(
+                "<template shadowrootmode=open><p>S</p><b>x</b></template><i>x</i><u>y</u>",
+            ),
+            HtmlFragmentContext::element(capture.capture(), &capture.subject(host).unwrap())
+                .unwrap(),
+            parser_limits(),
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert,
+            true,
+        )
+        .unwrap()
+        .parse()
+        .unwrap(),
+    );
+    let source = collect_fragment(&parsed, &capture, &mut control).unwrap();
+    let rows: Vec<(usize, bool)> = source
+        .rows
+        .iter()
+        .map(|row| {
+            let element = matches!(row.source.kind(), HtmlNodeKind::Element(_));
+            (row.source.id().position(), element)
+        })
+        .collect();
+    let mut once: Vec<usize> = rows.iter().map(|row| row.0).collect();
+    once.sort_unstable();
+    once.dedup();
+    assert_eq!(once.len(), rows.len(), "a node has two rows");
+    for position in reachable_positions(&parsed) {
+        assert!(rows.iter().any(|row| row.0 == position));
+    }
+    // The implicit `html` root of the parse is an element of the parser's own Document, which
+    // no tree of the fragment reaches.
+    let elements: Vec<usize> = source
+        .rows
+        .iter()
+        .filter(|row| match row.source.kind() {
+            HtmlNodeKind::Element(element) => element.name().local_name() != &"html".into(),
+            _ => false,
+        })
+        .map(|row| row.source.id().position())
+        .collect();
+    // The template comes with the effects, and every other element follows in creation order.
+    assert!(elements.len() >= 5, "{elements:?}");
+    assert!(
+        elements[1..].windows(2).all(|pair| pair[0] < pair[1]),
+        "{elements:?}"
+    );
+}
+
+/// An id that names no row of a source is not found, whether it names a cell no row holds, a row
+/// of another id, or a position past the cells, and a node whose position is past the cells is
+/// refused when it is added: nothing is written.
+#[test]
+fn an_id_without_a_row_is_not_found_and_a_position_past_the_cells_is_refused() {
+    let report = report_for("<!doctype html><p>a</p><p>b</p>");
+    let other = report_for("<!doctype html><p>a</p><p>b</p>");
+    let cancel = AtomicBool::new(false);
+    let mut control = Control {
+        limits: Limits::new(64, 10_000_000, 16_000_000, 100_000_000),
+        work: 0,
+        bytes: 0,
+        peak_bytes: 0,
+        cancel: &cancel,
+    };
+    let mut source = collect(&report, &mut control).unwrap();
+    let document = report.document().unwrap();
+    let ids: Vec<_> = {
+        let html = document
+            .node(&document.root().children().nth(1).unwrap())
+            .unwrap();
+        let body = document.node(&html.children().nth(1).unwrap()).unwrap();
+        body.children().collect()
+    };
+    let first = source.index(&ids[0], &mut control).unwrap().unwrap();
+    assert_eq!(source.rows[first].source.id(), ids[0]);
+    // An id of another result names no row of this one, though its position holds a cell.
+    let foreign = other.document().unwrap().root().id();
+    let before = control.work;
+    assert_eq!(source.index(&foreign, &mut control).unwrap(), None);
+    assert_eq!(control.work - before, 1, "one step for the cell");
+    // A cell that names a row of another node is not that node's row.
+    let moved = source.row_of[ids[0].position()];
+    source.row_of[ids[1].position()] = moved;
+    assert_eq!(source.index(&ids[1], &mut control).unwrap(), None);
+    source.row_of[ids[1].position()] = 0;
+    assert_eq!(source.index(&ids[1], &mut control).unwrap(), None);
+    // The cells cover fewer nodes than the result holds: the node is refused and no row is made.
+    source.row_of.truncate(ids[1].position());
+    let rows = source.rows.len();
+    assert_eq!(source.index(&ids[1], &mut control).unwrap(), None);
+    assert!(matches!(
+        source.add(ids[1], &mut control),
+        Err(Error::RepresentationExhausted)
+    ));
+    assert_eq!(source.rows.len(), rows);
+}
+
+/// The rows of a source hold every node of the trees of the report once, and the nodes of a tree
+/// in the order the parser created them, whatever records the report holds: a parent precedes its
+/// children, and elements with no record of their own follow the order of those that have one.
+#[test]
+fn the_rows_of_a_source_hold_every_node_once_in_creation_order() {
+    let cancel = AtomicBool::new(false);
+    for html in [
+        "<!doctype html><p>a<p>b",
+        "<!doctype html><form id=f><input type=radio name=g><input type=radio name=g checked></form>",
+        "<!doctype html><b>1<p>2</b>3</p><table>text<tr><td nonce=n>x</table>",
+        "<!doctype html><template><div><template><i>n</i></template></div></template><p>t",
+        "<!doctype html><html nonce=a><body><html nonce=b><span></span><svg><g nonce=c></g></svg>",
+    ] {
+        let report = report_for(html);
+        let mut control = Control {
+            limits: Limits::new(256, 100_000_000, 16_000_000, 100_000_000),
+            work: 0,
+            bytes: 0,
+            peak_bytes: 0,
+            cancel: &cancel,
+        };
+        let source = collect(&report, &mut control).unwrap();
+        let reached = reachable_positions(&report);
+        let rows: Vec<usize> = source
+            .rows
+            .iter()
+            .map(|row| row.source.id().position())
+            .collect();
+        let mut once = rows.clone();
+        once.sort_unstable();
+        once.dedup();
+        assert_eq!(once.len(), rows.len(), "{html}: a node has two rows");
+        let mut expected = reached.clone();
+        expected.sort_unstable();
+        // The nodes the walk reaches come first, in ascending order of position, and the rows
+        // that follow are the inert Documents of templates, which no tree reaches.
+        assert_eq!(rows[..expected.len()], expected[..], "{html}");
+        for row in &rows[expected.len()..] {
+            assert!(!reached.contains(row), "{html}: node {row} is added twice");
+        }
     }
 }

@@ -1072,7 +1072,8 @@ fn nonce_and_svg_script_rows_leave_nothing_retained_when_the_parse_stops_after_t
     assert_nothing_retained(
         &document("<!doctype html><p nonce=n>x</p><svg><script>1</script><g nonce=m></g></svg>"),
         &[
-            ("src/construction/nonce.rs", "prepare_nonce"),
+            ("src/construction/nonce.rs", "admit_token_nonce"),
+            ("src/construction/nonce.rs", "admit_root_nonce"),
             ("src/construction/svg.rs", "retain_svg_slot"),
             (
                 "src/construction/storage_strings.rs",
@@ -1080,6 +1081,120 @@ fn nonce_and_svg_script_rows_leave_nothing_retained_when_the_parse_stops_after_t
             ),
         ],
     );
+}
+
+/// The row of an element in the table of nonces is admitted before the element exists, as a
+/// prepared slot asked for where the reason for the row is known: a token that carries a `nonce`
+/// attribute, `html` and `body` (which a later token merges attributes into) and a clone of an
+/// element that has a row. The counts are derived from the report and its tree: one admission for
+/// each row, the `nonce` attributes the source holds, the `html` and `body` elements the tree
+/// holds, and the elements with a nonce attribute that a clone made.
+#[test]
+fn nonce_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    use crate::construction::ConstructionNodeKind;
+    let admissions = |sites: &[Site], function: &str| {
+        sites
+            .iter()
+            .filter(|site| {
+                site.file == "src/construction/nonce.rs"
+                    && site.function == function
+                    && site.line.contains("nonces.admit(")
+            })
+            .count()
+    };
+    let select = "<select><button><selectedcontent></selectedcontent></button>\
+                  <option selected><span nonce=c>t</span><i></i></option></select>";
+    let documents = [
+        // Two tokens carry a nonce, and the Document creates `html` and `body`.
+        (
+            "<!doctype html><p nonce=n>x</p><svg><g nonce=m></g><g></g></svg>",
+            false,
+        ),
+        // No token carries one: only `html` and `body` hold rows.
+        ("<!doctype html><p>x</p><div></div>", false),
+        // The span is cloned with its row into the selectedcontent element.
+        (
+            "<!doctype html><select><button><selectedcontent></selectedcontent></button>\
+             <option selected><span nonce=c>t</span><i></i></option></select>",
+            false,
+        ),
+        // A contextual parse creates the implicit `html` root and no `body`.
+        (select, true),
+    ];
+    let units_are = |units: &[u16], literal: &str| {
+        units.len() == literal.len()
+            && units
+                .iter()
+                .zip(literal.bytes())
+                .all(|(&unit, byte)| unit == u16::from(byte))
+    };
+    for (source, contextual) in documents {
+        let source: &'static str = Box::leak(source.to_string().into_boxed_str());
+        let report = if contextual {
+            crate::HtmlFragmentParseRequest::with_options(
+                HtmlSource::utf8(source),
+                fragment_context(),
+                limits(100),
+                HtmlParserScriptingMode::Inert,
+                true,
+            )
+            .unwrap()
+            .parse()
+            .unwrap()
+        } else {
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100))
+                .parse()
+                .unwrap()
+        };
+        let storage = report.history().storage();
+        let arena = &storage.view;
+        let (mut roots, mut cloned) = (0, 0);
+        for position in 0..arena.len() {
+            let record = arena.node_at(position).unwrap();
+            let ConstructionNodeKind::Element(element) = record.kind() else {
+                continue;
+            };
+            let name = element.name().local_name().code_units();
+            if *element.name().namespace() == surgeist_html::values::Namespace::html()
+                && (units_are(name, "html") || units_are(name, "body"))
+            {
+                roots += 1;
+            }
+            // An element with a nonce attribute inside a selectedcontent element is a clone.
+            let has_nonce = matches!(
+                record.as_node().unwrap().kind(),
+                surgeist_html::construction::HtmlNodeKind::Element(published)
+                    if published.attributes().iter().any(|attribute| {
+                        units_are(attribute.name().local_name().code_units(), "nonce")
+                    })
+            );
+            let mut parent = record.parent();
+            while let Some(ancestor) = parent {
+                if has_nonce
+                    && matches!(ancestor.kind(), ConstructionNodeKind::Element(held)
+                        if units_are(held.name().local_name().code_units(), "selectedcontent"))
+                {
+                    cloned += 1;
+                    break;
+                }
+                parent = ancestor.parent();
+            }
+        }
+        let tokens = source.matches("nonce=").count();
+        let rows = storage.payloads.facts.nonces.len();
+        assert_eq!(rows, roots + tokens + cloned, "{source}");
+        let (retained, sites) = retained_after_each_prepared_slot(&|limits| {
+            if contextual {
+                fragment_in(source, false)(limits)
+            } else {
+                document(source)(limits)
+            }
+        });
+        assert!(retained.is_empty(), "{source}: {retained:?}");
+        assert_eq!(admissions(&sites, "admit_token_nonce"), tokens, "{source}");
+        assert_eq!(admissions(&sites, "admit_root_nonce"), roots, "{source}");
+        assert_eq!(admissions(&sites, "admit_clone_nonce"), cloned, "{source}");
+    }
 }
 
 #[test]

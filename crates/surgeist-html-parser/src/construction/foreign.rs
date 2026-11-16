@@ -441,8 +441,10 @@ mod tests {
                 // replacement cause, and
                 // the one canonical diagnostic location. Actual lexical
                 // retention adds eight head rows in the standalone owner and
-                // 26 head/lineargradient rows in the independent lexer: 38+34, plus two empty nonce groups.
-                _ => 74,
+                // 26 head/lineargradient rows in the independent lexer: 38+34, plus the empty
+                // nonce group of the implicit html, which holds a row for its nonce; the
+                // lineargradient has the empty nonce of its namespace and holds none.
+                _ => 73,
             };
             for cap in [exact - 1, exact] {
                 let builder = super::super::tests::limits().into_builder();
@@ -1003,10 +1005,11 @@ impl SessionStorage {
             if svg.is_some() {
                 payload_write::<Option<usize>>(control, 1)?;
             }
+            let nonce = Self::token_carries_nonce(control, &attributes)?;
             let node_index = self.construction.len();
             let node = self.allocate_prepared_owned(
                 control,
-                NewRecord::NamedElement(name_id, None),
+                NewRecord::NamedElement(name_id, None, nonce),
                 template,
                 0,
                 0,
@@ -1059,7 +1062,9 @@ impl SessionStorage {
             installed?;
             retired?;
 
-            self.initial_nonce_attributes(control, node.index)?;
+            if nonce.has_row() {
+                self.initial_nonce_attributes(control, node.index)?;
+            }
             Ok(node)
         })();
         release_token_attributes(attributes, control)?;

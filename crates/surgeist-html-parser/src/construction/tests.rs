@@ -24,6 +24,7 @@ mod listed_form;
 mod literals;
 mod native_payloads;
 pub(crate) mod native_view;
+mod nonce_rows;
 mod output;
 mod pi_origin_walk;
 mod plain_elements;

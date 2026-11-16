@@ -782,11 +782,11 @@ pub(super) fn allocate(
             if common.scope() != class.common_scope() {
                 return Err(Error::UnsupportedState { subject: node.id() });
             }
-            let nonce = source.observation(&node.id(), c, |r| r.cryptographic_nonce())?;
+            let nonce = source.nonce(&node.id(), c)?;
             if class.has_nonce() != nonce.is_some() {
                 return Err(Error::MissingMetadata { subject: node.id() });
             }
-            if let Some(value) = nonce {
+            if let Some(value) = &nonce {
                 c.string(value)?;
             }
             let cancel = c.cancel;
@@ -805,7 +805,7 @@ pub(super) fn allocate(
                 name.value,
                 custom_state,
                 saved_is.cloned(),
-                nonce.cloned(),
+                nonce,
                 family,
                 common.map(|reference| match reference {}),
                 formation,

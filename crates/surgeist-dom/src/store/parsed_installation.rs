@@ -291,11 +291,22 @@ impl<'a> Arena<'a> {
             Self::Fragment(value) => value.node(id),
         }
     }
+    /// The number of nodes of the result: the record position of every id the result issued is
+    /// below it.
+    fn nodes(&self) -> usize {
+        match self {
+            Self::Document(value) => value.usage().nodes(),
+            Self::Fragment(value) => value.usage().nodes(),
+        }
+    }
 }
 struct Source<'a> {
     report: &'a HtmlParseReport,
     arena: Arena<'a>,
     rows: Vec<Row<'a>>,
+    /// The row of each node of the result by the record position of its id, one more than the row
+    /// index: zero names no row. It has a cell for each node of the result.
+    row_of: Vec<u32>,
     metadata: Vec<HtmlParseMetadata<'a>>,
     capture: Option<&'a crate::DomHtmlCapture>,
     captured_bindings: Vec<DomParsedHtmlCapturedBinding>,
@@ -311,14 +322,34 @@ struct ParsedShadow {
     available_to_internals: bool,
 }
 impl<'a> Source<'a> {
+    /// Makes the cell of every node of the result, each naming no row. One step is charged for
+    /// each cell written, and the vector is reserved once.
+    fn map_rows(&mut self, c: &mut Control<'_>) -> Result<(), Error> {
+        let nodes = self.arena.nodes();
+        c.reserve(&mut self.row_of, nodes)?;
+        c.step(nodes)?;
+        self.row_of.resize(nodes, 0);
+        Ok(())
+    }
+    /// The row of the node `id` names, when it has one: one step is charged for the cell read. An
+    /// id that names no row of this source is `None`, whether it is an id of another result or a
+    /// node that was not added: the cell it reads names no row, or a row of another id.
     fn index(&self, id: &HtmlNodeId, c: &mut Control<'_>) -> Result<Option<usize>, Error> {
-        for (i, row) in self.rows.iter().enumerate() {
-            c.step(1)?;
-            if row.source.id() == *id {
-                return Ok(Some(i));
-            }
-        }
-        Ok(None)
+        c.step(1)?;
+        let Some(&cell) = self.row_of.get(id.position()) else {
+            return Ok(None);
+        };
+        let Some(row) = usize::try_from(cell)
+            .ok()
+            .and_then(|cell| cell.checked_sub(1))
+        else {
+            return Ok(None);
+        };
+        Ok(self
+            .rows
+            .get(row)
+            .filter(|held| held.source.id() == *id)
+            .map(|_| row))
     }
     fn add(&mut self, id: HtmlNodeId, c: &mut Control<'_>) -> Result<(), Error> {
         #[cfg(test)]
@@ -340,15 +371,86 @@ impl<'a> Source<'a> {
             .arena
             .node(&id)
             .map_err(|error| Error::SourceLookup { subject: id, error })?;
+        // The position of an id of this result is below the number of its nodes, which the cells
+        // were made for; a position past them is a result that does not hold what it counts.
+        if id.position() >= self.row_of.len() {
+            return Err(Error::RepresentationExhausted);
+        }
+        let cell = self
+            .rows
+            .len()
+            .checked_add(1)
+            .and_then(|cell| u32::try_from(cell).ok())
+            .ok_or(Error::RepresentationExhausted)?;
         c.reserve(&mut self.rows, 1)?;
+        c.step(1)?;
         self.rows.push(Row {
             source: node,
             key: None,
             style_association: ParsedStyleAssociation::Unqualified,
         });
+        if let Some(held) = self.row_of.get_mut(id.position()) {
+            *held = cell;
+        }
         #[cfg(test)]
         written.pushed::<Row<'a>>();
         Ok(())
+    }
+    /// Adds every node of the trees rooted at `roots`, children and template contents included, in
+    /// the order of their record positions, which is the order the parser created them in, so
+    /// that a parent is added before its children and the nodes of one result are keyed in one
+    /// order whatever records the report holds for them. A node that no root reaches, such as an
+    /// element the parser created and removed, is not added. One step is charged for each cell of
+    /// the scan, and one for each node reached and for each edge followed. The scratch the walk
+    /// holds is reserved through the control and returned when the walk ends.
+    fn add_trees(&mut self, roots: &[HtmlNodeId], c: &mut Control<'_>) -> Result<(), Error> {
+        let nodes = self.row_of.len();
+        let mut found: Vec<Option<HtmlNodeId>> = Vec::new();
+        c.reserve(&mut found, nodes)?;
+        c.step(nodes)?;
+        found.resize(nodes, None);
+        let mut pending: Vec<HtmlNodeId> = Vec::new();
+        let walked = (|| {
+            for root in roots {
+                c.reserve(&mut pending, 1)?;
+                pending.push(*root);
+            }
+            while let Some(id) = pending.pop() {
+                c.step(1)?;
+                let node = self
+                    .arena
+                    .node(&id)
+                    .map_err(|error| Error::SourceLookup { subject: id, error })?;
+                let cell = found
+                    .get_mut(id.position())
+                    .ok_or(Error::RepresentationExhausted)?;
+                if cell.replace(id).is_some() {
+                    continue;
+                }
+                for next in node.children().chain(node.template_contents()) {
+                    c.step(1)?;
+                    c.reserve(&mut pending, 1)?;
+                    pending.push(next);
+                }
+            }
+            Ok::<_, Error>(())
+        })();
+        let added = walked.and_then(|()| {
+            for id in found.iter().flatten() {
+                self.add(*id, c)?;
+            }
+            Ok(())
+        });
+        // The scratch of the walk is returned whether or not the walk completed.
+        let returned = found
+            .capacity()
+            .checked_mul(size_of::<Option<HtmlNodeId>>())
+            .zip(pending.capacity().checked_mul(size_of::<HtmlNodeId>()))
+            .and_then(|(found, pending)| found.checked_add(pending))
+            .and_then(|bytes| c.bytes.checked_sub(bytes))
+            .ok_or(Error::RepresentationExhausted)?;
+        c.bytes = returned;
+        added
     }
     fn add_document(
         &mut self,
@@ -549,6 +651,19 @@ impl<'a> Source<'a> {
         c.step(1)?;
         (*answer.value()).ok_or(Error::MissingMetadata { subject: *id })
     }
+    /// The cryptographic nonce of the element `id`, as the report answers by node: one step is
+    /// charged, and one for each key the report's search read. `None` for an element of a
+    /// namespace that has no nonce slot.
+    fn nonce(&self, id: &HtmlNodeId, c: &mut Control<'_>) -> Result<Option<DocumentString>, Error> {
+        let report: &'a HtmlParseReport = self.report;
+        let answer = report
+            .cryptographic_nonce(id)
+            .map_err(|error| node_read_error(error, id))?;
+        c.step(usize::try_from(answer.probes()).map_err(|_| Error::RepresentationExhausted)?)?;
+        c.step(1)?;
+        // The clone shares the block the report holds, as the other strings of the installation do.
+        Ok((*answer.value()).cloned())
+    }
     fn observation<T>(
         &self,
         id: &HtmlNodeId,
@@ -669,6 +784,7 @@ fn collect<'a>(report: &'a HtmlParseReport, c: &mut Control<'_>) -> Result<Sourc
         report,
         arena: Arena::Document(document),
         rows: Vec::new(),
+        row_of: Vec::new(),
         metadata: Vec::new(),
         svg_qualification: Some(ParsedSvgQualification { _sealed: () }),
         capture: None,
@@ -676,7 +792,9 @@ fn collect<'a>(report: &'a HtmlParseReport, c: &mut Control<'_>) -> Result<Sourc
         bootstrap: [None, None],
         shadow: Vec::new(),
     };
+    source.map_rows(c)?;
     source.add(document.root().id(), c)?;
+    source.add_trees(&[document.root().id()], c)?;
     collect_rows(report, source, c)
 }
 
@@ -720,6 +838,7 @@ fn collect_fragment<'a>(
         report,
         arena: Arena::Fragment(fragment),
         rows: Vec::new(),
+        row_of: Vec::new(),
         metadata: Vec::new(),
         capture: Some(capture),
         captured_bindings: Vec::new(),
@@ -730,6 +849,7 @@ fn collect_fragment<'a>(
         shadow: Vec::new(),
         svg_qualification: None,
     };
+    source.map_rows(c)?;
     source.add(fragment.root().id(), c)?;
     let target = match context.target() {
         surgeist_html_semantics::HtmlFragmentTarget::Element(value) => value.subject(),
@@ -796,6 +916,17 @@ fn collect_fragment<'a>(
             }
         }
     }
+    // The nodes of the fragment and of the contents of its shadow roots, in creation order.
+    let mut roots: Vec<HtmlNodeId> = Vec::new();
+    c.reserve(&mut roots, 1 + source.shadow.len())?;
+    roots.push(fragment.root().id());
+    roots.extend(source.shadow.iter().map(|shadow| shadow.subject));
+    let walked = source.add_trees(&roots, c);
+    c.bytes = c
+        .bytes
+        .checked_sub(roots.capacity() * size_of::<HtmlNodeId>())
+        .ok_or(Error::RepresentationExhausted)?;
+    walked?;
     collect_rows(report, source, c)
 }
 

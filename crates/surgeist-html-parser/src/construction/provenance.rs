@@ -3163,6 +3163,46 @@ impl ParseEvidence {
     }
 }
 impl ParseEvidence {
+    /// Projects the raw string at registry slot `slot` that the row of `node` holds as its field
+    /// `kind`, with the group of its origins, or a group of no source origins when it has none.
+    fn project_raw_row(
+        &mut self,
+        c: &mut ParseControl,
+        strings: LeafStrings<'_>,
+        records: usize,
+        values: &[RetainedPayload],
+        (node, slot, kind): (usize, usize, HtmlParseRawField),
+    ) -> Result<(), SessionError> {
+        if node >= records {
+            return Err(SessionError::WrongToken);
+        }
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let RetainedPayload::String {
+            value,
+            allocation,
+            origins,
+            location: FieldRef::Detached,
+        } = values.get(slot).ok_or(SessionError::WrongToken)?
+        else {
+            return Err(SessionError::WrongToken);
+        };
+        c.require_document_string(allocation, value)?;
+        let missing = if origins.is_none() {
+            Some(self.source_independent_group(c, value.len())?)
+        } else {
+            None
+        };
+        let group = origins
+            .as_ref()
+            .or(missing.as_ref())
+            .ok_or(SessionError::WrongToken)?;
+        if missing.is_some() {
+            self.bind_leaf_value(c, group, slot)?;
+        }
+        self.validate_group_value(c, strings, value.code_units(), group)?;
+        self.validate_field(c, value.code_units(), group)?;
+        self.project_field(c, NativeDestination::Raw { node, kind }, value.len(), group)
+    }
     /// Projects the string of `field`, a field of a record that holds its units, when the record
     /// has the string: with the group of the field's origins, or a group of no source origins
     /// when the field has none.
@@ -3251,10 +3291,6 @@ impl ParserArenaSession {
         for (payload_slot, payload) in storage.payloads.values.iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let raw = match payload {
-                RetainedPayload::Nonce {
-                    node: Some(node),
-                    raw,
-                } => Some((*node, *raw, HtmlParseRawField::Nonce)),
                 RetainedPayload::Input {
                     node: Some(node),
                     raw,
@@ -3268,43 +3304,12 @@ impl ParserArenaSession {
                 _ => None,
             };
             if let Some((node, slot, kind)) = raw {
-                if node >= storage.construction.len() {
-                    return Err(SessionError::WrongToken);
-                }
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let RetainedPayload::String {
-                    value,
-                    allocation,
-                    origins,
-                    location: FieldRef::Detached,
-                } = storage
-                    .payloads
-                    .values
-                    .get(slot)
-                    .ok_or(SessionError::WrongToken)?
-                else {
-                    return Err(SessionError::WrongToken);
-                };
-                c.require_document_string(allocation, value)?;
-                let missing = if origins.is_none() {
-                    Some(evidence.source_independent_group(c, value.len())?)
-                } else {
-                    None
-                };
-                let group = origins
-                    .as_ref()
-                    .or(missing.as_ref())
-                    .ok_or(SessionError::WrongToken)?;
-                if missing.is_some() {
-                    evidence.bind_leaf_value(c, group, slot)?;
-                }
-                evidence.validate_group_value(c, strings, value.code_units(), group)?;
-                evidence.validate_field(c, value.code_units(), group)?;
-                evidence.project_field(
+                evidence.project_raw_row(
                     c,
-                    NativeDestination::Raw { node, kind },
-                    value.len(),
-                    group,
+                    strings,
+                    storage.construction.len(),
+                    &storage.payloads.values,
+                    (node, slot, kind),
                 )?;
                 continue;
             }
@@ -3391,6 +3396,17 @@ impl ParserArenaSession {
                     &group,
                 )?;
             }
+        }
+        // The nonce slots of the elements that hold a row for it.
+        for (node, row) in storage.payloads.facts.nonces.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            evidence.project_raw_row(
+                c,
+                strings,
+                storage.construction.len(),
+                &storage.payloads.values,
+                (node, row.raw, HtmlParseRawField::Nonce),
+            )?;
         }
         // The strings of the fields of a record belong to the record, which are walked in order:
         // a non-element record's, and an element's attribute strings. Their groups are in the

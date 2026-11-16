@@ -1,4 +1,11 @@
-//! Independent owned nonce slot, with the original parser control and registry.
+//! The nonce slot of an element, held in a table by the elements that have a row for it.
+//!
+//! An element of the HTML, SVG or MathML namespace has a nonce slot whose value is the empty
+//! nonce until a `nonce` attribute is installed, so an element that has no `nonce` attribute holds
+//! no row: the report answers the empty nonce for it. The elements that have a row are those whose
+//! token carries a `nonce` attribute, the clones of an element that has one, and the `html` and
+//! `body` elements, which a later token merges attributes into. Their rows are admitted before the
+//! element exists and written when it does, so a merge updates the row in place.
 use super::*;
 #[cfg(test)]
 use surgeist_html::values::DocumentString;
@@ -7,71 +14,194 @@ use surgeist_html::{
     values::QualifiedName,
 };
 
+/// The row of an element in the table of nonces: the registry string that holds the value of its
+/// nonce slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct NonceRow {
+    pub(super) raw: usize,
+}
+
+/// Whether an element that is about to be created has a row in the table of nonces, and why.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum NonceAtCreation {
+    /// The element has no row: it has the empty nonce.
+    #[default]
+    Absent,
+    /// The token that creates the element carries a `nonce` attribute.
+    Token,
+    /// The element is `html` or `body`, which a later token merges attributes into.
+    Root,
+    /// The element is a clone of one that has a row.
+    Clone,
+}
+
+impl NonceAtCreation {
+    pub(super) fn has_row(self) -> bool {
+        self != Self::Absent
+    }
+}
+
+/// The units of the literal `nonce`, which a token attribute name is compared with.
+const NONCE_LITERAL_UNITS: usize = 5;
+/// The units of each of the literals `html` and `body`.
+const ROOT_LITERAL_UNITS: usize = 4;
+
+/// Whether `units` are the ASCII `literal`.
+fn units_are(units: &[u16], literal: &str) -> bool {
+    units.len() == literal.len()
+        && units
+            .iter()
+            .zip(literal.bytes())
+            .all(|(&unit, byte)| unit == u16::from(byte))
+}
+
 impl SessionStorage {
+    /// Whether a token that carries `attributes` has a `nonce` attribute. Each attribute is
+    /// charged one visit and the comparison of the five units of the literal, whatever its name,
+    /// so that the work of a token is linear in its attributes and does not step with the length
+    /// of their names.
+    pub(super) fn token_carries_nonce(
+        control: &mut ParseControl,
+        attributes: &OwnedVec<crate::parser::tokenizer::token::Attribute>,
+    ) -> Result<NonceAtCreation, SessionError> {
+        for attribute in attributes.as_slice() {
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            for _ in 0..NONCE_LITERAL_UNITS {
+                control.charge_unit_literal_comparison()?;
+            }
+            if units_are(attribute.name.value.text().code_units(), "nonce") {
+                return Ok(NonceAtCreation::Token);
+            }
+        }
+        Ok(NonceAtCreation::Absent)
+    }
+    /// Whether an element of the HTML namespace named `name` that a token with `attributes`
+    /// creates has a row: its token carries a `nonce` attribute, or it is `html` or `body`. The
+    /// name is charged one visit and the comparison of the four units of each literal, whatever
+    /// it is.
+    pub(super) fn html_nonce_at_creation(
+        control: &mut ParseControl,
+        name: &DocumentString,
+        attributes: &OwnedVec<crate::parser::tokenizer::token::Attribute>,
+    ) -> Result<NonceAtCreation, SessionError> {
+        let token = Self::token_carries_nonce(control, attributes)?;
+        if token.has_row() {
+            return Ok(token);
+        }
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        for _ in 0..2 * ROOT_LITERAL_UNITS {
+            control.charge_unit_literal_comparison()?;
+        }
+        let units = name.code_units();
+        Ok(if units_are(units, "html") || units_are(units, "body") {
+            NonceAtCreation::Root
+        } else {
+            NonceAtCreation::Absent
+        })
+    }
+    /// Admits the row of an element named `name` that is about to be created, for the reason
+    /// `at` gives: registers the empty string its nonce slot holds first, and returns its slot.
+    /// The row is written by [`Self::push_nonce_row`] once the element exists.
     pub(super) fn prepare_nonce(
         &mut self,
         c: &mut ParseControl,
-        name: Option<&QualifiedName>,
-    ) -> Result<Option<usize>, SessionError> {
-        let Some(name) = name else {
-            return Ok(None);
-        };
+        name: &QualifiedName,
+        at: NonceAtCreation,
+    ) -> Result<usize, SessionError> {
         c.charge(
             HtmlParseWorkCategory::InspectByte,
             surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
+        // Only an element that implements the nonce mixin has a nonce slot.
         if !surgeist_html::bounded::security::is_nonce_element(name) {
-            return Ok(None);
+            return Err(latch_registry_row(c));
         }
         let empty = literal_string(c, b"")?;
         let (value, raw) = self.register_string_owned(c, empty, None)?;
         drop(value);
-        let prepared = self.prepare_payload_slot_owned(c)?;
-        let slot = self
-            .payloads
-            .push_row(prepared, RetainedPayload::Nonce { node: None, raw })
-            .map_err(|_| latch_registry_row(c))?;
-        Ok(Some(slot))
+        match at {
+            NonceAtCreation::Token => self.admit_token_nonce(c)?,
+            NonceAtCreation::Root => self.admit_root_nonce(c)?,
+            NonceAtCreation::Clone => self.admit_clone_nonce(c)?,
+            NonceAtCreation::Absent => return Err(latch_registry_row(c)),
+        }
+        Ok(raw)
     }
+    /// Admits the row of an element whose token carries a `nonce` attribute.
+    fn admit_token_nonce(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
+        self.payloads.facts.nonces.admit(c, 1)
+    }
+    /// Admits the row of an `html` or `body` element, which a merge writes in place.
+    fn admit_root_nonce(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
+        self.payloads.facts.nonces.admit(c, 1)
+    }
+    /// Admits the row of a clone of an element that has one.
+    fn admit_clone_nonce(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
+        self.payloads.facts.nonces.admit(c, 1)
+    }
+    /// Writes the row of the element at `node`, whose row [`Self::prepare_nonce`] admitted.
+    pub(super) fn push_nonce_row(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        raw: usize,
+    ) -> Result<(), SessionError> {
+        self.payloads
+            .facts
+            .nonces
+            .push(node, NonceRow { raw })
+            .map_err(|_| latch_registry_row(c))
+    }
+    /// The row a clone of the element at `node` has: one when the element has a row. The search
+    /// charges the keys it reads.
+    pub(super) fn nonce_at(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<NonceAtCreation, SessionError> {
+        c.require_identity(&self.control)?;
+        Ok(if self.payloads.facts.nonces.find(c, node)?.is_some() {
+            NonceAtCreation::Clone
+        } else {
+            NonceAtCreation::Absent
+        })
+    }
+    /// The index of the row of the element at `node` in the table of nonces and the slot of the
+    /// string it holds, when the element has a row. The search charges the keys it reads.
     pub(super) fn nonce_slot(
         &self,
         c: &mut ParseControl,
         node: usize,
     ) -> Result<Option<(usize, usize)>, SessionError> {
         c.require_identity(&self.control)?;
-        if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::Nonce {
-                node: Some(owner),
-                raw,
-            }) = self.payloads.values.get(slot)
-                && *owner == node
-            {
-                c.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    const { (2 * mem::size_of::<usize>()) as u64 },
-                )?;
-                return Ok(Some((slot, *raw)));
-            }
-        }
-        Ok(None)
+        let nonces = &self.payloads.facts.nonces;
+        let Some(index) = nonces.find(c, node)? else {
+            return Ok(None);
+        };
+        let Some(row) = nonces.row(index) else {
+            return Err(latch_registry_row(c));
+        };
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            const { (2 * mem::size_of::<usize>()) as u64 },
+        )?;
+        Ok(Some((index, row.raw)))
     }
     pub(super) fn replace_nonce(
         &mut self,
         c: &mut ParseControl,
-        slot: usize,
+        index: usize,
         raw: usize,
     ) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(&RetainedPayload::Nonce { raw: old, .. }) = self.payloads.values.get(slot) else {
+        let Some(&NonceRow { raw: old }) = self.payloads.facts.nonces.row(index) else {
             return Err(SessionError::NonceMetadataUnavailable);
         };
-        payload_write::<usize>(c, 1)?;
-        let Some(RetainedPayload::Nonce { raw: stored, .. }) = self.payloads.values.get_mut(slot)
-        else {
+        payload_write::<NonceRow>(c, 1)?;
+        let Some(row) = self.payloads.facts.nonces.row_mut(index) else {
             return Err(latch_registry_row(c));
         };
-        *stored = raw;
+        row.raw = raw;
         self.retire_raw_field(c, old)
     }
     pub(super) fn initial_nonce_attributes(
@@ -942,9 +1072,13 @@ mod tests {
         for short in [false, true] {
             let (mut c, mut session, node, cancellation) = fixture();
             let storage = session.active().unwrap();
-            let slot = storage.payloads.values.iter().position(|entry| {
-                matches!(entry, RetainedPayload::Nonce { node: Some(owner), .. } if *owner == node.index)
-            }).unwrap();
+            let slot = storage
+                .payloads
+                .facts
+                .nonces
+                .find_published(node.index)
+                .0
+                .unwrap();
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = super::super::tests::limits().work_credits();
             c.charge(
@@ -1008,17 +1142,16 @@ mod tests {
                 2
             );
             let name = QualifiedName::new(Namespace::html(), None, "p");
-            let result = session
-                .active_mut()
-                .unwrap()
-                .prepare_nonce(&mut c, Some(&name));
+            let result =
+                session
+                    .active_mut()
+                    .unwrap()
+                    .prepare_nonce(&mut c, &name, NonceAtCreation::Token);
             if cap == 4 {
-                let slot = result.unwrap().unwrap();
+                let raw = result.unwrap();
                 let storage = session.active().unwrap();
-                let RetainedPayload::Nonce { node, raw } = storage.payloads.values[slot] else {
-                    panic!("actual nonce record");
-                };
-                assert_eq!(node, None); // Native binding belongs to the later element commit.
+                // The row is written by the later element commit.
+                assert_eq!(storage.payloads.facts.nonces.len(), 0);
                 let RetainedPayload::String { ref value, .. } = storage.payloads.values[raw] else {
                     panic!("actual empty backing");
                 };
@@ -1037,13 +1170,7 @@ mod tests {
                 );
                 let storage = session.active().unwrap();
                 assert_eq!(storage.payloads.values.len(), (cap - 2) as usize);
-                assert!(
-                    !storage
-                        .payloads
-                        .values
-                        .iter()
-                        .any(|entry| matches!(entry, RetainedPayload::Nonce { .. }))
-                );
+                assert_eq!(storage.payloads.facts.nonces.len(), 0);
                 if cap == 3 {
                     assert!(
                         matches!(&storage.payloads.values[0], RetainedPayload::String { value, .. } if value.is_empty())

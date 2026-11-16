@@ -19,27 +19,55 @@ use surgeist_html_semantics::{
     HtmlCaptureTemplateCacheInput, HtmlCapturedIsValue, HtmlDocumentClass, HtmlFragmentContext,
     HtmlScriptingStatus, HtmlTemplateDocumentRole,
 };
+/// The nonce of every element of the tree of the report in document order, read by node: an
+/// element that holds no row for its nonce has the empty nonce, and no record names it, so the
+/// records alone do not list the elements. A template's contents and a shadow root's contents
+/// follow their host.
 fn slots(report: &HtmlParseReport) -> Vec<(String, DocumentString)> {
-    let mut cursor = report.metadata();
+    let root = match (report.document(), report.fragment()) {
+        (Some(document), _) => document.root(),
+        (None, Some(fragment)) => fragment.root(),
+        (None, None) => panic!("a report holds a tree"),
+    };
+    let node = |id: &surgeist_html::construction::HtmlNodeId| match report.document() {
+        Some(document) => document.node(id).unwrap(),
+        None => report.fragment().unwrap().node(id).unwrap(),
+    };
     let mut values = Vec::new();
-    loop {
-        match cursor.advance() {
-            HtmlParseMetadataStep::Record(record) => {
-                if let Some(value) = record.cryptographic_nonce() {
-                    let node = record.node();
-                    let HtmlNodeKind::Element(element) = node.kind() else {
-                        panic!("nonce element")
-                    };
-                    values.push((
-                        element.name().local_name().to_utf8().unwrap(),
-                        value.clone(),
-                    ));
-                }
+    let mut pending = vec![root.id()];
+    // The contents of a shadow root a contextual parse attaches to its host are reached by the
+    // effects of the report.
+    if let Some(effects) = report.effects().unwrap() {
+        for index in 0..effects.len() {
+            if let Some(surgeist_html_parser::HtmlParseEffect::AttachShadow { contents, .. }) =
+                effects.effect(index).unwrap()
+            {
+                pending.push(contents.id());
             }
-            HtmlParseMetadataStep::Skipped => {}
-            HtmlParseMetadataStep::Complete => break,
-            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
+    }
+    while let Some(id) = pending.pop() {
+        let current = node(&id);
+        if let HtmlNodeKind::Element(element) = current.kind() {
+            let answer = report.cryptographic_nonce(&id).unwrap();
+            let Some(nonce) = *answer.value() else {
+                panic!("an element of the HTML, SVG or MathML namespace has a nonce")
+            };
+            values.push((
+                element.name().local_name().to_utf8().unwrap(),
+                nonce.clone(),
+            ));
+        }
+        // The stack pops the last pushed first: the contents come after the children's subtrees
+        // of the host and the children in order.
+        let mut next: Vec<_> = current.children().collect();
+        next.extend(current.template_contents());
+        next.extend(
+            current
+                .declarative_shadow_root()
+                .map(|shadow| shadow.contents()),
+        );
+        pending.extend(next.into_iter().rev());
     }
     values
 }

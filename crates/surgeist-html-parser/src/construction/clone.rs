@@ -22,6 +22,8 @@ struct CloneBindings {
     output: Option<usize>,
     script: Option<usize>,
     svg: Option<usize>,
+    /// Whether the clone has a row in the table of nonces: its source has one.
+    nonce: NonceAtCreation,
 }
 
 impl SessionStorage {
@@ -424,7 +426,7 @@ impl SessionStorage {
             .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
         let node = self.allocate_prepared_owned(
             c,
-            NewRecord::NamedElement(name_id, link_flags),
+            NewRecord::NamedElement(name_id, link_flags, bindings.nonce),
             template,
             0,
             0,
@@ -600,6 +602,7 @@ impl SessionStorage {
                 prepared.creation = Some(creation);
             }
         }
+        result.nonce = self.nonce_at(c, source)?;
         if let Some((_, state)) = find_form_association_state(&self.payloads, c, source)? {
             payload_write::<Option<usize>>(c, 1)?;
             // The clone copies the source's attributes, so it has a form
@@ -814,7 +817,9 @@ impl SessionStorage {
         bindings: CloneBindings,
         position: usize,
     ) -> Result<(), SessionError> {
-        self.initial_nonce_attribute(c, node, position)?;
+        if bindings.nonce.has_row() {
+            self.initial_nonce_attribute(c, node, position)?;
+        }
         self.initial_associated_attribute(c, node, position)?;
         self.initial_meta_attribute(c, node, position)?;
         self.association_attribute_hook(c, node, position)?;
@@ -862,7 +867,9 @@ impl SessionStorage {
         copy: usize,
         bindings: CloneBindings,
     ) -> Result<(), SessionError> {
-        self.clone_nonce(c, source, copy)?;
+        if bindings.nonce.has_row() {
+            self.clone_nonce(c, source, copy)?;
+        }
         if let Some(slot) = bindings.script {
             let (_, original) = script_metadata(&self.payloads, c, source)?;
             let (_, mut state) = script_metadata(&self.payloads, c, copy)?;

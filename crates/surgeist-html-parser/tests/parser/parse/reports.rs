@@ -2129,13 +2129,14 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
 /// from the parser before it extended the textarea's raw value in place. Each character after the
 /// first is appended to the text child and resets the raw value, which adds four history groups
 /// (two for the text, a copy of its group and the reset of the raw value) and fourteen association
-/// rows. These are fixed numbers, so a change to the provenance of the raw value fails them.
+/// rows. These are fixed numbers, so a change to the provenance of the raw value fails them. The
+/// textarea holds no nonce row, so its empty nonce has no history group.
 const TEXTAREA_PROVENANCE: [(usize, usize, usize); 5] = [
-    (2, 25, 135),
-    (3, 29, 149),
-    (10, 57, 247),
-    (20, 97, 387),
-    (40, 177, 667),
+    (2, 23, 131),
+    (3, 27, 145),
+    (10, 55, 243),
+    (20, 95, 383),
+    (40, 175, 663),
 ];
 
 #[test]
