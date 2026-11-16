@@ -3984,6 +3984,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-css-fuzz"
+version = "0.1.0"
+dependencies = [
+ "libfuzzer-sys",
+ "proptest",
+ "surgeist-css",
+ "surgeist-css-parser",
+ "surgeist-fuzz",
+ "toml",
+]
+
+[[package]]
 name = "surgeist-css-parser"
 version = "0.1.0"
 dependencies = [

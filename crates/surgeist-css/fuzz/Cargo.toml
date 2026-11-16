@@ -1,0 +1,29 @@
+[package]
+name = "surgeist-css-fuzz"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+readme = "README.md"
+description = "Bounded CSS ingestion, recovery and authored-value cases with exact replay."
+
+[package.metadata]
+cargo-fuzz = true
+
+[features]
+default = []
+property = ["surgeist-fuzz/property", "dep:proptest"]
+coverage = ["surgeist-fuzz/coverage", "dep:libfuzzer-sys"]
+
+[dependencies]
+surgeist-css = { path = "..", version = "=0.1.0" }
+surgeist-css-parser = { path = "../../surgeist-css-parser", version = "=0.1.0" }
+surgeist-fuzz = { path = "../../surgeist-fuzz", version = "=0.1.0" }
+toml = "=0.9.8"
+proptest = { version = "=1.11.0", default-features = false, features = ["std"], optional = true }
+libfuzzer-sys = { version = "=0.4.13", optional = true }
+
+[lints]
+workspace = true
