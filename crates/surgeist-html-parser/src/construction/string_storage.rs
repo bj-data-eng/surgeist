@@ -80,8 +80,9 @@ impl FieldRef {
 
     /// The units of the string of a field in the record it belongs to: a string of a non-element
     /// record, the local name or namespace of an element, or the name, value, namespace or prefix
-    /// of an attribute of an element, read from the element's attributes. `None` for a field of another kind, a record of another kind, an
-    /// attribute the element lacks, or an identifier the doctype lacks.
+    /// of an attribute of an element, read from the element's attributes. `None` for a field of
+    /// another kind, a record of another kind, an attribute the element lacks, or an identifier
+    /// the doctype lacks.
     pub(super) fn units<'a>(self, records: ConstructionView<'a>) -> Option<&'a [u16]> {
         let node = match self {
             Self::Text(node)
