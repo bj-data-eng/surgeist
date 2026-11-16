@@ -5,7 +5,7 @@ use surgeist_css::rule::{CssRule, CssStyleAncestor};
 use surgeist_css::selector::CssNamespaceContext;
 use surgeist_css::serialization::{
     CssRuleGraphInput, CssRuleSerializationError, CssRuleSerializationLimits,
-    CssSerializationLimits,
+    CssRuleSerializationOutput, CssSerializationLimits,
 };
 
 const SPECIFIED_RESOURCE: &str = "specified rule serialization exceeded a resource limit";
@@ -51,6 +51,7 @@ fn no_depth() -> CssRuleSerializationLimits {
 fn a_specified_byte_limit_names_the_specified_output() {
     let error = specified(&rule(".a { color: red }"), no_bytes());
     assert!(error.is_resource_limit(), "{error:?}");
+    assert_eq!(error.output(), CssRuleSerializationOutput::Specified);
     assert_eq!(error.to_string(), SPECIFIED_RESOURCE);
 }
 
@@ -58,6 +59,7 @@ fn a_specified_byte_limit_names_the_specified_output() {
 fn a_specified_depth_limit_names_the_specified_output() {
     let error = specified(&rule("@media all { .a {} }"), no_depth());
     assert!(error.is_resource_limit(), "{error:?}");
+    assert_eq!(error.output(), CssRuleSerializationOutput::Specified);
     assert_eq!(error.to_string(), SPECIFIED_RESOURCE);
 }
 
@@ -65,6 +67,7 @@ fn a_specified_depth_limit_names_the_specified_output() {
 fn a_cssom_byte_limit_names_the_cssom_output() {
     let error = cssom(&rule(".a { color: red }"), no_bytes());
     assert!(error.is_resource_limit(), "{error:?}");
+    assert_eq!(error.output(), CssRuleSerializationOutput::Cssom);
     assert_eq!(error.to_string(), CSSOM_RESOURCE);
 }
 
@@ -72,6 +75,7 @@ fn a_cssom_byte_limit_names_the_cssom_output() {
 fn a_cssom_depth_limit_names_the_cssom_output() {
     let error = cssom(&rule("@media all { .a {} }"), no_depth());
     assert!(error.is_resource_limit(), "{error:?}");
+    assert_eq!(error.output(), CssRuleSerializationOutput::Cssom);
     assert_eq!(error.to_string(), CSSOM_RESOURCE);
 }
 

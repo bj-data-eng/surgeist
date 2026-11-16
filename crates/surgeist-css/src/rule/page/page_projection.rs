@@ -183,9 +183,14 @@ impl CssSpecifiedPageDeclarationBlock {
     /// Returns an error when `limits` are exceeded or an entry cannot be serialized.
     pub fn serialize_cssom(&self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
-        writer
-            .append_selected_page_block(self)
-            .map_err(|v| CssRuleSerializationError::new(v, Vec::new(), None))?;
+        writer.append_selected_page_block(self).map_err(|v| {
+            CssRuleSerializationError::new(
+                crate::serialization::CssRuleSerializationOutput::Cssom,
+                v,
+                Vec::new(),
+                None,
+            )
+        })?;
         Ok(writer.css)
     }
 }
@@ -282,9 +287,14 @@ impl<'a> CssMarginRuleView<'a> {
     /// Returns an error when `limits` are exceeded or the rule cannot be serialized.
     pub fn serialize_cssom(self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
-        writer
-            .append_selected_margin(self)
-            .map_err(|v| CssRuleSerializationError::new(v, Vec::new(), None))?;
+        writer.append_selected_margin(self).map_err(|v| {
+            CssRuleSerializationError::new(
+                crate::serialization::CssRuleSerializationOutput::Cssom,
+                v,
+                Vec::new(),
+                None,
+            )
+        })?;
         Ok(writer.css)
     }
 }
@@ -338,7 +348,14 @@ impl<'a> CssPageRuleView<'a> {
             .node()
             .map_err(RuleCssomSource::from)
             .and_then(|()| writer.append_selected_page(self, &mut child));
-        result.map_err(|v| CssRuleSerializationError::new(v, child.into_iter().collect(), None))?;
+        result.map_err(|v| {
+            CssRuleSerializationError::new(
+                crate::serialization::CssRuleSerializationOutput::Cssom,
+                v,
+                child.into_iter().collect(),
+                None,
+            )
+        })?;
         Ok(writer.css)
     }
 }

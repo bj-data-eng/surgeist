@@ -5674,7 +5674,9 @@ of the construction and assembly context, as is the anchor domain of a style rul
 explicit `&`: a scope anchor (the scoping root, Cascade 6 section 2.5) in a scope body
 and in the groups inside it, a nesting anchor everywhere else, including the body of a
 style rule inside a scope. Construction rejects a style rule whose anchors belong to
-the other domain as an invalid boundary anchor. A style rule in a scope body follows the same
+the other domain as an invalid style rule anchor (`is_invalid_style_rule_anchor()`); a scope
+boundary selector of the other domain is an invalid boundary anchor
+(`is_invalid_boundary_anchor()`). A style rule in a scope body follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
 nesting children relative to the scoped style parent. A scope with a style ancestor retains
 its direct declaration runs as `CssRule::NestedDeclarations`, including runs inside
@@ -8496,6 +8498,11 @@ order. The shared structural ceiling is 256 block-bearing rule levels, counting
 new wrappers and existing descendants but not the stylesheet. Selector functional
 depth is checked separately against the existing structural ceiling. Validation
 uses checked iterative stacks before constructing a new enclosing tree.
+
+`CssRuleSerializationError` names the output form that failed with `output()`:
+`CssRuleSerializationOutput::Specified` for `CssRuleGraphInput::serialize_specified`, and
+`CssRuleSerializationOutput::Cssom` for the `serialize_cssom` operations. Its message names
+the same form ("specified rule serialization" or "literal CSSOM rule serialization").
 
 `CssRule::serialize_specified(limits)` and the stylesheet front door dispatch both Fonts
 rule kinds through one cumulative writer. Font-face output emits only present

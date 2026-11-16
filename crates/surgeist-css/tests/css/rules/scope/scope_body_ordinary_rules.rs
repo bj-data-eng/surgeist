@@ -125,6 +125,7 @@ fn nesting_anchored_rule() -> CssRule {
 /// A style rule whose explicit `&` belongs to the other anchor domain is a style
 /// rule anchor failure; no scope boundary is involved.
 fn assert_style_rule_anchor(error: &CssRuleConstructionError) {
+    assert!(error.is_invalid_style_rule_anchor(), "{error:?}");
     assert!(!error.is_invalid_boundary_anchor(), "{error:?}");
     assert!(
         error.to_string().contains("a style rule anchor is invalid"),

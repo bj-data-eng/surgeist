@@ -257,7 +257,12 @@ impl<'a> CssKeyframesRuleView<'a> {
             .map_err(crate::serialization::cssom_rule_serialization::RuleCssomSource::from)
             .and_then(|()| writer.append_selected_keyframes(self, &mut index))
             .map_err(|error| {
-                crate::serialization::CssRuleSerializationError::new(error, Vec::new(), index)
+                crate::serialization::CssRuleSerializationError::new(
+                    crate::serialization::CssRuleSerializationOutput::Cssom,
+                    error,
+                    Vec::new(),
+                    index,
+                )
             })?;
         Ok(writer.css)
     }

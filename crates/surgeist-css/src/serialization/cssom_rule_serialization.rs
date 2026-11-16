@@ -71,6 +71,27 @@ impl CssRuleCssomFormat {
     }
 }
 
+/// The output form of a rule-graph serialization.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssRuleSerializationOutput {
+    /// Compact canonical specified CSS, as
+    /// [`CssRuleGraphInput::serialize_specified`](crate::serialization::CssRuleGraphInput::serialize_specified)
+    /// writes it.
+    Specified,
+    /// Literal CSSOM rule text, as the `serialize_cssom` operations write it.
+    Cssom,
+}
+
+impl CssRuleSerializationOutput {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::Specified => "specified",
+            Self::Cssom => "literal CSSOM",
+        }
+    }
+}
+
 /// Why the complete literal rule request failed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CssRuleCssomSerializationErrorKind {
@@ -104,18 +125,26 @@ impl From<CssDeclarationBlockError> for RuleCssomSource {
     }
 }
 
-/// Atomic literal serialization failure, retaining its actual graph and provider provenance.
+/// Atomic rule serialization failure, retaining its actual graph and provider provenance.
+///
+/// [`Self::output`] names the output form that failed, specified CSS or literal CSSOM.
 ///
 /// The value or declaration-block failure behind it is the error's source and is
 /// exposed by its accessor; [`Self::is_resource_limit`] groups the resource refusals.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssRuleSerializationError {
+    output: CssRuleSerializationOutput,
     kind: CssRuleCssomSerializationErrorKind,
     rule_path: Vec<usize>,
     keyframe_block_index: Option<usize>,
     source: RuleCssomSource,
 }
 impl CssRuleSerializationError {
+    /// Returns the output form whose serialization failed.
+    #[must_use]
+    pub const fn output(&self) -> CssRuleSerializationOutput {
+        self.output
+    }
     /// Returns whether a resource limit, including a graph depth limit, refused the rule
     /// or one of its value or declaration providers.
     #[must_use]
@@ -170,6 +199,7 @@ impl CssRuleSerializationError {
         self.keyframe_block_index
     }
     pub(crate) fn new(
+        output: CssRuleSerializationOutput,
         source: RuleCssomSource,
         rule_path: Vec<usize>,
         keyframe_block_index: Option<usize>,
@@ -201,6 +231,7 @@ impl CssRuleSerializationError {
             },
         };
         Self {
+            output,
             kind,
             rule_path,
             keyframe_block_index,
@@ -210,16 +241,18 @@ impl CssRuleSerializationError {
 }
 impl fmt::Display for CssRuleSerializationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let output = self.output.description();
         match self.kind {
             CssRuleCssomSerializationErrorKind::Resource(_) => {
-                f.write_str("literal CSSOM rule serialization exceeded a resource limit")
+                write!(f, "{output} rule serialization exceeded a resource limit")
             }
             CssRuleCssomSerializationErrorKind::Value(_) => {
-                f.write_str("literal CSSOM rule serialization cannot represent a value")
+                write!(f, "{output} rule serialization cannot represent a value")
             }
-            CssRuleCssomSerializationErrorKind::DeclarationBlock => {
-                f.write_str("literal CSSOM rule serialization cannot project a declaration block")
-            }
+            CssRuleCssomSerializationErrorKind::DeclarationBlock => write!(
+                f,
+                "{output} rule serialization cannot project a declaration block"
+            ),
             CssRuleCssomSerializationErrorKind::SourceUndefined(kind) => write!(
                 f,
                 "selected sources define no literal CSSOM format for {}",
@@ -265,14 +298,20 @@ impl CssSheet {
         limits: CssSerializationLimits,
     ) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
-        writer
-            .node()
-            .map_err(|value| CssRuleSerializationError::new(value.into(), Vec::new(), None))?;
+        writer.node().map_err(|value| {
+            CssRuleSerializationError::new(
+                CssRuleSerializationOutput::Cssom,
+                value.into(),
+                Vec::new(),
+                None,
+            )
+        })?;
         let namespaces = crate::selector::CssNamespaceContext::from_sheet(self);
         for (index, rule) in self.rules().iter().enumerate() {
             let mut path = Vec::new();
             path.try_reserve(1).map_err(|_| {
                 CssRuleSerializationError::new(
+                    CssRuleSerializationOutput::Cssom,
                     CssSerializationError::new(
                         CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
@@ -285,7 +324,12 @@ impl CssSheet {
             if index != 0
                 && let Err(value) = writer.append("\n")
             {
-                return Err(CssRuleSerializationError::new(value.into(), path, None));
+                return Err(CssRuleSerializationError::new(
+                    CssRuleSerializationOutput::Cssom,
+                    value.into(),
+                    path,
+                    None,
+                ));
             }
             writer.append_cssom_rule_graph(rule, path, Some(&namespaces))?;
         }
