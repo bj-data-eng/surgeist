@@ -38,17 +38,30 @@ fn with_plain_elements<T>(
     result
 }
 
-/// The registry rows a plain element holds. The document of a plain element is the document of
-/// the tree it was created in, which the parse holds once for the tree, so no row of the element
-/// names it. The oracle is the families an element of the HTML namespace has independently of its
-/// document, in a parse that records detail: a lookup registry row, a nonce row, the strings of its
-/// name, its namespace and its empty nonce value, and the cause of its creation.
+/// The registry rows a plain element holds. The document and the lookup registry of a plain
+/// element are those of the tree it was created in, which the parse holds once for the tree, and
+/// its creation state is the default its namespace gives, so no row of the element holds any of
+/// them. The oracle is the families an element of the HTML namespace has independently of its
+/// context, in a parse that records detail: a nonce row, the strings of its name, its namespace
+/// and its empty nonce value, and the cause of its creation.
 fn registry_rows(session: &ParserArenaSession) -> usize {
     session.active().unwrap().payloads.values.len()
 }
 
+/// The lookup registry rows the registry holds.
+fn lookup_registry_rows(session: &ParserArenaSession) -> usize {
+    session
+        .active()
+        .unwrap()
+        .payloads
+        .values
+        .iter()
+        .filter(|row| matches!(row, RetainedPayload::LookupRegistry { .. }))
+        .count()
+}
+
 #[test]
-fn a_plain_element_holds_no_registry_row_for_its_document() {
+fn a_plain_element_holds_no_registry_row_for_its_context() {
     let rows = |elements: usize| with_plain_elements(elements, |_, session| registry_rows(session));
     let empty = rows(0);
     for elements in [1, 16, 64] {
@@ -60,9 +73,24 @@ fn a_plain_element_holds_no_registry_row_for_its_document() {
     }
 }
 
-/// The registry rows of one plain element once the document it is in is held by its tree: a lookup
-/// registry, a nonce, three strings (name, namespace, empty nonce value) and a construction cause.
-const PLAIN_ELEMENT_ROWS: usize = 6;
+/// The registry rows of one plain element once its document, its lookup registry and its creation
+/// state are held by the context of its tree and by the defaults of its namespace: a nonce, three
+/// strings (name, namespace, empty nonce value) and a construction cause.
+const PLAIN_ELEMENT_ROWS: usize = 5;
+
+#[test]
+fn a_plain_element_adds_no_lookup_registry_row() {
+    let rows =
+        |elements: usize| with_plain_elements(elements, |_, session| lookup_registry_rows(session));
+    let empty = rows(0);
+    for elements in [1, 16, 64] {
+        assert_eq!(
+            rows(elements) - empty,
+            0,
+            "{elements} plain elements added lookup registry rows"
+        );
+    }
+}
 
 #[test]
 fn preparing_the_association_documents_visits_nothing_for_the_plain_elements() {
