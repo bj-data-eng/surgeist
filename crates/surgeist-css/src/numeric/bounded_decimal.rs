@@ -138,9 +138,9 @@ pub(crate) enum DecimalKernel {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DecimalWindow {
     /// A numeral of at least this magnitude is beyond the window.
-    pub(crate) beyond: i128,
+    pub(crate) beyond: i16,
     /// A numeral of at most this magnitude is below the window.
-    pub(crate) below: i128,
+    pub(crate) below: i16,
 }
 
 /// The range a cursor converts exactly. Outside it the cursor stops after the
@@ -150,10 +150,6 @@ pub(crate) enum DecimalRange {
     /// Every finite binary64; only a value beyond binary64 is not converted.
     Binary64,
     /// Exact inside the window, estimated outside it.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "selected by the colour callers in a later step")
-    )]
     Window(DecimalWindow),
 }
 
@@ -164,24 +160,10 @@ pub(crate) enum DecimalOutcome {
         negative: bool,
     },
     /// Beyond the window of the cursor's range. The estimate carries the sign.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "produced by the window classification in a later step"
-        )
-    )]
     Beyond {
         estimate: f64,
     },
     /// Below the window of the cursor's range. The estimate carries the sign.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "produced by the window classification in a later step"
-        )
-    )]
     Below {
         estimate: f64,
     },
@@ -244,10 +226,6 @@ enum Stage {
 #[derive(Debug)]
 pub(crate) struct DecimalCursor {
     layout: DecimalLayout,
-    #[expect(
-        dead_code,
-        reason = "read by the window classification in a later step"
-    )]
     range: DecimalRange,
     request: DecimalRequest,
     stage: Stage,
@@ -424,6 +402,29 @@ impl DecimalCursor {
             ))
         });
     }
+    /// Finishes beyond the window; `estimate` is the magnitude, clamped to the
+    /// largest finite binary64, and takes the authored sign.
+    fn finish_beyond(&mut self, estimate: f64) {
+        self.stage = Stage::Terminal;
+        self.request = DecimalRequest::Done(DecimalOutcome::Beyond {
+            estimate: self.signed(estimate),
+        });
+    }
+    /// Finishes below the window; `estimate` is the magnitude and takes the
+    /// authored sign, so an estimate that rounds to zero is a signed zero.
+    fn finish_below(&mut self, estimate: f64) {
+        self.stage = Stage::Terminal;
+        self.request = DecimalRequest::Done(DecimalOutcome::Below {
+            estimate: self.signed(estimate),
+        });
+    }
+    fn signed(&self, magnitude: f64) -> f64 {
+        if self.layout.negative {
+            -magnitude
+        } else {
+            magnitude
+        }
+    }
     fn fail(&mut self, error: DecimalArithmeticError) {
         self.stage = Stage::Terminal;
         self.request = DecimalRequest::Failed(error);
@@ -579,11 +580,20 @@ impl DecimalCursor {
                     return;
                 };
                 if self.huge_exponent {
-                    self.finish(if self.layout.exponent_negative {
-                        0
-                    } else {
-                        OVERFLOW_ENCODING
-                    });
+                    match self.range {
+                        DecimalRange::Binary64 => self.finish(if self.layout.exponent_negative {
+                            0
+                        } else {
+                            OVERFLOW_ENCODING
+                        }),
+                        DecimalRange::Window(_) => {
+                            if self.layout.exponent_negative {
+                                self.finish_below(0.0);
+                            } else {
+                                self.finish_beyond(f64::MAX);
+                            }
+                        }
+                    }
                     return;
                 }
                 let exponent = if self.layout.exponent_negative {
@@ -594,9 +604,15 @@ impl DecimalCursor {
                 self.magnitude = exponent + (self.layout.mantissa_digits - first) as i128
                     - self.layout.fractional_digits as i128;
                 if self.magnitude < -323 {
-                    self.finish(0);
+                    match self.range {
+                        DecimalRange::Binary64 => self.finish(0),
+                        DecimalRange::Window(_) => self.finish_below(0.0),
+                    }
                 } else if self.magnitude > 309 {
-                    self.finish(OVERFLOW_ENCODING);
+                    match self.range {
+                        DecimalRange::Binary64 => self.finish(OVERFLOW_ENCODING),
+                        DecimalRange::Window(_) => self.finish_beyond(f64::MAX),
+                    }
                 } else {
                     // The accumulator holds the first `taken` digits; the rest
                     // scale it by 10^(digits not taken). Trailing zeros of the
@@ -610,6 +626,18 @@ impl DecimalCursor {
                     while leading.is_multiple_of(10) {
                         leading /= 10;
                         decimal_exponent += 1;
+                    }
+                    // Outside the window the digits have been read and the
+                    // value is an estimate: no encoding is searched.
+                    if let DecimalRange::Window(window) = self.range {
+                        if self.magnitude >= i128::from(window.beyond) {
+                            self.finish_beyond(outside_estimate(leading, decimal_exponent));
+                            return;
+                        }
+                        if self.magnitude <= i128::from(window.below) {
+                            self.finish_below(outside_estimate(leading, decimal_exponent));
+                            return;
+                        }
                     }
                     if complete && let Some(value) = exact_fast_path(leading, decimal_exponent) {
                         self.finish(value.to_bits());
@@ -763,6 +791,44 @@ fn estimate_encoding(coefficient: u64, exponent: i128) -> (u64, u8) {
         operations += 1;
     }
     (value.to_bits().min(OVERFLOW_ENCODING), operations + 2)
+}
+
+/// Powers `10^(22 j)` for `j` in `0..=14`, each correctly rounded to binary64.
+/// `10^22` is the largest exact power, so `10^(22 j)` for `j >= 2` is rounded.
+const TEN_TO_THE_22J: [f64; 15] = [
+    1e0, 1e22, 1e44, 1e66, 1e88, 1e110, 1e132, 1e154, 1e176, 1e198, 1e220, 1e242, 1e264, 1e286,
+    1e308,
+];
+
+/// A binary64 estimate of `coefficient * 10^exponent` for a numeral outside the
+/// window, evaluated in at most two multiplications or divisions per chunk of
+/// at most 308 decimal places.
+///
+/// A chunk of `k` places is `10^(k mod 22)`, exact in binary64, and
+/// `10^(22 (k / 22))`, correctly rounded, applied as two IEEE operations after
+/// the coefficient (at most 19 digits) is converted. That is four roundings of
+/// at most half an encoding each in the normal range, so a numeral whose
+/// exponent needs one chunk is within 4 encodings of the correctly rounded
+/// value, and one that needs two chunks (a decimal exponent below -308) is
+/// within 8; a subnormal result adds at most half a subnormal unit per
+/// operation. A result beyond binary64 is the largest finite value. The
+/// estimate is not searched, so it costs a fixed number of operations whatever
+/// the exponent.
+fn outside_estimate(coefficient: u64, exponent: i128) -> f64 {
+    let mut value = coefficient as f64;
+    let ascending = exponent >= 0;
+    let mut remaining = exponent.unsigned_abs();
+    while remaining != 0 {
+        let chunk = remaining.min(308) as usize;
+        let (small, large) = (EXACT_POWERS_OF_TEN[chunk % 22], TEN_TO_THE_22J[chunk / 22]);
+        value = if ascending {
+            value * small * large
+        } else {
+            value / small / large
+        };
+        remaining -= chunk as u128;
+    }
+    value.min(f64::MAX)
 }
 
 #[cfg(test)]
