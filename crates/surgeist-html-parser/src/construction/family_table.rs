@@ -100,6 +100,23 @@ impl<T> FamilyTable<T> {
         }
         Ok(None)
     }
+    /// The index of the row of `node`, if it has one, with the keys the search reads charged as one
+    /// batch of record visits together with `found_visits` more when the row exists, so that the
+    /// number of charge calls of a lookup does not grow with the table. The amount is that of
+    /// [`Self::find`] plus `found_visits`.
+    pub(super) fn find_charged(
+        &self,
+        control: &mut ParseControl,
+        node: usize,
+        found_visits: u64,
+    ) -> Result<Option<usize>, SessionError> {
+        let (found, probes) = self.find_published(node);
+        let visits = probes.saturating_add(if found.is_some() { found_visits } else { 0 });
+        if visits != 0 {
+            control.charge(HtmlParseWorkCategory::RecordVisit, visits)?;
+        }
+        Ok(found)
+    }
     /// The index of the row of `node` and the number of keys the search read, for a published
     /// table, which has no controller to charge: the probes are those [`Self::find`] charges.
     pub(super) fn find_published(&self, node: usize) -> (Option<usize>, u64) {

@@ -867,11 +867,11 @@ pub(super) fn template_row_of(
         return Err(SessionError::WrongToken);
     }
     let templates = &payloads.facts.templates;
-    let Some(index) = templates.find(c, node)? else {
+    // The keys of the search and the two visits that read the record are one batch.
+    let Some(index) = templates.find_charged(c, node, 2)? else {
         return Err(SessionError::TemplateInsertionStateUnavailable);
     };
     let state = templates.row(index).ok_or_else(|| latch_registry_row(c))?;
-    c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
     let view = storage.node_at(node).ok_or_else(|| latch_registry_row(c))?;
     if view.template_contents().map(|node| node.position()) != Some(state.contents)
         || (view.template_contents_kind() == Some(HtmlTemplateContentsKind::ShadowReference)
