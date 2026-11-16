@@ -293,6 +293,7 @@ impl<'a> Arena<'a> {
     }
 }
 struct Source<'a> {
+    report: &'a HtmlParseReport,
     arena: Arena<'a>,
     rows: Vec<Row<'a>>,
     metadata: Vec<HtmlParseMetadata<'a>>,
@@ -510,6 +511,44 @@ impl<'a> Source<'a> {
             .map(|root| root.ok_or(Error::RepresentationExhausted))
             .collect()
     }
+    /// The custom element state and the saved `is` value of the element `id`, as the report
+    /// answers by node: one step is charged, and one for each key the report's search read.
+    fn creation(
+        &self,
+        id: &HtmlNodeId,
+        c: &mut Control<'_>,
+    ) -> Result<
+        (
+            surgeist_html::elements::native::HtmlCustomElementState,
+            Option<&'a DocumentString>,
+        ),
+        Error,
+    > {
+        let report: &'a HtmlParseReport = self.report;
+        let answer = report
+            .creation(id)
+            .map_err(|error| node_read_error(error, id))?;
+        c.step(usize::try_from(answer.probes()).map_err(|_| Error::RepresentationExhausted)?)?;
+        c.step(1)?;
+        let creation = (*answer.value()).ok_or(Error::MissingMetadata { subject: *id })?;
+        Ok((creation.state(), creation.saved_is()))
+    }
+    /// The common state of the element `id`, as the report answers by node: one step is charged,
+    /// and one for each key the report's searches read.
+    fn common_state(
+        &self,
+        id: &HtmlNodeId,
+        c: &mut Control<'_>,
+    ) -> Result<surgeist_html::elements::native::HtmlCommonState<core::convert::Infallible>, Error>
+    {
+        let report: &'a HtmlParseReport = self.report;
+        let answer = report
+            .common_state(id)
+            .map_err(|error| node_read_error(error, id))?;
+        c.step(usize::try_from(answer.probes()).map_err(|_| Error::RepresentationExhausted)?)?;
+        c.step(1)?;
+        (*answer.value()).ok_or(Error::MissingMetadata { subject: *id })
+    }
     fn observation<T>(
         &self,
         id: &HtmlNodeId,
@@ -529,6 +568,14 @@ impl<'a> Source<'a> {
             }
         }
         Ok(observed)
+    }
+}
+
+/// The installation error for a node the report cannot answer for.
+fn node_read_error(error: surgeist_html_parser::HtmlParseNodeReadError, id: &HtmlNodeId) -> Error {
+    match error {
+        surgeist_html_parser::HtmlParseNodeReadError::Unresolved(fault) => fault.into(),
+        _ => Error::MissingMetadata { subject: *id },
     }
 }
 
@@ -619,6 +666,7 @@ fn collect<'a>(report: &'a HtmlParseReport, c: &mut Control<'_>) -> Result<Sourc
         return Err(Error::NotCompletedOrdinaryReport);
     }
     let mut source = Source {
+        report,
         arena: Arena::Document(document),
         rows: Vec::new(),
         metadata: Vec::new(),
@@ -637,7 +685,7 @@ fn collect_fragment<'a>(
     capture: &'a crate::DomHtmlCapture,
     c: &mut Control<'_>,
 ) -> Result<Source<'a>, Error> {
-    use surgeist_html_parser::{HtmlParseEffect, HtmlParseEffectHost, HtmlParseRegistry};
+    use surgeist_html_parser::{HtmlParseEffect, HtmlParseEffectHost};
     #[cfg(test)]
     let mut written = crate::store::CopyObservation::default();
     let fragment = report.fragment().ok_or(Error::NotCompletedFragmentReport)?;
@@ -669,6 +717,7 @@ fn collect_fragment<'a>(
         return Err(Error::CurrentPolicyUnavailable);
     }
     let mut source = Source {
+        report,
         arena: Arena::Fragment(fragment),
         rows: Vec::new(),
         metadata: Vec::new(),
@@ -698,15 +747,12 @@ fn collect_fragment<'a>(
         source.add_captured(form.subject().clone(), c)?;
     }
     let effects = report.effects()?.ok_or(Error::NotCompletedFragmentReport)?;
+    // A node that has a registry binding has a registry other than Null, which the current
+    // policy does not install.
     for index in 0..effects.registry_slots() {
         c.step(1)?;
-        if let Some(binding) = effects.registry(index)? {
-            if !matches!(binding.registry(), HtmlParseRegistry::Null) {
-                return Err(Error::CurrentPolicyUnavailable);
-            }
-            if !source.bootstrap_only(&binding.node().id(), c)? {
-                source.add(binding.node().id(), c)?;
-            }
+        if effects.registry(index)?.is_some() {
+            return Err(Error::CurrentPolicyUnavailable);
         }
     }
     for index in 0..effects.len() {

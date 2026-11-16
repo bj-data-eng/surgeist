@@ -743,18 +743,20 @@ fn formatting_child_transfer_preserves_existing_destination_order_and_backlinks(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        // A join cell and a document cell for each record, a row for each registry row, a row
-        // for each Document's facts and an entry for each document the nodes name.
+        // A join cell and a context cell for each record, a row for each registry row, a row for
+        // each Document's facts, a row for each creation state and an entry for each context the
+        // nodes name.
         2 * session.active().unwrap().construction.len() as u64
             + session.active().unwrap().payloads.values.len() as u64
             + session.active().unwrap().payloads.facts.documents.len() as u64
+            + session.active().unwrap().payloads.facts.creation.len() as u64
             + session
                 .active()
                 .unwrap()
                 .payloads
                 .facts
                 .contexts
-                .documents()
+                .entries()
                 .len() as u64
     );
     session.release(&mut c).unwrap();
@@ -1104,7 +1106,8 @@ fn formatting_child_transfer_stops_with_an_ordered_coherent_prefix_and_reclaims_
             2 * storage.construction.len() as u64
                 + storage.payloads.values.len() as u64
                 + storage.payloads.facts.documents.len() as u64
-                + storage.payloads.facts.contexts.documents().len() as u64
+                + storage.payloads.facts.creation.len() as u64
+                + storage.payloads.facts.contexts.entries().len() as u64
         );
         if result.is_err() {
             // The sweep leaves `remaining` work credits, so the first stop

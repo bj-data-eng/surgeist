@@ -770,8 +770,7 @@ pub(super) fn allocate(
                 c.name(attribute.name())?;
                 c.string(attribute.value())?;
             }
-            let (custom_state, saved_is) =
-                required(source.observation(&node.id(), c, |r| r.creation())?, node)?;
+            let (custom_state, saved_is) = source.creation(&node.id(), c)?;
             if let Some(value) = saved_is {
                 c.string(value)?;
             }
@@ -779,10 +778,7 @@ pub(super) fn allocate(
                 element.name(),
                 |_| c.step(1),
             )?;
-            let common = required(
-                source.observation(&node.id(), c, |r| r.common_state())?,
-                node,
-            )?;
+            let common = source.common_state(&node.id(), c)?;
             if common.scope() != class.common_scope() {
                 return Err(Error::UnsupportedState { subject: node.id() });
             }

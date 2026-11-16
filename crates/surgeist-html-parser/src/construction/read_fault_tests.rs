@@ -713,6 +713,87 @@ fn a_textarea_naming_a_raw_value_that_is_not_a_string_faults_the_cursor() {
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
+/// The element of the one creation state row of `report`.
+fn creation_subject(report: &crate::HtmlParseReport) -> surgeist_html::construction::HtmlNodeId {
+    let mut cursor = report.metadata();
+    loop {
+        match cursor.advance() {
+            HtmlParseMetadataStep::Record(record) if record.creation().is_some() => {
+                return record.node().id();
+            }
+            HtmlParseMetadataStep::Complete => panic!("the report holds a creation state row"),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn a_creation_state_naming_a_saved_is_that_is_not_a_row_faults_the_cursor_and_the_read() {
+    let mut report = parse("<!doctype html><div is=x-b></div>");
+    let div = creation_subject(&report);
+    assert_eq!(metadata_fault(&report), None);
+    assert!(report.creation(&div).unwrap().value().is_some());
+    frozen(&mut report)
+        .payloads
+        .facts
+        .creation
+        .row_mut(0)
+        .unwrap()
+        .saved_is = Some(usize::MAX);
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
+    assert_eq!(
+        report.creation(&div).err(),
+        Some(crate::HtmlParseNodeReadError::Unresolved(fault(Kind::Fact)))
+    );
+}
+
+#[test]
+fn a_creation_state_naming_a_retired_saved_is_faults_the_cursor_and_the_read() {
+    let mut report = parse("<!doctype html><div is=x-b></div>");
+    let div = creation_subject(&report);
+    let slot = frozen(&mut report)
+        .payloads
+        .facts
+        .creation
+        .row(0)
+        .unwrap()
+        .saved_is
+        .expect("the saved is value");
+    // The row of the value was disposed of and its slot kept.
+    frozen(&mut report).payloads.values[slot] = RetainedPayload::Retired;
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
+    assert_eq!(
+        report.creation(&div).err(),
+        Some(crate::HtmlParseNodeReadError::Unresolved(fault(Kind::Fact)))
+    );
+}
+
+#[test]
+fn a_context_entry_the_list_lacks_faults_the_common_state_read() {
+    let mut report = parse("<!doctype html><link rel=a href=b>");
+    // A link has a row in the table of the nodes asked for by their own key. Name an entry past
+    // the list in that row, and make the list name a registry that is not Null, so that the
+    // table is searched for the registry of every element.
+    let contexts = &mut frozen(&mut report).payloads.facts.contexts;
+    contexts.mark_registered_for_test();
+    let named = contexts.named_mut().unwrap();
+    let link = named.node_at(0).expect("the link's row");
+    *named.row_mut(0).unwrap() = u32::MAX;
+    let id = report
+        .history()
+        .storage()
+        .view
+        .node_at(link)
+        .unwrap()
+        .as_node()
+        .unwrap()
+        .id();
+    assert_eq!(
+        report.common_state(&id).err(),
+        Some(crate::HtmlParseNodeReadError::Unresolved(fault(Kind::Fact)))
+    );
+}
+
 /// The contents of the one template of `report`, a tree whose root names the inert document.
 fn template_contents(report: &crate::HtmlParseReport) -> surgeist_html::construction::HtmlNodeId {
     let mut cursor = report.metadata();
@@ -735,9 +816,9 @@ fn a_tree_document_naming_a_missing_node_is_an_unresolved_reference() {
     let contents = template_contents(&report);
     // The contents of the template are a tree whose root names the inert document; the
     // document the report holds for it names a record that is not there.
-    let documents = frozen(&mut report).payloads.facts.contexts.documents_mut();
-    for position in 0..documents.len() {
-        *documents.row_mut(position).unwrap() = DocumentRef::Owned(usize::MAX);
+    let entries = frozen(&mut report).payloads.facts.contexts.entries_mut();
+    for position in 0..entries.len() {
+        entries.row_mut(position).unwrap().document = DocumentRef::Owned(usize::MAX);
     }
     assert_eq!(
         report.tree_document(&contents).err(),
@@ -961,20 +1042,16 @@ fn an_effect_past_the_last_is_absent_and_a_bound_effect_is_lent() {
 #[test]
 fn a_registry_binding_naming_a_missing_node_is_reported() {
     let mut report = fragment_effects_report();
-    let slot = frozen(&mut report)
-        .payloads
-        .values
-        .iter()
-        .position(|row| matches!(row, RetainedPayload::LookupRegistry { node: Some(_), .. }))
-        .expect("a registry binding");
-    let RetainedPayload::LookupRegistry { node, .. } =
-        &mut frozen(&mut report).payloads.values[slot]
-    else {
-        panic!("a registry binding")
-    };
-    *node = missing_node();
+    let contexts = &mut frozen(&mut report).payloads.facts.contexts;
+    // A node has a binding when its registry is not Null: name the Unavailable registry in every
+    // entry, and point the first row of the table at a node the result does not hold.
+    for position in 0..contexts.entries().len() {
+        contexts.entries_mut().row_mut(position).unwrap().registry =
+            context::RegistryRef::Unavailable;
+    }
+    assert!(contexts.named_mut().unwrap().rekey_for_test(0, u32::MAX));
     let effects = report.effects().unwrap().unwrap();
-    assert_eq!(effects.registry(slot).err(), Some(fault(Kind::Node)));
+    assert_eq!(effects.registry(0).err(), Some(fault(Kind::Node)));
 }
 
 #[test]

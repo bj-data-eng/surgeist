@@ -87,13 +87,13 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Root record, its document cell, its entry in the list of documents and its facts = 4.
     // Fresh template adds three native records' join cells and document cells, the entry of the
-    // inert Document, the template and inert Document facts, name/namespace owners, two nonce
-    // slots and one creation row: completed 18.
+    // inert Document, the template and inert Document facts, name/namespace owners and two nonce
+    // slots, and no creation row: completed 17.
     // Document/native preflight needs 8 above the root's 4 before lexical take: a join cell and a
     // document cell for each of the three native records, the template row and the inert
-    // Document's facts. At 17 the tag is transferred but admission of the remaining records
+    // Document's facts. At 16 the tag is transferred but admission of the remaining records
     // fails after the inert Document.
-    for cap in [11, 17, 18] {
+    for cap in [11, 16, 17] {
         let source = crate::HtmlSource::utf8("<template>");
         let mut c = ParseControl::new(
             limits()
@@ -121,14 +121,14 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             None,
             CreationContext::Ordinary,
         );
-        if cap == 18 {
+        if cap == 17 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                18
+                17
             );
             assert_eq!(session.active().unwrap().construction.len(), 4);
             assert!(

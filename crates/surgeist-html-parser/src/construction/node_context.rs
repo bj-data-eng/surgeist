@@ -1,13 +1,17 @@
-//! The document of every node of a parse, held while the parse builds and published by tree.
+//! The context of every node of a parse, held while the parse builds and published by tree.
 //!
-//! While the parse builds, each record has one cell in a column: zero names no document, and any
-//! other value names an entry of the list of the distinct documents the parse has named, one more
-//! than its position. A document is named by many nodes, so the list is deduplicated and short.
-//! The column is written when a record is created and when an adoption moves a node to another
-//! document. Freezing the parse publishes what the column says and releases it: a tree has the
-//! document of its root, and a table holds the entry named by each node that is asked for by its
-//! own key, a root that is not a Document and a link. A Document root names itself.
+//! The context of a node is its document and the custom element registry its lookups use. While
+//! the parse builds, each record has one cell in a column: zero names no context, and any other
+//! value names an entry of the list of the distinct contexts the parse has named, one more than
+//! its position. A context is named by many nodes, so the list is deduplicated and short: the
+//! nodes of an ordinary parse share one entry for each document, and a fragment parse adds an
+//! entry for each document and registry it pairs. The column is written when a record is created
+//! and when an adoption moves a node to another document or another registry. Freezing the parse
+//! publishes what the column says and releases it: a tree has the document of its root, and a
+//! table holds the entry named by each node that is asked for by its own key: a root that is not a
+//! Document, a link, and an element whose registry is not Null. A Document root names itself.
 
+use super::context::RegistryRef;
 use super::family_table::FamilyTable;
 use super::row_bank::RowBank;
 use super::row_log::RowLog;
@@ -16,14 +20,25 @@ use super::*;
 #[cfg(test)]
 use surgeist_html::construction::HtmlConstructionResult;
 
+/// The document and the custom element registry of the nodes that name an entry of the list.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct NodeContext {
+    pub(super) document: DocumentRef,
+    pub(super) registry: RegistryRef,
+}
+
 pub(super) struct NodeContexts {
     /// One cell per record, `None` once the parse is frozen.
     column: Option<RowBank<u32>>,
-    /// The distinct documents the nodes of the parse name, in the order they were first named.
-    documents: RowLog<DocumentRef>,
-    /// The entry of `documents` that each root which is not a Document names, and each link that
-    /// names one, built when the parse is frozen. A link is asked for its document by its own key,
-    /// so the answer is one search whatever the depth it is nested at.
+    /// The distinct contexts the nodes of the parse name, in the order they were first named.
+    entries: RowLog<NodeContext>,
+    /// Whether an entry names a registry that is not Null: no element of a parse without one has
+    /// a registry to ask for.
+    registered: bool,
+    /// The entry of `entries` that each root which is not a Document names, each link that names
+    /// one, and each element whose registry is not Null, built when the parse is frozen. A link is
+    /// asked for its document by its own key, so the answer is one search whatever the depth it
+    /// is nested at.
     named: Option<FamilyTable<u32>>,
     /// The column as it was when the parse was frozen, for tests that compare it with the
     /// published answers.
@@ -49,8 +64,8 @@ pub(super) enum TreeDocument<'a> {
 impl NodeContexts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
         let column = RowBank::new(control)?;
-        let documents = match RowLog::new(control) {
-            Ok(documents) => documents,
+        let entries = match RowLog::new(control) {
+            Ok(entries) => entries,
             Err(error) => {
                 let owner = control.identity();
                 // A refused release has latched its stop; the error that ended the creation is
@@ -61,15 +76,20 @@ impl NodeContexts {
         };
         Ok(Self {
             column: Some(column),
-            documents,
+            entries,
+            registered: false,
             named: None,
             #[cfg(test)]
             frozen_column: Vec::new(),
         })
     }
-    /// The distinct documents the nodes of the parse name.
-    pub(super) fn documents(&self) -> &RowLog<DocumentRef> {
-        &self.documents
+    /// The distinct contexts the nodes of the parse name.
+    pub(super) fn entries(&self) -> &RowLog<NodeContext> {
+        &self.entries
+    }
+    /// Whether any entry names a registry that is not Null.
+    pub(super) fn registered(&self) -> bool {
+        self.registered
     }
     /// The bytes of the column's vector, which the parse holds until it is frozen.
     #[cfg(test)]
@@ -78,8 +98,14 @@ impl NodeContexts {
     }
     /// The same list, for a test that corrupts what a report holds.
     #[cfg(test)]
-    pub(super) fn documents_mut(&mut self) -> &mut RowLog<DocumentRef> {
-        &mut self.documents
+    pub(super) fn entries_mut(&mut self) -> &mut RowLog<NodeContext> {
+        &mut self.entries
+    }
+    /// Makes a parse that names no registry other than Null search its table for every registry
+    /// read, as a parse that names one does, for a test that corrupts what a report holds.
+    #[cfg(test)]
+    pub(super) fn mark_registered_for_test(&mut self) {
+        self.registered = true;
     }
     /// The table of the roots and links that name a document, for a test that corrupts what a
     /// report holds.
@@ -87,10 +113,30 @@ impl NodeContexts {
     pub(super) fn named_mut(&mut self) -> Option<&mut FamilyTable<u32>> {
         self.named.as_mut()
     }
+    /// The context an entry of the list names.
+    pub(super) fn entry(&self, entry: u32) -> Option<&NodeContext> {
+        self.entries
+            .row(usize::try_from(entry.checked_sub(1)?).ok()?)
+    }
+    /// The entry that names `document` with `registry`, if the list holds one. One record visit
+    /// is charged for each entry searched.
+    fn find_context(
+        &self,
+        c: &mut ParseControl,
+        document: &DocumentRef,
+        registry: &RegistryRef,
+    ) -> Result<Option<u32>, SessionError> {
+        for (position, held) in self.entries.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if held.document == *document && held.registry == *registry {
+                return entry_of(c, position).map(Some);
+            }
+        }
+        Ok(None)
+    }
     /// The document an entry of the list names.
     pub(super) fn document(&self, entry: u32) -> Option<&DocumentRef> {
-        self.documents
-            .row(usize::try_from(entry.checked_sub(1)?).ok()?)
+        self.entry(entry).map(|context| &context.document)
     }
     /// The entry a record's cell names, zero for none; `None` for a record without a cell or a
     /// frozen parse.
@@ -135,6 +181,58 @@ impl NodeContexts {
             .map(|document| (Some(document), probes))
             .ok_or(DanglingEntry)
     }
+    /// The lookup registry of the record at `node` in the table built when the parse was frozen,
+    /// with the number of keys the search read. A node with no row has the Null registry, and the
+    /// answer is `None`: a root, a link and a node whose registry is not Null have a row. A parse
+    /// that names no registry other than Null reads no key.
+    pub(super) fn published_registry(
+        &self,
+        node: usize,
+    ) -> Result<(Option<&RegistryRef>, u64), DanglingEntry> {
+        if !self.registered {
+            return Ok((None, 0));
+        }
+        let Some(named) = &self.named else {
+            return Ok((None, 0));
+        };
+        let (found, probes) = named.find_published(node);
+        let Some(index) = found else {
+            return Ok((None, probes));
+        };
+        named
+            .row(index)
+            .and_then(|&entry| self.entry(entry))
+            .map(|context| (Some(&context.registry), probes))
+            .ok_or(DanglingEntry)
+    }
+    /// Whether the lookup registry of the record at `node` is Null when the parse was frozen, with
+    /// the number of keys the search read.
+    pub(super) fn registry_is_null(&self, node: usize) -> Result<(bool, u64), DanglingEntry> {
+        let (registry, probes) = self.published_registry(node)?;
+        Ok((
+            registry.is_none_or(|registry| matches!(registry, RegistryRef::Null)),
+            probes,
+        ))
+    }
+    /// The rows of the table built when the parse was frozen.
+    pub(super) fn named_len(&self) -> usize {
+        self.named.as_ref().map_or(0, FamilyTable::len)
+    }
+    /// The node and the registry of the row at `index` of that table, in ascending order of node;
+    /// `None` past its last row. A row whose entry the list does not hold is [`DanglingEntry`].
+    pub(super) fn named_registry(
+        &self,
+        index: usize,
+    ) -> Result<Option<(usize, &RegistryRef)>, DanglingEntry> {
+        let Some(named) = &self.named else {
+            return Ok(None);
+        };
+        let (Some(node), Some(&entry)) = (named.node_at(index), named.row(index)) else {
+            return Ok(None);
+        };
+        let context = self.entry(entry).ok_or(DanglingEntry)?;
+        Ok(Some((node, &context.registry)))
+    }
     pub(super) fn release(
         self,
         control: &mut ParseControl,
@@ -142,7 +240,7 @@ impl NodeContexts {
     ) -> Result<(), SessionError> {
         let Self {
             column,
-            documents,
+            entries,
             named,
             ..
         } = self;
@@ -153,10 +251,7 @@ impl NodeContexts {
                 column.release(control, owner, |_, _| Ok(()), |_| Ok(())),
             );
         }
-        keep_first(
-            &mut refused,
-            documents.release(control, owner, |_, _| Ok(())),
-        );
+        keep_first(&mut refused, entries.release(control, owner, |_, _| Ok(())));
         if let Some(named) = named {
             keep_first(&mut refused, named.release(control, owner, |_, _| Ok(())));
         }
@@ -192,24 +287,116 @@ impl SessionStorage {
         }
         Ok(())
     }
-    /// The entry of the list that names `document`, naming it first when it is new. One record
-    /// visit is charged for each entry searched.
+    /// The entry of the list that names `document` with the Null registry, naming it first when
+    /// it is new. One record visit is charged for each entry searched.
     #[cfg_attr(test, track_caller)]
     pub(super) fn intern_document(
         &mut self,
         c: &mut ParseControl,
         document: DocumentRef,
     ) -> Result<u32, SessionError> {
-        let documents = &mut self.payloads.facts.contexts.documents;
-        for (position, held) in documents.iter() {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if *held == document {
-                return entry_of(c, position);
-            }
+        self.intern_context(c, document, RegistryRef::Null)
+    }
+    /// The entry of the list that names `document` with `registry`, naming it first when it is
+    /// new. One record visit is charged for each entry searched.
+    #[cfg_attr(test, track_caller)]
+    pub(super) fn intern_context(
+        &mut self,
+        c: &mut ParseControl,
+        document: DocumentRef,
+        registry: RegistryRef,
+    ) -> Result<u32, SessionError> {
+        if let Some(entry) = self
+            .payloads
+            .facts
+            .contexts
+            .find_context(c, &document, &registry)?
+        {
+            return Ok(entry);
         }
-        documents.admit(c, 1)?;
-        let position = documents.push(document)?;
+        self.name_context(c, NodeContext { document, registry })
+    }
+    /// The entry that names `document` with the registry of the entry `like`, naming it first
+    /// when it is new. The registry is copied, and charged, only when a new entry names it.
+    #[cfg_attr(test, track_caller)]
+    pub(super) fn intern_like(
+        &mut self,
+        c: &mut ParseControl,
+        document: DocumentRef,
+        like: u32,
+    ) -> Result<u32, SessionError> {
+        let contexts = &self.payloads.facts.contexts;
+        let Some(held) = contexts.entry(like) else {
+            return Err(latch_registry_row(c));
+        };
+        if let Some(entry) = contexts.find_context(c, &document, &held.registry)? {
+            return Ok(entry);
+        }
+        let registry = held.registry.try_clone(c)?;
+        self.name_context(c, NodeContext { document, registry })
+    }
+    /// The entry that names the document of `entry` with `registry`: `entry` itself when it names
+    /// that registry already.
+    #[cfg_attr(test, track_caller)]
+    pub(super) fn entry_with_registry(
+        &mut self,
+        c: &mut ParseControl,
+        entry: u32,
+        registry: RegistryRef,
+    ) -> Result<u32, SessionError> {
+        let contexts = &self.payloads.facts.contexts;
+        let Some(held) = contexts.entry(entry) else {
+            return Err(latch_registry_row(c));
+        };
+        if held.registry == registry {
+            return Ok(entry);
+        }
+        if let Some(found) = contexts.find_context(c, &held.document, &registry)? {
+            return Ok(found);
+        }
+        let document = held.document.try_clone(c)?;
+        self.name_context(c, NodeContext { document, registry })
+    }
+    /// Names a context that the list does not hold yet.
+    #[cfg_attr(test, track_caller)]
+    fn name_context(
+        &mut self,
+        c: &mut ParseControl,
+        context: NodeContext,
+    ) -> Result<u32, SessionError> {
+        let contexts = &mut self.payloads.facts.contexts;
+        contexts.entries.admit(c, 1)?;
+        contexts.registered |= !matches!(context.registry, RegistryRef::Null);
+        let position = contexts.entries.push(context)?;
         entry_of(c, position)
+    }
+    /// Names `registry` as the lookup registry of the record at `node`, which has a cell: the
+    /// record's document is kept, and a registry the record already has changes nothing. A record
+    /// with no cell has no registry to change.
+    #[cfg_attr(test, track_caller)]
+    pub(super) fn set_registry(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        registry: RegistryRef,
+    ) -> Result<(), SessionError> {
+        let Some(held) = self
+            .payloads
+            .facts
+            .contexts
+            .cell(node)
+            .filter(|&entry| entry != 0)
+        else {
+            return Err(SessionError::ContextFactUnavailable(
+                crate::HtmlCaptureFact::Registry,
+            ));
+        };
+        let entry = self.entry_with_registry(c, held, registry)?;
+        if entry == held {
+            return Ok(());
+        }
+        payload_write::<u32>(c, 1)?;
+        self.set_context(c, node, entry)
     }
     /// Names `entry` as the document of the record at `node`, which has a cell. The write cannot
     /// be refused once the entry exists.
@@ -235,9 +422,10 @@ impl SessionStorage {
         }
     }
     /// Publishes the documents of the trees of the parse and releases the column: one record visit
-    /// for each record, and one row for each node that names a document and is a root that is not
-    /// a Document or a link. A Document root names itself; one that names another document has no
-    /// representation, and is refused as the node document defect.
+    /// for each record, and one row for each node that names a context and is a root that is not
+    /// a Document, a link, or a node whose registry is not Null. A Document root names itself; one
+    /// that names another document has no representation, and is refused as the node document
+    /// defect.
     pub(super) fn publish_node_contexts(
         &mut self,
         c: &mut ParseControl,
@@ -256,15 +444,17 @@ impl SessionStorage {
                     record.kind(),
                     ConstructionNodeKind::Element(element) if element.link_flags().is_some()
                 );
-                if record.parent().is_some() && !is_link {
+                let contexts = &self.payloads.facts.contexts;
+                let entry = contexts.cell(node).ok_or_else(|| latch_registry_row(c))?;
+                // A node that is not a root or a link is asked for its registry by its own key
+                // when the registry is not Null.
+                let registered = contexts.registered()
+                    && contexts
+                        .entry(entry)
+                        .is_some_and(|context| !matches!(context.registry, RegistryRef::Null));
+                if record.parent().is_some() && !is_link && !registered {
                     continue;
                 }
-                let entry = self
-                    .payloads
-                    .facts
-                    .contexts
-                    .cell(node)
-                    .ok_or_else(|| latch_registry_row(c))?;
                 if entry == 0 {
                     continue;
                 }

@@ -1321,10 +1321,18 @@ impl SessionStorage {
                 .ok_or_else(|| latch_registry_row(c))?;
             self.association_document(c, &DocumentRef::Owned(node))?;
         }
-        // The Documents the nodes of the parse name, each once.
-        for index in 0..self.payloads.facts.contexts.documents().len() {
+        // The Documents the nodes of the parse name, once for each entry that names one: an entry
+        // that names a document again with another registry finds the capture of the first.
+        for index in 0..self.payloads.facts.contexts.entries().len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let document = match self.payloads.facts.contexts.documents().row(index) {
+            let document = match self
+                .payloads
+                .facts
+                .contexts
+                .entries()
+                .row(index)
+                .map(|context| &context.document)
+            {
                 Some(DocumentRef::Captured(id)) => {
                     c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     Some(DocumentRef::Captured(id.clone()))
@@ -2611,7 +2619,7 @@ mod tests {
         let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
         let storage = session.active().unwrap();
         let documents = storage.payloads.facts.documents.len() as u64;
-        let named = storage.payloads.facts.contexts.documents().len() as u64;
+        let named = storage.payloads.facts.contexts.entries().len() as u64;
         let before = visits(&c);
         session
             .active_mut()

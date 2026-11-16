@@ -70,24 +70,27 @@ pub(super) struct ParseFacts {
     pub(super) missing: RowLog<meta::MetaMissingFact>,
     /// The Document captures and occurrences the parse recorded, and the inputs it was given.
     pub(super) associations: association_log::AssociationLog,
-    /// The document of every node: a column while the parse builds, and the documents of the trees
-    /// once it is frozen.
+    /// The document and the lookup registry of every node: a column while the parse builds, and
+    /// the documents of the trees once it is frozen.
     pub(super) contexts: node_context::NodeContexts,
+    /// The creation state of the elements that have one other than the default of their
+    /// namespace: those with a custom element name, an `is` attribute or a saved `is` value.
+    pub(super) creation: FamilyTable<context::ElementCreationState>,
 }
 impl ParseFacts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
+        let owner = control.identity();
         let missing = RowLog::new(control)?;
         let documents = match FamilyTable::new(control) {
             Ok(documents) => documents,
             Err(error) => {
-                missing.release(control, &control.identity(), |_, _| Ok(()))?;
+                missing.release(control, &owner, |_, _| Ok(()))?;
                 return Err(error);
             }
         };
         let associations = match association_log::AssociationLog::new(control) {
             Ok(associations) => associations,
             Err(error) => {
-                let owner = control.identity();
                 missing.release(control, &owner, |_, _| Ok(()))?;
                 documents.release(control, &owner, |_, _| Ok(()))?;
                 return Err(error);
@@ -96,10 +99,19 @@ impl ParseFacts {
         let contexts = match node_context::NodeContexts::new(control) {
             Ok(contexts) => contexts,
             Err(error) => {
-                let owner = control.identity();
                 missing.release(control, &owner, |_, _| Ok(()))?;
                 documents.release(control, &owner, |_, _| Ok(()))?;
                 associations.release(control, &owner)?;
+                return Err(error);
+            }
+        };
+        let creation = match FamilyTable::new(control) {
+            Ok(creation) => creation,
+            Err(error) => {
+                missing.release(control, &owner, |_, _| Ok(()))?;
+                documents.release(control, &owner, |_, _| Ok(()))?;
+                associations.release(control, &owner)?;
+                contexts.release(control, &owner)?;
                 return Err(error);
             }
         };
@@ -110,6 +122,7 @@ impl ParseFacts {
             missing,
             associations,
             contexts,
+            creation,
         })
     }
 }
@@ -157,11 +170,6 @@ pub(super) enum RetainedPayload {
         node: Option<usize>,
         values: OwnedVec<pi::PseudoAttribute>,
         ready: bool,
-    },
-    LookupRegistry {
-        node: Option<usize>,
-        registry: context::RegistryRef,
-        creation: Option<context::ElementCreationState>,
     },
     Template {
         node: Option<usize>,
@@ -376,9 +384,6 @@ fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
             node: Some(node), ..
         } => (Join::Base, *node),
         RetainedPayload::BaseDocument { node, .. } => (Join::BaseDocument, *node),
-        RetainedPayload::LookupRegistry {
-            node: Some(node), ..
-        } => (Join::LookupRegistry, *node),
         RetainedPayload::PiAttributes {
             node: Some(node), ..
         } => (Join::ProcessingInstructionAttributes, *node),
@@ -759,6 +764,7 @@ impl PayloadStorage {
             missing,
             associations,
             contexts,
+            creation,
             ..
         } = facts;
         let join_entries = node_joins.len() as u64;
@@ -780,6 +786,10 @@ impl PayloadStorage {
         keep_first(&mut refused, missing.release(control, owner, |_, _| Ok(())));
         keep_first(&mut refused, associations.release(control, owner));
         keep_first(&mut refused, contexts.release(control, owner));
+        keep_first(
+            &mut refused,
+            creation.release(control, owner, |_, _| Ok(())),
+        );
         // The storage the owner's state holds is returned with the registry's own, below.
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         if let Some(log) = csp {

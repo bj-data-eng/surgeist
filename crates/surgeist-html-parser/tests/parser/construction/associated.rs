@@ -498,7 +498,24 @@ fn ordinary_common_state_is_subject_qualified_and_nonce_is_independent() {
                         continue;
                     };
                     let local = element.name().local_name().to_utf8().unwrap();
-                    if let Some(common) = row.common_state() {
+                    // Each element has one nonce record. The common state is answered by node:
+                    // an element whose creation state is the default of its namespace has no
+                    // record of it, and `x-card` has one that agrees with the answer.
+                    let Some(nonce) = row.cryptographic_nonce() else {
+                        if let Some(common) = row.common_state() {
+                            assert_eq!(
+                                Some(common.scope()),
+                                report
+                                    .common_state(&row.node().id())
+                                    .unwrap()
+                                    .value()
+                                    .map(|state| state.scope())
+                            );
+                        }
+                        continue;
+                    };
+                    let answer = report.common_state(&row.node().id()).unwrap();
+                    if let Some(common) = *answer.value() {
                         let element = common.element();
                         assert!(element.reaction_queue_is_empty());
                         assert!(!element.click_in_progress());
@@ -526,9 +543,7 @@ fn ordinary_common_state_is_subject_qualified_and_nonce_is_independent() {
                             subjects.push((local.clone(), row.node().id()));
                         }
                     }
-                    if let Some(nonce) = row.cryptographic_nonce()
-                        && ["x-card", "svg", "g", "math", "mi"].contains(&local.as_str())
-                    {
+                    if ["x-card", "svg", "g", "math", "mi"].contains(&local.as_str()) {
                         nonces.push((local, nonce.to_utf8().unwrap()));
                     }
                 }

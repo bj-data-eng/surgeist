@@ -34,12 +34,15 @@ pub(crate) struct CreationLocation<'a> {
 }
 
 pub(super) struct PreparedDocuments {
-    /// The entry of the document list that names the document of the record.
-    context: Option<u32>,
+    /// The entry of the context list that names the document and the lookup registry of the
+    /// record.
+    pub(super) context: Option<u32>,
     /// The entry that names the document of the contents fragment of a template.
     contents_context: Option<u32>,
     facts: Option<usize>,
-    pub(super) registry: Option<usize>,
+    /// The creation state of the record when it is not the default of its namespace. Its row is
+    /// admitted in the table of creation states and written once the record exists.
+    pub(super) creation: Option<context::ElementCreationState>,
 }
 
 /// What the parse keeps of one Document it owns.
@@ -102,10 +105,10 @@ impl SessionStorage {
                 }
             }
         }
-        // The documents the nodes of the parse name are held once each, and a Document names itself.
-        for (_, document) in self.payloads.facts.contexts.documents().iter() {
+        // The contexts the nodes of the parse name are held once each, and a Document names itself.
+        for (_, context) in self.payloads.facts.contexts.entries().iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            self.validate_document_ref(c, document)?;
+            self.validate_document_ref(c, &context.document)?;
         }
         for payload in &self.payloads.values {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -307,15 +310,16 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         self.validate_document_ref(c, &document)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if self
+        if let Some(like) = self
             .payloads
             .facts
             .contexts
             .cell(node)
-            .is_some_and(|entry| entry != 0)
+            .filter(|&entry| entry != 0)
         {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let entry = self.intern_document(c, document)?;
+            // The registry the node has is kept, so that the adoption that follows reads it.
+            let entry = self.intern_like(c, document, like)?;
             payload_write::<u32>(c, 1)?;
             return self.set_context(c, node, entry);
         }
@@ -453,7 +457,7 @@ impl SessionStorage {
                 context: None,
                 contents_context: None,
                 facts: Some(facts),
-                registry: None,
+                creation: None,
             }));
         };
         self.validate_document_ref(c, &document)?;
@@ -525,7 +529,7 @@ impl SessionStorage {
             context: Some(context),
             contents_context,
             facts,
-            registry: None,
+            creation: None,
         }))
     }
     pub(super) fn allocate_prepared_owned(
@@ -539,13 +543,25 @@ impl SessionStorage {
     ) -> Result<ParserNode, SessionError> {
         self.allocate_prepared_record_owned(c, kind, template, attributes, units, prepared)
     }
+    /// Creates the contents of a shadow root in `document`, whose lookup registry is `registry`.
     pub(super) fn allocate_shadow_contents(
         &mut self,
         c: &mut ParseControl,
         properties: HtmlShadowRootProperties,
         document: DocumentRef,
+        registry: context::RegistryRef,
     ) -> Result<ParserNode, SessionError> {
-        let prepared = self.prepare_document_allocation(c, Some(document), false)?;
+        let mut prepared = self.prepare_document_allocation(c, Some(document), false)?;
+        if !matches!(registry, context::RegistryRef::Null) {
+            let context = prepared
+                .as_mut()
+                .and_then(|prepared| prepared.context)
+                .ok_or(SessionError::NodeDocumentUnavailable)?;
+            let entry = self.entry_with_registry(c, context, registry)?;
+            if let Some(prepared) = prepared.as_mut() {
+                prepared.context = Some(entry);
+            }
+        }
         self.allocate_prepared_record_owned(
             c,
             NewRecord::ShadowContents(properties),
@@ -568,12 +584,12 @@ impl SessionStorage {
             context,
             contents_context,
             facts,
-            registry,
+            creation,
         }) = prepared
         else {
             return self.allocate_native_record(c, kind, template, attributes, units);
         };
-        payload_write::<Option<usize>>(c, count_set([facts.is_some(), registry.is_some()]) as u64)?;
+        payload_write::<Option<usize>>(c, u64::from(facts.is_some()))?;
         payload_write::<u32>(
             c,
             count_set([context.is_some(), contents_context.is_some()]) as u64,
@@ -582,19 +598,15 @@ impl SessionStorage {
             payload_write::<usize>(c, 1)?;
         }
         let node = self.allocate_native_record(c, kind, template, attributes, units)?;
-        if let Some(slot) = registry {
-            let Some(RetainedPayload::LookupRegistry { node: bound, .. }) =
-                self.payloads.values.get_mut(slot)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            *bound = Some(node.index);
-            self.payloads
-                .join_row(slot)
-                .map_err(|_| latch_registry_row(c))?;
-        }
         if let Some(entry) = context {
             self.set_context(c, node.index, entry)?;
+        }
+        if let Some(state) = creation {
+            self.payloads
+                .facts
+                .creation
+                .push(node.index, state)
+                .map_err(|_| latch_registry_row(c))?;
         }
         if let Some(entry) = contents_context {
             let contents = successor(c, node.index)?;

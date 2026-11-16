@@ -387,6 +387,36 @@ impl HtmlParseReport {
     > {
         self.storage.node_document_for_test(node)
     }
+    /// The custom element state and the saved `is` value of the element `node`. An element with a
+    /// custom element name, an `is` attribute or a saved `is` value has a row in the report, and
+    /// any other element has the state its creation gives: no custom element state and no saved
+    /// `is` value. A node that is not an element has none.
+    pub fn creation(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<
+        crate::construction::report::HtmlParseNodeRead<
+            Option<crate::construction::report::HtmlParseCreation<'_>>,
+        >,
+        crate::construction::report::HtmlParseNodeReadError,
+    > {
+        self.storage.node_creation(node)
+    }
+    /// The common state of the element `node` in a report whose profile is closed and whose
+    /// element has the Null lookup registry: the scope of its row, or for an element with none the
+    /// scope its namespace gives. A node that is not an element, an element of a profile that is
+    /// not closed and an element with another registry have none.
+    pub fn common_state(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<
+        crate::construction::report::HtmlParseNodeRead<
+            Option<surgeist_html::elements::native::HtmlCommonState<core::convert::Infallible>>,
+        >,
+        crate::construction::report::HtmlParseNodeReadError,
+    > {
+        self.storage.node_common_state(node)
+    }
     /// The document of the tree rooted at `root`. Every node of a tree has the document of its
     /// root, so a report holds the document of each root and not of each node: a Document root is
     /// its own document, and any other root is found among the roots that name one. A node that

@@ -6,8 +6,7 @@ use surgeist_html::{
     values::DocumentString,
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseCompletion, HtmlParseMetadataStep, HtmlParseReport,
-    HtmlSource,
+    HtmlDocumentParseRequest, HtmlParseCompletion, HtmlParseReport, HtmlSource,
 };
 
 fn completed_document(source: &str) -> HtmlParseReport {
@@ -40,27 +39,17 @@ fn element(report: &HtmlParseReport, local: &str) -> HtmlNodeId {
     found.expect("literal fixture contains the requested HTML element")
 }
 
+/// The creation state of the element `subject`, which the report answers by node: an element whose
+/// creation state is the default of its namespace has no metadata record of it.
 fn creation(
     report: &HtmlParseReport,
     subject: &HtmlNodeId,
 ) -> (HtmlCustomElementState, Option<DocumentString>) {
-    let mut metadata = report.metadata();
-    let mut found = None;
-    loop {
-        match metadata.advance() {
-            HtmlParseMetadataStep::Record(record) => {
-                if record.node().id() == *subject
-                    && let Some((state, saved_is)) = record.creation()
-                {
-                    assert!(found.replace((state, saved_is.cloned())).is_none());
-                }
-            }
-            HtmlParseMetadataStep::Skipped => {}
-            HtmlParseMetadataStep::Complete => break,
-            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
-        }
-    }
-    found.expect("completed ordinary element must lend its actual creation state and saved is")
+    let answer = report.creation(subject).unwrap();
+    let creation = answer
+        .value()
+        .expect("completed ordinary element must lend its actual creation state and saved is");
+    (creation.state(), creation.saved_is().cloned())
 }
 
 #[test]

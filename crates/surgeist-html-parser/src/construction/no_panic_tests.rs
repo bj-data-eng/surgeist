@@ -142,17 +142,17 @@ fn disposing_a_row_that_is_not_a_string_keeps_the_row() {
     let storage = session.active_mut().unwrap();
     let row = storage
         .payloads
-        .joined(&mut c, div, Join::LookupRegistry)
+        .joined(&mut c, div, Join::Nonce)
         .unwrap()
-        .expect("the element's registry row");
+        .expect("the element's nonce row");
     assert_eq!(
         storage.dispose_aggregate_string(&mut c, row),
         Err(SessionError::WrongToken)
     );
-    // The refused row is still the registry row, not a retired husk.
+    // The refused row is still the nonce row, not a retired husk.
     assert!(matches!(
         storage.payloads.values.get(row),
-        Some(RetainedPayload::LookupRegistry { .. })
+        Some(RetainedPayload::Nonce { .. })
     ));
     session.release(&mut c).unwrap();
     storage_zero(&c);

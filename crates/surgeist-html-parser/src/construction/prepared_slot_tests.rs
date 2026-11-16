@@ -298,15 +298,31 @@ fn document(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Box<
 }
 
 fn fragment_context() -> HtmlFragmentContext {
+    fragment_context_with(false)
+}
+
+/// The context of a `div`; with `registry` its document and its element name a global registry.
+fn fragment_context_with(registry: bool) -> HtmlFragmentContext {
     let mut builder = HtmlCaptureBuilder::new(
         HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
+    let global = registry.then(|| {
+        let id = builder.add_registry(Some(Vec::new())).unwrap();
+        builder
+            .establish_registry_scope(&id, HtmlRegistryScope::Global)
+            .unwrap();
+        id
+    });
+    let input = |global: &Option<_>| match global {
+        Some(id) => HtmlCaptureRegistryInput::Registry(Clone::clone(id)),
+        None => HtmlCaptureRegistryInput::Null,
+    };
     let document = builder
         .add_document(
             HtmlDocumentMode::NoQuirks,
             HtmlScriptingStatus::Disabled,
-            HtmlCaptureRegistryInput::Null,
+            input(&global),
         )
         .unwrap();
     builder
@@ -323,7 +339,7 @@ fn fragment_context() -> HtmlFragmentContext {
             QualifiedName::new(Namespace::html(), None, "div"),
             OrderedAttributes::default(),
             HtmlCapturedIsValue::Absent,
-            HtmlCaptureRegistryInput::Null,
+            input(&global),
         )
         .unwrap();
     builder.establish_root(&div).unwrap();
@@ -333,10 +349,18 @@ fn fragment_context() -> HtmlFragmentContext {
 }
 
 fn fragment(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Box<Stopped>> {
+    fragment_in(source, false)
+}
+
+/// A contextual parse in the context of [`fragment_context_with`].
+fn fragment_in(
+    source: &'static str,
+    registry: bool,
+) -> impl Fn(HtmlParseLimits) -> Result<(), Box<Stopped>> {
     move |limits| {
         crate::HtmlFragmentParseRequest::with_options(
             HtmlSource::utf8(source),
-            fragment_context(),
+            fragment_context_with(registry),
             limits,
             HtmlParserScriptingMode::Inert,
             true,
@@ -574,6 +598,250 @@ fn node_document_cells_leave_nothing_retained_when_the_parse_stops_after_their_s
         ),
         2,
         "{sites:?}"
+    );
+}
+
+/// The creation state of an element with a custom element name, an `is` attribute or a saved is
+/// value is a row of a family table, admitted before the element exists. The admission is a
+/// prepared slot asked for where the element is prepared: `prepare_creation_registry` for an
+/// element the parser creates, and `prepare_clone_metadata` for a clone. The counts are derived
+/// from the report: one admission for each row of its table.
+#[test]
+fn creation_state_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let created = ("src/construction/context.rs", "prepare_creation_registry");
+    let cloned = ("src/construction/clone.rs", "prepare_clone_metadata");
+    let admissions = |sites: &[Site], at: (&str, &str)| {
+        sites
+            .iter()
+            .filter(|site| {
+                site.file == at.0 && site.function == at.1 && site.line.contains("creation.admit(")
+            })
+            .count()
+    };
+    let rows_of =
+        |report: &crate::HtmlParseReport| report.history().storage().payloads.facts.creation.len();
+    // Plain elements admit no row, whatever their number.
+    let plain = "<!doctype html><p>a</p><span></span><svg><g></g></svg>";
+    let (retained, sites) = retained_after_each_prepared_slot(&document(plain));
+    assert!(retained.is_empty(), "{retained:?}");
+    assert_eq!(admissions(&sites, created) + admissions(&sites, cloned), 0);
+    // A custom element name, an `is` attribute in either namespace, each one row.
+    let custom = "<!doctype html><x-a></x-a><div is=b></div><span></span><svg><g is=c></g></svg>";
+    let report = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(custom), limits(100))
+        .parse()
+        .unwrap();
+    assert_eq!(rows_of(&report), 3);
+    let (retained, sites) = retained_after_each_prepared_slot(&document(custom));
+    assert!(retained.is_empty(), "{retained:?}");
+    assert_eq!(admissions(&sites, created), 3, "{sites:?}");
+    assert_eq!(admissions(&sites, cloned), 0, "{sites:?}");
+    // A contextual parse admits the same rows.
+    let source = "<x-a></x-a><i is=q></i><b></b>";
+    let report = crate::HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8(source),
+        fragment_context(),
+        limits(100),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap()
+    .parse()
+    .unwrap();
+    assert_eq!(rows_of(&report), 2);
+    let (retained, sites) = retained_after_each_prepared_slot(&fragment(source));
+    assert!(retained.is_empty(), "{retained:?}");
+    assert_eq!(admissions(&sites, created), 2, "{sites:?}");
+}
+
+/// A context the parse names with a registry other than Null is admitted to the list once for each
+/// document it pairs with, where it is first named. In a parse whose context element names a global
+/// registry that is the implicit root, whose registry the bootstrap sets in the parser's Document,
+/// and the first node that is adopted into the target of the parse, which keeps its registry in
+/// the Document it moves to. The elements created in the parser's Document find the first entry:
+/// no creation of an element admits another.
+#[test]
+fn a_registry_other_than_null_is_admitted_once_where_it_is_first_named() {
+    let source = "<x-a></x-a><i></i><b></b>";
+    let report = crate::HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8(source),
+        fragment_context_with(true),
+        limits(100),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap()
+    .parse()
+    .unwrap();
+    let contexts = &report.history().storage().payloads.facts.contexts;
+    let registered = contexts
+        .entries()
+        .iter()
+        .filter(|(_, context)| !matches!(context.registry, super::context::RegistryRef::Null))
+        .count();
+    // The parser's Document and the target Document, each with the registry.
+    assert_eq!(registered, 2);
+    let (retained, sites) = retained_after_each_prepared_slot(&fragment_in(source, true));
+    assert!(retained.is_empty(), "{retained:?}");
+    let named = |at: (&str, &str), call: &str| {
+        sites
+            .iter()
+            .filter(|site| site.file == at.0 && site.function == at.1 && site.line.contains(call))
+            .count()
+    };
+    assert_eq!(
+        named(
+            ("src/construction/context.rs", "initialize_fragment"),
+            "set_registry("
+        ),
+        1,
+        "{sites:?}"
+    );
+    assert_eq!(
+        named(
+            ("src/construction/template.rs", "set_node_document"),
+            "intern_like("
+        ),
+        1,
+        "{sites:?}"
+    );
+    assert_eq!(
+        named(
+            ("src/construction/context.rs", "prepare_creation_registry"),
+            "entry_with_registry("
+        ),
+        0,
+        "{sites:?}"
+    );
+}
+
+/// The sites of the prepared slots that name a context entry: the calls that intern a pair.
+fn context_sites(sites: &[Site]) -> Vec<(String, String)> {
+    sites
+        .iter()
+        .filter(|site| {
+            [
+                "entry_with_registry(",
+                "set_registry(",
+                "intern_like(",
+                "intern_context(",
+                "intern_document(",
+            ]
+            .iter()
+            .any(|call| site.line.contains(call))
+        })
+        .map(|site| (site.file.to_string(), site.function.clone()))
+        .collect()
+}
+
+/// A custom element that a select clones has a row of creation state for the original and one for
+/// the clone, each admitted before its element exists: the original where the parser prepares it
+/// and the clone where its metadata is prepared. The counts are derived from the report: one row
+/// for each of the two elements.
+#[test]
+fn a_cloned_creation_state_row_leaves_nothing_retained_when_the_parse_stops_after_its_slot() {
+    let created = ("src/construction/context.rs", "prepare_creation_registry");
+    let cloned = ("src/construction/clone.rs", "prepare_clone_metadata");
+    let admissions = |sites: &[Site], at: (&str, &str)| {
+        sites
+            .iter()
+            .filter(|site| {
+                site.file == at.0 && site.function == at.1 && site.line.contains("creation.admit(")
+            })
+            .count()
+    };
+    let select = "<select><button><selectedcontent></selectedcontent></button>\
+                  <option selected><x-b is=c>t</x-b></option></select>";
+    let documents: &'static str = Box::leak(format!("<!doctype html>{select}").into_boxed_str());
+    let fragment_source: &'static str = Box::leak(select.to_string().into_boxed_str());
+    let report = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(documents), limits(100))
+        .parse()
+        .unwrap();
+    assert_eq!(report.history().storage().payloads.facts.creation.len(), 2);
+    let (retained, sites) = retained_after_each_prepared_slot(&document(documents));
+    assert!(retained.is_empty(), "{retained:?}");
+    assert_eq!(admissions(&sites, created), 1, "{sites:?}");
+    assert_eq!(admissions(&sites, cloned), 1, "{sites:?}");
+    // The same in a contextual parse whose context names a registry: the clone names the registry
+    // of its source, an entry the parse already holds, so it admits no entry of its own.
+    let (retained, sites) = retained_after_each_prepared_slot(&fragment_in(fragment_source, true));
+    assert!(retained.is_empty(), "{retained:?}");
+    assert_eq!(admissions(&sites, created), 1, "{sites:?}");
+    assert_eq!(admissions(&sites, cloned), 1, "{sites:?}");
+    let entries: Vec<_> = context_sites(&sites);
+    assert!(
+        !entries
+            .iter()
+            .any(|(file, _)| file == "src/construction/clone.rs"),
+        "{entries:?}"
+    );
+}
+
+/// The contents of a declarative shadow root name the registry of their host's document, which is
+/// another entry than the parser's Document names: the first creation of a node that names it
+/// admits it, and the contents admit the entry when they are the first.
+#[test]
+fn shadow_contents_with_a_registry_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let source = "<template shadowrootmode=open><x-a is=s></x-a></template>";
+    let report = crate::HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8(source),
+        fragment_context_with(true),
+        limits(100),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap()
+    .parse()
+    .unwrap();
+    let storage = report.history().storage();
+    assert_eq!(storage.payloads.facts.creation.len(), 1);
+    let registered = storage
+        .payloads
+        .facts
+        .contexts
+        .entries()
+        .iter()
+        .filter(|(_, context)| !matches!(context.registry, super::context::RegistryRef::Null))
+        .count();
+    let (retained, sites) = retained_after_each_prepared_slot(&fragment_in(source, true));
+    assert!(retained.is_empty(), "{retained:?}");
+    // The parser's Document names the registry at the bootstrap, and the shadow contents, whose
+    // host document is the captured one, name the same registry with that document where they
+    // are created. The creation of the element in the contents finds that entry.
+    assert_eq!(registered, 2);
+    let naming_registry: Vec<_> = context_sites(&sites)
+        .into_iter()
+        .filter(|(file, function)| {
+            sites.iter().any(|site| {
+                site.file == *file
+                    && site.function == *function
+                    && ["entry_with_registry(", "set_registry("]
+                        .iter()
+                        .any(|call| site.line.contains(call))
+            })
+        })
+        .collect();
+    assert_eq!(
+        naming_registry,
+        [
+            (
+                "src/construction/context.rs".to_string(),
+                "initialize_fragment".to_string()
+            ),
+            (
+                "src/construction/template.rs".to_string(),
+                "allocate_shadow_contents".to_string()
+            )
+        ]
+    );
+    let created = ("src/construction/context.rs", "prepare_creation_registry");
+    assert_eq!(
+        sites
+            .iter()
+            .filter(|site| site.file == created.0
+                && site.function == created.1
+                && site.line.contains("creation.admit("))
+            .count(),
+        1
     );
 }
 

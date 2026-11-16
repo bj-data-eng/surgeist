@@ -5,7 +5,7 @@ use super::*;
 use crate::construction::report::HtmlParseMetadataDocument;
 use surgeist_html_semantics::*;
 
-fn corpus_limits() -> HtmlParseLimits {
+pub(super) fn corpus_limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
@@ -31,7 +31,7 @@ fn corpus_limits() -> HtmlParseLimits {
         .unwrap()
 }
 
-fn fragment_context(context: &str) -> Result<HtmlFragmentContext, String> {
+pub(super) fn fragment_context(context: &str) -> Result<HtmlFragmentContext, String> {
     let (namespace, local) = match context.split_once(' ') {
         Some(("svg", local)) => (Namespace::svg(), local),
         Some(("math", local)) => (Namespace::mathml(), local),
@@ -202,8 +202,24 @@ fn check(report: &crate::HtmlParseReport, label: &str, tally: &mut Tally) {
     }
 }
 
-#[test]
-fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
+/// The details a parse of the corpus selects: none, and all of them in a build that has the
+/// `detail` feature.
+pub(super) fn details() -> Vec<crate::DetailSet> {
+    let mut details = vec![crate::DetailSet::NONE];
+    if cfg!(feature = "detail") {
+        details.push(crate::DetailSet::ALL);
+    }
+    details
+}
+
+/// Parses every case of the retained html5lib tree-construction corpus that runs without
+/// scripting, once with no detail and once with all of it, and hands each report with its label to
+/// `visit`. A fragment case whose context the corpus names that the capture cannot build is skipped;
+/// a parse that fails is handed to `failed`.
+pub(super) fn each_corpus_parse(
+    mut visit: impl FnMut(&crate::HtmlParseReport, &str),
+    mut failed: impl FnMut(&str),
+) {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/html5lib-f994590f/tree-construction");
     let mut files: Vec<_> = std::fs::read_dir(&dir)
@@ -212,7 +228,6 @@ fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
         .filter(|path| path.extension().is_some_and(|ext| ext == "dat"))
         .collect();
     files.sort();
-    let mut tally = Tally::default();
     for path in files {
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         let raw = std::fs::read_to_string(&path).unwrap();
@@ -220,7 +235,7 @@ fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
             if case.script_on {
                 continue;
             }
-            for detail in [crate::DetailSet::NONE, crate::DetailSet::ALL] {
+            for detail in details() {
                 let label = format!("{name}/{} detail={detail:?}", ordinal + 1);
                 let parsed = match case.fragment {
                     None => crate::HtmlDocumentParseRequest::offline(
@@ -243,12 +258,27 @@ fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
                     },
                 };
                 match parsed {
-                    Ok(report) => check(&report, &label, &mut tally),
-                    Err(_) => tally.failures.push(format!("{label}: parse failed")),
+                    Ok(report) => visit(&report, &label),
+                    Err(_) => failed(&label),
                 }
             }
         }
     }
+}
+
+#[test]
+fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
+    let tally = std::cell::RefCell::new(Tally::default());
+    each_corpus_parse(
+        |report, label| check(report, label, &mut tally.borrow_mut()),
+        |label| {
+            tally
+                .borrow_mut()
+                .failures
+                .push(format!("{label}: parse failed"))
+        },
+    );
+    let tally = tally.into_inner();
     eprintln!(
         "D2 parses {} nodes {} named {} unnamed {} roots {} unnamed-roots {} links {} failures {}",
         tally.parses,
@@ -268,7 +298,7 @@ fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
     // one with all of them for each case the test runs. The other counts follow from the parses:
     // every node is named by the column or not, every parse has a root, and every node of a
     // parse of this corpus is in a document.
-    assert_eq!(tally.parses, 3_534);
+    assert_eq!(tally.parses, 1_767 * details().len());
     assert_eq!(tally.named + tally.unnamed, tally.nodes);
     assert!(tally.nodes >= tally.parses);
     assert!(tally.roots >= tally.parses);

@@ -103,20 +103,21 @@ fn fragment_descriptor_keeps_actual_constructor_environment_and_completion() {
         let mut scripts = 0;
         let mut styles = 0;
         let mut meta_root = false;
-        let mut common_root = false;
+        // The implicit html root has the creation state of its namespace, which no record holds:
+        // the report answers by node.
+        let common = report
+            .common_state(&html.id())
+            .unwrap()
+            .value()
+            .expect("actual implicit html common state");
+        assert_eq!(common.scope(), HtmlCommonScope::Html);
+        let common_root = true;
         let mut cursor = report.metadata();
         loop {
             match cursor.advance() {
                 HtmlParseMetadataStep::Record(row) => {
                     if row.node().id() == document.id() {
                         assert!(row.common_state().is_none());
-                    }
-                    if row.creation().is_some() && row.node().id() == html.id() {
-                        let common = row
-                            .common_state()
-                            .expect("actual implicit html common state");
-                        assert_eq!(common.scope(), HtmlCommonScope::Html);
-                        common_root = true;
                     }
                     if let Some((Some(HtmlParseMetadataDocument::Owned(parser)), _)) =
                         row.script_documents()
