@@ -1423,3 +1423,58 @@ fn an_installation_asks_the_report_for_a_document_once_for_each_root() {
         assert_eq!(tree_document_asks(&html), 6, "{items} items");
     }
 }
+
+/// The work an installation of `html` admits, as the installation counts it.
+fn admitted_work(html: &str) -> u64 {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            4096,
+            1_000_000,
+            4096,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let environment = environment(&mut dom);
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(HtmlSource::utf8(html), text_parser_limits())
+            .parse()
+            .unwrap(),
+    );
+    let before = dom.snapshot();
+    dom.prepare_parsed_html_installation(
+        before.stamp(),
+        report,
+        environment,
+        crate::DomParsedHtmlInstallLimits::new(4096, 100_000_000, 16_000_000, 100_000_000),
+        &cancel,
+    )
+    .unwrap()
+    .admitted_work
+}
+
+/// The work of an installation is linear in the nodes it installs: each node is charged the same
+/// work whatever the size of the document, so a document of twice the items costs less than 2.2
+/// times as much, the factor the fixed work of the document and the doubling of a reserved
+/// vector leave above 2. A search of the rows or the records of the report for each node makes the
+/// work quadratic, and the factor approaches 4.
+#[test]
+fn installation_work_grows_linearly_with_the_nodes() {
+    let wide = |items: usize| format!("<!doctype html><ul>{}</ul>", "<li>x</li>".repeat(items));
+    let mut previous = admitted_work(&wide(32));
+    for items in [64, 128, 256, 512] {
+        let work = admitted_work(&wide(items));
+        assert!(
+            work * 10 <= previous * 22,
+            "{items} items cost {work}, {} items cost {previous}",
+            items / 2
+        );
+        previous = work;
+    }
+}
