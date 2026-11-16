@@ -138,3 +138,19 @@ fn preparing_links_costs_the_same_at_every_depth() {
     assert_eq!(added(16), shallow, "depth 16");
     assert_eq!(added(32), shallow, "depth 32");
 }
+
+/// The visits `links` links add at a fixed depth grow in proportion to the links, to within the
+/// search of the table that holds their documents: at most 2.2 times per doubling.
+#[test]
+fn preparing_links_grows_linearly_in_their_number() {
+    let added = |links: usize| publication_visits(16, links) - publication_visits(16, 0);
+    let mut before = added(8);
+    for links in [16, 32, 64] {
+        let now = added(links);
+        assert!(
+            now * 10 <= before * 22,
+            "{links} links added {now}, from {before}"
+        );
+        before = now;
+    }
+}

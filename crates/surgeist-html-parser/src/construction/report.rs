@@ -391,16 +391,12 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::WrongToken);
                     }
                     // A link's document joins its history to the parser Document, so publication
-                    // requires one: the tree it is in names it. Not every node has one: nodes
-                    // created without a document, such as implied and text nodes of a fragment,
-                    // are in a tree that names none.
-                    let Some((document, cost)) =
-                        node_context::document_of(&storage.payloads.facts.contexts, arena, node)
-                    else {
-                        return Err(SessionError::NodeDocumentUnavailable);
-                    };
-                    c.charge(HtmlParseWorkCategory::RecordVisit, cost.saturating_add(1))?;
-                    if matches!(document, node_context::TreeDocument::Unnamed) {
+                    // requires one: the link's own cell named it when the parse was frozen. Not
+                    // every node has one: nodes created without a document, such as implied and
+                    // text nodes of a fragment, are in no document.
+                    let (document, probes) = storage.payloads.facts.contexts.named_document(node);
+                    c.charge(HtmlParseWorkCategory::RecordVisit, probes.saturating_add(1))?;
+                    if document.is_none() {
                         return Err(SessionError::NodeDocumentUnavailable);
                     }
                     if let Some(document) = parser_document {
@@ -1458,22 +1454,16 @@ impl<'a> Refs<'a> {
                     .link_flags()
                     .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
                 let link = link.ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
-                // The document of the tree the link is in.
-                let current = match node_context::document_of(
-                    &r.storage.payloads.facts.contexts,
-                    r.arena,
-                    link,
-                ) {
-                    Some((node_context::TreeDocument::Itself(root), _)) => DocumentRef::Owned(root),
-                    Some((node_context::TreeDocument::Named(document), _)) => document.clone(),
-                    _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
+                // The document the link's own cell named when the parse was frozen.
+                let Some(current) = r.storage.payloads.facts.contexts.named_document(link).0 else {
+                    return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
                 };
                 Self::Link {
                     parser_document: r.optional_document(parser_document.as_ref())?,
                     flags,
                     history: surgeist_html::elements::link::HtmlLinkHistory::new(
                         flags,
-                        parser_document.as_ref() == Some(&current),
+                        parser_document.as_ref() == Some(current),
                     ),
                 }
             }

@@ -538,6 +538,18 @@ fn node_document_cells_leave_nothing_retained_when_the_parse_stops_after_their_s
         1,
         "{sites:?}"
     );
+    // Each link that names a document is one row of the same table, however deep it is nested.
+    let links = "<!doctype html><link rel=a href=b><div><div><link rel=c href=d></div></div>";
+    let link_sites = sweep(links);
+    assert_eq!(
+        sites_at(
+            &link_sites,
+            "src/construction/node_context.rs",
+            "publish_node_contexts"
+        ),
+        2,
+        "{link_sites:?}"
+    );
     // The root Document is named once, with its facts, as the session starts; the inert Document
     // is named once, with its facts, as it is created.
     assert_eq!(

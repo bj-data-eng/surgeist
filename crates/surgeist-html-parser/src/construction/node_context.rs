@@ -4,15 +4,16 @@
 //! other value names an entry of the list of the distinct documents the parse has named, one more
 //! than its position. A document is named by many nodes, so the list is deduplicated and short.
 //! The column is written when a record is created and when an adoption moves a node to another
-//! document. Freezing the parse publishes what the column says about trees and releases it: a
-//! tree has the document of its root, and a table of the roots that are not Documents holds the
-//! entry each names. A Document root names itself.
+//! document. Freezing the parse publishes what the column says and releases it: a tree has the
+//! document of its root, and a table holds the entry named by each node that is asked for by its
+//! own key, a root that is not a Document and a link. A Document root names itself.
 
 use super::family_table::FamilyTable;
 use super::row_bank::RowBank;
 use super::row_log::RowLog;
 use super::session_error::latch_registry_row;
 use super::*;
+#[cfg(test)]
 use surgeist_html::construction::HtmlConstructionResult;
 
 pub(super) struct NodeContexts {
@@ -20,9 +21,10 @@ pub(super) struct NodeContexts {
     column: Option<RowBank<u32>>,
     /// The distinct documents the nodes of the parse name, in the order they were first named.
     documents: RowLog<DocumentRef>,
-    /// The entry of `documents` that each root which is not a Document names, built when the parse
-    /// is frozen.
-    roots: Option<FamilyTable<u32>>,
+    /// The entry of `documents` that each root which is not a Document names, and each link that
+    /// names one, built when the parse is frozen. A link is asked for its document by its own key,
+    /// so the answer is one search whatever the depth it is nested at.
+    named: Option<FamilyTable<u32>>,
     /// The column as it was when the parse was frozen, for tests that compare it with the
     /// published answers.
     #[cfg(test)]
@@ -53,7 +55,7 @@ impl NodeContexts {
         Ok(Self {
             column: Some(column),
             documents,
-            roots: None,
+            named: None,
             #[cfg(test)]
             frozen_column: Vec::new(),
         })
@@ -92,17 +94,24 @@ impl NodeContexts {
         if root_is_document {
             return (TreeDocument::Itself(root), 0);
         }
-        let Some(roots) = &self.roots else {
-            return (TreeDocument::Unnamed, 0);
-        };
-        let (found, probes) = roots.find_published(root);
-        let named = found
-            .and_then(|index| roots.row(index))
-            .and_then(|&entry| self.document(entry));
+        let (named, probes) = self.named_document(root);
         (
             named.map_or(TreeDocument::Unnamed, TreeDocument::Named),
             probes,
         )
+    }
+    /// The document the record at `node` names in the table built when the parse was frozen, with
+    /// the number of keys the search read: a root that is not a Document, or a link, whose own cell
+    /// named one. A link whose cell named none is in no document.
+    pub(super) fn named_document(&self, node: usize) -> (Option<&DocumentRef>, u64) {
+        let Some(named) = &self.named else {
+            return (None, 0);
+        };
+        let (found, probes) = named.find_published(node);
+        let document = found
+            .and_then(|index| named.row(index))
+            .and_then(|&entry| self.document(entry));
+        (document, probes)
     }
     pub(super) fn release(
         self,
@@ -112,7 +121,7 @@ impl NodeContexts {
         let Self {
             column,
             documents,
-            roots,
+            named,
             ..
         } = self;
         let mut refused = None;
@@ -126,8 +135,8 @@ impl NodeContexts {
             &mut refused,
             documents.release(control, owner, |_, _| Ok(())),
         );
-        if let Some(roots) = roots {
-            keep_first(&mut refused, roots.release(control, owner, |_, _| Ok(())));
+        if let Some(named) = named {
+            keep_first(&mut refused, named.release(control, owner, |_, _| Ok(())));
         }
         refused.map_or(Ok(()), Err)
     }
@@ -204,16 +213,16 @@ impl SessionStorage {
         }
     }
     /// Publishes the documents of the trees of the parse and releases the column: one record visit
-    /// for each record, and one row for each root that names a document and is not a Document. A
-    /// Document root names itself; one that names another document has no representation, and is
-    /// refused as the node document defect.
+    /// for each record, and one row for each node that names a document and is a root that is not
+    /// a Document or a link. A Document root names itself; one that names another document has no
+    /// representation, and is refused as the node document defect.
     pub(super) fn publish_node_contexts(
         &mut self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         let owner = self.control.clone();
-        let mut roots = FamilyTable::new(c)?;
+        let mut named = FamilyTable::new(c)?;
         let result = (|| {
             for node in 0..self.construction.len() {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -221,7 +230,11 @@ impl SessionStorage {
                     .construction
                     .node_at(node)
                     .ok_or_else(|| latch_registry_row(c))?;
-                if record.parent().is_some() {
+                let is_link = matches!(
+                    record.kind(),
+                    ConstructionNodeKind::Element(element) if element.link_flags().is_some()
+                );
+                if record.parent().is_some() && !is_link {
                     continue;
                 }
                 let entry = self
@@ -241,17 +254,17 @@ impl SessionStorage {
                     }
                     continue;
                 }
-                roots.admit(c, 1)?;
-                roots.push(node, entry)?;
+                named.admit(c, 1)?;
+                named.push(node, entry)?;
             }
             Ok(())
         })();
         if let Err(error) = result {
-            let released = roots.release(c, &owner, |_, _| Ok(()));
+            let released = named.release(c, &owner, |_, _| Ok(()));
             return released.and(Err(error));
         }
         let contexts = &mut self.payloads.facts.contexts;
-        contexts.roots = Some(roots);
+        contexts.named = Some(named);
         #[cfg(test)]
         {
             contexts.frozen_column = contexts
@@ -276,7 +289,9 @@ fn entry_of(c: &mut ParseControl, position: usize) -> Result<u32, SessionError> 
 }
 
 /// The root of the tree that holds the record at `index` of a frozen parse, and the number of
-/// parent edges followed to reach it.
+/// parent edges followed to reach it. A test reads the document of a node it does not know the root
+/// of; the parse itself never climbs.
+#[cfg(test)]
 pub(super) fn root_of(arena: &HtmlConstructionResult, index: usize) -> Option<(usize, u64)> {
     let mut at = index;
     let mut hops = 0_u64;
@@ -294,7 +309,8 @@ pub(super) fn root_of(arena: &HtmlConstructionResult, index: usize) -> Option<(u
 
 /// The document of the record at `index` of a frozen parse, by the tree it is in, with the edges
 /// followed to its root and the keys searched for it. A test reads this where the parse once kept
-/// a row for the record, and a link's history reads it for the document the link is in.
+/// a row for the record.
+#[cfg(test)]
 pub(super) fn document_of<'a>(
     contexts: &'a NodeContexts,
     arena: &HtmlConstructionResult,
