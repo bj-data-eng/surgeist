@@ -3156,17 +3156,9 @@ fn assert_fri06_mr02_geometry_error_flex_own<S: LayoutScalar>() {
         ..NodeInputOf::default()
     };
 
-    for (run_mode, operation, invariant) in [
-        (
-            RunMode::PerformRootLayout,
-            LayoutOperation::RootLayout,
-            LayoutInternalInvariant::InvalidRootScrollGeometry,
-        ),
-        (
-            RunMode::PerformLayout,
-            LayoutOperation::ChildLayout,
-            LayoutInternalInvariant::InvalidBlockScrollGeometry,
-        ),
+    for (run_mode, operation) in [
+        (RunMode::PerformRootLayout, LayoutOperation::RootLayout),
+        (RunMode::PerformLayout, LayoutOperation::ChildLayout),
     ] {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
             .children(7, [])
@@ -3178,7 +3170,7 @@ fn assert_fri06_mr02_geometry_error_flex_own<S: LayoutScalar>() {
         )
         .expect_err("overflowing flex geometry must fail");
 
-        fri06_mr02_geometry_error_assert(error, LayoutErrorSiteOf::Node(7), operation, invariant);
+        fri06_mr02_geometry_error_assert(error, LayoutErrorSiteOf::Node(7), operation);
     }
 }
 
@@ -3240,7 +3232,6 @@ fn assert_fri06_mr02_geometry_error_flex_child<S: LayoutScalar>() {
             subject: 11,
         },
         LayoutOperation::ChildLayout,
-        LayoutInternalInvariant::InvalidBlockScrollGeometry,
     );
 }
 

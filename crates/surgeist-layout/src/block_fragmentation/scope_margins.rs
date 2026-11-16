@@ -21,10 +21,10 @@ pub(super) fn trimmed<Node: Copy + Eq, S: LayoutScalar, M>(
         )
     };
     let text_error = |error| {
-        LayoutErrorOf::new(
+        crate::error::staging_text_error(
             LayoutErrorSiteOf::Node(root),
             LayoutOperation::RootLayout,
-            LayoutErrorKindOf::Text(error),
+            error,
         )
     };
     let forced = matches!(

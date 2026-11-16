@@ -67,12 +67,6 @@ pub(crate) enum CanonicalScrollRangeSeedPolicy {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum CanonicalRetainedScrollSourceOf<'a, S: LayoutScalar> {
-    Existing(&'a ScrollGeometryOf<S>),
-    Reconstruct { content_size: Size<S> },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanonicalScrollSourceBuilderOf<S: LayoutScalar> {
     flow_axes: FlowAxes,
     computed_overflow: ComputedOverflow,
@@ -158,32 +152,32 @@ impl<S: LayoutScalar> CanonicalScrollSourceBuilderOf<S> {
         })
     }
 
-    pub(crate) fn geometry_from_retained_source(
+    fn retain_existing_geometry(
         self,
-        source: CanonicalRetainedScrollSourceOf<'_, S>,
+        geometry: &ScrollGeometryOf<S>,
+    ) -> Result<ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
+        // Canonical edge rounding can move the inner boxes without changing
+        // the outer extent. Retain only matching box facts.
+        if geometry.border_box().origin() == Point::ZERO
+            && geometry.border_box().size() == self.border_box_size
+            && geometry.source.border == self.border
+            && geometry.source.padding == self.padding
+        {
+            return Ok(*geometry);
+        }
+        rebuild_canonical_scroll_geometry_for_border_box(
+            *geometry,
+            self.border_box_size,
+            self.border,
+            self.padding,
+        )
+    }
+
+    fn geometry_from_reconstructed_content(
+        self,
+        content_size: Size<S>,
         range_seed_policy: CanonicalScrollRangeSeedPolicy,
     ) -> Result<ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
-        let content_size = match source {
-            CanonicalRetainedScrollSourceOf::Existing(geometry) => {
-                // Canonical edge rounding can move the inner boxes without
-                // changing the outer extent. Retain only matching box facts.
-                if geometry.border_box().origin() == Point::ZERO
-                    && geometry.border_box().size() == self.border_box_size
-                    && geometry.source.border == self.border
-                    && geometry.source.padding == self.padding
-                {
-                    return Ok(*geometry);
-                }
-                return rebuild_canonical_scroll_geometry_for_border_box(
-                    *geometry,
-                    self.border_box_size,
-                    self.border,
-                    self.padding,
-                );
-            }
-            CanonicalRetainedScrollSourceOf::Reconstruct { content_size } => content_size,
-        };
-
         let scroll_box = canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
             flow_axes: self.flow_axes,
             computed_overflow: self.computed_overflow,
@@ -213,6 +207,69 @@ impl<S: LayoutScalar> CanonicalScrollSourceBuilderOf<S> {
         }
         contributions.include_direct_line(direct_content);
         self.geometry_from_contributions(contributions, scroll_box.border_box())
+    }
+}
+
+/// Border-box facts of a laid-out child whose scroll geometry is retained.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RetainedChildScrollSourceOf<'a, S: LayoutScalar> {
+    pub(crate) box_projection: ScrollBoxProjection<'a, S>,
+    pub(crate) target_projection: ScrollTargetProjection<'a, S>,
+    pub(crate) size: Size<S>,
+    pub(crate) content_size: Size<S>,
+    pub(crate) padding: Edges<S>,
+    pub(crate) border: Edges<S>,
+    pub(crate) child_compute_geometry: Option<ScrollGeometryOf<S>>,
+}
+
+/// How a child's scroll geometry is rebuilt when no computed geometry exists.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RetainedChildReconstruction {
+    /// Seeds the container with its padding box and one direct content line;
+    /// the policy chooses whether the range keeps the reserved scrollbar
+    /// gutter. Block excludes it; Flex and the root include it.
+    DirectLine(CanonicalScrollRangeSeedPolicy),
+    /// Reconstructs through the measured-leaf path, which records the final
+    /// in-flow ends and excludes the reserved gutter only on scroll-container
+    /// axes. Grid uses it.
+    MeasuredLeaf,
+}
+
+/// Retains the scroll geometry computed for a child when its box facts still
+/// match, rebuilds it for the current border box otherwise, and reconstructs
+/// it from the measured content size when none was computed. `reconstruction`
+/// selects the reconstruction source.
+pub(crate) fn retained_child_scroll_geometry<S: LayoutScalar>(
+    source: RetainedChildScrollSourceOf<'_, S>,
+    reconstruction: RetainedChildReconstruction,
+) -> Result<ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
+    let builder = CanonicalScrollSourceBuilderOf::for_node(
+        source.box_projection,
+        source.target_projection,
+        source.size,
+        source.border,
+        source.padding,
+        SettledAutoScrollbarState::INITIAL,
+        ScrollOriginAxes::ENDWARD,
+    );
+    if let Some(ref geometry) = source.child_compute_geometry {
+        return builder.retain_existing_geometry(geometry);
+    }
+    match reconstruction {
+        RetainedChildReconstruction::DirectLine(range_seed_policy) => {
+            builder.geometry_from_reconstructed_content(source.content_size, range_seed_policy)
+        }
+        RetainedChildReconstruction::MeasuredLeaf => {
+            canonical_measured_leaf_scroll_geometry(MeasuredLeafScrollGeometrySourceOf {
+                box_projection: source.box_projection,
+                target_projection: source.target_projection,
+                border_box_size: source.size,
+                border: source.border,
+                padding: source.padding,
+                settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
+                measured_content_size: source.content_size,
+            })
+        }
     }
 }
 

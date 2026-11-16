@@ -1152,7 +1152,6 @@ fn assert_fri06_mr02_geometry_error_grid_child<S: LayoutScalar>(display: Display
             subject: 11,
         },
         LayoutOperation::ChildLayout,
-        LayoutInternalInvariant::InvalidBlockScrollGeometry,
     );
 }
 

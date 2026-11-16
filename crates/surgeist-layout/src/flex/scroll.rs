@@ -5,11 +5,9 @@ use crate::error::layout_own_geometry_error;
 use crate::geometry::{LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::layout_math::OptionalSizeExt;
 use crate::scroll::{
-    CanonicalRetainedScrollSourceOf, CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf,
-    CanonicalScrollGeometryErrorOf, CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf,
-    ScrollBoxProjection, ScrollContributionAccumulatorOf, ScrollContributionErrorOf,
-    ScrollOriginAxes, ScrollOriginProgression, ScrollTargetProjection,
-    canonical_scroll_box_from_source,
+    CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, CanonicalScrollGeometryErrorOf,
+    CanonicalScrollSourceBuilderOf, ScrollBoxProjection, ScrollContributionAccumulatorOf,
+    ScrollContributionErrorOf, ScrollTargetProjection, canonical_scroll_box_from_source,
 };
 use crate::{
     ComputeOutputOf, Edges, LayoutErrorOf, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
@@ -368,36 +366,4 @@ where
         }
         error => layout_own_geometry_error(node, run_mode, error),
     })
-}
-
-pub(super) fn retained_flex_child_scroll_geometry<S: LayoutScalar>(
-    box_projection: ScrollBoxProjection<'_, S>,
-    target_projection: ScrollTargetProjection<'_, S>,
-    size: Size<S>,
-    content_size: Size<S>,
-    padding: Edges<S>,
-    border: Edges<S>,
-    child_compute_geometry: Option<ScrollGeometryOf<S>>,
-) -> Result<ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
-    let settled_auto_scrollbars = crate::scroll::SettledAutoScrollbarState::INITIAL;
-    let source = match child_compute_geometry {
-        Some(ref geometry) => CanonicalRetainedScrollSourceOf::Existing(geometry),
-        None => CanonicalRetainedScrollSourceOf::Reconstruct { content_size },
-    };
-    CanonicalScrollSourceBuilderOf::for_node(
-        box_projection,
-        target_projection,
-        size,
-        border,
-        padding,
-        settled_auto_scrollbars,
-        ScrollOriginAxes::new(
-            ScrollOriginProgression::FlowEndward,
-            ScrollOriginProgression::FlowEndward,
-        ),
-    )
-    .geometry_from_retained_source(
-        source,
-        CanonicalScrollRangeSeedPolicy::IncludeReservedGutter,
-    )
 }

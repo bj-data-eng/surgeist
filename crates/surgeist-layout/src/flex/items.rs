@@ -5,7 +5,7 @@ use super::distribution_number::DistributionNumber;
 use super::flexible_lengths::clamp_main_size_axes;
 use super::input::{FlexItemProjection, flex_item_order_permutation, with_flex_item_projection};
 use super::lines::FlexLineCollectionRound;
-use super::scroll::{retain_flex_scroll_geometry, retained_flex_child_scroll_geometry};
+use super::scroll::retain_flex_scroll_geometry;
 use super::{Constants, resolve_auto_optional, resolve_auto_or_zero, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error, sizing_resolution_error};
 use crate::geometry::PhysicalAxis;
@@ -1407,14 +1407,19 @@ impl<Node: Copy, S: LayoutScalar> FinalItems<Node, S> {
             tree,
             item.node,
             |scroll_box, scroll_target| {
-                retained_flex_child_scroll_geometry(
-                    scroll_box,
-                    scroll_target,
-                    output.size,
-                    output.content_size,
-                    item.padding,
-                    item.border,
-                    output.scroll_geometry,
+                crate::scroll::retained_child_scroll_geometry(
+                    crate::scroll::RetainedChildScrollSourceOf {
+                        box_projection: scroll_box,
+                        target_projection: scroll_target,
+                        size: output.size,
+                        content_size: output.content_size,
+                        padding: item.padding,
+                        border: item.border,
+                        child_compute_geometry: output.scroll_geometry,
+                    },
+                    crate::scroll::RetainedChildReconstruction::DirectLine(
+                        crate::scroll::CanonicalScrollRangeSeedPolicy::IncludeReservedGutter,
+                    ),
                 )
             },
         )

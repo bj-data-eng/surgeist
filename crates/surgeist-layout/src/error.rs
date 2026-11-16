@@ -5,6 +5,7 @@ use crate::output::RunMode;
 use crate::scalar::LayoutScalar;
 use crate::sizing::resolve::SizingResolutionError;
 use crate::value::{LengthResolutionStatus, NonNegativeFiniteScalarErrorOf};
+use core::fmt;
 
 pub type LayoutResultOf<Node, T, S, M = core::convert::Infallible> =
     Result<T, LayoutErrorOf<Node, S, M>>;
@@ -102,6 +103,14 @@ pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::I
     Allocation,
     /// The actual Text owner refused the captured protocol operation.
     Text(surgeist_text::Error),
+    /// A scope-alignment limit, overflow or allocation budget was exhausted
+    /// wherever layout raised the Text error. The Text error names the
+    /// exhausted limit and is the error's source; a budget refusal is not a
+    /// Text protocol refusal and not cancellation.
+    ResourceLimit(surgeist_text::Error),
+    /// Canonical scroll geometry rejected geometry produced by layout. The
+    /// cause names the rejected value.
+    ScrollGeometry(LayoutScrollGeometryErrorOf<S>),
     /// A complete canonical Text feedback basis repeated without acceptance.
     TextFeedbackCycle,
     /// Numeric inline avoidance repeated an actual metric-envelope/float-band
@@ -366,8 +375,8 @@ pub enum LayoutUnsupportedCapability {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutInternalInvariant {
-    InvalidRootScrollGeometry,
-    InvalidBlockScrollGeometry,
+    /// A length resolution that succeeded was reported on a failure path.
+    ResolvedLengthOnFailurePath,
     InvalidRoundedScrollGeometry,
     InvalidRoundedInlineFragmentGeometry,
     /// A private balanced-line basis violated its finite/count/replay invariant.
@@ -420,24 +429,14 @@ pub(crate) fn layout_own_geometry_error<Node, S, M, E>(
 ) -> LayoutErrorOf<Node, S, M>
 where
     S: LayoutScalar,
+    E: Into<ScrollGeometryCauseOf<S>>,
 {
-    let _ = error;
-    let (operation, invariant) = if run_mode == RunMode::PerformRootLayout {
-        (
-            LayoutOperation::RootLayout,
-            LayoutInternalInvariant::InvalidRootScrollGeometry,
-        )
+    let operation = if run_mode == RunMode::PerformRootLayout {
+        LayoutOperation::RootLayout
     } else {
-        (
-            LayoutOperation::ChildLayout,
-            LayoutInternalInvariant::InvalidBlockScrollGeometry,
-        )
+        LayoutOperation::ChildLayout
     };
-    LayoutErrorOf::new(
-        LayoutErrorSiteOf::Node(node),
-        operation,
-        LayoutErrorKindOf::InternalInvariant(invariant),
-    )
+    scroll_geometry_error(LayoutErrorSiteOf::Node(node), operation, error)
 }
 
 pub(crate) fn layout_child_geometry_error<Node, S, M, E>(
@@ -447,13 +446,62 @@ pub(crate) fn layout_child_geometry_error<Node, S, M, E>(
 ) -> LayoutErrorOf<Node, S, M>
 where
     S: LayoutScalar,
+    E: Into<ScrollGeometryCauseOf<S>>,
 {
-    let _ = error;
-    LayoutErrorOf::new(
+    scroll_geometry_error(
         LayoutErrorSiteOf::ContainerSubject { container, subject },
         LayoutOperation::ChildLayout,
-        LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidBlockScrollGeometry),
+        error,
     )
+}
+
+pub(crate) fn scroll_geometry_error<Node, S, M, E>(
+    site: LayoutErrorSiteOf<Node>,
+    operation: LayoutOperation,
+    error: E,
+) -> LayoutErrorOf<Node, S, M>
+where
+    S: LayoutScalar,
+    E: Into<ScrollGeometryCauseOf<S>>,
+{
+    LayoutErrorOf::new(
+        site,
+        operation,
+        LayoutErrorKindOf::ScrollGeometry(LayoutScrollGeometryErrorOf {
+            cause: error.into(),
+        }),
+    )
+}
+
+/// Classifies a Text refusal by its cause. An exhausted work, record or
+/// storage budget of the scope-alignment accounting is a resource limit of
+/// layout wherever layout raises it; any other refusal remains the Text
+/// owner's.
+pub(crate) fn text_error_kind<S: LayoutScalar, M>(
+    error: surgeist_text::Error,
+) -> LayoutErrorKindOf<S, M> {
+    let budget = matches!(
+        error.detail(),
+        Some(surgeist_text::ErrorDetail::ScopeAlignment {
+            reason: surgeist_text::ScopeAlignmentError::Limit { .. }
+                | surgeist_text::ScopeAlignmentError::Overflow { .. }
+                | surgeist_text::ScopeAlignmentError::Allocation { .. },
+        })
+    );
+    if budget {
+        LayoutErrorKindOf::ResourceLimit(error)
+    } else {
+        LayoutErrorKindOf::Text(error)
+    }
+}
+
+/// Builds the failure for a Text refusal, classified by its cause.
+pub(crate) fn staging_text_error<Node, S: LayoutScalar, M>(
+    site: LayoutErrorSiteOf<Node>,
+    operation: LayoutOperation,
+    error: surgeist_text::Error,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(site, operation, text_error_kind(error))
 }
 
 pub(crate) fn value_resolution_error<Node, S, M>(
@@ -483,9 +531,9 @@ where
         LengthResolutionStatus::NonNumeric => {
             LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior)
         }
-        LengthResolutionStatus::Resolved => {
-            LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidRootScrollGeometry)
-        }
+        LengthResolutionStatus::Resolved => LayoutErrorKindOf::InternalInvariant(
+            LayoutInternalInvariant::ResolvedLengthOnFailurePath,
+        ),
     };
 
     LayoutErrorOf::new(site, LayoutOperation::ValueResolution, kind)
@@ -535,3 +583,216 @@ pub(crate) fn wrapping_error<Node, S: LayoutScalar, M>(
         },
     )
 }
+
+/// Canonical scroll geometry rejected geometry produced by layout.
+///
+/// The value keeps the rejected scroll rectangle, coordinate, contribution or
+/// box fact. Its [`Debug`](fmt::Debug) output names that fact; no accessor
+/// exposes the private classification.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LayoutScrollGeometryErrorOf<S: LayoutScalar = DefaultScalar> {
+    pub(crate) cause: ScrollGeometryCauseOf<S>,
+}
+
+pub type LayoutScrollGeometryError = LayoutScrollGeometryErrorOf<DefaultScalar>;
+
+/// The rejected canonical scroll fact behind a [`LayoutScrollGeometryErrorOf`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ScrollGeometryCauseOf<S: LayoutScalar> {
+    Canonical(crate::scroll::CanonicalScrollGeometryErrorOf<S>),
+    Contribution(crate::scroll::ScrollContributionErrorOf<S>),
+    BoxClipGutter(crate::scroll::ScrollBoxClipGutterErrorOf<S>),
+    Rect(crate::ScrollRectErrorOf<S>),
+    Coordinate(crate::ScrollCoordinateErrorOf<S>),
+}
+
+macro_rules! scroll_geometry_cause_from {
+    ($($variant:ident($source:ty)),* $(,)?) => {$(
+        impl<S: LayoutScalar> From<$source> for ScrollGeometryCauseOf<S> {
+            fn from(value: $source) -> Self {
+                Self::$variant(value)
+            }
+        }
+    )*};
+}
+
+scroll_geometry_cause_from! {
+    Canonical(crate::scroll::CanonicalScrollGeometryErrorOf<S>),
+    Contribution(crate::scroll::ScrollContributionErrorOf<S>),
+    BoxClipGutter(crate::scroll::ScrollBoxClipGutterErrorOf<S>),
+    Rect(crate::ScrollRectErrorOf<S>),
+    Coordinate(crate::ScrollCoordinateErrorOf<S>),
+}
+
+impl<S: LayoutScalar> fmt::Display for LayoutScrollGeometryErrorOf<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.cause {
+            ScrollGeometryCauseOf::Canonical(cause) => {
+                write!(f, "canonical scroll geometry rejected: {cause:?}")
+            }
+            ScrollGeometryCauseOf::Contribution(cause) => {
+                write!(f, "scroll contribution rejected: {cause:?}")
+            }
+            ScrollGeometryCauseOf::BoxClipGutter(cause) => {
+                write!(f, "scroll box clip or gutter rejected: {cause:?}")
+            }
+            ScrollGeometryCauseOf::Rect(_) => f.write_str("scroll rectangle rejected"),
+            ScrollGeometryCauseOf::Coordinate(cause) => {
+                write!(f, "scroll coordinate rejected: {cause:?}")
+            }
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for LayoutScrollGeometryErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.cause {
+            ScrollGeometryCauseOf::Rect(cause) => Some(cause),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for LayoutOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::RootLayout => "root layout",
+            Self::ChildLayout => "child layout",
+            Self::HiddenLayout => "hidden layout",
+            Self::LeafMeasurement => "leaf measurement",
+            Self::ValueResolution => "value resolution",
+            Self::CacheAccess => "cache access",
+            Self::CacheInvalidation => "cache invalidation",
+            Self::FloatExclusionQuery => "float exclusion query",
+            Self::RoundingFinalization => "rounding finalization",
+            Self::GridLanePlacement => "grid lane placement",
+            Self::TextCapture => "text capture",
+            Self::InlineWrapping => "inline wrapping",
+            Self::TextSelection => "text selection",
+            Self::TextPlacement => "text placement",
+        })
+    }
+}
+
+impl<Node: fmt::Debug> fmt::Display for LayoutErrorSiteOf<Node> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Node(node) => write!(f, "node {node:?}"),
+            Self::ContainerSubject { container, subject } => {
+                write!(f, "subject {subject:?} in container {container:?}")
+            }
+            Self::FragmentContainingBlock {
+                container,
+                subject,
+                fragmentainer_index,
+                axis,
+            } => write!(
+                f,
+                "fragment containing block of subject {subject:?} in container {container:?} \
+                 (fragmentainer {fragmentainer_index}, {axis:?} axis)"
+            ),
+            Self::Standalone => f.write_str("a standalone request"),
+        }
+    }
+}
+
+/// Formats the kind without repeating a cause that `source()` of the error
+/// returns: measurement, Text, resource-limit and scroll geometry failures, and
+/// rejected measurement output and float exclusion provider output, state the
+/// failure and the facts the cause does not carry. Other invalid input prints
+/// its `Debug` form.
+impl<S: LayoutScalar, M> fmt::Display for LayoutErrorKindOf<S, M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidInput(LayoutInvalidInputOf::MeasurementOutput(output)) => {
+                write!(
+                    f,
+                    "measurement output rejected on the {:?} axis",
+                    output.axis
+                )
+            }
+            Self::InvalidInput(LayoutInvalidInputOf::FloatExclusionProviderOutput { .. }) => {
+                f.write_str("float exclusion provider output rejected")
+            }
+            Self::InvalidInput(input) => write!(f, "invalid input: {input:?}"),
+            Self::BlockFragmentation(failure) => {
+                write!(f, "block fragmentation failed: {failure:?}")
+            }
+            Self::MissingContext(context) => write!(f, "missing context: {context:?}"),
+            Self::UnsupportedCapability(capability) => {
+                write!(f, "unsupported capability: {capability:?}")
+            }
+            Self::Measurement(_) => f.write_str("measurement failed"),
+            Self::Allocation => f.write_str("layout could not allocate its working storage"),
+            Self::Text(_) => f.write_str("text operation refused"),
+            Self::ResourceLimit(_) => f.write_str("layout resource limit reached"),
+            Self::ScrollGeometry(_) => f.write_str("scroll geometry rejected"),
+            Self::TextFeedbackCycle => {
+                f.write_str("text feedback repeated a complete basis without acceptance")
+            }
+            Self::InlineFeedbackCycle => {
+                f.write_str("inline avoidance repeated a basis without convergence")
+            }
+            Self::TextSpacingBudget { available, advance } => write!(
+                f,
+                "justification advance {advance} exceeds the available line budget {available}"
+            ),
+            Self::TextNumeric { value, reason } => {
+                write!(f, "text value {value} is invalid: {reason:?}")
+            }
+            Self::InternalInvariant(invariant) => {
+                write!(f, "internal layout invariant violated: {invariant:?}")
+            }
+        }
+    }
+}
+
+/// Formats as `<operation> failed at <site>: <kind>`.
+///
+/// `Node` needs `Debug` to name the site. The measurement error is reported
+/// through `source()`, so `M` needs no bound.
+impl<Node, S, M> fmt::Display for LayoutErrorOf<Node, S, M>
+where
+    Node: fmt::Debug,
+    S: LayoutScalar,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} failed at {}: {}",
+            self.operation, self.site, self.kind
+        )
+    }
+}
+
+/// `source()` returns the measurement error, the Text error of a Text or
+/// resource-limit failure, the scroll geometry cause, the scalar error of a
+/// rejected measurement output, or the rejected float exclusion interval.
+///
+/// Beyond `LayoutScalar` (which is `'static`), `Node` needs `Debug` and `M`
+/// needs `Error + 'static`.
+impl<Node, S, M> std::error::Error for LayoutErrorOf<Node, S, M>
+where
+    Node: fmt::Debug,
+    S: LayoutScalar,
+    M: std::error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            LayoutErrorKindOf::Measurement(error) => Some(error),
+            LayoutErrorKindOf::Text(error) | LayoutErrorKindOf::ResourceLimit(error) => Some(error),
+            LayoutErrorKindOf::ScrollGeometry(error) => Some(error),
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::MeasurementOutput(output)) => {
+                Some(&output.error)
+            }
+            LayoutErrorKindOf::InvalidInput(
+                LayoutInvalidInputOf::FloatExclusionProviderOutput { error },
+            ) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "error_tests.rs"]
+mod tests;

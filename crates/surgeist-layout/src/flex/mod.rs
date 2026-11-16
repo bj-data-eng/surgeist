@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use super::{
     AlignContent, AlignItems, AspectRatioOf, AxisSizingRequestOf, BaselinesOf, BoxSizing, Compute,
     ComputeInputOf, ComputeOutputOf, ContainingLayoutContext, Direction, Edges, FlexDirection,
-    FlexWrap, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionStatus,
+    FlexWrap, LayoutResultOf, LayoutScalar, LengthOf, LengthResolutionStatus,
     ParentFormattingContext, Point, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
 use crate::engine::containment::{
@@ -14,8 +14,8 @@ use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalProgression, 
 use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinScalarClampExt, MaxBeforeMinSizeClampExt,
     OptionalMinimumSizeFloorExt, OptionalSizeExt, OptionalSizeMaxExt, UncheckedOptionalSizeSubExt,
-    resolution_optional, resolution_or_zero, resolve_containing_padding_border,
-    transfer_aspect_ratio_limits,
+    resolve_auto_optional, resolve_auto_or_zero, resolve_containing_padding_border,
+    resolve_length_or_zero, transfer_aspect_ratio_limits,
 };
 use crate::scroll::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, ScrollOriginAxes, ScrollOriginProgression,
@@ -2094,27 +2094,6 @@ fn container_sizes<Node, S: LayoutScalar>(
     }
 }
 
-fn resolve_length_or_zero<S: LayoutScalar>(
-    length: LengthOf<S>,
-    basis: Option<S>,
-) -> Result<S, LengthResolutionStatus<S>> {
-    resolution_or_zero(length.resolve_with_status(basis))
-}
-
-fn resolve_auto_or_zero<S: LayoutScalar>(
-    length: LengthAutoOf<S>,
-    basis: Option<S>,
-) -> Result<S, LengthResolutionStatus<S>> {
-    resolution_or_zero(length.resolve_with_status(basis))
-}
-
-fn resolve_auto_optional<S: LayoutScalar>(
-    length: LengthAutoOf<S>,
-    basis: Option<S>,
-) -> Result<Option<S>, LengthResolutionStatus<S>> {
-    resolution_optional(length.resolve_with_status(basis))
-}
-
 #[cfg(test)]
 mod fri08_c07_t03_optional_math_characterization_tests {
     use super::*;
@@ -2204,8 +2183,8 @@ mod fri06_c13_t06_characterization_tests {
 
     fn characterize_constants<S: LayoutScalar>(largest: S) {
         crate::layout_math::assert_fri06_c13_t06_resolution_policy::<S>(
-            resolution_or_zero,
-            resolution_optional,
+            crate::layout_math::resolution_or_zero,
+            crate::layout_math::resolution_optional,
         );
 
         let border = Edges::new(

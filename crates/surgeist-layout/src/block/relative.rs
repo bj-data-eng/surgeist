@@ -1,4 +1,5 @@
 use super::*;
+use crate::layout_math::resolve_auto_optional;
 use crate::output::{GeometryStateOf, MeasuredInsetBasisOf};
 use crate::sizing::resolve::select_relative_insets;
 

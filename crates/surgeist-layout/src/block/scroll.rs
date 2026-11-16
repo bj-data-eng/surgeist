@@ -2,8 +2,7 @@ use super::{BlockChildProjection, Constants};
 use crate::error::layout_own_geometry_error;
 use crate::geometry::PhysicalSide;
 use crate::scroll::{
-    CanonicalRetainedScrollSourceOf, CanonicalScrollBoxSourceOf, CanonicalScrollGeometryErrorOf,
-    CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf, ScrollBoxProjection,
+    CanonicalScrollBoxSourceOf, CanonicalScrollSourceBuilderOf, ScrollBoxProjection,
     ScrollContributionAccumulatorOf, ScrollContributionErrorOf, ScrollOriginAxes,
     ScrollTargetProjection, canonical_scroll_box_from_source, scrollbar_size_from_overflow,
 };
@@ -234,35 +233,6 @@ where
     )
     .geometry_from_contributions(contributions, target_border_box)
     .map_err(|error| layout_own_geometry_error(node, run_mode, error))
-}
-
-pub(super) fn retained_child_scroll_geometry<S: LayoutScalar>(
-    box_projection: ScrollBoxProjection<'_, S>,
-    target_projection: ScrollTargetProjection<'_, S>,
-    size: Size<S>,
-    content_size: Size<S>,
-    padding: Edges<S>,
-    border: Edges<S>,
-    child_compute_geometry: Option<ScrollGeometryOf<S>>,
-) -> Result<ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
-    let settled_auto_scrollbars = crate::scroll::SettledAutoScrollbarState::INITIAL;
-    let source = match child_compute_geometry {
-        Some(ref geometry) => CanonicalRetainedScrollSourceOf::Existing(geometry),
-        None => CanonicalRetainedScrollSourceOf::Reconstruct { content_size },
-    };
-    CanonicalScrollSourceBuilderOf::for_node(
-        box_projection,
-        target_projection,
-        size,
-        border,
-        padding,
-        settled_auto_scrollbars,
-        ScrollOriginAxes::ENDWARD,
-    )
-    .geometry_from_retained_source(
-        source,
-        CanonicalScrollRangeSeedPolicy::ExcludeReservedGutter,
-    )
 }
 
 pub(super) fn child_scrollbar_size<S: LayoutScalar>(

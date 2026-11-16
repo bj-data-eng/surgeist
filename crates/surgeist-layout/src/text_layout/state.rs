@@ -761,10 +761,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             funding
                 .map_or(Ok(()), |funding| funding.visit(count))
                 .map_err(|error| {
-                    crate::LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         crate::LayoutErrorSiteOf::Node(container),
                         crate::LayoutOperation::TextCapture,
-                        crate::LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })
         };
@@ -781,10 +781,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         let lease;
         let mut slots = if let Some(funding) = funding.filter(|_| count != 0) {
             let (slots, storage) = funding.buffer(count).map_err(|error| {
-                crate::LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     crate::LayoutErrorSiteOf::Node(container),
                     crate::LayoutOperation::TextCapture,
-                    crate::LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
             lease = Some(storage);
@@ -1226,10 +1226,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                             entry.finalized_line(),
                         )
                         .map_err(|error| {
-                            crate::LayoutErrorOf::new(
+                            crate::error::staging_text_error(
                                 crate::LayoutErrorSiteOf::Node(binding.container),
                                 crate::LayoutOperation::TextPlacement,
-                                crate::LayoutErrorKindOf::Text(error),
+                                error,
                             )
                         })?;
                     }
@@ -1246,10 +1246,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 entries,
             })
             .map_err(|error| {
-                crate::LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     crate::LayoutErrorSiteOf::Node(binding.container),
                     crate::LayoutOperation::TextPlacement,
-                    crate::LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
             let mut nodes = Vec::new();

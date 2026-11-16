@@ -1,5 +1,4 @@
-use super::scroll::retained_child_scroll_geometry;
-use super::sizing::{maximum_size, minimum_size, resolve_auto_optional, resolve_length_or_zero};
+use super::sizing::{maximum_size, minimum_size};
 use super::{Constants, with_block_scroll_projections};
 use crate::error::layout_child_geometry_error;
 use crate::geometry::{
@@ -10,6 +9,7 @@ use crate::layout_math::{
     AbsoluteInsetStartOf, OptionalSizeExt, PositionedSizeDeclarations, PositionedUsedSize,
     absolute_inset_alignment_offsets, absolute_inset_child_axes, absolute_inset_extents,
     absolute_stretch_fit_sizes, floor_absolute_definite_insets, resolve_absolute_margins,
+    resolve_auto_optional, resolve_length_or_zero,
 };
 use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes, ScrollOriginProgression};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt, resolve_child_preferred_size};
@@ -460,14 +460,19 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
             tree,
             child,
             |box_projection, target_projection| {
-                retained_child_scroll_geometry(
-                    box_projection,
-                    target_projection,
-                    final_size,
-                    output.content_size,
-                    padding,
-                    border,
-                    output.scroll_geometry,
+                crate::scroll::retained_child_scroll_geometry(
+                    crate::scroll::RetainedChildScrollSourceOf {
+                        box_projection,
+                        target_projection,
+                        size: final_size,
+                        content_size: output.content_size,
+                        padding,
+                        border,
+                        child_compute_geometry: output.scroll_geometry,
+                    },
+                    crate::scroll::RetainedChildReconstruction::DirectLine(
+                        crate::scroll::CanonicalScrollRangeSeedPolicy::ExcludeReservedGutter,
+                    ),
                 )
             },
         )

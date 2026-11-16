@@ -1,8 +1,8 @@
 use crate::{
     ComputeInputOf, ContainingLayoutContext, Direction, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
-    LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation, LayoutScalar, LengthPercentageOf,
-    NumericResolutionOf, ParentFormattingContext, PercentageBasisOf, RequestedAxis, RunMode,
-    ScrollPaddingOf, ScrollPaddingValueOf, Size, SizingMode, WritingMode,
+    LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LengthPercentageOf, NumericResolutionOf,
+    ParentFormattingContext, PercentageBasisOf, RequestedAxis, RunMode, ScrollPaddingOf,
+    ScrollPaddingValueOf, Size, SizingMode, WritingMode,
 };
 
 pub(crate) fn geometry_error_largest_finite<S: LayoutScalar>() -> S {
@@ -43,18 +43,59 @@ pub(crate) fn geometry_error_input<S: LayoutScalar>(run_mode: RunMode) -> Comput
     )
 }
 
-pub(crate) fn assert_geometry_error<S: LayoutScalar, M>(
+/// Asserts the site, operation and retained cause of a scroll geometry
+/// failure produced by the overflowing fixtures. Their rejected value is the
+/// infinite horizontal extent that results from adding two finite maxima:
+/// an own container reports the rejected box rectangle, a child reports the
+/// rejected scrollable overflow or contribution rectangle.
+pub(crate) fn assert_geometry_error<S: LayoutScalar, M: core::fmt::Debug>(
     error: LayoutErrorOf<u32, S, M>,
     site: LayoutErrorSiteOf<u32>,
     operation: LayoutOperation,
-    invariant: LayoutInternalInvariant,
 ) {
+    use crate::error::ScrollGeometryCauseOf as Cause;
+    use crate::scroll::{
+        CanonicalScrollGeometryErrorOf as Canonical, ScrollBoxClipGutterErrorOf as Gutter,
+        ScrollContributionErrorOf as Contribution,
+    };
+    use crate::{PhysicalAxis, ScrollRectErrorOf as Rect};
+
     assert_eq!(error.site(), site);
     assert_eq!(error.operation(), operation);
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKindOf::InternalInvariant(actual) if *actual == invariant
-    ));
+    let LayoutErrorKindOf::ScrollGeometry(geometry) = error.kind() else {
+        panic!("unexpected typed error kind: {:?}", error.kind());
+    };
+    let infinite = |value: &S| value.to_f64().is_infinite();
+    let retained = match (&site, &geometry.cause) {
+        (
+            LayoutErrorSiteOf::Node(_),
+            Cause::Canonical(Canonical::BoxClipGutter(Gutter::Rect(Rect::NonFiniteSize {
+                axis: PhysicalAxis::Horizontal,
+                value,
+            }))),
+        )
+        | (
+            LayoutErrorSiteOf::ContainerSubject { .. },
+            Cause::Canonical(Canonical::ScrollableOverflow(Rect::NonFiniteSize {
+                axis: PhysicalAxis::Horizontal,
+                value,
+            })),
+        )
+        | (
+            LayoutErrorSiteOf::ContainerSubject { .. },
+            Cause::Contribution(Contribution::Rect(Rect::NonFiniteEnd {
+                axis: PhysicalAxis::Horizontal,
+                value,
+                ..
+            })),
+        ) => infinite(value),
+        _ => false,
+    };
+    assert!(
+        retained,
+        "the failure at {site:?} must retain the rejected infinite horizontal extent: {:?}",
+        geometry.cause
+    );
 }
 
 pub(crate) fn scroll_padding_inputs<S: LayoutScalar>() -> [ScrollPaddingOf<S>; 2] {

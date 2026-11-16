@@ -388,8 +388,9 @@ pub use error::{
     InvalidMeasurementOutput, InvalidMeasurementOutputOf, LayoutError, LayoutErrorKind,
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSite, LayoutErrorSiteOf, LayoutInternalInvariant,
     LayoutInvalidInput, LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation, LayoutResult,
-    LayoutResultOf, LayoutTextNumericError, LayoutUnsupportedCapability, NonBoxNodeRoleError,
-    SizingAlgorithm, SizingBehavior, SizingProperty, UnsupportedSizingBehavior,
+    LayoutResultOf, LayoutScrollGeometryError, LayoutScrollGeometryErrorOf, LayoutTextNumericError,
+    LayoutUnsupportedCapability, NonBoxNodeRoleError, SizingAlgorithm, SizingBehavior,
+    SizingProperty, UnsupportedSizingBehavior,
 };
 #[cfg(test)]
 pub(crate) use flex::compute_flex;

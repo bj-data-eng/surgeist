@@ -170,12 +170,14 @@ fn framed_case_refuses_spent_work_while_start_only_retains_its_old_footprint() {
     let error = super::super::super::observe(&mut spent, query(EntryPurpose::FramedEntry))
         .err()
         .expect("new framed case work must refuse before traversing an exhausted owner");
-    assert!(matches!(error.kind(), crate::LayoutErrorKindOf::Text(error)
+    assert!(
+        matches!(error.kind(), crate::LayoutErrorKindOf::ResourceLimit(error)
         if matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
             reason: text::ScopeAlignmentError::Limit {
                 kind: text::ScopeAlignmentLimitKind::StructuralWork, required, limit,
             },
-        }) if required > limit && *limit == CASE_LIMITS.structural_work())));
+        }) if required > limit && *limit == CASE_LIMITS.structural_work()))
+    );
 }
 
 #[test]

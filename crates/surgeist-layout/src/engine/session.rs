@@ -182,10 +182,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> BlockScopeStaging<Node, S> {
         if let Some(ready) = ready {
             if let Some(projection) = ready.projection {
                 margins.bind(node, projection).map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?;
             }
@@ -493,10 +493,10 @@ where
             return Ok(None);
         };
         text.entry_funding().map_err(|error| {
-            LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
+                error,
             )
         })
     }
@@ -536,10 +536,10 @@ where
             .map(|state| state.entry_basis(funding.as_ref(), trial == FloatChildTrial::InFlow))
             .transpose()
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
         let packet_owner = funding
@@ -549,10 +549,10 @@ where
             })
             .transpose()
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
         Ok(std::sync::Arc::new(FloatChildPacket {
@@ -602,10 +602,10 @@ where
             return Err(crate::block::float_context::missing(node));
         }
         let error = |error| {
-            LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
+                error,
             )
         };
         let funding = if self.entry_sources.is_some() {
@@ -984,10 +984,10 @@ where
             .expect("Text compute entry initialized its state")
             .basis(frames)
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(root),
                     LayoutOperation::TextPlacement,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })
     }
@@ -1004,10 +1004,10 @@ where
         current
             .admit_scope_comparison(previous, &text.scope_resources)
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(root),
                     LayoutOperation::TextPlacement,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })
     }
@@ -1027,10 +1027,10 @@ where
             .as_ref()
             .map_or(Ok(true), |text| text.formatted_valid())
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::TextPlacement,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })
     }
@@ -1043,10 +1043,10 @@ where
         self.invalidate_scoped_request_memo();
         if let Some(text) = self.text.as_mut() {
             text.formatted_next_pass().map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::TextPlacement,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
             text.frames = frames.into();
@@ -1600,10 +1600,10 @@ where
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .contains(node, funding.as_ref())
                 .map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?;
             if measured {
@@ -1774,10 +1774,10 @@ where
             let allocations = fragment.allocations.clone();
             let intrinsics = fragment.intrinsics.clone();
             let margins = fragment.margins.fork_entry(None).map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
             observation.fragmentation = Some(FragmentComputation {
@@ -1818,10 +1818,10 @@ where
             // only its purpose-scoped semantic dependencies; none of its
             // geometry, pending Text, fragments or cache writes are published.
             text.formatted_accept(formatted).map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
         }
@@ -1885,10 +1885,10 @@ where
         }
         if let Some(text) = &mut self.text {
             text.prepare_entry().map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(query.node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
         }
@@ -1907,10 +1907,10 @@ where
                 })
                 .transpose()
                 .map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(query.node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?;
             self.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
@@ -1964,10 +1964,10 @@ where
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let error = |error| {
-                        LayoutErrorOf::new(
+                        crate::error::staging_text_error(
                             LayoutErrorSiteOf::Node(node),
                             LayoutOperation::ChildLayout,
-                            LayoutErrorKindOf::Text(error),
+                            error,
                         )
                     };
                     if let Some(result) =
@@ -2002,10 +2002,10 @@ where
             {
                 let anonymous = style.block_generation == crate::BlockGeneration::Anonymous;
                 let error = |error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 };
                 if text
@@ -2571,10 +2571,10 @@ where
                         .map(crate::text_layout::scope_alignment::EntryFunding::as_ref),
                 )
                 .map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(packet.node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?
         } else {
@@ -2636,10 +2636,10 @@ where
         if let Some(text) = &mut self.text {
             if let Some(observed) = &packet.formatted {
                 text.formatted_accept(observed).map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(packet.node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?;
             }
@@ -2815,10 +2815,10 @@ where
             return Ok(None);
         }
         let error = |error| {
-            LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
+                error,
             )
         };
         if let Some(text) = &self.text
@@ -2851,10 +2851,10 @@ where
             .as_mut()
             .map_or(Ok(true), |text| text.formatted_restore_cache(node, input))
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })
     }
@@ -2870,10 +2870,10 @@ where
             formatted
                 .bind_output(node, input, context, output)
                 .map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?;
         }
@@ -2907,10 +2907,10 @@ where
                 None
             };
             let error = |error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             };
             let mut previous = None;
@@ -2958,10 +2958,10 @@ where
             None
         };
         let error = |error| {
-            LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
+                error,
             )
         };
         for entry in &self.cache.clears {

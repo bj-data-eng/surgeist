@@ -1,12 +1,11 @@
 use crate::geometry::PhysicalAxis;
-use crate::layout_math::{resolution_optional, resolution_or_zero};
 use crate::sizing::resolve::{
     SizingResolutionError, resolve_maximum_optional, resolve_minimum_optional,
     resolve_preferred_optional,
 };
 use crate::{
-    LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionStatus, MaxSizeOf, MinSizeOf,
-    PreferredSizeOf, Size, SizingAlgorithm,
+    LayoutScalar, LengthResolutionStatus, MaxSizeOf, MinSizeOf, PreferredSizeOf, Size,
+    SizingAlgorithm,
 };
 
 type BlockSizeLimits<S> = (Size<Option<S>>, Size<Option<S>>);
@@ -121,20 +120,6 @@ pub(super) fn maximum_size<S: LayoutScalar>(
             missing_basis_is_indefinite,
         ),
     )
-}
-
-pub(super) fn resolve_auto_optional<S: LayoutScalar>(
-    length: LengthAutoOf<S>,
-    basis: Option<S>,
-) -> Result<Option<S>, LengthResolutionStatus<S>> {
-    resolution_optional(length.resolve_with_status(basis))
-}
-
-pub(super) fn resolve_length_or_zero<S: LayoutScalar>(
-    length: LengthOf<S>,
-    basis: Option<S>,
-) -> Result<S, LengthResolutionStatus<S>> {
-    resolution_or_zero(length.resolve_with_status(basis))
 }
 
 pub(super) trait BlockOptionalSizeSubExt<S: LayoutScalar> {

@@ -2137,14 +2137,13 @@ pub(super) fn root_writing_mode_directions() -> [(WritingMode, Direction); 10] {
     ]
 }
 
-pub(super) fn assert_public_scroll_geometry_error_without_batch(
+fn public_scroll_error_without_batch(
     native_frame: crate::test_support::requests::NativeRootFrameOf<Scalar>,
     tree: &RootSessionTree,
     available: Size<crate::AxisSizingRequest>,
     expected_site: LayoutErrorSite<u32>,
     expected_operation: LayoutOperation,
-    expected_invariant: LayoutInternalInvariant,
-) {
+) -> LayoutErrorOf<u32, Scalar, &'static str> {
     let request = native_frame.request(available);
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         compute_layout(tree, 0, request)
@@ -2154,13 +2153,54 @@ pub(super) fn assert_public_scroll_geometry_error_without_batch(
         Ok(Ok(_)) => panic!("scroll-geometry overflow must not return a completed layout batch"),
         Err(_) => panic!("scroll-geometry overflow must not unwind from compute_layout"),
     };
-
-    let expected_kind = LayoutErrorKind::InternalInvariant(expected_invariant);
     assert_eq!(
         (error.site(), error.operation()),
         (expected_site, expected_operation)
     );
-    crate::test_support::assert_error_kind(error.kind(), &expected_kind);
+    error
+}
+
+/// The failure keeps the rejected canonical scroll fact as its cause.
+pub(super) fn assert_public_scroll_geometry_error_without_batch(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<Scalar>,
+    tree: &RootSessionTree,
+    available: Size<crate::AxisSizingRequest>,
+    expected_site: LayoutErrorSite<u32>,
+    expected_operation: LayoutOperation,
+) {
+    let error = public_scroll_error_without_batch(
+        native_frame,
+        tree,
+        available,
+        expected_site,
+        expected_operation,
+    );
+    assert!(
+        matches!(error.kind(), LayoutErrorKind::ScrollGeometry(_)),
+        "{:?}",
+        error.kind()
+    );
+}
+
+pub(super) fn assert_public_rounded_scroll_geometry_error_without_batch(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<Scalar>,
+    tree: &RootSessionTree,
+    available: Size<crate::AxisSizingRequest>,
+    expected_site: LayoutErrorSite<u32>,
+    expected_operation: LayoutOperation,
+    expected_invariant: LayoutInternalInvariant,
+) {
+    let error = public_scroll_error_without_batch(
+        native_frame,
+        tree,
+        available,
+        expected_site,
+        expected_operation,
+    );
+    crate::test_support::assert_error_kind(
+        error.kind(),
+        &LayoutErrorKind::InternalInvariant(expected_invariant),
+    );
 }
 
 pub(super) fn fri06_mr02_geometry_error_largest_finite<S: LayoutScalar>() -> S {

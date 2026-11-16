@@ -56,6 +56,7 @@ pub(crate) mod scope;
 mod scroll;
 mod sizing;
 
+use crate::layout_math::{resolve_auto_optional, resolve_length_or_zero};
 pub(crate) use absolute::StaticPositionOf;
 use absolute::{AbsoluteChild, AbsoluteChildren};
 pub(crate) use input::BlockChildProjection;
@@ -65,8 +66,8 @@ use input::{
 };
 use scroll::{finish_scroll_geometry, prepare_scroll_contributions};
 use sizing::{
-    BlockOptionalSizeSubExt, maximum_size, minimum_size, preferred_size, resolve_auto_optional,
-    resolve_length_or_zero, transfer_block_ratio_inline_limits,
+    BlockOptionalSizeSubExt, maximum_size, minimum_size, preferred_size,
+    transfer_block_ratio_inline_limits,
 };
 
 #[cfg(test)]

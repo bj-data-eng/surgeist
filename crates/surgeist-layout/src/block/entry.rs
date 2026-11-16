@@ -181,7 +181,11 @@ fn case_error<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     error: surgeist_text::Error,
 ) -> crate::LayoutErrorOf<Node, S, M> {
-    super::inline_run::text_run_error(node, error.into())
+    crate::error::staging_text_error(
+        crate::LayoutErrorSiteOf::Node(node),
+        crate::LayoutOperation::TextSelection,
+        error,
+    )
 }
 
 fn case_work<Node: Copy, S: LayoutScalar, M>(

@@ -1166,7 +1166,7 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         crate::text_layout::fit::FitError::Wrapping(error) => {
             return crate::inline_wrapping::wrapping_error(node, error);
         }
-        crate::text_layout::fit::FitError::Text(error) => LayoutErrorKindOf::Text(error),
+        crate::text_layout::fit::FitError::Text(error) => crate::error::text_error_kind(error),
         crate::text_layout::fit::FitError::Allocation => LayoutErrorKindOf::Allocation,
         crate::text_layout::fit::FitError::FeedbackCycle => LayoutErrorKindOf::TextFeedbackCycle,
         crate::text_layout::fit::FitError::SpacingBudget { available, advance } => {

@@ -1,8 +1,8 @@
 use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression};
 use crate::scroll::ScrollOriginProgression;
 use crate::{
-    AlignItems, AspectRatioOf, BoxSizing, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
-    LengthResolutionStatus, Size,
+    AlignItems, AspectRatioOf, BoxSizing, Edges, LayoutScalar, LengthAutoOf, LengthOf,
+    LengthResolutionOf, LengthResolutionStatus, Size,
 };
 
 // With two definite insets the logical end inset is weaker. Retaining the
@@ -985,6 +985,33 @@ pub(crate) fn resolution_optional<S: LayoutScalar>(
         LengthResolutionStatus::InvalidNumeric { .. } => Err(resolution.status()),
         LengthResolutionStatus::MissingBasis | LengthResolutionStatus::NonNumeric => Ok(None),
     }
+}
+
+/// Resolve a length against `basis`, treating a missing basis or a
+/// non-numeric value as zero and reporting an invalid numeric value.
+pub(crate) fn resolve_length_or_zero<S: LayoutScalar>(
+    length: LengthOf<S>,
+    basis: Option<S>,
+) -> Result<S, LengthResolutionStatus<S>> {
+    resolution_or_zero(length.resolve_with_status(basis))
+}
+
+/// Resolve an automatic-capable length against `basis`, treating `auto`, a
+/// missing basis or a non-numeric value as zero.
+pub(crate) fn resolve_auto_or_zero<S: LayoutScalar>(
+    length: LengthAutoOf<S>,
+    basis: Option<S>,
+) -> Result<S, LengthResolutionStatus<S>> {
+    resolution_or_zero(length.resolve_with_status(basis))
+}
+
+/// Resolve an automatic-capable length against `basis`, leaving `auto`, a
+/// missing basis or a non-numeric value unresolved.
+pub(crate) fn resolve_auto_optional<S: LayoutScalar>(
+    length: LengthAutoOf<S>,
+    basis: Option<S>,
+) -> Result<Option<S>, LengthResolutionStatus<S>> {
+    resolution_optional(length.resolve_with_status(basis))
 }
 
 pub(crate) fn resolve_containing_padding_border<S: LayoutScalar, E>(

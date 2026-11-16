@@ -3,10 +3,11 @@ use super::inline_run::{
     InlineRunContext, InlineRunRequest, InlineRunTransitionState, VisibleInlineRunTransition,
     inline_run_end, visible_inline_boundary_in_flow, visible_line_break_in_flow,
 };
-use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
-use super::sizing::{maximum_size, minimum_size, preferred_size, resolve_length_or_zero};
+use super::scroll::BlockScrollContributions;
+use super::sizing::{maximum_size, minimum_size, preferred_size};
 use super::*;
 use crate::AxisSizingRequestOf;
+use crate::layout_math::resolve_length_or_zero;
 
 mod child_compute;
 mod placement;

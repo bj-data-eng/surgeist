@@ -392,14 +392,19 @@ where
             tree,
             child,
             |box_projection, target_projection| {
-                retained_child_scroll_geometry(
-                    box_projection,
-                    target_projection,
-                    output.size,
-                    output.content_size,
-                    child_padding,
-                    child_border,
-                    output.scroll_geometry,
+                crate::scroll::retained_child_scroll_geometry(
+                    crate::scroll::RetainedChildScrollSourceOf {
+                        box_projection,
+                        target_projection,
+                        size: output.size,
+                        content_size: output.content_size,
+                        padding: child_padding,
+                        border: child_border,
+                        child_compute_geometry: output.scroll_geometry,
+                    },
+                    crate::scroll::RetainedChildReconstruction::DirectLine(
+                        crate::scroll::CanonicalScrollRangeSeedPolicy::ExcludeReservedGutter,
+                    ),
                 )
             },
         )

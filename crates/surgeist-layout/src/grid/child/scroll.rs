@@ -1,8 +1,7 @@
 use super::*;
 use crate::scroll::{
-    CanonicalScrollGeometryErrorOf, MeasuredLeafScrollGeometrySourceOf,
-    OptionalPhysicalContributionIntervalsOf, ScrollContributionAccumulatorOf,
-    canonical_measured_leaf_scroll_geometry, rebuild_canonical_scroll_geometry_for_border_box,
+    CanonicalScrollGeometryErrorOf, OptionalPhysicalContributionIntervalsOf,
+    ScrollContributionAccumulatorOf,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -142,25 +141,22 @@ pub(in crate::grid) fn retained_grid_child_scroll_geometry<'input, S: LayoutScal
     border: Edges<S>,
     child_compute_geometry: Option<crate::ScrollGeometryOf<S>>,
 ) -> Result<crate::ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
-    if let Some(geometry) = child_compute_geometry {
-        if geometry.border_box().origin() == Point::ZERO && geometry.border_box().size() == size {
-            return Ok(geometry);
-        }
-        return rebuild_canonical_scroll_geometry_for_border_box(geometry, size, border, padding);
-    }
-
     item.with_scroll_projections(|box_projection, target_projection| {
-        canonical_measured_leaf_scroll_geometry(MeasuredLeafScrollGeometrySourceOf {
-            box_projection,
-            target_projection,
-            border_box_size: size,
-            border,
-            padding,
-            settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState::INITIAL,
-            measured_content_size: content_size,
-        })
+        crate::scroll::retained_child_scroll_geometry(
+            crate::scroll::RetainedChildScrollSourceOf {
+                box_projection,
+                target_projection,
+                size,
+                content_size,
+                padding,
+                border,
+                child_compute_geometry,
+            },
+            crate::scroll::RetainedChildReconstruction::MeasuredLeaf,
+        )
     })
 }
+
 pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
     mut children: Vec<GridChildContribution<S>>,
     tracks: Option<GridTrackScrollBounds<S>>,

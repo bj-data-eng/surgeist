@@ -94,10 +94,10 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
             .ok_or_else(|| crate::block::float_context::missing(node))?
             .push(node, input, frame.exclusions, frame.cut)
             .map_err(|error| {
-                crate::LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     crate::LayoutErrorSiteOf::Node(node),
                     crate::LayoutOperation::ChildLayout,
-                    crate::LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })
     }

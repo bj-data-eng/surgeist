@@ -617,10 +617,10 @@ pub(super) fn activation_error<Tree: crate::LayoutTree>(
     node: Tree::Node,
     error: surgeist_text::Error,
 ) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
-    crate::LayoutErrorOf::new(
+    crate::error::staging_text_error(
         crate::LayoutErrorSiteOf::Node(node),
         crate::LayoutOperation::TextCapture,
-        crate::LayoutErrorKindOf::Text(error),
+        error,
     )
 }
 
