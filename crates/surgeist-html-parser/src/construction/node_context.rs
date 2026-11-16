@@ -266,8 +266,7 @@ impl SessionStorage {
             Ok(())
         })();
         if let Err(error) = result {
-            let released = named.release(c, &owner, |_, _| Ok(()));
-            return released.and(Err(error));
+            return Err(abandon_table(c, &owner, named, error));
         }
         let contexts = &mut self.payloads.facts.contexts;
         contexts.named = Some(named);
@@ -283,6 +282,19 @@ impl SessionStorage {
             Some(column) => column.release(c, &owner, |_, _| Ok(()), |_| Ok(())),
             None => Ok(()),
         }
+    }
+}
+
+/// Releases `named`, the table a freeze stopped building, and returns what the freeze ends with.
+pub(super) fn abandon_table(
+    c: &mut ParseControl,
+    owner: &ControlIdentity,
+    named: FamilyTable<u32>,
+    error: SessionError,
+) -> SessionError {
+    match named.release(c, owner, |_, _| Ok(())) {
+        Ok(()) => error,
+        Err(refused) => refused,
     }
 }
 
