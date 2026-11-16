@@ -1463,6 +1463,10 @@ impl std::fmt::Display for HtmlParseTreeDocumentError {
     }
 }
 impl std::error::Error for HtmlParseTreeDocumentError {}
+/// The metadata records of a report, in the order of the stages that hold them: the registry rows,
+/// then the Document table, the table of creation states, the table of nonces, the table of
+/// templates and the table of shadow states, each in ascending order of node. The order of the
+/// records of one parse is not a contract.
 pub struct HtmlParseMetadataCursor<'a> {
     closed_common: bool,
     history: &'a FrozenHistory,
