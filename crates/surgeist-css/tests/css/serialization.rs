@@ -8,4 +8,5 @@ mod normalization_contract;
 mod normalization_stack;
 mod primitive_specified_serialization;
 mod rule_error_equality;
+mod rule_graph_output_form;
 mod specified_value_failure_display;

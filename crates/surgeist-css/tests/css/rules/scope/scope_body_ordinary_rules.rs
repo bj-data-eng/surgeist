@@ -122,6 +122,16 @@ fn nesting_anchored_rule() -> CssRule {
     sheet("&.x { color: red }").rules()[0].clone()
 }
 
+/// A style rule whose explicit `&` belongs to the other anchor domain is a style
+/// rule anchor failure; no scope boundary is involved.
+fn assert_style_rule_anchor(error: &CssRuleConstructionError) {
+    assert!(!error.is_invalid_boundary_anchor(), "{error:?}");
+    assert!(
+        error.to_string().contains("a style rule anchor is invalid"),
+        "{error}"
+    );
+}
+
 #[test]
 fn a_scope_anchored_style_rule_is_only_valid_in_a_scope_body() {
     let rule = scope_anchored_rule();
@@ -133,9 +143,9 @@ fn a_scope_anchored_style_rule_is_only_valid_in_a_scope_body() {
         &context(),
     )
     .unwrap_err();
-    assert!(error.is_invalid_boundary_anchor(), "{error:?}");
+    assert_style_rule_anchor(&error);
     let error = CssSheet::try_from_rules(vec![rule.clone()]).unwrap_err();
-    assert!(error.is_invalid_boundary_anchor(), "{error:?}");
+    assert_style_rule_anchor(&error);
     assert_eq!(error.path(), &[0]);
     // The scope body, directly or through a group, accepts it.
     assert!(assemble(vec![rule.clone()], CssScopeNestingContext::None).is_ok());
@@ -147,7 +157,7 @@ fn a_scope_anchored_style_rule_is_only_valid_in_a_scope_body() {
 fn a_nesting_anchored_style_rule_is_not_valid_directly_in_a_scope_body() {
     let rule = nesting_anchored_rule();
     let error = assemble(vec![rule.clone()], CssScopeNestingContext::None).unwrap_err();
-    assert!(error.is_invalid_boundary_anchor(), "{error:?}");
+    assert_style_rule_anchor(&error);
     assert_eq!(error.path(), &[0]);
     // Through a group inside the scope body it is rejected at the same rule.
     let media = CssMediaRule::try_new(
@@ -157,7 +167,7 @@ fn a_nesting_anchored_style_rule_is_not_valid_directly_in_a_scope_body() {
     )
     .unwrap();
     let error = assemble(vec![CssRule::Media(media)], CssScopeNestingContext::None).unwrap_err();
-    assert!(error.is_invalid_boundary_anchor(), "{error:?}");
+    assert_style_rule_anchor(&error);
     assert_eq!(error.path(), &[0, 0]);
     // A sheet holds it.
     assert!(CssSheet::try_from_rules(vec![rule]).is_ok());
