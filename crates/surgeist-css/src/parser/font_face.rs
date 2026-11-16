@@ -34,7 +34,7 @@ use super::values::parse_nonnegative_percentage;
 use crate::diagnostic::error::token_navigation::Scoped;
 use crate::diagnostic::error::{
     descriptor_name_error, from_grammar_failure, from_parse_error, unexpected_at,
-    with_descriptor_context,
+    unexpected_syntax_token, with_descriptor_context,
 };
 use crate::diagnostic::{CssError, CssFeatureId};
 use crate::numeric::expression::NumericInputContext;
@@ -847,7 +847,10 @@ pub(super) fn parse_font_display<'i>(
         "swap" => Ok(CssFontDisplay::Swap),
         "fallback" => Ok(CssFontDisplay::Fallback),
         "optional" => Ok(CssFontDisplay::Optional),
-        _ => Err(fail(numeric, location, unexpected_at)),
+        // The word the stream holds is the unexpected token, not an early end.
+        _ => Err(fail(numeric, location, |at| {
+            unexpected_syntax_token(at, Token::Ident(ident))
+        })),
     }
 }
 
