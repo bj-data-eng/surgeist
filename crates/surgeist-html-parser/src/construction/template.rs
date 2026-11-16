@@ -103,9 +103,8 @@ impl SessionStorage {
             }
         }
         // The documents the nodes of the parse name are held once each, and a Document names itself.
-        for (position, document) in self.payloads.facts.contexts.documents().iter() {
+        for (_, document) in self.payloads.facts.contexts.documents().iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let _ = position;
             self.validate_document_ref(c, document)?;
         }
         for payload in &self.payloads.values {

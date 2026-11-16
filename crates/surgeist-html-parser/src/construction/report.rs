@@ -391,9 +391,9 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::WrongToken);
                     }
                     // A link's document joins its history to the parser Document, so publication
-                    // requires one: the link's own cell named it when the parse was frozen. Not
-                    // every node has one: nodes created without a document, such as implied and
-                    // text nodes of a fragment, are in no document.
+                    // requires one: the link's own cell named it when the parse was frozen. A tree
+                    // created with no document, as in a fragment session that has no context, is
+                    // in none, and a link in it is refused.
                     let Ok((document, probes)) =
                         storage.payloads.facts.contexts.named_document(node)
                     else {
@@ -1043,8 +1043,8 @@ pub struct HtmlParseTreeDocument<'a> {
     probes: u64,
 }
 impl<'a> HtmlParseTreeDocument<'a> {
-    /// The document every node of the tree has, or `None` when the tree names none, as the tree of
-    /// an implied node of a fragment parse does not.
+    /// The document every node of the tree has, or `None` when the tree names none, as a tree
+    /// created with no document does not.
     pub fn document(&self) -> Option<HtmlParseMetadataDocument<'a>> {
         self.document
     }
