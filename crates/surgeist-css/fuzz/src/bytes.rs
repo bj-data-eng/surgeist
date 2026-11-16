@@ -483,7 +483,7 @@ fn parse_checks(input: &CssDecodedStylesheetInput) -> Check {
             CssComponentValueLimits::default(),
         );
         let report = parser.parse_sheet_bytes(input);
-        check::diagnostics(text, report.diagnostics())?;
+        check::DOCUMENTED.diagnostics(text, report.diagnostics())?;
         check::cleanliness(&report)?;
         if report != parser.parse_sheet(text) {
             return Err(Violation::new(

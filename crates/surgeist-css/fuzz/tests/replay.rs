@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Every target through the shared framework: capture, exact replay, generation,
 //! optional property and coverage engines, and seed freshness.
-use surgeist_css_fuzz::ByteTarget;
+use surgeist_css_fuzz::{ByteTarget, SourceTarget};
 use surgeist_fuzz::{CaseTarget, Generation, OutcomeKind, engine};
 
 fn check_literals<T: CaseTarget>(target: &T, count: u8, literal: impl Fn(u8) -> T::Case) {
@@ -38,6 +38,10 @@ fn literals_capture_exact_inputs_and_replay_the_same_checked_properties() {
     let bytes = ByteTarget::new();
     check_literals(&bytes, ByteTarget::LITERALS, |id| {
         bytes.literal(id).unwrap()
+    });
+    let source = SourceTarget::new();
+    check_literals(&source, SourceTarget::LITERALS, |id| {
+        source.literal(id).unwrap()
     });
 }
 
@@ -83,6 +87,7 @@ fn generated<T: CaseTarget>(target: &T) {
 #[test]
 fn bounded_generation_is_deterministic_and_uses_the_replay_evaluator() {
     generated(&ByteTarget::new());
+    generated(&SourceTarget::new());
 }
 
 #[cfg(feature = "property")]
@@ -116,6 +121,7 @@ fn property<T: CaseTarget>(target: &T, seed: u64) {
 #[test]
 fn finite_property_runs_capture_nonvacuous_public_observations() {
     property(&ByteTarget::new(), 1147);
+    property(&SourceTarget::new(), 1147);
 }
 
 #[cfg(feature = "coverage")]
@@ -145,6 +151,7 @@ fn coverage<T: CaseTarget>(target: &T) {
 #[test]
 fn finite_coverage_callbacks_capture_the_same_case_as_direct_replay() {
     coverage(&ByteTarget::new());
+    coverage(&SourceTarget::new());
 }
 
 fn seed_freshness<T: CaseTarget>(
@@ -176,5 +183,9 @@ fn generated_seed_artifacts_match_the_authoritative_literal_factories_and_codec(
     let bytes = ByteTarget::new();
     seed_freshness(&bytes, "bytes", ByteTarget::LITERALS, |id| {
         bytes.literal(id).unwrap()
+    });
+    let source = SourceTarget::new();
+    seed_freshness(&source, "source", SourceTarget::LITERALS, |id| {
+        source.literal(id).unwrap()
     });
 }

@@ -1,0 +1,1 @@
+@font-face { font-family: A; src: url(a) } @keyframes k { from { a: b } to { a: c } } @page { margin: 1px }

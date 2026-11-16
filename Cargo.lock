@@ -3989,6 +3989,7 @@ version = "0.1.0"
 dependencies = [
  "libfuzzer-sys",
  "proptest",
+ "serde_json",
  "surgeist-css",
  "surgeist-css-parser",
  "surgeist-fuzz",

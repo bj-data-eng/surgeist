@@ -90,92 +90,114 @@ pub(crate) fn expected_coordinates(text: &str, offset: usize) -> (u32, u32) {
     (line, u32::try_from(column).unwrap_or(u32::MAX))
 }
 
-pub(crate) fn position(
-    property: &'static str,
-    text: &str,
-    position: CssSourcePosition,
-    what: &str,
-) -> Check {
-    let offset = position.byte_offset().value();
-    if offset > text.len() || !text.is_char_boundary(offset) {
-        return Err(Violation::new(
-            property,
-            "offset-outside-source",
-            format!(
-                "{what} offset {offset} is not a boundary of the {}-byte source",
-                text.len()
-            ),
-        ));
-    }
-    let (line, column) = expected_coordinates(text, offset);
-    if position.line().value() != line || position.column().value() != column {
-        return Err(Violation::new(
-            property,
-            "line-column-disagree",
-            format!(
-                "{what} at offset {offset} reports {}:{} where the source contract gives {line}:{column}",
-                position.line().value(),
-                position.column().value()
-            ),
-        ));
-    }
-    Ok(())
+/// The coordinate model that position checks compare against. Tests replace it
+/// to plant a controlled failure; production use is always [`DOCUMENTED`].
+#[derive(Clone, Copy)]
+pub(crate) struct Checker {
+    pub(crate) coordinates: fn(&str, usize) -> (u32, u32),
 }
 
-pub(crate) fn span(property: &'static str, text: &str, span: CssSourceSpan, what: &str) -> Check {
-    position(property, text, span.start(), what)?;
-    position(property, text, span.end(), what)?;
-    if span.start().byte_offset() > span.end().byte_offset() {
-        return Err(Violation::new(
-            property,
-            "span-reversed",
-            format!("{what} span ends before it starts"),
-        ));
-    }
-    Ok(())
-}
+/// The documented decoded-source coordinate contract.
+pub(crate) const DOCUMENTED: Checker = Checker {
+    coordinates: expected_coordinates,
+};
 
-/// Diagnostics: positions and spans follow the source contract, the responsible
-/// position lies inside the recovery span, and the report orders by that offset.
-pub(crate) fn diagnostics(text: &str, diagnostics: &[CssRecoveryDiagnostic]) -> Check {
-    let mut previous = 0_usize;
-    for (index, diagnostic) in diagnostics.iter().enumerate() {
-        let error = diagnostic.error();
-        let at = error.position();
-        position(COORDINATES, text, at, "diagnostic position")?;
-        span(COORDINATES, text, diagnostic.span(), "diagnostic span")?;
-        if let Some(before) = error.previous_position() {
-            position(COORDINATES, text, before, "previous position")?;
-        }
-        let span = diagnostic.span();
-        if at.byte_offset() < span.start().byte_offset()
-            || at.byte_offset() > span.end().byte_offset()
-        {
+impl Checker {
+    pub(crate) fn position(
+        &self,
+        property: &'static str,
+        text: &str,
+        position: CssSourcePosition,
+        what: &str,
+    ) -> Check {
+        let offset = position.byte_offset().value();
+        if offset > text.len() || !text.is_char_boundary(offset) {
             return Err(Violation::new(
-                COORDINATES,
-                "position-outside-recovery-span",
-                format!("diagnostic {index} position lies outside its recovery span"),
+                property,
+                "offset-outside-source",
+                format!(
+                    "{what} offset {offset} is not a boundary of the {}-byte source",
+                    text.len()
+                ),
             ));
         }
-        if at.byte_offset().value() < previous {
+        let (line, column) = (self.coordinates)(text, offset);
+        if position.line().value() != line || position.column().value() != column {
             return Err(Violation::new(
-                COORDINATES,
-                "diagnostics-unordered",
-                format!("diagnostic {index} precedes an earlier responsible offset"),
+                property,
+                "line-column-disagree",
+                format!(
+                    "{what} at offset {offset} reports {}:{} where the source contract gives {line}:{column}",
+                    position.line().value(),
+                    position.column().value()
+                ),
             ));
         }
-        previous = at.byte_offset().value();
-        if let Some(source) = diagnostic.source()
-            && source.as_str() != text
-        {
-            return Err(Violation::new(
-                COORDINATES,
-                "diagnostic-source-differs",
-                format!("diagnostic {index} retains a snapshot other than the parsed source"),
-            ));
-        }
+        Ok(())
     }
-    Ok(())
+
+    pub(crate) fn span(
+        &self,
+        property: &'static str,
+        text: &str,
+        span: CssSourceSpan,
+        what: &str,
+    ) -> Check {
+        self.position(property, text, span.start(), what)?;
+        self.position(property, text, span.end(), what)?;
+        if span.start().byte_offset() > span.end().byte_offset() {
+            return Err(Violation::new(
+                property,
+                "span-reversed",
+                format!("{what} span ends before it starts"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Diagnostics: positions and spans follow the source contract, the
+    /// responsible position lies inside the recovery span, and the report orders
+    /// by that offset.
+    pub(crate) fn diagnostics(&self, text: &str, diagnostics: &[CssRecoveryDiagnostic]) -> Check {
+        let mut previous = 0_usize;
+        for (index, diagnostic) in diagnostics.iter().enumerate() {
+            let error = diagnostic.error();
+            let at = error.position();
+            self.position(COORDINATES, text, at, "diagnostic position")?;
+            self.span(COORDINATES, text, diagnostic.span(), "diagnostic span")?;
+            if let Some(before) = error.previous_position() {
+                self.position(COORDINATES, text, before, "previous position")?;
+            }
+            let span = diagnostic.span();
+            if at.byte_offset() < span.start().byte_offset()
+                || at.byte_offset() > span.end().byte_offset()
+            {
+                return Err(Violation::new(
+                    COORDINATES,
+                    "position-outside-recovery-span",
+                    format!("diagnostic {index} position lies outside its recovery span"),
+                ));
+            }
+            if at.byte_offset().value() < previous {
+                return Err(Violation::new(
+                    COORDINATES,
+                    "diagnostics-unordered",
+                    format!("diagnostic {index} precedes an earlier responsible offset"),
+                ));
+            }
+            previous = at.byte_offset().value();
+            if let Some(source) = diagnostic.source()
+                && source.as_str() != text
+            {
+                return Err(Violation::new(
+                    COORDINATES,
+                    "diagnostic-source-differs",
+                    format!("diagnostic {index} retains a snapshot other than the parsed source"),
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// `is_clean` is exactly an empty diagnostic slice, and validation accepts

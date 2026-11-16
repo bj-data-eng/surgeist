@@ -10,11 +10,14 @@ mod bytes;
 mod check;
 mod codec;
 mod cursor;
+mod nodes;
+mod source;
 #[cfg(test)]
 mod testing;
 
 pub use bytes::{ByteCase, ByteTarget};
 pub use check::Violation;
+pub use source::{SourceCase, SourceTarget};
 
 use surgeist_fuzz::{
     CaseOutcome, FailureClass, FailureKey, FuzzError, FuzzErrorKind, PropertyId, Result,

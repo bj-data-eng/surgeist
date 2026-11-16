@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Materialize the fixed source-qualified cases through their canonical codecs.
 use std::{error::Error, fs, path::Path};
-use surgeist_css_fuzz::ByteTarget;
+use surgeist_css_fuzz::{ByteTarget, SourceTarget};
 use surgeist_fuzz::CaseTarget;
 
 fn write<T: CaseTarget>(
@@ -36,6 +36,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         &bytes,
         ByteTarget::LITERALS,
         |id| bytes.literal(id),
+    )?;
+    let source = SourceTarget::new();
+    write(
+        &destination.join("source"),
+        &source,
+        SourceTarget::LITERALS,
+        |id| source.literal(id),
     )?;
     Ok(())
 }

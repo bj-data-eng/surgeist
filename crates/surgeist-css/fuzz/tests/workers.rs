@@ -45,11 +45,26 @@ fn the_package_registers_every_target_with_its_worker_and_seed_directory() {
         "css-bytes-worker",
         "seeds/bytes",
     );
+    assert_registered(
+        &registry,
+        "surgeist-css::utf8-source",
+        "css-source-worker",
+        "seeds/source",
+    );
+    let source = registry
+        .get(&TargetId::new("surgeist-css::utf8-source").unwrap())
+        .unwrap();
+    assert!(
+        source
+            .fixtures()
+            .iter()
+            .any(|path| path.ends_with("seeds/csstree"))
+    );
 }
 
 #[cfg(not(feature = "coverage"))]
 mod process {
-    use surgeist_css_fuzz::ByteTarget;
+    use surgeist_css_fuzz::{ByteTarget, SourceTarget};
     use surgeist_fuzz::{CaseTarget, OutcomeKind, worker::*};
 
     fn exchange(binary: &str, canonical: Vec<u8>) {
@@ -99,6 +114,11 @@ mod process {
         exchange(
             env!("CARGO_BIN_EXE_css-bytes-worker"),
             bytes.encode(&bytes.literal(2).unwrap()).unwrap(),
+        );
+        let source = SourceTarget::new();
+        exchange(
+            env!("CARGO_BIN_EXE_css-source-worker"),
+            source.encode(&source.literal(13).unwrap()).unwrap(),
         );
     }
 }

@@ -1,0 +1,1 @@
+selector { @container card (inline-size > 30em) { @container style(--responsive: true) { color: green; } } }

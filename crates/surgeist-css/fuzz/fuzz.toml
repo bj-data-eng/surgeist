@@ -1,5 +1,5 @@
 schema = 1
-fixtures = ["seeds/bytes"]
+fixtures = ["seeds/bytes", "seeds/source", "seeds/csstree"]
 
 [[targets]]
 id = "surgeist-css::byte-decoding"
@@ -11,6 +11,20 @@ format = { identity = "surgeist-css::byte-case", revision = 1 }
 generator_identity = { identity = "surgeist-css::byte-decoding", revision = 1 }
 encoding = "structured"
 limits = { bytes = 8192, nodes = 0, depth = 0, text_units = 4160, operations = 0 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
+
+[[targets]]
+id = "surgeist-css::utf8-source"
+owner = "surgeist-css"
+binary = "css-source-worker"
+properties = ["surgeist-css::source-coordinates", "surgeist-css::report-cleanliness", "surgeist-css::retained-nodes", "surgeist-css::parse-determinism", "surgeist-css::utf16-parity"]
+source_references = ["references/SOURCE-EDITIONS.md#css-syntax-3-edition", "crates/surgeist-css/docs/reference.md#source-coordinates-and-diagnostics", "crates/surgeist-css/docs/reference.md#block-contents", "crates/surgeist-css/docs/reference.md#equality-and-provenance", "crates/surgeist-css/src/report.rs", "crates/surgeist-css/src/parser_context.rs", "crates/surgeist-css/src/source/position.rs", "crates/surgeist-css/fuzz/README.md#utf-8-source"]
+format = { identity = "surgeist-css::source-case", revision = 1 }
+generator_identity = { identity = "surgeist-css::utf8-source", revision = 1 }
+encoding = "raw-bytes"
+limits = { bytes = 16384, nodes = 0, depth = 0, text_units = 16384, operations = 0 }
 requirements = { features = [], capabilities = ["replay", "case-capture"] }
 min_evaluated = 1
 max_generation_rejections = 0
