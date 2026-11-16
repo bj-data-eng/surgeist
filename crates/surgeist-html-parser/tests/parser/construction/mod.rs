@@ -17,3 +17,4 @@ mod ordinary_creation;
 mod pending_association;
 mod script;
 mod shadow;
+mod tree_document;

@@ -777,7 +777,7 @@ fn foreign_freeze_and_frozen_cleanup_preserve_the_borrowed_original_owner() {
 /// The bytes a parse holds with a root and one element child, and the bytes the first bank of
 /// the publication of that tree adds: the shared tree, as the growth that HTML asks the consumer
 /// to admit reports it.
-fn root_and_child_publication_bytes() -> (usize, usize) {
+fn root_and_child_publication_bytes() -> (usize, usize, usize) {
     let mut probe_control = control();
     let mut probe_session =
         ParserArenaSession::new(&mut probe_control, RootKind::Fragment).unwrap();
@@ -789,10 +789,18 @@ fn root_and_child_publication_bytes() -> (usize, usize) {
         .insert(&mut probe_control, &probe_root, &probe_node, None, None)
         .unwrap();
     let root_capacity = probe_control.usage().actual_capacity_bytes as usize;
+    // The freeze frees the column of document cells before the first bank of the publication.
+    let column = probe_session
+        .active()
+        .unwrap()
+        .payloads
+        .facts
+        .contexts
+        .column_capacity_bytes();
     let mut probe_output = frozen(probe_session, &mut probe_control);
     probe_output.release(&mut probe_control).unwrap();
     storage_zero(&probe_control);
-    (root_capacity, publication_sizes(1).0)
+    (root_capacity, publication_sizes(1).0, column)
 }
 
 /// Freezes a root and one element child under a limit of `managed_capacity` bytes, and checks that
@@ -841,8 +849,8 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
     // A root and one element child own two actual record slots and their child-vector tickets.
     // The first growth of the publication is the shared arena, so it is the one this limit
     // refuses.
-    let (root_capacity, wrapper_bytes) = root_and_child_publication_bytes();
-    refused_publication_holds(root_capacity, root_capacity, wrapper_bytes as u64);
+    let (root_capacity, wrapper_bytes, column) = root_and_child_publication_bytes();
+    refused_publication_holds(root_capacity, root_capacity - column, wrapper_bytes as u64);
 }
 
 #[test]
@@ -850,13 +858,10 @@ fn a_publication_refused_after_its_first_bank_leaves_the_parse_holding_what_it_h
     // The rows hold one 20-byte row for each of the two records and are the second bank. A limit
     // that the arena fits and the rows exceed refuses the rows, after the arena was recorded; the
     // refusal takes the arena back.
-    let (root_capacity, wrapper_bytes) = root_and_child_publication_bytes();
+    let (root_capacity, wrapper_bytes, column) = root_and_child_publication_bytes();
     let rows = 2 * ROW_BYTES;
-    refused_publication_holds(
-        root_capacity + wrapper_bytes + rows - 1,
-        root_capacity,
-        rows as u64,
-    );
+    let held = root_capacity - column;
+    refused_publication_holds(held + wrapper_bytes + rows - 1, held, rows as u64);
 }
 
 /// The bytes a parse holds and the bytes it held at most, before a freeze, after it, and at its
@@ -870,7 +875,15 @@ fn freeze_figures(children: usize) -> (u64, u64, u64, u64, usize) {
         session.insert(&mut c, &root, &node, None, None).unwrap();
     }
     let records = session.active().unwrap().construction.len();
-    let held_before = c.usage().actual_capacity_bytes;
+    // The column of document cells is freed by the freeze, apart from the banks of publication.
+    let column = session
+        .active()
+        .unwrap()
+        .payloads
+        .facts
+        .contexts
+        .column_capacity_bytes() as u64;
+    let held_before = c.usage().actual_capacity_bytes - column;
     let transient_before = c
         .usage()
         .resource(HtmlParseResource::PeakTransientBytes)

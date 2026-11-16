@@ -139,6 +139,11 @@ impl<T> RowBank<T> {
         );
         refused.map_or(Ok(()), Err)
     }
+    /// The bytes of the bank's vector.
+    #[cfg(test)]
+    pub(super) fn capacity_bytes(&self) -> usize {
+        self.rows.capacity().saturating_mul(mem::size_of::<T>())
+    }
     /// The rows admitted and not written.
     #[cfg(test)]
     pub(super) fn admitted(&self) -> usize {

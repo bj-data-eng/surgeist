@@ -549,8 +549,8 @@ fn a_work_limit_stop_at_every_charge_of_a_creation_leaves_the_storage_intact() {
 fn append_succeeds_at_the_auxiliary_limit_because_it_uses_no_scratch_slot() {
     let selected = limits()
         .into_builder()
-        .auxiliary_entries(2)
-        .active_formatting_entries(2)
+        .auxiliary_entries(4)
+        .active_formatting_entries(4)
         .finish()
         .unwrap();
     let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
@@ -580,7 +580,7 @@ fn append_succeeds_at_the_auxiliary_limit_because_it_uses_no_scratch_slot() {
         usage
             .resource(HtmlParseResource::AuxiliaryEntries)
             .high_water,
-        2
+        4
     );
     session.release(&mut control).unwrap();
     assert_eq!(control.usage().actual_capacity_bytes, 0);

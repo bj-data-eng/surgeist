@@ -122,7 +122,8 @@ pub use construction::read::{
 pub use construction::report::{
     HtmlParseBase, HtmlParseDialog, HtmlParseDialogDisposition, HtmlParseDialogMissing,
     HtmlParseDocumentInteraction, HtmlParseMetadata, HtmlParseMetadataCursor,
-    HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlParseTemplate,
+    HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlParseTemplate, HtmlParseTreeDocument,
+    HtmlParseTreeDocumentError,
 };
 pub use construction::report::{
     HtmlParseBaseState, HtmlParseDocumentMeta, HtmlParseMetaDisposition, HtmlParseMetaMissing,

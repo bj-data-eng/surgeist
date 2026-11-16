@@ -887,13 +887,13 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                     .count(),
                 0
             );
-            // Two registry rows, a join cell for each of the two records, and the one entry of
-            // the table of origins that holds the text's group.
+            // Two registry rows, a join cell and a document cell for each of the two records,
+            // and the one entry of the table of origins that holds the text's group.
             assert_eq!(
                 retained
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                2 + 2 + 1
+                2 + 2 + 2 + 1
             );
         }
         let projection = session.prepare_native_associations(&mut c, &source);

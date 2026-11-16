@@ -34,8 +34,10 @@ pub(crate) struct CreationLocation<'a> {
 }
 
 pub(super) struct PreparedDocuments {
-    binding: Option<usize>,
-    contents_binding: Option<usize>,
+    /// The entry of the document list that names the document of the record.
+    context: Option<u32>,
+    /// The entry that names the document of the contents fragment of a template.
+    contents_context: Option<u32>,
     facts: Option<usize>,
     pub(super) registry: Option<usize>,
 }
@@ -100,28 +102,15 @@ impl SessionStorage {
                 }
             }
         }
+        // The documents the nodes of the parse name are held once each, and a Document names itself.
+        for (_, document) in self.payloads.facts.contexts.documents().iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            self.validate_document_ref(c, document)?;
+        }
         for payload in &self.payloads.values {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             match payload {
                 RetainedPayload::BaseDocument { .. } => self.validate_base_facts(c)?,
-                RetainedPayload::NodeDocument { node, document } => {
-                    let node = node.ok_or(SessionError::NodeDocumentUnavailable)?;
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    if node >= self.construction.len() {
-                        return Err(SessionError::NodeDocumentUnavailable);
-                    }
-                    self.validate_document_ref(c, document)?;
-                    if matches!(
-                        self.construction
-                            .node_at(node)
-                            .ok_or_else(|| latch_registry_row(c))?
-                            .kind(),
-                        ConstructionNodeKind::Document(_)
-                    ) && DocumentRef::Owned(node) != *document
-                    {
-                        return Err(SessionError::NodeDocumentUnavailable);
-                    }
-                }
                 RetainedPayload::Template { node, .. } => {
                     self.template_slot(c, node.ok_or(SessionError::TemplateMetadataUnavailable)?)?;
                 }
@@ -294,14 +283,16 @@ impl SessionStorage {
         node: usize,
     ) -> Result<DocumentRef, SessionError> {
         c.require_identity(&self.control)?;
-        if let Some(slot) = self.payloads.joined(c, node, Join::NodeDocument)? {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if let Some(entry) = self
+            .payloads
+            .facts
+            .contexts
+            .cell(node)
+            .filter(|&entry| entry != 0)
+        {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::NodeDocument {
-                node: Some(bound),
-                document,
-            }) = self.payloads.values.get(slot)
-                && *bound == node
-            {
+            if let Some(document) = self.payloads.facts.contexts.document(entry) {
                 self.validate_document_ref(c, document)?;
                 return document.try_clone(c);
             }
@@ -315,19 +306,18 @@ impl SessionStorage {
         document: DocumentRef,
     ) -> Result<(), SessionError> {
         self.validate_document_ref(c, &document)?;
-        if let Some(slot) = self.payloads.joined(c, node, Join::NodeDocument)? {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if self
+            .payloads
+            .facts
+            .contexts
+            .cell(node)
+            .is_some_and(|entry| entry != 0)
+        {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::NodeDocument{node:Some(bound),..}) if *bound==node)
-            {
-                payload_write::<DocumentRef>(c, 1)?;
-                if let Some(RetainedPayload::NodeDocument {
-                    document: target, ..
-                }) = self.payloads.values.get_mut(slot)
-                {
-                    *target = document;
-                    return Ok(());
-                }
-            }
+            let entry = self.intern_document(c, document)?;
+            payload_write::<u32>(c, 1)?;
+            return self.set_context(c, node, entry);
         }
         Err(SessionError::NodeDocumentUnavailable)
     }
@@ -383,18 +373,8 @@ impl SessionStorage {
                 // Both finite facts are admitted before the native Document is
                 // installed. No fallible alias/binding gap follows allocation.
                 self.payloads.facts.documents.admit(c, 1)?;
-                let prepared = self.prepare_payload_slot_owned(c)?;
-                let binding = self
-                    .payloads
-                    .push_row(
-                        prepared,
-                        RetainedPayload::NodeDocument {
-                            node: None,
-                            document: DocumentRef::Owned(self.construction.len()),
-                        },
-                    )
-                    .map_err(|_| latch_registry_row(c))?;
-                payload_write::<[Option<usize>; 2]>(c, 2)?;
+                let entry = self.intern_document(c, DocumentRef::Owned(self.construction.len()))?;
+                payload_write::<[u32; 2]>(c, 1)?;
                 payload_write::<DocumentState>(c, 1)?;
                 let node = self.allocate_native(
                     c,
@@ -416,15 +396,7 @@ impl SessionStorage {
                         },
                     )
                     .map_err(|_| latch_registry_row(c))?;
-                let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
-                    self.payloads.values.get_mut(binding)
-                else {
-                    return Err(latch_registry_row(c));
-                };
-                *bound = Some(node.index);
-                self.payloads
-                    .join_row(binding)
-                    .map_err(|_| latch_registry_row(c))?;
+                self.set_context(c, node.index, entry)?;
                 let Some(outer) = self.payloads.facts.documents.row_mut(slot) else {
                     return Err(latch_registry_row(c));
                 };
@@ -478,8 +450,8 @@ impl SessionStorage {
                 )
                 .map_err(|_| latch_registry_row(c))?;
             return Ok(Some(PreparedDocuments {
-                binding: None,
-                contents_binding: None,
+                context: None,
+                contents_context: None,
                 facts: Some(facts),
                 registry: None,
             }));
@@ -497,15 +469,17 @@ impl SessionStorage {
             false
         };
         let native = count_set([true, template, inert_missing]);
-        let facts = count_set([true, template, template, inert_missing]);
+        let facts = count_set([template]);
         c.check_acquire_many(&[
             (HtmlParseResource::ManagedNodes, native as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
             (
                 HtmlParseResource::AuxiliaryEntries,
-                // At most 3 native records and 4 registry facts plus the inert Document's
-                // facts: one join cell per record, and each fact its own row.
+                // At most 3 native records, the template row and the inert Document's facts: one
+                // join cell and one document cell per record, and each fact its own row. The
+                // entries of the documents the cells name are admitted as they are named.
                 native
+                    .saturating_mul(2)
                     .saturating_add(facts)
                     .saturating_add(usize::from(inert_missing)) as u64,
             ),
@@ -521,32 +495,10 @@ impl SessionStorage {
         } else {
             None
         };
-        let prepared = self.prepare_payload_slot_owned(c)?;
-        let binding = self
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::NodeDocument {
-                    node: None,
-                    document,
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
-        let contents_binding = if let Some(document) = contents_document {
-            let prepared = self.prepare_payload_slot_owned(c)?;
-            let slot = self
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::NodeDocument {
-                        node: None,
-                        document,
-                    },
-                )
-                .map_err(|_| latch_registry_row(c))?;
-            Some(slot)
-        } else {
-            None
+        let context = self.intern_document(c, document)?;
+        let contents_context = match contents_document {
+            Some(document) => Some(self.intern_document(c, document)?),
+            None => None,
         };
         let facts = if template {
             let prepared = self.prepare_payload_slot_owned(c)?;
@@ -570,8 +522,8 @@ impl SessionStorage {
             None
         };
         Ok(Some(PreparedDocuments {
-            binding: Some(binding),
-            contents_binding,
+            context: Some(context),
+            contents_context,
             facts,
             registry: None,
         }))
@@ -613,22 +565,18 @@ impl SessionStorage {
         prepared: Option<PreparedDocuments>,
     ) -> Result<ParserNode, SessionError> {
         let Some(PreparedDocuments {
-            binding,
-            contents_binding,
+            context,
+            contents_context,
             facts,
             registry,
         }) = prepared
         else {
             return self.allocate_native_record(c, kind, template, attributes, units);
         };
-        payload_write::<Option<usize>>(
+        payload_write::<Option<usize>>(c, count_set([facts.is_some(), registry.is_some()]) as u64)?;
+        payload_write::<u32>(
             c,
-            count_set([
-                binding.is_some(),
-                contents_binding.is_some(),
-                facts.is_some(),
-                registry.is_some(),
-            ]) as u64,
+            count_set([context.is_some(), contents_context.is_some()]) as u64,
         )?;
         if facts.is_some() {
             payload_write::<usize>(c, 1)?;
@@ -645,27 +593,12 @@ impl SessionStorage {
                 .join_row(slot)
                 .map_err(|_| latch_registry_row(c))?;
         }
-        if let Some(binding) = binding {
-            let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
-                self.payloads.values.get_mut(binding)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            *bound = Some(node.index);
-            self.payloads
-                .join_row(binding)
-                .map_err(|_| latch_registry_row(c))?;
+        if let Some(entry) = context {
+            self.set_context(c, node.index, entry)?;
         }
-        if let Some(slot) = contents_binding {
-            let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
-                self.payloads.values.get_mut(slot)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            *bound = Some(successor(c, node.index)?);
-            self.payloads
-                .join_row(slot)
-                .map_err(|_| latch_registry_row(c))?;
+        if let Some(entry) = contents_context {
+            let contents = successor(c, node.index)?;
+            self.set_context(c, contents, entry)?;
         }
         if let Some(slot) = facts {
             let Some(RetainedPayload::Template { node: bound, state }) =
@@ -714,30 +647,25 @@ impl FrozenArena {
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
             .position();
-        for payload in &storage.payloads.values {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if let Some(document) =
+            node_context::frozen_document(&storage.payloads.facts.contexts, arena, index)
+        {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::NodeDocument {
-                node: Some(bound),
-                document,
-            } = payload
-                && *bound == index
-            {
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if !matches!(
-                    arena.node_at(document.owned()?).map(|node| node.kind()),
-                    Some(ConstructionNodeKind::Document(_))
-                ) {
-                    return Err(SessionError::NotDocument);
-                }
-                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                payload_write::<HtmlNodeId>(c, 1)?;
-                return Ok(arena
-                    .node_at(document.owned()?)
-                    .ok_or(SessionError::ForeignNode)?
-                    .as_node()
-                    .map_err(|error| construction_error(c, error))?
-                    .id());
+            if !matches!(
+                arena.node_at(document.owned()?).map(|node| node.kind()),
+                Some(ConstructionNodeKind::Document(_))
+            ) {
+                return Err(SessionError::NotDocument);
             }
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+            payload_write::<HtmlNodeId>(c, 1)?;
+            return Ok(arena
+                .node_at(document.owned()?)
+                .ok_or(SessionError::ForeignNode)?
+                .as_node()
+                .map_err(|error| construction_error(c, error))?
+                .id());
         }
         Err(SessionError::NodeDocumentUnavailable)
     }

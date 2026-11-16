@@ -169,11 +169,11 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
     .unwrap();
     let environment = environment(&mut dom);
     // The `a` element holds the record of its hyperlink state beside the records of the
-    // Document and the nodes, which makes the seventeen records the growth below needs.
+    // Document and the nodes.
     let report = report_for("<!doctype html><a>private</a>");
-    // This literal has seven source subjects and seventeen metadata records.
+    // This literal has seven source subjects and ten metadata records.
     // The selected geometric banks hold eight Rows while metadata grows from
-    // sixteen to thirty-two. Both metadata allocations coexist during copying;
+    // eight to sixteen. Both metadata allocations coexist during copying;
     // the peak is their sum, not a final-occupancy receipt from the allocator.
     // The original envelope also reserves the two actual mandatory shared
     // output Vec payload headers before collection. This is future-backing
@@ -188,9 +188,9 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
             HtmlParseMetadataStep::Complete => break,
         }
     }
-    assert_eq!(records, 17);
+    assert_eq!(records, 10);
     let peak = 8 * size_of::<Row<'_>>()
-        + (16 + 32) * size_of::<HtmlParseMetadata<'_>>()
+        + (8 + 16) * size_of::<HtmlParseMetadata<'_>>()
         + size_of::<Vec<DomParsedHtmlBinding>>()
         + size_of::<Vec<DomParsedHtmlCapturedBinding>>();
     let before = dom.snapshot();
@@ -1356,4 +1356,68 @@ fn a_parse_installs_its_text_by_length_and_its_one_block_once() {
     // Each text counts its own length, and the block counts its capacity once.
     let lengths: usize = strings.iter().map(DocumentString::len).sum();
     assert_eq!(with_units - without_units, lengths + block.capacity());
+}
+
+/// How many times installing `html` asks the report for the document of a tree.
+fn tree_document_asks(html: &str) -> usize {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            4096,
+            1_000_000,
+            4096,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let environment = environment(&mut dom);
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(HtmlSource::utf8(html), text_parser_limits())
+            .parse()
+            .unwrap(),
+    );
+    TREE_DOCUMENT_ASKS.with(|asks| asks.set(0));
+    dom.install_parsed_html_document(
+        dom.snapshot().stamp(),
+        report,
+        environment,
+        crate::DomParsedHtmlInstallLimits::new(4096, 100_000_000, 16_000_000, 100_000_000),
+        &cancel,
+    )
+    .unwrap();
+    TREE_DOCUMENT_ASKS.with(std::cell::Cell::get)
+}
+
+/// Every node of a tree has the document of its root, so the installation asks the report for it
+/// once for the root and not once for each node, however many nodes the tree holds and however
+/// deep it is. The report is asked by the collection of the rows and by the allocation of the
+/// nodes, once each for a root, and a document that has only the Document for a root is asked
+/// twice.
+#[test]
+fn an_installation_asks_the_report_for_a_document_once_for_each_root() {
+    let wide = |items: usize| format!("<!doctype html><ul>{}</ul>", "<li>x</li>".repeat(items));
+    let deep = |depth: usize| {
+        format!(
+            "<!doctype html>{}x{}",
+            "<div>".repeat(depth),
+            "</div>".repeat(depth)
+        )
+    };
+    for html in [wide(1), wide(8), wide(64), deep(8), deep(32)] {
+        assert_eq!(tree_document_asks(&html), 2, "{html}");
+    }
+    // A template adds the roots of its contents and of the inert Document that owns them, so three
+    // roots are asked twice each however many nodes the contents hold.
+    for items in [1, 64] {
+        let html = format!(
+            "<!doctype html><template>{}</template>",
+            "<i>x</i>".repeat(items)
+        );
+        assert_eq!(tree_document_asks(&html), 6, "{items} items");
+    }
 }

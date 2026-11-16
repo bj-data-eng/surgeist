@@ -467,6 +467,13 @@ pub surgeist_html_parser::HtmlParseTokenFamily::Eof
 pub surgeist_html_parser::HtmlParseTokenFamily::ProcessingInstruction
 pub surgeist_html_parser::HtmlParseTokenFamily::Tag
 pub surgeist_html_parser::HtmlParseTokenFamily::Text
+#[non_exhaustive] pub enum surgeist_html_parser::HtmlParseTreeDocumentError
+pub surgeist_html_parser::HtmlParseTreeDocumentError::Foreign
+pub surgeist_html_parser::HtmlParseTreeDocumentError::NotRoot
+pub surgeist_html_parser::HtmlParseTreeDocumentError::Unresolved(surgeist_html_parser::HtmlParseUnresolvedReference)
+impl core::error::Error for surgeist_html_parser::HtmlParseTreeDocumentError
+impl core::fmt::Display for surgeist_html_parser::HtmlParseTreeDocumentError
+pub fn surgeist_html_parser::HtmlParseTreeDocumentError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_html_parser::HtmlParseUnresolvedKind
 pub surgeist_html_parser::HtmlParseUnresolvedKind::CapturedNode
 pub surgeist_html_parser::HtmlParseUnresolvedKind::Cause
@@ -1138,7 +1145,6 @@ pub fn surgeist_html_parser::HtmlParseMetadata<'a>::link_flags(&self) -> core::o
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::link_history(&self) -> core::option::Option<surgeist_html::internal::elements::rel::HtmlLinkHistory>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::link_parser_document(&self) -> core::option::Option<core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::node(&self) -> surgeist_html::internal::construction::HtmlNode<'a>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::node_document(&self) -> core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::option_nearest_select(&self) -> core::option::Option<core::option::Option<surgeist_html::internal::construction::HtmlNode<'a>>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::pi_attribute(&self, index: usize) -> core::option::Option<(&'a surgeist_html::internal::values::document_string::DocumentString, &'a surgeist_html::internal::values::document_string::DocumentString)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::pi_attribute_count(&self) -> core::option::Option<usize>
@@ -1240,6 +1246,7 @@ pub fn surgeist_html_parser::HtmlParseReport::retained_construction_utf16_units(
 pub fn surgeist_html_parser::HtmlParseReport::script_position(&self, id: &surgeist_html::internal::construction::HtmlNodeId) -> core::result::Result<core::option::Option<surgeist_html_parser::HtmlSourcePosition>, surgeist_html_parser::HtmlSourceRangeError>
 pub fn surgeist_html_parser::HtmlParseReport::source(&self) -> &surgeist_html_parser::HtmlSource
 pub fn surgeist_html_parser::HtmlParseReport::style_position(&self, id: &surgeist_html::internal::construction::HtmlNodeId) -> core::result::Result<core::option::Option<surgeist_html_parser::HtmlSourcePosition>, surgeist_html_parser::HtmlSourceRangeError>
+pub fn surgeist_html_parser::HtmlParseReport::tree_document(&self, root: &surgeist_html::internal::construction::HtmlNodeId) -> core::result::Result<surgeist_html_parser::HtmlParseTreeDocument<'_>, surgeist_html_parser::HtmlParseTreeDocumentError>
 pub fn surgeist_html_parser::HtmlParseReport::usage(&self) -> &surgeist_html_parser::HtmlParseUsage
 impl surgeist_html_parser::HtmlParseReport
 pub fn surgeist_html_parser::HtmlParseReport::detail(&self) -> core::option::Option<surgeist_html_parser::HtmlParseDetail<'_>>
@@ -1280,6 +1287,10 @@ pub fn surgeist_html_parser::HtmlParseTextOrigin::end(&self) -> usize
 pub fn surgeist_html_parser::HtmlParseTextOrigin::kind(&self) -> surgeist_html_parser::HtmlParseOriginKind
 pub fn surgeist_html_parser::HtmlParseTextOrigin::source(&self) -> &surgeist_html_parser::HtmlSourceRange
 pub fn surgeist_html_parser::HtmlParseTextOrigin::start(&self) -> usize
+pub struct surgeist_html_parser::HtmlParseTreeDocument<'a>
+impl<'a> surgeist_html_parser::HtmlParseTreeDocument<'a>
+pub fn surgeist_html_parser::HtmlParseTreeDocument<'a>::document(&self) -> core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>
+pub fn surgeist_html_parser::HtmlParseTreeDocument<'a>::probes(&self) -> u64
 pub struct surgeist_html_parser::HtmlParseUnresolvedReference
 impl surgeist_html_parser::HtmlParseUnresolvedReference
 pub const fn surgeist_html_parser::HtmlParseUnresolvedReference::kind(&self) -> surgeist_html_parser::HtmlParseUnresolvedKind

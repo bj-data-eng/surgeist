@@ -1759,19 +1759,11 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     // The element's retained document binding, read without charging work so
     // it can be observed after a stop.
     let binding = |owner: &ParserArenaSession| {
-        owner
-            .active()
-            .unwrap()
-            .payloads
-            .values
-            .iter()
-            .find_map(|payload| match payload {
-                RetainedPayload::NodeDocument {
-                    node: Some(bound),
-                    document,
-                } if *bound == ELEMENT => Some(document.clone()),
-                _ => None,
-            })
+        let contexts = &owner.active().unwrap().payloads.facts.contexts;
+        contexts
+            .cell(ELEMENT)
+            .and_then(|entry| contexts.document(entry))
+            .cloned()
             .expect("the element has a document binding")
     };
     let (needed, initial) = {

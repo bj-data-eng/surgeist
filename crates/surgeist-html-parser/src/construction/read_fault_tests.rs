@@ -713,17 +713,38 @@ fn a_textarea_naming_a_raw_value_that_is_not_a_string_faults_the_cursor() {
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
-#[test]
-fn a_node_document_naming_a_missing_node_faults_the_cursor() {
-    let mut report = parse("<p>A");
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::NodeDocument { document, .. } => {
-            *document = DocumentRef::Owned(usize::MAX);
-            true
+/// The contents of the one template of `report`, a tree whose root names the inert document.
+fn template_contents(report: &crate::HtmlParseReport) -> surgeist_html::construction::HtmlNodeId {
+    let mut cursor = report.metadata();
+    loop {
+        match cursor.advance() {
+            crate::HtmlParseMetadataStep::Record(record) => {
+                if let Some(template) = record.template() {
+                    return template.contents().id();
+                }
+            }
+            crate::HtmlParseMetadataStep::Skipped => {}
+            _ => panic!("the report holds a template"),
         }
-        _ => false,
-    });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Node)));
+    }
+}
+
+#[test]
+fn a_tree_document_naming_a_missing_node_is_an_unresolved_reference() {
+    let mut report = parse("<template><p>A</template>");
+    let contents = template_contents(&report);
+    // The contents of the template are a tree whose root names the inert document; the
+    // document the report holds for it names a record that is not there.
+    let documents = frozen(&mut report).payloads.facts.contexts.documents_mut();
+    for position in 0..documents.len() {
+        *documents.row_mut(position).unwrap() = DocumentRef::Owned(usize::MAX);
+    }
+    assert_eq!(
+        report.tree_document(&contents).err(),
+        Some(
+            crate::construction::report::HtmlParseTreeDocumentError::Unresolved(fault(Kind::Node))
+        )
+    );
 }
 
 #[test]
@@ -1072,7 +1093,28 @@ fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
 // ---- a link's node document and flags ----
 
 #[test]
-fn a_link_whose_node_document_row_is_not_its_own_faults_the_cursor() {
+fn a_table_entry_past_the_list_of_documents_is_an_unresolved_reference() {
+    let mut report = parse("<template><p>A</template>");
+    let contents = template_contents(&report);
+    // The one row of the table is the contents root's; its entry names no document of the list.
+    let named = frozen(&mut report)
+        .payloads
+        .facts
+        .contexts
+        .named_mut()
+        .expect("a frozen parse holds the table");
+    assert_eq!(named.len(), 1);
+    *named.row_mut(0).unwrap() = u32::MAX;
+    assert_eq!(
+        report.tree_document(&contents).err(),
+        Some(
+            crate::construction::report::HtmlParseTreeDocumentError::Unresolved(fault(Kind::Fact))
+        )
+    );
+}
+
+#[test]
+fn a_link_with_no_row_in_the_table_of_named_documents_faults_the_cursor() {
     let mut report = parse("<link rel=x href=y>");
     let link = frozen(&mut report)
         .payloads
@@ -1083,14 +1125,16 @@ fn a_link_whose_node_document_row_is_not_its_own_faults_the_cursor() {
             _ => None,
         })
         .unwrap();
-    // The row the join names is bound to another node, so the link has none.
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::NodeDocument { node, .. } if *node == Some(link) => {
-            *node = Some(0);
-            true
-        }
-        _ => false,
-    });
+    // The one row of the table is the link's. Giving it the key of another node leaves the link
+    // with no row, so the report has no document to read for it.
+    let named = frozen(&mut report)
+        .payloads
+        .facts
+        .contexts
+        .named_mut()
+        .expect("a frozen parse holds the table");
+    let (found, _) = named.find_published(link);
+    assert!(named.rekey_for_test(found.expect("the link has a row"), 0));
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 

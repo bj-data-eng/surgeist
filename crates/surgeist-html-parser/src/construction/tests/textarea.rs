@@ -521,8 +521,9 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         .insert_text(&mut c, &node, None, &mut text, None)
         .unwrap();
     tokenizer.release(&mut c).unwrap();
-    // The registry holds the 14 rows listed above.
-    assert_eq!(session.active().unwrap().payloads.values.len(), 14);
+    // The registry holds the 14 rows listed above less the three that named the documents of
+    // the nodes, which the parse holds once for their tree.
+    assert_eq!(session.active().unwrap().payloads.values.len(), 11);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -570,8 +571,9 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
         }
     ));
     let storage = session.active().unwrap();
-    // The registry holds the 14 rows and the five reset slots, 19.
-    assert_eq!(storage.payloads.values.len(), 19);
+    // The registry holds the 14 rows less the three that named documents, and the five reset
+    // slots, 16.
+    assert_eq!(storage.payloads.values.len(), 16);
     let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
         panic!("original current raw retained")
     };

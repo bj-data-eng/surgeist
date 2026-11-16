@@ -309,12 +309,6 @@ pub(super) fn metadata(
             continue;
         }
         let key = source.key(&node.id(), c)?;
-        if let Some(document) = record.node_document() {
-            let document = source.document_key(document, c)?;
-            if draft.node(key)?.document() != document {
-                return Err(Error::UnsupportedState { subject: node.id() });
-            }
-        }
         if let Some((_, inert, cache)) = record.document_facts() {
             let cache = cache.map(|value| source.key(&value.id(), c)).transpose()?;
             let value = Some(if inert {
@@ -987,7 +981,12 @@ fn family(
                 .index(&node.id(), c)?
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
             c.step(1)?;
-            let availability = match source.rows[index].style_association {
+            let association = source
+                .rows
+                .get(index)
+                .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?
+                .style_association;
+            let availability = match association {
                 ParsedStyleAssociation::KnownNull => crate::DomStyleSheetAvailability::Established,
                 ParsedStyleAssociation::Unqualified | ParsedStyleAssociation::Pending => {
                     crate::DomStyleSheetAvailability::PendingParsedProcessing

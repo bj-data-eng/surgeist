@@ -2653,6 +2653,12 @@ reopen execution or alter that snapshot. Its
   `input_image_coordinate()` and `input_image_source()` lend Image's initial
   `(0,0)` coordinate and independently retained last Image source, distinguishing
   absent from present-empty. Native attributes remain separately traversable.
+- `tree_document(root)` answers the document of the tree rooted at `root`. Every node of a
+  tree has the document of its root, so the report holds one answer for each root that names
+  a document and for each `link`, and none for each node: a Document root is its own
+  document and reads no key, any other root is found by a binary search whose keys `probes()`
+  counts, and a root that names no document answers `None`. A node with a parent answers
+  `NotRoot` and a node of another result `Foreign`.
 - A parse records its optional detail only when its request selects it with
   `with_detail(DetailSet)`: the source map (`SOURCE_MAP`), the lexical and
   omission records (`LEXICAL`), the construction history (`HISTORY`) and the

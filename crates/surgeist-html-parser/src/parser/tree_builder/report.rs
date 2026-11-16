@@ -375,6 +375,31 @@ impl HtmlParseReport {
     pub fn metadata(&self) -> HtmlParseMetadataCursor<'_> {
         self.storage.metadata()
     }
+    /// The document of the tree that holds `node`, for tests that ask about a node whose root they
+    /// do not know.
+    #[cfg(test)]
+    pub(crate) fn node_document_for_test(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<
+        crate::construction::report::HtmlParseTreeDocument<'_>,
+        crate::construction::report::HtmlParseTreeDocumentError,
+    > {
+        self.storage.node_document_for_test(node)
+    }
+    /// The document of the tree rooted at `root`. Every node of a tree has the document of its
+    /// root, so a report holds the document of each root and not of each node: a Document root is
+    /// its own document, and any other root is found among the roots that name one. A node that
+    /// has a parent is not asked about.
+    pub fn tree_document(
+        &self,
+        root: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<
+        crate::construction::report::HtmlParseTreeDocument<'_>,
+        crate::construction::report::HtmlParseTreeDocumentError,
+    > {
+        self.storage.tree_document(root)
+    }
     pub fn effects(
         &self,
     ) -> Result<
@@ -528,7 +553,6 @@ mod tests {
             );
         }
         let usage = report.usage().clone();
-        let mut counts = [0; 2];
         let mut nonce_counts = [0; 2];
         let mut cursor = report.metadata();
         loop {
@@ -539,12 +563,7 @@ mod tests {
                         if record.node().id() == *id {
                             // The private Details marker emits no record; ordinary
                             // creation has an independent no-definition record.
-                            if let Some(HtmlParseMetadataDocument::Owned(owner)) =
-                                record.node_document()
-                            {
-                                assert_eq!(owner.id(), document.root().id());
-                                counts[index] += 1;
-                            } else if let Some(nonce) = record.cryptographic_nonce() {
+                            if let Some(nonce) = record.cryptographic_nonce() {
                                 assert_eq!(nonce.code_units(), &[]);
                                 nonce_counts[index] += 1;
                             } else {
@@ -559,7 +578,13 @@ mod tests {
                 HtmlParseMetadataStep::Complete => break,
             }
         }
-        assert_eq!(counts, [1, 1]);
+        // Both elements are in the tree of the Document, which names itself.
+        for id in &details {
+            let found = report.node_document_for_test(id).unwrap();
+            assert!(
+                matches!(found.document(), Some(HtmlParseMetadataDocument::Owned(owner)) if owner.id() == document.root().id())
+            );
+        }
         assert_eq!(nonce_counts, [1, 1]);
         assert_eq!(report.usage(), &usage);
         assert_eq!(report.source().as_utf8(), Some(literal));
@@ -925,8 +950,10 @@ mod tests {
             match metadata.advance() {
                 HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
                 HtmlParseMetadataStep::Record(record) => {
-                    if let Some(HtmlParseMetadataDocument::Captured(document)) =
-                        record.node_document()
+                    if let Some(HtmlParseMetadataDocument::Captured(document)) = report
+                        .node_document_for_test(&record.node().id())
+                        .unwrap()
+                        .document()
                     {
                         assert!(matches!(document.kind(), HtmlCapturedNodeKind::Document(_)));
                         assert_eq!(
@@ -1062,6 +1089,31 @@ mod tests {
         );
         let kept = input.as_mut().unwrap();
         assert_eq!(kept.parts.control.stop(), Some(registry_row));
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    /// Publication requires a link to name a document, since the history of a link joins the
+    /// parser Document. A link with no row in the table of named documents is refused as the node
+    /// document defect, and the refusal keeps the seal.
+    #[test]
+    fn a_link_naming_no_document_is_not_published() {
+        let mut input = Some(ordinary("<!doctype html><link rel=a href=b>", true));
+        assert!(
+            input
+                .as_mut()
+                .unwrap()
+                .parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .drop_link_document_for_test()
+        );
+        assert!(matches!(
+            HtmlParseReport::take_document(&mut input),
+            Err(SessionError::NodeDocumentUnavailable)
+        ));
+        let kept = input.as_mut().expect("the seal is kept");
         kept.release().unwrap();
         super::super::tests::assert_released(&kept.parts.control);
     }
@@ -1266,7 +1318,10 @@ mod tests {
                             assert_eq!(state, surgeist_html::elements::native::HtmlCustomElementState::Uncustomized);
                         }
                     }
-                    if let Some(HtmlParseMetadataDocument::Owned(document)) = record.node_document()
+                    if let Some(HtmlParseMetadataDocument::Owned(document)) = report
+                        .node_document_for_test(&record.node().id())
+                        .unwrap()
+                        .document()
                     {
                         assert!(matches!(
                             document.kind(),

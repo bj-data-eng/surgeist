@@ -989,7 +989,7 @@ mod tests {
     }
     #[test]
     fn nonce_empty_backing_and_slot_have_two_actual_auxiliary_admissions() {
-        for cap in [1, 2, 3] {
+        for cap in [2, 3, 4] {
             let limits = super::super::tests::limits()
                 .into_builder()
                 .auxiliary_entries(cap)
@@ -998,20 +998,21 @@ mod tests {
                 .unwrap();
             let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-            // The actual fragment root owns one node-join cell, with no Document metadata. The
-            // nonce producer adds exactly its empty backing and metadata slot.
+            // The actual fragment root owns one node-join cell and one document cell, with no
+            // Document metadata. The nonce producer adds exactly its empty backing and metadata
+            // slot.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                1
+                2
             );
             let name = QualifiedName::new(Namespace::html(), None, "p");
             let result = session
                 .active_mut()
                 .unwrap()
                 .prepare_nonce(&mut c, Some(&name));
-            if cap == 3 {
+            if cap == 4 {
                 let slot = result.unwrap().unwrap();
                 let storage = session.active().unwrap();
                 let RetainedPayload::Nonce { node, raw } = storage.payloads.values[slot] else {
@@ -1026,7 +1027,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    3
+                    4
                 );
             } else {
                 let first = c.stop().unwrap();
@@ -1035,7 +1036,7 @@ mod tests {
                     matches!(first, HtmlParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, current, requested_delta: 1 } if limit == cap && current == cap)
                 );
                 let storage = session.active().unwrap();
-                assert_eq!(storage.payloads.values.len(), (cap - 1) as usize);
+                assert_eq!(storage.payloads.values.len(), (cap - 2) as usize);
                 assert!(
                     !storage
                         .payloads
@@ -1043,7 +1044,7 @@ mod tests {
                         .iter()
                         .any(|entry| matches!(entry, RetainedPayload::Nonce { .. }))
                 );
-                if cap == 2 {
+                if cap == 3 {
                     assert!(
                         matches!(&storage.payloads.values[0], RetainedPayload::String { value, .. } if value.is_empty())
                     );
