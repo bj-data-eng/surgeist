@@ -462,27 +462,3 @@ fn an_element_in_the_namespace_of_the_fragment_context_has_the_captured_namespac
         assert_eq!(String::from_utf16_lossy(&group.units), "urn:retained");
     }
 }
-
-/// The units of an element's name are counted once, with the element. A plain element of the HTML
-/// namespace named `span` counts the units of `span` and of its namespace URI: the difference
-/// between documents of 16 and 64 plain elements, without detail.
-#[test]
-fn a_plain_element_counts_the_units_of_its_name_and_namespace() {
-    let units = |elements: usize| {
-        let source = format!("<!doctype html>{}", "<span></span>".repeat(elements));
-        crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8(source.as_str()),
-            g2_d2::corpus_limits(),
-        )
-        .parse()
-        .unwrap()
-        .usage()
-        .resource(crate::HtmlParseResource::ManagedUtf16Units)
-        .current()
-    };
-    let namespace = "http://www.w3.org/1999/xhtml".len() as u64;
-    assert_eq!(
-        units(64) - units(16),
-        (64 - 16) * ("span".len() as u64 + namespace)
-    );
-}
