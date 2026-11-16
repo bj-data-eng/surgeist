@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
-    AlignContent, AlignItems, GridAxisKind, GridLanesFlow, GridPlacement, MinSizeOf,
-    PreferredSizeOf, SubgridTrack, TrackComponentOf,
+    AlignContent, AlignItems, ComputedOverflow, GridAxisKind, GridLanesFlow, GridPlacement,
+    MinSizeOf, Overflow, PreferredSizeOf, ScrollbarWidthOf, SizeContainment, SubgridTrack,
+    TrackComponentOf,
 };
 
 fn subgrid<S: LayoutScalar>() -> Vec<TrackComponentOf<S>> {
@@ -358,6 +359,106 @@ fn shallow_one_axis_subgrid_chain_clamps_to_standalone_minimum() {
         || {
             assert_standalone_minimum_chain::<f32>(3);
             assert_standalone_minimum_chain::<f64>(3);
+        },
+    );
+}
+
+// CSS Grid Level 2, section 9, with CSS Contain 2 size containment. The item
+// inherits both columns from its 100px and 100px parent tracks and has its own
+// fixed 30px and 30px rows; size containment sizes it as if it had no content,
+// which keeps its tracks. Its width is the 200px of the inherited columns and
+// its height the 60px of its rows. `min-height: min-content` on a subgrid that
+// inherits only the column axis makes the item a standalone Grid for its
+// minimum, whose probe runs size containment before any pass. Its content, a
+// 20px box, lies in the first inherited column and row.
+fn probed_contained_item<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
+    PublicLayoutTreeOf::new()
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Grid,
+                size: px_size(200.0, 200.0),
+                grid_template_columns: fixed_tracks([100.0, 100.0]),
+                grid_template_rows: fixed_tracks([100.0, 100.0]),
+                ..NodeInputOf::default()
+            },
+        )
+        .children(0, [1])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_span(2).unwrap(),
+                grid_row: GridPlacement::try_span(2).unwrap(),
+                grid_template_columns: subgrid(),
+                grid_template_rows: fixed_tracks([30.0, 30.0]),
+                size_containment: SizeContainment::BothAxes,
+                overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
+                scrollbar_width: ScrollbarWidthOf::try_new(S::from_f64(15.0)).unwrap(),
+                justify_self: Some(AlignItems::Start),
+                align_self: Some(AlignItems::Start),
+                min_size: Size::new(MinSizeOf::AUTO, MinSizeOf::MIN_CONTENT),
+                ..NodeInputOf::default()
+            },
+        )
+        .children(1, [2])
+        .style(
+            2,
+            NodeInputOf {
+                size: px_size(20.0, 20.0),
+                ..NodeInputOf::default()
+            },
+        )
+}
+
+fn assert_probed_contained_item<S: LayoutScalar>() {
+    let tree = probed_contained_item::<S>();
+    let batch = compute_layout(&tree, 0, standalone()).expect("contained subgrid layout");
+    assert_eq!(batch.node_layouts().len(), 3);
+    assert_box(&batch, 1, (0.0, 0.0), (200.0, 60.0));
+    assert_box(&batch, 2, (0.0, 0.0), (20.0, 20.0));
+}
+
+#[test]
+fn size_contained_subgrid_item_keeps_its_tracks_when_its_minimum_is_probed() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_grid_children::size_contained_subgrid_item_keeps_its_tracks_when_its_minimum_is_probed",
+        || {
+            assert_probed_contained_item::<f32>();
+            assert_probed_contained_item::<f64>();
+        },
+    );
+}
+
+fn nan_height<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+    Size::new(S::from_f64(10.0), S::NAN)
+}
+
+// A leaf at the end of a subgrid chain returns a non-finite height. The
+// measurement protocol refuses it at the leaf, and the refusal reaches the
+// caller unchanged through every contextual Grid request above it.
+fn assert_chain_failure_surfaces_unchanged<S: LayoutScalar>() {
+    let depth = 3;
+    let leaf = depth + 1;
+    let tree = subgrid_grid_chain::<S>(depth, Span::Whole).measure_with(leaf, nan_height::<S>);
+    let error = compute_layout(&tree, 0, standalone()).expect_err("non-finite leaf height");
+    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(leaf));
+    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert!(matches!(
+        error.kind(),
+        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output))
+            if output.axis() == crate::PhysicalAxis::Vertical
+                && matches!(output.error(), crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
+    ));
+}
+
+#[test]
+fn subgrid_chain_leaf_refusal_surfaces_unchanged() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_grid_children::subgrid_chain_leaf_refusal_surfaces_unchanged",
+        || {
+            assert_chain_failure_surfaces_unchanged::<f32>();
+            assert_chain_failure_surfaces_unchanged::<f64>();
         },
     );
 }
