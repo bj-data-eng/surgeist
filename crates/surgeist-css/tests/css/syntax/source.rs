@@ -9,6 +9,7 @@ mod style_attribute_composed_recovery;
 mod style_attribute_malformed_starts;
 mod style_attribute_recovery;
 mod stylesheet_byte_input;
+mod stylesheet_encoding_guidance;
 mod stylesheet_unicode_bom;
 mod stylesheet_utf16;
 mod syntax_stylesheet_source_contract;
