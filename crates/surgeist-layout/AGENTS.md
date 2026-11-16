@@ -56,6 +56,13 @@ cargo clippy -j 1 --offline --locked -p surgeist-layout --all-targets -- -F unsa
 cargo fmt -p surgeist-layout -- --check
 ```
 
+Release-mode benchmarks over deterministic generated documents are `benches/` targets that use no dependencies beyond the package's own; a name after `--` selects documents.
+
+```sh
+cargo bench --offline --locked -j 1 -p surgeist-layout --bench structure
+cargo bench --offline --locked -j 1 -p surgeist-layout --bench text
+```
+
 ```sh
 env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test -j 1 --offline --locked -p surgeist-layout --test layout layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
 ```
