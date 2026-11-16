@@ -527,7 +527,7 @@ impl<'a> PreparedReportStorage<'a> {
                 return Err(SessionError::ContextUnavailable);
             }
         }
-        qualify_creation_rows(storage, arena, c, closed_common)?;
+        qualify_creation_rows(storage, arena, c)?;
         if closed_common {
             qualify_elements(storage, arena, c)?;
         }
@@ -689,16 +689,14 @@ fn classify(
         },
     )?)
 }
-/// Qualifies the rows of the table of creation states: each names an element, its saved is value
-/// resolves, and in a closed profile with the Null registry its common scope is the one the
-/// classification of its name gives.
+/// Qualifies the rows of the table of creation states: each names an element and its saved is
+/// value resolves. The scope of a row is qualified by the element walk, which classifies the name
+/// of every element once.
 fn qualify_creation_rows(
     storage: &FrozenStorage,
     arena: &HtmlConstructionResult,
     c: &mut ParseControl,
-    closed_common: bool,
 ) -> Result<(), SessionError> {
-    let contexts = &storage.payloads.facts.contexts;
     for (node, state) in storage.payloads.facts.creation.iter() {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
@@ -706,17 +704,8 @@ fn qualify_creation_rows(
             mem::size_of::<context::ElementCreationState>() as u64,
         )?;
         let record = checked_node(arena, node, c)?;
-        let ConstructionNodeKind::Element(element) = record.kind() else {
+        if !matches!(record.kind(), ConstructionNodeKind::Element(_)) {
             return Err(SessionError::WrongToken);
-        };
-        if closed_common {
-            let (null, probes) = contexts
-                .registry_is_null(node)
-                .map_err(|_| latch_registry_row(c))?;
-            c.charge(HtmlParseWorkCategory::RecordVisit, probes)?;
-            if null && classify(element.name(), c)?.common_scope() != state.common_scope {
-                return Err(SessionError::WrongToken);
-            }
         }
         if let Some(saved) = state.saved_is {
             checked_raw(storage, saved, c)?;
@@ -724,21 +713,30 @@ fn qualify_creation_rows(
     }
     Ok(())
 }
-/// Qualifies that every element of a closed profile with the Null registry whose name classifies
-/// it in the Hyperlink, Image, Style or Dialog family has exactly one row of that family. The
-/// walk visits each record once and classifies each such element.
+/// Qualifies every element of a closed profile with the Null registry: the scope of its row in the
+/// table of creation states, if it has one, is the scope its classification gives, and an element
+/// whose name classifies it in the Hyperlink, Image, Style or Dialog family has exactly one row of
+/// that family. The walk visits each record once and classifies each such element once. The rows
+/// of the table are in ascending order of node, as the walk is, so the walk reads the row of an
+/// element without a search.
 fn qualify_elements(
     storage: &FrozenStorage,
     arena: &HtmlConstructionResult,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
     let contexts = &storage.payloads.facts.contexts;
+    let mut rows = storage.payloads.facts.creation.iter().peekable();
     for subject in 0..arena.len() {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let record = arena.node_at(subject).ok_or(SessionError::ForeignNode)?;
         let ConstructionNodeKind::Element(element) = record.kind() else {
             continue;
         };
+        // Each row names an element, which the rows' own qualification required.
+        while rows.next_if(|(node, _)| *node < subject).is_some() {}
+        let row = rows
+            .next_if(|(node, _)| *node == subject)
+            .map(|(_, row)| row);
         if contexts.registered() {
             let (null, probes) = contexts
                 .registry_is_null(subject)
@@ -749,6 +747,9 @@ fn qualify_elements(
             }
         }
         let class = classify(element.name(), c)?;
+        if row.is_some_and(|row| row.common_scope != class.common_scope()) {
+            return Err(SessionError::WrongToken);
+        }
         let family = match class {
             surgeist_html::elements::native::HtmlElementClass::KnownHtml(
                 surgeist_html::vocabulary::KnownHtmlElement::A
@@ -2539,7 +2540,7 @@ mod creation_row_tests {
     use super::*;
 
     /// The rows of the table of creation states of a parse of `source`, and the record visits that
-    /// qualifying them charges in a closed profile.
+    /// qualifying them charges.
     fn qualify(source: &str) -> (usize, u64) {
         let limits = crate::parser::tree_builder::tests::limits(100);
         let report =
@@ -2549,7 +2550,7 @@ mod creation_row_tests {
         let storage = report.history().storage();
         let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
         let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
-        qualify_creation_rows(storage, &storage.view, &mut c, true).unwrap();
+        qualify_creation_rows(storage, &storage.view, &mut c).unwrap();
         (
             storage.payloads.facts.creation.len(),
             c.usage().work(HtmlParseWorkCategory::RecordVisit) - before,
@@ -2571,5 +2572,32 @@ mod creation_row_tests {
             // One visit for the row and one for the element it names.
             assert_eq!(visits, 2 * rows as u64, "{elements} rows");
         }
+    }
+
+    /// The scope of a row is the one the classification of the element's name gives, and the
+    /// element walk refuses a row that holds another.
+    #[test]
+    fn the_element_walk_refuses_a_creation_row_whose_scope_is_not_its_classification() {
+        let limits = crate::parser::tree_builder::tests::limits(100);
+        let mut report = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<!doctype html><x-a></x-a>"),
+            limits,
+        )
+        .parse()
+        .unwrap();
+        let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+        let storage = report.history().storage();
+        assert_eq!(qualify_elements(storage, &storage.view, &mut c), Ok(()));
+        let storage = report.storage_mut().history_mut().storage_mut();
+        let row = storage.payloads.facts.creation.row_mut(0).unwrap();
+        assert_eq!(
+            row.common_scope,
+            surgeist_html::elements::native::HtmlCommonScope::Html
+        );
+        row.common_scope = surgeist_html::elements::native::HtmlCommonScope::Element;
+        assert_eq!(
+            qualify_elements(storage, &storage.view, &mut c),
+            Err(SessionError::WrongToken)
+        );
     }
 }
