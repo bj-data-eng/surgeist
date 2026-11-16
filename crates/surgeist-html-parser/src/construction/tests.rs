@@ -22,6 +22,7 @@ mod native_payloads;
 pub(crate) mod native_view;
 mod output;
 mod pi_origin_walk;
+mod plain_elements;
 mod prologue;
 mod radio_groups;
 mod record_reserve;
