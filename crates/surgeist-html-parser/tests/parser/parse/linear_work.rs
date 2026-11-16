@@ -706,31 +706,43 @@ fn work_added_by_each_doubling_of_nested_declarative_shadow_roots_is_near_double
 }
 
 #[test]
-fn a_declarative_shadow_root_adds_visits_that_grow_only_with_the_keys_of_the_table_searches() {
+fn a_declarative_shadow_root_adds_a_fixed_number_of_visits_and_its_table_searches() {
     // The layers deepen both the tree and the stack, and the scope checks the
     // added layer makes end at its own template, so nothing the layer does
     // needs to look beyond the layers around it. The metadata of its template is a
-    // row of the table of templates, which the layer searches a fixed number of times:
-    // each search reads `floor(log2 n) + 1` keys of a table of `n` rows, so what a layer
-    // adds grows by a fixed number of visits each time the enclosing layers double. A
-    // layer has one template and so one row in the table of templates; the bound
-    // allows 16 searches for it. The sizes are not capacities of a bank: the layer that
-    // fills a bank also takes its growth, which charges visits of its own, and the
-    // doubling tests above bound that growth.
+    // row of the table of templates, which the layer searches ten times, and a
+    // search reads the keys of a binary search of the rows:
+    // * eight searches are made while the layer's template is the newest of the `n`
+    //   rows: the attachment of the root (`attach_declarative_shadow`, 1), the
+    //   creation contexts of the `p`, the `div` and the `template` made inside it
+    //   (`qualify_creation_context`, 3), and the four nodes inserted into its contents
+    //   (`template_state`, 4). The newest of `n` keys is found after `floor(log2(n + 1))` keys.
+    // * two searches are made once every template exists, one for each key: the end
+    //   of the template (`finish_template_patching`) and the validation of the parse
+    //   (`validate_template_facts`). Adding the `n`th key to the keys searched once each
+    //   adds `floor(log2 n) + 1` keys read, the sum over the keys being the total depth of
+    //   the search tree.
+    // The added visits are therefore a constant, whatever the layers around the new one,
+    // plus those keys, and equal for every size with no slack. The sizes are not
+    // capacities of a bank: the layer that fills a bank also takes its growth, which
+    // charges visits of its own, and the doubling tests above bound that growth.
     let added = |layers: usize| {
         let layer = format!("{SHADOW_LAYER}{SHADOW_LAYER_END}");
         parse_fragment_work(nested_shadow_roots(layers, &layer)).visited as i64
             - parse_fragment_work(nested_shadow_roots(layers, "")).visited as i64
     };
+    let keys = |layers: usize| {
+        // The table holds one row for each layer after the new one is added.
+        let rows = layers + 1;
+        (8 * (rows + 1).ilog2() + 2 * (rows.ilog2() + 1)) as i64
+    };
     let sizes = [26_usize, 100, 400];
-    let measures = sizes.map(added);
-    let keys = |layers: usize| i64::from((layers + 1).ilog2());
-    for (pair, sizes) in measures.windows(2).zip(sizes.windows(2)) {
-        let growth = pair[1] - pair[0];
-        let allowed = 16 * (keys(sizes[1]) - keys(sizes[0]));
-        assert!(
-            (0..=allowed).contains(&growth),
-            "one more shadow root added {measures:?} record visits inside {sizes:?} shadow roots"
+    let fixed = added(sizes[0]) - keys(sizes[0]);
+    for layers in sizes {
+        assert_eq!(
+            added(layers),
+            fixed + keys(layers),
+            "one more shadow root inside {layers} shadow roots"
         );
     }
 }
