@@ -249,13 +249,171 @@ fn font_display_grammar_rejections_name_the_first_violating_token_and_its_coordi
         );
         assert_eq!(constructed, reentered, "{source:?}");
     }
-    // A word that is not a font-display keyword is rejected over the whole token.
-    let error = Display::try_from_components(components("banana"), Default::default()).unwrap_err();
-    let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin))) = error.origin() else {
-        panic!("responsible parsed token")
-    };
-    assert_origin_region(origin, "banana", (0, 0, 0), (6, 0, 6));
-    assert_position(error.diagnostic().unwrap().position(), 0, 0, 0);
+}
+
+#[test]
+fn invalid_font_display_values_report_the_responsible_token_not_the_end_of_input() {
+    // Fonts 4 section 9.1.1: `auto | block | swap | fallback | optional`. A word that
+    // is not a keyword, a string, a number and a second token after a keyword are each
+    // an unexpected token: the token the input holds, not an early end.
+    let unexpected = CssErrorCode::UnexpectedToken;
+    let cases = [
+        (
+            "banana",
+            Rejection {
+                code: unexpected,
+                position: (0, 0, 0),
+                token: token(CssTokenKind::Ident, "banana"),
+                span: Some(((0, 0, 0), (6, 0, 6))),
+            },
+        ),
+        (
+            "\u{e9}t\u{e9}",
+            Rejection {
+                code: unexpected,
+                position: (0, 0, 0),
+                token: token(CssTokenKind::Ident, "\u{e9}t\u{e9}"),
+                span: Some(((0, 0, 0), (5, 0, 3))),
+            },
+        ),
+        (
+            " \n BANANA",
+            Rejection {
+                code: unexpected,
+                position: (3, 1, 1),
+                token: token(CssTokenKind::Ident, "BANANA"),
+                span: Some(((3, 1, 1), (9, 1, 7))),
+            },
+        ),
+        (
+            "\"swap\"",
+            Rejection {
+                code: unexpected,
+                position: (0, 0, 0),
+                token: token(CssTokenKind::String, "\"swap\""),
+                span: Some(((0, 0, 0), (6, 0, 6))),
+            },
+        ),
+        (
+            "1",
+            Rejection {
+                code: unexpected,
+                position: (0, 0, 0),
+                token: token(CssTokenKind::Number, "1"),
+                span: Some(((0, 0, 0), (1, 0, 1))),
+            },
+        ),
+        (
+            "swap 1",
+            Rejection {
+                code: unexpected,
+                position: (5, 0, 5),
+                token: token(CssTokenKind::Number, "1"),
+                span: Some(((5, 0, 5), (6, 0, 6))),
+            },
+        ),
+        (
+            "swap banana",
+            Rejection {
+                code: unexpected,
+                position: (5, 0, 5),
+                token: token(CssTokenKind::Ident, "banana"),
+                span: Some(((5, 0, 5), (11, 0, 11))),
+            },
+        ),
+        // An empty value is the one input the end of which is the wrong thing.
+        (
+            "",
+            Rejection {
+                code: CssErrorCode::UnexpectedEnd,
+                position: (0, 0, 0),
+                token: None,
+                span: None,
+            },
+        ),
+    ];
+    for (source, expected) in cases {
+        let constructed =
+            Display::try_from_components(components(source), Default::default()).unwrap_err();
+        assert_rejection(
+            constructed.diagnostic(),
+            constructed.origin(),
+            source,
+            &expected,
+        );
+        let reentered = Display::try_from_components(components("env(x)"), Default::default())
+            .unwrap()
+            .reparse_after_substitution(components(source), Default::default())
+            .unwrap_err();
+        assert_rejection(
+            reentered.diagnostic(),
+            reentered.origin(),
+            source,
+            &expected,
+        );
+    }
+    // The wrong keyword reports like the wrong token of a feature value, whose
+    // checked constructor names no descriptor either.
+    let display = Display::try_from_components(components("banana"), Default::default())
+        .unwrap_err()
+        .diagnostic()
+        .map(|diagnostic| (diagnostic.code(), diagnostic.expectation()));
+    let number = Display::try_from_components(components("1"), Default::default())
+        .unwrap_err()
+        .diagnostic()
+        .map(|diagnostic| (diagnostic.code(), diagnostic.expectation()));
+    assert_eq!(display, number);
+}
+
+#[test]
+fn parsed_font_display_values_name_the_descriptor_and_the_same_responsible_token() {
+    // The parsed front and the rule body name `font-display` (an invalid
+    // descriptor value), and the token they hold is the one the checked
+    // constructor reports.
+    for (source, token_text, offset) in [
+        ("banana", Some("banana"), 0),
+        ("\"swap\"", Some("\"swap\""), 0),
+        ("1", Some("1"), 0),
+        ("swap block", Some("block"), 5),
+        ("swap 1", Some("1"), 5),
+        ("", None, 0),
+    ] {
+        let report = Display::parse(&CssParser::default(), source);
+        assert!(report.syntax().is_none(), "{source:?}");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one rejection for {source:?}")
+        };
+        let error = diagnostic.error();
+        assert_eq!(error.code(), CssErrorCode::InvalidDescriptorValue);
+        assert_eq!(
+            error.encountered().map(|token| token.authored()),
+            token_text,
+            "{source:?}"
+        );
+        assert_position(error.position(), offset, 0, offset as u32);
+
+        let sheet = format!("@font-feature-values Demo{{font-display:{source}}}");
+        let report = CssParser::default().parse_sheet(&sheet);
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one rejection for {sheet:?}")
+        };
+        let error = diagnostic.error();
+        assert_eq!(error.code(), CssErrorCode::InvalidDescriptorValue);
+        assert_eq!(
+            error.encountered().map(|token| token.authored()),
+            token_text,
+            "{sheet:?}"
+        );
+
+        let constructed =
+            Display::try_from_components(components(source), Default::default()).unwrap_err();
+        let constructed_token = constructed
+            .diagnostic()
+            .unwrap()
+            .encountered()
+            .map(|token| token.authored().to_owned());
+        assert_eq!(constructed_token.as_deref(), token_text, "{source:?}");
+    }
 }
 
 #[test]
