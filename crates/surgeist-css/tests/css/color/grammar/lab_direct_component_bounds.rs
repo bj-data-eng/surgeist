@@ -1,6 +1,8 @@
 //! Color4 CRD 2026-09-08 §§9.3/9.4 parsed-value L/C bounds. Color5 WD
 //! 2026-09-08 §§11.1–11.3 preserves distinct Mix/Origin/relative roles.
-//! Direct finite decimal tokens remain exact even beyond binary64 and i128.
+//! Direct finite decimal tokens remain exact inside the colour component range;
+//! a component beyond the single-precision float range serializes as
+//! `calc(infinity)` and one below `1e-46` as `0` (#2889), at any exponent.
 //! Expected text follows exact percentage scales and the selected standalone
 //! domains; resource oracles count the adopted logical classifier operation.
 //! These public tests do not inspect implementation source or private helpers.
@@ -247,36 +249,48 @@ limit_error!(
     0,
     ByteLimit
 );
-limit_error!(
-    positive_beyond_i128_inrange_exact_text_is_bounded,
+// A numeral below 1e-46 is zero (#2889): `lab(0 0 0)` is 10 bytes.
+limit_success!(
+    positive_beyond_i128_tiny_lightness_is_zero,
     "lab(1e-999999999999999999999999999999999999999999 0 0)",
     usize::MAX,
     usize::MAX,
     12,
-    ByteLimit
+    "lab(0 0 0)"
 );
-limit_error!(
-    unbounded_positive_chroma_keeps_output_limit,
+// A component beyond the float range is `calc(infinity)` whatever its
+// exponent, so the million-digit and beyond-i128 numerals need no digit text:
+// `lch(50 calc(infinity) 30)` is 25 bytes and `lab(50 calc(infinity) 0)` 24.
+limit_success!(
+    unbounded_positive_chroma_is_calc_infinity,
     "lch(50 1e2000000 30)",
     usize::MAX,
     usize::MAX,
     64,
-    ByteLimit
+    "lch(50 calc(infinity) 30)"
 );
-limit_error!(
-    unbounded_axis_keeps_output_limit,
+limit_success!(
+    unbounded_axis_is_calc_infinity,
     "lab(50 1e2000000 0)",
     usize::MAX,
     usize::MAX,
     64,
-    ByteLimit
+    "lab(50 calc(infinity) 0)"
 );
-limit_error!(
-    unbounded_axis_beyond_i128_keeps_typed_failure,
+limit_success!(
+    unbounded_axis_beyond_i128_is_calc_infinity,
     "lab(50 1e999999999999999999999999999999999999999999 0)",
     usize::MAX,
     usize::MAX,
     64,
+    "lab(50 calc(infinity) 0)"
+);
+limit_error!(
+    calc_infinity_axis_one_short_byte_is_typed,
+    "lab(50 1e2000000 0)",
+    usize::MAX,
+    usize::MAX,
+    23,
     ByteLimit
 );
 limit_error!(
@@ -386,12 +400,12 @@ fn utf8_prefix_one_short_endpoint_output_budget_is_typed() {
     );
 }
 #[test]
-fn unbounded_second_sibling_failure_keeps_entire_pair_unchanged() {
+fn unbounded_second_sibling_is_calc_infinity() {
     let value = CssSidePair::new(color("lab(1e400 0 0)"), Some(color("lab(50 1e2000000 0)")));
     assert_pair_result(
         &value,
         Limits::new(usize::MAX, usize::MAX, 64),
-        Err(Kind::ByteLimit),
+        Ok("lab(100 0 0) lab(50 calc(infinity) 0)"),
     );
 }
 #[test]
@@ -587,8 +601,10 @@ fn long_negative_exponent_chroma_clips_from_actual_public_token() {
 }
 
 #[test]
-fn positive_inrange_binary_underflow_keeps_exact_decimal_text() {
-    // 10^-400 is positive and in range, never the clipped lower endpoint.
-    let expected = format!("lab(0.{}1 0 0)", "0".repeat(399));
-    assert_text("lab(1e-400 0 0)", &expected);
+fn positive_binary_underflow_below_1e_minus_46_is_zero() {
+    // A numeral below 1e-46 is zero (#2889); the exact text of 1e-46, the
+    // smallest numeral inside the window, remains.
+    assert_text("lab(1e-400 0 0)", "lab(0 0 0)");
+    let expected = format!("lab(0.{}1 0 0)", "0".repeat(45));
+    assert_text("lab(1e-46 0 0)", &expected);
 }

@@ -117,31 +117,66 @@ fn ordinary_numerals_need_no_decimal_search_scratch() {
 }
 
 #[test]
-fn an_extreme_exponent_costs_a_bounded_multiple_of_an_ordinary_numeral() {
-    let ordinary = work("hwb(none calc(0.5) 20%)");
-    assert!(ordinary.used);
-    // A numeral outside the exact fast path costs a few guided candidates, each
-    // rebuilding a midpoint of at most 1,100 digits, whatever its exponent.
+fn a_numeral_outside_the_window_costs_the_read_of_its_digits() {
+    // A component numeral at or above 1e41 or below 1e-46 is not converted
+    // exactly (#2889): the decimal owner stops after the digits are read, so the
+    // algorithm bank holds only the lexed input and the actions are those of an
+    // ordinary numeral of the same length, whatever the exponent.
     for text in [
+        "lab(0 1e41 0)",
+        "lab(0 1e308 0)",
+        "lab(0 1e999 0)",
+        "lab(0 -1e999 0)",
+        "lab(0 1e2000000 0)",
+        "lab(0 9.99e-47 0)",
+        "lab(0 1e-300 0)",
+        "lab(0 2.2250738585072014e-308 0)",
+        "lab(0 5e-324 0)",
+        "lab(0 calc(1e308 * 1e-300) 0)",
+        "color-mix(in lab, lab(0 1e308 0), red)",
+        "oklch(0.5 0.1 1e308)",
         "hwb(none calc(2.2250738585072014e-308) 20%)",
         "hwb(none calc(5e-324) 20%)",
         "hwb(none calc(1e-300) 20%)",
         "hwb(none calc(1e308) 20%)",
     ] {
-        let extreme = work(text);
-        assert!(extreme.used, "{text}");
+        let work = work(text);
+        assert!(work.used, "{text}");
+        assert!(work.scratch_records <= 4 * text.len(), "{text}: {work:?}");
+        assert!(work.actions <= 100 * text.len(), "{text}: {work:?}");
+    }
+}
+
+#[test]
+fn a_numeral_at_the_edge_of_the_window_is_converted_exactly_within_a_bounded_search() {
+    let ordinary = work("hwb(none calc(0.5) 20%)");
+    assert!(ordinary.used);
+    // Inside the window the correctly rounded conversion still searches: a few
+    // guided candidates, each rebuilding a midpoint of at most about 170 digits
+    // (the numeral 1e-46 has the largest midpoint, 2^-153 = 5^153 / 10^153).
+    for text in [
+        "lab(0 3.4028234663852886e38 0)",
+        "lab(0 9.999999999999999e40 0)",
+        "lab(0 1e-46 0)",
+        "lab(0 1.401298464324817e-45 0)",
+        "lab(0 1e-45 0)",
+        "hwb(none calc(1e-46) 20%)",
+        "hwb(none calc(9.999999999999999e40) 20%)",
+    ] {
+        let edge = work(text);
+        assert!(edge.used, "{text}");
         assert!(
-            extreme.actions <= SEARCH_ACTION_BOUND,
-            "{text}: {extreme:?} against ordinary {ordinary:?}"
+            edge.actions <= WINDOW_ACTION_BOUND,
+            "{text}: {edge:?} against ordinary {ordinary:?}"
         );
         assert!(
-            extreme.scratch_records <= 4 * text.len() + 1_100,
-            "{text}: the exact boundary needs at most 1100 digits: {extreme:?}"
+            edge.scratch_records <= 4 * text.len() + 200,
+            "{text}: the exact boundary needs at most about 170 digits: {edge:?}"
         );
     }
 }
 
-/// Upper bound on the actions of one colour with a single searched numeral. The
-/// largest of the four extreme inputs measures 237,698 actions
-/// (`2.2250738585072014e-308`, the smallest normal); the bound is about twice that.
-const SEARCH_ACTION_BOUND: usize = 500_000;
+/// Upper bound on the actions of one colour with a single numeral inside the
+/// window. The largest measured edge numeral needs about 11,000 actions; the
+/// bound leaves headroom for the neighbouring numerals.
+const WINDOW_ACTION_BOUND: usize = 30_000;

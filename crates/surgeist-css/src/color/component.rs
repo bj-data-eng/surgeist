@@ -10,7 +10,7 @@ use super::expression::{
 };
 use super::grammar::{ComponentRole, FunctionRecipe, ProfileSpace, RawComponent};
 use super::keywords::{ColorFunction as F, Word};
-use super::literal::{LiteralAction, LiteralConversion};
+use super::literal::{LiteralAction, LiteralConversion, LiteralRange};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
 use crate::color::CssColorSyntax;
 use crate::color::CssRelativeColorEnvironment as Environment;
@@ -26,6 +26,10 @@ enum Expectation {
     NumberPercentage,
     Hue,
     Percentage,
+    /// A `color-mix()` weight is a percentage, not a component root: it converts
+    /// like a calculation leaf, exactly inside the colour window and by the
+    /// estimate outside it, and is neither infinite nor zero.
+    Weight,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Variables {
@@ -95,7 +99,7 @@ impl ComponentContext {
             return Err(ColorProtocolError::WrongSlot);
         };
         let expectation = match role {
-            ComponentRole::Weight if recipe.function == F::Mix => Expectation::Percentage,
+            ComponentRole::Weight if recipe.function == F::Mix => Expectation::Weight,
             ComponentRole::Alpha => Expectation::NumberPercentage,
             ComponentRole::Hue => Expectation::Hue,
             ComponentRole::RelativeChannel if relative => {
@@ -127,23 +131,23 @@ impl ComponentContext {
             allow_missing: recipe.syntax == CssColorSyntax::Modern && role != ComponentRole::Weight,
         })
     }
-    /// The checked component of one converted literal. A `<number>` hue is
-    /// degrees (Color 4 §4.3), so an authored number beyond binary64 takes the
-    /// Values 4 §10.12 angle case, the nearest supported multiple of 360deg,
-    /// exactly like an overflowing `<angle>`.
+    /// The checked component of one converted literal. A component numeral
+    /// beyond the colour window is infinite and one below it is zero, with the
+    /// authored sign (#2889); used resolution limits an infinity to the
+    /// largest component and normalizes an infinite hue to 0 (Color 4 §4.3).
+    /// A weight is not a component root: its value is the leaf conversion, the
+    /// estimate below the window.
     pub(crate) fn literal(self, value: super::literal::LiteralValue) -> Option<Component> {
         let domain = self.domain(value.ty)?;
-        let number =
-            if self.expectation == Expectation::Hue && domain == Domain::Number && value.overflowed
-            {
-                crate::numeric::projection::closest_supported_value(
-                    f64::INFINITY.copysign(value.value),
-                    true,
-                    true,
-                )
-            } else {
-                value.value
-            };
+        let number = if self.expectation == Expectation::Weight {
+            value.value
+        } else {
+            match value.range {
+                LiteralRange::Within => value.value,
+                LiteralRange::Beyond => f64::INFINITY.copysign(value.value),
+                LiteralRange::Below => 0.0_f64.copysign(value.value),
+            }
+        };
         Some(Component {
             domain,
             value: number,
@@ -160,7 +164,7 @@ impl ComponentContext {
                     None
                 }
             }
-            Expectation::Percentage
+            Expectation::Percentage | Expectation::Weight
                 if ty.is(Dimension::Percentage) && ty.percent_hint().is_none() =>
             {
                 Some(Domain::Percentage)

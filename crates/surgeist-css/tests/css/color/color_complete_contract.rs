@@ -795,11 +795,13 @@ fn standalone_color_provider_keeps_its_one_node_budget_and_capacity_failure() {
         true,
     );
     let before = source.clone();
-    assert!(
+    // An exponent at the i128 limit is beyond the colour window: classified by
+    // its digits, the clamped channel is its endpoint (#2889).
+    assert_eq!(
         color(&source)
             .serialize_specified(Default::default())
-            .unwrap_err()
-            .is_capacity_overflow()
+            .unwrap(),
+        "rgb(255, 0, 0)"
     );
     assert_eq!(source, before);
 }

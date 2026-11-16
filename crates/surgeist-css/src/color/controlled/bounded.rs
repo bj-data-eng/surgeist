@@ -1845,8 +1845,10 @@ mod tests {
         };
         let before = checkpoint.value();
         let source = checkpoint.source();
-        // XYZ Z is 1.089 times the shared channel, beyond binary64: the
-        // conversion takes the closest finite value instead of failing.
+        // The components are limited to f32::MAX (#2889), so the shared channel is
+        // f32::MAX. XYZ Z is 1.0890577507598785 times it (the third row of the
+        // Color 4 sRGB to XYZ D65 matrix sums to that), which stays finite:
+        // converted channels are not limited.
         let checkpoint = checkpoint
             .transform(
                 &mut numerical_owner,
@@ -1855,7 +1857,12 @@ mod tests {
                 )),
             )
             .compute();
-        assert_eq!(checkpoint.value().channels()[2], Some(f64::MAX));
+        let z = checkpoint.value().channels()[2].unwrap();
+        let expected = 1.0890577507598785 * f64::from(f32::MAX);
+        assert!(
+            (z - expected).abs() <= 1e-6 * expected,
+            "{z:e} and not {expected:e}"
+        );
         assert!(!checkpoint.value().identical(before));
         assert_eq!(checkpoint.source(), source);
         assert_eq!(checkpoint.standard_failure(), None);

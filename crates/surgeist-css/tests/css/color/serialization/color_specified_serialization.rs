@@ -57,14 +57,14 @@ fn standalone_color4_branches_have_source_derived_canonical_text() {
 
 #[test]
 fn admitted_huge_finite_exponents_fail_atomically_instead_of_panicking() {
-    // Exact RGB clipping cannot compare an exponent at the i128 limit.
+    // A numeral beyond the colour window is classified by its digits and its
+    // exponent text, so an exponent at the i128 limit needs no exact comparison:
+    // the clamped slot reads its endpoint (#2889).
     let value = color("rgb(12345678901234567891e170141183460469231731687303715884105727 0 0)");
     let before = value.clone();
-    assert!(
-        value
-            .serialize_specified(Default::default())
-            .unwrap_err()
-            .is_capacity_overflow()
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "rgb(255, 0, 0)"
     );
     assert_eq!(value, before);
     // Converted HSL reads the binary64 value, which is the closest finite

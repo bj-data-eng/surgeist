@@ -704,14 +704,16 @@ byte_case!(
 );
 
 #[test]
-fn huge_positive_output_is_bounded_and_atomic() {
+fn huge_positive_output_is_calc_infinity_and_atomic() {
+    // An override beyond the component range is an infinity whatever its
+    // exponent (#2889), so its output is bounded and no digits are written.
     let value = color("rgb(from red 1e1000000000% g b)");
     let before = value.clone();
-    assert!(
+    assert_eq!(
         value
             .serialize_specified(Limits::new(10000, 10000, 128))
-            .unwrap_err()
-            .is_byte_limit()
+            .unwrap(),
+        "rgb(from red calc(infinity) g b)"
     );
     assert_eq!(value, before);
 }

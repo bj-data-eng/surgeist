@@ -205,6 +205,7 @@ fn schedule_alpha<'a>(
             alpha,
             true,
             Factor::ONE,
+            channels::Entry::percent(1, 100),
             context,
         )?));
         work.push(Work::Text(" / "));
@@ -260,6 +261,7 @@ fn schedule_relative<'a>(
             alpha,
             true,
             Factor::ONE,
+            channels::Entry::percent(1, 100),
             context,
         )?));
         work.push(Work::Text(" / "));
@@ -269,6 +271,7 @@ fn schedule_relative<'a>(
             channel,
             false,
             relative_percentage_factor(value.function(), index),
+            channels::Entry::of(relative_function_kind(value.function()), index),
             context,
         )?));
         work.push(Work::Text(" "));
@@ -511,6 +514,10 @@ struct ProjectedScalar {
     // A direct exact slot can defer its logical materialization until a
     // contextual HSL/HWB branch selects it. Emitted text is not phase state.
     direct_text_pending: bool,
+    // A direct component numeral at or beyond the range limit (the sign is
+    // true when negative). It has no exact value: its text is an infinity and a
+    // clamped slot reads only its endpoint.
+    infinite: Option<bool>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -562,20 +569,22 @@ fn generic_literal_text(
 /// The destination function and checked slot determine direct percentage units.
 /// This policy never reaches references or calculation trees.
 fn relative_percentage_factor(function: &CssRelativeColorFunction, index: usize) -> Factor {
+    percent_factor(relative_function_kind(function), index)
+}
+
+/// The function whose channel declarations a relative colour's slots follow.
+fn relative_function_kind(function: &CssRelativeColorFunction) -> ColorFunction {
     use CssRelativeColorFunction as R;
-    percent_factor(
-        match function {
-            R::Rgb => ColorFunction::Rgb,
-            R::Hsl => ColorFunction::Hsl,
-            R::Hwb => ColorFunction::Hwb,
-            R::Lab => ColorFunction::Lab,
-            R::Lch => ColorFunction::Lch,
-            R::Oklab => ColorFunction::Oklab,
-            R::Oklch => ColorFunction::Oklch,
-            R::Color(_) => ColorFunction::Color,
-        },
-        index,
-    )
+    match function {
+        R::Rgb => ColorFunction::Rgb,
+        R::Hsl => ColorFunction::Hsl,
+        R::Hwb => ColorFunction::Hwb,
+        R::Lab => ColorFunction::Lab,
+        R::Lch => ColorFunction::Lch,
+        R::Oklab => ColorFunction::Oklab,
+        R::Oklch => ColorFunction::Oklch,
+        R::Color(_) => ColorFunction::Color,
+    }
 }
 
 /// The declared value of 1% in one channel; a hue slot has no percentage.
@@ -597,6 +606,28 @@ fn declared_component_projection(
     origin: bool,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<ProjectedScalar> {
+    declared_component_projection_entering(
+        value,
+        number_factor,
+        percentage_factor,
+        channels::Entry::percent(percentage_factor.numerator, percentage_factor.denominator),
+        target,
+        origin,
+        context,
+    )
+}
+
+/// An origin component is classified as the colour holds it (`entry`), which
+/// is the unit of its percentage reference except for an `rgb()` channel.
+fn declared_component_projection_entering(
+    value: &CssColorComponent,
+    number_factor: Factor,
+    percentage_factor: Factor,
+    entry: channels::Entry,
+    target: ComponentTarget,
+    origin: bool,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<ProjectedScalar> {
     if origin {
         let literal = match value {
             CssColorComponent::Number(value) => Some((value.numeric().representation(), false)),
@@ -605,6 +636,22 @@ fn declared_component_projection(
         };
         if let Some((source, percentage)) = literal {
             context.charge_input(1)?;
+            let class = direct_range(source, entry, percentage);
+            if let Some((text, percentage)) =
+                ranged_literal_text(class, source.starts_with('-'), percentage, "", context)
+            {
+                return Ok(ProjectedScalar {
+                    scalar_value: None,
+                    text,
+                    exact: None,
+                    contextual: false,
+                    missing: false,
+                    percentage,
+                    calculation: false,
+                    direct_text_pending: false,
+                    infinite: None,
+                });
+            }
             return Ok(ProjectedScalar {
                 scalar_value: None,
                 text: generic_literal_text(source, Factor::ONE, context)?,
@@ -614,6 +661,7 @@ fn declared_component_projection(
                 percentage,
                 calculation: false,
                 direct_text_pending: false,
+                infinite: None,
             });
         }
         let calculation = match value {
@@ -629,9 +677,10 @@ fn declared_component_projection(
             _ => None,
         };
         if let Some(calculation) = calculation {
-            let (text, outcome) = crate::numeric::expression::capture_retained_color_calculation(
+            let (text, outcome) = crate::numeric::expression::capture_entering_color_calculation(
                 calculation,
                 crate::numeric::projection::NumericProjectionScale::Identity,
+                entry,
                 context,
             )?;
             return Ok(ProjectedScalar {
@@ -643,6 +692,7 @@ fn declared_component_projection(
                 percentage: false,
                 calculation: true,
                 direct_text_pending: false,
+                infinite: None,
             });
         }
     }
@@ -749,20 +799,200 @@ fn lab_component_projection(
             percentage: false,
             calculation: false,
             direct_text_pending: false,
+            infinite: None,
         });
     }
-    direct_component_projection(representation, factor, false, true, context)
+    direct_component_projection(
+        representation,
+        factor,
+        percentage.then_some(percentage_factor),
+        false,
+        true,
+        context,
+    )
 }
 
-/// The caller owns the one direct-slot input visit. In-range and unbounded
-/// literals retain the existing exact arithmetic, work, and bounded text.
+/// The range class of one direct component numeral, decided on the binary64
+/// value used resolution reads (#2889). A numeral at or beyond `1e41` is
+/// infinite and one below `1e-46` is zero whatever the slot, because used
+/// resolution converts only inside that window. Inside it the numeral is its
+/// correctly rounded binary64 value, scaled by the slot's percentage reference
+/// when it is a percentage, and infinite when that value has at least
+/// [`channels::THRESHOLD`] of magnitude.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NumeralRange {
+    Within,
+    Beyond,
+    Below,
+}
+
+/// The window classification of a numeral by its digits only.
+fn numeral_range(representation: &str) -> NumeralRange {
+    let decimal = crate::serialization::exact_decimal::LexicalDecimal::new(representation);
+    if decimal.is_zero() {
+        NumeralRange::Within
+    } else if decimal.compare_absolute("1", 41).is_ge() {
+        NumeralRange::Beyond
+    } else if decimal.compare_absolute("1", -46).is_lt() {
+        NumeralRange::Below
+    } else {
+        NumeralRange::Within
+    }
+}
+
+/// `entry` is the slot's entry and `percentage` says whether the numeral is a
+/// percentage. The numeral is classified as the colour holds it
+/// ([`channels::Entry`]), as used resolution reads it.
+fn direct_range(representation: &str, entry: channels::Entry, percentage: bool) -> NumeralRange {
+    match numeral_range(representation) {
+        NumeralRange::Within => {
+            let value = literal_binary64(representation);
+            let held = if percentage {
+                entry.percentage(value)
+            } else {
+                entry.number(value)
+            };
+            if held.abs() >= channels::THRESHOLD {
+                NumeralRange::Beyond
+            } else {
+                NumeralRange::Within
+            }
+        }
+        range => range,
+    }
+}
+
+/// The text of an infinite component. A percentage-typed slot writes the
+/// percentage form, the mapping `finalize_hsl_hwb_number` already uses.
+fn infinity_text(
+    negative: bool,
+    percentage: bool,
+    context: &SpecifiedSerializationContext,
+) -> String {
+    if context.output_suppressed() {
+        return String::new();
+    }
+    match (negative, percentage) {
+        (false, false) => "calc(infinity)",
+        (true, false) => "calc(-infinity)",
+        (false, true) => "calc(infinity * 1%)",
+        (true, true) => "calc(-infinity * 1%)",
+    }
+    .into()
+}
+
+/// The text of a component literal that is beside its slot (a relative
+/// override, a profile expression or an origin colour) when it is beyond the
+/// range or below the window (#2889): an infinity or a zero, as the component
+/// standing alone is written. `percentage` is the unit of an origin percentage
+/// and `unit` the suffix of an angle. `None` leaves the literal to its generic
+/// text. The second value is whether the text still takes a `%` suffix.
+fn ranged_literal_text(
+    class: NumeralRange,
+    negative: bool,
+    percentage: bool,
+    unit: &str,
+    context: &SpecifiedSerializationContext,
+) -> Option<(String, bool)> {
+    match class {
+        NumeralRange::Within => None,
+        NumeralRange::Below => Some((
+            if context.output_suppressed() {
+                String::new()
+            } else {
+                format!("0{unit}")
+            },
+            percentage,
+        )),
+        NumeralRange::Beyond => {
+            if context.output_suppressed() {
+                return Some((String::new(), false));
+            }
+            let sign = if negative { "-" } else { "" };
+            Some((
+                if !unit.is_empty() {
+                    format!("calc({sign}infinity * 1{unit})")
+                } else if percentage {
+                    format!("calc({sign}infinity * 1%)")
+                } else {
+                    format!("calc({sign}infinity)")
+                },
+                false,
+            ))
+        }
+    }
+}
+
+/// The class of an angle literal: its binary64 degrees as used resolution
+/// reads them are infinite, or its numeral is below the window.
+fn angle_range(
+    numeric: crate::component::CssNumericTokenRef<'_>,
+    unit: Option<crate::numeric::CssNumericUnit>,
+) -> NumeralRange {
+    if literal_hue_degrees(numeric, unit).abs() >= channels::THRESHOLD {
+        NumeralRange::Beyond
+    } else if numeral_range(numeric.representation()) == NumeralRange::Below {
+        NumeralRange::Below
+    } else {
+        NumeralRange::Within
+    }
+}
+
+/// The caller owns the one direct-slot input visit. Numerals inside the range
+/// retain the exact arithmetic, work and bounded text; one beyond it is an
+/// infinity and one below it is zero, with no digit expansion (#2889).
 fn direct_component_projection(
     representation: &str,
     factor: Factor,
+    percentage_input: Option<Factor>,
     percentage: bool,
     materialize_direct: bool,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<ProjectedScalar> {
+    let entry = percentage_input.map_or(channels::Entry::percent(1, 1), |factor| {
+        channels::Entry::percent(factor.numerator, factor.denominator)
+    });
+    match direct_range(representation, entry, percentage_input.is_some()) {
+        NumeralRange::Beyond => {
+            let negative = representation.starts_with('-');
+            let text = if materialize_direct {
+                infinity_text(negative, percentage, context)
+            } else {
+                String::new()
+            };
+            return Ok(ProjectedScalar {
+                scalar_value: None,
+                exact: None,
+                text,
+                contextual: false,
+                missing: false,
+                // The text of an infinity carries its own percentage unit.
+                percentage: percentage && !materialize_direct,
+                calculation: false,
+                direct_text_pending: !materialize_direct,
+                infinite: Some(negative),
+            });
+        }
+        NumeralRange::Below => {
+            let zero = crate::serialization::exact_decimal::ExactRational::integer(0, context)?;
+            return Ok(ProjectedScalar {
+                scalar_value: None,
+                text: if materialize_direct {
+                    output_text("0", context)
+                } else {
+                    String::new()
+                },
+                exact: Some(zero),
+                contextual: false,
+                missing: false,
+                percentage,
+                calculation: false,
+                direct_text_pending: !materialize_direct,
+                infinite: None,
+            });
+        }
+        NumeralRange::Within => {}
+    }
     let exact = crate::serialization::exact_decimal::ExactRational::from_lexical_factor(
         representation,
         exact_factor(factor),
@@ -784,6 +1014,7 @@ fn direct_component_projection(
         percentage,
         calculation: false,
         direct_text_pending: !materialize_direct,
+        infinite: None,
     })
 }
 
@@ -808,6 +1039,7 @@ fn component_projection_with_text(
                 percentage: target == ComponentTarget::Percentage,
                 calculation: false,
                 direct_text_pending: false,
+                infinite: None,
             })
         }
         C::Number(value) => {
@@ -815,6 +1047,7 @@ fn component_projection_with_text(
             direct_component_projection(
                 value.numeric().representation(),
                 number_factor,
+                None,
                 target == ComponentTarget::Percentage,
                 materialize_direct,
                 context,
@@ -825,6 +1058,7 @@ fn component_projection_with_text(
             direct_component_projection(
                 value.numeric().representation(),
                 percentage_factor,
+                Some(percentage_factor),
                 target != ComponentTarget::Number,
                 materialize_direct,
                 context,
@@ -865,6 +1099,7 @@ fn component_projection_with_text(
                 percentage: false,
                 calculation: true,
                 direct_text_pending: false,
+                infinite: None,
             })
         }
     }
@@ -911,6 +1146,7 @@ fn number_calculation_projection(
         percentage: false,
         calculation: true,
         direct_text_pending: false,
+        infinite: None,
     })
 }
 
@@ -934,7 +1170,10 @@ fn serialize_alpha(
         let projected = declared_component_projection(
             value,
             Factor::ONE,
-            Factor::ONE,
+            Factor {
+                numerator: 1,
+                denominator: 100,
+            },
             ComponentTarget::Preserve,
             true,
             context,
@@ -1092,11 +1331,13 @@ fn serialize_rgb(
         let channels = value
             .channels()
             .iter()
-            .map(|channel| {
-                declared_component_projection(
+            .enumerate()
+            .map(|(index, channel)| {
+                declared_component_projection_entering(
                     channel,
                     Factor::ONE,
-                    Factor::ONE,
+                    percent_factor(ColorFunction::Rgb, index),
+                    channels::Entry::of(ColorFunction::Rgb, index),
                     ComponentTarget::Preserve,
                     true,
                     context,
@@ -1173,7 +1414,18 @@ fn finalize_rgb_channel(
     upper: u64,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<()> {
-    if let Some(number) = value.scalar_value {
+    if let Some(negative) = value.infinite {
+        // A clamped slot reads only the endpoint of an infinity.
+        value.text = if negative {
+            output_text("0", context)
+        } else if context.output_suppressed() {
+            String::new()
+        } else {
+            upper.to_string()
+        };
+        value.direct_text_pending = false;
+        value.infinite = None;
+    } else if let Some(number) = value.scalar_value {
         let clipped = if number.is_nan() {
             0.0
         } else {
@@ -1208,7 +1460,13 @@ fn materialize_direct(
     value: &mut ProjectedScalar,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<()> {
-    if value.direct_text_pending {
+    if let Some(negative) = value.infinite
+        && value.direct_text_pending
+    {
+        value.text = infinity_text(negative, value.percentage, context);
+        value.percentage = false;
+        value.direct_text_pending = false;
+    } else if value.direct_text_pending {
         value.text = value
             .exact
             .as_ref()
@@ -1297,11 +1555,22 @@ fn finalize_hsl_saturation(
     percentage: bool,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<()> {
-    if let Some(exact) = &value.exact
-        && exact.compare_integer(0, context)?.is_lt()
+    let negative_infinity = value.infinite == Some(true);
+    if negative_infinity
+        || value
+            .exact
+            .as_ref()
+            .map(|exact| exact.compare_integer(0, context))
+            .transpose()?
+            .is_some_and(std::cmp::Ordering::is_lt)
     {
         value.text = output_text("0", context);
         value.direct_text_pending = false;
+        if negative_infinity {
+            // The text is the clamped zero, written in the slot's own form.
+            value.infinite = None;
+            value.percentage = percentage;
+        }
     }
     let number = value.scalar_value.map(|number| {
         if number.is_nan() || number < 0.0 {
@@ -1356,19 +1625,19 @@ fn finalize_hsl_hwb_number(
 }
 
 /// Binary64 channel inputs exactly as used-value resolution reads them: a
-/// literal is its correctly rounded decimal value, and a calculation is its
-/// projected scalar. A finite literal beyond binary64 is the closest finite
-/// value (Values 4 §10.12), as in used literal conversion.
+/// literal is its correctly rounded decimal value inside the colour window, an
+/// infinity beyond it and a zero below it, and a calculation is its projected
+/// scalar (#2889).
 fn used_scalar(value: &CssColorComponent, projected: &ProjectedScalar) -> channels::Component {
     use CssColorComponent as C;
     let (domain, number) = match value {
         C::Number(value) => (
             channels::Domain::Number,
-            literal_binary64(value.numeric().representation()),
+            used_literal(value.numeric().representation()),
         ),
         C::Percentage(value) => (
             channels::Domain::Percentage,
-            literal_binary64(value.numeric().representation()),
+            used_literal(value.numeric().representation()),
         ),
         C::PercentageCalculation(_) => (
             channels::Domain::Percentage,
@@ -1382,28 +1651,37 @@ fn used_scalar(value: &CssColorComponent, projected: &ProjectedScalar) -> channe
     };
     channels::Component {
         domain,
-        value: saturated(number),
+        value: number,
     }
 }
 
-fn used_hue(
-    value: &CssColorHue,
-    projected: &ProjectedScalar,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<channels::Component> {
+/// A component numeral as used resolution converts it.
+fn used_literal(representation: &str) -> f64 {
+    let sign = if representation.starts_with('-') {
+        -1.0
+    } else {
+        1.0
+    };
+    match numeral_range(representation) {
+        NumeralRange::Beyond => f64::INFINITY.copysign(sign),
+        NumeralRange::Below => 0.0_f64.copysign(sign),
+        NumeralRange::Within => literal_binary64(representation),
+    }
+}
+
+fn used_hue(value: &CssColorHue, projected: &ProjectedScalar) -> channels::Component {
     use CssColorHue as H;
-    Ok(match value {
+    match value {
         H::Number(value) => channels::Component {
             domain: channels::Domain::Number,
-            value: literal_hue_degrees(value.numeric(), None, context)?,
+            value: literal_hue_degrees(value.numeric(), None),
         },
         H::Angle(value) => channels::Component {
             domain: channels::Domain::Degrees,
             value: literal_hue_degrees(
                 value.numeric(),
                 Some(crate::numeric::CssNumericUnit::Angle(value.unit())),
-                context,
-            )?,
+            ),
         },
         H::NumberCalculation(_) => channels::Component {
             domain: channels::Domain::Number,
@@ -1414,53 +1692,41 @@ fn used_hue(
             value: projected.scalar_value.expect("noncontextual calculation"),
         },
         H::None => unreachable!("complete HSL/HWB hue"),
-    })
+    }
 }
 
-/// A literal hue in degrees exactly as used resolution reads it. Below
-/// 1e305 no canonical angle can exceed binary64 (360 is the largest unit
-/// factor), so binary64 scaling of the correctly rounded literal is exact
-/// policy; larger literals run the shared used literal conversion, charged per
-/// action, for its scaled gradians and its 360deg-multiple overflow endpoint.
+/// A literal hue in degrees exactly as used resolution reads it: a numeral
+/// beyond the colour window is infinite, one below it zero, and any other is its
+/// correctly rounded binary64 value scaled by its unit (#2889).
 fn literal_hue_degrees(
     numeric: crate::component::CssNumericTokenRef<'_>,
     unit: Option<crate::numeric::CssNumericUnit>,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<f64> {
+) -> f64 {
     let representation = numeric.representation();
-    if crate::serialization::exact_decimal::LexicalDecimal::new(representation)
-        .compare_absolute("1", 305)
-        .is_lt()
-    {
-        let value = literal_binary64(representation);
-        return Ok(unit
-            .and_then(crate::numeric::CssNumericUnit::intrinsic_projection)
-            .map_or(value, |scale| scale.apply(value)));
+    let sign = if representation.starts_with('-') {
+        -1.0
+    } else {
+        1.0
+    };
+    match numeral_range(representation) {
+        NumeralRange::Beyond => f64::INFINITY.copysign(sign),
+        NumeralRange::Below => 0.0_f64.copysign(sign),
+        NumeralRange::Within => {
+            let value = literal_binary64(representation);
+            unit.and_then(crate::numeric::CssNumericUnit::intrinsic_projection)
+                .map_or(value, |scale| scale.apply(value))
+        }
     }
-    crate::color::authored_resolution::spelling::authored_hue_degrees(numeric, unit, || {
-        context.charge_projection(1)
-    })
 }
 
-/// Whether a literal hue overflows binary64, so its degrees are the nearest
-/// supported multiple of 360deg, which normalizes to 0deg.
-fn literal_hue_overflows(
+/// Whether a literal hue is 0deg as used resolution reads it: its degrees have
+/// at least [`channels::THRESHOLD`] of magnitude (infinite), or its numeral is
+/// below the window (zero).
+fn literal_hue_is_zero(
     numeric: crate::component::CssNumericTokenRef<'_>,
     unit: Option<crate::numeric::CssNumericUnit>,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<bool> {
-    if crate::serialization::exact_decimal::LexicalDecimal::new(numeric.representation())
-        .compare_absolute("1", 305)
-        .is_lt()
-    {
-        return Ok(false);
-    }
-    let degrees =
-        crate::color::authored_resolution::spelling::authored_hue_degrees(numeric, unit, || {
-            context.charge_projection(1)
-        })?;
-    Ok(degrees.abs()
-        == crate::numeric::projection::closest_supported_value(f64::INFINITY, true, true))
+) -> bool {
+    angle_range(numeric, unit) != NumeralRange::Within
 }
 
 type HueParts = (
@@ -1472,8 +1738,8 @@ type HueParts = (
     bool,
 );
 
-/// Values 4 §10.12: a literal hue beyond binary64 is the nearest supported
-/// multiple of 360deg, which normalizes to 0deg, as used values read it.
+/// A literal hue beyond the range is infinite, which normalizes to 0deg, as used
+/// values read it.
 fn overflowed_hue(context: &mut SpecifiedSerializationContext) -> Result<HueParts> {
     let zero = crate::serialization::exact_decimal::ExactRational::integer(0, context)?;
     Ok((
@@ -1490,14 +1756,6 @@ fn literal_binary64(representation: &str) -> f64 {
     representation
         .parse()
         .expect("checked CSS number is a decimal literal")
-}
-
-fn saturated(value: f64) -> f64 {
-    if value.is_infinite() {
-        f64::MAX.copysign(value)
-    } else {
-        value
-    }
 }
 
 /// Color 4 §§7.1, 8.1 and 16.2.2: complete specified hsl()/hwb() serialize
@@ -1619,7 +1877,7 @@ fn serialize_hsl(
     let channels = converted_rgb_text(
         ColorFunction::Hsl,
         [
-            used_hue(value.hue(), &hue, context)?,
+            used_hue(value.hue(), &hue),
             used_scalar(value.saturation(), &saturation),
             used_scalar(value.lightness(), &lightness),
         ],
@@ -1704,7 +1962,7 @@ fn serialize_hwb(
     let channels = converted_rgb_text(
         ColorFunction::Hwb,
         [
-            used_hue(value.hue(), &hue, context)?,
+            used_hue(value.hue(), &hue),
             used_scalar(value.whiteness(), &white),
             used_scalar(value.blackness(), &black),
         ],
@@ -1739,6 +1997,7 @@ fn clone_scalar(value: &ProjectedScalar) -> ProjectedScalar {
         percentage: value.percentage,
         calculation: value.calculation,
         direct_text_pending: value.direct_text_pending,
+        infinite: value.infinite,
     }
 }
 
@@ -1760,6 +2019,29 @@ fn hue_projection(
         };
         if let Some((source, factor, suffix)) = literal {
             context.charge_input(1)?;
+            let class = match value {
+                H::Number(value) => angle_range(value.numeric(), None),
+                H::Angle(value) => angle_range(
+                    value.numeric(),
+                    Some(crate::numeric::CssNumericUnit::Angle(value.unit())),
+                ),
+                _ => NumeralRange::Within,
+            };
+            if let Some((text, _)) =
+                ranged_literal_text(class, source.starts_with('-'), false, suffix, context)
+            {
+                return Ok(ProjectedScalar {
+                    scalar_value: None,
+                    text,
+                    exact: None,
+                    contextual: false,
+                    missing: false,
+                    percentage: false,
+                    calculation: false,
+                    direct_text_pending: false,
+                    infinite: None,
+                });
+            }
             let text = generic_literal_text(source, factor, context)?;
             return Ok(ProjectedScalar {
                 scalar_value: None,
@@ -1770,6 +2052,7 @@ fn hue_projection(
                 percentage: false,
                 calculation: false,
                 direct_text_pending: false,
+                infinite: None,
             });
         }
     }
@@ -1779,16 +2062,15 @@ fn hue_projection(
             context.charge_nodes(1)?;
             (output_text("none", context), None, None, false, true, false)
         }
-        H::Number(value) if literal_hue_overflows(value.numeric(), None, context)? => {
+        H::Number(value) if literal_hue_is_zero(value.numeric(), None) => {
             context.charge_input(1)?;
             overflowed_hue(context)?
         }
         H::Angle(value)
-            if literal_hue_overflows(
+            if literal_hue_is_zero(
                 value.numeric(),
                 Some(crate::numeric::CssNumericUnit::Angle(value.unit())),
-                context,
-            )? =>
+            ) =>
         {
             context.charge_input(1)?;
             overflowed_hue(context)?
@@ -1895,6 +2177,7 @@ fn hue_projection(
         percentage: false,
         calculation,
         direct_text_pending: false,
+        infinite: None,
     })
 }
 
@@ -1923,11 +2206,8 @@ fn serialize_lab(
     } else {
         ColorFunction::Oklab
     };
-    let (light_percentage, axis_percentage) = if origin {
-        (Factor::ONE, Factor::ONE)
-    } else {
-        (percent_factor(function, 0), percent_factor(function, 1))
-    };
+    let (light_percentage, axis_percentage) =
+        (percent_factor(function, 0), percent_factor(function, 1));
     let target = if origin {
         ComponentTarget::Preserve
     } else {
@@ -1983,11 +2263,8 @@ fn serialize_lch(
     } else {
         ColorFunction::Oklch
     };
-    let (light_percentage, chroma_percentage) = if origin {
-        (Factor::ONE, Factor::ONE)
-    } else {
-        (percent_factor(function, 0), percent_factor(function, 1))
-    };
+    let (light_percentage, chroma_percentage) =
+        (percent_factor(function, 0), percent_factor(function, 1));
     let lightness = lab_component_projection(
         value.lightness(),
         light_percentage,
@@ -2032,11 +2309,7 @@ fn serialize_predefined(
             declared_component_projection(
                 channel,
                 Factor::ONE,
-                if origin {
-                    Factor::ONE
-                } else {
-                    percent_factor(ColorFunction::Color, index)
-                },
+                percent_factor(ColorFunction::Color, index),
                 if origin {
                     ComponentTarget::Preserve
                 } else {
@@ -2077,11 +2350,7 @@ fn serialize_device_cmyk(
             declared_component_projection(
                 channel,
                 Factor::ONE,
-                if origin {
-                    Factor::ONE
-                } else {
-                    percent_factor(ColorFunction::DeviceCmyk, index)
-                },
+                percent_factor(ColorFunction::DeviceCmyk, index),
                 if origin {
                     ComponentTarget::Preserve
                 } else {
@@ -2118,11 +2387,7 @@ fn serialize_custom(
             declared_component_projection(
                 channel,
                 Factor::ONE,
-                if origin {
-                    Factor::ONE
-                } else {
-                    percent_factor(ColorFunction::Color, index)
-                },
+                percent_factor(ColorFunction::Color, index),
                 if origin {
                     ComponentTarget::Preserve
                 } else {
@@ -2154,6 +2419,7 @@ fn serialize_relative_expression(
     value: &CssRelativeColorExpression,
     alpha: bool,
     percentage_factor: Factor,
+    entry: channels::Entry,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
     use CssRelativeColorExpressionValue as V;
@@ -2174,7 +2440,17 @@ fn serialize_relative_expression(
                         .expect("explicit relative alpha retained"),
                 )
             } else {
-                generic_literal_text(value.numeric().representation(), Factor::ONE, context)
+                let source = value.numeric().representation();
+                match ranged_literal_text(
+                    direct_range(source, entry, false),
+                    source.starts_with('-'),
+                    false,
+                    "",
+                    context,
+                ) {
+                    Some((text, _)) => Ok(text),
+                    None => generic_literal_text(source, Factor::ONE, context),
+                }
             }
         }
         V::Percentage(value) => {
@@ -2185,11 +2461,31 @@ fn serialize_relative_expression(
                         .expect("explicit relative alpha retained"),
                 )
             } else {
-                generic_literal_text(value.numeric().representation(), percentage_factor, context)
+                let source = value.numeric().representation();
+                match ranged_literal_text(
+                    direct_range(source, entry, true),
+                    source.starts_with('-'),
+                    false,
+                    "",
+                    context,
+                ) {
+                    Some((text, _)) => Ok(text),
+                    None => generic_literal_text(source, percentage_factor, context),
+                }
             }
         }
         V::Angle(value) => {
             context.charge_input(1)?;
+            let unit = Some(crate::numeric::CssNumericUnit::Angle(value.unit()));
+            if let Some((text, _)) = ranged_literal_text(
+                angle_range(value.numeric(), unit),
+                value.numeric().representation().starts_with('-'),
+                false,
+                "deg",
+                context,
+            ) {
+                return Ok(text);
+            }
             let text = generic_literal_text(
                 value.numeric().representation(),
                 angle_factor(value.unit()),
@@ -2206,9 +2502,17 @@ fn serialize_relative_expression(
             } else {
                 crate::numeric::projection::NumericProjectionScale::Identity
             };
-            let (text, _) = crate::numeric::projection::capture_specified_scaled(
+            // A channel root is cut as the colour holds it; an alpha root is
+            // already scaled to its number.
+            let cut = if alpha {
+                crate::numeric::projection::ComponentCut::Root
+            } else {
+                crate::numeric::projection::ComponentCut::Entering(entry)
+            };
+            let (text, _) = crate::numeric::projection::capture_specified_colour_scaled(
                 &value.data.expression,
                 scale,
+                cut,
                 context,
             )?;
             Ok(text)
@@ -2230,18 +2534,35 @@ fn serialize_profile_expression(
                 match value {
                     CssColorComponent::Number(value) => {
                         context.charge_input(1)?;
-                        generic_literal_text(value.numeric().representation(), Factor::ONE, context)
+                        let source = value.numeric().representation();
+                        match ranged_literal_text(
+                            direct_range(source, channels::Entry::percent(1, 100), false),
+                            source.starts_with('-'),
+                            false,
+                            "",
+                            context,
+                        ) {
+                            Some((text, _)) => Ok(text),
+                            None => generic_literal_text(source, Factor::ONE, context),
+                        }
                     }
                     CssColorComponent::Percentage(value) => {
                         context.charge_input(1)?;
-                        generic_literal_text(
-                            value.numeric().representation(),
-                            Factor {
-                                numerator: 1,
-                                denominator: 100,
-                            },
+                        let source = value.numeric().representation();
+                        let factor = Factor {
+                            numerator: 1,
+                            denominator: 100,
+                        };
+                        match ranged_literal_text(
+                            direct_range(source, channels::Entry::percent(1, 100), true),
+                            source.starts_with('-'),
+                            false,
+                            "",
                             context,
-                        )
+                        ) {
+                            Some((text, _)) => Ok(text),
+                            None => generic_literal_text(source, factor, context),
+                        }
                     }
                     _ => component_projection(
                         value,
@@ -2361,7 +2682,7 @@ pub(crate) fn mix_weight_texts<'a>(
                 }
                 Some(weight) => {
                     let calculation = weight.calculation().expect("checked weight variant");
-                    let (text, _) = crate::numeric::expression::capture_retained_color_calculation(
+                    let (text, _) = crate::numeric::expression::capture_color_weight_calculation(
                         crate::numeric::expression::ColorCalculationRef::Percentage(calculation),
                         crate::numeric::projection::NumericProjectionScale::Identity,
                         context,
@@ -2801,12 +3122,14 @@ mod suppressed_color_semantics_tests {
 
     #[test]
     fn suppression_preserves_checked_exact_arithmetic_errors() {
-        let value = color("rgb(12345678901234567891e170141183460469231731687303715884105727 0 0)");
-        let mut writer = SpecifiedRuleWriter::new(Limits::new(100_000, 100_000, 0));
+        // A numeral inside the colour window is exact arithmetic charged per
+        // limb; a projection limit of two is exhausted by it, with no output.
+        let value = color("lab(0 123456789012345678901234567890123456789 0)");
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(100_000, 2, 0));
         let error = writer
             .without_output(|writer| append(&value, writer))
             .unwrap_err();
-        assert_eq!(error.kind(), K::CapacityOverflow);
+        assert_eq!(error.kind(), K::ProjectionNodeLimit);
         assert!(writer.css.is_empty());
         assert!(!writer.context.output_suppressed());
     }

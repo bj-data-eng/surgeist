@@ -156,9 +156,13 @@ fn complete_relative_hsl_resolves_to_extended_srgb_and_missing_keeps_hsl() {
 fn infinite_lab_axis_is_the_largest_finite_value_at_the_used_boundary() {
     // Values 4 §10.9.1: an infinity does not escape a top-level calculation;
     // it clamps to the largest value allowed, and a Lab a/b axis has no
-    // range clamp, so the axis is f64::MAX.
+    // range clamp, so the axis is the largest value of the implementation's
+    // component range, f32::MAX (#2889).
     let value = color("lab(50 calc(infinity) 0)");
     assert_eq!(value.space(), ColorSpace::Lab);
-    assert_eq!(value.channels(), [Some(50.0), Some(f64::MAX), Some(0.0)]);
+    assert_eq!(
+        value.channels(),
+        [Some(50.0), Some(f32::MAX as f64), Some(0.0)]
+    );
     assert_eq!(value.alpha(), Some(1.0));
 }

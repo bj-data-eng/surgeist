@@ -1221,8 +1221,10 @@ mod tests {
             panic!("finite channels")
         };
         let original = checkpoint.value();
-        // XYZ Z is 1.089 times the shared channel, beyond binary64, so it is
-        // the closest finite value; X and Y (0.95 and 1.0 times) stay exact.
+        // The components are limited to f32::MAX (#2889), so the shared channel is
+        // f32::MAX. XYZ Z is 1.0890577507598785 times it (the third row of the
+        // Color 4 sRGB to XYZ D65 matrix sums to that) and X and Y (0.95 and 1.0
+        // times) are finite too: converted channels are not limited.
         let checkpoint = transform(
             checkpoint,
             Transformation::Convert(surgeist_color::ColorSpace::Predefined(
@@ -1232,7 +1234,8 @@ mod tests {
         let [x, y, z] = checkpoint.value().channels();
         assert!(x.is_some_and(|x| x.is_finite() && x < f64::MAX));
         assert!(y.is_some_and(|y| y.is_finite() && y < f64::MAX));
-        assert_eq!(z, Some(f64::MAX));
+        let expected = 1.0890577507598785 * f64::from(f32::MAX);
+        assert!(z.is_some_and(|z| (z - expected).abs() <= 1e-6 * expected));
         assert!(!checkpoint.value().identical(original));
         assert_eq!(checkpoint.standard_failure(), None);
     }

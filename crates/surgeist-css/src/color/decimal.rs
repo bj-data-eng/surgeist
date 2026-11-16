@@ -5,7 +5,8 @@ use crate::color::controlled::protocol::{
     ColorProtocolError, Data, LexicalRecord, RecordRange, RecordTable,
 };
 use crate::numeric::bounded_decimal::{
-    DecimalCursor, DecimalInput, DecimalLayout, DecimalOutcome, DecimalReply, DecimalRequest,
+    DecimalCursor, DecimalInput, DecimalLayout, DecimalOutcome, DecimalRange, DecimalReply,
+    DecimalRequest,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,7 +74,7 @@ impl<'owner> NumberConversion<'owner> {
             exponent: layout.exponent_digits,
             scratch_base,
             scaled: None,
-            cursor: DecimalCursor::new(child),
+            cursor: DecimalCursor::new(child, DecimalRange::Window),
             stopped: false,
         })
     }
@@ -107,7 +108,7 @@ impl<'owner> NumberConversion<'owner> {
             exponent: scale.layout.exponent_digits,
             scaled: Some(scale.digits),
             scratch_base,
-            cursor: DecimalCursor::new(child),
+            cursor: DecimalCursor::new(child, DecimalRange::Binary64),
             stopped: false,
         })
     }
@@ -630,17 +631,27 @@ mod tests {
         }
     }
     #[test]
-    fn actual_lexer_digits_reach_exact_finite_and_overflow_outcomes() {
+    fn actual_lexer_digits_reach_exact_estimated_and_unsigned_zero_outcomes() {
+        // Colour numerals convert exactly from 1e-46 up to, not including,
+        // 1e41; outside that window the outcome is a bounded-error estimate,
+        // and a literal beyond binary64 is the closest finite value.
         for (input, expected) in [
             ("-0", DecimalOutcome::Finite(0.0)),
             (".5", DecimalOutcome::Finite(0.5)),
-            ("1e-9999", DecimalOutcome::Finite(0.0)),
-            ("1e9999", DecimalOutcome::Overflow { negative: false }),
+            ("1e-9999", DecimalOutcome::Below { estimate: 0.0 }),
+            ("1e9999", DecimalOutcome::Beyond { estimate: f64::MAX }),
             (
                 "2.2250738585072014e-308",
-                DecimalOutcome::Finite(f64::MIN_POSITIVE),
+                DecimalOutcome::Below {
+                    estimate: f64::MIN_POSITIVE,
+                },
             ),
-            ("1.7976931348623157e308", DecimalOutcome::Finite(f64::MAX)),
+            (
+                "1.7976931348623157e308",
+                DecimalOutcome::Beyond { estimate: f64::MAX },
+            ),
+            ("9.99e40", DecimalOutcome::Finite(9.99e40)),
+            ("1e-46", DecimalOutcome::Finite(1e-46)),
         ] {
             let mut owner = CssColorOperationOwner::new();
             let mut operation =
