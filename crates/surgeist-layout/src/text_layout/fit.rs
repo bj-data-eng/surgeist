@@ -2721,6 +2721,39 @@ where
     }
 }
 
+/// Line searches and the break opportunities they evaluate as candidates,
+/// counted on the current thread so a test can bound the work of one layout.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct CandidateWork {
+    pub(super) line_searches: usize,
+    pub(super) candidates: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CANDIDATE_WORK: std::cell::Cell<CandidateWork> =
+        const { std::cell::Cell::new(CandidateWork { line_searches: 0, candidates: 0 }) };
+}
+
+#[cfg(test)]
+pub(super) fn take_candidate_work() -> CandidateWork {
+    CANDIDATE_WORK.with(std::cell::Cell::take)
+}
+
+#[cfg(test)]
+fn observe_candidate_work(line_search: bool) {
+    CANDIDATE_WORK.with(|cell| {
+        let mut work = cell.get();
+        if line_search {
+            work.line_searches += 1;
+        } else {
+            work.candidates += 1;
+        }
+        cell.set(work);
+    });
+}
+
 fn query_bands(
     source: &mut impl FnMut(f64, f64) -> Result<Band, FitError>,
     logical_start: f64,

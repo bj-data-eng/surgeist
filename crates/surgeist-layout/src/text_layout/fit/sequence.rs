@@ -62,6 +62,8 @@ where
         input: &FitInput<'_>,
         search: SequenceLineSearch<'_>,
     ) -> Result<Option<AcceptedCandidate>, FitError> {
+        #[cfg(test)]
+        observe_candidate_work(true);
         let SequenceLineSearch {
             progress,
             constrained,
@@ -249,6 +251,8 @@ where
                 if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
                     continue;
                 }
+                #[cfg(test)]
+                observe_candidate_work(false);
                 let variants = (*kind != PreparedBreakKind::Discretionary)
                     .then_some(None)
                     .into_iter()

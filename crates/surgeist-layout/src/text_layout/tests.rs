@@ -31,6 +31,8 @@ mod both_sides;
 mod boundary_owner_composition;
 #[path = "tests/break_all_hyphenation.rs"]
 mod break_all_hyphenation;
+#[path = "tests/candidate_walk.rs"]
+mod candidate_walk;
 #[path = "tests/canonical.rs"]
 mod canonical;
 #[path = "tests/computed_line_boundaries.rs"]
