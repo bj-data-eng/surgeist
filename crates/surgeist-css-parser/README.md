@@ -151,3 +151,15 @@ when `SURGEIST_CSS_PARSER_PERF=1` is set:
 ```sh
 SURGEIST_CSS_PARSER_PERF=1 cargo test --release --offline --locked -j 1 -p surgeist-css-parser --test lexer_performance -- --ignored --nocapture
 ```
+
+## Document parse cost
+
+`benches/document_parse.rs` times `Document::parse` in a release build,
+unmetered and with the default limits, on the same two inputs. Over 11 rounds,
+each starting one case later, it prints the median, minimum and maximum time of
+one pass, the bytes, the time per byte and the documents' metrics (components,
+nodes, maximum depth, spelling bytes) with the components per byte:
+
+```sh
+cargo bench --offline --locked -j 1 -p surgeist-css-parser --bench document_parse
+```
