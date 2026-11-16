@@ -59,6 +59,8 @@ mod inter_word;
 mod inter_word_distribution;
 #[path = "tests/inter_word_failures.rs"]
 mod inter_word_failures;
+#[path = "tests/justified_fit.rs"]
+mod justified_fit;
 #[path = "tests/lexical_fallback.rs"]
 mod lexical_fallback;
 #[path = "tests/line_box_direction.rs"]
