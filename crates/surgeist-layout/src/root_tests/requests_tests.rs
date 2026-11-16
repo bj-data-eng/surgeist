@@ -6157,7 +6157,6 @@ fn scroll_geometry_error_maps_root_block_overflow_through_the_public_front_door(
         ),
         LayoutErrorSite::Node(0),
         LayoutOperation::RootLayout,
-        LayoutInternalInvariant::InvalidRootScrollGeometry,
     );
 }
 
@@ -6231,7 +6230,6 @@ fn scroll_geometry_error_maps_non_root_block_overflow_through_the_public_front_d
         ),
         LayoutErrorSite::Node(1),
         LayoutOperation::ChildLayout,
-        LayoutInternalInvariant::InvalidBlockScrollGeometry,
     );
 }
 
@@ -6336,7 +6334,6 @@ fn scroll_geometry_error_maps_block_inline_float_and_absolute_overflow_to_the_su
                 subject: 1,
             },
             LayoutOperation::ChildLayout,
-            LayoutInternalInvariant::InvalidBlockScrollGeometry,
         );
     }
 }

@@ -1216,12 +1216,11 @@ fn assert_fri06_mr02_geometry_error_public_root_has_no_batch<S: LayoutScalar>() 
 
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
         assert_eq!(error.operation(), LayoutOperation::RootLayout);
-        assert!(matches!(
-            error.kind(),
-            LayoutErrorKindOf::InternalInvariant(
-                LayoutInternalInvariant::InvalidRootScrollGeometry
-            )
-        ));
+        assert!(
+            matches!(error.kind(), LayoutErrorKindOf::ScrollGeometry(_)),
+            "{:?}",
+            error.kind()
+        );
     }
 }
 
@@ -1597,9 +1596,10 @@ fn compute_layout_root_diagnostics_reject_invalid_cached_scroll_geometry_without
 
     assert_eq!(error.site(), LayoutErrorSite::Node(0));
     assert_eq!(error.operation(), LayoutOperation::RootLayout);
-    crate::test_support::assert_error_kind(
-        error.kind(),
-        &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::InvalidRootScrollGeometry),
+    assert!(
+        matches!(error.kind(), LayoutErrorKind::ScrollGeometry(_)),
+        "{:?}",
+        error.kind()
     );
 }
 

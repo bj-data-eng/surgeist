@@ -493,10 +493,10 @@ where
             return Ok(None);
         };
         text.entry_funding().map_err(|error| {
-            LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
+                error,
             )
         })
     }
@@ -536,10 +536,10 @@ where
             .map(|state| state.entry_basis(funding.as_ref(), trial == FloatChildTrial::InFlow))
             .transpose()
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
         let packet_owner = funding
@@ -549,10 +549,10 @@ where
             })
             .transpose()
             .map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
         Ok(std::sync::Arc::new(FloatChildPacket {
@@ -602,10 +602,10 @@ where
             return Err(crate::block::float_context::missing(node));
         }
         let error = |error| {
-            LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
+                error,
             )
         };
         let funding = if self.entry_sources.is_some() {
@@ -1600,10 +1600,10 @@ where
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .contains(node, funding.as_ref())
                 .map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?;
             if measured {
@@ -1885,10 +1885,10 @@ where
         }
         if let Some(text) = &mut self.text {
             text.prepare_entry().map_err(|error| {
-                LayoutErrorOf::new(
+                crate::error::staging_text_error(
                     LayoutErrorSiteOf::Node(query.node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Text(error),
+                    error,
                 )
             })?;
         }
@@ -1907,10 +1907,10 @@ where
                 })
                 .transpose()
                 .map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(query.node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?;
             self.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
@@ -1964,10 +1964,10 @@ where
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let error = |error| {
-                        LayoutErrorOf::new(
+                        crate::error::staging_text_error(
                             LayoutErrorSiteOf::Node(node),
                             LayoutOperation::ChildLayout,
-                            LayoutErrorKindOf::Text(error),
+                            error,
                         )
                     };
                     if let Some(result) =
@@ -2571,10 +2571,10 @@ where
                         .map(crate::text_layout::scope_alignment::EntryFunding::as_ref),
                 )
                 .map_err(|error| {
-                    LayoutErrorOf::new(
+                    crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(packet.node),
                         LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::Text(error),
+                        error,
                     )
                 })?
         } else {

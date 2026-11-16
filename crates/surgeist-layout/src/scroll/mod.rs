@@ -24,8 +24,8 @@ use box_geometry::{AutoScrollbarOverflowObservation, scroll_rect_axis_interval, 
 pub(crate) use box_geometry::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, ClipMarginSourceOf,
     MeasuredLeafContentBoxInsetSourceOf, OptimalRegionInsetOf, OptimalRegionInsetsOf,
-    SettledAutoScrollbarState, UsedOverflow, measured_leaf_content_box_inset,
-    scrollbar_size_from_overflow,
+    ScrollBoxClipGutterErrorOf, SettledAutoScrollbarState, UsedOverflow,
+    measured_leaf_content_box_inset, scrollbar_size_from_overflow,
 };
 #[cfg(test)]
 pub(crate) use box_geometry::{UsedOverflowAxis, UsedOverflowGutter};

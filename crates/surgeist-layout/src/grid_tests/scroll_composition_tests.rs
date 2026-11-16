@@ -565,11 +565,10 @@ fn assert_grid_gutter_cache_invalidation_and_atomicity<S: LayoutScalar>() {
         // inset arithmetic to this typed child geometry failure.
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(3));
         assert_eq!(error.operation(), LayoutOperation::ChildLayout);
-        crate::test_support::assert_error_kind(
-            error.kind(),
-            &LayoutErrorKindOf::InternalInvariant(
-                LayoutInternalInvariant::InvalidBlockScrollGeometry,
-            ),
+        assert!(
+            matches!(error.kind(), LayoutErrorKindOf::ScrollGeometry(_)),
+            "{:?}",
+            error.kind()
         );
         assert_eq!(
             tree.retained, retained_before_failure,

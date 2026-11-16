@@ -678,15 +678,12 @@ where
 fn root_scroll_error<Node, S, M, E>(node: Node, error: E) -> LayoutErrorOf<Node, S, M>
 where
     S: LayoutScalar,
+    E: Into<crate::error::ScrollGeometryCauseOf<S>>,
 {
-    let _ = error;
-    let kind =
-        LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidRootScrollGeometry);
-
-    LayoutErrorOf::new(
+    crate::error::scroll_geometry_error(
         LayoutErrorSiteOf::Node(node),
         LayoutOperation::RootLayout,
-        kind,
+        error,
     )
 }
 

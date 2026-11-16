@@ -2635,18 +2635,20 @@ pub(super) fn fri06_mr02_geometry_error_input<S: LayoutScalar>(
     )
 }
 
-pub(super) fn fri06_mr02_geometry_error_assert<S: LayoutScalar, M>(
+pub(super) fn fri06_mr02_geometry_error_assert<S: LayoutScalar, M: core::fmt::Debug>(
     error: LayoutErrorOf<u32, S, M>,
     site: LayoutErrorSiteOf<u32>,
     operation: LayoutOperation,
-    invariant: LayoutInternalInvariant,
 ) {
     assert_eq!(error.site(), site);
     assert_eq!(error.operation(), operation);
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKindOf::InternalInvariant(actual) if *actual == invariant
-    ));
+    let LayoutErrorKindOf::ScrollGeometry(cause) = error.kind() else {
+        panic!("unexpected typed error kind: {:?}", error.kind());
+    };
+    assert!(
+        !cause.to_string().is_empty(),
+        "the retained scroll geometry cause must describe the rejected fact"
+    );
 }
 
 pub(super) fn assert_fri06_mr02_geometry_error_grid_own<S: LayoutScalar>() {
@@ -2665,17 +2667,9 @@ pub(super) fn assert_fri06_mr02_geometry_error_grid_own<S: LayoutScalar>() {
         ..NodeInputOf::default()
     };
 
-    for (run_mode, operation, invariant) in [
-        (
-            RunMode::PerformRootLayout,
-            LayoutOperation::RootLayout,
-            LayoutInternalInvariant::InvalidRootScrollGeometry,
-        ),
-        (
-            RunMode::PerformLayout,
-            LayoutOperation::ChildLayout,
-            LayoutInternalInvariant::InvalidBlockScrollGeometry,
-        ),
+    for (run_mode, operation) in [
+        (RunMode::PerformRootLayout, LayoutOperation::RootLayout),
+        (RunMode::PerformLayout, LayoutOperation::ChildLayout),
     ] {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
             .children(7, [])
@@ -2687,7 +2681,7 @@ pub(super) fn assert_fri06_mr02_geometry_error_grid_own<S: LayoutScalar>() {
         )
         .expect_err("overflowing grid geometry must fail");
 
-        fri06_mr02_geometry_error_assert(error, LayoutErrorSiteOf::Node(7), operation, invariant);
+        fri06_mr02_geometry_error_assert(error, LayoutErrorSiteOf::Node(7), operation);
     }
 }
 

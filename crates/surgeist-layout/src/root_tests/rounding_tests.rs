@@ -1,7 +1,7 @@
 use super::fixtures::{
     Fri05C03MeasuredLeafTree, PublicFlowTree, RootSessionTree, RootTestScrollGeometryFacts,
     assert_fri06_c08_float_line_final_height, assert_positive_physical_range,
-    assert_public_scroll_geometry_error_without_batch, computed_overflow,
+    assert_public_rounded_scroll_geometry_error_without_batch, computed_overflow,
     fri05_c03_root_all_flow_axes, fri05_c03_root_gutter_at, fri06_c02_final_node,
     fri06_c04_front_door_batch, fri06_c12_t08_forced_break_fallback_batch, logical_flex_leaf,
     prepared_source_batch, public_flow_output, root_test_scroll_geometry,
@@ -677,7 +677,7 @@ fn scroll_geometry_error_maps_rounding_overflow_through_the_public_front_door() 
     let tree: RootSessionTree = RootSessionTree::default().style(0, style);
     tree.caches.borrow_mut().insert(0, cache);
 
-    assert_public_scroll_geometry_error_without_batch(
+    assert_public_rounded_scroll_geometry_error_without_batch(
         crate::test_support::requests::NativeRootFrameOf::new(
             flow_axes,
             Size::splat(Some(

@@ -756,31 +756,18 @@ where
 fn leaf_scroll_error_at_site<Node, S, M>(
     site: LayoutErrorSiteOf<Node>,
     run_mode: RunMode,
-    _error: CanonicalScrollGeometryErrorOf<S>,
+    error: CanonicalScrollGeometryErrorOf<S>,
 ) -> LayoutErrorOf<Node, S, M>
 where
     Node: Copy,
     S: LayoutScalar,
 {
-    let (operation, invariant) = match (site, run_mode) {
-        (LayoutErrorSiteOf::Standalone, _) => (
-            LayoutOperation::LeafMeasurement,
-            LayoutInternalInvariant::InvalidRootScrollGeometry,
-        ),
-        (_, RunMode::PerformRootLayout) => (
-            LayoutOperation::RootLayout,
-            LayoutInternalInvariant::InvalidRootScrollGeometry,
-        ),
-        _ => (
-            LayoutOperation::ChildLayout,
-            LayoutInternalInvariant::InvalidBlockScrollGeometry,
-        ),
+    let operation = match (site, run_mode) {
+        (LayoutErrorSiteOf::Standalone, _) => LayoutOperation::LeafMeasurement,
+        (_, RunMode::PerformRootLayout) => LayoutOperation::RootLayout,
+        _ => LayoutOperation::ChildLayout,
     };
-    LayoutErrorOf::new(
-        site,
-        operation,
-        LayoutErrorKindOf::InternalInvariant(invariant),
-    )
+    crate::error::scroll_geometry_error(site, operation, error)
 }
 
 pub(crate) fn validate_native_sample<Node: Copy, S: LayoutScalar, M>(

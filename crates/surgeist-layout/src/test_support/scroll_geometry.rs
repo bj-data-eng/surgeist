@@ -1,8 +1,8 @@
 use crate::{
     ComputeInputOf, ContainingLayoutContext, Direction, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
-    LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation, LayoutScalar, LengthPercentageOf,
-    NumericResolutionOf, ParentFormattingContext, PercentageBasisOf, RequestedAxis, RunMode,
-    ScrollPaddingOf, ScrollPaddingValueOf, Size, SizingMode, WritingMode,
+    LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LengthPercentageOf, NumericResolutionOf,
+    ParentFormattingContext, PercentageBasisOf, RequestedAxis, RunMode, ScrollPaddingOf,
+    ScrollPaddingValueOf, Size, SizingMode, WritingMode,
 };
 
 pub(crate) fn geometry_error_largest_finite<S: LayoutScalar>() -> S {
@@ -43,18 +43,20 @@ pub(crate) fn geometry_error_input<S: LayoutScalar>(run_mode: RunMode) -> Comput
     )
 }
 
-pub(crate) fn assert_geometry_error<S: LayoutScalar, M>(
+pub(crate) fn assert_geometry_error<S: LayoutScalar, M: core::fmt::Debug>(
     error: LayoutErrorOf<u32, S, M>,
     site: LayoutErrorSiteOf<u32>,
     operation: LayoutOperation,
-    invariant: LayoutInternalInvariant,
 ) {
     assert_eq!(error.site(), site);
     assert_eq!(error.operation(), operation);
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKindOf::InternalInvariant(actual) if *actual == invariant
-    ));
+    let LayoutErrorKindOf::ScrollGeometry(cause) = error.kind() else {
+        panic!("unexpected typed error kind: {:?}", error.kind());
+    };
+    assert!(
+        !cause.to_string().is_empty(),
+        "the retained scroll geometry cause must describe the rejected fact"
+    );
 }
 
 pub(crate) fn scroll_padding_inputs<S: LayoutScalar>() -> [ScrollPaddingOf<S>; 2] {

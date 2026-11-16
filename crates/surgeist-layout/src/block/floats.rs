@@ -297,10 +297,10 @@ fn entry_visit<Node, S: LayoutScalar, M>(
     funding
         .map_or(Ok(()), |funding| funding.visit(count))
         .map_err(|error| {
-            LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::Text(error),
+                error,
             )
         })
 }

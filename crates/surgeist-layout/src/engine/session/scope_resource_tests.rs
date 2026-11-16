@@ -540,21 +540,37 @@ fn funded_session<'a>(
     session
 }
 
-fn assert_staging_failure_is_not_text(
+fn assert_staging_failure_is_resource_limit(
     error: &LayoutErrorOf<u32, f64>,
     limit: text::ScopeAlignmentLimitKind,
 ) {
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0), "{error:?}");
     assert_eq!(error.operation(), LayoutOperation::ChildLayout, "{error:?}");
+    let LayoutErrorKindOf::ResourceLimit(refusal) = error.kind() else {
+        panic!(
+            "a spent {limit:?} budget during child staging is a resource limit of layout, \
+             not a Text protocol refusal: {error:?}"
+        )
+    };
+    let Some(text::ErrorDetail::ScopeAlignment {
+        reason: text::ScopeAlignmentError::Limit { kind, .. },
+    }) = refusal.detail()
+    else {
+        panic!("the resource limit must keep the exhausted budget: {refusal:?}")
+    };
+    assert_eq!(*kind, limit);
+    let source = std::error::Error::source(error).expect("a resource limit names its cause");
+    assert!(source.downcast_ref::<text::Error>().is_some());
     assert!(
-        !matches!(error.kind(), LayoutErrorKindOf::Text(_)),
-        "a spent {limit:?} budget during child staging is a resource failure, \
-         not a Text protocol refusal: {error:?}"
+        error
+            .to_string()
+            .starts_with("child layout failed at node 0:"),
+        "{error}"
     );
 }
 
 #[test]
-fn child_staging_with_spent_scope_work_reports_a_resource_failure_not_text() {
+fn child_staging_with_spent_scope_work_reports_a_resource_limit_not_text() {
     let fixture = Fixture::new(WORK);
     let flow = fixture.flow();
 
@@ -571,11 +587,11 @@ fn child_staging_with_spent_scope_work_reports_a_resource_failure_not_text() {
         .child_staging(0, super::FloatChildTrial::InFlow, None)
         .err()
         .expect("staging must refuse once the structural work budget is spent");
-    assert_staging_failure_is_not_text(&error, text::ScopeAlignmentLimitKind::StructuralWork);
+    assert_staging_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::StructuralWork);
 }
 
 #[test]
-fn child_staging_with_spent_scope_records_reports_a_resource_failure_not_text() {
+fn child_staging_with_spent_scope_records_reports_a_resource_limit_not_text() {
     let fixture = Fixture::new(WORK);
     let flow = fixture.flow();
     let mut spent = funded_session(&flow);
@@ -592,7 +608,7 @@ fn child_staging_with_spent_scope_records_reports_a_resource_failure_not_text() 
         .child_staging(0, super::FloatChildTrial::InFlow, None)
         .err()
         .expect("staging must refuse once the record budget is spent");
-    assert_staging_failure_is_not_text(&error, text::ScopeAlignmentLimitKind::Records);
+    assert_staging_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::Records);
 }
 
 #[cfg(test)]
