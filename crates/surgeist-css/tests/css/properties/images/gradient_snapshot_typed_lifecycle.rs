@@ -499,6 +499,51 @@ fn selected_metadata_traces_the_exact_gradient_import_without_claiming_siblings(
 }
 
 #[test]
+fn checked_position_rejects_recovered_math_that_parsing_retains() {
+    let source = "background-image:conic-gradient(red 10deg calc(20deg + 25%";
+    let report = CssParser::default().parse_block_contents(source);
+    // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error, and §5.5.10 retains it.
+    assert!(!report.is_clean());
+    assert_eq!(report.syntax().len(), 1);
+    let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("background image")
+    };
+    let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images() else {
+        panic!("conic")
+    };
+    let CssAngularColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
+        panic!("stop")
+    };
+    let CssAngularColorStopPosition::Calculation(recovered) = &stop.positions()[1] else {
+        panic!("parsing retains the recovered position math")
+    };
+    // At HEAD the constructor is infallible, so the contract is stated on its result: an
+    // admitted position retains no component recovered by implicit closure.
+    let admitted = CssAngularColorStopPosition::from_calculation(recovered.clone());
+    let CssAngularColorStopPosition::Calculation(held) = &admitted else {
+        panic!("calculation position")
+    };
+    let [root] = held.components().items() else {
+        panic!("one math root")
+    };
+    let surgeist_css::component::CssComponentValueRef::Function(function) = root.view() else {
+        panic!("math root")
+    };
+    assert!(
+        !matches!(
+            function.closing_origin(),
+            CssValueOrigin::ImplicitClosure { .. }
+        ),
+        "the checked constructor admitted a recovered closure"
+    );
+}
+
+#[test]
 fn parsed_conic_second_position_and_from_keep_the_original_source_spans() {
     let source = "/*😀*/background-image:conic-gradient(from calc(15deg + 5deg) at block-start 3px inline-end 4% in lab, red 10deg calc(20deg + 25%))!important";
     let report = CssParser::default().parse_block_contents(source);

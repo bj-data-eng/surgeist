@@ -656,7 +656,7 @@ fn finite_hyphenation_and_group_alignment_domains_keep_typed_choices_and_leaf_co
 }
 
 #[test]
-fn recovered_hyphenation_string_constructor_keeps_the_original_component_and_snapshot() {
+fn recovered_hyphenation_string_is_retained_by_parsing_and_rejected_by_the_checked_constructor() {
     let css = ".a{hyphenate-character:\"😀";
     let report = CssParser::default().parse_sheet(css);
     assert!(!report.is_clean());
@@ -676,7 +676,17 @@ fn recovered_hyphenation_string_constructor_keeps_the_original_component_and_sna
             )
         })
         .unwrap();
-    let value = CssHyphenateString::try_from_component(component.clone()).unwrap();
+    // Syntax 3 §5.5.10 retains the string closed at EOF; a checked constructor admits
+    // only a string its author closed.
+    assert!(CssHyphenateString::try_from_component(component.clone()).is_none());
+    let CssKnownPropertyValueRef::HyphenateCharacter(wrapper) =
+        source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("recovered typed string")
+    };
+    let CssHyphenateCharacter::String(value) = wrapper.value() else {
+        panic!("parsing retains the recovered string")
+    };
     assert_eq!(value.component(), component);
     assert_eq!(value.as_str(), "😀");
     assert_eq!(value.origin(), component.origin());
@@ -689,16 +699,7 @@ fn recovered_hyphenation_string_constructor_keeps_the_original_component_and_sna
             .same_snapshot(source.parsed_value().unwrap().source())
     );
     assert_eq!(origin.source().as_str(), css);
-    let CssKnownPropertyValueRef::HyphenateCharacter(wrapper) =
-        source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("recovered typed string")
-    };
-    assert_eq!(
-        wrapper.value(),
-        &CssHyphenateCharacter::String(value.clone())
-    );
-    limits!(value, "\"😀\"", 1);
+    limits!(value.clone(), "\"😀\"", 1);
     assert_eq!(report, before);
 }
 

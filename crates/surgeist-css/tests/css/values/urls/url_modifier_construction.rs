@@ -395,3 +395,54 @@ fn parsed_eof_modifier_arguments_retain_implied_closures_and_decoded_escape() {
         [child] if matches!(child.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident("a\u{fffd}")))
     ));
 }
+
+#[test]
+fn checked_modifier_rejects_arguments_closed_by_end_of_input_that_parsing_retains() {
+    let components =
+        |source: &str| CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    // Syntax 3 §5.5.10 closes a string or function at the end of its input and parsing
+    // retains it with a diagnostic; a checked constructor admits only what its author closed.
+    for (name, source) in [
+        ("integrity", "\"abc"),
+        ("foo", "calc(1 + 2"),
+        ("foo", "f(1, g("),
+    ] {
+        let error =
+            CssUrlModifierFunction::try_new(CssIdent::try_new(name).unwrap(), components(source))
+                .unwrap_err();
+        assert!(error.is_invalid_function(), "{name}({source}): {error:?}");
+        let CssValueOrigin::ImplicitClosure { at, .. } = error.origin() else {
+            panic!("{name}({source}): implicit closure origin: {error:?}")
+        };
+        assert_eq!(
+            at.span().start().byte_offset().value(),
+            source.len(),
+            "{source}"
+        );
+    }
+    for (name, source) in [
+        ("integrity", "\"abc\""),
+        ("foo", "calc(1 + 2)"),
+        ("foo", "f(1, g())"),
+    ] {
+        let function =
+            CssUrlModifierFunction::try_new(CssIdent::try_new(name).unwrap(), components(source))
+                .unwrap_or_else(|error| panic!("{name}({source}): {error:?}"));
+        assert_eq!(function.argument_components(), &components(source));
+    }
+
+    for source in [
+        "background-image:url(\"x\" integrity(\"abc",
+        "background-image:url(\"x\" foo(calc(1 + 2",
+    ] {
+        let report = CssParser::default().parse_block_contents(source);
+        let [declaration] = report.syntax().as_slice() else {
+            panic!("retained URL at EOF: {source}: {:?}", report.diagnostics());
+        };
+        assert!(!report.is_clean(), "{source}");
+        let function = modifier(background_url(
+            declaration.known().unwrap().property_value().unwrap(),
+        ));
+        assert_eq!(function.argument_components().items().len(), 1, "{source}");
+    }
+}

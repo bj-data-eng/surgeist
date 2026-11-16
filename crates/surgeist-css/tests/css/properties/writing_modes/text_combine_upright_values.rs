@@ -29,6 +29,47 @@ fn parsed(text: &str) -> CssTextCombineUpright {
     };
     value.value().clone()
 }
+#[test]
+fn checked_digit_count_rejects_recovered_math_that_parsing_retains() {
+    let report =
+        CssParser::default().parse_block_contents("text-combine-upright:digits calc(1 + 1");
+    // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error, and §5.5.10 retains it.
+    assert!(!report.is_clean());
+    assert_eq!(report.syntax().len(), 1);
+    let CssKnownPropertyValueRef::TextCombineUpright(value) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("text-combine-upright")
+    };
+    let CssTextCombineUpright::Digits(Some(count)) = value.value() else {
+        panic!("explicit count")
+    };
+    let recovered = count
+        .calculation()
+        .expect("parsing retains the recovered count math")
+        .clone();
+    // At HEAD the constructor is infallible, so the contract is stated on its result: an
+    // admitted count retains no component recovered by implicit closure.
+    let admitted = CssTextCombineDigitCount::from_calculation(recovered);
+    let held = admitted.calculation().expect("calculation count");
+    let [root] = held.components().items() else {
+        panic!("one math root")
+    };
+    let surgeist_css::component::CssComponentValueRef::Function(function) = root.view() else {
+        panic!("math root")
+    };
+    assert!(
+        !matches!(
+            function.closing_origin(),
+            CssValueOrigin::ImplicitClosure { .. }
+        ),
+        "the checked constructor admitted a recovered closure"
+    );
+}
+
 fn output(value: &CssTextCombineUpright, expected: &str) {
     let before = value.clone();
     assert_eq!(

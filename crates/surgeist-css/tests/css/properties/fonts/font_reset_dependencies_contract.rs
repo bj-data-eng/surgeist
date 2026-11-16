@@ -965,3 +965,39 @@ fn normalized_nested_declarations_retain_order_and_source_occurrences() {
         assert!(contribution.source().same_occurrence(item.source()));
     }
 }
+
+#[test]
+fn recovered_language_string_is_retained_by_parsing_and_rejected_by_the_checked_constructor() {
+    let css = "font-language-override:\"SRB";
+    let report = CssParser::default().parse_block_contents(css);
+    // Syntax 3 §5.5.10 retains the string closed at EOF.
+    assert!(!report.is_clean());
+    assert_eq!(report.syntax().len(), 1);
+    let CssKnownPropertyValueRef::FontLanguageOverride(wrapper) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("language wrapper")
+    };
+    let CssFontLanguageOverride::String(value) = wrapper.value() else {
+        panic!("parsing retains the recovered string")
+    };
+    assert_eq!(value.as_str(), "SRB");
+    let CssValueOrigin::Parsed(origin) = value.origin() else {
+        panic!("parsed opening and content")
+    };
+    assert_eq!(origin.source().as_str(), css);
+    assert!(
+        origin
+            .source()
+            .same_snapshot(report.syntax()[0].parsed_value().unwrap().source())
+    );
+    let error = CssFontLanguageString::try_from_component(value.component().clone()).unwrap_err();
+    assert!(error.is_invalid_token(), "{error:?}");
+    assert!(matches!(
+        error.origin(),
+        CssValueOrigin::ImplicitClosure { .. }
+    ));
+}

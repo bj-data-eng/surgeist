@@ -16,7 +16,9 @@ use surgeist_css::declaration::{CssDeclaration, CssImportance};
 use surgeist_css::numeric::{
     CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssPercentage,
 };
-use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
 use surgeist_css::{CssParser, CssParserContext};
 
 fn checked_components(values: CssComponentValues) -> CssDeclaration {
@@ -221,6 +223,34 @@ fn calculations_preserve_the_graph_origins_and_specified_range() {
             }
         }
     }
+}
+
+#[test]
+fn checked_weight_rejects_recovered_math_that_parsing_retains() {
+    let report = CssParser::default().parse_block_contents("color:color-mix(red calc(10% + 20%");
+    // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error, and §5.5.10 retains it.
+    assert!(!report.is_clean());
+    assert_eq!(report.syntax().len(), 1);
+    let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("typed color")
+    };
+    let mix = value.value().color_mix_value().unwrap();
+    let recovered = mix.components()[0]
+        .weight()
+        .and_then(CssColorMixWeight::calculation)
+        .expect("parsing retains the recovered weight math")
+        .clone();
+    let error = CssColorMixWeight::try_calculation(recovered).unwrap_err();
+    assert!(error.is_invalid_token(), "{error:?}");
+    assert!(
+        matches!(error.origin(), CssValueOrigin::ImplicitClosure { .. }),
+        "{error:?}"
+    );
 }
 
 #[test]
