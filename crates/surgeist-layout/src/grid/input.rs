@@ -228,6 +228,17 @@ pub(super) struct GridContainerInput<'input, S: LayoutScalar> {
     adopted_lanes_flow: Option<GridLanesFlow>,
 }
 
+/// Two inputs are the same container when they read the same node input
+/// through the same settings.
+impl<S: LayoutScalar> PartialEq for GridContainerInput<'_, S> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self.source, other.source)
+            && self.suppressed_intrinsic_minimum == other.suppressed_intrinsic_minimum
+            && self.inherited_axes == other.inherited_axes
+            && self.adopted_lanes_flow == other.adopted_lanes_flow
+    }
+}
+
 impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
     #[must_use]
     pub(super) fn from_node(source: &'input NodeInputOf<S>) -> Self {

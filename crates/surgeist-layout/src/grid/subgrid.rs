@@ -2574,50 +2574,154 @@ where
     Constants::with_intrinsic_minimum(tree, node, &projected, input, Size::NONE)
 }
 
-pub(super) fn visit_grid_minimum_wrapper_children<'input, Tree, M, T>(
+/// What a visit of a subgrid wrapper determines before it traverses the
+/// wrapper's children: its constants, its initialized tracks and the standalone
+/// resolution of its opposite axis.
+pub(super) struct WrapperResolution<'input, Node, S: LayoutScalar> {
+    constants: Constants<S>,
+    initialized: InitializedGridTracks<'input, Node, S>,
+    resolved: Option<GridTrackResolution<Node, S>>,
+}
+
+/// The inputs that determine a `WrapperResolution`.
+struct WrapperResolutionIdentity<'input, 'a, Node, S: LayoutScalar> {
+    node: Node,
+    axis: GridAxisKind,
+    container: &'a GridContainerInput<'input, S>,
+    parent_context: &'a GridParentContext<S, Node>,
+    prepared: ComputeInputOf<S>,
+    lane_track: bool,
+    containing_flow_axes: FlowAxes,
+    stage: GridSizingStage,
+}
+
+struct WrapperResolutionKey<'input, Node, S: LayoutScalar> {
+    node: Node,
+    axis: GridAxisKind,
+    container: GridContainerInput<'input, S>,
+    parent_context: GridParentContext<S, Node>,
+    prepared: ComputeInputOf<S>,
+    lane_track: bool,
+    containing_flow_axes: FlowAxes,
+    stage: GridSizingStage,
+}
+
+impl<Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutionKey<'_, Node, S> {
+    fn is(&self, identity: &WrapperResolutionIdentity<'_, '_, Node, S>) -> bool {
+        self.node == identity.node
+            && self.axis == identity.axis
+            && self.container == *identity.container
+            && self.parent_context == *identity.parent_context
+            && self.prepared == identity.prepared
+            && self.lane_track == identity.lane_track
+            && self.containing_flow_axes == identity.containing_flow_axes
+            && self.stage == identity.stage
+    }
+}
+
+type WrapperResolutionEntry<'input, Node, S> = (
+    WrapperResolutionKey<'input, Node, S>,
+    std::sync::Arc<WrapperResolution<'input, Node, S>>,
+);
+
+type WrapperResolutionResult<'input, Node, S, M> =
+    LayoutResultOf<Node, WrapperResolution<'input, Node, S>, S, M>;
+
+/// The wrapper resolutions of one layout computation, which every visit of a
+/// wrapper with equal inputs shares.
+pub(crate) struct WrapperResolutionMemo<'input, Node, S: LayoutScalar> {
+    entries: Vec<WrapperResolutionEntry<'input, Node, S>>,
+}
+
+impl<Node, S: LayoutScalar> Default for WrapperResolutionMemo<'_, Node, S> {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl<Node, S: LayoutScalar> WrapperResolutionMemo<'_, Node, S> {
+    pub(crate) fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
+impl<'input, Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutionMemo<'input, Node, S> {
+    fn get(
+        &self,
+        identity: &WrapperResolutionIdentity<'_, '_, Node, S>,
+    ) -> Option<std::sync::Arc<WrapperResolution<'input, Node, S>>> {
+        self.entries
+            .iter()
+            .find(|(key, _)| key.is(identity))
+            .map(|(_, resolution)| resolution.clone())
+    }
+
+    fn insert(
+        &mut self,
+        identity: &WrapperResolutionIdentity<'input, '_, Node, S>,
+        resolution: &std::sync::Arc<WrapperResolution<'input, Node, S>>,
+    ) -> Result<(), std::collections::TryReserveError> {
+        self.entries.try_reserve(1)?;
+        self.entries.push((
+            WrapperResolutionKey {
+                node: identity.node,
+                axis: identity.axis,
+                container: *identity.container,
+                parent_context: identity.parent_context.clone(),
+                prepared: identity.prepared,
+                lane_track: identity.lane_track,
+                containing_flow_axes: identity.containing_flow_axes,
+                stage: identity.stage,
+            },
+            resolution.clone(),
+        ));
+        Ok(())
+    }
+}
+
+fn allocation_error<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::ChildLayout,
+        LayoutErrorKindOf::Allocation,
+    )
+}
+
+fn prepare_wrapper_resolution<'input, Tree, M>(
     tree: &mut Tree,
-    node: Tree::Node,
-    request: GridMinimumWrapperInput<'input, '_, Tree::Node, Tree::Scalar>,
-    mut visit: impl FnMut(
-        &mut Tree,
-        GridMinimumWrapperChild<'input, '_, Tree::Node, Tree::Scalar>,
-    ) -> LayoutResultOf<Tree::Node, Option<T>, Tree::Scalar, M>,
-) -> LayoutResultOf<Tree::Node, Vec<T>, Tree::Scalar, M>
+    identity: &WrapperResolutionIdentity<'input, '_, Tree::Node, Tree::Scalar>,
+    container_style: &GridContainerProjection<'input, Tree::Scalar>,
+    containment: crate::SizeContainment,
+) -> WrapperResolutionResult<'input, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
     #[cfg(test)]
     super::subgrid_work::observe(super::subgrid_work::Observation::WrapperPreparation);
-    let containment = size_containment(tree.node_input(node));
-    if grid_minimum_wrapper_contained(tree.node_input(node), request.axis) {
-        return Ok(Vec::new());
-    }
-    let GridMinimumWrapperInput {
+    let WrapperResolutionIdentity {
+        node,
         axis: queried_axis,
         container: nested_container,
         parent_context,
         prepared,
+        lane_track,
         containing_flow_axes,
-        content_box_estimate,
-        traversal,
-        query,
-    } = request;
+        stage: query_stage,
+    } = *identity;
     let sizing_input = prepared.with_run_mode(RunMode::ComputeSize);
-    let mut container_style = nested_container.projection();
-    container_style.baseline_references =
-        effective_grid_baseline_references(container_style.baseline_references, parent_context);
     let inherited = LogicalSizeOf::new(
         parent_context.columns.is_some(),
         parent_context.rows.is_some(),
     );
-    let intrinsic_minimum = standalone_intrinsic_minimum_phases(&container_style, inherited);
+    let intrinsic_minimum = standalone_intrinsic_minimum_phases(container_style, inherited);
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let mut traversal_input = *nested_container;
     traversal_input.suppress_intrinsic_minimum(intrinsic_axes);
     let mut traversal_style = traversal_input.projection();
     traversal_style.baseline_references = container_style.baseline_references;
-    let lane_candidates = matches!(traversal, GridMinimumWrapperTraversal::LaneCandidates);
-    let constants = if traversal.uses_lane_track_sizing() {
+    let constants = if lane_track {
         lane_subgrid_wrapper_constants::<Tree, M>(
             tree,
             node,
@@ -2634,9 +2738,7 @@ where
             Size::NONE,
         )?
     };
-    let stage = query
-        .stage
-        .mapped(containing_flow_axes, constants.flow_axes);
+    let stage = query_stage.mapped(containing_flow_axes, constants.flow_axes);
     let contained_inline = if containment == crate::SizeContainment::InlineAxis
         && parent_context.columns.is_none()
         && stage.has_resolved_axis(GridAxisKind::Column)
@@ -2663,30 +2765,22 @@ where
     let initialized = initialize_grid_tracks::<Tree, M>(
         tree,
         node,
-        &container_style,
+        container_style,
         &constants,
         parent_context,
         sizing_input,
         contained_inline,
     )?;
     let constants = constants.for_inline_track_basis(contained_inline);
-    let gap = Size::new(
-        initialized.context.gap.inline,
-        initialized.context.gap.block,
-    );
-    let content_box_size = content_box_estimate.unwrap_or_else(|| {
-        let size = constants.flow_axes.logical_size(constants.node_inner_size);
-        Size::new(
-            size.inline.unwrap_or(Tree::Scalar::ZERO),
-            size.block.unwrap_or(Tree::Scalar::ZERO),
-        )
-    });
     let column_count = initialized.column_tracks.len();
     let row_count = initialized.row_tracks.len();
     if column_count == 0 || row_count == 0 {
-        return Ok(Vec::new());
+        return Ok(WrapperResolution {
+            constants,
+            initialized,
+            resolved: None,
+        });
     }
-
     let opposite = match queried_axis {
         GridAxisKind::Column => GridAxisKind::Row,
         GridAxisKind::Row => GridAxisKind::Column,
@@ -2704,7 +2798,7 @@ where
             tree,
             node,
             GridTrackResolutionInput {
-                style: &container_style,
+                style: container_style,
                 constants: &constants,
                 column_tracks: &initialized.column_tracks,
                 row_tracks: &initialized.row_tracks,
@@ -2726,6 +2820,102 @@ where
     } else {
         None
     };
+    Ok(WrapperResolution {
+        constants,
+        initialized,
+        resolved,
+    })
+}
+
+pub(super) fn visit_grid_minimum_wrapper_children<'input, Tree, M, T>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    request: GridMinimumWrapperInput<'input, '_, Tree::Node, Tree::Scalar>,
+    mut visit: impl FnMut(
+        &mut Tree,
+        GridMinimumWrapperChild<'input, '_, Tree::Node, Tree::Scalar>,
+    ) -> LayoutResultOf<Tree::Node, Option<T>, Tree::Scalar, M>,
+) -> LayoutResultOf<Tree::Node, Vec<T>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let containment = size_containment(tree.node_input(node));
+    if grid_minimum_wrapper_contained(tree.node_input(node), request.axis) {
+        return Ok(Vec::new());
+    }
+    let GridMinimumWrapperInput {
+        axis: queried_axis,
+        container: nested_container,
+        parent_context,
+        prepared,
+        containing_flow_axes,
+        content_box_estimate,
+        traversal,
+        query,
+    } = request;
+    let mut container_style = nested_container.projection();
+    container_style.baseline_references =
+        effective_grid_baseline_references(container_style.baseline_references, parent_context);
+    // The wrapper's standalone resolution depends on these inputs and on no
+    // other fact of this visit: the query's purpose and track slices, the
+    // content box estimate and the traversal kind beyond its lane-track
+    // sizing only shape the traversal of the children below. A later visit
+    // with equal inputs, in the same layout, reuses the resolution instead of
+    // resolving the wrapper's tracks and traversing its subgrid items again.
+    // A resolution that fails is never retained, so the visit that repeats a
+    // failing resolution raises the same error where it did before.
+    let identity = WrapperResolutionIdentity {
+        node,
+        axis: queried_axis,
+        container: nested_container,
+        parent_context,
+        prepared,
+        lane_track: traversal.uses_lane_track_sizing(),
+        containing_flow_axes,
+        stage: query.stage,
+    };
+    let resolution = match tree
+        .wrapper_resolution_memo()
+        .and_then(|memo| memo.get(&identity))
+    {
+        Some(resolution) => resolution,
+        None => {
+            let resolution = std::sync::Arc::new(prepare_wrapper_resolution::<Tree, M>(
+                tree,
+                &identity,
+                &container_style,
+                containment,
+            )?);
+            if let Some(memo) = tree.wrapper_resolution_memo() {
+                memo.insert(&identity, &resolution)
+                    .map_err(|_| allocation_error(node))?;
+            }
+            resolution
+        }
+    };
+    let constants = &resolution.constants;
+    let initialized = &resolution.initialized;
+    let resolved = resolution.resolved.as_ref();
+    let stage = query
+        .stage
+        .mapped(containing_flow_axes, constants.flow_axes);
+    let lane_candidates = matches!(traversal, GridMinimumWrapperTraversal::LaneCandidates);
+    let gap = Size::new(
+        initialized.context.gap.inline,
+        initialized.context.gap.block,
+    );
+    let content_box_size = content_box_estimate.unwrap_or_else(|| {
+        let size = constants.flow_axes.logical_size(constants.node_inner_size);
+        Size::new(
+            size.inline.unwrap_or(Tree::Scalar::ZERO),
+            size.block.unwrap_or(Tree::Scalar::ZERO),
+        )
+    });
+    let column_count = initialized.column_tracks.len();
+    let row_count = initialized.row_tracks.len();
+    if column_count == 0 || row_count == 0 {
+        return Ok(Vec::new());
+    }
 
     let zero_columns = vec![Tree::Scalar::ZERO; column_count];
     let zero_rows = vec![Tree::Scalar::ZERO; row_count];
@@ -2906,7 +3096,7 @@ where
         .map_err(|_| minimum_source_error(child))?;
         let child_grid = IntrinsicGrid {
             style: &container_style,
-            constants: &constants,
+            constants,
             sizing_flow_axes: constants.flow_axes,
             column_tracks: &initialized.column_tracks,
             row_tracks: &initialized.row_tracks,

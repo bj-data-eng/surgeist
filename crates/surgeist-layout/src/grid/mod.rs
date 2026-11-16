@@ -48,6 +48,7 @@ pub(crate) use observation::{
 };
 mod placement;
 mod subgrid;
+pub(crate) use subgrid::WrapperResolutionMemo;
 #[cfg(test)]
 pub(crate) mod subgrid_work;
 #[cfg(test)]

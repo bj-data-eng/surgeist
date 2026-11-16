@@ -112,6 +112,7 @@ where
     outputs: OutputStaging<Tree::Node, Tree::Scalar>,
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
     memo: Option<memo::Memo<Tree::Node, Tree::Scalar>>,
+    wrappers: crate::grid::WrapperResolutionMemo<'a, Tree::Node, Tree::Scalar>,
     entry_storage: Option<EntryStorage>,
     meter: Meter,
 }
@@ -504,6 +505,7 @@ where
                 invalidated: invalidated_nodes,
             },
             memo: None,
+            wrappers: crate::grid::WrapperResolutionMemo::default(),
             entry_storage: None,
             meter,
         }
@@ -732,6 +734,7 @@ where
         >,
     ) {
         self.invalidate_scoped_request_memo();
+        self.wrappers.clear();
         self.bound = Some(target);
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -749,6 +752,7 @@ where
         >,
     ) {
         self.invalidate_scoped_request_memo();
+        self.wrappers.clear();
         self.bound = Some(context.target.clone());
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -2251,6 +2255,12 @@ where
         &mut self,
     ) -> Option<&mut crate::group_alignment::State<Self::Node, Self::Scalar>> {
         self.groups.as_mut()
+    }
+
+    fn wrapper_resolution_memo(
+        &mut self,
+    ) -> Option<&mut crate::grid::WrapperResolutionMemo<'input, Self::Node, Self::Scalar>> {
+        Some(&mut self.wrappers)
     }
 
     fn text_computation(

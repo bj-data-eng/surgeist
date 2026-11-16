@@ -33,6 +33,13 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     ) -> Option<&mut crate::group_alignment::State<Self::Node, Self::Scalar>> {
         None
     }
+    /// The subgrid wrapper resolutions of this computation, which every visit
+    /// of a wrapper with equal inputs shares. Absence retains nothing.
+    fn wrapper_resolution_memo(
+        &mut self,
+    ) -> Option<&mut crate::grid::WrapperResolutionMemo<'input, Self::Node, Self::Scalar>> {
+        None
+    }
     fn block_float_state(
         &mut self,
     ) -> Option<&mut crate::block::float_context::State<Self::Node, Self::Scalar>> {
