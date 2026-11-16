@@ -3,6 +3,7 @@
 mod rotate_admission_contract;
 mod rotate_construction;
 mod rotate_specified_serialization;
+mod svg_transform_source_questions;
 mod transform_construction;
 mod transform_origin_grammar;
 mod transform_value_serialization;
