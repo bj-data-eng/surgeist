@@ -10050,6 +10050,72 @@ math retains Values 4 wrappers and sorted symbolic units. Reference-box bases,
 matrix execution, computed/resolved values, perspective floors, used-value
 flattening and rendering/backface decisions belong to downstream owners.
 
+### SVG transform source questions
+
+The crate parses the CSS `transform` property grammar only. It has no front for
+the SVG `transform`, `patternTransform` or `gradientTransform` attributes, no
+`animate` or `set` element and no interpolation, so it accepts none of the
+attribute-only productions: unitless numbers as lengths or angles, optional
+commas between numbers, a `rotate` with a center, or a comma-separated function
+list. The three source questions below record what the selected sources say and
+what the crate does; the attribute grammar and its integration belong to
+[#560](https://github.com/bj-data-eng/surgeist/issues/560) and transform-list
+interpolation to
+[#552](https://github.com/bj-data-eng/surgeist/issues/552).
+
+The `skewX` production. [Transforms 1 §7.2](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-skewX)
+prints the `skewX` production as `"skewY" wsp* "(" wsp* number wsp* ")"`, the
+same text as the [`skewY` production](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-skewY)
+that follows it. Against that literal, the `transform` production of the same
+section lists `skewX` and `skewY` as separate alternatives, the `skewX` railroad
+diagram is labelled `skewX`, the [§7.3 mapping table](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-transform-functions)
+maps `skewX` to `skewX()`, and [§9.1](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#funcdef-transform-skewx)
+defines `skewX() = skewX( [ <angle> | <zero> ] )`. The retained copy also labels
+its `skewY` railroad diagram `skewX`. Both clauses stay as printed; the source
+is not repaired into a product production. In the property grammar `skewX()` and
+`skewY()` are distinct functions that each take one `<angle>` or `<zero>`, and a
+unitless nonzero number, which §7.3 reads as degrees for the attribute, is
+rejected. Which token the attribute's `skewX` production matches is deferred to
+the owner of the attribute grammar; the crate admits no attribute production
+until that owner decides it.
+
+The `animate` `to` and `paced` cases. [Transforms 1 §8.1](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-animate-element)
+makes `<transform-list>` animatable and additive for `animate` and `set`, with
+the effect post-multiplied and the steps taken from [§11](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#interpolation-of-transforms).
+It leaves two cases open. The behavior of `to` animations on `animate` is
+"undefined", because a smooth change from the underlying value conflicts with
+post-multiplication; the source suggests from-to, from-by, by or values
+animations instead. The `calcMode` value `paced` is undefined for the data type;
+if it is specified, user agents may choose `linear`, and a later version may
+define paced animation. [§8.2](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#neutral-element)
+names `translate(0)`, `scale(0)`, `rotate(0)`, `skewX(0)` and `skewY(0)` as
+neutral elements and defines none for the other functions. The crate runs no
+animation, so it requires no interpolation for `to`, maps no `paced` value and
+selects no `linear` fallback; those functions are valid authored `transform`
+values.
+
+The 3D function syntax. [Transforms 2 §11](../../../references/css-transforms-2--WD-css-transforms-2-20211109--f1ada2510670.md#svg-three-dimensional-functions)
+requires 3D transform functions to apply to `a`, `g`, `svg`, graphics elements,
+graphics referencing elements and `foreignObject`. Neither they nor
+`perspective`, `perspective-origin`, `transform-style` and `backface-visibility`
+can be used on `clipPath`, `linearGradient`, `radialGradient` or `pattern`: a
+transform list with a 3D function is ignored whole there and those property
+values are ignored, while transformable descendants may use them. The same section carries an open
+Issue to describe the 3D function syntax in SVG formally, and
+[§17](../../../references/css-transforms-2--WD-css-transforms-2-20211109--f1ada2510670.md#svg-transform)
+parses the newly introduced presentation attributes by SVG 1.1 data types. The
+only function grammar the sources give for the 3D functions is the property
+grammar of [§12.2](../../../references/css-transforms-2--WD-css-transforms-2-20211109--f1ada2510670.md#three-d-transform-functions).
+The crate accepts `matrix3d()`, `translate3d()`, `translateZ()`, `scale3d()`,
+`scaleZ()`, `rotate3d()`, `rotateX()`, `rotateY()`, `rotateZ()` and
+`perspective()` with those property argument types, retains every function of a
+mixed 2D and 3D list in authored order, and adds no SVG attribute grammar for
+them. Whether a list is ignored for a given element depends on the element, so it
+belongs to style resolution rather than authored syntax.
+
+The [source-question tests](../tests/css/properties/transforms/svg_transform_source_questions.rs)
+pin the property behavior stated above.
+
 ## Explicit document parser context
 
 `CssParserContext::new(CssParserMode::Quirks)` selects the authored document
