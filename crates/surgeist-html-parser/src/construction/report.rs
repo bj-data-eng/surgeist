@@ -1240,7 +1240,9 @@ impl<T> HtmlParseNodeRead<T> {
     pub fn value(&self) -> &T {
         &self.value
     }
-    /// The keys the searches read: zero for a node that is not asked for in any table.
+    /// The keys the searches read. An element is searched in the table of creation states
+    /// whenever the report holds a row in it, and in the table of registries whenever the parse
+    /// names a registry other than Null; a node that is searched in neither costs none.
     pub fn probes(&self) -> u64 {
         self.probes
     }
