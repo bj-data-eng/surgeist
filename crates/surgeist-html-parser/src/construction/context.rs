@@ -1794,7 +1794,11 @@ impl SessionStorage {
         c: &mut ParseControl,
         root: usize,
     ) -> Result<ShadowState, SessionError> {
-        let Some(state) = self.payloads.facts.shadows.get(c, root)? else {
+        let shadows = &self.payloads.facts.shadows;
+        let Some(state) = shadows
+            .find_charged(c, root, 0)?
+            .and_then(|index| shadows.row(index))
+        else {
             return Err(SessionError::ContextUnavailable);
         };
         c.charge(
