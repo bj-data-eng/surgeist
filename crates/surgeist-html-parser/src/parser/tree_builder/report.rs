@@ -1093,6 +1093,31 @@ mod tests {
         super::super::tests::assert_released(&kept.parts.control);
     }
 
+    /// Publication requires a link to name a document, since the history of a link joins the
+    /// parser Document. A link with no row in the table of named documents is refused as the node
+    /// document defect, and the refusal keeps the seal.
+    #[test]
+    fn a_link_naming_no_document_is_not_published() {
+        let mut input = Some(ordinary("<!doctype html><link rel=a href=b>", true));
+        assert!(
+            input
+                .as_mut()
+                .unwrap()
+                .parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .drop_link_document_for_test()
+        );
+        assert!(matches!(
+            HtmlParseReport::take_document(&mut input),
+            Err(SessionError::NodeDocumentUnavailable)
+        ));
+        let kept = input.as_mut().expect("the seal is kept");
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
     #[test]
     fn an_occurrence_naming_a_first_base_the_report_lacks_is_not_published() {
         assert_unpublishable(

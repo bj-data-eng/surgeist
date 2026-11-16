@@ -321,6 +321,28 @@ fn entry_of(c: &mut ParseControl, position: usize) -> Result<u32, SessionError> 
         .ok_or_else(|| latch_registry_row(c))
 }
 
+#[cfg(test)]
+impl FrozenArena {
+    /// Gives the row of the first link in the table of named documents the key of the root
+    /// Document, so that the link has no row. Whether a link with a row was found.
+    pub(crate) fn drop_link_document_for_test(&mut self) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        let Some(link) = storage.payloads.values.iter().find_map(|row| match row {
+            RetainedPayload::Link { node, .. } => *node,
+            _ => None,
+        }) else {
+            return false;
+        };
+        let Some(named) = storage.payloads.facts.contexts.named.as_mut() else {
+            return false;
+        };
+        let (found, _) = named.find_published(link);
+        found.is_some_and(|index| named.rekey_for_test(index, 0))
+    }
+}
+
 /// The root of the tree that holds the record at `index` of a frozen parse, and the number of
 /// parent edges followed to reach it. A test reads the document of a node it does not know the root
 /// of; the parse itself never climbs.

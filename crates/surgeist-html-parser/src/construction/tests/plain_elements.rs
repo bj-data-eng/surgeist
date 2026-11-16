@@ -184,3 +184,42 @@ fn a_refused_release_after_a_stopped_freeze_leaves_the_first_error() {
         ))
     );
 }
+
+/// A Document is its own document, so its cell may name only itself. Publication refuses a Document
+/// root whose cell names another document, since the report has no representation for it, and the
+/// refusal changes nothing: the column is still held and no table is published, so the same
+/// storage publishes once the cell names the Document again.
+#[test]
+fn a_document_root_naming_another_document_is_refused_at_publication() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(
+        &mut c,
+        RootKind::Document(surgeist_html::construction::HtmlDocumentMode::NoQuirks),
+    )
+    .unwrap();
+    {
+        let storage = session.active_mut().unwrap();
+        let itself = storage.payloads.facts.contexts.cell(0).unwrap();
+        assert_ne!(itself, 0);
+        let other = storage
+            .intern_document(&mut c, DocumentRef::Owned(7))
+            .unwrap();
+        assert_ne!(other, itself);
+        storage.set_context(&mut c, 0, other).unwrap();
+        assert_eq!(
+            storage.publish_node_contexts(&mut c),
+            Err(SessionError::NodeDocumentUnavailable)
+        );
+        let contexts = &mut storage.payloads.facts.contexts;
+        assert_eq!(contexts.cell(0), Some(other));
+        assert!(contexts.named_mut().is_none());
+        assert_eq!(c.stop(), None);
+        storage.set_context(&mut c, 0, itself).unwrap();
+        storage.publish_node_contexts(&mut c).unwrap();
+        let contexts = &mut storage.payloads.facts.contexts;
+        assert_eq!(contexts.cell(0), None);
+        assert_eq!(contexts.named_mut().map(|named| named.len()), Some(0));
+    }
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
