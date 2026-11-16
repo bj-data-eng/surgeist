@@ -611,6 +611,167 @@ fn child_staging_with_spent_scope_records_reports_a_resource_limit_not_text() {
     assert_staging_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::Records);
 }
 
+fn cache_input() -> ComputeInputOf<f64> {
+    ComputeInputOf::for_child(
+        RunMode::PerformLayout,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::new(Some(20.0), None),
+        Size::NONE,
+        ContainingLayoutContext::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            ParentFormattingContext::BlockFlow,
+        ),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::Normal,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    )
+}
+
+fn cache_output() -> ComputeOutputOf<f64> {
+    ComputeOutputOf::from_sizes(Size::new(20.0, 10.0), Size::new(20.0, 10.0))
+}
+
+/// A staged trial that owns funded cache bookkeeping, with its shared scope
+/// resources.
+fn funded_trial<'a>(
+    session: &ComputeSession<'a, PublicLayoutTreeOf<f64>>,
+) -> (
+    ComputeSession<'a, PublicLayoutTreeOf<f64>>,
+    crate::text_layout::scope_alignment::ScopeAlignmentResources<f64>,
+) {
+    let mut trial = session
+        .child_staging(0, super::FloatChildTrial::InFlow, None)
+        .unwrap();
+    assert!(trial.entry_storage.is_some(), "the trial is funded");
+    let resources = trial.text_computation().unwrap().scope_resources.clone();
+    (trial, resources)
+}
+
+/// Spends the structural work budget until exactly `keep` units remain. A
+/// refused admission charges nothing, so halving the step reaches the ceiling.
+fn spend_work_leaving(
+    resources: &crate::text_layout::scope_alignment::ScopeAlignmentResources<f64>,
+    keep: usize,
+) {
+    let lowered = text::ScopeAlignmentLimits::new(10000, 100, WORK - keep, 16 << 20);
+    let mut step = WORK;
+    while step > 0 {
+        if resources.visit(lowered, step).is_err() {
+            step /= 2;
+        }
+    }
+}
+
+fn exhaust_records(resources: &crate::text_layout::scope_alignment::ScopeAlignmentResources<f64>) {
+    for _ in 0..=10_000 {
+        if resources.materialize(limits(), 0, 1).is_err() {
+            return;
+        }
+    }
+    panic!("the record ceiling must be reachable");
+}
+
+fn assert_cache_failure_is_resource_limit(
+    error: &LayoutErrorOf<u32, f64>,
+    limit: text::ScopeAlignmentLimitKind,
+) {
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0), "{error:?}");
+    assert_eq!(error.operation(), LayoutOperation::ChildLayout, "{error:?}");
+    let LayoutErrorKindOf::ResourceLimit(refusal) = error.kind() else {
+        panic!(
+            "a spent {limit:?} budget during cache bookkeeping is a resource limit of \
+             layout, not a Text protocol refusal: {error:?}"
+        )
+    };
+    assert!(
+        matches!(refusal.detail(), Some(text::ErrorDetail::ScopeAlignment {
+            reason: text::ScopeAlignmentError::Limit { kind, .. },
+        }) if *kind == limit),
+        "{refusal:?}"
+    );
+}
+
+#[test]
+fn cache_store_with_spent_scope_records_reports_a_resource_limit_not_text() {
+    let fixture = Fixture::new(WORK);
+    let flow = fixture.flow();
+    let session = funded_session(&flow);
+    let (mut trial, resources) = funded_trial(&session);
+    exhaust_records(&resources);
+    let error = trial
+        .cache_store(
+            0,
+            &cache_input(),
+            crate::CacheKeyContext::new(),
+            cache_output(),
+        )
+        .expect_err("a store must refuse once the record budget is spent");
+    assert_cache_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::Records);
+}
+
+#[test]
+fn cache_store_replacing_a_stored_entry_with_spent_scope_work_reports_a_resource_limit_not_text() {
+    let fixture = Fixture::new(WORK);
+    let flow = fixture.flow();
+    let mut refused = 0;
+    // The funded store charges a small, fixed amount of work before it scans
+    // the stored entries. Every remaining budget up to that amount must report
+    // a resource limit wherever the budget runs out.
+    for keep in 0..64 {
+        // Each iteration owns its resources: spent work is never refunded.
+        let session = funded_session(&flow);
+        let (mut trial, resources) = funded_trial(&session);
+        // Control: the first store is funded while work remains.
+        trial
+            .cache_store(
+                0,
+                &cache_input(),
+                crate::CacheKeyContext::new(),
+                cache_output(),
+            )
+            .unwrap();
+        spend_work_leaving(&resources, keep);
+        match trial.cache_store(
+            0,
+            &cache_input(),
+            crate::CacheKeyContext::new(),
+            cache_output(),
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                refused += 1;
+                assert_cache_failure_is_resource_limit(
+                    &error,
+                    text::ScopeAlignmentLimitKind::StructuralWork,
+                );
+            }
+        }
+    }
+    assert!(refused > 0, "a spent work budget must refuse the store");
+}
+
+#[test]
+fn cache_clear_with_spent_scope_records_reports_a_resource_limit_not_text() {
+    let fixture = Fixture::new(WORK);
+    let flow = fixture.flow();
+    let session = funded_session(&flow);
+    let (mut trial, resources) = funded_trial(&session);
+    exhaust_records(&resources);
+    let error = trial
+        .cache_clear(0)
+        .expect_err("a clear must refuse once the record budget is spent");
+    assert_cache_failure_is_resource_limit(&error, text::ScopeAlignmentLimitKind::Records);
+}
+
 #[cfg(test)]
 #[path = "percentage_basis_phase_refusal_tests.rs"]
 mod percentage_basis_phase_refusal_tests;
