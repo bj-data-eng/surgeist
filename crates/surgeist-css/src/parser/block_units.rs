@@ -269,6 +269,20 @@ impl<'s> DroppedUnit<'s> {
         self.source.get(self.start..self.end).unwrap_or_default()
     }
 
+    /// The resource failure of the unit's block, if entering the block would
+    /// have been charged one. It takes precedence over the unit's own failure
+    /// (the structural ceiling's contract), and the failure lies inside the
+    /// block, so the diagnostic spans the whole unit.
+    pub(super) fn block_resource_failure(
+        &self,
+        recovery: &super::recovery::RecoveryState,
+        production: &'static str,
+    ) -> Option<GrammarFailure> {
+        self.block_contents.and_then(|contents| {
+            recovery.check_failed_rule_block_at(self.source, contents, production)
+        })
+    }
+
     /// The text of the unit up to the end of its prelude, which is where an
     /// at-rule whose prelude was rejected ends: before the `;` or `{` that
     /// ended it.

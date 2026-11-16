@@ -109,6 +109,7 @@ fn drive_body<'i>(
         &mut grammar,
         source,
         recovery,
+        "later.rule.counter-style",
         CssRecoveryAction::DropDescriptor,
     )
 }

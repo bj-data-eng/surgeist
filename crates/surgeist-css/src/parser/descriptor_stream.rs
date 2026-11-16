@@ -758,14 +758,7 @@ where
         // A failed rule's block is checked for the resources a grammar would
         // have been charged for entering it.
         let error = dropped
-            .block_contents
-            .and_then(|contents| {
-                context.recovery.check_failed_rule_block_at(
-                    context.source,
-                    contents,
-                    context.production,
-                )
-            })
+            .block_resource_failure(context.recovery, context.production)
             .unwrap_or(dropped.error);
         let action =
             if context.at_rule_first && crate::diagnostic::error::begins_with_at_keyword(text) {
@@ -916,12 +909,14 @@ pub(super) fn declaration_position(
 /// Drives the units of a block of descriptors and at-rules whose blocks the
 /// block's grammar enters and rejects: a unit that is not valid is dropped with
 /// the recovery diagnostic of a block item, and the valid units around it
-/// survive.
+/// survive. A failed unit's block is checked for the resources entering it
+/// would have been charged to `production`.
 pub(super) fn drive_block_items<'i, Item, G>(
     contents: &mut Stream<'i>,
     grammar: &mut G,
     source: &str,
     recovery: &RecoveryState,
+    production: &'static str,
     declaration: CssRecoveryAction,
 ) -> (Vec<Item>, Vec<CssRecoveryDiagnostic>)
 where
@@ -962,8 +957,12 @@ where
         };
         // The span starts where the dropped unit does, whatever part of it the
         // text names.
+        let (error, end) = match dropped.block_resource_failure(recovery, production) {
+            Some(failure) => (failure, dropped.end),
+            None => (dropped.error, end),
+        };
         if let Some(diagnostic) =
-            block_item_diagnostic_from_start(recovery, dropped.error, dropped.start, end, action)
+            block_item_diagnostic_from_start(recovery, error, dropped.start, end, action)
         {
             diagnostics.push(diagnostic);
         }

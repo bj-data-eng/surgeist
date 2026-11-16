@@ -159,6 +159,7 @@ pub(super) fn parse_body<'i>(
         &mut grammar,
         source,
         &recovery,
+        "later.rule.page",
         crate::diagnostic::CssRecoveryAction::DropDeclaration,
     );
     diagnostics.append(&mut dropped);
@@ -234,8 +235,12 @@ pub(super) fn drive_margin_body<'i>(
         // The span starts where the dropped unit does, whatever part of it the
         // text names: a rejected prelude names less than the unit, which runs
         // to the end of its block.
+        let (error, end) = match dropped.block_resource_failure(recovery, "later.rule.page") {
+            Some(failure) => (failure, dropped.end),
+            None => (dropped.error, end),
+        };
         if let Some(diagnostic) =
-            block_item_diagnostic_from_start(recovery, dropped.error, dropped.start, end, action)
+            block_item_diagnostic_from_start(recovery, error, dropped.start, end, action)
         {
             diagnostics.push(diagnostic);
         }
