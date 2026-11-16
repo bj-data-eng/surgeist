@@ -1,12 +1,9 @@
 //! Authored color-profile definitions; resource loading and substitution belong to hosts.
 use crate::color::{CssColorProfileComponentName, CssColorProfileName};
-use crate::component::{
-    CssComponentValueError, CssComponentValueLimits, CssComponentValues, CssSerializedValue,
-    CssValueOrigin,
-};
+use crate::component::{CssComponentValueLimits, CssComponentValues, CssSerializedValue};
 use crate::declaration::CssSubstitutionDependentValue;
 use crate::diagnostic::CssError;
-use crate::rule::descriptor_values::DescriptorValueFailure;
+use crate::rule::descriptor_values::{self, CheckedDescriptorValue, DescriptorValueFailure};
 use crate::source::CssSourcePosition;
 use crate::source::Provenance;
 use crate::values::common::CssUrl;
@@ -114,10 +111,6 @@ impl CssColorProfileDescriptorKind {
     }
 }
 
-fn reject_recovered(components: &CssComponentValues) -> Result<(), CssColorProfileValueError> {
-    components.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()).into())
-}
-
 /// A checked component-native `@color-profile` descriptor construction or reentry failure.
 ///
 /// The supplied components were not admitted ([`Self::component_error`]), the descriptor
@@ -132,24 +125,6 @@ crate::rule::counter_style::descriptor_values::descriptor_value_api!(
     CssColorProfileValueError,
     "color-profile"
 );
-
-impl CssColorProfileValueError {
-    fn from_component(error: CssComponentValueError) -> Self {
-        DescriptorValueFailure::component(error).into()
-    }
-
-    fn from_grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
-        DescriptorValueFailure::grammar(error, serialized).into()
-    }
-
-    fn residual(origin: CssValueOrigin) -> Self {
-        DescriptorValueFailure::residual(origin).into()
-    }
-
-    fn not_pending() -> Self {
-        DescriptorValueFailure::not_pending().into()
-    }
-}
 
 /// Borrowed checked descriptor semantics. Components retain the exact authored syntax.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -185,6 +160,36 @@ pub struct CssColorProfileDescriptorValue {
     data: CssColorProfileDescriptorData,
 }
 
+impl CheckedDescriptorValue for CssColorProfileDescriptorValue {
+    type Kind = CssColorProfileDescriptorKind;
+    type Error = CssColorProfileValueError;
+
+    fn selector(&self) -> Self::Kind {
+        self.kind
+    }
+
+    fn is_pending(&self) -> bool {
+        matches!(self.data, CssColorProfileDescriptorData::Pending(_))
+    }
+
+    fn from_checked(
+        kind: Self::Kind,
+        components: CssComponentValues,
+        serialized: &CssSerializedValue,
+    ) -> Result<Self, CssError> {
+        let data = crate::parser::color_profile::construct_descriptor_value(
+            kind,
+            &components,
+            serialized,
+        )?;
+        Ok(Self {
+            kind,
+            components: components.into(),
+            data,
+        })
+    }
+}
+
 impl CssColorProfileDescriptorValue {
     /// Checks the selected grammar while retaining mixed or programmatic origins.
     ///
@@ -194,24 +199,7 @@ impl CssColorProfileDescriptorValue {
         components: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssColorProfileValueError> {
-        components
-            .validate_with_limits(limits)
-            .map_err(CssColorProfileValueError::from_component)?;
-        reject_recovered(&components)?;
-        let serialized = components
-            .serialize_tokens(limits)
-            .map_err(CssColorProfileValueError::from_component)?;
-        let data = crate::parser::color_profile::construct_descriptor_value(
-            kind,
-            &components,
-            &serialized,
-        )
-        .map_err(|error| CssColorProfileValueError::from_grammar(error, &serialized))?;
-        Ok(Self {
-            kind,
-            components: components.into(),
-            data,
-        })
+        descriptor_values::admit(kind, components, limits)
     }
 
     /// Rechecks caller-supplied replacement components without performing substitution.
@@ -221,17 +209,7 @@ impl CssColorProfileDescriptorValue {
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssColorProfileValueError> {
-        if !matches!(self.data, CssColorProfileDescriptorData::Pending(_)) {
-            return Err(CssColorProfileValueError::not_pending());
-        }
-        replacement
-            .validate_with_limits(limits)
-            .map_err(CssColorProfileValueError::from_component)?;
-        reject_recovered(&replacement)?;
-        if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
-            return Err(CssColorProfileValueError::residual(origin));
-        }
-        Self::try_new(self.kind, replacement, limits)
+        descriptor_values::reenter(self, replacement, limits)
     }
 
     pub(crate) fn from_parts(

@@ -45,21 +45,6 @@ impl CssFontFeatureValuesError {
             },
         }
     }
-    pub(crate) fn from_component(error: crate::component::CssComponentValueError) -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::component(error).into()
-    }
-    pub(crate) fn from_grammar(
-        error: crate::diagnostic::CssError,
-        serialized: &crate::component::CssSerializedValue,
-    ) -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::grammar(error, serialized).into()
-    }
-    pub(crate) fn residual(origin: crate::component::CssValueOrigin) -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::residual(origin).into()
-    }
-    pub(crate) fn not_pending() -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::not_pending().into()
-    }
     const fn construction(&self) -> Option<CssFontFeatureValuesErrorKind> {
         match self.kind {
             FontFeatureValuesKind::Construction { kind, .. } => Some(kind),
