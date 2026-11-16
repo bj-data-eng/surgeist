@@ -39,6 +39,14 @@ serde_json = { version = "=1.0.151", features = ["float_roundtrip", "raw_value"]
 sha2 = "=0.10.9"
 surgeist-generator = { path = "../surgeist-generator", version = "=0.2.0", default-features = false }
 
+[[bench]]
+name = "structure"
+harness = false
+
+[[bench]]
+name = "text"
+harness = false
+
 [[bin]]
 name = "surgeist-layout-generate"
 path = "tests/bin/surgeist-layout-generate.rs"
