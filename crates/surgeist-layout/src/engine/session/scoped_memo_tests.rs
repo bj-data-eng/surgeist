@@ -328,3 +328,52 @@ fn scoped_memo_preserves_excluded_sampling_and_failed_completion() {
         assert!(session.memo.as_ref().unwrap().find(key).is_none());
     });
 }
+
+/// A scoped Block child whose size containment overflows the scalar range
+/// fails while its Block computation begins, after its scope frame is pushed.
+/// The enclosing Block is an ordinary Block request under installed scopes.
+fn assert_scoped_child_start_failure_releases_its_frame<S: LayoutScalar>() {
+    let huge = S::from_f64(3.0e38);
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(0, [1])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                size_containment: SizeContainment::BothAxes,
+                size: Size::new(PreferredSizeOf::px(huge), PreferredSizeOf::px(huge)),
+                padding: Edges::new(
+                    LengthOf::px(huge),
+                    LengthOf::px(huge),
+                    LengthOf::px(huge),
+                    LengthOf::px(huge),
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+    with_session(&tree, &[], &[0], |session| {
+        assert_eq!(session.block_scopes().unwrap().frames.len(), 0);
+        let error = session
+            .compute_child(0, request(60.0, RunMode::PerformLayout))
+            .unwrap_err();
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
+        assert_eq!(
+            session.block_scopes().unwrap().frames.len(),
+            0,
+            "a failed scoped child releases the frame it pushed"
+        );
+    });
+}
+
+#[test]
+fn scoped_child_start_failure_releases_its_scope_frame_under_an_ordinary_parent() {
+    assert_scoped_child_start_failure_releases_its_frame::<f32>();
+    assert_scoped_child_start_failure_releases_its_frame::<f64>();
+}
