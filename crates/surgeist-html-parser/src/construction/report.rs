@@ -91,7 +91,6 @@ pub(crate) enum UnboundRow {
     Script,
     Template,
     LookupRegistry,
-    NodeDocument,
     SvgScript,
     /// Only a contextual report that allows declarative shadow roots has these
     /// rows, so [`Self::ALL`] leaves it out.
@@ -99,7 +98,7 @@ pub(crate) enum UnboundRow {
 }
 #[cfg(test)]
 impl UnboundRow {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 10] = [
         Self::Textarea,
         Self::Output,
         Self::Input,
@@ -109,7 +108,6 @@ impl UnboundRow {
         Self::Script,
         Self::Template,
         Self::LookupRegistry,
-        Self::NodeDocument,
         Self::SvgScript,
     ];
     /// A source that creates a row of this kind.
@@ -123,7 +121,7 @@ impl UnboundRow {
             Self::SelectFamily => "<!doctype html><select><option>a</select>",
             Self::Script => "<!doctype html><script>a</script>",
             Self::Template => "<!doctype html><template>a</template>",
-            Self::LookupRegistry | Self::NodeDocument => "<!doctype html><p>a",
+            Self::LookupRegistry => "<!doctype html><p>a",
             Self::SvgScript => "<!doctype html><svg><script/></svg>",
             Self::Shadow => "<template shadowrootmode=open><p>B</p></template>",
         }
@@ -140,7 +138,6 @@ impl UnboundRow {
             | (Self::Script, RetainedPayload::Script { node, .. })
             | (Self::Template, RetainedPayload::Template { node, .. })
             | (Self::LookupRegistry, RetainedPayload::LookupRegistry { node, .. })
-            | (Self::NodeDocument, RetainedPayload::NodeDocument { node, .. })
             | (Self::SvgScript, RetainedPayload::SvgScript { node, .. })
             | (Self::Shadow, RetainedPayload::Shadow { root: node, .. }) => Some(node),
             _ => None,
@@ -393,16 +390,17 @@ impl<'a> PreparedReportStorage<'a> {
                     if element.link_flags().is_none() {
                         return Err(SessionError::WrongToken);
                     }
-                    // A link's node-document row joins its history to the parser
-                    // Document, so publication requires one. Not every node has
-                    // one: nodes created without a document, such as implied
-                    // and text nodes of a fragment, get none.
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let slot = storage.payloads.joined(c, node, Join::NodeDocument)?;
-                    if !matches!(
-                        slot.and_then(|slot| storage.payloads.values.get(slot)),
-                        Some(RetainedPayload::NodeDocument { node: Some(owner), .. }) if *owner == node
-                    ) {
+                    // A link's document joins its history to the parser Document, so publication
+                    // requires one: the tree it is in names it. Not every node has one: nodes
+                    // created without a document, such as implied and text nodes of a fragment,
+                    // are in a tree that names none.
+                    let Some((document, cost)) =
+                        node_context::document_of(&storage.payloads.facts.contexts, arena, node)
+                    else {
+                        return Err(SessionError::NodeDocumentUnavailable);
+                    };
+                    c.charge(HtmlParseWorkCategory::RecordVisit, cost.saturating_add(1))?;
+                    if matches!(document, node_context::TreeDocument::Unnamed) {
                         return Err(SessionError::NodeDocumentUnavailable);
                     }
                     if let Some(document) = parser_document {
@@ -588,9 +586,6 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_node(arena, node, c)?;
                     }
                 }
-                RetainedPayload::NodeDocument { document, .. } => {
-                    checked_document(storage, document, c)?
-                }
                 RetainedPayload::Script { metadata, .. } => {
                     for document in [
                         metadata.parser_document.as_ref(),
@@ -626,6 +621,11 @@ impl<'a> PreparedReportStorage<'a> {
             if node == MetadataNode::Unbound {
                 return Err(latch_registry_row(c));
             }
+        }
+        // The Documents the trees of the parse name, each held once.
+        for (_, document) in storage.payloads.facts.contexts.documents().iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            checked_document(storage, document, c)?;
         }
         for (_, missing) in storage.payloads.facts.missing.iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -872,7 +872,7 @@ enum MetadataNode {
     /// before the element is allocated and bound in the same creation, where
     /// a failure is the incomplete-creation stop. Script, LookupRegistry and
     /// Shadow rows are bound when their node is allocated, and a failure
-    /// before that is a stop. Template, NodeDocument, PiAttributes,
+    /// before that is a stop. Template, PiAttributes,
     /// SvgScript, Base and BaseDocument rows are required bound at freeze or
     /// by their own checks below. Every report the test corpus
     /// publishes passes this rule.
@@ -896,7 +896,6 @@ fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
         | RetainedPayload::Nonce { node, .. }
         | RetainedPayload::LookupRegistry { node, .. }
         | RetainedPayload::PiAttributes { node, .. }
-        | RetainedPayload::NodeDocument { node, .. }
         | RetainedPayload::Template { node, .. }
         | RetainedPayload::SvgScript { node, .. }
         | RetainedPayload::Script { node, .. }
@@ -955,6 +954,70 @@ impl ReportStorage {
     pub(crate) fn effects(&self) -> Option<context::HtmlParseEffects<'_>> {
         self.history.storage().fragment_effects()
     }
+    /// The document of the tree rooted at `root`: the root itself when it is a Document, and
+    /// otherwise the document the root names. The parse holds this for roots only, because every
+    /// node of a tree has the document of its root.
+    pub(crate) fn tree_document(
+        &self,
+        root: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<HtmlParseTreeDocument<'_>, HtmlParseTreeDocumentError> {
+        let storage = self.history.storage();
+        let arena = arena(storage);
+        let record = arena
+            .node_by_result_id(root)
+            .map_err(|_| HtmlParseTreeDocumentError::Foreign)?;
+        if record.parent().is_some() {
+            return Err(HtmlParseTreeDocumentError::NotRoot);
+        }
+        let resolver = Resolver {
+            history: &self.history,
+            storage,
+            arena,
+        };
+        let is_document = matches!(record.kind(), ConstructionNodeKind::Document(_));
+        let (found, probes) = storage
+            .payloads
+            .facts
+            .contexts
+            .tree_document(record.position(), is_document);
+        let document = match found {
+            node_context::TreeDocument::Itself(root) => Some(
+                resolver
+                    .native(root)
+                    .map(HtmlParseMetadataDocument::Owned)
+                    .map_err(HtmlParseTreeDocumentError::Unresolved)?,
+            ),
+            node_context::TreeDocument::Named(document) => Some(
+                resolver
+                    .document(document)
+                    .map_err(HtmlParseTreeDocumentError::Unresolved)?,
+            ),
+            node_context::TreeDocument::Unnamed => None,
+        };
+        Ok(HtmlParseTreeDocument { document, probes })
+    }
+    /// The document of the tree that holds `node`, for tests that ask about a node whose root they
+    /// do not know.
+    #[cfg(test)]
+    pub(crate) fn node_document_for_test(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<HtmlParseTreeDocument<'_>, HtmlParseTreeDocumentError> {
+        let arena = arena(self.history.storage());
+        let position = arena
+            .node_by_result_id(node)
+            .map_err(|_| HtmlParseTreeDocumentError::Foreign)?
+            .position();
+        let (root, _) =
+            node_context::root_of(arena, position).ok_or(HtmlParseTreeDocumentError::Foreign)?;
+        let root = arena
+            .node_at(root)
+            .ok_or(HtmlParseTreeDocumentError::Foreign)?
+            .as_node()
+            .map_err(|_| HtmlParseTreeDocumentError::Foreign)?
+            .id();
+        self.tree_document(&root)
+    }
     pub(crate) fn metadata(&self) -> HtmlParseMetadataCursor<'_> {
         let storage = self.history.storage();
         HtmlParseMetadataCursor {
@@ -968,6 +1031,45 @@ impl ReportStorage {
         }
     }
 }
+/// The document a tree of a published report answers for, with the keys the search for it read.
+#[derive(Clone, Copy)]
+pub struct HtmlParseTreeDocument<'a> {
+    document: Option<HtmlParseMetadataDocument<'a>>,
+    probes: u64,
+}
+impl<'a> HtmlParseTreeDocument<'a> {
+    /// The document every node of the tree has, or `None` when the tree names none, as the tree of
+    /// an implied node of a fragment parse does not.
+    pub fn document(&self) -> Option<HtmlParseMetadataDocument<'a>> {
+        self.document
+    }
+    /// The keys the search read to find the root among the roots that name a document; a Document
+    /// root names itself and reads none.
+    pub fn probes(&self) -> u64 {
+        self.probes
+    }
+}
+/// Why a report cannot answer for the document of a tree.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum HtmlParseTreeDocumentError {
+    /// The node belongs to another result.
+    Foreign,
+    /// The node has a parent, so it is not the root of its tree.
+    NotRoot,
+    /// The document the tree names is not held by the report.
+    Unresolved(read::HtmlParseUnresolvedReference),
+}
+impl std::fmt::Display for HtmlParseTreeDocumentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Foreign => f.write_str("the node belongs to another result"),
+            Self::NotRoot => f.write_str("the node is not the root of its tree"),
+            Self::Unresolved(fault) => fault.fmt(f),
+        }
+    }
+}
+impl std::error::Error for HtmlParseTreeDocumentError {}
 pub struct HtmlParseMetadataCursor<'a> {
     closed_common: bool,
     history: &'a FrozenHistory,
@@ -1247,7 +1349,6 @@ enum Refs<'a> {
         flags: surgeist_html::elements::link::HtmlLinkFlags,
         history: surgeist_html::elements::link::HtmlLinkHistory,
     },
-    NodeDocument(HtmlParseMetadataDocument<'a>),
     Script(
         Option<HtmlParseMetadataDocument<'a>>,
         Option<HtmlParseMetadataDocument<'a>>,
@@ -1356,18 +1457,15 @@ impl<'a> Refs<'a> {
                 let flags = element
                     .link_flags()
                     .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
-                // The row the join names must be this link's own.
                 let link = link.ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
-                let current = match r
-                    .storage
-                    .payloads
-                    .joined_uncharged(link, Join::NodeDocument)
-                    .and_then(|slot| r.storage.payloads.values.get(slot))
-                {
-                    Some(RetainedPayload::NodeDocument {
-                        node: Some(owner),
-                        document,
-                    }) if *owner == link => document,
+                // The document of the tree the link is in.
+                let current = match node_context::document_of(
+                    &r.storage.payloads.facts.contexts,
+                    r.arena,
+                    link,
+                ) {
+                    Some((node_context::TreeDocument::Itself(root), _)) => DocumentRef::Owned(root),
+                    Some((node_context::TreeDocument::Named(document), _)) => document.clone(),
                     _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
                 };
                 Self::Link {
@@ -1375,12 +1473,9 @@ impl<'a> Refs<'a> {
                     flags,
                     history: surgeist_html::elements::link::HtmlLinkHistory::new(
                         flags,
-                        parser_document.as_ref() == Some(current),
+                        parser_document.as_ref() == Some(&current),
                     ),
                 }
-            }
-            RetainedPayload::NodeDocument { document, .. } => {
-                Self::NodeDocument(r.document(document)?)
             }
             RetainedPayload::Script { metadata, .. } => Self::Script(
                 r.optional_document(metadata.parser_document.as_ref())?,
@@ -1823,7 +1918,7 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     /// Actual link flags and creating-parser document. The current node document
-    /// is exposed by its separate canonical NodeDocument metadata record.
+    /// is the document of the tree the link is in, which the report answers by the root.
     pub fn link_parser_document(&self) -> Option<Option<HtmlParseMetadataDocument<'a>>> {
         match self.refs {
             Refs::Link {
@@ -1853,12 +1948,6 @@ impl<'a> HtmlParseMetadata<'a> {
     pub(super) fn nonce(&self) -> Option<&'a DocumentString> {
         match (self.payload?, self.refs) {
             (RetainedPayload::Nonce { .. }, Refs::Raw(raw)) => Some(raw),
-            _ => None,
-        }
-    }
-    pub fn node_document(&self) -> Option<HtmlParseMetadataDocument<'a>> {
-        match self.refs {
-            Refs::NodeDocument(document) => Some(document),
             _ => None,
         }
     }

@@ -406,6 +406,7 @@ impl ParserArenaSession {
     ) -> Result<FrozenArena, SessionError> {
         let fragment_root = self.active_mut()?.prepare_freeze(control)?;
         self.active_mut()?.prepare_association_documents(control)?;
+        self.active_mut()?.publish_node_contexts(control)?;
         // Only a parser-initialized session carries this actual variable owner.
         // Prepay its active-to-frozen move before storage is taken; a stopped
         // share restores that same owner without useful recovery work.

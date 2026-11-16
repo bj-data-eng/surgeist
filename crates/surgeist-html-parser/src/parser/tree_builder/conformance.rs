@@ -4332,7 +4332,6 @@ mod whole_source_comparisons {
         );
         let document = report.document().unwrap();
         let mut metadata = report.metadata();
-        let mut created = Vec::new();
         loop {
             match metadata.advance() {
                 HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
@@ -4349,19 +4348,25 @@ mod whole_source_comparisons {
                         );
                         assert!(creation.1.is_none());
                     }
-                    if let Some(crate::construction::report::HtmlParseMetadataDocument::Owned(
-                        owner,
-                    )) = record.node_document()
-                    {
-                        assert_eq!(owner.id(), document.root().id());
-                        let node = record.node();
-                        if let HtmlNodeKind::Element(element) = node.kind() {
-                            created.push(element.name().local_name().code_units().to_vec());
-                        }
-                    }
                 }
             }
         }
+        // Every element of the fixture is in the tree of the Document, which names itself, and
+        // the elements in creation order are those of the expected tree.
+        let mut created = Vec::new();
+        let mut stack = vec![document.root().id()];
+        while let Some(id) = stack.pop() {
+            let node = document.node(&id).unwrap();
+            if let HtmlNodeKind::Element(element) = node.kind() {
+                created.push(element.name().local_name().code_units().to_vec());
+            }
+            stack.extend(node.children().collect::<Vec<_>>().into_iter().rev());
+        }
+        assert!(matches!(
+            report.tree_document(&document.root().id()).unwrap().document(),
+            Some(crate::construction::report::HtmlParseMetadataDocument::Owned(owner))
+                if owner.id() == document.root().id()
+        ));
         let expected: Vec<_> = l
             .expected
             .nodes

@@ -205,17 +205,9 @@ impl SessionStorage {
                         },
                     )
                     .map_err(|_| latch_registry_row(control))?;
-                let prepared = session.prepare_payload_slot_owned(control)?;
-                session
-                    .payloads
-                    .push_row(
-                        prepared,
-                        RetainedPayload::NodeDocument {
-                            node: Some(0),
-                            document: DocumentRef::Owned(0),
-                        },
-                    )
-                    .map_err(|_| latch_registry_row(control))?;
+                let entry = session.intern_document(control, DocumentRef::Owned(0))?;
+                payload_write::<u32>(control, 1)?;
+                session.set_context(control, 0, entry)?;
                 Ok::<_, SessionError>(())
             })();
             if let Err(error) = facts {

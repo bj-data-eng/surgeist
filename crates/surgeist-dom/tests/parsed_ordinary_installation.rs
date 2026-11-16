@@ -23,6 +23,25 @@ use surgeist_html_semantics::{
     HtmlBaseUrlScheme,
 };
 
+/// The document of the tree that holds `node`, which a report answers by the root of the tree.
+fn tree_document_of(
+    report: &HtmlParseReport,
+    node: surgeist_html::construction::HtmlNodeId,
+) -> Option<surgeist_html_parser::HtmlParseMetadataDocument<'_>> {
+    let parent_of =
+        |id: &surgeist_html::construction::HtmlNodeId| match (report.document(), report.fragment())
+        {
+            (Some(document), _) => document.node(id).unwrap().parent(),
+            (_, Some(fragment)) => fragment.node(id).unwrap().parent(),
+            _ => None,
+        };
+    let mut root = node;
+    while let Some(parent) = parent_of(&root) {
+        root = parent;
+    }
+    report.tree_document(&root).unwrap().document()
+}
+
 fn parse_limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
@@ -1551,7 +1570,7 @@ fn contextual_inactive_img_retains_original_wait_then_native_update_advances_its
     loop {
         match cursor.advance() {
             HtmlParseMetadataStep::Record(row) if row.node().id() == source_img => {
-                if let Some(current) = row.node_document() {
+                if let Some(current) = tree_document_of(&report, row.node().id()) {
                     let HtmlParseMetadataDocument::Captured(current) = current else {
                         panic!("final image nodeDocument is the actual captured target");
                     };

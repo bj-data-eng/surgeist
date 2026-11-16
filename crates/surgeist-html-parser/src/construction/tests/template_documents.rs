@@ -85,12 +85,15 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
 #[test]
 fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_cap_boundaries() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    // Root record/self-document/cache facts = 3.
-    // Fresh template adds three native records' join cells, five document/template facts,
-    // name/namespace owners, two nonce slots and one creation row: completed 16.
-    // Document/native preflight needs 8 above the root's 3 before lexical take. At 15 the tag
-    // is transferred but admission of the remaining records fails after the inert Document.
-    for cap in [10, 15, 16] {
+    // Root record, its document cell, its entry in the list of documents and its facts = 4.
+    // Fresh template adds three native records' join cells and document cells, the entry of the
+    // inert Document, the template and inert Document facts, name/namespace owners, two nonce
+    // slots and one creation row: completed 18.
+    // Document/native preflight needs 8 above the root's 4 before lexical take: a join cell and a
+    // document cell for each of the three native records, the template row and the inert
+    // Document's facts. At 17 the tag is transferred but admission of the remaining records
+    // fails after the inert Document.
+    for cap in [11, 17, 18] {
         let source = crate::HtmlSource::utf8("<template>");
         let mut c = ParseControl::new(
             limits()
@@ -118,14 +121,14 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             None,
             CreationContext::Ordinary,
         );
-        if cap == 16 {
+        if cap == 18 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                16
+                18
             );
             assert_eq!(session.active().unwrap().construction.len(), 4);
             assert!(
@@ -142,10 +145,10 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             assert!(
                 matches!(first, HtmlParseStop::LimitExceeded{resource: HtmlParseResource::AuxiliaryEntries,limit,..} if limit==cap)
             );
-            assert_eq!(input.is_some(), cap == 10);
+            assert_eq!(input.is_some(), cap == 11);
             assert_eq!(
                 session.active().unwrap().construction.len(),
-                if cap == 10 { 1 } else { 2 }
+                if cap == 11 { 1 } else { 2 }
             );
             assert_eq!(
                 session.freeze(&mut c).err(),
@@ -310,7 +313,13 @@ fn template_cross_document_cancel_retains_completed_removal_before_any_adoption_
         })
     ));
     for node in [div.index, script.index] {
-        assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::NodeDocument{node:Some(bound),document} if *bound==node && *document==DocumentRef::Owned(old.index))));
+        let contexts = &storage.payloads.facts.contexts;
+        assert_eq!(
+            contexts
+                .cell(node)
+                .and_then(|entry| contexts.document(entry)),
+            Some(&DocumentRef::Owned(old.index))
+        );
     }
     assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::Script{node:Some(node),metadata:retained} if *node==script.index && *retained==metadata)));
     assert_eq!(

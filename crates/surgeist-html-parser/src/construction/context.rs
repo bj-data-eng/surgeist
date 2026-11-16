@@ -293,17 +293,7 @@ impl SessionStorage {
         )?;
         fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
         self.payloads.facts.documents.admit(c, 1)?;
-        let prepared = self.prepare_payload_slot_owned(c)?;
-        let binding = self
-            .payloads
-            .push_row(
-                prepared,
-                RetainedPayload::NodeDocument {
-                    node: None,
-                    document: DocumentRef::Owned(self.construction.len()),
-                },
-            )
-            .map_err(|_| latch_registry_row(c))?;
+        let entry = self.intern_document(c, DocumentRef::Owned(self.construction.len()))?;
         payload_write::<Option<usize>>(c, 3)?;
         let node = self.allocate_native(
             c,
@@ -325,15 +315,7 @@ impl SessionStorage {
                 },
             )
             .map_err(|_| latch_registry_row(c))?;
-        let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
-            self.payloads.values.get_mut(binding)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        *bound = Some(node.index);
-        self.payloads
-            .join_row(binding)
-            .map_err(|_| latch_registry_row(c))?;
+        self.set_context(c, node.index, entry)?;
         let fragment = self
             .fragment
             .as_mut()
@@ -2241,33 +2223,30 @@ impl FrozenArena {
     ) -> Result<ParserDocumentReference<HtmlNodeId>, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let index = storage.context_index(c, node)?;
-        for payload in &storage.payloads.values {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::NodeDocument {
-                node: Some(bound),
-                document,
-            } = payload
-                && *bound == index
-            {
-                payload_write::<ParserDocumentReference<HtmlNodeId>>(c, 1)?;
-                return Ok(match document {
-                    DocumentRef::Owned(index) => {
-                        let arena = storage.context_arena(c)?;
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        if !matches!(
-                            arena.node_at(*index).map(|r| r.kind()),
-                            Some(ConstructionNodeKind::Document(_))
-                        ) {
-                            return Err(SessionError::NotDocument);
-                        }
-                        ParserDocumentReference::Owned(storage.context_node(c, *index)?)
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if let Some(document) = node_context::frozen_document(
+            &storage.payloads.facts.contexts,
+            storage.context_arena(c)?,
+            index,
+        ) {
+            payload_write::<ParserDocumentReference<HtmlNodeId>>(c, 1)?;
+            return Ok(match &document {
+                DocumentRef::Owned(index) => {
+                    let arena = storage.context_arena(c)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    if !matches!(
+                        arena.node_at(*index).map(|r| r.kind()),
+                        Some(ConstructionNodeKind::Document(_))
+                    ) {
+                        return Err(SessionError::NotDocument);
                     }
-                    DocumentRef::Captured(index) => {
-                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                        ParserDocumentReference::Captured(index.clone())
-                    }
-                });
-            }
+                    ParserDocumentReference::Owned(storage.context_node(c, *index)?)
+                }
+                DocumentRef::Captured(index) => {
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                    ParserDocumentReference::Captured(index.clone())
+                }
+            });
         }
         Err(SessionError::NodeDocumentUnavailable)
     }
@@ -3113,9 +3092,13 @@ mod tests {
                         session.freeze(&mut c).err(),
                         Some(SessionError::Stop(first))
                     );
-                    assert!(session.active().unwrap().payloads.values.iter().any(|payload|
-                        matches!(payload,RetainedPayload::NodeDocument {node:Some(node),document:DocumentRef::Owned(owner)}
-                            if *node==contents.index && *owner==original.index)));
+                    let contexts = &session.active().unwrap().payloads.facts.contexts;
+                    assert_eq!(
+                        contexts
+                            .cell(contents.index)
+                            .and_then(|entry| contexts.document(entry)),
+                        Some(&DocumentRef::Owned(original.index))
+                    );
                 } else {
                     result.unwrap();
                     let reference = session.qualified_node_document(&mut c, &contents).unwrap();

@@ -473,6 +473,89 @@ fn document_facts_rows_leave_nothing_retained_when_the_parse_stops_after_their_s
     );
 }
 
+/// The document cells and the documents the nodes name are admitted before the nodes exist, and a
+/// stop after any admission leaves nothing retained. The cells of a record are one admission as
+/// the record is allocated, so a template, whose element and contents fragment are one
+/// allocation, admits once for the two; the entry that names a document is admitted when the
+/// document is first named; and each root that is not a Document is one row of the table the
+/// freeze builds.
+#[test]
+fn node_document_cells_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let nodes = |source: &'static str| {
+        crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(source),
+            super::tests::limits(),
+        )
+        .parse()
+        .unwrap()
+        .document()
+        .unwrap()
+        .usage()
+        .nodes()
+    };
+    let sweep = |source: &'static str| {
+        let (retained, sites) = retained_after_each_prepared_slot(&document(source));
+        assert!(
+            retained.is_empty(),
+            "{:?}",
+            &retained[..retained.len().min(8)]
+        );
+        sites
+    };
+    let file = "src/construction/storage_allocation.rs";
+    // Without a template every record is its own allocation.
+    let plain = "<!doctype html><p>a</p><div><b>b</b></div>";
+    let sites = sweep(plain);
+    assert_eq!(
+        sites_at(&sites, file, "allocate_native_record"),
+        nodes(plain),
+        "{sites:?}"
+    );
+    assert_eq!(
+        sites_at(
+            &sites,
+            "src/construction/node_context.rs",
+            "publish_node_contexts"
+        ),
+        0
+    );
+    // A template adds the element, its contents fragment and the inert Document it belongs to,
+    // in two allocations.
+    let template = "<!doctype html><p>a</p><template><b>b</b></template>";
+    let sites = sweep(template);
+    assert_eq!(
+        sites_at(&sites, file, "allocate_native_record"),
+        nodes(template) - 1,
+        "{sites:?}"
+    );
+    // The contents fragment is the one root that names a document and is not a Document.
+    assert_eq!(
+        sites_at(
+            &sites,
+            "src/construction/node_context.rs",
+            "publish_node_contexts"
+        ),
+        1,
+        "{sites:?}"
+    );
+    // The root Document is named once, with its facts, as the session starts; the inert Document
+    // is named once, with its facts, as it is created.
+    assert_eq!(
+        sites_at(&sites, "src/construction/storage.rs", "new"),
+        2,
+        "{sites:?}"
+    );
+    assert_eq!(
+        sites_at(
+            &sites,
+            "src/construction/template.rs",
+            "appropriate_contents_document"
+        ),
+        2,
+        "{sites:?}"
+    );
+}
+
 /// How many captures and occurrences a published report lends.
 fn associations_of(report: &crate::HtmlParseReport) -> (usize, usize) {
     use crate::HtmlParsePendingAssociationStep as Step;

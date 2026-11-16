@@ -309,12 +309,6 @@ pub(super) fn metadata(
             continue;
         }
         let key = source.key(&node.id(), c)?;
-        if let Some(document) = record.node_document() {
-            let document = source.document_key(document, c)?;
-            if draft.node(key)?.document() != document {
-                return Err(Error::UnsupportedState { subject: node.id() });
-            }
-        }
         if let Some((_, inert, cache)) = record.document_facts() {
             let cache = cache.map(|value| source.key(&value.id(), c)).transpose()?;
             let value = Some(if inert {

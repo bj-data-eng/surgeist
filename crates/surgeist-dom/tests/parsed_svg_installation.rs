@@ -10,6 +10,25 @@ use surgeist_html_parser::{
 };
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedRegistry, HtmlFragmentContext};
 
+/// The document of the tree that holds `node`, which a report answers by the root of the tree.
+fn tree_document_of(
+    report: &surgeist_html_parser::HtmlParseReport,
+    node: surgeist_html::construction::HtmlNodeId,
+) -> Option<HtmlParseMetadataDocument<'_>> {
+    let parent_of =
+        |id: &surgeist_html::construction::HtmlNodeId| match (report.document(), report.fragment())
+        {
+            (Some(document), _) => document.node(id).unwrap().parent(),
+            (_, Some(fragment)) => fragment.node(id).unwrap().parent(),
+            _ => None,
+        };
+    let mut root = node;
+    while let Some(parent) = parent_of(&root) {
+        root = parent;
+    }
+    report.tree_document(&root).unwrap().document()
+}
+
 fn parse_limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
@@ -140,7 +159,7 @@ fn completed_disabled_contextual_svg_script_keeps_processed_parser_state_and_tar
     loop {
         match cursor.advance() {
             HtmlParseMetadataStep::Record(row) if row.node().id() == source_script => {
-                if let Some(current) = row.node_document() {
+                if let Some(current) = tree_document_of(&report, row.node().id()) {
                     let HtmlParseMetadataDocument::Captured(current) = current else {
                         panic!("returned Script belongs to the captured target Document");
                     };
@@ -736,7 +755,7 @@ fn declarative_shadow_svg_preserves_captured_and_owned_effect_state_until_real_c
             match cursor.advance() {
                 HtmlParseMetadataStep::Record(row) if row.node().id() == source_script => {
                     source_svg = row.node().parent();
-                    if let Some(current) = row.node_document() {
+                    if let Some(current) = tree_document_of(&report, row.node().id()) {
                         let HtmlParseMetadataDocument::Captured(current) = current else {
                             panic!("DSD Script keeps the actual captured target nodeDocument");
                         };

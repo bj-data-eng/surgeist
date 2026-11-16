@@ -448,6 +448,59 @@ impl<'a> Source<'a> {
         }
         Ok(false)
     }
+    /// The document of the tree rooted at `root`, as the report answers for it. One step is
+    /// charged, and one for each key the report's search for the root read.
+    fn tree_document(
+        &self,
+        report: &'a HtmlParseReport,
+        root: HtmlNodeId,
+        c: &mut Control<'_>,
+    ) -> Result<Option<HtmlParseMetadataDocument<'a>>, Error> {
+        let answer = report.tree_document(&root).map_err(|error| match error {
+            surgeist_html_parser::HtmlParseTreeDocumentError::Unresolved(fault) => fault.into(),
+            _ => Error::UnsupportedState { subject: root },
+        })?;
+        c.step(usize::try_from(answer.probes()).map_err(|_| Error::RepresentationExhausted)?)?;
+        c.step(1)?;
+        Ok(answer.document())
+    }
+    /// The row of the root of the tree of every row, by row index. A row's root is the root of
+    /// its parent's row; the climb stops at the first row whose root is known.
+    fn roots(&self, c: &mut Control<'_>) -> Result<Vec<usize>, Error> {
+        let mut roots: Vec<Option<usize>> = Vec::new();
+        c.reserve(&mut roots, self.rows.len())?;
+        roots.resize(self.rows.len(), None);
+        for start in 0..self.rows.len() {
+            let mut path = Vec::new();
+            let mut at = start;
+            let root = loop {
+                c.step(1)?;
+                if let Some(known) = roots.get(at).copied().flatten() {
+                    break known;
+                }
+                let Some(row) = self.rows.get(at) else {
+                    return Err(Error::RepresentationExhausted);
+                };
+                let Some(parent) = row.source.parent() else {
+                    break at;
+                };
+                c.reserve(&mut path, 1)?;
+                path.push(at);
+                at = self
+                    .index(&parent, c)?
+                    .ok_or(Error::MissingMetadata { subject: parent })?;
+            };
+            for row in path.into_iter().chain([at]) {
+                if let Some(cell) = roots.get_mut(row) {
+                    *cell = Some(root);
+                }
+            }
+        }
+        roots
+            .into_iter()
+            .map(|root| root.ok_or(Error::RepresentationExhausted))
+            .collect()
+    }
     fn observation<T>(
         &self,
         id: &HtmlNodeId,
@@ -718,9 +771,6 @@ fn collect_rows<'a>(
             continue;
         }
         source.add(record.node().id(), c)?;
-        if let Some(value) = record.node_document() {
-            source.add_document(value, c)?;
-        }
         if let Some((parser, preparation)) = record.script_documents() {
             if let Some(value) = parser {
                 source.add_document(value, c)?;
@@ -848,6 +898,9 @@ fn collect_rows<'a>(
         let node = source.rows[next].source;
         if let Some(parent) = node.parent() {
             source.add(parent, c)?;
+        } else if let Some(document) = source.tree_document(report, node.id(), c)? {
+            // Every node of a tree has the document of its root.
+            source.add_document(document, c)?;
         }
         for child in node.children() {
             c.step(1)?;
@@ -1267,14 +1320,19 @@ impl Dom {
         // created it, even though it has no browsing context. Establish the
         // provenance before forming nodes that belong to that inert owner.
         qualify_inert_template_realms(&report, &source, &mut draft, &mut c)?;
+        let roots = source.roots(&mut c)?;
         for i in 0..source.rows.len() {
             c.step(1)?;
             let node = source.rows[i].source;
             if source.rows[i].key.is_some() {
                 continue;
             }
+            let root = *roots
+                .get(i)
+                .ok_or(Error::MissingMetadata { subject: node.id() })?;
+            let root = source.rows[root].source.id();
             let document = source
-                .observation(&node.id(), &mut c, |r| r.node_document())?
+                .tree_document(&report, root, &mut c)?
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
             let document = source.document_key(document, &mut c)?;
             let transaction::KindRead::Document(document_metadata) = draft.node(document)?.kind()

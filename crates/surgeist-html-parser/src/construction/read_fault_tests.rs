@@ -714,16 +714,34 @@ fn a_textarea_naming_a_raw_value_that_is_not_a_string_faults_the_cursor() {
 }
 
 #[test]
-fn a_node_document_naming_a_missing_node_faults_the_cursor() {
-    let mut report = parse("<p>A");
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::NodeDocument { document, .. } => {
-            *document = DocumentRef::Owned(usize::MAX);
-            true
+fn a_tree_document_naming_a_missing_node_is_an_unresolved_reference() {
+    let mut report = parse("<template><p>A</template>");
+    let contents = {
+        let mut cursor = report.metadata();
+        loop {
+            match cursor.advance() {
+                crate::HtmlParseMetadataStep::Record(record) => {
+                    if let Some(template) = record.template() {
+                        break template.contents().id();
+                    }
+                }
+                crate::HtmlParseMetadataStep::Skipped => {}
+                _ => panic!("the report holds a template"),
+            }
         }
-        _ => false,
-    });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Node)));
+    };
+    // The contents of the template are a tree whose root names the inert document; the
+    // document the report holds for it names a record that is not there.
+    let documents = frozen(&mut report).payloads.facts.contexts.documents_mut();
+    for position in 0..documents.len() {
+        *documents.row_mut(position).unwrap() = DocumentRef::Owned(usize::MAX);
+    }
+    assert_eq!(
+        report.tree_document(&contents).err(),
+        Some(
+            crate::construction::report::HtmlParseTreeDocumentError::Unresolved(fault(Kind::Node))
+        )
+    );
 }
 
 #[test]
@@ -1070,29 +1088,6 @@ fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
 }
 
 // ---- a link's node document and flags ----
-
-#[test]
-fn a_link_whose_node_document_row_is_not_its_own_faults_the_cursor() {
-    let mut report = parse("<link rel=x href=y>");
-    let link = frozen(&mut report)
-        .payloads
-        .values
-        .iter()
-        .find_map(|row| match row {
-            RetainedPayload::Link { node, .. } => *node,
-            _ => None,
-        })
-        .unwrap();
-    // The row the join names is bound to another node, so the link has none.
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::NodeDocument { node, .. } if *node == Some(link) => {
-            *node = Some(0);
-            true
-        }
-        _ => false,
-    });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
-}
 
 #[test]
 fn a_link_that_names_a_node_with_no_link_flags_faults_the_cursor() {

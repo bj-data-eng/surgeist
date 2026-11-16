@@ -80,23 +80,14 @@ fn image_with_document(
         }
     }
     let image = image.expect("retained literal Img");
-    let mut document = None;
-    let mut cursor = report.metadata();
-    loop {
-        match cursor.advance() {
-            HtmlParseMetadataStep::Record(row) if row.node().id() == image.subject().id() => {
-                if let Some(found) = row.node_document() {
-                    assert!(
-                        document.replace(found).is_none(),
-                        "one actual node-Document"
-                    );
-                }
-            }
-            HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => (),
-            HtmlParseMetadataStep::Complete => break,
-            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
-        }
+    // The document of the Img is the document of the tree that holds it, which the report
+    // answers by the root of the tree.
+    let tree = report.fragment().expect("a contextual report");
+    let mut root = image.subject().id();
+    while let Some(parent) = tree.node(&root).unwrap().parent() {
+        root = parent;
     }
+    let document = report.tree_document(&root).unwrap().document();
     (image, document.expect("actual Img node-Document"))
 }
 

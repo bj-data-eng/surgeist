@@ -70,6 +70,9 @@ pub(super) struct ParseFacts {
     pub(super) missing: RowLog<meta::MetaMissingFact>,
     /// The Document captures and occurrences the parse recorded, and the inputs it was given.
     pub(super) associations: association_log::AssociationLog,
+    /// The document of every node: a column while the parse builds, and the documents of the trees
+    /// once it is frozen.
+    pub(super) contexts: node_context::NodeContexts,
 }
 impl ParseFacts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
@@ -90,12 +93,23 @@ impl ParseFacts {
                 return Err(error);
             }
         };
+        let contexts = match node_context::NodeContexts::new(control) {
+            Ok(contexts) => contexts,
+            Err(error) => {
+                let owner = control.identity();
+                missing.release(control, &owner, |_, _| Ok(()))?;
+                documents.release(control, &owner, |_, _| Ok(()))?;
+                associations.release(control, &owner)?;
+                return Err(error);
+            }
+        };
         Ok(Self {
             completion: None,
             documents,
             csp: None,
             missing,
             associations,
+            contexts,
         })
     }
 }
@@ -148,10 +162,6 @@ pub(super) enum RetainedPayload {
         node: Option<usize>,
         registry: context::RegistryRef,
         creation: Option<context::ElementCreationState>,
-    },
-    NodeDocument {
-        node: Option<usize>,
-        document: DocumentRef,
     },
     Template {
         node: Option<usize>,
@@ -340,9 +350,6 @@ impl ScriptMetadata {
 /// The join a registry row provides, when it is bound to a record.
 fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
     Some(match row {
-        RetainedPayload::NodeDocument {
-            node: Some(node), ..
-        } => (Join::NodeDocument, *node),
         RetainedPayload::Template {
             node: Some(node), ..
         } => (Join::Template, *node),
@@ -482,11 +489,6 @@ impl PayloadStorage {
         {
             *cell.rows.get_mut(join) = None;
         }
-    }
-    /// The same join cell without a charge, for a published report, which has
-    /// no controller. The caller checks the row it gets.
-    pub(super) fn joined_uncharged(&self, node: usize, join: Join) -> Option<usize> {
-        self.node_joins.get(node).and_then(|cell| cell.get(join))
     }
     /// Registers the row at `slot` under the record it is bound to. Binding a
     /// row and joining it are one infallible step at every binding site; the
@@ -756,6 +758,7 @@ impl PayloadStorage {
             csp,
             missing,
             associations,
+            contexts,
             ..
         } = facts;
         let join_entries = node_joins.len() as u64;
@@ -776,6 +779,7 @@ impl PayloadStorage {
         );
         keep_first(&mut refused, missing.release(control, owner, |_, _| Ok(())));
         keep_first(&mut refused, associations.release(control, owner));
+        keep_first(&mut refused, contexts.release(control, owner));
         // The storage the owner's state holds is returned with the registry's own, below.
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         if let Some(log) = csp {

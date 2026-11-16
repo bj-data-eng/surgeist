@@ -54,13 +54,9 @@ fn template_link_birth_document_differs_from_its_actual_inert_node_document() {
     let mut found = false;
     let mut birth = None;
     let mut link_node = None;
-    let mut documents = Vec::new();
     loop {
         match metadata.advance() {
             HtmlParseMetadataStep::Record(record) => {
-                if let Some(HtmlParseMetadataDocument::Owned(document)) = record.node_document() {
-                    documents.push((record.node().id(), document.id()));
-                }
                 if let Some(history) = record.link_history() {
                     found = true;
                     assert!(!history.created_by_node_document_parser());
@@ -79,10 +75,18 @@ fn template_link_birth_document_differs_from_its_actual_inert_node_document() {
         }
     }
     assert!(found);
-    let current = documents
-        .iter()
-        .find(|(node, _)| Some(node) == link_node.as_ref())
-        .unwrap()
-        .1;
+    // The document the link is in is the document of its tree, which the report answers by the
+    // root of the tree.
+    let tree = report.document().unwrap();
+    let mut root = link_node.unwrap();
+    while let Some(parent) = tree.node(&root).unwrap().parent() {
+        root = parent;
+    }
+    let Some(HtmlParseMetadataDocument::Owned(current)) =
+        report.tree_document(&root).unwrap().document()
+    else {
+        panic!("the link is in a tree of an owned Document");
+    };
+    let current = current.id();
     assert_ne!(birth.unwrap(), current);
 }

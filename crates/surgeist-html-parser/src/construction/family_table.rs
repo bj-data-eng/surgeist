@@ -100,6 +100,29 @@ impl<T> FamilyTable<T> {
         }
         Ok(None)
     }
+    /// The index of the row of `node` and the number of keys the search read, for a published
+    /// table, which has no controller to charge: the probes are those [`Self::find`] charges.
+    pub(super) fn find_published(&self, node: usize) -> (Option<usize>, u64) {
+        let Ok(key) = u32::try_from(node) else {
+            return (None, 0);
+        };
+        let mut low = 0_usize;
+        let mut high = self.nodes.len();
+        let mut probes = 0_u64;
+        while low < high {
+            probes = probes.saturating_add(1);
+            let middle = low.saturating_add(high.saturating_sub(low) / 2);
+            let Some(&held) = self.nodes.get(middle) else {
+                return (None, probes);
+            };
+            match held.cmp(&key) {
+                std::cmp::Ordering::Equal => return (Some(middle), probes),
+                std::cmp::Ordering::Less => low = middle.saturating_add(1),
+                std::cmp::Ordering::Greater => high = middle,
+            }
+        }
+        (None, probes)
+    }
     /// The row of `node`, if it has one, charged as [`Self::find`].
     pub(super) fn get(
         &self,

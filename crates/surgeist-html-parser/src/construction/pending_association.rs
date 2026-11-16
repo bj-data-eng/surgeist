@@ -1321,17 +1321,16 @@ impl SessionStorage {
                 .ok_or_else(|| latch_registry_row(c))?;
             self.association_document(c, &DocumentRef::Owned(node))?;
         }
-        for index in 0..self.payloads.values.len() {
+        // The Documents the nodes of the parse name, each once.
+        for index in 0..self.payloads.facts.contexts.documents().len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let document = match self.payloads.row(c, index)? {
-                RetainedPayload::NodeDocument {
-                    document: DocumentRef::Captured(id),
-                    ..
-                } => {
+            let document = match self.payloads.facts.contexts.documents().row(index) {
+                Some(DocumentRef::Captured(id)) => {
                     c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     Some(DocumentRef::Captured(id.clone()))
                 }
-                _ => None,
+                Some(DocumentRef::Owned(_)) => None,
+                None => return Err(latch_registry_row(c)),
             };
             if let Some(document) = document {
                 self.association_document(c, &document)?;
@@ -2589,7 +2588,7 @@ mod tests {
         }
     }
     #[test]
-    fn the_association_document_walk_visits_each_document_and_each_registry_row() {
+    fn the_association_document_walk_visits_each_document_and_each_document_a_node_names() {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8(""),
             super::super::tests::limits(),
@@ -2607,20 +2606,19 @@ mod tests {
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
         // The walk makes one visit for each Document the parse owns, which captures it, and then
-        // one for each registry row. The capture is a row of the association log, so the registry
-        // is the same length before and after it. The root's own document is owned, so no captured
-        // document is walked.
+        // one for each distinct document its nodes name, which the parse holds once however many
+        // nodes name it. The root's own document is owned, so no captured document is walked.
         let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
         let storage = session.active().unwrap();
         let documents = storage.payloads.facts.documents.len() as u64;
-        let rows = storage.payloads.values.len() as u64;
+        let named = storage.payloads.facts.contexts.documents().len() as u64;
         let before = visits(&c);
         session
             .active_mut()
             .unwrap()
             .prepare_association_documents(&mut c)
             .unwrap();
-        assert_eq!(visits(&c) - before, documents * (1 + capture) + rows);
+        assert_eq!(visits(&c) - before, documents * (1 + capture) + named);
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
     }

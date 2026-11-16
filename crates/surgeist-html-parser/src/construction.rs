@@ -66,6 +66,7 @@ pub(crate) mod style;
 use input_image::append_native_input_value;
 mod completion;
 mod family_table;
+mod node_context;
 use family_table::FamilyTable;
 mod row_bank;
 mod row_log;

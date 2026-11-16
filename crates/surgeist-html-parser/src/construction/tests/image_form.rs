@@ -416,8 +416,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     let mut c = ParseControl::new(
         limits()
             .into_builder()
-            .auxiliary_entries(17)
-            .active_formatting_entries(17)
+            .auxiliary_entries(18)
+            .active_formatting_entries(18)
             .finish()
             .unwrap(),
         HtmlParseCancellation::new(),
@@ -445,7 +445,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        17
+        18
     );
     let name_backing = tag.name.value.text().block().address();
     let original_origins: Vec<_> = tag
@@ -532,8 +532,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         result.err(),
         Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
-            limit: 17,
-            current: 17,
+            limit: 18,
+            current: 18,
             requested_delta: 2,
         }))
     );
@@ -942,8 +942,8 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             // Metadata, name and namespace are initialized;
             // the next actual record-ticket entry is the rejected slot.
             assert_eq!(session.active().unwrap().construction.len(), 3);
-            // 20 registry rows, 21 with the Document's row that the Document table holds.
-            assert_eq!(session.active().unwrap().payloads.values.len(), 20);
+            // 16 registry rows, 17 with the Document's row that the Document table holds.
+            assert_eq!(session.active().unwrap().payloads.values.len(), 16);
             assert!(
                 session
                     .active()

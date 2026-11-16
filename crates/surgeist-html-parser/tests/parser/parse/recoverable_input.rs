@@ -24,8 +24,8 @@ use surgeist_html::{
 };
 use surgeist_html_parser::{
     HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole, HtmlParseMetadataDocument,
-    HtmlParseMetadataStep, HtmlParseReport, HtmlPrologueDiagnostic, HtmlSource,
-    HtmlTokenizerDiagnostic, HtmlTreeDiagnostic,
+    HtmlParseReport, HtmlPrologueDiagnostic, HtmlSource, HtmlTokenizerDiagnostic,
+    HtmlTreeDiagnostic,
 };
 
 /// Renders the children of `parent` as an indented tree. A template's contents
@@ -424,26 +424,17 @@ fn adoption_agency_replacements_inserted_into_template_contents_belong_to_its_do
         .node(&template.template_contents().unwrap())
         .unwrap();
     let (first_a, replacement_i) = (element(contents, 0).id(), element(contents, 1).id());
-    let mut owners = Vec::new();
-    let mut metadata = report.metadata();
-    loop {
-        match metadata.advance() {
-            HtmlParseMetadataStep::Record(record) => {
-                if let Some(HtmlParseMetadataDocument::Owned(owner)) = record.node_document() {
-                    owners.push((record.node().id(), owner.id()));
-                }
-            }
-            HtmlParseMetadataStep::Skipped => {}
-            HtmlParseMetadataStep::Complete => break,
-            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
-        }
-    }
+    // The document of a node is the document of the tree that holds it, which the report answers
+    // by the root of the tree.
     let owner_of = |node: &HtmlNodeId| {
-        owners
-            .iter()
-            .find(|(candidate, _)| candidate == node)
-            .map(|(_, owner)| *owner)
-            .unwrap()
+        let mut root = *node;
+        while let Some(parent) = document.node(&root).unwrap().parent() {
+            root = parent;
+        }
+        match report.tree_document(&root).unwrap().document() {
+            Some(HtmlParseMetadataDocument::Owned(owner)) => Some(owner.id()),
+            _ => None,
+        }
     };
     assert_ne!(owner_of(&first_a), owner_of(&html.id()));
     assert_eq!(owner_of(&replacement_i), owner_of(&first_a));

@@ -162,8 +162,8 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
 
     let caps = limits()
         .into_builder()
-        .auxiliary_entries(1)
-        .active_formatting_entries(1)
+        .auxiliary_entries(2)
+        .active_formatting_entries(2)
         .finish()
         .unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -174,8 +174,8 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
         session.insert_text(&mut c, &root, None, &mut input, None),
         Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
-            limit: 1,
-            current: 1,
+            limit: 2,
+            current: 2,
             // The record's join cell: no registry row is asked for.
             requested_delta: 1
         }))
@@ -185,7 +185,7 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        1
+        2
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);

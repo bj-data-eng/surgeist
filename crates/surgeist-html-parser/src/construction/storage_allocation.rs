@@ -164,6 +164,7 @@ impl SessionStorage {
             HtmlParseWorkCategory::CopyByte,
             count.saturating_mul(mem::size_of::<NodeJoins>()) as u64,
         )?;
+        self.admit_context_cells(control, count)?;
         control.charge(HtmlParseWorkCategory::RecordWrite, entries)?;
         control.charge(
             HtmlParseWorkCategory::CopyByte,
@@ -185,6 +186,8 @@ impl SessionStorage {
         for _ in 0..count {
             self.payloads.node_joins.push(NodeJoins::default());
         }
+        self.push_context_cells(count)
+            .map_err(|_| latch_registry_row(control))?;
         if let Some(slot) = nonce_slot {
             let Some(RetainedPayload::Nonce { node, .. }) = self.payloads.values.get_mut(slot)
             else {

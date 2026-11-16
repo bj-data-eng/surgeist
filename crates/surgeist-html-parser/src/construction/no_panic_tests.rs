@@ -142,17 +142,17 @@ fn disposing_a_row_that_is_not_a_string_keeps_the_row() {
     let storage = session.active_mut().unwrap();
     let row = storage
         .payloads
-        .joined(&mut c, div, Join::NodeDocument)
+        .joined(&mut c, div, Join::LookupRegistry)
         .unwrap()
-        .expect("the element's document row");
+        .expect("the element's registry row");
     assert_eq!(
         storage.dispose_aggregate_string(&mut c, row),
         Err(SessionError::WrongToken)
     );
-    // The refused row is still the document row, not a retired husk.
+    // The refused row is still the registry row, not a retired husk.
     assert!(matches!(
         storage.payloads.values.get(row),
-        Some(RetainedPayload::NodeDocument { .. })
+        Some(RetainedPayload::LookupRegistry { .. })
     ));
     session.release(&mut c).unwrap();
     storage_zero(&c);

@@ -804,9 +804,10 @@ mod tests {
     }
     #[test]
     fn svg_metadata_slot_exact_and_one_short_retains_actual_registry_capacity() {
-        // A fresh ordinary root owns its node-join cell and its two document rows (3).
-        // The SVG metadata is a separate retained scalar entry, never a raw bit default.
-        for cap in [3, 4] {
+        // A fresh ordinary root owns its node-join cell, its document cell, the entry of its
+        // document in the list of documents and its document facts row (4). The SVG metadata is
+        // a separate retained scalar entry, never a raw bit default.
+        for cap in [4, 5] {
             let mut c = ParseControl::new(
                 limits()
                     .into_builder()
@@ -823,7 +824,7 @@ mod tests {
                 .active_mut()
                 .unwrap()
                 .retain_svg_slot(&mut c, SvgScriptState::fresh());
-            if cap == 4 {
+            if cap == 5 {
                 let slot = result.unwrap();
                 assert!(matches!(
                     session.active().unwrap().payloads.values[slot],
@@ -836,7 +837,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    4
+                    5
                 );
                 assert_eq!(
                     session.freeze(&mut c).err(),
@@ -854,7 +855,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    3
+                    4
                 );
             }
             session.release(&mut c).unwrap();
