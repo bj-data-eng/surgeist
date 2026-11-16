@@ -308,19 +308,36 @@ fn only_successful_top_level_rules_advance_the_prelude_phase() {
 }
 
 #[test]
-fn unknown_charset_does_not_change_import_phase_and_imports_remain_top_level_only() {
+fn charset_does_not_change_import_phase_and_imports_remain_top_level_only() {
+    // The exact leading declaration is consumed (Syntax 3 section 3.2) and
+    // reports nothing; the same prefix spelled with single quotes is an
+    // unknown at-rule. Neither starts or ends the import phase.
     let leading_charset = CssParser::default().parse_sheet(concat!(
         "@charset \"UTF-8\"; ",
         "@layer reset; ",
         "@import 'theme.css';",
     ));
-    assert_eq!(leading_charset.diagnostics().len(), 1);
-    assert_eq!(
-        leading_charset.diagnostics()[0].error().code(),
-        CssErrorCode::UnknownAtRule
+    assert!(
+        leading_charset.is_clean(),
+        "{:?}",
+        leading_charset.diagnostics()
     );
     assert!(matches!(
         leading_charset.syntax().rules(),
+        [CssRule::LayerStatement(_), CssRule::Import(_)]
+    ));
+    let quoted_charset = CssParser::default().parse_sheet(concat!(
+        "@charset 'UTF-8'; ",
+        "@layer reset; ",
+        "@import 'theme.css';",
+    ));
+    assert_eq!(quoted_charset.diagnostics().len(), 1);
+    assert_eq!(
+        quoted_charset.diagnostics()[0].error().code(),
+        CssErrorCode::UnknownAtRule
+    );
+    assert!(matches!(
+        quoted_charset.syntax().rules(),
         [CssRule::LayerStatement(_), CssRule::Import(_)]
     ));
 
@@ -373,13 +390,10 @@ fn namespace_and_import_preludes_follow_cascade_layer_ordering() {
             CssRule::Style(_),
         ]
     ));
-    assert_eq!(namespace_path.diagnostics().len(), 2);
+    // The leading `@charset` is the consumed encoding declaration.
+    assert_eq!(namespace_path.diagnostics().len(), 1);
     assert_eq!(
         namespace_path.diagnostics()[0].error().code(),
-        CssErrorCode::UnknownAtRule
-    );
-    assert_eq!(
-        namespace_path.diagnostics()[1].error().code(),
         CssErrorCode::InvalidAtRulePlacement
     );
 

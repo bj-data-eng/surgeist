@@ -370,11 +370,7 @@ fn stylesheet_recovery_leading_charset_is_an_unknown_rule() {
 
 #[test]
 fn stylesheet_recovery_charset_forms_drop_once_and_resume() {
-    for failed in [
-        "@charset UTF-8;",
-        "@charset \"\";",
-        "@charset \"UTF-8\" { ignored; }",
-    ] {
+    for failed in ["@charset UTF-8;", "@charset \"UTF-8\" { ignored; }"] {
         let source = format!("{failed} .after {{ color: blue; }}");
         let report = CssParser::default().parse_sheet(&source);
 
@@ -391,32 +387,31 @@ fn stylesheet_recovery_charset_forms_drop_once_and_resume() {
 }
 
 #[test]
-fn stylesheet_recovery_all_duplicate_and_nonleading_charset_rules_are_dropped() {
+fn stylesheet_recovery_leading_declaration_is_consumed_and_later_charset_rules_are_dropped() {
+    // Syntax 3 §3.2: the exact declaration at the start is not a rule. A
+    // second one, and any after other text, is an unrecognized at-rule.
     let source =
         "@charset \"UTF-8\"; .before { color: red; } @charset \"latin1\"; .after { color: blue; }";
     let report = CssParser::default().parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
-    assert_eq!(report.diagnostics().len(), 2);
-    for (diagnostic, failed) in report
-        .diagnostics()
-        .iter()
-        .zip(["@charset \"UTF-8\";", "@charset \"latin1\";"])
-    {
-        assert_drop(
-            source,
-            diagnostic,
-            CssErrorCode::UnknownAtRule,
-            CssRecoveryAction::DropAtRule,
-            failed,
-        );
-        let detail = diagnostic.error();
-        assert_eq!(
-            detail.code(),
-            CssErrorCode::UnknownAtRule,
-            "unknown charset"
-        );
-        assert_eq!(detail.at_rule().unwrap().as_str(), "charset");
-    }
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one unknown charset: {:?}", report.diagnostics())
+    };
+    assert_drop(
+        source,
+        diagnostic,
+        CssErrorCode::UnknownAtRule,
+        CssRecoveryAction::DropAtRule,
+        "@charset \"latin1\";",
+    );
+    assert_eq!(diagnostic.error().at_rule().unwrap().as_str(), "charset");
+    let source = "@charset \"UTF-8\";@charset \"UTF-8\"; .after { color: blue; }";
+    let report = CssParser::default().parse_sheet(source);
+    assert_eq!(style_rule_names(&report), ["after"]);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("the second declaration is reported")
+    };
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 17);
     let source = ".before { color: red; } @charset \"UTF-8\"; .after { color: blue; }";
     let report = CssParser::default().parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
@@ -536,7 +531,11 @@ fn stylesheet_recovery_repeated_drops_remain_in_source_order() {
 
 #[test]
 fn stylesheet_recovery_charset_leading_trivia_is_not_a_recovery_unit() {
-    for leading in ["", " \n\t", "/**/", " /* comment */ "] {
+    let source = "@charset \"Shift_JIS\"; .after { color: blue; }";
+    let report = CssParser::default().parse_sheet(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(style_rule_names(&report), ["after"]);
+    for leading in [" \n\t", "/**/", " /* comment */ "] {
         let source = format!("{leading}@charset \"Shift_JIS\"; .after {{ color: blue; }}");
         let report = CssParser::default().parse_sheet(&source);
 
@@ -570,7 +569,6 @@ fn stylesheet_recovery_charset_leading_trivia_is_not_a_recovery_unit() {
 fn stylesheet_recovery_charset_errors_identify_the_unknown_at_keyword() {
     for source in [
         "@charset UTF-8;",
-        "@charset \"\";",
         "@charset 'UTF-8';",
         "@charset /*comment*/ 'UTF-8';",
         "@charset \"UTF-8\"",

@@ -656,17 +656,10 @@ fn ordered_terminal_payloads() {
         "@counter-style marks {system:cyclic;symbols:x y} @page {margin:1cm} ",
         ".a {margin-block:0}",
     ));
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one unknown charset")
-    };
-    assert_eq!(
-        diagnostic.error().code(),
-        surgeist_css::diagnostic::CssErrorCode::UnknownAtRule
-    );
-    assert_eq!(
-        diagnostic.action(),
-        surgeist_css::diagnostic::CssRecoveryAction::DropAtRule
-    );
+    // The exact leading `@charset "UTF-8";` is the encoding declaration of
+    // Syntax 3 section 3.2: it is consumed, so it is neither a rule nor a
+    // diagnostic.
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = report.syntax().normalize(Default::default()).unwrap();
     let contexts = rules(&normalized);
     assert_eq!(

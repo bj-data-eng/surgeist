@@ -404,6 +404,8 @@ fn byte_prefix_text_is_preserved_and_uses_the_current_string_grammar() {
             .with_location(None),
         CssParser::default().parse_sheet("@charset \"windows-1252\";a{--x:€}")
     );
+    // The leading declaration stays in the text and is consumed by the grammar.
+    assert!(CssParser::default().parse_sheet_bytes(&input).is_clean());
 }
 
 #[test]

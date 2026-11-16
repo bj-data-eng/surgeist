@@ -236,6 +236,66 @@ fn text_is_checked_against_the_standard_library_decoders_where_they_apply() {
     ));
 }
 
+/// Syntax 3 section 3.2: `@charset "`, ASCII characters but `"`, `";`, at offset
+/// 0 and wholly within the first 1024 bytes. The lengths are counted by hand.
+#[test]
+fn the_handwritten_declaration_pattern_has_the_clause_lengths() {
+    for (text, length) in [
+        ("@charset \"utf-8\";", Some(17)),
+        ("@charset \"\";", Some(12)),
+        ("@charset \"a;b\\\";x", Some(16)),
+        ("@charset \"utf-8\";a{}", Some(17)),
+        ("@charset  \"utf-8\";", None),
+        ("@charset 'utf-8';", None),
+        ("@charset \"utf-8\" ;", None),
+        ("@charset \"utf-8\"", None),
+        ("@charset \"\u{e9}\";", None),
+        (" @charset \"utf-8\";", None),
+        ("@Charset \"utf-8\";", None),
+    ] {
+        assert_eq!(leading_declaration_len(text), length, "{text:?}");
+    }
+    let within = format!("@charset \"{}\";", "a".repeat(1012));
+    let beyond = format!("@charset \"{}\";", "a".repeat(1013));
+    assert_eq!(leading_declaration_len(&within), Some(1024));
+    assert_eq!(leading_declaration_len(&beyond), None);
+}
+
+/// The exact declaration gives no diagnostic and every other leading `@charset`
+/// gives the unknown at-rule drop; the property fails on a report that differs.
+#[test]
+fn the_declaration_is_consumed_and_other_charset_rules_are_reported() {
+    let parser = CssParser::default();
+    let dropped = parser.parse_sheet("@charset 'x'; a{}");
+    assert!(!dropped.diagnostics().is_empty());
+    let clean = parser.parse_sheet("a{}");
+    assert!(charset_reporting("@charset \"x\"; a{}", clean.diagnostics()).is_ok());
+    assert!(charset_reporting("@charset 'x'; a{}", dropped.diagnostics()).is_ok());
+    let consumed_reported = charset_reporting("@charset \"x\"; a{}", dropped.diagnostics());
+    assert_eq!(
+        consumed_reported.unwrap_err().discriminator(),
+        "charset-declaration-reported"
+    );
+    let other_unreported = charset_reporting("@charset 'x'; a{}", clean.diagnostics());
+    assert_eq!(
+        other_unreported.unwrap_err().discriminator(),
+        "charset-at-rule-not-dropped"
+    );
+    // A longer at-keyword is another unknown at-rule, outside this property.
+    assert!(charset_reporting("@charsets x; a{}", clean.diagnostics()).is_ok());
+    for bytes in [
+        &b"@charset \"windows-1252\"; a{content:\"\xe9\"}"[..],
+        &b"\xEF\xBB\xBF@charset \"no-such-label\"; a{}"[..],
+        &b"@charset 'utf-8'; a{}"[..],
+        &b"@charset  \"utf-8\"; a{}"[..],
+        &b"@CHARSET \"utf-8\"; a{}"[..],
+    ] {
+        let case = ByteCase::unlimited(bytes.to_vec(), None, None).unwrap();
+        let outcome = ByteTarget::new().evaluate(&case).unwrap();
+        assert_eq!(outcome.kind(), OutcomeKind::Evaluated, "{bytes:?}");
+    }
+}
+
 fn wrong_selection(case: &ByteCase) -> (String, EncodingSelection) {
     // Planted: forgets that a byte order mark overrides every other source.
     let (name, selection) = expected_selection(case);

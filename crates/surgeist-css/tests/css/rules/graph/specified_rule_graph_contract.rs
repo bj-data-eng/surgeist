@@ -146,23 +146,37 @@ fn checked_media_and_sheet_reuse_parsed_children_without_inventing_provenance() 
 }
 
 #[test]
-fn logical_utf8_output_serializes_retained_rules_after_unknown_charset_recovery() {
-    for (source, expected) in [
+fn logical_utf8_output_serializes_retained_rules_after_the_charset_declaration() {
+    // The exact leading declaration is consumed without a diagnostic
+    // (Syntax 3 section 3.2); the single-quoted spelling is an unknown
+    // at-rule that recovery drops. Neither is retained or serialized.
+    for (source, expected, dropped) in [
         (
             "@charset \"windows-1252\";@namespace n '日本';",
             "@namespace n url(\"日本\");",
+            false,
         ),
-        ("@charset \"UTF-8\";", ""),
+        ("@charset \"UTF-8\";", "", false),
+        (
+            "@charset 'windows-1252';@namespace n '日本';",
+            "@namespace n url(\"日本\");",
+            true,
+        ),
+        ("@charset 'UTF-8';", "", true),
     ] {
         let report = CssParser::default().parse_sheet(source);
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one unknown charset")
-        };
-        assert_eq!(
-            diagnostic.error().code(),
-            surgeist_css::diagnostic::CssErrorCode::UnknownAtRule
-        );
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+        if dropped {
+            let [diagnostic] = report.diagnostics() else {
+                panic!("one unknown charset")
+            };
+            assert_eq!(
+                diagnostic.error().code(),
+                surgeist_css::diagnostic::CssErrorCode::UnknownAtRule
+            );
+            assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+        } else {
+            assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        }
         let parsed = report.syntax();
         let before = parsed.clone();
         let checked = CssSheet::try_from_rules(parsed.rules().to_vec()).unwrap();

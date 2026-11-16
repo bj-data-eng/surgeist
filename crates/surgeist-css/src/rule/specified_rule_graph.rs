@@ -963,38 +963,50 @@ mod tests {
     }
 
     #[test]
-    fn recovered_charset_only_sheet_charges_its_empty_retained_aggregate() {
-        let report = crate::CssParser::default().parse_sheet("@charset \"windows-1252\";");
-        assert!(!report.is_clean());
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one unknown charset")
-        };
-        assert_eq!(
-            diagnostic.error().code(),
-            crate::diagnostic::CssErrorCode::UnknownAtRule
-        );
-        assert_eq!(
-            diagnostic.action(),
-            crate::diagnostic::CssRecoveryAction::DropAtRule
-        );
-        let before = report.clone();
-        assert_eq!(
-            report
-                .syntax()
-                .serialize_specified(Limits::new(1, 1, 0))
-                .unwrap(),
-            "",
-        );
-        for (limits, kind) in [
-            (Limits::new(0, 1, 0), Kind::InputNodeLimit),
-            (Limits::new(1, 0, 0), Kind::ProjectionNodeLimit),
+    fn charset_only_sheets_charge_their_empty_retained_aggregate() {
+        // The exact leading declaration is consumed and a single-quoted
+        // spelling is recovered as an unknown at-rule; neither is retained,
+        // so both charge exactly the empty sheet.
+        for (source, recovered) in [
+            ("@charset \"windows-1252\";", false),
+            ("@charset 'windows-1252';", true),
         ] {
-            let error = report.syntax().serialize_specified(limits).unwrap_err();
-            assert_eq!(error.kind(), kind);
-            assert_eq!(error.rule_index(), None);
+            let report = crate::CssParser::default().parse_sheet(source);
+            assert_eq!(report.is_clean(), !recovered, "{source}");
+            if recovered {
+                let [diagnostic] = report.diagnostics() else {
+                    panic!("one unknown charset")
+                };
+                assert_eq!(
+                    diagnostic.error().code(),
+                    crate::diagnostic::CssErrorCode::UnknownAtRule
+                );
+                assert_eq!(
+                    diagnostic.action(),
+                    crate::diagnostic::CssRecoveryAction::DropAtRule
+                );
+            } else {
+                assert!(report.diagnostics().is_empty(), "{source}");
+            }
+            let before = report.clone();
+            assert_eq!(
+                report
+                    .syntax()
+                    .serialize_specified(Limits::new(1, 1, 0))
+                    .unwrap(),
+                "",
+            );
+            for (limits, kind) in [
+                (Limits::new(0, 1, 0), Kind::InputNodeLimit),
+                (Limits::new(1, 0, 0), Kind::ProjectionNodeLimit),
+            ] {
+                let error = report.syntax().serialize_specified(limits).unwrap_err();
+                assert_eq!(error.kind(), kind);
+                assert_eq!(error.rule_index(), None);
+            }
+            assert_eq!(report, before);
+            assert!(report.syntax().rules().is_empty());
         }
-        assert_eq!(report, before);
-        assert!(report.syntax().rules().is_empty());
     }
 
     #[test]

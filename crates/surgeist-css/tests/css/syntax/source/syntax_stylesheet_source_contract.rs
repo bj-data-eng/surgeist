@@ -103,6 +103,23 @@ fn assert_charset_sheet(source: &str, drops: &[ExpectedDrop<'_>], styles: &[Expe
     assert_validator_parity(source, &report);
 }
 
+/// A sheet that begins with the exact encoding declaration (§3.2): the
+/// declaration yields no rule and no diagnostic, so the report is clean.
+fn assert_consumed_charset_sheet(
+    source: &str,
+    drops: &[ExpectedDrop<'_>],
+    styles: &[ExpectedStyle<'_>],
+) {
+    let report = CssParser::default().parse_sheet(source);
+    assert_styles(source, report.syntax().rules(), styles);
+    assert_eq!(report.diagnostics().len(), drops.len(), "{report:?}");
+    for (diagnostic, &expected) in report.diagnostics().iter().zip(drops) {
+        assert_unknown(diagnostic, expected, CssRecoveryAction::DropAtRule);
+    }
+    assert_eq!(report.is_clean(), drops.is_empty());
+    assert_validator_parity(source, &report);
+}
+
 // Each fixture is its own executable test, so one leading-metadata failure
 // cannot hide a later invalid-spelling or source-coordinate contract.
 macro_rules! charset_sheet_case {
@@ -118,10 +135,22 @@ macro_rules! charset_sheet_case {
     };
 }
 
-charset_sheet_case!(
-    exact_ascii_charset_prefix_is_an_unknown_string_input_rule,
+macro_rules! consumed_charset_sheet_case {
+    ($name:ident, $source:literal, $start:literal, $value_start:literal, $value_end:literal) => {
+        #[test]
+        fn $name() {
+            assert_consumed_charset_sheet(
+                $source,
+                &[],
+                &[("after", ($start, 0, $start), ($value_start, $value_end))],
+            );
+        }
+    };
+}
+
+consumed_charset_sheet_case!(
+    exact_ascii_charset_prefix_is_consumed_by_string_input,
     "@charset \"UTF-8\";.after{color:blue}",
-    17,
     17,
     30,
     34
@@ -158,10 +187,9 @@ charset_sheet_case!(
     28,
     32
 );
-charset_sheet_case!(
-    empty_charset_label_is_unknown_rather_than_an_encoding_error,
+consumed_charset_sheet_case!(
+    empty_charset_label_is_still_the_exact_declaration,
     "@charset \"\";.after{color:blue}",
-    12,
     12,
     25,
     29
@@ -195,9 +223,9 @@ fn leading_unicode_comment_and_crlf_preserve_original_charset_and_sibling_positi
 
 #[test]
 fn a_legacy_encoding_label_does_not_redecode_the_supplied_utf8_string() {
-    assert_charset_sheet(
+    assert_consumed_charset_sheet(
         "@charset \"windows-1252\";.café{color:red}",
-        &[((0, 0, 0), 24, "charset")],
+        &[],
         &[("café", (24, 0, 24), (37, 40))],
     );
 }
@@ -215,10 +243,10 @@ fn nonleading_charset_is_unknown_and_keeps_both_original_siblings() {
 }
 
 #[test]
-fn every_duplicate_charset_occurrence_has_its_own_unknown_rule_diagnostic() {
-    assert_charset_sheet(
+fn only_the_leading_declaration_is_consumed_so_a_duplicate_has_its_own_diagnostic() {
+    assert_consumed_charset_sheet(
         "@charset \"UTF-8\";@charset \"UTF-16LE\";.after{color:blue}",
-        &[((0, 0, 0), 17, "charset"), ((17, 0, 17), 37, "charset")],
+        &[((17, 0, 17), 37, "charset")],
         &[("after", (37, 0, 37), (50, 54))],
     );
 }
@@ -251,8 +279,16 @@ fn nested_charset_is_unknown_inside_its_retained_parent() {
 }
 
 #[test]
-fn validator_rejects_an_exact_charset_prefix_with_the_ordinary_unknown_rule_report() {
+fn validator_accepts_an_exact_charset_prefix_and_rejects_other_spellings() {
     let source = "@charset \"UTF-8\";.after{color:blue}";
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_ok()
+    );
+    assert_validator_parity(source, &CssParser::default().parse_sheet(source));
+    let source = "@charset 'UTF-8';.after{color:blue}";
     let failure = CssParser::default()
         .parse_sheet(source)
         .into_validation_result()

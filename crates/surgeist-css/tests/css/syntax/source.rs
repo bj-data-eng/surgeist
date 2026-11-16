@@ -1,5 +1,6 @@
 //! Source input, coordinates and retention.
 
+mod leading_encoding_declaration;
 mod parser_context_mode;
 mod source_coordinates;
 mod source_resource_preparation;

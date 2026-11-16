@@ -488,14 +488,16 @@ fn named_colors(observed: &Observed<'_>) {
     }
 }
 
-// Syntax 3 (2026-10-01) §8.3: the encoding declaration only looks like an
-// at-rule; no @charset rule exists, so in string input it is an unknown
-// at-rule dropped through its semicolon, block or EOF (§5.5.2). Following
-// rules are unaffected.
+// Syntax 3 (2026-10-01) §§3.2 and 8.3: the encoding declaration only looks like
+// an at-rule and no @charset rule exists. The exact declaration at the start
+// of a sheet is consumed without a diagnostic (issue #2868); any other
+// @charset is an unknown at-rule dropped through its semicolon, block or EOF
+// (§5.5.2). Following rules are unaffected.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-byte-stream
 // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#charset-rule
 // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule
 #[test]
-fn encoding_declarations_in_string_input_are_unknown_at_rules() {
+fn encoding_declarations_in_string_input_are_consumed_only_in_the_exact_leading_form() {
     use CssErrorCode::UnknownAtRule;
     use CssRecoveryAction::DropAtRule;
     const BASIS: &str = "Syntax 3 §§5.5.2, 8.3";
@@ -508,7 +510,6 @@ fn encoding_declarations_in_string_input_are_unknown_at_rules() {
             "@charset \"UTF-8\"; .x { color: red; }",
         )
         .retains([style(".x"), accept("color", "red", 29..33)])
-        .rejects([reject(UnknownAtRule, DropAtRule, 0, 0..17, charset())])
         .checks(named_colors),
         case(
             BASIS,
@@ -524,7 +525,6 @@ fn encoding_declarations_in_string_input_are_unknown_at_rules() {
             "@charset \"\"; .after { color: blue; }",
         )
         .retains(after(28..33))
-        .rejects([reject(UnknownAtRule, DropAtRule, 0, 0..12, charset())])
         .checks(named_colors),
         case(
             BASIS,
@@ -541,13 +541,14 @@ fn encoding_declarations_in_string_input_are_unknown_at_rules() {
             0..15,
             charset(),
         )]),
-        case(BASIS, Entry::Sheet, "@charset \"\";").rejects([reject(
-            UnknownAtRule,
-            DropAtRule,
-            0,
-            0..12,
-            charset(),
-        )]),
+        case(BASIS, Entry::Sheet, "@charset \"\";"),
+        case(BASIS, Entry::Sheet, "@charset \"UTF-8\";"),
+        case(
+            BASIS,
+            Entry::Sheet,
+            "@charset \"UTF-8\";@charset \"UTF-8\";",
+        )
+        .rejects([reject(UnknownAtRule, DropAtRule, 17, 17..34, charset())]),
         case(BASIS, Entry::Sheet, "@charset 'UTF-8';").rejects([reject(
             UnknownAtRule,
             DropAtRule,

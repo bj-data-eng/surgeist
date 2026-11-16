@@ -249,12 +249,16 @@ fn named_property_metadata_lookup_is_exact() {
 }
 
 #[test]
-fn charset_rules_are_unrecognized_and_dropped() {
+fn charset_rules_are_unrecognized_and_dropped_except_the_leading_declaration() {
+    // Syntax 3 section 3.2: the exact encoding declaration at the start of a
+    // stylesheet is consumed, so it needs no recovery.
+    let consumed = CssParser::default().parse_sheet("@charset \"UTF-8\"; .x { color: red; }");
+    assert!(consumed.is_clean(), "{:?}", consumed.diagnostics());
     for source in [
-        "@charset \"UTF-8\"; .x { color: red; }",
         "@charset bogus; .x { color: red; }",
         "@charset \"UTF-8\" .x { color: red; }",
         ".x { color: red; } @charset \"UTF-8\";",
+        "@charset 'UTF-8'; .x { color: red; }",
     ] {
         let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
