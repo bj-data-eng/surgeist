@@ -15,7 +15,7 @@ use surgeist_html::{
         native::custom_element_state_without_definition,
         template::{HtmlTemplateContentsOwnerDocument, template_contents_owner_document},
     },
-    values::{DocumentString, Namespace, QualifiedName},
+    values::{DocumentString, QualifiedName},
 };
 
 /// Owned positions join parser metadata; captured identities retain their owner.
@@ -659,10 +659,14 @@ impl ParserArenaSession {
 }
 
 impl SessionStorage {
+    /// The namespace of the fragment's context element, as the namespace of an element created in
+    /// it: the string and the group of the origins the capture made of it. A namespace that is one
+    /// of the parse's literals shares its string. Another is copied into a string that one
+    /// registry row holds for the element.
     pub(super) fn copy_context_namespace(
         &mut self,
         c: &mut ParseControl,
-    ) -> Result<(Namespace, Option<usize>), SessionError> {
+    ) -> Result<Option<storage_attributes::LiteralField>, SessionError> {
         c.require_identity(&self.control)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let context = &self
@@ -678,7 +682,7 @@ impl SessionStorage {
             return Err(SessionError::ContextUnavailable);
         };
         let Some(uri) = element.name().namespace().uri() else {
-            return Ok((Namespace::none(), None));
+            return Ok(None);
         };
         // A namespace that is one of the parse's literals shares its string.
         let literal = Literal::of_uri_units(uri.code_units());
@@ -737,12 +741,25 @@ impl SessionStorage {
             }
             return Err(error);
         }
-        let (value, ticket) = match (frozen, literal) {
-            (Some(frozen), _) => self.register_group_string_owned(c, frozen, group)?,
-            (None, Some(literal)) => self.register_literal_copy(c, literal, group)?,
-            (None, None) => return Err(latch_registry_row(c)),
-        };
-        Ok((Namespace::from_uri(value), Some(ticket)))
+        match (frozen, literal) {
+            (Some(frozen), _) => {
+                let (string, _) = self.register_group_string_owned(c, frozen, None)?;
+                Ok(Some(storage_attributes::LiteralField {
+                    string,
+                    group,
+                    counted: true,
+                }))
+            }
+            (None, Some(literal)) => {
+                let (string, counted) = self.shared_literal(c, literal)?;
+                Ok(Some(storage_attributes::LiteralField {
+                    string,
+                    group,
+                    counted,
+                }))
+            }
+            (None, None) => Err(latch_registry_row(c)),
+        }
     }
 }
 

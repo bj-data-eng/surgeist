@@ -8,7 +8,7 @@ use surgeist_html::{
         form::HtmlTextareaFlags,
         script::{HtmlScriptFlags, HtmlScriptResult},
     },
-    values::{DocumentString, Namespace},
+    values::DocumentString,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -113,11 +113,11 @@ impl SessionStorage {
                         if !supported || element.name().prefix().is_some() {
                             return Err(SessionError::WrongToken);
                         }
-                        let name = self.field_slot(c, FieldRef::ElementName(node))?;
-                        control_field_owner(&self.payloads, c, name)?;
+                        // The strings of the name and namespace are the element's own; their
+                        // origin groups, when the parse records them, belong to this parse.
+                        self.control_field_group(c, FieldRef::ElementName(node))?;
                         if namespace.is_some() {
-                            let namespace = self.field_slot(c, FieldRef::Namespace(node))?;
-                            control_field_owner(&self.payloads, c, namespace)?;
+                            self.control_field_group(c, FieldRef::Namespace(node))?;
                         }
                         for _ in element.attributes().each(c)? {
                             // The strings of an attribute are fields of its element: the name
@@ -397,47 +397,40 @@ impl SessionStorage {
         }
         let mut prepared = self.prepare_document_allocation(c, Some(document), template)?;
         let bindings = self.prepare_clone_metadata(c, source, &mut prepared)?;
-        let slot = self.field_slot(c, FieldRef::ElementName(source))?;
-        let (name, name_slot) = self.copy_registered_field(c, slot)?;
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let namespace_present = element_record(&self.construction, c, source)?
-            .name()
-            .namespace()
-            .uri()
-            .is_some();
-        let (namespace, namespace_slot) = if namespace_present {
-            let slot = self.field_slot(c, FieldRef::Namespace(source))?;
-            let (namespace, slot) = self.copy_registered_literal_field(c, slot, false)?;
-            (Namespace::from_uri(namespace), Some(slot))
-        } else {
-            (Namespace::none(), None)
+        let name = self
+            .copy_record_field(c, FieldRef::ElementName(source))?
+            .into_managed(c)?;
+        let namespace = match self.copy_namespace_field(c, source) {
+            Ok(namespace) => namespace,
+            Err(error) => {
+                name.release(c)?;
+                return Err(error);
+            }
         };
-        drop(name);
-        let (name_id, _) = self.intern_row_name(c, name_slot, &namespace)?;
+        let (identity, name_group) = self.element_identity(c, name, namespace.as_ref())?;
         // The element is created without attributes; they are appended one at a time below.
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        // Native installation and all payload alias locations are one fixed
-        // commit. A terminal stop may precede allocation, never strand an
-        // installed native backing with a detached/unbound registry location.
-        payload_write::<FieldRef>(c, u64::from(namespace_slot.is_some()).saturating_add(1))?;
+        // Native installation is one fixed commit. A terminal stop may precede allocation, never
+        // strand an installed native backing with an unbound field.
         payload_write::<Option<usize>>(c, 1)?;
         let link_flags = self
             .html_local(c, source, "link")?
             .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
         let node = self.allocate_prepared_owned(
             c,
-            NewRecord::NamedElement(name_id, link_flags, bindings.nonce),
+            NewRecord::NamedElement(identity.id, link_flags, bindings.nonce),
             template,
             0,
-            0,
+            identity.units,
             prepared,
         )?;
-        self.bind_string(name_slot, FieldRef::ElementName(node.index))
-            .map_err(|_| latch_registry_row(c))?;
-        if let Some(slot) = namespace_slot {
-            self.bind_string(slot, FieldRef::Namespace(node.index))
-                .map_err(|_| latch_registry_row(c))?;
-        }
+        self.bind_field(c, FieldRef::ElementName(node.index), name_group, 0)?;
+        self.bind_field(
+            c,
+            FieldRef::Namespace(node.index),
+            namespace.and_then(|namespace| namespace.group),
+            0,
+        )?;
         self.bind_clone_metadata(c, node.index, bindings)?;
         self.initial_associated_state(c, node.index)?;
         if base::is_base(
@@ -981,50 +974,61 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         self.retire_registered_string(c, slot)
     }
-    /// Copies a registered namespace URI, or an attribute prefix when `prefix`, without aliasing
-    /// its ticket. A value that is one of the parse's literals registers a row that shares the
-    /// literal's string and keeps the copy of the field's origin group; any other value is copied
-    /// as [`Self::copy_registered_field`] copies it, with the charges of that copy alone. Whether
-    /// the value is a literal is read before anything is charged: it compares at most the units
-    /// of the longest literal, and only when the lengths are equal.
-    pub(super) fn copy_registered_literal_field(
+    /// Copies the namespace of the element at `source` for a clone of it: a namespace that is one of
+    /// the parse's literals shares its string, with a copy of the group of the source's namespace
+    /// origins. Another is copied into a string that one registry row holds for the clone. An element
+    /// with no namespace has none.
+    fn copy_namespace_field(
         &mut self,
         c: &mut ParseControl,
         source: usize,
-        prefix: bool,
-    ) -> Result<(DocumentString, usize), SessionError> {
-        let literal = match self.payloads.values.get(source) {
-            Some(RetainedPayload::String { value, .. }) if prefix => {
-                Literal::of_prefix_units(value.code_units())
-            }
-            Some(RetainedPayload::String { value, .. }) => {
-                Literal::of_uri_units(value.code_units())
-            }
-            _ => None,
-        };
-        let Some(literal) = literal else {
-            return self.copy_registered_field(c, source);
-        };
-        control_field_owner(&self.payloads, c, source)?;
+    ) -> Result<Option<storage_attributes::LiteralField>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(source) else {
-            return Err(latch_registry_row(c));
+        let Some(uri) = element_record(&self.construction, c, source)?
+            .name()
+            .namespace()
+            .uri()
+            .cloned()
+        else {
+            return Ok(None);
         };
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            std::mem::size_of_val(value.code_units()) as u64,
+            std::mem::size_of_val(uri.code_units()) as u64,
         )?;
-        let origins = self
-            .payloads
-            .row_group(source)?
-            .map(|origins| {
-                self.evidence
-                    .as_mut()
-                    .ok_or(SessionError::WrongToken)?
-                    .copy_group(c, origins)
-            })
-            .transpose()?;
-        self.register_literal_copy(c, literal, origins)
+        let group = self.copied_field_group(c, FieldRef::Namespace(source))?;
+        if let Some(literal) = Literal::of_uri_units(uri.code_units()) {
+            let (string, counted) = self.shared_literal(c, literal)?;
+            return Ok(Some(storage_attributes::LiteralField {
+                string,
+                group,
+                counted,
+            }));
+        }
+        let mut buffer = Utf16Buffer::new(c)?;
+        if let Err(error) = buffer.extend_units(uri.code_units(), c) {
+            buffer.release(c)?;
+            return Err(error.into());
+        }
+        let frozen = buffer.freeze(c)?;
+        let (string, _) = self.register_group_string_owned(c, frozen, None)?;
+        Ok(Some(storage_attributes::LiteralField {
+            string,
+            group,
+            counted: true,
+        }))
+    }
+    /// Qualifies the group of the origins of `field` that the parse holds, if it has one.
+    fn control_field_group(
+        &self,
+        c: &mut ParseControl,
+        field: FieldRef,
+    ) -> Result<(), SessionError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if let Some(group) = self.payloads.detail_origins.get(c, field)? {
+            group.require_disposal_owner(c)?;
+        }
+        Ok(())
     }
     /// Copies the string of a non-element field of a record into a string of its own, with a
     /// copy of the field's group when it has one.
@@ -1105,29 +1109,6 @@ impl SessionStorage {
         let frozen = buffer.freeze(c)?;
         self.register_group_string_owned(c, frozen, origins)
     }
-    pub(super) fn field_slot(
-        &self,
-        c: &mut ParseControl,
-        location: FieldRef,
-    ) -> Result<usize, SessionError> {
-        // The string of a field of a record is the record's own: no registry row holds it.
-        if location.is_held_by_record() {
-            return Err(latch_registry_row(c));
-        }
-        // Deliberately a registry scan: every other location is looked up on
-        // clone paths only, not per parsed node, and has no join.
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::String {
-                location: stored, ..
-            } = payload
-                && same_location(*stored, location)
-            {
-                return Ok(slot);
-            }
-        }
-        Err(SessionError::WrongToken)
-    }
 }
 
 fn control_field_owner(
@@ -1147,20 +1128,6 @@ fn control_field_owner(
         maps.require_disposal_owner(c)?;
     }
     Ok(())
-}
-
-pub(super) fn same_location(a: FieldRef, b: FieldRef) -> bool {
-    match (a, b) {
-        (FieldRef::ElementName(a), FieldRef::ElementName(b))
-        | (FieldRef::Namespace(a), FieldRef::Namespace(b))
-        | (FieldRef::Text(a), FieldRef::Text(b))
-        | (FieldRef::Comment(a), FieldRef::Comment(b))
-        | (FieldRef::ProcessingInstructionTarget(a), FieldRef::ProcessingInstructionTarget(b))
-        | (FieldRef::ProcessingInstructionData(a), FieldRef::ProcessingInstructionData(b)) => {
-            a == b
-        }
-        _ => false,
-    }
 }
 
 #[cfg(test)]

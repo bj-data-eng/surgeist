@@ -7,9 +7,10 @@ use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 /// attributes. An attribute field names its element and the attribute's position in the
 /// element's list, so it moves with the list when attributes are removed.
 ///
-/// The strings of the non-element fields (text, comment, processing-instruction and doctype) and
-/// of the attributes (name, value, namespace and prefix) are the record's own, and their origin
-/// groups live in [`DetailOrigins`]. The strings of the other fields are held by registry rows.
+/// The strings of the non-element fields (text, comment, processing-instruction and doctype), of
+/// the attributes (name, value, namespace and prefix) and of the names of elements (local name and
+/// namespace) are the record's own, and their origin groups live in [`DetailOrigins`]. The strings
+/// of the other fields are held by registry rows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FieldRef {
     Detached,
@@ -31,9 +32,9 @@ pub(crate) enum FieldRef {
 }
 
 impl FieldRef {
-    /// Whether this is a field whose string a record holds: a string of a non-element record, or
-    /// the name, value, namespace or prefix of an attribute, which the element's attributes hold.
-    /// No registry row holds such a string.
+    /// Whether this is a field whose string a record holds: a string of a non-element record, the
+    /// local name or namespace of an element, or the name, value, namespace or prefix of an
+    /// attribute, which the element's attributes hold. No registry row holds such a string.
     pub(super) fn is_held_by_record(self) -> bool {
         matches!(
             self,
@@ -44,6 +45,8 @@ impl FieldRef {
                 | Self::DoctypeName(_)
                 | Self::DoctypePublic(_)
                 | Self::DoctypeSystem(_)
+                | Self::ElementName(_)
+                | Self::Namespace(_)
                 | Self::AttributeName(..)
                 | Self::AttributeValue(..)
                 | Self::AttributeNamespace(..)
@@ -76,8 +79,8 @@ impl FieldRef {
     }
 
     /// The units of the string of a field in the record it belongs to: a string of a non-element
-    /// record, or the name, value, namespace or prefix of an attribute of an element, read from
-    /// the element's attributes. `None` for a field of another kind, a record of another kind, an
+    /// record, the local name or namespace of an element, or the name, value, namespace or prefix
+    /// of an attribute of an element, read from the element's attributes. `None` for a field of another kind, a record of another kind, an
     /// attribute the element lacks, or an identifier the doctype lacks.
     pub(super) fn units<'a>(self, records: ConstructionView<'a>) -> Option<&'a [u16]> {
         let node = match self {
@@ -87,7 +90,9 @@ impl FieldRef {
             | Self::ProcessingInstructionData(node)
             | Self::DoctypeName(node)
             | Self::DoctypePublic(node)
-            | Self::DoctypeSystem(node) => node,
+            | Self::DoctypeSystem(node)
+            | Self::ElementName(node)
+            | Self::Namespace(node) => node,
             Self::AttributeName(node, index)
             | Self::AttributeValue(node, index)
             | Self::AttributeNamespace(node, index)
@@ -129,13 +134,20 @@ impl FieldRef {
             (Self::DoctypeSystem(_), ConstructionNodeKind::Doctype(value)) => {
                 value.system_id().map(|id| id.code_units())
             }
+            (Self::ElementName(_), ConstructionNodeKind::Element(value)) => {
+                Some(value.name().local_name().code_units())
+            }
+            (Self::Namespace(_), ConstructionNodeKind::Element(value)) => value
+                .name()
+                .namespace()
+                .uri()
+                .map(DocumentString::code_units),
             _ => None,
         }
     }
 
     pub(super) fn value<'a>(
         &self,
-        records: ConstructionView<'a>,
         payloads: &'a [RetainedPayload],
         control: &mut ParseControl,
     ) -> Result<Option<&'a DocumentString>, SessionError> {
@@ -164,20 +176,12 @@ impl FieldRef {
             | Self::DoctypeName(_)
             | Self::DoctypePublic(_)
             | Self::DoctypeSystem(_)
+            | Self::ElementName(_)
+            | Self::Namespace(_)
             | Self::AttributeName(..)
             | Self::AttributeValue(..)
             | Self::AttributeNamespace(..)
             | Self::AttributePrefix(..) => return Err(SessionError::WrongToken),
-            Self::ElementName(index) | Self::Namespace(index) => {
-                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
-                match records.node_at(index).map(|record| record.kind()) {
-                    Some(ConstructionNodeKind::Element(value)) => match self {
-                        Self::ElementName(..) => Some(value.name().local_name()),
-                        _ => value.name().namespace().uri(),
-                    },
-                    _ => None,
-                }
-            }
         };
         if value.is_none() && !matches!(self, Self::Detached) {
             return Err(SessionError::AliasedPayload);
@@ -186,7 +190,7 @@ impl FieldRef {
     }
 }
 
-/// Which string of a non-element record a field names.
+/// Which string of a record a field names.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub(super) enum RecordStringKind {
@@ -197,9 +201,11 @@ pub(super) enum RecordStringKind {
     DoctypeName,
     DoctypePublic,
     DoctypeSystem,
+    ElementName,
+    Namespace,
 }
 
-/// A string field of a non-element record, in eight bytes: a leaf names its string by it, so
+/// A string field of a record that holds it, other than an attribute's, in eight bytes: a leaf names its string by it, so
 /// that the many leaves of a history stay small. Record positions are 32-bit (the storage
 /// refuses a record past `u32::MAX`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -208,8 +214,8 @@ pub(crate) struct RecordString {
     kind: RecordStringKind,
 }
 impl RecordString {
-    /// The record string `field` names; `None` for a field that a registry row holds or whose
-    /// record position does not fit 32 bits.
+    /// The record string `field` names; `None` for a field that a registry row holds, an attribute
+    /// field, or a field whose record position does not fit 32 bits.
     pub(super) fn of(field: FieldRef) -> Option<Self> {
         let (node, kind) = match field {
             FieldRef::Text(node) => (node, RecordStringKind::Text),
@@ -223,6 +229,8 @@ impl RecordString {
             FieldRef::DoctypeName(node) => (node, RecordStringKind::DoctypeName),
             FieldRef::DoctypePublic(node) => (node, RecordStringKind::DoctypePublic),
             FieldRef::DoctypeSystem(node) => (node, RecordStringKind::DoctypeSystem),
+            FieldRef::ElementName(node) => (node, RecordStringKind::ElementName),
+            FieldRef::Namespace(node) => (node, RecordStringKind::Namespace),
             _ => return None,
         };
         Some(Self {
@@ -245,6 +253,8 @@ impl RecordString {
             RecordStringKind::DoctypeName => FieldRef::DoctypeName(node),
             RecordStringKind::DoctypePublic => FieldRef::DoctypePublic(node),
             RecordStringKind::DoctypeSystem => FieldRef::DoctypeSystem(node),
+            RecordStringKind::ElementName => FieldRef::ElementName(node),
+            RecordStringKind::Namespace => FieldRef::Namespace(node),
         }
     }
 }

@@ -388,12 +388,13 @@ fn body_partition_wide_alternation_classifies_each_actual_unit_once() {
 fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
     let source = crate::HtmlSource::utf8("<a v='A B C D'>");
     // The node-join cell and the document cell of each of the four records and the registry rows
-    // of the real html/body/p owners (18 in all) coexist with seven output runs. These caps also admit the actual
+    // and nonce table rows of the real html/body/p owners (13 in all) coexist with seven output
+    // runs. These caps also admit the actual
     // lexer's seventeen-node attribute trie and its returned token record.
     // Retaining the lexer across the operation adds 22 real lexical rows:
     // two occurrence/cause pairs and 18 syntax/name/value parts. Seven
     // input origins coexist with seven partition origins (22+7+7=36).
-    for (maps, auxiliary, succeeds) in [(35, 25, false), (36, 24, false), (36, 25, true)] {
+    for (maps, auxiliary, succeeds) in [(35, 20, false), (36, 19, false), (36, 20, true)] {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
@@ -425,10 +426,11 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
             // The root and its three nodes each own a join cell and a document cell (8). The
-            // other 10 entries are those of the registry rows the nodes hold (eight: a name and
-            // a namespace for each, and the nonce string of `html` and `body`) and of the rows of
-            // the table of nonces (two: `html` and `body`).
-            18
+            // other five entries are three registry rows (the string of the HTML namespace
+            // literal that the elements share, and the nonce string of `html` and `body`) and
+            // the two rows of the table of nonces (`html` and `body`). The strings of the names
+            // and namespaces are the records' own.
+            13
         );
         let capacity = c.usage().actual_capacity_bytes;
         let result = partition_body_text(&mut c, &mut input);
@@ -444,7 +446,7 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .high_water,
-                25
+                20
             );
             runs.release(&mut c).unwrap();
         } else {
@@ -463,7 +465,7 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                18
+                13
             );
             release_token_kind(&mut input.take().map(TokenKind::Text), &mut c).unwrap();
         }

@@ -95,7 +95,7 @@ fn with_instruction(check: impl FnOnce(&mut ParseControl, &mut ParserArenaSessio
 
 #[test]
 fn the_target_and_data_of_a_processing_instruction_have_groups_and_no_registry_row() {
-    with_instruction(|c, session, node| {
+    with_instruction(|_c, session, node| {
         let storage = session.active_mut().unwrap();
         for field in [
             FieldRef::ProcessingInstructionTarget(node),
@@ -103,10 +103,6 @@ fn the_target_and_data_of_a_processing_instruction_have_groups_and_no_registry_r
         ] {
             assert!(storage.payloads.detail_origins.has(field));
             // The string is the record's own: no row holds it.
-            assert_eq!(
-                storage.field_slot(c, field),
-                Err(SessionError::registry_row())
-            );
             assert!(!storage.payloads.values.iter().any(|row| matches!(
                 row,
                 RetainedPayload::String { location, .. } if *location == field

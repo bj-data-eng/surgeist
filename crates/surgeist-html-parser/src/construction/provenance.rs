@@ -3363,12 +3363,7 @@ impl ParserArenaSession {
                 continue;
             };
             c.require_document_string(allocation, value)?;
-            let Some(native) = location.value(
-                ConstructionView::Active(&storage.construction),
-                &storage.payloads.values,
-                c,
-            )?
-            else {
+            let Some(native) = location.value(&storage.payloads.values, c)? else {
                 continue;
             };
             let origins = storage.payloads.row_group(payload_slot)?;
@@ -3409,7 +3404,7 @@ impl ParserArenaSession {
             )?;
         }
         // The strings of the fields of a record belong to the record, which are walked in order:
-        // a non-element record's, and an element's attribute strings. Their groups are in the
+        // a non-element record's, and an element's name and attribute strings. Their groups are in the
         // table of origins.
         let records = &storage.construction;
         let origins = &storage.payloads.detail_origins;
@@ -3428,6 +3423,10 @@ impl ParserArenaSession {
                     FieldRef::DoctypeSystem(node),
                 ],
                 Some(ConstructionNodeKind::Element(element)) => {
+                    // The strings of an element's name, then its attributes'.
+                    for field in [FieldRef::ElementName(node), FieldRef::Namespace(node)] {
+                        evidence.project_record_field(c, strings, origins, records, field)?;
+                    }
                     let count = element.attributes().count(c)?;
                     for position in 0..count {
                         for string in [

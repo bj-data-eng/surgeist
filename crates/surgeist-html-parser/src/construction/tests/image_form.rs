@@ -416,8 +416,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     let mut c = ParseControl::new(
         limits()
             .into_builder()
-            .auxiliary_entries(16)
-            .active_formatting_entries(16)
+            .auxiliary_entries(13)
+            .active_formatting_entries(13)
             .finish()
             .unwrap(),
         HtmlParseCancellation::new(),
@@ -438,7 +438,9 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     // Attaching it would require unrelated temporary link writes;
     // the image's actual intended parent is the attached HTML container.
     let _body = session.allocate_implicit_body(&mut c, None).unwrap();
-    // Root/html/body own three node-join cells, four field payload slots, four document facts, and four nonce slots.
+    // Root/html/body own three node-join cells, the registry rows of the string of the HTML
+    // namespace literal and of the nonces of `html` and `body`, four document facts, and the two
+    // rows of the table of nonces. The strings of the names and namespaces are the records' own.
     // The two elements hold no creation row: their creation state is the default of their
     // namespace and their lookup registry is their context's.
     // No auxiliary entry remains for the image's required metadata slot.
@@ -446,7 +448,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        16
+        13
     );
     let name_backing = tag.name.value.text().block().address();
     let original_origins: Vec<_> = tag
@@ -533,8 +535,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         result.err(),
         Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
-            limit: 16,
-            current: 16,
+            limit: 13,
+            current: 13,
             requested_delta: 2,
         }))
     );
@@ -940,11 +942,14 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
                     ..
                 })) if limit == cap
             ));
-            // Metadata, name and namespace are initialized;
-            // the next actual record-ticket entry is the rejected slot.
-            assert_eq!(session.active().unwrap().construction.len(), 3);
-            // 9 registry rows, 10 with the Document's row that the Document table holds.
-            assert_eq!(session.active().unwrap().payloads.values.len(), 9);
+            // The image's record exists: its name and namespace are the record's own, so no entry
+            // of theirs precedes its record ticket, and the form association's initialized slot
+            // is the rejected entry.
+            assert_eq!(session.active().unwrap().construction.len(), 4);
+            // 4 registry rows, 5 with the Document's row that the Document table holds: the string
+            // of the HTML namespace literal, the nonce strings of `html` and `body`, and the
+            // form association's row.
+            assert_eq!(session.active().unwrap().payloads.values.len(), 4);
             assert!(
                 session
                     .active()

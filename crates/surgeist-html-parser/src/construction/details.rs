@@ -658,11 +658,11 @@ mod tests {
                 value, location, ..
             } = payload
             {
-                let group = storage
-                    .payloads
-                    .row_group(slot)
-                    .unwrap()
-                    .expect("every string of the details element has an origin group");
+                // The string of the HTML namespace literal is the one row that holds no group.
+                let Some(group) = storage.payloads.row_group(slot).unwrap() else {
+                    assert_eq!(value.to_utf8().unwrap(), "http://www.w3.org/1999/xhtml");
+                    continue;
+                };
                 let evidence = storage.evidence.as_ref().unwrap();
                 let header = evidence.require_group(group).unwrap();
                 if value.code_units() == [111, 112, 101, 110] || value.code_units() == [118] {

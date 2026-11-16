@@ -2673,11 +2673,13 @@ reopen execution or alter that snapshot. Its
   `diagnostics()` for the kinds selected, with `cause_of(subject)` for the
   construction cause of a dialog, image, style, hyperlink, missing meta fact or
   pending association occurrence.
-  The association inventory lists the rows of the fields that registry rows hold (the
-  names and namespaces of elements, the strings of attributes and the raw values) in
-  the order their rows were registered, then the rows of the strings of the non-element
-  records in node order and, within a record, in field order: the data of a text or
-  comment, the target and data of a processing instruction, and the name, public
+  The association inventory lists the rows of the strings that registry rows hold (raw
+  values such as those of nonces, textareas and inputs, and the original names of
+  adjusted foreign elements) in the order their rows were registered, then, in node
+  order, the rows of the strings that the records hold: for an element its name and
+  namespace and then the name, value, namespace and prefix of each attribute in
+  attribute order, and for another record its fields in field order: the data of a text
+  or comment, the target and data of a processing instruction, and the name, public
   identifier and system identifier of a doctype. The `detail` cargo feature of
   `surgeist-html-parser`, on by default, provides these readers and the detail
   types; without it a non-empty selection is refused with

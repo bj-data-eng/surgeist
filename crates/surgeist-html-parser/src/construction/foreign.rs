@@ -13,8 +13,7 @@
 
 use super::*;
 use surgeist_html::{
-    construction::ConstructionNodeKind,
-    values::{DocumentString, Namespace},
+    construction::ConstructionNodeKind, values::DocumentString,
     vocabulary::SVG_TAG_NAME_ADJUSTMENTS,
 };
 
@@ -873,6 +872,15 @@ impl ForeignNamespace {
             Self::Context => None,
         }
     }
+    /// The parse literal that is the namespace, or `None` for the namespace of the fragment's
+    /// context.
+    fn literal(self) -> Option<Literal> {
+        match self {
+            Self::MathMl => Some(Literal::MathMlNamespace),
+            Self::Svg => Some(Literal::SvgNamespace),
+            Self::Context => None,
+        }
+    }
     fn element_adjustment(
         self,
         c: &mut ParseControl,
@@ -970,61 +978,60 @@ impl SessionStorage {
                     return Err(error);
                 }
             };
-            let (name, name_ticket) = {
-                let field = self.foreign_text_field(control, name, replacement)?;
-                let FieldString { value, group } = field;
-                self.register_group_string_owned(control, value, group)?
+            let name = self
+                .foreign_text_field(control, name, replacement)?
+                .into_managed(control)?;
+            // The namespace is one of the parse's literals, or the namespace of the fragment's
+            // context.
+            let namespace = match foreign.literal() {
+                Some(literal) => self.literal_field(control, literal).map(Some),
+                None => self.copy_context_namespace(control),
             };
-            // The selected HTML namespace is a defining literal, copied through
-            // the same admitted exact buffer as token-created units.
-            let (namespace, namespace_ticket) = if let Some(uri) = foreign.uri() {
-                let (value, ticket) = match Literal::of_uri(uri) {
-                    Some(literal) => self.register_literal(control, literal)?,
-                    None => {
-                        let namespace = literal_string(control, uri.as_bytes())?;
-                        self.register_string(control, namespace, None)?
-                    }
-                };
-                (Namespace::from_uri(value), Some(ticket))
-            } else {
-                self.copy_context_namespace(control)?
+            let namespace = match namespace {
+                Ok(namespace) => namespace,
+                Err(error) => {
+                    name.release(control)?;
+                    return Err(error);
+                }
             };
-            drop(name);
-            let (name_id, _) = self.intern_row_name(control, name_ticket, &namespace)?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+            let (identity, name_group) =
+                self.element_identity(control, name, namespace.as_ref())?;
             let count = attributes.len();
-            let template = false;
-            // Preadmit the actual native-alias bindings and both usage writes.
-            // Successful allocation and binding have no fallible alias gap.
-            payload_write::<FieldRef>(
-                control,
-                u64::from(namespace_ticket.is_some()).saturating_add(1),
-            )?;
-            payload_write::<Option<usize>>(control, 1)?;
-            payload_write::<[usize; 2]>(control, 2)?;
-            if svg.is_some() {
+            let (node, nonce) = (|| {
+                control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+                let template = false;
+                // Preadmit the usage writes. Successful allocation and binding have no fallible
+                // gap.
                 payload_write::<Option<usize>>(control, 1)?;
-            }
-            let nonce = Self::token_carries_nonce(control, &attributes)?;
-            let node_index = self.construction.len();
-            let node = self.allocate_prepared_owned(
-                control,
-                NewRecord::NamedElement(name_id, None, nonce),
-                template,
-                0,
-                0,
-                prepared,
-            )?;
-            if node.index != node_index {
-                return Err(latch_registry_row(control));
-            }
+                payload_write::<[usize; 2]>(control, 2)?;
+                if svg.is_some() {
+                    payload_write::<Option<usize>>(control, 1)?;
+                }
+                let nonce = Self::token_carries_nonce(control, &attributes)?;
+                let node_index = self.construction.len();
+                let node = self.allocate_prepared_owned(
+                    control,
+                    NewRecord::NamedElement(identity.id, None, nonce),
+                    template,
+                    0,
+                    identity.units,
+                    prepared,
+                )?;
+                if node.index != node_index {
+                    return Err(latch_registry_row(control));
+                }
+                Ok((node, nonce))
+            })()?;
             if let Some(slot) = svg {
                 self.bind_svg_slot(control, slot, node.index)?;
             }
-            self.bind_string(name_ticket, FieldRef::ElementName(node.index))?;
-            if let Some(ticket) = namespace_ticket {
-                self.bind_string(ticket, FieldRef::Namespace(node.index))?;
-            }
+            self.bind_field(control, FieldRef::ElementName(node.index), name_group, 0)?;
+            self.bind_field(
+                control,
+                FieldRef::Namespace(node.index),
+                namespace.and_then(|namespace| namespace.group),
+                0,
+            )?;
             // The attributes of the token are adjusted and appended in source order.
             if count >= NAME_INDEX_MIN_ENTRIES {
                 self.holds

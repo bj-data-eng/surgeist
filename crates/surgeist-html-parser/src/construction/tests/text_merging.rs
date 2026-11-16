@@ -772,15 +772,16 @@ fn a_leaf_names_the_string_of_a_record_in_eight_bytes_and_a_field_round_trips() 
         FieldRef::DoctypeName(11),
         FieldRef::DoctypePublic(12),
         FieldRef::DoctypeSystem(u32::MAX as usize),
+        FieldRef::ElementName(13),
+        FieldRef::Namespace(14),
     ] {
         assert_eq!(
             RecordString::of(field).map(RecordString::field),
             Some(field)
         );
     }
-    // Fields that registry rows hold, and a record position that does not fit 32 bits, name no
-    // record string.
-    assert_eq!(RecordString::of(FieldRef::ElementName(1)), None);
+    // Fields that registry rows hold, the strings of an element's attributes, which its attribute
+    // list holds, and a record position that does not fit 32 bits, name no record string.
     assert_eq!(RecordString::of(FieldRef::AttributeValue(1, 0)), None);
     assert_eq!(RecordString::of(FieldRef::Detached), None);
     assert_eq!(

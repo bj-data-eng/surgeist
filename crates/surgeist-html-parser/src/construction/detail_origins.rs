@@ -1,10 +1,11 @@
 //! The origin groups of the string fields of records, for a parse that records the origin graph.
 //!
-//! A field is an attribute string of an element (its name, value, namespace or prefix) or a
-//! string of a non-element record: the data of a text or comment, the target and data of a
-//! processing instruction, or the name and identifiers of a doctype. Each record that has a
-//! group owns a run of entries, one per field that has one, sorted by attribute position and
-//! string; the strings of a non-element record follow the attribute strings. A slot per node
+//! A field is a string of an element (its local name and namespace, or the name, value, namespace
+//! or prefix of an attribute) or a string of a non-element record: the data of a text or comment,
+//! the target and data of a processing instruction, or the name and identifiers of a doctype. Each
+//! record that has a group owns a run of entries, one per field that has one, sorted by rank and
+//! string: the strings of an element's name come before its attributes' in attribute order, and
+//! the strings of a non-element record are the only ones it has. A slot per node
 //! position, indexed by the node, names its run, so an edit of one record reads and moves only
 //! that record's entries. A parse that records no graph has no group to hold and never
 //! allocates the table.
@@ -21,8 +22,10 @@ pub(super) struct DetailOrigin {
     group: OriginGroupRef,
 }
 
-/// The sort key of a field: its record, its position in the attribute list (zero for a
-/// non-element field) and its string.
+/// The sort key of a field: its record, its rank in the record and its string. The rank of the
+/// name and the namespace of an element is zero and the rank of an attribute is one more than its
+/// position in the list, so that the strings of an element's name come before its attributes'. The
+/// rank of the string of a non-element record is zero.
 fn key(field: FieldRef) -> Option<(usize, usize, u8)> {
     if let Some((node, index, string)) = field.attribute() {
         let which = match string {
@@ -31,9 +34,11 @@ fn key(field: FieldRef) -> Option<(usize, usize, u8)> {
             AttributeString::Namespace => 2,
             AttributeString::Prefix => 3,
         };
-        return Some((node, index, which));
+        return Some((node, index.checked_add(1)?, which));
     }
     match field {
+        FieldRef::ElementName(node) => Some((node, 0, 0)),
+        FieldRef::Namespace(node) => Some((node, 0, 1)),
         FieldRef::Text(node) => Some((node, 0, 4)),
         FieldRef::Comment(node) => Some((node, 0, 5)),
         FieldRef::ProcessingInstructionTarget(node) => Some((node, 0, 6)),
@@ -331,6 +336,9 @@ impl DetailOrigins {
         let Some((node, _, _)) = key(field) else {
             return Err(latch_registry_row(control));
         };
+        // Every admission of a group is a slot of the stop sweep, as a row of the registry is.
+        #[cfg(test)]
+        control.note_prepared_slot(std::panic::Location::caller());
         let run = self.run_for(control, node)?;
         let table = self
             .table

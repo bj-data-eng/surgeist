@@ -27,6 +27,58 @@ impl FieldString {
     }
 }
 
+impl FieldString {
+    /// Moves the string to the managed domain, where the string of a name waits to be interned: the
+    /// units leave the buffered ones as they do when a registry row takes a string, so the buffer
+    /// of a token does not coexist with what the creation of the element buffers next. A
+    /// refusal releases the string.
+    pub(super) fn into_managed(
+        self,
+        control: &mut ParseControl,
+    ) -> Result<ManagedName, SessionError> {
+        let FieldString { value, group } = self;
+        let (value, mut allocation) = value.into_parts();
+        if let Err(stop) = control.move_document_string_to_managed(&mut allocation, &value) {
+            drop(value);
+            control.release_document_string(allocation)?;
+            return Err(stop.into());
+        }
+        Ok(ManagedName {
+            value,
+            allocation,
+            group,
+        })
+    }
+}
+
+/// The string of the name of an element about to be created, in the managed domain, and the group
+/// of its origins when the parse records them.
+pub(super) struct ManagedName {
+    value: DocumentString,
+    allocation: DocumentStringAllocation,
+    group: Option<OriginGroupRef>,
+}
+impl ManagedName {
+    /// Gives the string back, for a creation that did not use it. The group of its origins stays
+    /// in the evidence.
+    pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
+        let Self {
+            value, allocation, ..
+        } = self;
+        drop(value);
+        control.release_document_string(allocation)?;
+        Ok(())
+    }
+}
+
+/// What an element is created with, besides its strings' origin groups: the id of its interned
+/// name, its local name as the storage holds it, and the units it counts for its name.
+pub(super) struct ElementIdentity {
+    pub(super) id: NameId,
+    pub(super) local: DocumentString,
+    pub(super) units: usize,
+}
+
 /// A constant string that one parse creates once and shares between its occurrences.
 #[derive(Clone, Copy)]
 pub(super) enum Literal {
@@ -65,10 +117,6 @@ impl Literal {
     pub(super) fn of_uri_units(units: &[u16]) -> Option<Self> {
         Self::URIS.into_iter().find(|literal| literal.is(units))
     }
-    /// The literal that is the attribute prefix of `units`, if it is one.
-    pub(super) fn of_prefix_units(units: &[u16]) -> Option<Self> {
-        Self::PREFIXES.into_iter().find(|literal| literal.is(units))
-    }
     fn is(self, units: &[u16]) -> bool {
         let bytes = self.bytes();
         bytes.len() == units.len()
@@ -95,82 +143,55 @@ impl Literal {
 }
 
 impl SessionStorage {
-    /// Registers an occurrence of `literal`. The first one of a parse creates the string and
-    /// charges its storage; later ones register the same string with only their units.
-    pub(super) fn register_literal(
-        &mut self,
-        control: &mut ParseControl,
-        literal: Literal,
-    ) -> Result<(DocumentString, usize), SessionError> {
-        self.require(control)?;
-        let Some(first) = self.first_literal(control, literal)? else {
-            let frozen = literal_string(control, literal.bytes())?;
-            let (value, slot) = self.register_string(control, frozen, None)?;
-            self.cache_literal(control, literal, slot)?;
-            return Ok((value, slot));
-        };
-        // The origin group is a fact of each occurrence, as for any created string.
-        let units = self.literal_len(control, first)?;
-        let group = if !control.detail().records_graph() {
-            None
-        } else if let Some(evidence) = &mut self.evidence {
-            Some(evidence.rule_group(control, units)?)
-        } else {
-            None
-        };
-        self.register_shared_occurrence(control, first, group)
-    }
-    /// An occurrence of `literal` as the namespace or prefix of an attribute: the string of the
-    /// parse's first registration of it, and the group of this occurrence's origins when the parse
-    /// records them. The first one of a parse creates the string and charges its storage.
+    /// An occurrence of `literal` as the namespace of an element or the namespace or prefix of an
+    /// attribute: the string of the parse's first registration of it, and the group of this
+    /// occurrence's origins when the parse records them. The first one of a parse creates the
+    /// string and counts its units.
     pub(super) fn literal_field(
         &mut self,
         control: &mut ParseControl,
         literal: Literal,
     ) -> Result<storage_attributes::LiteralField, SessionError> {
         self.require(control)?;
+        let (string, counted) = self.shared_literal(control, literal)?;
+        let group = if !control.detail().records_graph() {
+            None
+        } else if let Some(evidence) = &mut self.evidence {
+            Some(evidence.rule_group(control, string.len())?)
+        } else {
+            None
+        };
+        Ok(storage_attributes::LiteralField {
+            string,
+            group,
+            counted,
+        })
+    }
+    /// The string of the parse's first registration of `literal`, which this occurrence shares, and
+    /// whether this occurrence is that registration: it creates the string, which a registry row
+    /// holds with no group of origins, and counts its units, so the record that holds the
+    /// occurrence does not count them again. For a caller that is
+    /// already inside an operation of the storage and owns its phase, such as a clone made by the
+    /// effects of an insertion.
+    pub(super) fn shared_literal(
+        &mut self,
+        control: &mut ParseControl,
+        literal: Literal,
+    ) -> Result<(DocumentString, bool), SessionError> {
         let (first, counted) = match self.first_literal(control, literal)? {
             Some(first) => (first, false),
             None => {
                 let frozen = literal_string(control, literal.bytes())?;
-                let (value, slot) = self.register_string_owned(control, frozen, None)?;
+                let (value, slot) = self.register_group_string_owned(control, frozen, None)?;
                 drop(value);
                 self.cache_literal(control, literal, slot)?;
                 (slot, true)
             }
         };
-        let units = self.literal_len(control, first)?;
-        let group = if !control.detail().records_graph() {
-            None
-        } else if let Some(evidence) = &mut self.evidence {
-            Some(evidence.rule_group(control, units)?)
-        } else {
-            None
-        };
         let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(first) else {
             return Err(latch_registry_row(control));
         };
-        Ok(storage_attributes::LiteralField {
-            string: value.clone(),
-            group,
-            counted,
-        })
-    }
-    /// As [`Self::register_literal`] for a copy of a registered field whose value is `literal`,
-    /// which keeps the origin group the copy made of the field's own.
-    pub(super) fn register_literal_copy(
-        &mut self,
-        control: &mut ParseControl,
-        literal: Literal,
-        origins: Option<OriginGroupRef>,
-    ) -> Result<(DocumentString, usize), SessionError> {
-        let Some(first) = self.first_literal(control, literal)? else {
-            let frozen = literal_string(control, literal.bytes())?;
-            let (value, slot) = self.register_group_string_owned(control, frozen, origins)?;
-            self.cache_literal(control, literal, slot)?;
-            return Ok((value, slot));
-        };
-        self.register_shared_occurrence(control, first, origins)
+        Ok((value.clone(), counted))
     }
     /// The row of the first registration of `literal` in this parse, if there was one.
     fn first_literal(
@@ -181,12 +202,6 @@ impl SessionStorage {
         match self.payloads.literals.get(literal as usize) {
             Some(entry) => Ok(*entry),
             None => Err(latch_registry_row(control)),
-        }
-    }
-    fn literal_len(&self, control: &mut ParseControl, row: usize) -> Result<usize, SessionError> {
-        match self.payloads.values.get(row) {
-            Some(RetainedPayload::String { value, .. }) => Ok(value.len()),
-            _ => Err(latch_registry_row(control)),
         }
     }
     /// Records the row of a literal's first registration, whose ticket is shared from then on.
@@ -206,21 +221,6 @@ impl SessionStorage {
         };
         *entry = Some(slot);
         Ok(())
-    }
-    /// Registers a row that shares the string of the first registration at `first`.
-    fn register_shared_occurrence(
-        &mut self,
-        control: &mut ParseControl,
-        first: usize,
-        group: Option<OriginGroupRef>,
-    ) -> Result<(DocumentString, usize), SessionError> {
-        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(first) else {
-            return Err(latch_registry_row(control));
-        };
-        let value = value.clone();
-        let prepared = self.prepare_payload_slot_owned(control)?;
-        let allocation = control.share_document_string(&value)?;
-        self.push_string_row(control, prepared, value, allocation, group, false)
     }
     pub(super) fn check_text(
         control: &mut ParseControl,
@@ -457,39 +457,53 @@ impl SessionStorage {
     ) -> Result<(DocumentString, usize), SessionError> {
         self.register_string(control, text.value, Some(text.origins))
     }
-    /// Interns the name of `namespace`, no prefix and the local name that the string row `slot`
-    /// holds, and makes the row hold the storage's string for that name. The row's own string is
-    /// freed: the units are hashed once and the storage keeps one allocation for every
-    /// occurrence of the name. The row keeps the units of its occurrence and its origin group,
-    /// and holds the ticket of an occurrence, which admits only its units. Returns the id of the
-    /// name and its local name as the storage holds it.
-    ///
-    /// The caller holds no other handle on the row's string.
-    pub(super) fn intern_row_name(
+    /// Interns the name of an element of `namespace`, no prefix and the local name `name`, and
+    /// returns what the element is created with: the id of the name, its local name as the storage
+    /// holds it, and the units the element counts for its name, with the group of the origins of
+    /// the name. The units are those of the local name and of the namespace, but for the namespace
+    /// units that the first registration of the literal has counted. The units of `name` are
+    /// hashed once and the storage keeps one allocation for every occurrence of the name, so the
+    /// string of the token is released whatever the interning did. The groups of the origins of
+    /// the strings are bound to the element's fields once it exists.
+    pub(super) fn element_identity(
         &mut self,
         control: &mut ParseControl,
-        slot: usize,
-        namespace: &Namespace,
-    ) -> Result<(NameId, DocumentString), SessionError> {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot) else {
-            return Err(latch_registry_row(control));
-        };
-        let units = value.clone();
-        let id = self.intern_name(control, namespace, units.code_units())?;
-        drop(units);
-        let local = match self.construction.name(&id) {
-            Ok(name) => name.local_name().clone(),
-            Err(_) => return Err(latch_registry_row(control)),
-        };
-        let Some(RetainedPayload::String {
-            value, allocation, ..
-        }) = self.payloads.values.get_mut(slot)
-        else {
-            return Err(latch_registry_row(control));
-        };
-        control.rebind_document_string_to_shared(allocation, value, &local)?;
-        Ok((id, local))
+        name: ManagedName,
+        namespace: Option<&storage_attributes::LiteralField>,
+    ) -> Result<(ElementIdentity, Option<OriginGroupRef>), SessionError> {
+        let ManagedName {
+            value,
+            allocation,
+            group,
+        } = name;
+        let identity = (|| {
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let namespace_counted = namespace
+                .filter(|field| field.counted)
+                .map_or(0, |field| field.string.len());
+            let namespace = match namespace {
+                Some(field) => Namespace::from_uri(field.string.clone()),
+                None => Namespace::none(),
+            };
+            let id = self.intern_name(control, &namespace, value.code_units())?;
+            let qualified = match self.construction.name(&id) {
+                Ok(name) => name.clone(),
+                Err(_) => return Err(latch_registry_row(control)),
+            };
+            let units = attribute_admission::name_units_of(control, &qualified)?
+                .checked_sub(namespace_counted)
+                .ok_or_else(|| latch_registry_row(control))?;
+            Ok(ElementIdentity {
+                id,
+                local: qualified.local_name().clone(),
+                units,
+            })
+        })();
+        drop(value);
+        let released = control.release_document_string(allocation);
+        let identity = identity?;
+        released?;
+        Ok((identity, group))
     }
     /// Implements the pinned character-insertion operation at an already
     /// selected insertion location. Foster-parent selection belongs to the
@@ -704,10 +718,7 @@ impl SessionStorage {
         };
         control.require_document_string(allocation, value)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        // The block of an occurrence of a shared string has other holders by definition: the
-        // row that charged it and every other occurrence. The ticket that charged the block keeps
-        // the check.
-        if !allocation.is_occurrence() && value.block().holders() != if native { 2 } else { 1 } {
+        if value.block().holders() != if native { 2 } else { 1 } {
             return Err(SessionError::AliasedPayload);
         }
         if let Some(group) = origins {

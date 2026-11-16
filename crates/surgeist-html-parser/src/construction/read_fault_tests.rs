@@ -115,9 +115,11 @@ fn a_concat_that_names_itself_outgrows_the_scratch_and_faults_the_cursor() {
     assert_eq!(walk(&report, index), Some(fault(Kind::Group)));
 }
 
+// The strings of an element's name are the record's own, so a leaf that names a registry row is
+// the original name of an adjusted foreign element, which the row keeps as history.
 #[test]
 fn a_leaf_whose_backing_is_not_a_string_row_faults_the_cursor() {
-    let mut report = parse("<p>A&amp;B");
+    let mut report = parse("<svg><foreignObject>");
     let index = first_group(&mut report, |g| {
         matches!(
             g.body,
@@ -143,7 +145,7 @@ fn a_leaf_whose_backing_is_not_a_string_row_faults_the_cursor() {
 
 #[test]
 fn a_leaf_whose_backing_is_past_the_registry_faults_the_cursor() {
-    let mut report = parse("<p>A&amp;B");
+    let mut report = parse("<svg><foreignObject>");
     let index = first_group(&mut report, |g| {
         matches!(
             g.body,
@@ -163,7 +165,7 @@ fn a_leaf_whose_backing_is_past_the_registry_faults_the_cursor() {
 
 #[test]
 fn a_leaf_that_is_still_pending_faults_the_cursor() {
-    let mut report = parse("<p>A&amp;B");
+    let mut report = parse("<svg><foreignObject>");
     let index = first_group(&mut report, |g| {
         matches!(
             g.body,
@@ -183,7 +185,7 @@ fn a_leaf_that_is_still_pending_faults_the_cursor() {
 
 #[test]
 fn a_leaf_whose_origins_are_past_the_table_faults_the_cursor() {
-    let mut report = parse("<p>A&amp;B");
+    let mut report = parse("<svg><foreignObject>");
     let index = first_group(&mut report, |g| {
         matches!(
             g.body,

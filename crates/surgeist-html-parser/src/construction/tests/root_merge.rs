@@ -771,20 +771,23 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
     }
 }
 
-/// The table keys of the name and value of each of `count` attributes of the element at
-/// `node`, in attribute order.
+/// The table keys of the element at `node` with `count` attributes: the strings of its name and
+/// namespace, which have rank zero, then the name and value of each attribute in attribute order,
+/// whose rank is one more than its position.
 fn name_and_value_keys(node: usize, count: usize) -> Vec<(usize, usize, u8)> {
-    (0..count)
-        .flat_map(|position| [(node, position, 0), (node, position, 1)])
+    [(node, 0, 0), (node, 0, 1)]
+        .into_iter()
+        .chain((0..count).flat_map(|position| [(node, position + 1, 0), (node, position + 1, 1)]))
         .collect()
 }
 
 #[test]
-fn the_origin_table_names_the_name_and_value_of_each_attribute_in_attribute_order() {
+fn the_origin_table_names_the_element_strings_and_the_name_and_value_of_each_attribute_in_order() {
     let source = crate::HtmlSource::utf8("<html id=old><html a=1 b=2 c=3>");
     let mut c = control();
     let (mut session, root, mut second, tokenizer) = merge_fixture(&source, &mut c);
-    // The element was created with one attribute, whose two strings have origins.
+    // The element was created with one attribute. The strings of its name and namespace have
+    // origins, and so do the two strings of the attribute.
     assert_eq!(
         session.active().unwrap().payloads.detail_origins.keys(),
         name_and_value_keys(root.index, 1)
@@ -792,7 +795,8 @@ fn the_origin_table_names_the_name_and_value_of_each_attribute_in_attribute_orde
     session
         .add_attributes_if_missing(&mut c, &root, &mut second)
         .unwrap();
-    // The merge added three attributes, so the table holds the two strings of four.
+    // The merge added three attributes, so the table holds the two strings of four besides the
+    // element's.
     assert_eq!(
         session.active().unwrap().payloads.detail_origins.keys(),
         name_and_value_keys(root.index, 4)
@@ -860,7 +864,8 @@ fn a_parse_that_records_no_graph_holds_no_origin_table_and_the_same_attributes()
         .add_attributes_if_missing(&mut with_detail, &detailed_root, &mut second)
         .unwrap();
     let expected = root_attributes(&detailed, &detailed_root);
-    assert_eq!(detailed.active().unwrap().payloads.detail_origins.len(), 8);
+    // The name and the namespace of the element, and the name and value of four attributes.
+    assert_eq!(detailed.active().unwrap().payloads.detail_origins.len(), 10);
     tokenizer.release(&mut with_detail).unwrap();
     detailed.release(&mut with_detail).unwrap();
     storage_zero(&with_detail);
@@ -920,15 +925,16 @@ fn the_origin_table_adds_one_auxiliary_entry_per_origin_bearing_field() {
         .add_attributes_if_missing(&mut c, &root, &mut second)
         .unwrap();
     let table = &session.active().unwrap().payloads.detail_origins;
-    // The name and the value of each of the four attributes have a group.
-    assert_eq!(table.len(), 8);
-    assert_eq!(aux(&c), without_detail + 8);
+    // The name and the namespace of the element, and the name and the value of each of the four
+    // attributes, have a group.
+    assert_eq!(table.len(), 10);
+    assert_eq!(aux(&c), without_detail + 10);
     // The retained bytes are a slot for each node position up to the root's, one run for the
-    // root and its eight entries, each at most doubled by the spare room of its vector.
+    // root and its ten entries, each at most doubled by the spare room of its vector.
     let slot = std::mem::size_of::<usize>();
     let run = std::mem::size_of::<super::super::detail_origins::Run>();
     let entry = std::mem::size_of::<super::super::detail_origins::DetailOrigin>();
-    assert!(table.capacity_bytes() <= 2 * ((root.index + 1) * slot + run + 8 * entry));
+    assert!(table.capacity_bytes() <= 2 * ((root.index + 1) * slot + run + 10 * entry));
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
