@@ -74,6 +74,12 @@ impl NodeContexts {
     pub(super) fn documents_mut(&mut self) -> &mut RowLog<DocumentRef> {
         &mut self.documents
     }
+    /// The table of the roots and links that name a document, for a test that corrupts what a
+    /// report holds.
+    #[cfg(test)]
+    pub(super) fn named_mut(&mut self) -> Option<&mut FamilyTable<u32>> {
+        self.named.as_mut()
+    }
     /// The document an entry of the list names.
     pub(super) fn document(&self, entry: u32) -> Option<&DocumentRef> {
         self.documents

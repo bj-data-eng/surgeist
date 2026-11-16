@@ -148,6 +148,12 @@ impl<T> FamilyTable<T> {
     pub(super) fn row_mut(&mut self, index: usize) -> Option<&mut T> {
         self.bank.row_mut(index)
     }
+    /// Gives the row at `index` another node's key, as a table whose rows belong to other nodes
+    /// than its keys name. Whether there was a row at `index`.
+    #[cfg(test)]
+    pub(super) fn rekey_for_test(&mut self, index: usize, node: u32) -> bool {
+        self.nodes.get_mut(index).map(|key| *key = node).is_some()
+    }
     /// The rows with the nodes that own them, in ascending order of node.
     pub(super) fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
         self.nodes

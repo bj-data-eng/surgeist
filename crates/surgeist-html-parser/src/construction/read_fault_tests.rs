@@ -1090,6 +1090,31 @@ fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
 // ---- a link's node document and flags ----
 
 #[test]
+fn a_link_with_no_row_in_the_table_of_named_documents_faults_the_cursor() {
+    let mut report = parse("<link rel=x href=y>");
+    let link = frozen(&mut report)
+        .payloads
+        .values
+        .iter()
+        .find_map(|row| match row {
+            RetainedPayload::Link { node, .. } => *node,
+            _ => None,
+        })
+        .unwrap();
+    // The one row of the table is the link's. Giving it the key of another node leaves the link
+    // with no row, so the report has no document to read for it.
+    let named = frozen(&mut report)
+        .payloads
+        .facts
+        .contexts
+        .named_mut()
+        .expect("a frozen parse holds the table");
+    let (found, _) = named.find_published(link);
+    assert!(named.rekey_for_test(found.expect("the link has a row"), 0));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
+}
+
+#[test]
 fn a_link_that_names_a_node_with_no_link_flags_faults_the_cursor() {
     let mut report = parse("<link rel=x href=y>");
     corrupt_row(&mut report, |row| match row {
