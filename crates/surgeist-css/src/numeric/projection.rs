@@ -1096,13 +1096,58 @@ pub(crate) fn capture_color_component_specified_scaled(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<(String, NumericProjectionOutcome)> {
     let mut output = String::new();
-    let outcome = project_specified_impl_mode(
-        expression,
-        scale,
+    let mut prepared = prepare_specified_colour_component(expression, scale, context)?;
+    prepared.cut_component_range(None);
+    let outcome = emit_prepared(
+        prepared,
         context,
         &mut output,
-        (false, true),
+        false,
+        true,
         NumericEmission::ColorComponentCalculation,
+    )?;
+    Ok((output, outcome))
+}
+
+/// How a colour component's calculation root is cut at the component
+/// threshold (#2889).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ComponentCut {
+    /// The root is not a component: a `color-mix()` weight.
+    Uncut,
+    /// The root as it stands is the component: a number after the slot's scale,
+    /// a hue in degrees or an alpha already scaled to a number.
+    Root,
+    /// The root is authored in the slot's own unit: a number or a percentage
+    /// that the colour holds as its [`channels::Entry`] gives.
+    Entering(crate::color::channels::Entry),
+}
+
+/// Captures a calculation that is a colour component with the generic text of
+/// its slot, as relative overrides, profile expressions, calculated alpha and
+/// origin colours write it. Its leaves convert as used resolution converts them
+/// and its root is cut at the component threshold as `cut` says (#2889); a
+/// retained leaf outside the window is not written as its authored digits.
+pub(crate) fn capture_specified_colour_scaled(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    cut: ComponentCut,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<(String, NumericProjectionOutcome)> {
+    let mut output = String::new();
+    let mut prepared = prepare_specified_colour_component(expression, scale, context)?;
+    match cut {
+        ComponentCut::Uncut => {}
+        ComponentCut::Root => prepared.cut_component_range(None),
+        ComponentCut::Entering(entry) => prepared.cut_component_range(Some(entry)),
+    }
+    let outcome = emit_prepared(
+        prepared,
+        context,
+        &mut output,
+        false,
+        true,
+        NumericEmission::CssComponent(None),
     )?;
     Ok((output, outcome))
 }
@@ -1247,6 +1292,34 @@ impl DeferredNumericProjection<'_> {
         self.outcome
     }
 
+    /// Applies the colour component range to the value of a numeric root: one
+    /// whose magnitude is at least the component threshold is infinite, as its
+    /// used value is limited (#2889). Only the root is cut, after the whole
+    /// calculation is evaluated; a root with retained context is unchanged.
+    /// With an `entry` the root is classified as the colour holds it: a number
+    /// or a percentage in the slot's unit. A root classified infinite keeps its
+    /// own unit, so a percentage writes `calc(infinity * 1%)`.
+    fn cut_component_range(&mut self, entry: Option<crate::color::channels::Entry>) {
+        let node = &mut self.arena[self.root];
+        if let Kind::Scalar(scalar) = &mut node.kind
+            && scalar.value.is_finite()
+            && entry
+                .map_or(scalar.value, |entry| match scalar.unit {
+                    Unit::Percentage => entry.percentage(scalar.value),
+                    Unit::Number => entry.number(scalar.value),
+                    _ => scalar.value,
+                })
+                .abs()
+                >= crate::color::channels::THRESHOLD
+        {
+            scalar.value = f64::INFINITY.copysign(scalar.value);
+            node.resolved_magnitude = Some(scalar.value);
+            self.outcome.scalar_value = Some(scalar.value);
+            // An infinity has no authored coefficient to write.
+            self.exact = None;
+        }
+    }
+
     /// The authored coefficient an operation-free leaf root will emit, so an
     /// owning slot can classify its rounded text as the literal path does.
     pub(crate) fn exact_coefficient(&self) -> Option<&str> {
@@ -1382,6 +1455,7 @@ pub(crate) fn prepare_keyframe_matching<'a>(
         NumericProjectionScale::Identity,
         context,
         ProjectionMode::KeyframeMatching,
+        false,
     )
 }
 
@@ -1390,7 +1464,30 @@ fn prepare_specified_scaled<'a>(
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<DeferredNumericProjection<'a>> {
-    prepare_specified_scaled_with_mode(expression, scale, context, ProjectionMode::SpecifiedOutput)
+    prepare_specified_scaled_with_mode(
+        expression,
+        scale,
+        context,
+        ProjectionMode::SpecifiedOutput,
+        false,
+    )
+}
+
+/// The projection of a colour component calculation, whose leaves convert as
+/// used resolution converts them: a numeral outside the colour window is the
+/// shared estimate, not the correctly rounded value (#2889).
+fn prepare_specified_colour_component<'a>(
+    expression: &'a CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<DeferredNumericProjection<'a>> {
+    prepare_specified_scaled_with_mode(
+        expression,
+        scale,
+        context,
+        ProjectionMode::SpecifiedOutput,
+        true,
+    )
 }
 
 fn prepare_specified_scaled_with_mode<'a>(
@@ -1398,7 +1495,15 @@ fn prepare_specified_scaled_with_mode<'a>(
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
     mode: ProjectionMode,
+    colour_leaves: bool,
 ) -> Result<DeferredNumericProjection<'a>> {
+    let leaf_coefficient = |representation: &str| {
+        if colour_leaves {
+            super::bounded_decimal::window_value(representation)
+        } else {
+            lexical_value(representation)
+        }
+    };
     let mut projection = Projection {
         mode,
         arena: Vec::new(),
@@ -1449,10 +1554,24 @@ fn prepare_specified_scaled_with_mode<'a>(
                             // Infinities are constants or calculation
                             // results and never enter this leaf conversion.
                             closest_supported_value(
-                                projection_scale.map_or_else(
-                                    || lexical_value(number.representation()),
-                                    |scale| converted_leaf(number.representation(), scale),
-                                ),
+                                if colour_leaves {
+                                    let mut coefficient = leaf_coefficient(number.representation());
+                                    // An angle beyond binary64 is infinite here, as in
+                                    // the used leaf: the range rule below takes it to
+                                    // the nearest multiple of 360deg.
+                                    if unit == Unit::Canonical("deg")
+                                        && coefficient.abs() == f64::MAX
+                                    {
+                                        coefficient = f64::INFINITY.copysign(coefficient);
+                                    }
+                                    projection_scale
+                                        .map_or(coefficient, |scale| scale.apply(coefficient))
+                                } else {
+                                    projection_scale.map_or_else(
+                                        || lexical_value(number.representation()),
+                                        |scale| converted_leaf(number.representation(), scale),
+                                    )
+                                },
                                 true,
                                 unit == Unit::Canonical("deg"),
                             )
@@ -1464,7 +1583,7 @@ fn prepare_specified_scaled_with_mode<'a>(
                         // The authored coefficient stays available to exact
                         // same-dimension arithmetic (#1433).
                         let exact = projection_scale.map(|unit| SourceValue {
-                            coefficient: lexical_value(number.representation()),
+                            coefficient: leaf_coefficient(number.representation()),
                             unit,
                         });
                         let id = projection.set_exact(id, exact);
@@ -1473,7 +1592,7 @@ fn prepare_specified_scaled_with_mode<'a>(
                     }
                     _ => unreachable!("checked numeric leaf"),
                 };
-                let value = lexical_value(number.representation());
+                let value = leaf_coefficient(number.representation());
                 let value = projection.closest(value, true, CssNumericType::NUMBER);
                 projection.value(value, unit, node.ty)?
             }
@@ -1550,6 +1669,10 @@ fn prepare_specified_scaled_with_mode<'a>(
         && projection.scalar(root).is_some())
     .then(|| exact_single_leaf(expression))
     .flatten()
+    // A colour leaf outside the window is its estimate, never its digits.
+    .filter(|representation| {
+        !colour_leaves || !super::bounded_decimal::outside_window(representation)
+    })
     .map(|representation| ExactCoefficient {
         root,
         representation,

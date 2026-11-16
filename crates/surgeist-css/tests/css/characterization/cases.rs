@@ -7,11 +7,13 @@
 
 use crate::css::support::property_expectations::{self, CatalogExpectation};
 
-/// The colour whose `1e308` literal needs the most actions of the corpus. The
-/// fixed colour action ceiling of the corpus is derived from its requirement,
-/// so that it is refused with an action limit under the fixed limits and
-/// reaches its numerical outcome under the large allowance.
-pub const NUMERICAL_OVERFLOW_INPUT: &str = "color-mix(in srgb, lab(0 1e308 0), red)";
+/// The colour whose numeral needs the most actions of the corpus: `1e-45` is
+/// inside the window of exact conversion (`[1e-46, 1e41)`) and has the largest
+/// midpoint there, so its search is the heaviest. The fixed colour action
+/// ceiling of the corpus is derived from its requirement, so that it is refused
+/// with an action limit under the fixed limits and reaches its numerical
+/// outcome under the large allowance.
+pub const NUMERICAL_OVERFLOW_INPUT: &str = "lab(0 1e-45 0)";
 
 /// One observation request.
 pub struct Case {
@@ -53,22 +55,11 @@ pub fn all() -> Vec<Case> {
     for front in ["color.used.large-actions", "color.authored.large-actions"] {
         let suffix = front.strip_prefix("color.").unwrap();
         cases.push(Case::new(
-            format!("color.numerical-mix-overflow.absent.{suffix}"),
+            format!("color.numerical-search-ceiling.absent.{suffix}"),
             front,
             "absent",
             NUMERICAL_OVERFLOW_INPUT,
         ));
-        // A range input that needs more actions than the corpus ceiling is
-        // refused on the ordinary fronts; its outcome is the one recorded here,
-        // under the large allowance, which the corpus limit tests compare with.
-        for (slug, input) in COLOR_RANGE_INPUTS {
-            cases.push(Case::new(
-                format!("color.range-{slug}.absent.{suffix}"),
-                front,
-                "absent",
-                input,
-            ));
-        }
     }
     cases.extend(COLOR_LIMIT_INPUTS.iter().map(|(slug, input)| {
         Case::new(
@@ -351,7 +342,16 @@ const COLOR_INPUTS: &[(&str, &str, &str)] = &[
         "absent",
         "lab(50 calc(infinity) 0)",
     ),
-    ("numerical-mix-overflow", "absent", NUMERICAL_OVERFLOW_INPUT),
+    (
+        "numerical-mix-overflow",
+        "absent",
+        "color-mix(in srgb, lab(0 1e308 0), red)",
+    ),
+    (
+        "numerical-search-ceiling",
+        "absent",
+        NUMERICAL_OVERFLOW_INPUT,
+    ),
 ];
 
 /// `(slug, input)`: colour components at both ends of the binary32 range and
@@ -382,7 +382,8 @@ const COLOR_RANGE_INPUTS: &[(&str, &str)] = &[
     ("lab-1e-50", "lab(0 1e-50 0)"),
     ("lab-tiny-binary64", "lab(0 2.2250738585072014e-308 0)"),
     ("srgb-percent-1e41", "color(srgb 1e41% 0 0)"),
-    // Mix weights below the window (estimates), and a weight inside it.
+    // Mix weights below the window (estimates), and weights inside it that the
+    // exact fast path converts (their search would exceed the corpus ceiling).
     (
         "mix-weights-estimate",
         "color-mix(in srgb, red 3e-60%, blue 7e-60%)",

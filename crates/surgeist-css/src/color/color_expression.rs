@@ -9,9 +9,7 @@ use crate::numeric::expression::{
     CssNumericConstructionErrorKind, NodeKind, NumericInputContext, Result, construct_with_policy,
     trivia, validate_components,
 };
-use crate::numeric::projection::{
-    NumericProjectionOutcome, NumericProjectionScale, capture_specified_scaled,
-};
+use crate::numeric::projection::{NumericProjectionOutcome, NumericProjectionScale};
 use crate::numeric::{
     CssCalculationExpressionRef, CssCalculationType, CssNumericConstructionError,
 };
@@ -386,7 +384,12 @@ impl CssProfileColorCalculation {
         (String, NumericProjectionOutcome),
         crate::serialization::CssSerializationError,
     > {
-        capture_specified_scaled(&self.expression, scale, context)
+        crate::numeric::projection::capture_specified_colour_scaled(
+            &self.expression,
+            scale,
+            crate::numeric::projection::ComponentCut::Root,
+            context,
+        )
     }
 }
 

@@ -10,6 +10,21 @@ use surgeist_color::ColorSpace as Space;
 use surgeist_color::PredefinedColorSpace as Predefined;
 use surgeist_color::{Finite, UnitInterval};
 
+/// The largest magnitude of a used colour component: `f32::MAX`, the largest
+/// finite value of the single-precision range that bounds a component. Values 4
+/// leaves the range of numeric values implementation-defined and asks for the
+/// closest supported value beyond it; Color 4 allows an implementation-defined
+/// limit for the unbounded components.
+pub(crate) const LARGEST: f64 = f32::MAX as f64;
+
+/// A component whose binary64 value, in the domain it enters the colour (the
+/// number, the percentage scaled by its slot's reference, the angle in
+/// degrees), has at least this magnitude is infinite: `2^128 - 2^103`, the
+/// point at which a binary64 rounds to an infinite binary32. A value below it
+/// is finite and keeps its binary64 value. Between [`LARGEST`] and this value a
+/// component is finite but used resolution limits it to [`LARGEST`].
+pub(crate) const THRESHOLD: f64 = 340_282_356_779_733_661_637_539_395_458_142_568_448.0;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Domain {
     Number,
@@ -41,17 +56,17 @@ pub(crate) enum Error {
 
 /// CSS's finite numeric rule for one resolved channel: Values 4 §10.9.1
 /// censors a top-level NaN to zero and clamps an infinity to the largest
-/// value the context allows, and the numeric-types range rule (#1297) makes
-/// a finite value beyond binary64 the closest supported value. An unbounded
-/// colour channel therefore becomes `f64::MAX` with its sign.
+/// value the context allows, and §10.12 makes a value beyond the supported
+/// range the closest supported value. A colour component is limited to
+/// [`LARGEST`], so an unbounded channel beyond it, infinite or not, becomes
+/// `f32::MAX` with its sign.
 pub(crate) fn supported(value: f64) -> Finite {
-    if value.is_nan() {
-        Finite::new(0.0).expect("zero is finite")
+    let limited = if value.is_nan() {
+        0.0
     } else {
-        Finite::new(value).unwrap_or_else(|| {
-            Finite::new(f64::MAX.copysign(value)).expect("the largest binary64 value is finite")
-        })
-    }
+        value.clamp(-LARGEST, LARGEST)
+    };
+    Finite::new(limited).expect("a limited value is finite")
 }
 
 /// One percentage: the channel value that 1% denotes, as the unreduced ratio
@@ -71,7 +86,7 @@ impl Percent {
     }
     /// The channel value of 100%.
     pub(crate) fn reference(self) -> f64 {
-        (self.numerator * 100) as f64 / self.denominator as f64
+        percentage_reference(self.numerator, self.denominator)
     }
     /// The decimal exponent of a power-of-ten reference value, such as 2 for
     /// Lab lightness (100%% = 100) or 0 for Oklab lightness (100%% = 1).
@@ -168,6 +183,16 @@ pub(crate) fn legacy_rgb_domains(domains: [Domain; 3]) -> bool {
         && domains[1] == domains[0]
         && domains[2] == domains[0]
 }
+/// The channel value of 100%, which is the slot's `numerator * 100 / denominator`.
+pub(crate) fn percentage_reference(numerator: u64, denominator: u64) -> f64 {
+    (numerator * 100) as f64 / denominator as f64
+}
+/// The channel value of a percentage numeral: `value / 100` times the
+/// reference value of 100%. Used resolution (`scalar`, [`Entry`]) and the
+/// specified classification of a numeral share this one binary64 evaluation.
+pub(crate) fn percentage_of_reference(value: f64, reference: f64) -> f64 {
+    value / 100.0 * reference
+}
 pub(crate) fn scalar(component: Component, percentage: f64) -> Result<Option<f64>, Error> {
     if component.domain == Domain::Missing {
         return Ok(None);
@@ -182,18 +207,19 @@ pub(crate) fn scalar(component: Component, percentage: f64) -> Result<Option<f64
         component.value
     };
     Ok(Some(if component.domain == Domain::Percentage {
-        value / 100.0 * percentage
+        percentage_of_reference(value, percentage)
     } else {
         value
     }))
 }
 /// Color 4 §4.3 normalizes every hue in degrees to `[0, 360)`; the
 /// `hsl(360 0 0)` and `hsl(calc(±infinity) 0 0)` examples give 0 degrees.
-/// This is the one CSS normalization for used and specified hues. Zero,
-/// including -0, is the unsigned zero, and a negative hue whose remainder
-/// rounds up to the excluded 360 in binary64 also normalizes to zero.
+/// This is the one CSS normalization for used and specified hues. A hue of at
+/// least [`THRESHOLD`] degrees is infinite and is 0. Zero, including -0, is
+/// the unsigned zero, and a negative hue whose remainder rounds up to the
+/// excluded 360 in binary64 also normalizes to zero.
 pub(crate) fn normalize_hue(degrees: f64) -> f64 {
-    if !degrees.is_finite() {
+    if !degrees.is_finite() || degrees.abs() >= THRESHOLD {
         return 0.0;
     }
     let hue = degrees.rem_euclid(360.0);
@@ -239,32 +265,91 @@ pub(crate) fn function_space(function: F, predefined: Option<Predefined>) -> Res
     })
 }
 
+/// The binary64 value a relative component has in the colour it builds, from
+/// the authored number or percentage of its slot. The component range rule
+/// classifies this value, so used resolution ([`relative_channels`]) and
+/// specified serialization read the one scale.
+///
+/// Every slot holds its component in the unit its percentage reference names
+/// (a number is that unit, `p%` is `p / 100` times the reference) except an
+/// `rgb()` channel, which the colour holds as the unit coordinate: the number
+/// divided by 255 and the percentage scaled to 255 and divided by 255.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Entry {
+    reference: f64,
+    divisor: f64,
+}
+impl Entry {
+    /// The entry of a slot whose component the colour holds in the unit of its
+    /// percentage reference.
+    pub(crate) fn percent(numerator: u64, denominator: u64) -> Self {
+        Self {
+            reference: percentage_reference(numerator, denominator),
+            divisor: 1.0,
+        }
+    }
+    /// The entry of one slot of a colour function. A hue slot has no
+    /// percentage and holds its degrees.
+    pub(crate) fn of(function: F, index: usize) -> Self {
+        match slot(function, index) {
+            Slot::Hue => Self::percent(1, 1),
+            Slot::Scalar { percent, .. } => Self {
+                reference: percent.reference(),
+                divisor: if function == F::Rgb {
+                    percent.reference()
+                } else {
+                    1.0
+                },
+            },
+        }
+    }
+    /// The component an authored number has in the colour.
+    pub(crate) fn number(self, value: f64) -> f64 {
+        value / self.divisor
+    }
+    /// The component an authored percentage has in the colour.
+    pub(crate) fn percentage(self, value: f64) -> f64 {
+        percentage_of_reference(value, self.reference) / self.divisor
+    }
+    /// The component of one resolved channel. A missing channel has none, and
+    /// a calculation NaN is censored to zero at the calculation root.
+    pub(crate) fn component(self, component: Component) -> Result<Option<f64>, Error> {
+        if component.domain == Domain::Missing {
+            return Ok(None);
+        }
+        if component.domain == Domain::Degrees {
+            return Err(Error::Grammar);
+        }
+        let value = if component.value.is_nan() {
+            0.0
+        } else {
+            component.value
+        };
+        Ok(Some(if component.domain == Domain::Percentage {
+            self.percentage(value)
+        } else {
+            self.number(value)
+        }))
+    }
+}
+
 /// Resolves relative function channels by their declared slots, without
 /// the absolute parse-time clamps (Color 5: relative components "are *not
-/// clamped*").
+/// clamped*"). Each scalar channel is its [`Entry`] component limited to the
+/// supported range.
 pub(crate) fn relative_channels(
     function: F,
     components: [Component; 3],
 ) -> Result<[Option<Finite>; 3], Error> {
-    if function == F::Rgb {
-        let Slot::Scalar { percent, .. } = slot(F::Rgb, 0) else {
-            unreachable!("rgb channels are scalar")
-        };
-        let channel = |value: Component| -> Result<Option<Finite>, Error> {
-            Ok(scalar(value, percent.reference())?
-                .map(|value| supported(value / percent.reference())))
-        };
-        return Ok([
-            channel(components[0])?,
-            channel(components[1])?,
-            channel(components[2])?,
-        ]);
-    }
-    Ok([
-        declared(function, 0, components[0], false)?,
-        declared(function, 1, components[1], false)?,
-        declared(function, 2, components[2], false)?,
-    ])
+    let channel = |index: usize| -> Result<Option<Finite>, Error> {
+        match slot(function, index) {
+            Slot::Hue => hue(components[index]),
+            Slot::Scalar { .. } => Ok(Entry::of(function, index)
+                .component(components[index])?
+                .map(supported)),
+        }
+    };
+    Ok([channel(0)?, channel(1)?, channel(2)?])
 }
 
 /// Function-space coordinates remain available to same-space relative syntax

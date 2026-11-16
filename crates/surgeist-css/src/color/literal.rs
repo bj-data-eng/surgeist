@@ -580,6 +580,11 @@ impl<'owner> LiteralConversion<'owner> {
                 f64::MAX.copysign(if negative { -1.0 } else { 1.0 }),
                 LiteralRange::Beyond,
             ),
+            // An angle beyond binary64 is the nearest supported multiple of 360deg
+            // (Values 4 §5), which unit scaling below reaches from an infinity.
+            DecimalOutcome::Beyond { estimate, .. } if angle && estimate.abs() == f64::MAX => {
+                (f64::INFINITY.copysign(estimate), LiteralRange::Beyond)
+            }
             DecimalOutcome::Beyond { estimate } => (estimate, LiteralRange::Beyond),
             DecimalOutcome::Below { estimate } => (estimate, LiteralRange::Below),
         };

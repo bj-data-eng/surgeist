@@ -17,8 +17,7 @@ use std::{borrow::Cow, fmt};
 use crate::numeric::CssLength;
 use crate::numeric::projection::{
     DeferredNumericProjection, NumericComparisonCapture, NumericProjectionOutcome,
-    NumericProjectionScale, capture_specified_for_comparison, capture_specified_scaled,
-    prepare_specified,
+    NumericProjectionScale, capture_specified_for_comparison, prepare_specified,
 };
 use crate::numeric::{
     CssAngle, CssCalculation, CssHintedNumber, CssLengthPercentage, CssNumber, CssNumericRoot,
@@ -3246,7 +3245,53 @@ pub(crate) fn capture_retained_color_calculation(
     (String, NumericProjectionOutcome),
     crate::serialization::CssSerializationError,
 > {
-    capture_specified_scaled(calculation.expression(), scale, context)
+    projection::capture_specified_colour_scaled(
+        calculation.expression(),
+        scale,
+        projection::ComponentCut::Root,
+        context,
+    )
+}
+
+/// Captures a calculation that is a component of one slot, authored in the
+/// slot's own unit, and cuts its root as the colour holds the component
+/// (#2889): the percentage reference of the slot scales a percentage root
+/// before it is compared with the component threshold, though the text keeps
+/// the unit it was authored in.
+pub(crate) fn capture_entering_color_calculation(
+    calculation: ColorCalculationRef<'_>,
+    scale: NumericProjectionScale,
+    entry: crate::color::channels::Entry,
+    context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<
+    (String, NumericProjectionOutcome),
+    crate::serialization::CssSerializationError,
+> {
+    projection::capture_specified_colour_scaled(
+        calculation.expression(),
+        scale,
+        projection::ComponentCut::Entering(entry),
+        context,
+    )
+}
+
+/// Captures a calculated `color-mix()` weight: a weight is not a component
+/// root, so its leaves convert as used resolution converts them and its root is
+/// not cut.
+pub(crate) fn capture_color_weight_calculation(
+    calculation: ColorCalculationRef<'_>,
+    scale: NumericProjectionScale,
+    context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<
+    (String, NumericProjectionOutcome),
+    crate::serialization::CssSerializationError,
+> {
+    projection::capture_specified_colour_scaled(
+        calculation.expression(),
+        scale,
+        projection::ComponentCut::Uncut,
+        context,
+    )
 }
 
 /// Captures an ordinary non-origin, non-alpha component with its slot's scale.

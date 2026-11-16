@@ -132,16 +132,13 @@ pub(crate) enum DecimalKernel {
     BeginComparison,
     UpdateSearch,
 }
-/// The decimal magnitudes outside which a numeral is not converted exactly.
-/// The magnitude of a nonzero numeral is the exponent of the first power of
-/// ten above it: a value in `[10^(m - 1), 10^m)` has magnitude `m`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct DecimalWindow {
-    /// A numeral of at least this magnitude is beyond the window.
-    pub(crate) beyond: i16,
-    /// A numeral of at most this magnitude is below the window.
-    pub(crate) below: i16,
-}
+/// The decimal magnitudes outside which a windowed cursor does not convert
+/// exactly. The magnitude of a nonzero numeral is the exponent of the first
+/// power of ten above it: a value in `[10^(m - 1), 10^m)` has magnitude `m`.
+/// A numeral of at least [`WINDOW_BEYOND`] is beyond the window (at least
+/// `1e41`) and one of at most [`WINDOW_BELOW`] is below it (less than `1e-46`).
+const WINDOW_BEYOND: i128 = 42;
+const WINDOW_BELOW: i128 = -46;
 
 /// The range a cursor converts exactly. Outside it the cursor stops after the
 /// digits are read and reports a bounded-error estimate instead of searching.
@@ -149,8 +146,12 @@ pub(crate) struct DecimalWindow {
 pub(crate) enum DecimalRange {
     /// Every finite binary64; only a value beyond binary64 is not converted.
     Binary64,
-    /// Exact inside the window, estimated outside it.
-    Window(DecimalWindow),
+    /// Exact from `1e-46` up to, not including, `1e41`, estimated outside it.
+    /// This is the window of a colour component numeral: half the smallest
+    /// binary32 subnormal, `2^-150`, is `7.0e-46`, and the smallest percentage
+    /// scale (one percent of an Oklab axis, 0.004) takes `1e41` beyond the
+    /// component range.
+    Window,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -159,11 +160,13 @@ pub(crate) enum DecimalOutcome {
     Overflow {
         negative: bool,
     },
-    /// Beyond the window of the cursor's range. The estimate carries the sign.
+    /// Beyond the window of the cursor's range. The estimate carries the sign:
+    /// there is no second field that could contradict it.
     Beyond {
         estimate: f64,
     },
-    /// Below the window of the cursor's range. The estimate carries the sign.
+    /// Below the window of the cursor's range. The estimate carries the sign, so
+    /// an estimate that rounds to zero is a signed zero.
     Below {
         estimate: f64,
     },
@@ -586,7 +589,7 @@ impl DecimalCursor {
                         } else {
                             OVERFLOW_ENCODING
                         }),
-                        DecimalRange::Window(_) => {
+                        DecimalRange::Window => {
                             if self.layout.exponent_negative {
                                 self.finish_below(0.0);
                             } else {
@@ -606,12 +609,12 @@ impl DecimalCursor {
                 if self.magnitude < -323 {
                     match self.range {
                         DecimalRange::Binary64 => self.finish(0),
-                        DecimalRange::Window(_) => self.finish_below(0.0),
+                        DecimalRange::Window => self.finish_below(0.0),
                     }
                 } else if self.magnitude > 309 {
                     match self.range {
                         DecimalRange::Binary64 => self.finish(OVERFLOW_ENCODING),
-                        DecimalRange::Window(_) => self.finish_beyond(f64::MAX),
+                        DecimalRange::Window => self.finish_beyond(f64::MAX),
                     }
                 } else {
                     // The accumulator holds the first `taken` digits; the rest
@@ -629,12 +632,12 @@ impl DecimalCursor {
                     }
                     // Outside the window the digits have been read and the
                     // value is an estimate: no encoding is searched.
-                    if let DecimalRange::Window(window) = self.range {
-                        if self.magnitude >= i128::from(window.beyond) {
+                    if self.range == DecimalRange::Window {
+                        if self.magnitude >= WINDOW_BEYOND {
                             self.finish_beyond(outside_estimate(leading, decimal_exponent));
                             return;
                         }
-                        if self.magnitude <= i128::from(window.below) {
+                        if self.magnitude <= WINDOW_BELOW {
                             self.finish_below(outside_estimate(leading, decimal_exponent));
                             return;
                         }
@@ -791,6 +794,72 @@ fn estimate_encoding(coefficient: u64, exponent: i128) -> (u64, u8) {
         operations += 1;
     }
     (value.to_bits().min(OVERFLOW_ENCODING), operations + 2)
+}
+
+/// Whether a nonzero numeral lies outside the window of exact conversion:
+/// beyond `1e41` or below `1e-46`, or with an exponent too large to hold.
+pub(crate) fn outside_window(representation: &str) -> bool {
+    let decimal = crate::serialization::exact_decimal::LexicalDecimal::new(representation);
+    if decimal.is_zero() {
+        return false;
+    }
+    let Some(exponent) = decimal.exponent else {
+        return true;
+    };
+    let magnitude = exponent.saturating_add(decimal.len as i128);
+    magnitude >= WINDOW_BEYOND || magnitude <= WINDOW_BELOW
+}
+
+/// The value of a decimal numeral exactly as a cursor over
+/// [`DecimalRange::Window`] reports it, from the authored text: zero is the
+/// unsigned zero; a numeral inside the window is its correctly rounded binary64
+/// value; one beyond or below it is the same `outside_estimate` of its first 19
+/// digits, signed; and one beyond binary64 or with an exponent too large to hold
+/// is `±f64::MAX` or a signed zero. The specified projection of a colour
+/// component calculation converts its leaves with this function, so the two
+/// phases evaluate the same binary64 leaves.
+pub(crate) fn window_value(representation: &str) -> f64 {
+    let decimal = crate::serialization::exact_decimal::LexicalDecimal::new(representation);
+    if decimal.is_zero() {
+        return 0.0;
+    }
+    let signed = |magnitude: f64| {
+        if decimal.negative {
+            -magnitude
+        } else {
+            magnitude
+        }
+    };
+    let Some(exponent) = decimal.exponent else {
+        return signed(if decimal.exponent_negative {
+            0.0
+        } else {
+            f64::MAX
+        });
+    };
+    let magnitude = exponent.saturating_add(decimal.len as i128);
+    if magnitude < -323 {
+        return signed(0.0);
+    }
+    if magnitude > 309 {
+        return signed(f64::MAX);
+    }
+    if magnitude < WINDOW_BEYOND && magnitude > WINDOW_BELOW {
+        return representation
+            .parse()
+            .expect("a checked CSS numeral is a decimal literal");
+    }
+    let taken = decimal.len.min(LEADING_DIGITS);
+    let mut leading = decimal
+        .digits()
+        .take(taken)
+        .fold(0_u64, |value, digit| value * 10 + u64::from(digit));
+    let mut decimal_exponent = exponent + (decimal.len - taken) as i128;
+    while leading.is_multiple_of(10) {
+        leading /= 10;
+        decimal_exponent += 1;
+    }
+    signed(outside_estimate(leading, decimal_exponent))
 }
 
 /// Powers `10^(22 j)` for `j` in `0..=14`, each correctly rounded to binary64.
@@ -1524,15 +1593,10 @@ mod tests {
         assert!(trace.actions <= 64 * (1100 * 1075 * 2 + 1100 * 4 + 2200));
     }
 
-    /// The window of colour numerals: from 1e-46 up to, not including, 1e41.
-    const COLOUR_WINDOW: DecimalWindow = DecimalWindow {
-        beyond: 42,
-        below: -46,
-    };
     fn windowed(text: &str) -> (DecimalOutcome, Trace) {
         let (negative, mantissa, fractional, exponent_negative, exponent) = split(text);
         drive_in(
-            DecimalRange::Window(COLOUR_WINDOW),
+            DecimalRange::Window,
             negative,
             &mantissa,
             fractional,
@@ -1654,6 +1718,62 @@ mod tests {
         }
         // Zero stays the unsigned zero in either range.
         assert_eq!(windowed("-0").0, DecimalOutcome::Finite(0.0));
+    }
+
+    #[test]
+    fn the_numeral_text_and_the_cursor_give_one_window_value() {
+        // The specified projection reads the numeral text and used resolution
+        // drives the cursor; both must produce the same binary64 value, signed
+        // zeros included, inside and outside the window.
+        let numerals = [
+            "0",
+            "-0",
+            "0.0e5",
+            "1",
+            "-1.5",
+            "9.999999999999999e40",
+            "1e41",
+            "-1e41",
+            "1e42",
+            "1e100",
+            "-1e100",
+            "1e308",
+            "1.7976931348623157e308",
+            "1e309",
+            "1e999",
+            "-1e999",
+            "1e99999999999999999999999999999999999999999",
+            "-1e-99999999999999999999999999999999999999999",
+            "1e-46",
+            "1e-47",
+            "9.99e-47",
+            "-9.99e-47",
+            "1e-300",
+            "-5e-324",
+            "4.9e-324",
+            "1e-323",
+            "1e-324",
+            "1e-325",
+            "2.2250738585072014e-308",
+            "9960679566066331e58",
+            "9997510968117049e-287",
+            "838206077758223174e25",
+            "0.00001e-41",
+            "123456789012345678901234567890123456789012345678901234567890e-10",
+            "12345678901234567890123456789e30",
+            "100000000000000000000000000000e-70",
+            "1000000000000000000000000000000000000000000000000001e-8",
+        ];
+        for text in numerals {
+            let (outcome, _) = windowed(text);
+            let expected = match outcome {
+                DecimalOutcome::Finite(value) => value,
+                DecimalOutcome::Beyond { estimate, .. }
+                | DecimalOutcome::Below { estimate, .. } => estimate,
+                DecimalOutcome::Overflow { .. } => panic!("{text}: a windowed overflow"),
+            };
+            assert_eq!(window_value(text).to_bits(), expected.to_bits(), "{text}");
+        }
     }
 
     #[test]

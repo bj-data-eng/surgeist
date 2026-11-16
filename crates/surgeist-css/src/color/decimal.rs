@@ -74,7 +74,7 @@ impl<'owner> NumberConversion<'owner> {
             exponent: layout.exponent_digits,
             scratch_base,
             scaled: None,
-            cursor: DecimalCursor::new(child, DecimalRange::Binary64),
+            cursor: DecimalCursor::new(child, DecimalRange::Window),
             stopped: false,
         })
     }
