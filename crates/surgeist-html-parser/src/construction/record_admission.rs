@@ -1,6 +1,5 @@
 //! The session's side of the record operations of HTML's construction storage: what the
 //! controller admits and records for each operation, and the calls that issue them.
-use super::template::template_row_of;
 use super::*;
 use surgeist_html::construction::HtmlConstructionCause;
 use surgeist_html::{
@@ -609,14 +608,13 @@ pub(super) fn associated_document_parent_of(
     parent: usize,
 ) -> Result<bool, SessionError> {
     let root = payloads.tree_root(control, storage, parent)?;
-    associated_root_of(payloads, fragment, control, storage, root)
+    associated_root_of(fragment, control, storage, root)
 }
 
 /// Whether the tree rooted at `root`, found along parent edges, is a fragment that an associated
 /// document owns. Only a fragment has an owner, and an owned fragment has no parent, so the root
 /// decides.
 pub(super) fn associated_root_of(
-    payloads: &PayloadStorage,
     fragment: &Option<FragmentContextStorage>,
     control: &mut ParseControl,
     storage: &HtmlConstructionStorage,
@@ -634,9 +632,16 @@ pub(super) fn associated_root_of(
                 .node_by_result_id(&template)
                 .map_err(|_| SessionError::ForeignNode)?
                 .position();
-            let (_, state) =
-                template_row_of(payloads, fragment, control, storage, template_position)?;
-            if state.contents != root {
+            // The record of the owner names its contents, so the check reads the record and
+            // searches no table: the contents of the owner must be the fragment at `root`.
+            if !SessionStorage::html_local_in(control, storage, template_position, "template")? {
+                return Err(SessionError::WrongToken);
+            }
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let owner = storage
+                .node_at(template_position)
+                .ok_or(SessionError::ForeignNode)?;
+            if owner.template_contents().map(|node| node.position()) != Some(root) {
                 return Err(SessionError::TemplateMetadataUnavailable);
             }
             Ok(false)
