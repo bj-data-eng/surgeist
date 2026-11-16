@@ -258,6 +258,95 @@ fn original_function_retention_f64() {
     assert_original_function_retention::<f64>();
 }
 
+fn assert_owned_functions_resolve_only_the_spans_read<S: LayoutScalar>() {
+    let fixed = |value| {
+        TrackSizingOf::minmax(
+            MinTrackSizingOf::Auto,
+            MaxTrackSizingOf::Calculation(SizingCalculationOf::value(
+                crate::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+            )),
+        )
+    };
+    // The largest finite value of the scalar, so a calculation that adds the
+    // value to itself overflows.
+    let largest = if S::EPSILON.to_f64() > 1.0e-10 {
+        f64::from(f32::MAX)
+    } else {
+        f64::MAX
+    };
+    let overflowing = TrackSizingOf::minmax(
+        MinTrackSizingOf::Calculation(SizingCalculationOf::value(
+            crate::LengthPercentageOf::from_coefficients(S::from_f64(largest), S::ONE).unwrap(),
+        )),
+        MaxTrackSizingOf::Auto,
+    );
+    let tracks = [fixed(10.0), fixed(20.0), overflowing, fixed(40.0)];
+    let original = GridMinimumTrackFunctions::new(&tracks, Some(S::from_f64(largest)));
+    // Retaining every track resolves the overflowing one and fails. The owned
+    // copy resolves nothing, and a span before the overflowing track reads
+    // only the tracks it covers.
+    assert!(original.retain().is_err());
+    let owned = OwnedMinimumTrackFunctions::new(original).unwrap();
+    assert_eq!(
+        owned
+            .view()
+            .mapped_span(0, 2, false)
+            .unwrap()
+            .span_facts(S::ZERO)
+            .unwrap()
+            .fixed_max_span(),
+        Some(S::from_f64(30.0))
+    );
+    assert!(
+        owned
+            .view()
+            .mapped_span(2, 3, false)
+            .unwrap()
+            .span_facts(S::ZERO)
+            .is_err()
+    );
+    // A span outside the tracks maps to nothing, as it does on the original.
+    assert!(owned.view().mapped_span(3, 5, false).is_none());
+
+    // The owned view reads what the borrowed one reads, reversed or not, for
+    // original functions and for retained facts alike.
+    let tracks = [fixed(10.0), fixed(20.0), fixed(30.0), fixed(40.0)];
+    let original = GridMinimumTrackFunctions::new(&tracks, None);
+    let retained = original.mapped_span(0, 3, true).unwrap().retain().unwrap();
+    let qualified = GridMinimumTrackFunctions::from_qualified(&retained);
+    for borrowed in [original, qualified] {
+        let owned = OwnedMinimumTrackFunctions::new(borrowed).unwrap();
+        for reversed in [false, true] {
+            for (start, end) in [(0, 3), (1, 3), (0, 1), (2, 3)] {
+                assert_eq!(
+                    owned
+                        .view()
+                        .mapped_span(start, end, reversed)
+                        .unwrap()
+                        .span_facts(S::from_f64(3.0))
+                        .unwrap(),
+                    borrowed
+                        .mapped_span(start, end, reversed)
+                        .unwrap()
+                        .span_facts(S::from_f64(3.0))
+                        .unwrap(),
+                    "reversed {reversed}, tracks {start}..{end}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn owned_functions_resolve_only_the_spans_read_f32() {
+    assert_owned_functions_resolve_only_the_spans_read::<f32>();
+}
+
+#[test]
+fn owned_functions_resolve_only_the_spans_read_f64() {
+    assert_owned_functions_resolve_only_the_spans_read::<f64>();
+}
+
 fn assert_cyclic_percentage_function_requalification<S: LayoutScalar>() {
     let scalar = S::from_f64;
     let calculation = SizingCalculationOf::value(

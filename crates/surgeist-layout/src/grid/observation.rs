@@ -251,6 +251,25 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
         }
     }
 
+    pub(crate) fn accept_context<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        child: GridChild<'input, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self.work.as_mut().expect("active ordinary observation") {
+            GridPassWork::Placement(pass) => pass.accept_context(tree, child, result),
+            GridPassWork::Accepted(_)
+            | GridPassWork::Observation(_)
+            | GridPassWork::Observed(_) => {
+                unreachable!("only placement issues contextual requests")
+            }
+        }
+    }
+
     pub(crate) fn finish<M>(
         self,
     ) -> LayoutResultOf<Node, OrdinaryGridObservationCompletion<'input, Node, S>, S, M> {
