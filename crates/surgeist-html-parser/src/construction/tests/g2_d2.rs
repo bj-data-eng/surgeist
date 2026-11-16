@@ -264,4 +264,14 @@ fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
         eprintln!("{line}");
     }
     assert!(tally.failures.is_empty());
+    // The corpus is pinned, so its cases make a fixed number of parses, one with details off and
+    // one with all of them for each case the test runs. The other counts follow from the parses:
+    // every node is named by the column or not, every parse has a root, and every node of a
+    // parse of this corpus is in a document.
+    assert_eq!(tally.parses, 3_534);
+    assert_eq!(tally.named + tally.unnamed, tally.nodes);
+    assert!(tally.nodes >= tally.parses);
+    assert!(tally.roots >= tally.parses);
+    assert_eq!(tally.unnamed, 0);
+    assert!(tally.links > 0);
 }
