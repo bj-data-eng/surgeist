@@ -123,3 +123,72 @@ fn a_plain_element_counts_the_units_of_its_name_and_namespace() {
         (64 - 16) * ("span".len() as u64 + namespace)
     );
 }
+
+/// The fragment context of an element in the namespace `urn:retained`, which no parse literal is.
+pub(in crate::construction) fn retained_namespace_context() -> crate::HtmlFragmentContext {
+    use crate::*;
+    use surgeist_html::{
+        construction::HtmlDocumentMode,
+        values::{Namespace, OrderedAttributes, QualifiedName},
+    };
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let context = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::from_uri("urn:retained"), None, "context"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder.establish_root(&context).unwrap();
+    let capture = builder.finish().unwrap();
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap()
+}
+
+/// The registry rows that hold the namespace of a fragment context that no literal names, in a parse
+/// of `elements` elements in it.
+fn retained_namespace_rows(elements: usize) -> usize {
+    let source = "<foo></foo>".repeat(elements);
+    let report = crate::HtmlFragmentParseRequest::new(
+        crate::HtmlSource::utf8(source.as_str()),
+        retained_namespace_context(),
+        g2_d2::corpus_limits(),
+    )
+    .unwrap()
+    .with_detail(crate::DetailSet::NONE)
+    .unwrap()
+    .parse()
+    .unwrap();
+    report
+        .history()
+        .storage()
+        .payloads
+        .values
+        .iter()
+        .filter(|row| {
+            matches!(row, super::RetainedPayload::String { value, .. }
+                if value.to_utf8().is_ok_and(|text| text == "urn:retained"))
+        })
+        .count()
+}
+
+/// The elements of a fragment in a captured namespace share the string of that namespace, as the
+/// elements of a literal namespace share its string: the registry holds one row for it, whatever
+/// the number of elements.
+#[test]
+fn the_elements_in_a_captured_namespace_share_one_registry_row() {
+    for elements in [1, 4, 16] {
+        assert_eq!(retained_namespace_rows(elements), 1, "{elements} elements");
+    }
+}

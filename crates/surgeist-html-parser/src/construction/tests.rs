@@ -16,7 +16,7 @@ mod g2b_d3;
 mod g2c_nonce;
 #[cfg(feature = "detail")]
 mod g2d_names;
-mod g2d_origins;
+pub(super) mod g2d_origins;
 mod image_form;
 mod input;
 mod input_types;
