@@ -685,7 +685,7 @@ fn collect_fragment<'a>(
     capture: &'a crate::DomHtmlCapture,
     c: &mut Control<'_>,
 ) -> Result<Source<'a>, Error> {
-    use surgeist_html_parser::{HtmlParseEffect, HtmlParseEffectHost, HtmlParseRegistry};
+    use surgeist_html_parser::{HtmlParseEffect, HtmlParseEffectHost};
     #[cfg(test)]
     let mut written = crate::store::CopyObservation::default();
     let fragment = report.fragment().ok_or(Error::NotCompletedFragmentReport)?;
@@ -747,15 +747,12 @@ fn collect_fragment<'a>(
         source.add_captured(form.subject().clone(), c)?;
     }
     let effects = report.effects()?.ok_or(Error::NotCompletedFragmentReport)?;
+    // A node that has a registry binding has a registry other than Null, which the current
+    // policy does not install.
     for index in 0..effects.registry_slots() {
         c.step(1)?;
-        if let Some(binding) = effects.registry(index)? {
-            if !matches!(binding.registry(), HtmlParseRegistry::Null) {
-                return Err(Error::CurrentPolicyUnavailable);
-            }
-            if !source.bootstrap_only(&binding.node().id(), c)? {
-                source.add(binding.node().id(), c)?;
-            }
+        if effects.registry(index)?.is_some() {
+            return Err(Error::CurrentPolicyUnavailable);
         }
     }
     for index in 0..effects.len() {

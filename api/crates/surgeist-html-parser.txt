@@ -388,7 +388,6 @@ pub surgeist_html_parser::HtmlParseReadiness::Complete
 pub surgeist_html_parser::HtmlParseReadiness::Interactive
 pub enum surgeist_html_parser::HtmlParseRegistry<'a>
 pub surgeist_html_parser::HtmlParseRegistry::Captured(surgeist_html_parser::HtmlParseCapturedRegistry<'a>)
-pub surgeist_html_parser::HtmlParseRegistry::Null
 pub surgeist_html_parser::HtmlParseRegistry::Unavailable
 pub enum surgeist_html_parser::HtmlParseRequestError
 pub surgeist_html_parser::HtmlParseRequestError::Base(surgeist_html_semantics::base::HtmlBaseFactsError)

@@ -2374,8 +2374,8 @@ impl HtmlParseCapturedRegistry<'_> {
         self.id == id
     }
 }
+/// The registry of a node that has a registry binding. The Null registry is no binding.
 pub enum HtmlParseRegistry<'a> {
-    Null,
     Unavailable,
     Captured(HtmlParseCapturedRegistry<'a>),
 }
@@ -2390,9 +2390,9 @@ impl<'a> HtmlParseEffects<'a> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    /// The slots of the registry bindings: one for each node that the report asks for by its own
-    /// key, which are the roots, the links and the nodes whose registry is not Null. A slot that
-    /// is not a binding is skipped by [`Self::registry`].
+    /// The number of registry slots. A slot holds a registry binding, which names a node whose
+    /// lookup registry is not Null, or holds none; [`Self::registry`] answers `None` for a slot
+    /// with no binding, and a parse that names only the Null registry has no binding in any slot.
     pub fn registry_slots(&self) -> usize {
         self.storage.payloads.facts.contexts.named_len()
     }
