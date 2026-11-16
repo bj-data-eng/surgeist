@@ -51,7 +51,9 @@ predicate.
 algorithm in the clause's order followed by the Encoding Standard's decode;
 the decoded text is unfiltered, and it grows geometrically within its limit so
 that the copying is linear in the decoded size. The `@charset` prefix is the
-exact byte sequence of the clause, and its tests are the whole evidence for
+exact byte sequence of the clause, defined once in
+`input::encoding_declaration`, which `decode` calls and which hosts call on
+decoded text; its tests are the whole evidence for
 section 3.2 (the WPT `charset/*` tests are not in the corpus). `preprocess_utf16`
 loops the `InputCursor` and charges a `Meter` with its own growth model:
 capacities double from one entry (not the four-entry floor of `limits::grow`),

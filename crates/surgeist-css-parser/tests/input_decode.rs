@@ -10,6 +10,7 @@
 
 use surgeist_css_parser::input::{
     DecodeError, DecodeHints, DecodeLimits, Decoded, Encoding, EncodingSelection, decode,
+    encoding_declaration,
 };
 
 /// Decodes with the given hints and no size limit.
@@ -412,6 +413,173 @@ fn a_declaration_after_a_byte_order_mark_is_only_text() {
     assert_eq!(result.selection(), EncodingSelection::ByteOrderMark);
     assert_eq!(result.encoding().name(), "UTF-8");
     assert_eq!(result.text(), "@charset \"windows-1251\";\u{41f}");
+}
+
+// ---- The declaration pattern on its own (3.2 step 2) -----------------------
+
+/// The label and length of the declaration at the start of `bytes`.
+fn declaration_of(bytes: &[u8]) -> Option<(String, usize)> {
+    encoding_declaration(bytes).map(|found| (found.label().to_owned(), found.byte_len()))
+}
+
+#[test]
+fn the_declaration_pattern_gives_the_label_and_the_length_through_the_semicolon() {
+    // 40 63 68 61 72 73 65 74 20 22 (10 bytes), the label, 22 3B (2 bytes).
+    assert_eq!(
+        declaration_of(b"@charset \"windows-1251\";"),
+        Some(("windows-1251".into(), 24))
+    );
+    assert_eq!(
+        declaration_of(b"@charset \"utf-8\"; a { b: c }"),
+        Some(("utf-8".into(), 17))
+    );
+    // The label is any ASCII but the quotation mark, written as it is.
+    assert_eq!(
+        declaration_of(b"@charset \"\t X;y\\ \";a"),
+        Some(("\t X;y\\ ".into(), 19))
+    );
+    // The first quotation mark ends the label: the sequence need not be the
+    // only `";` in the text.
+    assert_eq!(
+        declaration_of(b"@charset \"a\";\"b\";"),
+        Some(("a".into(), 13))
+    );
+}
+
+#[test]
+fn the_declaration_pattern_does_not_ask_whether_the_label_names_an_encoding() {
+    for label in [
+        "",
+        "no-such-encoding",
+        "windows-1251\x7F",
+        "windows\x01-1251",
+    ] {
+        let bytes = format!("@charset \"{label}\";");
+        assert_eq!(
+            declaration_of(bytes.as_bytes()),
+            Some((label.to_owned(), bytes.len())),
+            "{label:?}"
+        );
+        // The decoder asks: such a label selects no encoding.
+        let result = decoded(bytes.as_bytes(), no_hints());
+        assert_eq!(
+            result.selection(),
+            EncodingSelection::DefaultUtf8,
+            "{label:?}"
+        );
+    }
+}
+
+#[test]
+fn the_declaration_pattern_is_the_exact_byte_sequence_at_the_start() {
+    for bytes in [
+        &b"@charset 'windows-1251';"[..],
+        b"@charset  \"windows-1251\";",
+        b"@CHARSET \"windows-1251\";",
+        b"@charset\"windows-1251\";",
+        b" @charset \"windows-1251\";",
+        b"\n@charset \"windows-1251\";",
+        b"/* */@charset \"windows-1251\";",
+        b"\xEF\xBB\xBF@charset \"windows-1251\";",
+        b"@charset \"windows-1251\" ;",
+        b"@charset \"windows-1251\"",
+        b"@charset \"windows-1251",
+        b"@charset \"windows-1251\"\n;",
+        b"@charset \"windows-1251\xFF\";",
+        b"@charset \"\xC3\xA9\";",
+        b"@charset",
+        b"@charset \"",
+        b"@charset \"\"",
+        b"",
+    ] {
+        assert_eq!(
+            declaration_of(bytes),
+            None,
+            "{:?}",
+            String::from_utf8_lossy(bytes)
+        );
+    }
+}
+
+#[test]
+fn the_declaration_pattern_ends_within_the_first_1024_bytes() {
+    let build = |total: usize| {
+        let mut bytes = b"@charset \"".to_vec();
+        bytes.extend(std::iter::repeat_n(b'a', total - 12));
+        bytes.extend_from_slice(b"\";");
+        assert_eq!(bytes.len(), total);
+        bytes
+    };
+    // The semicolon is byte 1024 (one-based): the declaration is found.
+    assert_eq!(
+        declaration_of(&build(1024)).map(|found| found.1),
+        Some(1024)
+    );
+    // The semicolon is byte 1025, outside the window; so are the later ones.
+    assert_eq!(declaration_of(&build(1025)), None);
+    assert_eq!(declaration_of(&build(2000)), None);
+    // Bytes after the window do not matter to one inside it.
+    let mut longer = build(100);
+    longer.extend(std::iter::repeat_n(b'x', 5000));
+    assert_eq!(declaration_of(&longer).map(|found| found.1), Some(100));
+}
+
+#[test]
+fn the_decoder_selects_by_the_declaration_pattern_when_its_label_names_an_encoding() {
+    for bytes in [
+        &b"@charset \"windows-1251\";\xCF"[..],
+        b"@charset \"utf-8\";a",
+        b"@charset \"\twindows-1251 \";",
+        b"@charset \"no-such-encoding\";",
+        b"@charset \"\";",
+        b"@charset 'windows-1251';",
+        b"@charset  \"windows-1251\";",
+        b" @charset \"windows-1251\";",
+        b"@charset \"windows-1251\"",
+        b"@charset \"windows-1251\xFF\";",
+        b"\xEF\xBB\xBF@charset \"windows-1251\";",
+        b"",
+    ] {
+        let by_pattern = encoding_declaration(bytes)
+            .and_then(|found| Encoding::for_label(found.label()))
+            .is_some();
+        let result = decoded(bytes, no_hints());
+        assert_eq!(
+            result.selection() == EncodingSelection::CharsetPrefix,
+            by_pattern,
+            "{:?}",
+            String::from_utf8_lossy(bytes)
+        );
+    }
+}
+
+#[test]
+fn the_pattern_finds_the_declaration_in_the_text_a_byte_order_mark_decode_returns() {
+    // The decoder does not look for the declaration after a byte order mark,
+    // but the text it returns begins with it, and the pattern finds it there.
+    let result = decoded(
+        b"\xEF\xBB\xBF@charset \"windows-1251\";\xD0\x9F",
+        no_hints(),
+    );
+    assert_eq!(result.selection(), EncodingSelection::ByteOrderMark);
+    assert_eq!(
+        declaration_of(result.text().as_bytes()),
+        Some(("windows-1251".into(), 24))
+    );
+    let utf16le: Vec<u8> = [0xFF, 0xFE]
+        .into_iter()
+        .chain(
+            "@charset \"utf-8\";a"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes),
+        )
+        .collect();
+    let result = decoded(&utf16le, no_hints());
+    assert_eq!(result.encoding().name(), "UTF-16LE");
+    assert_eq!(
+        declaration_of(result.text().as_bytes()),
+        Some(("utf-8".into(), 17))
+    );
 }
 
 // ---- Decoding with the Encoding Standard's decoders ------------------------

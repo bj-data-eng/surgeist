@@ -30,7 +30,9 @@ crate offers:
   declaration at the start of the first 1024 bytes, the environment encoding,
   then UTF-8) from the host's `DecodeHints` and decodes with the Encoding
   Standard's decoders, a byte order mark taking precedence; `Encoding` is a
-  validated label lookup. `input::filter_code_points` filters a string and
+  validated label lookup, and `input::encoding_declaration` is the declaration's
+  pattern on its own (its label and length) for bytes or for the UTF-8 bytes of
+  decoded text. `input::filter_code_points` filters a string and
   `input::preprocess_utf16` preprocesses UTF-16 units, which may hold lone
   surrogates, into normalized text and a `SourceMap` that keeps each scalar's
   original units, charging a `limits::Meter` for its work and storage. The

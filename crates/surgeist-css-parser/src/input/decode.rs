@@ -288,6 +288,87 @@ pub fn decode(
     })
 }
 
+/// The encoding declaration at the start of a style sheet: `@charset "`, the
+/// label and `";`.
+///
+/// Found by [`encoding_declaration`]. The declaration is text that only
+/// resembles an at-rule: section 3.2 of CSS Syntax says that no such rule
+/// exists, and [`decode`] leaves it in the text it returns.
+///
+/// ```
+/// use surgeist_css_parser::input::encoding_declaration;
+///
+/// let declaration = encoding_declaration(b"@charset \"windows-1251\"; a {}").unwrap();
+/// assert_eq!(declaration.label(), "windows-1251");
+/// assert_eq!(declaration.byte_len(), 24);
+/// ```
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct EncodingDeclaration<'a> {
+    label: &'a str,
+    byte_len: usize,
+}
+
+impl<'a> EncodingDeclaration<'a> {
+    /// Returns the label between the quotation marks, as written: it may be
+    /// empty, and it need not name an encoding (see [`Encoding::for_label`]).
+    #[must_use]
+    pub const fn label(&self) -> &'a str {
+        self.label
+    }
+
+    /// Returns the length in bytes of the whole declaration, from the `@` to
+    /// the `;` inclusive: the declaration is `bytes[..byte_len]`.
+    #[must_use]
+    pub const fn byte_len(&self) -> usize {
+        self.byte_len
+    }
+}
+
+/// The length of the prefix of a style sheet that step 2 of "determine the
+/// fallback encoding" examines.
+const DECLARATION_WINDOW: usize = 1024;
+
+/// The bytes that open an encoding declaration.
+const DECLARATION_OPENING: &[u8] = b"@charset \"";
+
+/// Finds the encoding declaration that section 3.2 of CSS Syntax (step 2 of
+/// "determine the fallback encoding") looks for at the start of a style sheet:
+/// the bytes `@charset "`, then any ASCII bytes other than the quotation
+/// mark, then `";`, all within the first 1024 bytes of `bytes` and starting at
+/// the first byte.
+///
+/// `bytes` is a style sheet's bytes before decoding (which is what [`decode`]
+/// passes) or the UTF-8 bytes of its text after decoding. Nothing but this
+/// exact sequence is a declaration: another spacing, a single quotation mark,
+/// a different case, a comment, a byte above 0x7F in the label, a missing
+/// semicolon, a sequence that ends after the 1024th byte, and any text
+/// before the sequence all give `None`. The label need not name an encoding:
+/// that is [`Encoding::for_label`]'s question, not this function's.
+///
+/// ```
+/// use surgeist_css_parser::input::encoding_declaration;
+///
+/// let declaration = encoding_declaration(b"@charset \"no such label\";a{}").unwrap();
+/// assert_eq!(declaration.label(), "no such label");
+/// assert_eq!(declaration.byte_len(), 25);
+/// assert!(encoding_declaration(b"@charset 'utf-8';").is_none());
+/// assert!(encoding_declaration(b" @charset \"utf-8\";").is_none());
+/// ```
+#[must_use]
+pub fn encoding_declaration(bytes: &[u8]) -> Option<EncodingDeclaration<'_>> {
+    let window = bytes.get(..bytes.len().min(DECLARATION_WINDOW))?;
+    let rest = window.strip_prefix(DECLARATION_OPENING)?;
+    let quote = rest.iter().position(|byte| *byte == b'"')?;
+    let (label, closing) = rest.split_at_checked(quote)?;
+    if closing.get(1) != Some(&b';') || !label.is_ascii() {
+        return None;
+    }
+    Some(EncodingDeclaration {
+        label: std::str::from_utf8(label).ok()?,
+        byte_len: DECLARATION_OPENING.len() + label.len() + 2,
+    })
+}
+
 /// The size of the buffer a decode fills at a time.
 const CHUNK_BYTES: usize = 4096;
 
@@ -313,20 +394,11 @@ fn fallback_encoding(bytes: &[u8], hints: DecodeHints<'_>) -> (Encoding, Encodin
     (Encoding(UTF_8), EncodingSelection::DefaultUtf8)
 }
 
-/// Step 2 of "determine the fallback encoding": the encoding declaration
-/// `@charset "` `XX*` `";` at the start of the first 1024 bytes, where each
-/// `XX` is a byte from 0x00 to 0x21 or from 0x23 to 0x7F (any ASCII byte but
-/// the quotation mark).
+/// Step 2 of "determine the fallback encoding": the encoding declaration found
+/// by [`encoding_declaration`], whose label names an encoding.
 fn declared_encoding(bytes: &[u8]) -> Option<Encoding> {
-    let prefix = bytes
-        .get(..bytes.len().min(1024))?
-        .strip_prefix(b"@charset \"")?;
-    let quote = prefix.iter().position(|byte| *byte == b'"')?;
-    let (label, closing) = prefix.split_at_checked(quote)?;
-    if closing.get(1) != Some(&b';') || !label.is_ascii() {
-        return None;
-    }
-    let encoding = encoding_rs::Encoding::for_label(label)?;
+    let declaration = encoding_declaration(bytes)?;
+    let encoding = encoding_rs::Encoding::for_label(declaration.label().as_bytes())?;
     Some(Encoding(if encoding == UTF_16LE || encoding == UTF_16BE {
         UTF_8
     } else {
