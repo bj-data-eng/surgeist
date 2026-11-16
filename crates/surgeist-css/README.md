@@ -473,10 +473,13 @@ not complete pending work or restart a cancelled controller. A standard-failure
 checkpoint can accept an explicitly checked caller fallback while retaining that
 context. Unavailable, unsupported, malformed-fact and malformed-input
 `CssColorError`s remain distinct from standard invalidity; the parse's
-compile-time and panic misuse contracts are listed on `CssColorParse`. A channel
-value beyond binary64, including a top-level infinite
-calculation, is the closest supported finite value, so no numerical error
-exists. Resource
+compile-time and panic misuse contracts are listed on `CssColorParse`. A colour
+component whose binary64 value is at least `2^128 - 2^103` (the point at which a
+binary64 rounds to an infinite binary32), including a top-level infinite
+calculation, is infinite, and its used channel is `f32::MAX` with its sign, so no
+numerical error exists. A component numeral below `1e-46` is zero with its
+authored sign. A numeral outside `[1e-46, 1e41)` costs the read of its digits:
+only a numeral inside that window is converted by the exact search. Resource
 refusal and cancellation belong to the original controlled consumer. See the
 [controlled protocol](src/color/bounded.rs) and [fact carriers](src/color/facts.rs).
 

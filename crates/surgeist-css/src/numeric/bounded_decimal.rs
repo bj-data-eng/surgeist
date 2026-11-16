@@ -13,6 +13,13 @@
 //! The closest-supported-value rule for a finite value beyond the range belongs
 //! to the caller, which receives `Overflow`.
 //!
+//! A cursor over [`DecimalRange::Window`] converts exactly only a numeral from
+//! `1e-46` up to, not including, `1e41`. After the digits of any other numeral
+//! are read it finishes with a bounded-error estimate (`outside_estimate`) and
+//! searches nothing, so its work is the read of its digits whatever its
+//! exponent; the colour component range of `surgeist-css` is built on it. The
+//! binary64 range, with the contract above, is the range of the oracle tests.
+//!
 //! A midpoint starts with at most 17 decimal digits. Its binary power is in
 //! -1075..=970. Multiplication by 5 (negative powers, with decimal scale) or 2
 //! never makes the digit string longer than the final midpoint, so <=1092

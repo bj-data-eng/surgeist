@@ -27,7 +27,10 @@ pub enum CssColorKernel {
     /// computes the bounded binary64 estimate of the encoding. The cost is
     /// constant because the accumulator holds at most 19 digits, the fast path
     /// is one operation, and the estimate takes at most 16 chunked
-    /// multiplications or divisions.
+    /// multiplications or divisions. A numeral outside the colour window
+    /// (below `1e-46` or from `1e41` up) finishes in this step after its digits
+    /// are read: its value is a bounded-error estimate of at most two
+    /// operations per chunk of 308 decimal places, and no boundary is searched.
     DecimalSearch,
     /// Initialize one boundary digit or transition its fixed multiplication state.
     DecimalDigit,

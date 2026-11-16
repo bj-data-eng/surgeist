@@ -36,6 +36,47 @@
 //! canonical string. Authored out-of-range components are retained until their
 //! computed-value phase. Opacity remains a separate authored numeric model.
 //!
+//! # Component range
+//!
+//! A component's value is limited to the single-precision range. A component
+//! whose binary64 value in the domain it enters the color (the number, the
+//! percentage scaled by its slot's reference, or the angle in degrees) is at
+//! least `2^128 - 2^103`, the point at which a binary64 rounds to an infinite
+//! binary32, is infinite. Specified text writes `calc(infinity)` or
+//! `calc(-infinity)` (`calc(infinity * 1%)` in a percentage-typed HSL or HWB
+//! slot), used resolution limits the channel to `f32::MAX` with its sign, and an
+//! infinite hue is 0. A whole-component numeral below `1e-46` is zero with its
+//! authored sign, in every unit of a hue. Clamped slots keep their endpoints.
+//! The domain of a slot is the unit its percentage reference names: an `rgb()`
+//! channel is 0 to 255 and 100% is 255, `hsl()` and `hwb()` percentages are of 100,
+//! Lab lightness is of 100, a Lab `a` or `b` of 125, an LCH chroma of 150, Oklab and
+//! OKLCH lightness of 1, their `a`, `b` and chroma of 0.4, and `color()` and
+//! `device-cmyk()` channels and alpha of 1. A relative `rgb()` channel is held as the
+//! unit coordinate (the number divided by 255, the percentage scaled to 255 and
+//! divided by 255), so it is infinite from 255 times the threshold. Used resolution
+//! and specified serialization (a relative override, an origin colour and a
+//! calculation root, which is cut after this scale and keeps its authored unit) take
+//! the domain from the one `channels::Entry`. The rule holds wherever a component
+//! appears: a relative override, a profile
+//! expression, a calculated alpha and every component of an origin colour (written
+//! as the colour standing alone, without its clamps) follow it in specified and
+//! used output. A `color-mix()` weight is not a component root, so it converts
+//! like a calculation leaf, exactly inside the window and by the estimate below
+//! it. Retained authored syntax is unchanged. Values inside the range keep
+//! binary64 precision.
+//!
+//! Only a numeral inside `[1e-46, 1e41)` is converted by the exact search, so any
+//! other numeral costs the read of its digits. Inside a calculation such a
+//! numeral converts to a bounded-error estimate: its coefficient (at most 19
+//! digits) as binary64, times an exact power of ten below `10^22` and the
+//! correctly rounded power `10^(22 j)`, so each chunk of 308 decimal places is
+//! within 4 binary64 encodings of the correctly rounded value (8 when the decimal
+//! exponent of the coefficient is below -308, plus at most half a subnormal unit
+//! per operation). The
+//! calculation itself is evaluated in binary64 and only its root is limited. The
+//! specified projection of a colour component calculation converts its leaves with
+//! the same function, so specified and used output agree on every root.
+//!
 //! # Contrast, device colors and numerical helpers
 //!
 //! The `background-image` and `mask-image` values are [`CssImageValueList`](crate::values::image::CssImageValueList)s read

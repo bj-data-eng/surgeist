@@ -3867,14 +3867,14 @@ normalization and map a rounded 360 back to zero. A direct number, degree or
 turn hue retains its exact decimal in degrees; a direct radian or gradian hue
 is a canonical degree number rounded to six decimals, as CSSOM serializes a
 <number>, with a rounded 360 again written as zero. A literal number or angle
-hue beyond binary64 is the nearest supported multiple of 360deg (Values 4
-§5) and serializes as 0 in both phases. RGB conversion uses the
+hue whose binary64 degrees are at least `2^128 - 2^103` is infinite and
+serializes as 0 in both phases (Color 4 §4.3). RGB conversion uses the
 normalized unrounded hue.
 When HSL/HWB convert to RGB, surgeist-color performs the Color 4 conversion on
 the same binary64 channel values that used-value resolution reads, so
-specified and used serialization agree. In both phases a finite literal beyond
-binary64 is the closest finite value (Values 4 §5), and a channel whose
-conversion overflows is likewise the signed closest finite value before
+specified and used serialization agree. In both phases a component numeral
+beyond the component range is infinite and one below `1e-46` is zero, and a
+channel whose conversion overflows is the signed closest finite value before
 clipping. The final converted and clipped binary64 channels
 use the same six-place positive-tie policy.
 Direct literals with an identity or percentage-shift factor use the decimal
@@ -3929,9 +3929,11 @@ The serializer selects clipped direct endpoints from borrowed exact lexical
 metadata before allocating a rational coefficient or expanding decimal text.
 Thus `lab(1e400 0 0)` can emit `lab(100 0 0)` within a 12-byte output limit;
 finite clipped exponents beyond i128 also work. Each selected direct slot adds
-one logical projection visit to the cumulative budget. In-range and unbounded
-values still return typed resource failures when their exact output or work
-cannot fit. Discarded direct text is unnecessary; required calculation scratch
+one logical projection visit to the cumulative budget. A component inside the
+colour window (`[1e-46, 1e41)`) still returns a typed resource failure when its
+exact output or work cannot fit; a component beyond the range or below the window
+is written as `calc(infinity)` or `0` and cannot fail that way. Discarded direct
+text is unnecessary; required calculation scratch
 must still fit before composition. Authored token kinds, coefficients and
 provenance remain unchanged.
 
@@ -4012,6 +4014,93 @@ conflict; §11.5 concerns computed serialization. The frozen WebKit source at
 `73aa6c89e2cb77c46184a81aec944e4ab99d114d` supplies no authored device-CMYK
 implementation resolving that conflict. Contextual execution and computed
 serialization remain separate unfinished work.
+
+### Component range
+
+A colour component is limited to the single-precision range (Values 4 §10.12 asks for
+the closest supported value, and Color 4 allows an implementation-defined limit for
+the unbounded components). With `THRESHOLD = 2^128 - 2^103`, the point at which a
+binary64 rounds to an infinite binary32, and `LARGEST = f32::MAX`:
+
+- A component whose binary64 value in the domain it enters the colour (the number,
+  the percentage scaled by its slot's reference, or the angle in degrees) has a
+  magnitude of at least `THRESHOLD` is infinite. A value below `THRESHOLD` is finite
+  and keeps its binary64 value, so `3.4028235e38`, which lies between `LARGEST` and
+  `THRESHOLD`, is written with its exact digits. A decimal that rounds to `THRESHOLD`
+  in binary64 is infinite.
+- The percentage band: a percentage scales by its slot's reference, `value / 100` times
+  the value of 100% (Lab `a`/`b` 125, `color()` 1, Oklab axes 0.4), and the scaled
+  binary64 value is compared with `THRESHOLD`. In a Lab axis `2.7e38%` is `3.375e38`
+  and finite, `2.8e38%` is `3.5e38` and infinite, and `1e39%` is `1.25e39` and
+  infinite; in `color(srgb ...)`, `3.4e40%` is `3.4e38` and finite and `1e41%` is
+  `1e39` and infinite. A percentage numeral of `1e41` or more is infinite in every
+  slot.
+- The domain of a slot is the unit its percentage reference names (the table below),
+  except in `rgb()` and `rgba()`, whose relative channel the colour holds as the unit
+  coordinate: the number divided by 255 and the percentage scaled to 255 and divided
+  by 255. A relative `rgb()` channel is therefore infinite from `255 * THRESHOLD`
+  (`8.677200097883208e40` as a number, `3.4028235677973366e40%` as a percentage):
+  `rgb(from red 5e38 g b)` is finite and `rgb(from red 1e39% g b)` is `1e37`. A
+  percentage-typed calculation root is classified after the same scale, in its slot
+  and in an origin colour, and keeps the unit it was authored in: `1e40%` in an Oklab
+  axis is `4e37` and finite, and `2.8e38%` in a Lab axis is `3.5e38` and infinite
+  (`calc(infinity * 1%)`).
+- Specified text writes `calc(infinity)` or `calc(-infinity)` for an infinite
+  component and `calc(infinity * 1%)` in a percentage-typed HSL or HWB slot. A
+  calculation root is cut after the whole calculation is evaluated in binary64, and
+  a root with retained context keeps its text. An infinite hue is 0, and a hue
+  numeral below `1e-46` is `0` in every unit. A relative override, a profile
+  expression and a calculated alpha follow the same rule (an infinite angle override
+  is `calc(infinity * 1deg)`), and an origin colour is written as the colour standing
+  alone is, without the clamps of its slots (`lab(from lab(0 calc(infinity) 0) l a b)`
+  for `lab(from lab(0 1e308 0) l a b)`). Channel keywords and `none` are untouched.
+- Used resolution limits every component to `±LARGEST`, so `surgeist-color` is
+  unchanged. `±infinity` and the finite values between `LARGEST` and `THRESHOLD`
+  resolve alike. Clamped slots (`rgb()` channels, lightness, alpha) keep their
+  endpoints. A `color-mix()` weight is a percentage in `[0%, 100%]` and not a
+  component root, so it converts like a calculation leaf: exactly inside the window
+  and by the estimate below `1e-46`, never as zero or infinity. Its specified text
+  is its exact authored decimal.
+- A whole-component numeral of magnitude below `1e-46` (less than half the smallest
+  binary32 subnormal) is zero with its authored sign.
+- A literal beyond binary64 follows the same rule and is not rejected.
+- Authored syntax is retained: `representation()`, origins and `==` of a parsed value
+  are unchanged. Only the specified text of a component is classified.
+
+The domain of each slot, which used resolution (`channels::relative_channels`) and
+specified serialization (relative overrides, origin colours and calculation roots)
+both read from the one `channels::Entry` of the slot:
+
+| Slot | A number is | `100%` is | Held as |
+| --- | --- | --- | --- |
+| `rgb()` and `rgba()` channels | 0 to 255 | 255 | the number or percentage divided by 255 |
+| `hsl()` saturation and lightness, `hwb()` whiteness and blackness | 0 to 100 | 100 | the number or percentage as it is |
+| `lab()` and `lch()` lightness | 0 to 100 | 100 | as it is |
+| `lab()` `a` and `b` | a coordinate | 125 | as it is |
+| `lch()` chroma | a coordinate | 150 | as it is |
+| `oklab()` and `oklch()` lightness | 0 to 1 | 1 | as it is |
+| `oklab()` `a` and `b`, `oklch()` chroma | a coordinate | 0.4 | as it is |
+| `color()` channels (every predefined space) and `device-cmyk()` | 0 to 1 | 1 | as it is |
+| alpha | 0 to 1 | 1 | as it is, clamped to `[0, 1]` |
+| a hue | degrees | none | degrees, an infinite hue is 0 |
+
+The conversion of a numeral is exact (the correctly rounded binary64 value) only
+inside `[1e-46, 1e41)`, a window chosen so that percentage scaling (the smallest
+scale is `0.004`, one percent of an Oklab axis, whose reference is `0.4`) and angle
+scaling decide the cut exactly. Every other numeral
+costs the read of its digits and no decimal search. Inside a calculation such a
+numeral converts to a bounded-error estimate: its coefficient (at most 19 digits)
+as binary64 times the exact power `10^(k mod 22)` and the correctly rounded power
+`10^(22 (k div 22))`, a division for a negative exponent, in chunks of at most 308
+decimal places. That is four binary64 roundings of at most half an encoding each,
+so the estimate is within 4 binary64 encodings of the correctly rounded value, 8
+when the exponent is below -308 and the numeral needs two chunks, plus at most half
+a subnormal unit per operation in the subnormal range. The calculation is evaluated
+in binary64 from these leaves and only its root is cut. The specified projection of a
+colour component calculation converts its leaves with the same function as used
+resolution (`window_value` over the same `outside_estimate`), so both phases evaluate
+the same binary64 leaves and roots; a calculation that is not a colour component
+keeps the correctly rounded leaf.
 
 ### Pure HSL and HWB coordinates
 
