@@ -423,7 +423,7 @@ fn aggregate_descriptor_front_door_covers_all_fourteen_kinds() {
         (K::FontWidth, "75% 75.0%", "75%"),
         (K::FontDisplay, "swap", "swap"),
         (K::UnicodeRange, "U+0-7F,U+A0", "U+0-7F, U+A0"),
-        (K::FontFeatureSettings, "'liga' off", "\"liga\" off"),
+        (K::FontFeatureSettings, "'liga' off", "\"liga\" 0"),
         (K::FontVariationSettings, "'wght' 625", "\"wght\" 625"),
         (K::FontNamedInstance, "''", "\"\""),
         (K::FontLanguageOverride, "'ENG'", "\"ENG\""),

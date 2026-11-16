@@ -256,9 +256,11 @@ fn feature_list_distinguishes_omitted_on_off_and_index_values_without_deduplicat
         "2147483648"
     );
     assert_eq!(index.literal().and_then(|literal| literal.value()), None);
+    // Fonts 4 §6.12: an omitted value and `on` are 1 and `off` is 0; the
+    // serialization leaves out the 1 and writes the 0 as a number.
     assert_eq!(
         authored.serialize_specified(Default::default()).unwrap(),
-        "\"cv01\", \"cv01\" on, \"cv01\" off, \"cv01\" 2147483648, \"CV01\" 0"
+        "\"cv01\", \"cv01\", \"cv01\" 0, \"cv01\" 2147483648, \"CV01\" 0"
     );
     assert!(CssAuthoredFontFeatureList::try_new(vec![]).is_none());
     assert!(CssOpenTypeTag::try_new(" abc").is_some());
@@ -594,7 +596,8 @@ fn descriptor_payloads_use_property_models_and_effective_last_admitted_order() {
             CssFontFaceDescriptorKind::FontFeatureSettings,
             feature_text
         )),
-        feature_text
+        // The descriptor shares the property's serialization: `off` is 0.
+        "\"cv01\" 2147483648, \"cv01\" 0"
     );
     assert_eq!(
         descriptor_payload_css(&descriptor(
@@ -864,7 +867,8 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
 #[test]
 fn list_serialization_obeys_shared_atomic_input_projection_and_byte_limits() {
     let value = feature("\"cv01\" 2147483648, \"cv02\" off");
-    let expected = "\"cv01\" 2147483648, \"cv02\" off";
+    // Fonts 4 §6.12: `off` is 0, and `0` is its shorter spelling.
+    let expected = "\"cv01\" 2147483648, \"cv02\" 0";
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         expected
