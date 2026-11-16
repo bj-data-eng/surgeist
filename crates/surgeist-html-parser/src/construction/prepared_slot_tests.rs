@@ -1587,3 +1587,96 @@ fn a_refused_row_that_owns_a_string_is_released_with_the_registry() {
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+/// The rows of the tables of templates, shadow states and causes are admitted before their node
+/// exists, as prepared slots asked for where the node's creation is prepared: the metadata of a
+/// template with the creation of the element, the state of a shadow root with the creation of its
+/// contents, and the cause of a node with the preparation of the records of its creation. The
+/// counts are derived from the report: one admission for each row of each table.
+#[test]
+fn template_shadow_and_cause_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let sites_of = |sites: &[Site], file: &str, needle: &str| {
+        sites
+            .iter()
+            .filter(|site| site.file == file && site.line.contains(needle))
+            .count()
+    };
+    let sources: [(&'static str, bool); 6] = [
+        (
+            "<!doctype html><p>a<template><b>x</b></template><i></i>",
+            false,
+        ),
+        (
+            "<!doctype html><template><div><template><i></i></template></div></template>",
+            false,
+        ),
+        // The template is cloned with its contents into the selectedcontent element.
+        (
+            "<!doctype html><select><button><selectedcontent></selectedcontent></button>\
+             <option selected><template><u></u></template></option></select>",
+            false,
+        ),
+        (
+            "<template><p>t</p></template><div><template shadowrootmode=open><slot></slot>\
+             </template></div>",
+            true,
+        ),
+        // The shadow root is cloned with its host into the selectedcontent element.
+        (
+            "<select><button><selectedcontent></selectedcontent></button><option selected>\
+             <div><template shadowrootmode=open shadowrootclonable><slot></slot></template></div>\
+             </option></select>",
+            true,
+        ),
+        ("<p>no template and no shadow root", true),
+    ];
+    let (mut templates, mut shadows, mut clones) = (0, 0, 0);
+    for (source, contextual) in sources {
+        let report = if contextual {
+            crate::HtmlFragmentParseRequest::with_options(
+                HtmlSource::utf8(source),
+                fragment_context(),
+                limits(100),
+                HtmlParserScriptingMode::Inert,
+                true,
+            )
+            .unwrap()
+            .parse()
+            .unwrap()
+        } else {
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100))
+                .parse()
+                .unwrap()
+        };
+        let facts = &report.history().storage().payloads.facts;
+        let (rows_t, rows_s, rows_c) = (
+            facts.templates.len(),
+            facts.shadows.len(),
+            facts.causes.len(),
+        );
+        templates += rows_t;
+        shadows += rows_s;
+        let (retained, sites) = retained_after_each_prepared_slot(&|limits| {
+            if contextual {
+                fragment_in(source, false)(limits)
+            } else {
+                document(source)(limits)
+            }
+        });
+        assert!(retained.is_empty(), "{source}: {retained:?}");
+        assert_eq!(
+            sites_of(&sites, "src/construction/template.rs", "templates.admit("),
+            rows_t,
+            "{source}"
+        );
+        let attached = sites_of(&sites, "src/construction/context.rs", "shadows.admit(");
+        assert_eq!(attached, rows_s, "{source}");
+        clones += usize::from(rows_s > 1 || (rows_s == 1 && source.contains("selectedcontent")));
+        assert_eq!(
+            sites_of(&sites, "src/construction/provenance.rs", "causes.admit("),
+            rows_c,
+            "{source}"
+        );
+    }
+    assert!(templates >= 6 && shadows >= 2 && clones >= 1);
+}
