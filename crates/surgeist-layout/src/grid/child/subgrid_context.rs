@@ -1278,6 +1278,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
             //   input the computation reads (`is_reproduced_by`).
             // Any other item is recomputed, as before.
             if let Some(first) = &item.first_request
+                && !crate::grid::subgrid_reuse_disabled()
                 && refresh_adds_nothing(input, subgrid_item, &sizing)
                 && first.is_reproduced_by(&request)
             {

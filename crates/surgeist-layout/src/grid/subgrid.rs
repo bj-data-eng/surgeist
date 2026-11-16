@@ -2874,8 +2874,10 @@ where
         containing_flow_axes,
         stage: query.stage,
     };
+    let reuse = !super::subgrid_reuse_disabled();
     let resolution = match tree
         .wrapper_resolution_memo()
+        .filter(|_| reuse)
         .and_then(|memo| memo.get(&identity))
     {
         Some(resolution) => resolution,
@@ -2886,7 +2888,7 @@ where
                 &container_style,
                 containment,
             )?);
-            if let Some(memo) = tree.wrapper_resolution_memo() {
+            if let Some(memo) = tree.wrapper_resolution_memo().filter(|_| reuse) {
                 memo.insert(&identity, &resolution)
                     .map_err(|_| allocation_error(node))?;
             }

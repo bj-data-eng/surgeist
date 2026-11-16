@@ -49,6 +49,17 @@ pub(crate) use observation::{
 mod placement;
 mod subgrid;
 pub(crate) use subgrid::WrapperResolutionMemo;
+
+/// Whether a test asks every nested subgrid computation to repeat.
+#[cfg(test)]
+fn subgrid_reuse_disabled() -> bool {
+    subgrid_work::reuse_disabled()
+}
+
+#[cfg(not(test))]
+const fn subgrid_reuse_disabled() -> bool {
+    false
+}
 #[cfg(test)]
 pub(crate) mod subgrid_work;
 #[cfg(test)]
