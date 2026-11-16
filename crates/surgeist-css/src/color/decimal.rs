@@ -5,7 +5,8 @@ use crate::color::controlled::protocol::{
     ColorProtocolError, Data, LexicalRecord, RecordRange, RecordTable,
 };
 use crate::numeric::bounded_decimal::{
-    DecimalCursor, DecimalInput, DecimalLayout, DecimalOutcome, DecimalReply, DecimalRequest,
+    DecimalCursor, DecimalInput, DecimalLayout, DecimalOutcome, DecimalRange, DecimalReply,
+    DecimalRequest,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,7 +74,7 @@ impl<'owner> NumberConversion<'owner> {
             exponent: layout.exponent_digits,
             scratch_base,
             scaled: None,
-            cursor: DecimalCursor::new(child),
+            cursor: DecimalCursor::new(child, DecimalRange::Binary64),
             stopped: false,
         })
     }
@@ -107,7 +108,7 @@ impl<'owner> NumberConversion<'owner> {
             exponent: scale.layout.exponent_digits,
             scaled: Some(scale.digits),
             scratch_base,
-            cursor: DecimalCursor::new(child),
+            cursor: DecimalCursor::new(child, DecimalRange::Binary64),
             stopped: false,
         })
     }

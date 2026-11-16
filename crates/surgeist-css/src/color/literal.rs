@@ -10,14 +10,24 @@ use crate::numeric::bounded_decimal::DecimalOutcome;
 use crate::numeric::{CssAngleUnit, CssNumericType, CssNumericUnit};
 use surgeist_css_parser::lexer::protocol::NumericTokenKind;
 
+/// Where an authored numeral lies relative to the range that converts exactly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum LiteralRange {
+    /// Converted exactly (correctly rounded binary64).
+    Within,
+    /// Beyond the range; `value` is the closest finite value or an estimate.
+    Beyond,
+    /// Below the range; `value` is an estimate.
+    Below,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LiteralValue {
     pub(crate) value: f64,
     pub(crate) unit: Option<CssNumericUnit>,
     pub(crate) percentage: bool,
     pub(crate) ty: CssNumericType,
-    /// The authored finite decimal, or its canonical angle, exceeded binary64.
-    pub(crate) overflowed: bool,
+    pub(crate) range: LiteralRange,
 }
 
 #[cfg(test)]
@@ -518,18 +528,21 @@ impl<'owner> LiteralConversion<'owner> {
             return Ok(());
         }
         let angle = matches!(self.input.unit, Some(CssNumericUnit::Angle(_)));
-        let mut overflowed = matches!(outcome, DecimalOutcome::Overflow { .. });
-        let value = match outcome {
-            DecimalOutcome::Finite(value) => value,
+        let (value, mut range) = match outcome {
+            DecimalOutcome::Finite(value) => (value, LiteralRange::Within),
             // Values 4 §10.12: a finite value beyond the supported range is
             // the closest supported value. An angle instead reaches its
             // 360deg-multiple endpoint below, after unit scaling.
-            DecimalOutcome::Overflow { negative } if angle => {
-                f64::INFINITY.copysign(if negative { -1.0 } else { 1.0 })
-            }
-            DecimalOutcome::Overflow { negative } => {
-                f64::MAX.copysign(if negative { -1.0 } else { 1.0 })
-            }
+            DecimalOutcome::Overflow { negative } if angle => (
+                f64::INFINITY.copysign(if negative { -1.0 } else { 1.0 }),
+                LiteralRange::Beyond,
+            ),
+            DecimalOutcome::Overflow { negative } => (
+                f64::MAX.copysign(if negative { -1.0 } else { 1.0 }),
+                LiteralRange::Beyond,
+            ),
+            DecimalOutcome::Beyond { estimate } => (estimate, LiteralRange::Beyond),
+            DecimalOutcome::Below { estimate } => (estimate, LiteralRange::Below),
         };
         let (value, unit) = match self.input.unit {
             Some(CssNumericUnit::Angle(unit)) => {
@@ -537,7 +550,9 @@ impl<'owner> LiteralConversion<'owner> {
                     .intrinsic_projection()
                     .expect("all canonical angle units are intrinsic");
                 let degrees = if scaled { value } else { scale.apply(value) };
-                overflowed |= degrees.is_infinite();
+                if degrees.is_infinite() {
+                    range = LiteralRange::Beyond;
+                }
                 (
                     crate::numeric::projection::closest_supported_value(degrees, true, true),
                     Some(CssNumericUnit::Angle(CssAngleUnit::Degrees)),
@@ -551,7 +566,7 @@ impl<'owner> LiteralConversion<'owner> {
             unit,
             percentage,
             ty: crate::numeric::expression::literal_type(unit, percentage),
-            overflowed,
+            range,
         });
         Ok(())
     }

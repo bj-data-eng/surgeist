@@ -10,7 +10,7 @@ use super::expression::{
 };
 use super::grammar::{ComponentRole, FunctionRecipe, ProfileSpace, RawComponent};
 use super::keywords::{ColorFunction as F, Word};
-use super::literal::{LiteralAction, LiteralConversion};
+use super::literal::{LiteralAction, LiteralConversion, LiteralRange};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
 use crate::color::CssColorSyntax;
 use crate::color::CssRelativeColorEnvironment as Environment;
@@ -133,17 +133,18 @@ impl ComponentContext {
     /// exactly like an overflowing `<angle>`.
     pub(crate) fn literal(self, value: super::literal::LiteralValue) -> Option<Component> {
         let domain = self.domain(value.ty)?;
-        let number =
-            if self.expectation == Expectation::Hue && domain == Domain::Number && value.overflowed
-            {
-                crate::numeric::projection::closest_supported_value(
-                    f64::INFINITY.copysign(value.value),
-                    true,
-                    true,
-                )
-            } else {
-                value.value
-            };
+        let number = if self.expectation == Expectation::Hue
+            && domain == Domain::Number
+            && value.range == LiteralRange::Beyond
+        {
+            crate::numeric::projection::closest_supported_value(
+                f64::INFINITY.copysign(value.value),
+                true,
+                true,
+            )
+        } else {
+            value.value
+        };
         Some(Component {
             domain,
             value: number,

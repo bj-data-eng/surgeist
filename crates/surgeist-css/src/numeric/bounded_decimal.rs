@@ -132,10 +132,50 @@ pub(crate) enum DecimalKernel {
     BeginComparison,
     UpdateSearch,
 }
+/// The decimal magnitudes outside which a numeral is not converted exactly.
+/// The magnitude of a nonzero numeral is the exponent of the first power of
+/// ten above it: a value in `[10^(m - 1), 10^m)` has magnitude `m`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DecimalWindow {
+    /// A numeral of at least this magnitude is beyond the window.
+    pub(crate) beyond: i128,
+    /// A numeral of at most this magnitude is below the window.
+    pub(crate) below: i128,
+}
+
+/// The range a cursor converts exactly. Outside it the cursor stops after the
+/// digits are read and reports a bounded-error estimate instead of searching.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DecimalRange {
+    /// Every finite binary64; only a value beyond binary64 is not converted.
+    Binary64,
+    /// Exact inside the window, estimated outside it.
+    #[expect(dead_code, reason = "selected by the colour callers in a later step")]
+    Window(DecimalWindow),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum DecimalOutcome {
     Finite(f64),
-    Overflow { negative: bool },
+    Overflow {
+        negative: bool,
+    },
+    /// Beyond the window of the cursor's range. The estimate carries the sign.
+    #[expect(
+        dead_code,
+        reason = "produced by the window classification in a later step"
+    )]
+    Beyond {
+        estimate: f64,
+    },
+    /// Below the window of the cursor's range. The estimate carries the sign.
+    #[expect(
+        dead_code,
+        reason = "produced by the window classification in a later step"
+    )]
+    Below {
+        estimate: f64,
+    },
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DecimalArithmeticError {
@@ -195,6 +235,11 @@ enum Stage {
 #[derive(Debug)]
 pub(crate) struct DecimalCursor {
     layout: DecimalLayout,
+    #[expect(
+        dead_code,
+        reason = "read by the window classification in a later step"
+    )]
+    range: DecimalRange,
     request: DecimalRequest,
     stage: Stage,
     scan: usize,
@@ -232,9 +277,10 @@ pub(crate) struct DecimalCursor {
 }
 
 impl DecimalCursor {
-    pub(crate) fn new(layout: DecimalLayout) -> Self {
+    pub(crate) fn new(layout: DecimalLayout, range: DecimalRange) -> Self {
         Self {
             layout,
+            range,
             request: DecimalRequest::ReadInput {
                 kind: DecimalInput::Mantissa,
                 index: 0,
@@ -757,7 +803,7 @@ mod tests {
             exponent.len(),
         )
         .unwrap();
-        let mut cursor = DecimalCursor::new(layout);
+        let mut cursor = DecimalCursor::new(layout, DecimalRange::Binary64);
         let mut trace = Trace {
             scratch: Vec::new(),
             comparisons: 0,
@@ -976,7 +1022,10 @@ mod tests {
         );
         let (scratch, retained) = {
             // 1e100 has no exact fast path, so the search requests scratch.
-            let mut cursor = DecimalCursor::new(DecimalLayout::new(false, 1, 0, false, 3).unwrap());
+            let mut cursor = DecimalCursor::new(
+                DecimalLayout::new(false, 1, 0, false, 3).unwrap(),
+                DecimalRange::Binary64,
+            );
             let original = format!("{cursor:?}");
             for reply in [
                 DecimalReply::Input {
@@ -1114,7 +1163,10 @@ mod tests {
             (scratch, retained)
         };
         assert_eq!(scratch, retained);
-        let mut zero = DecimalCursor::new(DecimalLayout::new(true, 1, 0, false, 1).unwrap());
+        let mut zero = DecimalCursor::new(
+            DecimalLayout::new(true, 1, 0, false, 1).unwrap(),
+            DecimalRange::Binary64,
+        );
         zero.complete(DecimalReply::Input {
             kind: DecimalInput::Mantissa,
             index: 0,

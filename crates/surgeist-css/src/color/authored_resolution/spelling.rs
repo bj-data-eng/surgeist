@@ -400,7 +400,7 @@ pub(crate) fn authored_hue_degrees<E>(
     unit: Option<CssNumericUnit>,
     mut charge: impl FnMut() -> Result<(), E>,
 ) -> Result<f64, E> {
-    use super::super::literal::{LiteralAction, LiteralConversion};
+    use super::super::literal::{LiteralAction, LiteralConversion, LiteralRange};
     use crate::color::controlled::protocol::RecordTable;
     let protocol = |error: ColorProtocolError| -> f64 {
         unreachable!("an admitted checked number completes its own protocol: {error:?}")
@@ -455,7 +455,7 @@ pub(crate) fn authored_hue_degrees<E>(
             }),
             LiteralAction::Compute => conversion.compute(),
             LiteralAction::Done(value) => {
-                return Ok(if value.overflowed {
+                return Ok(if value.range == LiteralRange::Beyond {
                     crate::numeric::projection::closest_supported_value(
                         f64::INFINITY.copysign(value.value),
                         true,
