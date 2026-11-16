@@ -123,6 +123,36 @@ impl<'a, S: LayoutScalar> GridMinimumTrackFunctions<'a, S> {
         Ok(facts)
     }
 
+    /// Retains the facts of the tracks in `start..end` only, in the positions
+    /// a full retention would give them, so a span mapped from the result
+    /// reads the same facts. Every other position holds an unread
+    /// placeholder, and no function outside the span is resolved.
+    pub(in crate::grid) fn retain_span(
+        self,
+        start: usize,
+        end: usize,
+    ) -> Result<Vec<GridMinimumTrackFact<S>>, GridMinimumFunctionRetentionError<S>> {
+        let len = self.len();
+        let mut facts = Vec::new();
+        facts
+            .try_reserve_exact(len)
+            .map_err(|_| GridMinimumFunctionRetentionError::Allocation)?;
+        let spanned = start < end && end <= len;
+        for offset in 0..len {
+            facts.push(if spanned && (start..end).contains(&offset) {
+                self.fact(offset)
+                    .map_err(GridMinimumFunctionRetentionError::Sizing)?
+            } else {
+                GridMinimumTrackFact {
+                    automatic: false,
+                    flexible: false,
+                    fixed: None,
+                }
+            });
+        }
+        Ok(facts)
+    }
+
     pub(in crate::grid) fn mapped_span(
         self,
         start: usize,

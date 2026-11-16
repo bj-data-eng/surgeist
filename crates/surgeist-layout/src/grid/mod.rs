@@ -36,6 +36,7 @@ mod alignment;
 mod axis;
 mod baseline_reference;
 mod child;
+mod context_request;
 mod input;
 mod intrinsic_stage;
 mod lane_repeat;
@@ -58,6 +59,8 @@ pub use axis::GridAxisKind;
 use axis::{GridAxisMappingInput, GridAxisMappingReport, map_grid_axis};
 use baseline_reference::*;
 use child::*;
+pub(crate) use context_request::GridContextRequest;
+use context_request::GridParentContextSource;
 use input::{
     GridChildInput, GridContainerInput, GridContainerProjection, GridItemProjection,
     order_modified_indexes,
@@ -76,8 +79,8 @@ pub use lanes::{
     LaneTrackSpanLength, lane_intrinsic_sizing, place_lanes,
 };
 use lanes::{
-    GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, LanePacking, LanePackingChild,
-    LanePackingSource, LanePlacementGeometry, LanePlacementPacking,
+    GridLanesFinish, GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, LanePacking,
+    LanePackingChild, LanePackingSource, LanePlacementGeometry, LanePlacementPacking,
     apply_grid_lanes_auto_fit_policy, begin_lane_placement, column_flow_for_grid_lanes,
     grid_axis_for_grid_lanes, lane_axis_for_grid_lanes, layout_grid_lanes_children,
     prepare_grid_lanes_intrinsic_child_input,
@@ -191,7 +194,24 @@ enum GridChildPhase<'input, Node, S: LayoutScalar> {
     InitialLanePacking(LanePackingChild<Node, S>),
     FinalLanePacking(LanePackingChild<Node, S>),
     InFlow(GridFlowChild<'input, Node, S>),
+    Refresh {
+        node: Node,
+        input: ComputeInputOf<S>,
+        request: Option<Box<GridContextRequest<'input, Node, S>>>,
+    },
     Positioned(PositionedGridChild<'input, Node, S>),
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridChild<'input, Node, S> {
+    /// Takes the contextual Grid computation this child stands for, if any.
+    /// The caller completes it and returns its receipt through `accept_context`.
+    pub(crate) fn take_context_request(&mut self) -> Option<GridContextRequest<'input, Node, S>> {
+        match &mut self.phase {
+            GridChildPhase::InFlow(child) => child.take_context_request(),
+            GridChildPhase::Refresh { request, .. } => request.take().map(|request| *request),
+            _ => None,
+        }
+    }
 }
 
 impl<Node: Copy, S: LayoutScalar> GridChild<'_, Node, S> {
@@ -203,6 +223,7 @@ impl<Node: Copy, S: LayoutScalar> GridChild<'_, Node, S> {
                 child.request()
             }
             GridChildPhase::InFlow(child) => child.request(),
+            GridChildPhase::Refresh { node, input, .. } => (*node, *input),
             GridChildPhase::Positioned(child) => (child.node, child.input),
         }
     }
@@ -218,15 +239,35 @@ pub(crate) struct GridContinuation<'input, Node, S: LayoutScalar> {
     input: ComputeInputOf<S>,
     pass_input: ComputeInputOf<S>,
     invocation: GridInvocation<'input, S>,
-    contained_size: Size<Option<S>>,
+    /// The size containment of the active run; `None` until the run starts.
+    contained_size: Option<Size<Option<S>>>,
     pass: Option<GridPassWork<'input, Node, S>>,
     tracks: Option<GridTrackPassPhase<'input, Node, S>>,
+    /// The Grid whose item this is, for the errors of its parent context.
+    container: Node,
+    parent_context: GridParentContextSource<'input, Node, S>,
+    stage: GridSizingStage,
+    /// The real run that follows a standalone-minimum probe run.
+    entry: Option<StandaloneEntry<S>>,
+}
+
+/// The real run of a standalone Grid after its intrinsic-minimum probe.
+#[derive(Clone, Copy)]
+struct StandaloneEntry<S: LayoutScalar> {
+    input: ComputeInputOf<S>,
+    axes: Size<bool>,
 }
 
 type GridStart<'input, Node, S, M> =
     LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, GridContinuation<'input, Node, S>>, S, M>;
-type GridStep<'input, Node, S, M> =
-    LayoutResultOf<Node, ControlFlow<ComputeOutputOf<S>, GridRequest<'input, Node, S>>, S, M>;
+type GridContextStart<'input, Node, S, M> =
+    LayoutResultOf<Node, GridContinuation<'input, Node, S>, S, M>;
+type GridStep<'input, Node, S, M> = LayoutResultOf<
+    Node,
+    ControlFlow<GridComputeResult<Node, S>, GridRequest<'input, Node, S>>,
+    S,
+    M,
+>;
 
 pub(crate) fn begin_grid_computation<'input, Tree, M>(
     tree: &mut Tree,
@@ -255,10 +296,124 @@ where
         input,
         pass_input: input,
         invocation,
-        contained_size,
+        contained_size: Some(contained_size),
         pass: None,
         tracks: None,
+        container: node,
+        parent_context: GridParentContextSource::None,
+        stage: GridSizingStage::COMPLETE,
+        entry: None,
     }))
+}
+
+/// Begins one contextual Grid computation, the executor's counterpart of
+/// `compute_grid_with_context_source`: the standalone-minimum probe run, when
+/// the container needs one, precedes the real run, and every run starts from
+/// the initial scrollbar state with its parent context rebuilt per pass.
+pub(crate) fn begin_grid_context_computation<'input, Tree, M>(
+    _tree: &mut Tree,
+    request: GridContextRequest<'input, Tree::Node, Tree::Scalar>,
+) -> GridContextStart<'input, Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let GridContextRequest {
+        container,
+        node,
+        input,
+        minimum,
+        child,
+        stage,
+        parent_context,
+    } = request;
+    let contextual_minimum =
+        standalone_intrinsic_minimum_phases(&child.projection(), child.inherited_axes());
+    let intrinsic_minimum = Size::new(
+        minimum.width.or(contextual_minimum.width),
+        minimum.height.or(contextual_minimum.height),
+    );
+    let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
+    let (run_input, boundary, entry) = if intrinsic_axes.width || intrinsic_axes.height {
+        let available = Size::new(
+            intrinsic_minimum
+                .width
+                .map_or(input.sizing_request().axes().width, |phase| {
+                    input
+                        .sizing_request()
+                        .axes()
+                        .width
+                        .with_operation(phase.operation())
+                }),
+            intrinsic_minimum
+                .height
+                .map_or(input.sizing_request().axes().height, |phase| {
+                    input
+                        .sizing_request()
+                        .axes()
+                        .height
+                        .with_operation(phase.operation())
+                }),
+        );
+        let known = Size::new(
+            if intrinsic_axes.width {
+                None
+            } else {
+                input.known().width
+            },
+            if intrinsic_axes.height {
+                None
+            } else {
+                input.known().height
+            },
+        );
+        let probe_input = ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            input.sizing_mode(),
+            input.requested_axis(),
+            known,
+            input.parent(),
+            input.containing_layout_context(),
+            input.sizing_request().with_axes(available),
+        )
+        .with_settled_auto_scrollbars(input.settled_auto_scrollbars())
+        .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass())
+        .with_baseline_demand_from(input);
+        (
+            probe_input,
+            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
+                axes: intrinsic_axes,
+            },
+            Some(StandaloneEntry {
+                input,
+                axes: intrinsic_axes,
+            }),
+        )
+    } else {
+        (
+            input,
+            GridMeasurementBoundary::Standalone {
+                minimum: Size::NONE,
+            },
+            None,
+        )
+    };
+    Ok(GridContinuation {
+        node,
+        input,
+        pass_input: run_input
+            .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL),
+        invocation: GridInvocation {
+            container: child,
+            boundary,
+        },
+        contained_size: None,
+        pass: None,
+        tracks: None,
+        container,
+        parent_context,
+        stage,
+        entry,
+    })
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S> {
@@ -271,6 +426,54 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         loop {
+            let result = match self.advance_run(tree)? {
+                ControlFlow::Continue(request) => return Ok(ControlFlow::Continue(request)),
+                ControlFlow::Break(result) => result,
+            };
+            if let Some(next) = retry_grid_scrollbars(self.node, self.pass_input, &result)? {
+                self.pass_input = next;
+                continue;
+            }
+            let Some(entry) = self.entry.take() else {
+                return Ok(ControlFlow::Break(result));
+            };
+            // The probe run measured the intrinsic minimum; the real run
+            // restarts from the initial scrollbar state with it.
+            let measured = result.output.size;
+            let minimum = Size::new(
+                entry.axes.width.then_some(measured.width),
+                entry.axes.height.then_some(measured.height),
+            );
+            self.invocation.boundary = GridMeasurementBoundary::Standalone { minimum };
+            self.pass_input = entry
+                .input
+                .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL);
+            self.contained_size = None;
+        }
+    }
+
+    // Advances the active run, starting its size containment first. A run ends
+    // with its result, before any scrollbar retry or following run.
+    fn advance_run<Tree, M>(&mut self, tree: &mut Tree) -> GridStep<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            if self.contained_size.is_none() {
+                match grid_containment(
+                    self.node,
+                    self.pass_input,
+                    |constants| {
+                        self.parent_context
+                            .build(self.container, self.node, constants)
+                    },
+                    self.invocation,
+                    self.stage,
+                )? {
+                    ControlFlow::Break(result) => return Ok(ControlFlow::Break(result)),
+                    ControlFlow::Continue(size) => self.contained_size = Some(size),
+                }
+            }
             let result = if let Some(pass) = self.pass.as_mut() {
                 match pass {
                     GridPassWork::Observation(_) => {
@@ -390,10 +593,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     tree,
                     self.node,
                     self.pass_input,
-                    |_| Ok(GridParentContext::none()),
+                    |constants| {
+                        self.parent_context
+                            .build(self.container, self.node, constants)
+                    },
                     self.invocation,
-                    GridSizingStage::COMPLETE,
-                    self.contained_size,
+                    self.stage,
+                    self.contained_size
+                        .expect("the active run has its size containment"),
                 )? {
                     ControlFlow::Break(result) => result,
                     ControlFlow::Continue(tracks) => {
@@ -402,10 +609,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                     }
                 }
             };
-            let Some(next) = retry_grid_scrollbars(self.node, self.pass_input, &result)? else {
-                return Ok(ControlFlow::Break(result.output));
-            };
-            self.pass_input = next;
+            return Ok(ControlFlow::Break(result));
         }
     }
 
@@ -459,9 +663,29 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
             }
         }
     }
+
+    /// Accepts the receipt of a contextual Grid request this pass issued.
+    pub(crate) fn accept_context<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        child: GridChild<'input, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self.pass.as_mut().expect("active Grid pass") {
+            GridPassWork::Placement(pass) => pass.accept_context(tree, child, result),
+            GridPassWork::Accepted(_)
+            | GridPassWork::Observation(_)
+            | GridPassWork::Observed(_) => {
+                unreachable!("only placement issues contextual requests")
+            }
+        }
+    }
 }
 
-struct GridComputeResult<Node, S: LayoutScalar = Scalar> {
+pub(crate) struct GridComputeResult<Node, S: LayoutScalar = Scalar> {
     output: ComputeOutputOf<S>,
     report: GridComputationReport,
     baseline_groups: GridBaselineGroups<S>,
@@ -472,6 +696,11 @@ struct GridComputeResult<Node, S: LayoutScalar = Scalar> {
 type GridComputeOutcome<Node, S, M> = LayoutResultOf<Node, GridComputeResult<Node, S>, S, M>;
 
 impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
+    /// The geometry of the computation, without its contextual receipt.
+    pub(crate) fn into_output(self) -> ComputeOutputOf<S> {
+        self.output
+    }
+
     fn from_output(output: ComputeOutputOf<S>) -> Self {
         Self {
             output,
@@ -1026,7 +1255,21 @@ enum GridPassChildren<'input, Node, S: LayoutScalar> {
     EmptyLanes(Box<GridChildrenLayout<Node, S>>),
     InFlowLanes(Box<GridLanesInFlow<'input, Node, S>>),
     InFlowOrdinary(Box<OrdinaryGridInFlow<'input, Node, S>>),
+    RefreshLanes(Box<GridLanesRefresh<'input, Node, S>>),
+    RefreshOrdinary(Box<OrdinaryGridRefresh<'input, Node, S>>),
     Positioned(GridChildPlacement<'input, Node, S>),
+}
+
+// The in-flow items are placed; their subgrid baselines refresh before the
+// positioned items. The source stays to rebuild each borrowed frame.
+struct OrdinaryGridRefresh<'input, Node, S: LayoutScalar> {
+    source: OrdinaryGridSource<'input, Node, S>,
+    finishing: OrdinaryGridFinish<'input, Node, S>,
+}
+
+struct GridLanesRefresh<'input, Node, S: LayoutScalar> {
+    source: GridLanesPlacementSource<'input, Node, S>,
+    finishing: GridLanesFinish<'input, Node, S>,
 }
 
 struct OrdinaryGridInFlow<'input, Node, S: LayoutScalar> {
@@ -1145,7 +1388,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        while let Some(child) = self.next(tree)? {
+        while let Some(mut child) = self.next(tree)? {
+            if let Some(request) = child.take_context_request() {
+                let result = request.compute_sync(tree)?;
+                self.accept_context(tree, child, result)?;
+                continue;
+            }
             let (node, input) = child.request();
             let output = tree.compute_child(node, input)?;
             self.accept(tree, child, output)?;
@@ -1208,7 +1456,29 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
                 ..
             } = *lanes;
             let input = source.input(&self.output, self.scroll_box);
-            let children = geometry.finish(tree, self.output.node, &input, collection.finish())?;
+            let finishing = geometry.begin_finish(self.output.node, &input, collection.finish())?;
+            self.children = Some(GridPassChildren::RefreshLanes(Box::new(GridLanesRefresh {
+                source,
+                finishing,
+            })));
+        }
+        if let Some(GridPassChildren::RefreshLanes(lanes)) = &mut self.children {
+            let input = lanes.source.input(&self.output, self.scroll_box);
+            if let Some(request) = lanes.finishing.next(tree, self.output.node, &input)? {
+                return Ok(Some(GridChild {
+                    phase: GridChildPhase::Refresh {
+                        node: request.node(),
+                        input: request.input(),
+                        request: Some(Box::new(request)),
+                    },
+                }));
+            }
+            let Some(GridPassChildren::RefreshLanes(lanes)) = self.children.take() else {
+                unreachable!()
+            };
+            let GridLanesRefresh { source, finishing } = *lanes;
+            let input = source.input(&self.output, self.scroll_box);
+            let children = finishing.finish(tree, self.output.node, &input)?;
             self.children = Some(GridPassChildren::Positioned(children));
         }
         if let Some(GridPassChildren::InFlowOrdinary(grid)) = &mut self.children {
@@ -1233,13 +1503,36 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
                 collection,
             } = *grid;
             let context = source.context(&self.output, self.scroll_box);
-            let children = source.tracks.finish(
-                tree,
+            let finishing = source.tracks.begin_finish(
                 self.output.node,
                 placement,
                 &context,
                 collection.finish(),
             )?;
+            self.children = Some(GridPassChildren::RefreshOrdinary(Box::new(
+                OrdinaryGridRefresh { source, finishing },
+            )));
+        }
+        if let Some(GridPassChildren::RefreshOrdinary(grid)) = &mut self.children {
+            let context = grid.source.context(&self.output, self.scroll_box);
+            if let Some(request) = grid.finishing.next(tree, self.output.node, &context)? {
+                return Ok(Some(GridChild {
+                    phase: GridChildPhase::Refresh {
+                        node: request.node(),
+                        input: request.input(),
+                        request: Some(Box::new(request)),
+                    },
+                }));
+            }
+            let Some(GridPassChildren::RefreshOrdinary(grid)) = self.children.take() else {
+                unreachable!()
+            };
+            let OrdinaryGridRefresh { source, finishing } = *grid;
+            let context = source.context(&self.output, self.scroll_box);
+            let children =
+                source
+                    .tracks
+                    .finish_placement(tree, self.output.node, finishing, &context)?;
             self.children = Some(GridPassChildren::Positioned(children));
         }
         let Some(GridPassChildren::Positioned(children)) = &mut self.children else {
@@ -1289,6 +1582,48 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
                 children.accept(tree, child, output)
             }
             _ => unreachable!("Grid child receipt belongs to the active placement phase"),
+        }
+    }
+
+    fn accept_context<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        child: GridChild<'input, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match (&mut self.children, child.phase) {
+            (Some(GridPassChildren::InFlowLanes(lanes)), GridChildPhase::InFlow(child)) => {
+                let input = lanes.source.input(&self.output, self.scroll_box);
+                lanes.collection.accept_context(
+                    tree,
+                    self.output.node,
+                    &lanes.geometry.item_input(&input, &lanes.children),
+                    child,
+                    result,
+                )
+            }
+            (Some(GridPassChildren::InFlowOrdinary(grid)), GridChildPhase::InFlow(child)) => {
+                let context = grid.source.context(&self.output, self.scroll_box);
+                grid.collection.accept_context(
+                    tree,
+                    self.output.node,
+                    &grid.placement.item_input(&context),
+                    child,
+                    result,
+                )
+            }
+            (Some(GridPassChildren::RefreshLanes(lanes)), GridChildPhase::Refresh { .. }) => {
+                let input = lanes.source.input(&self.output, self.scroll_box);
+                lanes.finishing.accept(self.output.node, &input, result)
+            }
+            (Some(GridPassChildren::RefreshOrdinary(grid)), GridChildPhase::Refresh { .. }) => {
+                let context = grid.source.context(&self.output, self.scroll_box);
+                grid.finishing.accept(self.output.node, &context, result)
+            }
+            _ => unreachable!("Grid context receipt belongs to the active placement phase"),
         }
     }
 
@@ -3829,6 +4164,34 @@ impl<S: LayoutScalar> OrdinaryGridTracks<S> {
         }
     }
 
+    fn begin_finish<'input, Node: Copy + Eq, M>(
+        &self,
+        node: Node,
+        placement: OrdinaryGridPlacement<Node, S>,
+        context: &GridLayoutContext<'input, '_, Node, S>,
+        pending: PendingGridItems<'input, Node, S>,
+    ) -> LayoutResultOf<Node, OrdinaryGridFinish<'input, Node, S>, S, M> {
+        placement.begin_finish(node, context, pending)
+    }
+
+    fn finish_placement<'input, Tree, M>(
+        &self,
+        tree: &mut Tree,
+        node: Tree::Node,
+        finishing: OrdinaryGridFinish<'input, Tree::Node, S>,
+        context: &GridLayoutContext<'input, '_, Tree::Node, S>,
+    ) -> GridChildPlacementResult<'input, Tree::Node, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        let mut layout = finishing.finish(tree, node, context)?;
+        if let Some(size) = self.contained_track_size {
+            layout = layout.with_contained_track_size(size);
+        }
+        Ok(layout)
+    }
+
+    // The synchronous drain of the refresh requests.
     fn finish<'input, Tree, M>(
         &self,
         tree: &mut Tree,
@@ -3840,11 +4203,12 @@ impl<S: LayoutScalar> OrdinaryGridTracks<S> {
     where
         Tree: Compute<'input, M, Scalar = S>,
     {
-        let mut layout = placement.finish(tree, node, context, pending)?;
-        if let Some(size) = self.contained_track_size {
-            layout = layout.with_contained_track_size(size);
+        let mut finishing = self.begin_finish(node, placement, context, pending)?;
+        while let Some(request) = finishing.next(tree, node, context)? {
+            let result = request.compute_sync(tree)?;
+            finishing.accept(node, context, result)?;
         }
-        Ok(layout)
+        self.finish_placement(tree, node, finishing, context)
     }
 }
 

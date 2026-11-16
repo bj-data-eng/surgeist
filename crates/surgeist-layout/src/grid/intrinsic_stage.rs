@@ -1572,23 +1572,7 @@ pub(super) enum GridIntrinsicProbeKind {
 // derived context would lose that source and permit a later full-size call.
 #[derive(Clone, Debug)]
 pub(super) struct IntrinsicSubgridSource<'input, Node, S: LayoutScalar> {
-    item: SubgridItemReport<Node>,
-    parent_baseline_references: crate::GridBaselineReferences,
-    child_style: GridItemProjection<'input, S>,
-    container: GridContainerInput<'input, S>,
-    area: GridArea<S>,
-    content_box_size: Size<S>,
-    columns: Vec<S>,
-    rows: Vec<S>,
-    column_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
-    row_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
-    gap: LogicalSizeOf<S>,
-    named_columns: NamedGridLines,
-    named_rows: NamedGridLines,
-    area_facts: Option<GridAreaNameFacts>,
-    margin: Edges<Option<S>>,
-    border: Edges<S>,
-    padding: Edges<S>,
+    context: OwnedSubgridContext<'input, Node, S>,
     column_geometry: Option<UsedGridAxisGeometryOf<S>>,
     row_geometry: Option<UsedGridAxisGeometryOf<S>>,
     parent_flow: crate::geometry::FlowAxes,
@@ -1603,38 +1587,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
         parent_flow: crate::geometry::FlowAxes,
         stage: GridSizingStage,
     ) -> Result<Self, SubgridChildContextError<S>> {
-        let column_minimum_functions = source
-            .minimum_functions
-            .columns
-            .map(GridMinimumTrackFunctions::retain)
-            .transpose()
-            .map_err(SubgridChildContextError::MinimumFunctions)?;
-        let row_minimum_functions = source
-            .minimum_functions
-            .rows
-            .map(GridMinimumTrackFunctions::retain)
-            .transpose()
-            .map_err(SubgridChildContextError::MinimumFunctions)?;
         Ok(Self {
-            item: source.item,
-            parent_baseline_references: source.parent_baseline_references,
-            child_style: source.child_style.clone(),
-            container: source
-                .child_container
-                .expect("a retained intrinsic subgrid has its original container"),
-            area: source.area,
-            content_box_size: source.content_box_size,
-            columns: source.columns.to_vec(),
-            rows: source.rows.to_vec(),
-            column_minimum_functions,
-            row_minimum_functions,
-            gap: source.gap,
-            named_columns: source.parent_named_columns.clone(),
-            named_rows: source.parent_named_rows.clone(),
-            area_facts: source.parent_area_facts.cloned(),
-            margin: source.margin,
-            border: source.border,
-            padding: source.padding,
+            context: OwnedSubgridContext::new(source)?,
             column_geometry: column_geometry.cloned(),
             row_geometry: row_geometry.cloned(),
             parent_flow,
@@ -1643,7 +1597,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
     }
 
     pub(super) fn container_input(&self) -> GridContainerInput<'input, S> {
-        self.container
+        self.context.container_input()
     }
 
     pub(super) fn measure<Tree, M>(
@@ -1654,36 +1608,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let source = SubgridChildParentContextInput {
-            item: self.item,
-            parent_baseline_references: self.parent_baseline_references,
-            child_style: &self.child_style,
-            child_container: Some(self.container),
-            area: self.area,
-            content_box_size: self.content_box_size,
-            columns: &self.columns,
-            rows: &self.rows,
-            minimum_functions: GridMinimumParentFunctions {
-                columns: self
-                    .column_minimum_functions
-                    .as_deref()
-                    .map(GridMinimumTrackFunctions::from_qualified),
-                rows: self
-                    .row_minimum_functions
-                    .as_deref()
-                    .map(GridMinimumTrackFunctions::from_qualified),
-            },
-            gap: self.gap,
-            parent_named_columns: &self.named_columns,
-            parent_named_rows: &self.named_rows,
-            parent_area_facts: self.area_facts.as_ref(),
-            margin: self.margin,
-            border: self.border,
-            padding: self.padding,
-            scrollbar_gutter: Edges::ZERO,
-        };
+        let source = self.context.input();
         match tree.observe_grid_overflow(
-            self.item.node,
+            source.item.node,
             GridOverflowProbe {
                 layout: GridOverflowLayout::Intrinsic(GridIntrinsicProbe {
                     input,

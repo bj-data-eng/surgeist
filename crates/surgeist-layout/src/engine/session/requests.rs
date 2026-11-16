@@ -14,8 +14,10 @@ use crate::engine::block_scope::{ComputeResult, ComputeStop, ordinary};
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::flex::{FlexChild, FlexComputation, begin_flex_computation};
 use crate::grid::{
-    GridChild, GridContinuation, GridRequest as GridComputationRequest, OrdinaryGridObservation,
+    GridChild, GridComputeResult, GridContextRequest, GridContinuation,
+    GridRequest as GridComputationRequest, OrdinaryGridObservation,
     OrdinaryGridObservationCompletion, OrdinaryGridObservationRun, begin_grid_computation,
+    begin_grid_context_computation,
 };
 use crate::{
     Compute, ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
@@ -39,6 +41,8 @@ enum Request<'input, Node, S: LayoutScalar> {
     AdvanceBlock,
     AdvanceFlex,
     AdvanceGrid,
+    /// A subgrid item's contextual Grid computation; it bypasses child admission.
+    ContextGrid(Box<GridContextRequest<'input, Node, S>>),
     GridObservation(Box<OrdinaryGridObservation<'input, Node, S>>),
     GridObservationRun(Box<OrdinaryGridObservationRun<'input, Node, S>>),
     Qualify(crate::block::entry::EntryQuery<Node, S>),
@@ -83,6 +87,7 @@ impl OutputProjection {
 
 enum CompletedRequest<'input, Node, S: LayoutScalar> {
     GridObservation(Box<OrdinaryGridObservationCompletion<'input, Node, S>>),
+    Context(Box<GridComputeResult<Node, S>>),
     Entry(Box<crate::block::entry::EntryObservation<Node, S>>),
     Layout(ComputeOutputOf<S>),
     Axis(S),
@@ -92,7 +97,7 @@ impl<'input, Node, S: LayoutScalar> CompletedRequest<'input, Node, S> {
     fn layout(self) -> ComputeOutputOf<S> {
         match self {
             Self::Layout(output) => output,
-            Self::GridObservation(_) | Self::Entry(_) | Self::Axis(_) => {
+            Self::GridObservation(_) | Self::Context(_) | Self::Entry(_) | Self::Axis(_) => {
                 unreachable!("a layout request completes with layout geometry")
             }
         }
@@ -101,7 +106,7 @@ impl<'input, Node, S: LayoutScalar> CompletedRequest<'input, Node, S> {
     fn axis(self) -> S {
         match self {
             Self::Axis(output) => output,
-            Self::GridObservation(_) | Self::Entry(_) | Self::Layout(_) => {
+            Self::GridObservation(_) | Self::Context(_) | Self::Entry(_) | Self::Layout(_) => {
                 unreachable!("an axis request completes with a scalar")
             }
         }
@@ -138,9 +143,18 @@ struct FlexRequest<'input, Node, S: LayoutScalar> {
 
 struct GridRequest<'input, Node, S: LayoutScalar> {
     computation: GridContinuation<'input, Node, S>,
-    completion: ChildCompletion<Node, S>,
-    projection: OutputProjection,
+    completion: GridCompletion<Node, S>,
     child: Option<GridChild<'input, Node, S>>,
+}
+
+enum GridCompletion<Node, S: LayoutScalar> {
+    Child {
+        completion: ChildCompletion<Node, S>,
+        projection: OutputProjection,
+    },
+    /// A contextual computation caches and memoizes nothing; its receipt is
+    /// the Grid result its parent consumes.
+    Context,
 }
 
 struct GridObservationRequest<'input, Node, S: LayoutScalar> {
@@ -467,7 +481,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let Request::GridObservationRun(mut run) = request else {
             unreachable!()
         };
-        if let Some(child) = run.advance(self)? {
+        if let Some(mut child) = run.advance(self)? {
             let (node, input) = child.request();
             pending
                 .order
@@ -477,16 +491,20 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 .grid_observations
                 .try_reserve(1)
                 .map_err(|_| reserve_error(node))?;
+            let request = match child.take_context_request() {
+                Some(request) => Request::ContextGrid(Box::new(request)),
+                None => Request::Child {
+                    node,
+                    input,
+                    projection: OutputProjection::Layout,
+                },
+            };
             pending.grid_observations.push(GridObservationRequest {
                 computation: run,
                 child,
             });
             pending.order.push(PendingRequest::GridObservation);
-            Ok(Request::Child {
-                node,
-                input,
-                projection: OutputProjection::Layout,
-            })
+            Ok(request)
         } else {
             Ok(Request::Complete(CompletedRequest::GridObservation(
                 Box::new(run.finish()?),
@@ -656,6 +674,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 Request::GridObservation(source) => {
                     return Ok(RequestProgress::GridObservation(source));
                 }
+                Request::ContextGrid(request) => self.begin_context_grid(*request, pending)?,
                 request @ Request::GridObservationRun(_) => {
                     self.advance_grid_observation_request(request, pending)?
                 }
@@ -691,7 +710,9 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                             CompletedRequest::Entry(observation) => {
                                 BlockChildReceipt::Entry(observation)
                             }
-                            CompletedRequest::GridObservation(_) | CompletedRequest::Axis(_) => {
+                            CompletedRequest::GridObservation(_)
+                            | CompletedRequest::Context(_)
+                            | CompletedRequest::Axis(_) => {
                                 unreachable!("Block child has layout or entry result")
                             }
                         },
@@ -1005,7 +1026,10 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
             .grid_observations
             .pop()
             .expect("active observation child");
-        run.accept(self, child, output.layout())?;
+        match output {
+            CompletedRequest::Context(result) => run.accept_context(self, child, *result)?,
+            output => run.accept(self, child, output.layout())?,
+        }
         Ok(Request::GridObservationRun(run))
     }
 
@@ -1018,6 +1042,10 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         match output {
             CompletedRequest::GridObservation(completion) => {
                 parent.computation.accept_observation(*completion)?
+            }
+            CompletedRequest::Context(result) => {
+                let child = parent.child.take().expect("pending Grid child request");
+                parent.computation.accept_context(self, child, *result)?;
             }
             output => {
                 let child = parent.child.take().expect("pending Grid child request");
@@ -1042,9 +1070,13 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 self.finish_container_request(node, input, completion, projection, output)
             }
             ControlFlow::Continue(mut computation) => match computation.advance(self)? {
-                ControlFlow::Break(output) => {
-                    self.finish_container_request(node, input, completion, projection, output)
-                }
+                ControlFlow::Break(result) => self.finish_container_request(
+                    node,
+                    input,
+                    completion,
+                    projection,
+                    result.into_output(),
+                ),
                 ControlFlow::Continue(child) => {
                     pending
                         .grids
@@ -1055,13 +1087,46 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                         Self::schedule_grid_request(child, &mut pending_child, &mut pending.order)?;
                     pending.grids.push(GridRequest {
                         computation,
-                        completion,
-                        projection,
+                        completion: GridCompletion::Child {
+                            completion,
+                            projection,
+                        },
                         child: pending_child,
                     });
                     Ok(request)
                 }
             },
+        }
+    }
+
+    /// Begins a subgrid item's contextual Grid computation on the request
+    /// stack. It takes no child admission, as its synchronous form took none.
+    fn begin_context_grid(
+        &mut self,
+        request: GridContextRequest<'input, Tree::Node, Tree::Scalar>,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
+        let node = request.node();
+        let mut computation = begin_grid_context_computation(self, request)?;
+        match computation.advance(self)? {
+            ControlFlow::Break(result) => Ok(Request::Complete(CompletedRequest::Context(
+                Box::new(result),
+            ))),
+            ControlFlow::Continue(child) => {
+                pending
+                    .grids
+                    .try_reserve(1)
+                    .map_err(|_| reserve_error(node))?;
+                let mut pending_child = None;
+                let request =
+                    Self::schedule_grid_request(child, &mut pending_child, &mut pending.order)?;
+                pending.grids.push(GridRequest {
+                    computation,
+                    completion: GridCompletion::Context,
+                    child: pending_child,
+                });
+                Ok(request)
+            }
         }
     }
 
@@ -1071,16 +1136,26 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.grids.last_mut().expect("active Grid request");
         match parent.computation.advance(self)? {
-            ControlFlow::Break(output) => {
+            ControlFlow::Break(result) => {
                 let parent = pending.grids.pop().expect("completed Grid request");
-                let (node, input) = parent.computation.request();
-                self.finish_container_request(
-                    node,
-                    input,
-                    parent.completion,
-                    parent.projection,
-                    output,
-                )
+                match parent.completion {
+                    GridCompletion::Child {
+                        completion,
+                        projection,
+                    } => {
+                        let (node, input) = parent.computation.request();
+                        self.finish_container_request(
+                            node,
+                            input,
+                            completion,
+                            projection,
+                            result.into_output(),
+                        )
+                    }
+                    GridCompletion::Context => Ok(Request::Complete(CompletedRequest::Context(
+                        Box::new(result),
+                    ))),
+                }
             }
             ControlFlow::Continue(child) => {
                 Self::schedule_grid_request(child, &mut parent.child, &mut pending.order)
@@ -1094,15 +1169,19 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         order: &mut Vec<PendingRequest>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         match child {
-            GridComputationRequest::Child(child) => {
+            GridComputationRequest::Child(mut child) => {
                 let (node, input) = child.request();
                 order.try_reserve(1).map_err(|_| reserve_error(node))?;
                 order.push(PendingRequest::Grid);
+                let context = child.take_context_request();
                 *pending_child = Some(child);
-                Ok(Request::Child {
-                    node,
-                    input,
-                    projection: OutputProjection::Layout,
+                Ok(match context {
+                    Some(request) => Request::ContextGrid(Box::new(request)),
+                    None => Request::Child {
+                        node,
+                        input,
+                        projection: OutputProjection::Layout,
+                    },
                 })
             }
             GridComputationRequest::Observation(source) => {

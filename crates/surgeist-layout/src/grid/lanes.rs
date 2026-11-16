@@ -3494,6 +3494,146 @@ impl<S: LayoutScalar> LanePlacementGeometry<S> {
         }
     }
 
+    // The baseline frame of this placement's items, as the executed census and
+    // the refresh see it.
+    fn executed_frame<'a, Node>(
+        &'a self,
+        input: &'a GridLanesLayoutInput<'_, '_, Node, S>,
+    ) -> ExecutedBaselineFrame<'a, S> {
+        let grid_axis = self.lane_report.grid_axis;
+        ExecutedBaselineFrame {
+            style: input.style,
+            size: self.containing_size,
+            execution_input: input.execution_input,
+            stage: input.sizing_stage,
+            columns: (grid_axis == GridAxisKind::Column
+                && input.sizing_stage.has_resolved_axis(GridAxisKind::Column))
+            .then_some(ExecutedBaselineAxisFrame {
+                starts: &self.column_offsets,
+                sizes: input.columns,
+            }),
+            rows: (grid_axis == GridAxisKind::Row
+                && input.sizing_stage.has_resolved_axis(GridAxisKind::Row))
+            .then_some(ExecutedBaselineAxisFrame {
+                starts: &self.row_offsets,
+                sizes: input.rows,
+            }),
+            sizing: ExecutedBaselineSizing {
+                row_tracks: input.row_tracks,
+                track_basis: input.track_basis,
+            },
+        }
+    }
+
+    // The refresh's view of this placement and the census it follows.
+    fn refresh_input<'a, Node>(
+        &'a self,
+        node: Node,
+        input: &'a GridLanesLayoutInput<'_, '_, Node, S>,
+        ancestor_baseline_groups: &'a FinalAncestorBaselineGroups<Node, S>,
+        original_executed: &'a ExecutedBaselineInventory<Node, S>,
+    ) -> SubgridBaselineRefreshInput<'a, Node, S> {
+        let parent_context = input.parent_context;
+        SubgridBaselineRefreshInput {
+            node,
+            container_style: input.style,
+            columns: input.columns,
+            rows: input.rows,
+            minimum_functions: input.minimum_functions,
+            column_geometry: &self.column_geometry,
+            row_geometry: &self.row_geometry,
+            row_tracks: input.row_tracks,
+            track_basis: input.track_basis,
+            gap: input.gap,
+            named_columns: &self.context.named_columns,
+            named_rows: &self.context.named_rows,
+            area_facts: self.context.area_facts.as_ref(),
+            template_area_expanded_axes: TemplateAreaExpandedAxes::new(
+                parent_context.columns.as_ref().map_or_else(
+                    || {
+                        self.context
+                            .topology
+                            .template_area_expanded_axes()
+                            .for_axis(GridAxisKind::Column)
+                    },
+                    |axis| axis.template_area_expanded,
+                ),
+                parent_context.rows.as_ref().map_or_else(
+                    || {
+                        self.context
+                            .topology
+                            .template_area_expanded_axes()
+                            .for_axis(GridAxisKind::Row)
+                    },
+                    |axis| axis.template_area_expanded,
+                ),
+            ),
+            subgrid_report: input.subgrid_report,
+            ancestor_baseline_groups,
+            executed_frame: self.executed_frame(input),
+            orthogonal_fallback: input.constants.child_orthogonal_fallback,
+            original_executed,
+            containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass,
+            sizing_stage: input.sizing_stage,
+        }
+    }
+
+    // The physical space a refreshed lane item is laid out in.
+    fn refresh_space<'input, Node>(
+        &self,
+        input: &GridLanesLayoutInput<'input, '_, Node, S>,
+        item: &PendingGridItem<'input, Node, S>,
+    ) -> GridItemLayoutSpace<S> {
+        let flow_axes = input.constants.flow_axes;
+        let packed = self
+            .lane_report
+            .item(item.source_index)
+            .expect("refreshed lane item retains its packed cell");
+        let mut containing = item.area.size;
+        match self.lane_report.lane_axis.logical_axis() {
+            LogicalAxis::Inline => containing.inline = self.content_box_size.inline,
+            LogicalAxis::Block => containing.block = self.content_box_size.block,
+        }
+        GridItemLayoutSpace {
+            alignment_size: flow_axes.physical_size(item.area.size),
+            containing_size: flow_axes.physical_size(containing),
+            natural_stacking_margin_box: Some(packed.lane_axis_margin_box),
+        }
+    }
+
+    /// Captures the executed baselines of the placed items, the start of the
+    /// finish that precedes the subgrid baseline refresh.
+    pub(super) fn begin_finish<'input, Node: Copy + Eq, M>(
+        self,
+        node: Node,
+        input: &GridLanesLayoutInput<'input, '_, Node, S>,
+        pending: PendingGridItems<'input, Node, S>,
+    ) -> LayoutResultOf<Node, GridLanesFinish<'input, Node, S>, S, M> {
+        let PendingGridItems {
+            in_flow: mut pending_items,
+            absolute: pending_absolute,
+        } = pending;
+        let executed_inventory = capture_executed_baselines(
+            node,
+            self.executed_frame(input),
+            &mut pending_items,
+            input.subgrid_report,
+        )?;
+        let ancestor_baseline_groups = final_ancestor_baseline_groups(&executed_inventory)
+            .with_parent_context(input.parent_context);
+        let current_grid_baseline_groups = ancestor_baseline_groups.placement_groups();
+        Ok(GridLanesFinish {
+            geometry: self,
+            pending_items,
+            pending_absolute,
+            executed_inventory,
+            ancestor_baseline_groups,
+            current_grid_baseline_groups,
+            refresh: SubgridBaselineRefresh::new(),
+        })
+    }
+
+    // The synchronous drain of the refresh requests.
     pub(super) fn finish<'input, Tree, M>(
         self,
         tree: &mut Tree,
@@ -3504,132 +3644,114 @@ impl<S: LayoutScalar> LanePlacementGeometry<S> {
     where
         Tree: Compute<'input, M, Scalar = S>,
     {
+        let mut finishing = self.begin_finish(node, input, pending)?;
+        while let Some(request) = finishing.next(tree, node, input)? {
+            let result = request.compute_sync(tree)?;
+            finishing.accept(node, input, result)?;
+        }
+        finishing.finish(tree, node, input)
+    }
+}
+
+/// A Grid Lanes container's placed items between their baseline capture and
+/// their staging. Each subgrid item refreshes through one request.
+pub(super) struct GridLanesFinish<'input, Node, S: LayoutScalar> {
+    geometry: LanePlacementGeometry<S>,
+    pending_items: Vec<PendingGridItem<'input, Node, S>>,
+    pending_absolute: Vec<PendingAbsoluteGridItem<Node>>,
+    executed_inventory: ExecutedBaselineInventory<Node, S>,
+    ancestor_baseline_groups: FinalAncestorBaselineGroups<Node, S>,
+    current_grid_baseline_groups: GridBaselineGroups<S>,
+    refresh: SubgridBaselineRefresh<S>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridLanesFinish<'input, Node, S> {
+    /// The next subgrid item's refresh request, in source order.
+    pub(super) fn next<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridLanesLayoutInput<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, Option<GridContextRequest<'input, Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let refresh_input = self.geometry.refresh_input(
+            node,
+            input,
+            &self.ancestor_baseline_groups,
+            &self.executed_inventory,
+        );
+        let geometry = &self.geometry;
+        self.refresh
+            .next(tree, &refresh_input, &self.pending_items, |item| {
+                geometry.refresh_space(input, item)
+            })
+    }
+
+    pub(super) fn accept<M>(
+        &mut self,
+        node: Node,
+        input: &GridLanesLayoutInput<'input, '_, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let refresh_input = self.geometry.refresh_input(
+            node,
+            input,
+            &self.ancestor_baseline_groups,
+            &self.executed_inventory,
+        );
+        self.refresh
+            .accept(&refresh_input, &mut self.pending_items, result)
+    }
+
+    pub(super) fn finish<Tree, M>(
+        self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridLanesLayoutInput<'input, '_, Node, S>,
+    ) -> GridChildPlacementResult<'input, Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
         let Self {
+            geometry,
+            mut pending_items,
+            pending_absolute,
+            executed_inventory,
+            ancestor_baseline_groups,
+            current_grid_baseline_groups,
+            ..
+        } = self;
+        let LanePlacementGeometry {
             context,
             lane_report,
-            content_box_size,
             containing_size,
             lane_axis_alignment_start,
             column_geometry,
             row_geometry,
             column_offsets,
             row_offsets,
-        } = self;
+            ..
+        } = geometry;
         let GridLanesLayoutInput {
             style,
             constants,
             execution_input,
-            sizing_stage,
             columns,
             rows,
             row_tracks,
             track_basis,
             subgrid_report,
-            parent_context,
-            minimum_functions,
-            gap,
-            containing_auto_scrollbar_pass,
             scroll_box,
             placements,
+            containing_auto_scrollbar_pass,
             ..
         } = *input;
-        let PendingGridItems {
-            in_flow: mut pending_items,
-            absolute: pending_absolute,
-        } = pending;
         let mut child_contributions = Vec::new();
         let flow_axes = constants.flow_axes;
         let lane_axis = lane_report.lane_axis;
         let logical_content_box_inset = flow_axes.logical_edges(constants.content_box_inset);
-        let grid_axis = lane_report.grid_axis;
-        let executed_frame = ExecutedBaselineFrame {
-            style,
-            size: containing_size,
-            execution_input,
-            stage: sizing_stage,
-            columns: (grid_axis == GridAxisKind::Column
-                && sizing_stage.has_resolved_axis(GridAxisKind::Column))
-            .then_some(ExecutedBaselineAxisFrame {
-                starts: &column_offsets,
-                sizes: columns,
-            }),
-            rows: (grid_axis == GridAxisKind::Row
-                && sizing_stage.has_resolved_axis(GridAxisKind::Row))
-            .then_some(ExecutedBaselineAxisFrame {
-                starts: &row_offsets,
-                sizes: rows,
-            }),
-            sizing: ExecutedBaselineSizing {
-                row_tracks,
-                track_basis,
-            },
-        };
-        let executed_inventory =
-            capture_executed_baselines(node, executed_frame, &mut pending_items, subgrid_report)?;
-        let ancestor_baseline_groups =
-            final_ancestor_baseline_groups(&executed_inventory).with_parent_context(parent_context);
-        let current_grid_baseline_groups = ancestor_baseline_groups.placement_groups();
-        refresh_subgrid_items_with_baselines(
-            tree,
-            SubgridBaselineRefreshInput {
-                node,
-                container_style: style,
-                columns,
-                rows,
-                minimum_functions,
-                column_geometry: &column_geometry,
-                row_geometry: &row_geometry,
-                row_tracks,
-                track_basis,
-                gap,
-                named_columns: context.named_columns.clone(),
-                named_rows: context.named_rows.clone(),
-                area_facts: context.area_facts.clone(),
-                template_area_expanded_axes: TemplateAreaExpandedAxes::new(
-                    parent_context.columns.as_ref().map_or_else(
-                        || {
-                            context
-                                .topology
-                                .template_area_expanded_axes()
-                                .for_axis(GridAxisKind::Column)
-                        },
-                        |axis| axis.template_area_expanded,
-                    ),
-                    parent_context.rows.as_ref().map_or_else(
-                        || {
-                            context
-                                .topology
-                                .template_area_expanded_axes()
-                                .for_axis(GridAxisKind::Row)
-                        },
-                        |axis| axis.template_area_expanded,
-                    ),
-                ),
-                subgrid_report,
-                ancestor_baseline_groups: &ancestor_baseline_groups,
-                executed_frame,
-                orthogonal_fallback: constants.child_orthogonal_fallback,
-                original_executed: &executed_inventory,
-                containing_auto_scrollbar_pass,
-                sizing_stage,
-            },
-            &mut pending_items,
-            |item| {
-                let packed = lane_report
-                    .item(item.source_index)
-                    .expect("refreshed lane item retains its packed cell");
-                let mut containing = item.area.size;
-                match lane_axis.logical_axis() {
-                    LogicalAxis::Inline => containing.inline = content_box_size.inline,
-                    LogicalAxis::Block => containing.block = content_box_size.block,
-                }
-                GridItemLayoutSpace {
-                    alignment_size: flow_axes.physical_size(item.area.size),
-                    containing_size: flow_axes.physical_size(containing),
-                    natural_stacking_margin_box: Some(packed.lane_axis_margin_box),
-                }
-            },
-        )?;
 
         stage_lane_items(
             tree,

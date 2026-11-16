@@ -190,76 +190,6 @@ pub(super) enum FinalGridChildGeometry<'a, S: LayoutScalar> {
     },
 }
 
-struct FinalGridChildRequest<'a, S: LayoutScalar> {
-    input: ComputeInputOf<S>,
-    parent_axes: FlowAxes,
-    sizing_stage: GridSizingStage,
-    geometry: FinalGridChildGeometry<'a, S>,
-    standalone_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
-}
-
-type FinalGridChildResult<Node, S, M> = LayoutResultOf<
-    Node,
-    (
-        ComputeOutputOf<S>,
-        Option<ExecutedBaselineInventory<Node, S>>,
-    ),
-    S,
-    M,
->;
-
-fn compute_contextual_grid_child<'input, Tree, M>(
-    tree: &mut Tree,
-    container: Tree::Node,
-    child: Tree::Node,
-    context: SubgridChildParentContextInput<'input, '_, Tree::Node, Tree::Scalar>,
-    request: FinalGridChildRequest<'_, Tree::Scalar>,
-) -> FinalGridChildResult<Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let input = request.input;
-    debug_assert!(context.item.needs_context());
-    let (minimum, columns, rows) = match request.geometry {
-        FinalGridChildGeometry::Ordinary { columns, rows } => {
-            (request.standalone_minimum, Some(columns), Some(rows))
-        }
-        FinalGridChildGeometry::Lanes { .. } => (Size::NONE, None, None),
-    };
-    let child_axes = FlowAxes::new(
-        context.child_style.writing_mode,
-        context.child_style.direction,
-    );
-    let stage = request.sizing_stage.mapped(request.parent_axes, child_axes);
-    // The nested grid uses the current parent's track and scrollbar context.
-    let result = compute_grid_with_context_source(
-        tree,
-        child,
-        input,
-        minimum,
-        context.container(),
-        stage,
-        |constants| {
-            subgrid_child_parent_context_with_geometry(
-                context.for_scrollbar_pass(constants),
-                columns,
-                rows,
-            )
-            .map_err(|error| subgrid_child_context_container_error(container, child, error))
-        },
-    )?;
-    let source = require_executed_baselines(
-        container,
-        child,
-        child_axes,
-        result.output,
-        input,
-        stage,
-        result.executed_baselines,
-    )?;
-    Ok((result.output, Some(source)))
-}
-
 pub(super) enum GridItemDisposition<S: LayoutScalar> {
     Skip,
     Hidden,
@@ -325,7 +255,12 @@ where
     Tree: Compute<'input, M>,
 {
     let mut collection = GridItemCollection::new(&input);
-    while let Some(child) = collection.next(tree, node, &input, &mut place)? {
+    while let Some(mut child) = collection.next(tree, node, &input, &mut place)? {
+        if let Some(request) = child.take_context_request() {
+            let result = request.compute_sync(tree)?;
+            collection.accept_context(tree, node, &input, child, result)?;
+            continue;
+        }
         let (child_node, request) = child.request();
         let output = tree.compute_child(child_node, request)?;
         collection.accept(tree, node, &input, child, output)?;
@@ -355,6 +290,8 @@ pub(super) enum GridFlowChild<'input, Node, S: LayoutScalar> {
         input: ComputeInputOf<S>,
     },
     Item(Box<PreparedGridItem<'input, Node, S>>),
+    /// A subgrid item computed as a contextual Grid request, not a plain child.
+    Contextual(Box<ContextualGridItem<'input, Node, S>>),
 }
 
 impl<Node: Copy, S: LayoutScalar> GridFlowChild<'_, Node, S> {
@@ -362,8 +299,27 @@ impl<Node: Copy, S: LayoutScalar> GridFlowChild<'_, Node, S> {
         match self {
             Self::Hidden { node, input } => (*node, *input),
             Self::Item(item) => (item.child, item.preparation.input),
+            Self::Contextual(item) => (item.prepared.child, item.prepared.preparation.input),
         }
     }
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridFlowChild<'input, Node, S> {
+    pub(super) fn take_context_request(&mut self) -> Option<GridContextRequest<'input, Node, S>> {
+        match self {
+            Self::Contextual(item) => item.request.take(),
+            Self::Hidden { .. } | Self::Item(_) => None,
+        }
+    }
+}
+
+/// A prepared subgrid item whose contextual computation is outstanding. Its
+/// receipt validates the executed baselines before the item is finished.
+pub(super) struct ContextualGridItem<'input, Node, S: LayoutScalar> {
+    prepared: PreparedGridItem<'input, Node, S>,
+    request: Option<GridContextRequest<'input, Node, S>>,
+    child_axes: FlowAxes,
+    stage: GridSizingStage,
 }
 
 pub(super) struct PreparedGridItem<'input, Node, S: LayoutScalar> {
@@ -504,11 +460,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
             if !subgrid_item.needs_context() {
                 return Ok(Some(GridFlowChild::Item(Box::new(prepared))));
             }
-            let child_style = &prepared.child_style;
             let child_context = SubgridChildParentContextInput {
                 item: subgrid_item,
                 parent_baseline_references: style.baseline_references,
-                child_style,
+                child_style: &prepared.child_style,
                 child_container,
                 area,
                 content_box_size: subgrid_content_box_size,
@@ -524,26 +479,45 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
                 padding,
                 scrollbar_gutter: Edges::ZERO,
             };
-            let (output, executed_baselines) = compute_contextual_grid_child(
-                tree,
-                node,
-                child,
-                child_context,
-                FinalGridChildRequest {
-                    input: child_input,
-                    parent_axes: flow,
-                    sizing_stage: *sizing_stage,
-                    geometry: *geometry,
-                    standalone_minimum: item.standalone_intrinsic_minimum,
+            let child_axes = FlowAxes::new(
+                prepared.child_style.writing_mode,
+                prepared.child_style.direction,
+            );
+            let stage = sizing_stage.mapped(flow, child_axes);
+            let (minimum, column_geometry, row_geometry) = match geometry {
+                FinalGridChildGeometry::Ordinary { columns, rows } => (
+                    item.standalone_intrinsic_minimum,
+                    Some((*columns).clone()),
+                    Some((*rows).clone()),
+                ),
+                FinalGridChildGeometry::Lanes { .. } => (Size::NONE, None, None),
+            };
+            // The nested grid uses the current parent's track and scrollbar
+            // context, owned here so the request outlives this borrow.
+            let container = child_context.container();
+            let parent_context = match OwnedSubgridContext::spanned(child_context) {
+                Ok(context) => {
+                    GridParentContextSource::final_geometry(context, column_geometry, row_geometry)
+                }
+                Err(error) => GridParentContextSource::Rejected(error),
+            };
+            let request = GridContextRequest {
+                container: node,
+                node: child,
+                input: child_input,
+                minimum,
+                child: container,
+                stage,
+                parent_context,
+            };
+            return Ok(Some(GridFlowChild::Contextual(Box::new(
+                ContextualGridItem {
+                    prepared,
+                    request: Some(request),
+                    child_axes,
+                    stage,
                 },
-            )?;
-            self.items.in_flow.push(prepared.finish(
-                tree,
-                node,
-                input,
-                output,
-                executed_baselines,
-            )?);
+            ))));
         }
         Ok(None)
     }
@@ -559,11 +533,52 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        if let GridFlowChild::Item(item) = child {
-            self.items
-                .in_flow
-                .push(item.finish(tree, node, input, output, None)?);
+        match child {
+            GridFlowChild::Item(item) => {
+                self.items
+                    .in_flow
+                    .push(item.finish(tree, node, input, output, None)?);
+            }
+            GridFlowChild::Hidden { .. } => {}
+            GridFlowChild::Contextual(_) => {
+                unreachable!("a contextual item completes with its Grid result")
+            }
         }
+        Ok(())
+    }
+
+    pub(super) fn accept_context<Tree, M>(
+        &mut self,
+        tree: &Tree,
+        node: Node,
+        input: &GridChildItemsInput<'input, '_, Node, S>,
+        child: GridFlowChild<'input, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let GridFlowChild::Contextual(item) = child else {
+            unreachable!("only a contextual item completes with a Grid result");
+        };
+        let ContextualGridItem {
+            prepared,
+            child_axes,
+            stage,
+            ..
+        } = *item;
+        let source = require_executed_baselines(
+            node,
+            prepared.child,
+            child_axes,
+            result.output,
+            prepared.preparation.input,
+            stage,
+            result.executed_baselines,
+        )?;
+        self.items
+            .in_flow
+            .push(prepared.finish(tree, node, input, result.output, Some(source))?);
         Ok(())
     }
 
@@ -938,17 +953,179 @@ impl<Node: Copy + Eq, S: LayoutScalar> OrdinaryGridPlacement<Node, S> {
         }
     }
 
-    pub(super) fn finish<'input, Tree, M>(
+    // The baseline frame of this placement's items, as the executed census and
+    // the refresh see it.
+    fn executed_frame<'a>(
+        &'a self,
+        input: &'a GridLayoutContext<'_, '_, Node, S>,
+    ) -> ExecutedBaselineFrame<'a, S> {
+        ExecutedBaselineFrame {
+            style: input.style,
+            size: self.containing_size,
+            execution_input: input.execution_input,
+            stage: input.sizing_stage,
+            columns: input
+                .sizing_stage
+                .has_resolved_axis(GridAxisKind::Column)
+                .then_some(ExecutedBaselineAxisFrame {
+                    starts: self.logical_column_geometry.line_offsets(),
+                    sizes: self.logical_column_geometry.sizes(),
+                }),
+            rows: input
+                .sizing_stage
+                .has_resolved_axis(GridAxisKind::Row)
+                .then_some(ExecutedBaselineAxisFrame {
+                    starts: self.logical_row_geometry.line_offsets(),
+                    sizes: self.logical_row_geometry.sizes(),
+                }),
+            sizing: ExecutedBaselineSizing {
+                row_tracks: input.row_tracks,
+                track_basis: input.track_basis,
+            },
+        }
+    }
+
+    // The refresh's view of this placement and the census it follows.
+    fn refresh_input<'a>(
+        &'a self,
+        node: Node,
+        input: &'a GridLayoutContext<'_, '_, Node, S>,
+        ancestor_baseline_groups: &'a FinalAncestorBaselineGroups<Node, S>,
+        original_executed: &'a ExecutedBaselineInventory<Node, S>,
+    ) -> SubgridBaselineRefreshInput<'a, Node, S> {
+        SubgridBaselineRefreshInput {
+            node,
+            container_style: input.style,
+            columns: input.columns,
+            rows: input.rows,
+            minimum_functions: input.minimum_functions,
+            column_geometry: &self.column_geometry,
+            row_geometry: &self.row_geometry,
+            row_tracks: input.row_tracks,
+            track_basis: input.track_basis,
+            gap: input.gap,
+            named_columns: input.named_columns,
+            named_rows: input.named_rows,
+            area_facts: input.area_facts,
+            template_area_expanded_axes: input.template_area_expanded_axes,
+            subgrid_report: input.subgrid_report,
+            ancestor_baseline_groups,
+            executed_frame: self.executed_frame(input),
+            orthogonal_fallback: input.constants.child_orthogonal_fallback,
+            original_executed,
+            containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass,
+            sizing_stage: input.sizing_stage,
+        }
+    }
+
+    /// Captures the executed baselines of the placed items, the start of the
+    /// finish that precedes the subgrid baseline refresh.
+    pub(super) fn begin_finish<'input, M>(
+        self,
+        node: Node,
+        input: &GridLayoutContext<'input, '_, Node, S>,
+        pending: PendingGridItems<'input, Node, S>,
+    ) -> LayoutResultOf<Node, OrdinaryGridFinish<'input, Node, S>, S, M> {
+        let PendingGridItems {
+            in_flow: mut pending_items,
+            absolute: pending_absolute,
+        } = pending;
+        let executed_inventory = capture_executed_baselines(
+            node,
+            self.executed_frame(input),
+            &mut pending_items,
+            input.subgrid_report,
+        )?;
+        let ancestor_baseline_groups = final_ancestor_baseline_groups(&executed_inventory)
+            .with_parent_context(input.parent_context);
+        let baseline_group_set = ancestor_baseline_groups.placement_groups();
+        Ok(OrdinaryGridFinish {
+            placement: self,
+            pending_items,
+            pending_absolute,
+            executed_inventory,
+            ancestor_baseline_groups,
+            baseline_group_set,
+            refresh: SubgridBaselineRefresh::new(),
+        })
+    }
+}
+
+/// An ordinary Grid's placed items between their baseline capture and their
+/// staging. Each subgrid item refreshes through one request.
+pub(super) struct OrdinaryGridFinish<'input, Node, S: LayoutScalar> {
+    placement: OrdinaryGridPlacement<Node, S>,
+    pending_items: Vec<PendingGridItem<'input, Node, S>>,
+    pending_absolute: Vec<PendingAbsoluteGridItem<Node>>,
+    executed_inventory: ExecutedBaselineInventory<Node, S>,
+    ancestor_baseline_groups: FinalAncestorBaselineGroups<Node, S>,
+    baseline_group_set: GridBaselineGroups<S>,
+    refresh: SubgridBaselineRefresh<S>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridFinish<'input, Node, S> {
+    /// The next subgrid item's refresh request, in source order.
+    pub(super) fn next<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridLayoutContext<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, Option<GridContextRequest<'input, Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let refresh_input = self.placement.refresh_input(
+            node,
+            input,
+            &self.ancestor_baseline_groups,
+            &self.executed_inventory,
+        );
+        self.refresh
+            .next(tree, &refresh_input, &self.pending_items, |item| {
+                let size = input.constants.flow_axes.physical_size(item.area.size);
+                GridItemLayoutSpace {
+                    alignment_size: size,
+                    containing_size: size,
+                    natural_stacking_margin_box: None,
+                }
+            })
+    }
+
+    pub(super) fn accept<M>(
+        &mut self,
+        node: Node,
+        input: &GridLayoutContext<'input, '_, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let refresh_input = self.placement.refresh_input(
+            node,
+            input,
+            &self.ancestor_baseline_groups,
+            &self.executed_inventory,
+        );
+        self.refresh
+            .accept(&refresh_input, &mut self.pending_items, result)
+    }
+
+    pub(super) fn finish<Tree, M>(
         self,
         tree: &mut Tree,
         node: Node,
         input: &GridLayoutContext<'input, '_, Node, S>,
-        pending: PendingGridItems<'input, Node, S>,
     ) -> GridChildPlacementResult<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let Self {
+            placement,
+            mut pending_items,
+            pending_absolute,
+            executed_inventory,
+            ancestor_baseline_groups,
+            baseline_group_set,
+            ..
+        } = self;
+        let OrdinaryGridPlacement {
             containing_size,
             column_geometry,
             row_geometry,
@@ -958,7 +1135,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> OrdinaryGridPlacement<Node, S> {
             logical_row_offsets,
             row_offsets,
             ..
-        } = self;
+        } = placement;
         let GridLayoutContext {
             scroll_box,
             style,
@@ -966,14 +1143,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> OrdinaryGridPlacement<Node, S> {
             columns,
             rows,
             row_tracks,
-            minimum_functions,
             track_basis,
-            gap,
             lines,
-            named_columns,
-            named_rows,
-            area_facts,
-            template_area_expanded_axes,
             subgrid_report,
             parent_context,
             placements,
@@ -982,76 +1153,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> OrdinaryGridPlacement<Node, S> {
             execution_input,
             ..
         } = *input;
-        let PendingGridItems {
-            in_flow: mut pending_items,
-            absolute: pending_absolute,
-        } = pending;
         let mut child_contributions = Vec::new();
         let logical_content_box_inset = constants
             .flow_axes
             .logical_edges(constants.content_box_inset);
-        let executed_frame = ExecutedBaselineFrame {
-            style,
-            size: containing_size,
-            execution_input,
-            stage: sizing_stage,
-            columns: sizing_stage
-                .has_resolved_axis(GridAxisKind::Column)
-                .then_some(ExecutedBaselineAxisFrame {
-                    starts: logical_column_geometry.line_offsets(),
-                    sizes: logical_column_geometry.sizes(),
-                }),
-            rows: sizing_stage.has_resolved_axis(GridAxisKind::Row).then_some(
-                ExecutedBaselineAxisFrame {
-                    starts: logical_row_geometry.line_offsets(),
-                    sizes: logical_row_geometry.sizes(),
-                },
-            ),
-            sizing: ExecutedBaselineSizing {
-                row_tracks,
-                track_basis,
-            },
-        };
-        let executed_inventory =
-            capture_executed_baselines(node, executed_frame, &mut pending_items, subgrid_report)?;
-        let ancestor_baseline_groups =
-            final_ancestor_baseline_groups(&executed_inventory).with_parent_context(parent_context);
-        let baseline_group_set = ancestor_baseline_groups.placement_groups();
-        refresh_subgrid_items_with_baselines(
-            tree,
-            SubgridBaselineRefreshInput {
-                node,
-                container_style: style,
-                columns,
-                rows,
-                minimum_functions,
-                column_geometry: &column_geometry,
-                row_geometry: &row_geometry,
-                row_tracks,
-                track_basis,
-                gap,
-                named_columns: named_columns.clone(),
-                named_rows: named_rows.clone(),
-                area_facts: area_facts.cloned(),
-                template_area_expanded_axes,
-                subgrid_report,
-                ancestor_baseline_groups: &ancestor_baseline_groups,
-                executed_frame,
-                original_executed: &executed_inventory,
-                orthogonal_fallback: constants.child_orthogonal_fallback,
-                containing_auto_scrollbar_pass,
-                sizing_stage,
-            },
-            &mut pending_items,
-            |item| {
-                let size = constants.flow_axes.physical_size(item.area.size);
-                GridItemLayoutSpace {
-                    alignment_size: size,
-                    containing_size: size,
-                    natural_stacking_margin_box: None,
-                }
-            },
-        )?;
         let published_group_set = baseline_groups(
             &pending_items,
             rows.len(),

@@ -44,6 +44,151 @@ impl<'input, Node: Copy, S: LayoutScalar> SubgridChildParentContextInput<'input,
     }
 }
 
+/// An owned copy of one subgrid item's parent loan. The borrowed input is
+/// rebuilt from it for each scrollbar pass of the child, so the loan survives
+/// the suspension of the parent that granted it.
+#[derive(Clone, Debug)]
+pub(in crate::grid) struct OwnedSubgridContext<'input, Node, S: LayoutScalar> {
+    item: SubgridItemReport<Node>,
+    parent_baseline_references: crate::GridBaselineReferences,
+    child_style: GridItemProjection<'input, S>,
+    container: GridContainerInput<'input, S>,
+    area: GridArea<S>,
+    content_box_size: Size<S>,
+    columns: Vec<S>,
+    rows: Vec<S>,
+    column_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
+    row_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
+    gap: LogicalSizeOf<S>,
+    named_columns: NamedGridLines,
+    named_rows: NamedGridLines,
+    area_facts: Option<GridAreaNameFacts>,
+    margin: Edges<Option<S>>,
+    border: Edges<S>,
+    padding: Edges<S>,
+}
+
+impl<'input, Node: Copy, S: LayoutScalar> OwnedSubgridContext<'input, Node, S> {
+    /// Retains every parent track's minimum functions.
+    pub(in crate::grid) fn new(
+        source: SubgridChildParentContextInput<'input, '_, Node, S>,
+    ) -> Result<Self, SubgridChildContextError<S>> {
+        let column_minimum_functions = source
+            .minimum_functions
+            .columns
+            .map(GridMinimumTrackFunctions::retain)
+            .transpose()
+            .map_err(SubgridChildContextError::MinimumFunctions)?;
+        let row_minimum_functions = source
+            .minimum_functions
+            .rows
+            .map(GridMinimumTrackFunctions::retain)
+            .transpose()
+            .map_err(SubgridChildContextError::MinimumFunctions)?;
+        Ok(Self::with_minimum_functions(
+            source,
+            column_minimum_functions,
+            row_minimum_functions,
+        ))
+    }
+
+    /// Retains the minimum functions of the parent tracks the item spans, on
+    /// the parent axes it inherits, as the inherited axes read them. A track
+    /// outside the span is never resolved, so it cannot reject the item.
+    pub(in crate::grid) fn spanned(
+        source: SubgridChildParentContextInput<'input, '_, Node, S>,
+    ) -> Result<Self, SubgridChildContextError<S>> {
+        let retain = |axis: GridAxisKind| {
+            let inherits = [source.item.column, source.item.row]
+                .into_iter()
+                .any(|report| report.can_inherit() && report.mapping.parent_axis == axis);
+            if !inherits {
+                return Ok(None);
+            }
+            let (start, end) = match axis {
+                GridAxisKind::Column => (source.area.column, source.area.column_end),
+                GridAxisKind::Row => (source.area.row, source.area.row_end),
+            };
+            source
+                .minimum_functions
+                .for_axis(axis)
+                .map(|functions| functions.retain_span(start, end))
+                .transpose()
+                .map_err(SubgridChildContextError::MinimumFunctions)
+        };
+        let column_minimum_functions = retain(GridAxisKind::Column)?;
+        let row_minimum_functions = retain(GridAxisKind::Row)?;
+        Ok(Self::with_minimum_functions(
+            source,
+            column_minimum_functions,
+            row_minimum_functions,
+        ))
+    }
+
+    fn with_minimum_functions(
+        source: SubgridChildParentContextInput<'input, '_, Node, S>,
+        column_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
+        row_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
+    ) -> Self {
+        Self {
+            item: source.item,
+            parent_baseline_references: source.parent_baseline_references,
+            child_style: source.child_style.clone(),
+            container: source
+                .child_container
+                .expect("a retained subgrid context has its original container"),
+            area: source.area,
+            content_box_size: source.content_box_size,
+            columns: source.columns.to_vec(),
+            rows: source.rows.to_vec(),
+            column_minimum_functions,
+            row_minimum_functions,
+            gap: source.gap,
+            named_columns: source.parent_named_columns.clone(),
+            named_rows: source.parent_named_rows.clone(),
+            area_facts: source.parent_area_facts.cloned(),
+            margin: source.margin,
+            border: source.border,
+            padding: source.padding,
+        }
+    }
+
+    pub(in crate::grid) fn container_input(&self) -> GridContainerInput<'input, S> {
+        self.container
+    }
+
+    pub(in crate::grid) fn input(&self) -> SubgridChildParentContextInput<'input, '_, Node, S> {
+        SubgridChildParentContextInput {
+            item: self.item,
+            parent_baseline_references: self.parent_baseline_references,
+            child_style: &self.child_style,
+            child_container: Some(self.container),
+            area: self.area,
+            content_box_size: self.content_box_size,
+            columns: &self.columns,
+            rows: &self.rows,
+            minimum_functions: GridMinimumParentFunctions {
+                columns: self
+                    .column_minimum_functions
+                    .as_deref()
+                    .map(GridMinimumTrackFunctions::from_qualified),
+                rows: self
+                    .row_minimum_functions
+                    .as_deref()
+                    .map(GridMinimumTrackFunctions::from_qualified),
+            },
+            gap: self.gap,
+            parent_named_columns: &self.named_columns,
+            parent_named_rows: &self.named_rows,
+            parent_area_facts: self.area_facts.as_ref(),
+            margin: self.margin,
+            border: self.border,
+            padding: self.padding,
+            scrollbar_gutter: Edges::ZERO,
+        }
+    }
+}
+
 pub(in crate::grid) fn subgrid_child_parent_context<'input, Node, S: LayoutScalar>(
     input: SubgridChildParentContextInput<'input, '_, Node, S>,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>>
@@ -691,9 +836,9 @@ pub(in crate::grid) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar
     pub(in crate::grid) row_tracks: &'a [TrackSizingOf<S>],
     pub(in crate::grid) track_basis: LogicalSizeOf<Option<S>>,
     pub(in crate::grid) gap: LogicalSizeOf<S>,
-    pub(in crate::grid) named_columns: NamedGridLines,
-    pub(in crate::grid) named_rows: NamedGridLines,
-    pub(in crate::grid) area_facts: Option<GridAreaNameFacts>,
+    pub(in crate::grid) named_columns: &'a NamedGridLines,
+    pub(in crate::grid) named_rows: &'a NamedGridLines,
+    pub(in crate::grid) area_facts: Option<&'a GridAreaNameFacts>,
     pub(in crate::grid) template_area_expanded_axes: TemplateAreaExpandedAxes,
     pub(in crate::grid) subgrid_report: &'a GridSubgridReport<Node>,
     pub(in crate::grid) ancestor_baseline_groups: &'a FinalAncestorBaselineGroups<Node, S>,
@@ -704,97 +849,174 @@ pub(in crate::grid) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar
     pub(in crate::grid) sizing_stage: GridSizingStage,
 }
 
-pub(in crate::grid) fn refresh_subgrid_items_with_baselines<'input, Tree, M>(
-    tree: &mut Tree,
-    input: SubgridBaselineRefreshInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
-    pending_items: &mut [PendingGridItem<'input, <Tree as Traverse>::Node, Tree::Scalar>],
-    item_space: impl Fn(
-        &PendingGridItem<'input, Tree::Node, Tree::Scalar>,
-    ) -> GridItemLayoutSpace<Tree::Scalar>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let container_flow_axes = FlowAxes::new(
-        input.container_style.writing_mode,
-        input.container_style.direction,
-    );
-    for item in pending_items.iter_mut() {
-        let Some(subgrid_item) = input.subgrid_report.items.get(item.source_index).copied() else {
-            continue;
-        };
-        if !subgrid_item.needs_context() {
-            continue;
-        }
+type GridContextStep<'input, Node, S, M> =
+    LayoutResultOf<Node, Option<GridContextRequest<'input, Node, S>>, S, M>;
 
-        let child_style = item.style.clone();
-        let space = item_space(item);
-        let physical_area_size = space.alignment_size;
-        let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
-        let FinalGridItemPreparation {
-            sizing,
-            input: child_input,
-            padding,
-            border,
-            content_box_size: subgrid_content_box_size,
-        } = prepare_final_grid_item::<Tree, M>(
-            tree,
-            item.node,
-            &child_style,
-            input.container_style,
-            subgrid_item,
-            space,
-            GridItemRequestContext {
-                containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass,
-                orthogonal_fallback: input.orthogonal_fallback,
-            },
-        )?;
-        let child_input =
-            grid_item_baseline_demand(input.container_style, &child_style, None, child_input)
-                .map_err(|error| grid_baseline_error(input.node, item.node, error))?;
-        let child_container = item.nested_container.as_ref().copied();
-        let child_context_input = SubgridChildParentContextInput {
-            item: subgrid_item,
-            parent_baseline_references: input.container_style.baseline_references,
-            child_style: &child_style,
-            child_container,
-            area: item.area,
-            content_box_size: subgrid_content_box_size,
-            columns: input.columns,
-            rows: input.rows,
-            minimum_functions: input.minimum_functions,
-            gap: input.gap,
-            parent_named_columns: &input.named_columns,
-            parent_named_rows: &input.named_rows,
-            parent_area_facts: input.area_facts.as_ref(),
-            margin: sizing.unresolved_margin,
-            border,
-            padding,
-            scrollbar_gutter: Edges::ZERO,
-        };
-        let result = compute_grid_with_context_source(
-            tree,
-            item.node,
-            child_input,
-            sizing.standalone_intrinsic_minimum,
-            child_context_input.container(),
-            input
+/// The cursor of the post-placement subgrid baseline refresh. Each item that
+/// needs context recomputes once, in source order, as a request the caller
+/// executes; its receipt then replaces the item's output and baselines.
+pub(in crate::grid) struct SubgridBaselineRefresh<S: LayoutScalar = Scalar> {
+    next_index: usize,
+    in_flight: Option<RefreshInFlight<S>>,
+}
+
+// Facts of the request in flight that its receipt needs again.
+struct RefreshInFlight<S: LayoutScalar> {
+    index: usize,
+    sizing: GridItemSizing<S>,
+    child_input: ComputeInputOf<S>,
+    padding: Edges<S>,
+    border: Edges<S>,
+    physical_area_size: Size<S>,
+    stage: GridSizingStage,
+}
+
+impl<S: LayoutScalar> SubgridBaselineRefresh<S> {
+    pub(in crate::grid) const fn new() -> Self {
+        Self {
+            next_index: 0,
+            in_flight: None,
+        }
+    }
+
+    /// Prepares the next refreshed item's request, or `None` once every item
+    /// has been refreshed.
+    pub(in crate::grid) fn next<'input, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        input: &SubgridBaselineRefreshInput<'_, <Tree as Traverse>::Node, S>,
+        pending_items: &[PendingGridItem<'input, <Tree as Traverse>::Node, S>],
+        item_space: impl Fn(&PendingGridItem<'input, Tree::Node, S>) -> GridItemLayoutSpace<S>,
+    ) -> GridContextStep<'input, <Tree as Traverse>::Node, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
+        debug_assert!(self.in_flight.is_none(), "a refresh request is outstanding");
+        let container_flow_axes = FlowAxes::new(
+            input.container_style.writing_mode,
+            input.container_style.direction,
+        );
+        while let Some(item) = pending_items.get(self.next_index) {
+            let index = self.next_index;
+            self.next_index += 1;
+            let Some(subgrid_item) = input.subgrid_report.items.get(item.source_index).copied()
+            else {
+                continue;
+            };
+            if !subgrid_item.needs_context() {
+                continue;
+            }
+
+            let space = item_space(item);
+            let physical_area_size = space.alignment_size;
+            let child_flow_axes = FlowAxes::new(item.style.writing_mode, item.style.direction);
+            let FinalGridItemPreparation {
+                sizing,
+                input: child_input,
+                padding,
+                border,
+                content_box_size: subgrid_content_box_size,
+            } = prepare_final_grid_item::<Tree, M>(
+                tree,
+                item.node,
+                &item.style,
+                input.container_style,
+                subgrid_item,
+                space,
+                GridItemRequestContext {
+                    containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass,
+                    orthogonal_fallback: input.orthogonal_fallback,
+                },
+            )?;
+            let child_input =
+                grid_item_baseline_demand(input.container_style, &item.style, None, child_input)
+                    .map_err(|error| grid_baseline_error(input.node, item.node, error))?;
+            let child_container = item.nested_container.as_ref().copied();
+            let child_context_input = SubgridChildParentContextInput {
+                item: subgrid_item,
+                parent_baseline_references: input.container_style.baseline_references,
+                child_style: &item.style,
+                child_container,
+                area: item.area,
+                content_box_size: subgrid_content_box_size,
+                columns: input.columns,
+                rows: input.rows,
+                minimum_functions: input.minimum_functions,
+                gap: input.gap,
+                parent_named_columns: input.named_columns,
+                parent_named_rows: input.named_rows,
+                parent_area_facts: input.area_facts,
+                margin: sizing.unresolved_margin,
+                border,
+                padding,
+                scrollbar_gutter: Edges::ZERO,
+            };
+            let stage = input
                 .sizing_stage
-                .mapped(container_flow_axes, child_flow_axes),
-            |constants| {
-                subgrid_child_parent_context_from_ancestor_groups_with_geometry(
-                    child_context_input.for_scrollbar_pass(constants),
-                    input.ancestor_baseline_groups,
+                .mapped(container_flow_axes, child_flow_axes);
+            let child = child_context_input.container();
+            let parent_context = match OwnedSubgridContext::spanned(child_context_input) {
+                Ok(context) => GridParentContextSource::refresh(
+                    context,
+                    input.ancestor_baseline_groups.clone(),
                     input.template_area_expanded_axes,
                     input.node,
-                    Some(input.column_geometry),
-                    Some(input.row_geometry),
-                )
-                .map_err(|error| {
-                    subgrid_child_context_container_error(input.node, item.node, error)
-                })
-            },
-        )?;
+                    input.column_geometry.clone(),
+                    input.row_geometry.clone(),
+                ),
+                Err(error) => GridParentContextSource::Rejected(error),
+            };
+            self.in_flight = Some(RefreshInFlight {
+                index,
+                sizing,
+                child_input,
+                padding,
+                border,
+                physical_area_size,
+                stage,
+            });
+            return Ok(Some(GridContextRequest {
+                container: input.node,
+                node: item.node,
+                input: child_input,
+                minimum: sizing.standalone_intrinsic_minimum,
+                child,
+                stage,
+                parent_context,
+            }));
+        }
+        Ok(None)
+    }
+
+    /// Applies the receipt of the request `next` prepared.
+    pub(in crate::grid) fn accept<'input, Node, M>(
+        &mut self,
+        input: &SubgridBaselineRefreshInput<'_, Node, S>,
+        pending_items: &mut [PendingGridItem<'input, Node, S>],
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Node: Copy + PartialEq,
+    {
+        let RefreshInFlight {
+            index,
+            sizing,
+            child_input,
+            padding,
+            border,
+            physical_area_size,
+            stage,
+        } = self
+            .in_flight
+            .take()
+            .expect("a refresh receipt follows its request");
+        let container_flow_axes = FlowAxes::new(
+            input.container_style.writing_mode,
+            input.container_style.direction,
+        );
+        let item = &mut pending_items[index];
+        let subgrid_item = input.subgrid_report.items[item.source_index];
+        let child_flow_axes = FlowAxes::new(item.style.writing_mode, item.style.direction);
         let GridComputeResult {
             mut output,
             baseline_groups: _ordinary_baseline_groups,
@@ -807,13 +1029,11 @@ where
             child_flow_axes,
             output,
             child_input,
-            input
-                .sizing_stage
-                .mapped(container_flow_axes, child_flow_axes),
+            stage,
             executed_baselines,
         )?;
         let scroll_geometry = retained_grid_child_scroll_geometry(
-            &child_style,
+            &item.style,
             output.size,
             output.content_size,
             padding,
@@ -877,7 +1097,6 @@ where
             margin_end: logical_margin.block_end,
         };
         let baselines = output.baselines();
-        let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
         let first_baseline =
             baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size);
         let last_baseline =
@@ -921,8 +1140,8 @@ where
             &executed_source,
             input.original_executed,
         )?;
+        Ok(())
     }
-    Ok(())
 }
 
 #[cfg(test)]
