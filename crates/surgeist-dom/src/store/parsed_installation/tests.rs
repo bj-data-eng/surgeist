@@ -1819,3 +1819,49 @@ fn the_rows_of_a_source_hold_every_node_once_in_creation_order() {
         }
     }
 }
+
+/// A node no tree of the report reaches is not installed. The second option of the select makes
+/// its content the content of the selectedcontent element, which detaches the clones of the first
+/// option's content that the first update made: the report keeps their records, and the
+/// installation maps only the nodes a walk of the trees reaches.
+#[test]
+fn a_node_no_root_reaches_is_not_installed() {
+    let report = report_for(
+        "<!doctype html><select><button><selectedcontent></selectedcontent></button>\
+         <option><b>x</b><option selected>y</select>",
+    );
+    let reached = reachable_positions(&report);
+    let nodes = report.document().unwrap().usage().nodes();
+    assert!(
+        nodes > reached.len(),
+        "the report holds {nodes} records and a walk reaches {}",
+        reached.len()
+    );
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            4096,
+            1_000_000,
+            4096,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let environment = environment(&mut dom);
+    let before = dom.snapshot();
+    let prepared = dom
+        .prepare_parsed_html_installation(
+            before.stamp(),
+            report,
+            environment,
+            Limits::new(4096, 100_000_000, 16_000_000, 100_000_000),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(prepared.bindings.len(), reached.len());
+}
