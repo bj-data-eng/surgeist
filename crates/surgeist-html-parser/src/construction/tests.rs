@@ -17,6 +17,7 @@ mod g2c_nonce;
 #[cfg(feature = "detail")]
 mod g2d_names;
 pub(super) mod g2d_origins;
+mod g2e_tables;
 mod image_form;
 mod input;
 mod input_types;
