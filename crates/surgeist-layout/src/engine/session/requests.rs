@@ -780,7 +780,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     unreachable!()
                 };
                 debug_assert!(
-                    scoped || request.entry.is_none(),
+                    request.entry.is_none(),
                     "ordinary request has no scope entry"
                 );
                 let trial = child.float_trial();
@@ -866,6 +866,21 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
     /// completes at once; a Block container keeps its computation on the
     /// request stack, never on the native stack.
     fn begin_scoped_block(
+        &mut self,
+        child: ScopedChild<Tree::Node, Tree::Scalar>,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
+        let depth = child.depth;
+        let result = self.start_scoped_block(child, pending);
+        // Only a started Block request owns its frame, and a suspension has
+        // moved its frames into the scope request.
+        if matches!(result, Err(ComputeStop::Layout(_))) {
+            self.release_scope_frames(depth);
+        }
+        result
+    }
+
+    fn start_scoped_block(
         &mut self,
         child: ScopedChild<Tree::Node, Tree::Scalar>,
         pending: &mut SessionPending<'input, Tree>,
