@@ -211,6 +211,8 @@ fn retained_after_each_prepared_slot(
 struct Site {
     file: String,
     function: String,
+    /// The line of the source that asked for the slot.
+    line: String,
 }
 /// The name `line` declares, when it begins a function.
 fn declared_function(line: &str) -> Option<String> {
@@ -238,6 +240,12 @@ fn site(location: &std::panic::Location<'_>) -> Site {
         .join("src")
         .join(relative);
     let source = std::fs::read_to_string(&path).expect("the file of a recorded site is readable");
+    let line = source
+        .lines()
+        .nth((location.line() as usize).saturating_sub(1))
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
     let function = source
         .lines()
         .take(location.line() as usize)
@@ -249,6 +257,7 @@ fn site(location: &std::panic::Location<'_>) -> Site {
     Site {
         file: format!("src/{relative}"),
         function,
+        line,
     }
 }
 
@@ -566,6 +575,93 @@ fn node_document_cells_leave_nothing_retained_when_the_parse_stops_after_their_s
         2,
         "{sites:?}"
     );
+}
+
+/// The Documents among the nodes of a published report: the parser's Document and each inert
+/// Document the parse created.
+fn document_nodes(report: &crate::HtmlParseReport) -> usize {
+    let arena = &report.history().storage().view;
+    (0..arena.len())
+        .filter(|&position| {
+            matches!(
+                arena.node_at(position).map(|node| node.kind()),
+                Some(crate::construction::ConstructionNodeKind::Document(_))
+            )
+        })
+        .count()
+}
+
+/// A document the nodes of a parse name is admitted to the list of documents once, when it is
+/// first named, and the admission is a prepared slot asked for by a call of `intern_document` at
+/// the function that names it. The counts are derived from the report: the parser's Document is
+/// named as the session starts, each inert Document the parse created as it is created, and a
+/// Document the parse did not create, the target of a contextual parse, as the first node is
+/// allocated into it. A function that names a document already named admits nothing.
+#[test]
+fn each_document_a_parse_names_is_admitted_once_where_it_is_first_named() {
+    let new = ("src/construction/storage.rs", "new");
+    let inert = (
+        "src/construction/template.rs",
+        "appropriate_contents_document",
+    );
+    let allocation = (
+        "src/construction/template.rs",
+        "prepare_document_allocation",
+    );
+    let adoption = ("src/construction/template.rs", "set_node_document");
+    let captured = ("src/construction/context.rs", "captured_contents_document");
+    let named = |sites: &[Site], at: (&str, &str)| {
+        sites
+            .iter()
+            .filter(|site| {
+                site.file == at.0 && site.function == at.1 && site.line.contains("intern_document(")
+            })
+            .count()
+    };
+    for source in [
+        "<!doctype html><p>a</p>",
+        "<!doctype html><template><p>t</p><template><b>n</b></template></template>",
+        "<!doctype html><template>a</template><p>b</p><template>c</template>",
+    ] {
+        let report =
+            crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits(100))
+                .parse()
+                .unwrap();
+        let created = document_nodes(&report) - 1;
+        let (retained, sites) = retained_after_each_prepared_slot(&document(source));
+        assert!(retained.is_empty(), "{source}: {retained:?}");
+        assert_eq!(named(&sites, new), 1, "{source}");
+        assert_eq!(named(&sites, inert), created, "{source}");
+        assert_eq!(named(&sites, allocation), 0, "{source}");
+        assert_eq!(named(&sites, adoption), 0, "{source}");
+        assert_eq!(named(&sites, captured), 0, "{source}");
+    }
+    let source = "<template><p>t</p></template>";
+    let report = crate::HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8(source),
+        fragment_context(),
+        limits(100),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap()
+    .parse()
+    .unwrap();
+    // A fragment parse has its own Document, as the parser's, beside the inert Documents.
+    let created = document_nodes(&report) - 1;
+    let (retained, sites) = retained_after_each_prepared_slot(&fragment(source));
+    assert!(retained.is_empty(), "{source}: {retained:?}");
+    assert_eq!(named(&sites, new), 1, "{source}");
+    // The target has one inert Document for its template contents, and the parser's Document has
+    // its own; each is named where it is created, and the target where the first node enters it.
+    assert_eq!(named(&sites, captured), 1, "{source}");
+    assert_eq!(
+        named(&sites, inert) + named(&sites, captured),
+        created,
+        "{source}"
+    );
+    assert_eq!(named(&sites, allocation), 1, "{source}");
+    assert_eq!(named(&sites, adoption), 0, "{source}");
 }
 
 /// How many captures and occurrences a published report lends.
