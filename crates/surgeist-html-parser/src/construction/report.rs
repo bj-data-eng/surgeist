@@ -951,8 +951,8 @@ impl ReportStorage {
         self.history.storage().fragment_effects()
     }
     /// The document of the tree rooted at `root`: the root itself when it is a Document, and
-    /// otherwise the document the root names. The parse holds this for roots only, because every
-    /// node of a tree has the document of its root.
+    /// otherwise the document the root names. The parse holds this for roots, and for links, which
+    /// are asked for their own; every other node of a tree has the document of its root.
     pub(crate) fn tree_document(
         &self,
         root: &surgeist_html::construction::HtmlNodeId,

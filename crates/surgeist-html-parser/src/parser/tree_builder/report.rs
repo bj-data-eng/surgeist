@@ -375,11 +375,8 @@ impl HtmlParseReport {
     pub fn metadata(&self) -> HtmlParseMetadataCursor<'_> {
         self.storage.metadata()
     }
-    /// The document of the tree rooted at `root`. Every node of a tree has the document of its
-    /// root, so a report holds the document of each root and not of each node: a Document root is
-    /// its own document, and any other root is found among the roots that name one. A node that
-    /// has a parent is not asked about.
-    /// The document of the tree that holds `node`.
+    /// The document of the tree that holds `node`, for tests that ask about a node whose root they
+    /// do not know.
     #[cfg(test)]
     pub(crate) fn node_document_for_test(
         &self,
@@ -390,6 +387,10 @@ impl HtmlParseReport {
     > {
         self.storage.node_document_for_test(node)
     }
+    /// The document of the tree rooted at `root`. Every node of a tree has the document of its
+    /// root, so a report holds the document of each root and not of each node: a Document root is
+    /// its own document, and any other root is found among the roots that name one. A node that
+    /// has a parent is not asked about.
     pub fn tree_document(
         &self,
         root: &surgeist_html::construction::HtmlNodeId,
