@@ -359,9 +359,10 @@ impl SessionStorage {
         if matches!(kind, NewRecord::NamedElement(..)) {
             admission.named_units = requests
                 .iter()
-                .filter(|(resource, _)| *resource == HtmlParseResource::ManagedUtf16Units)
-                .map(|(_, units)| *units)
-                .sum();
+                .find_map(|&(resource, units)| {
+                    (resource == HtmlParseResource::ManagedUtf16Units).then_some(units)
+                })
+                .unwrap_or(0);
         }
         let created = match kind {
             NewRecord::Document(mode) => construction.create_document(mode, &mut admission),
