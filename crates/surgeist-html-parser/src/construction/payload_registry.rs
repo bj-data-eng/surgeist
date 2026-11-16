@@ -81,66 +81,138 @@ pub(super) struct ParseFacts {
     /// attribute, the clones of such an element, and `html` and `body`. Any other element of the
     /// HTML, SVG or MathML namespace has the empty nonce.
     pub(super) nonces: FamilyTable<NonceRow>,
+    /// The metadata of the `template` elements the parser created, and of their clones: elements
+    /// whose template contents the parse owns. An element a test hands the allocator has none.
+    pub(super) templates: FamilyTable<template::TemplateMetadata>,
+    /// The state of the shadow roots the parse attached, keyed by the record of the shadow
+    /// root's contents, which is the fragment every reader of the state holds.
+    pub(super) shadows: FamilyTable<context::ShadowState>,
+    /// The cause of the creation of each node created while the parse records its construction
+    /// causes: none for a parse that records no graph.
+    pub(super) causes: FamilyTable<provenance::ConstructionCauseRef>,
 }
 impl ParseFacts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
         let owner = control.identity();
-        let missing = RowLog::new(control)?;
-        let documents = match FamilyTable::new(control) {
-            Ok(documents) => documents,
+        let mut built = PartialFacts::default();
+        match built.build(control) {
+            Ok(facts) => Ok(facts),
             Err(error) => {
-                missing.release(control, &owner, |_, _| Ok(()))?;
-                return Err(error);
+                // A refused release has latched its stop; the error that ended the creation is
+                // the first reported.
+                let _released = built.release(control, &owner);
+                Err(error)
             }
-        };
-        let associations = match association_log::AssociationLog::new(control) {
-            Ok(associations) => associations,
-            Err(error) => {
-                missing.release(control, &owner, |_, _| Ok(()))?;
-                documents.release(control, &owner, |_, _| Ok(()))?;
-                return Err(error);
-            }
-        };
-        let contexts = match node_context::NodeContexts::new(control) {
-            Ok(contexts) => contexts,
-            Err(error) => {
-                missing.release(control, &owner, |_, _| Ok(()))?;
-                documents.release(control, &owner, |_, _| Ok(()))?;
-                associations.release(control, &owner)?;
-                return Err(error);
-            }
-        };
-        let creation = match FamilyTable::new(control) {
-            Ok(creation) => creation,
-            Err(error) => {
-                missing.release(control, &owner, |_, _| Ok(()))?;
-                documents.release(control, &owner, |_, _| Ok(()))?;
-                associations.release(control, &owner)?;
-                contexts.release(control, &owner)?;
-                return Err(error);
-            }
-        };
-        let nonces = match FamilyTable::new(control) {
-            Ok(nonces) => nonces,
-            Err(error) => {
-                missing.release(control, &owner, |_, _| Ok(()))?;
-                documents.release(control, &owner, |_, _| Ok(()))?;
-                associations.release(control, &owner)?;
-                contexts.release(control, &owner)?;
-                creation.release(control, &owner, |_, _| Ok(()))?;
-                return Err(error);
-            }
-        };
-        Ok(Self {
-            completion: None,
-            documents,
-            csp: None,
-            missing,
-            associations,
-            contexts,
-            creation,
-            nonces,
-        })
+        }
+    }
+}
+
+/// The owners of [`ParseFacts`] that were made before a creation stopped, for their release.
+#[derive(Default)]
+struct PartialFacts {
+    missing: Option<RowLog<meta::MetaMissingFact>>,
+    documents: Option<FamilyTable<template::DocumentFacts>>,
+    associations: Option<association_log::AssociationLog>,
+    contexts: Option<node_context::NodeContexts>,
+    creation: Option<FamilyTable<context::ElementCreationState>>,
+    nonces: Option<FamilyTable<NonceRow>>,
+    templates: Option<FamilyTable<template::TemplateMetadata>>,
+    shadows: Option<FamilyTable<context::ShadowState>>,
+    causes: Option<FamilyTable<provenance::ConstructionCauseRef>>,
+}
+impl PartialFacts {
+    /// Makes every owner in the order they are listed in [`ParseFacts`], keeping each in `self`
+    /// as it is made, and assembles them.
+    fn build(&mut self, control: &mut ParseControl) -> Result<ParseFacts, SessionError> {
+        self.missing = Some(RowLog::new(control)?);
+        self.documents = Some(FamilyTable::new(control)?);
+        self.associations = Some(association_log::AssociationLog::new(control)?);
+        self.contexts = Some(node_context::NodeContexts::new(control)?);
+        self.creation = Some(FamilyTable::new(control)?);
+        self.nonces = Some(FamilyTable::new(control)?);
+        self.templates = Some(FamilyTable::new(control)?);
+        self.shadows = Some(FamilyTable::new(control)?);
+        self.causes = Some(FamilyTable::new(control)?);
+        match (
+            self.missing.take(),
+            self.documents.take(),
+            self.associations.take(),
+            self.contexts.take(),
+            self.creation.take(),
+            self.nonces.take(),
+            self.templates.take(),
+            self.shadows.take(),
+            self.causes.take(),
+        ) {
+            (
+                Some(missing),
+                Some(documents),
+                Some(associations),
+                Some(contexts),
+                Some(creation),
+                Some(nonces),
+                Some(templates),
+                Some(shadows),
+                Some(causes),
+            ) => Ok(ParseFacts {
+                completion: None,
+                documents,
+                csp: None,
+                missing,
+                associations,
+                contexts,
+                creation,
+                nonces,
+                templates,
+                shadows,
+                causes,
+            }),
+            _ => Err(latch_registry_row(control)),
+        }
+    }
+    fn release(
+        self,
+        control: &mut ParseControl,
+        owner: &ControlIdentity,
+    ) -> Result<(), SessionError> {
+        let mut refused = None;
+        if let Some(missing) = self.missing {
+            keep_first(&mut refused, missing.release(control, owner, |_, _| Ok(())));
+        }
+        if let Some(documents) = self.documents {
+            keep_first(
+                &mut refused,
+                documents.release(control, owner, |_, _| Ok(())),
+            );
+        }
+        if let Some(associations) = self.associations {
+            keep_first(&mut refused, associations.release(control, owner));
+        }
+        if let Some(contexts) = self.contexts {
+            keep_first(&mut refused, contexts.release(control, owner));
+        }
+        if let Some(creation) = self.creation {
+            keep_first(
+                &mut refused,
+                creation.release(control, owner, |_, _| Ok(())),
+            );
+        }
+        if let Some(nonces) = self.nonces {
+            keep_first(&mut refused, nonces.release(control, owner, |_, _| Ok(())));
+        }
+        if let Some(templates) = self.templates {
+            keep_first(
+                &mut refused,
+                templates.release(control, owner, |_, _| Ok(())),
+            );
+        }
+        if let Some(shadows) = self.shadows {
+            keep_first(&mut refused, shadows.release(control, owner, |_, _| Ok(())));
+        }
+        if let Some(causes) = self.causes {
+            keep_first(&mut refused, causes.release(control, owner, |_, _| Ok(())));
+        }
+        refused.map_or(Ok(()), Err)
     }
 }
 
@@ -171,22 +243,10 @@ pub(super) enum RetainedPayload {
         domain: base::ResponseDomain,
         frozen: base::BaseValue,
     },
-    Shadow {
-        root: Option<usize>,
-        state: context::ShadowState,
-    },
-    ConstructionCause {
-        node: Option<usize>,
-        cause: provenance::ConstructionCauseRef,
-    },
     PiAttributes {
         node: Option<usize>,
         values: OwnedVec<pi::PseudoAttribute>,
         ready: bool,
-    },
-    Template {
-        node: Option<usize>,
-        state: template::TemplateMetadata,
     },
     String {
         value: DocumentString,
@@ -371,9 +431,6 @@ impl ScriptMetadata {
 /// The join a registry row provides, when it is bound to a record.
 fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
     Some(match row {
-        RetainedPayload::Template {
-            node: Some(node), ..
-        } => (Join::Template, *node),
         RetainedPayload::FormAssociation {
             node: Some(node), ..
         } => (Join::FormAssociation, *node),
@@ -776,6 +833,9 @@ impl PayloadStorage {
             contexts,
             creation,
             nonces,
+            templates,
+            shadows,
+            causes,
             ..
         } = facts;
         let join_entries = node_joins.len() as u64;
@@ -803,6 +863,12 @@ impl PayloadStorage {
         );
         // The strings the rows name are rows of the registry, released with it.
         keep_first(&mut refused, nonces.release(control, owner, |_, _| Ok(())));
+        keep_first(
+            &mut refused,
+            templates.release(control, owner, |_, _| Ok(())),
+        );
+        keep_first(&mut refused, shadows.release(control, owner, |_, _| Ok(())));
+        keep_first(&mut refused, causes.release(control, owner, |_, _| Ok(())));
         // The storage the owner's state holds is returned with the registry's own, below.
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         if let Some(log) = csp {

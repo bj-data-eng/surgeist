@@ -1,6 +1,6 @@
 //! The session's side of the record operations of HTML's construction storage: what the
 //! controller admits and records for each operation, and the calls that issue them.
-use super::template::template_slot_of;
+use super::template::template_row_of;
 use super::*;
 use surgeist_html::construction::HtmlConstructionCause;
 use surgeist_html::{
@@ -635,7 +635,7 @@ pub(super) fn associated_root_of(
                 .map_err(|_| SessionError::ForeignNode)?
                 .position();
             let (_, state) =
-                template_slot_of(payloads, fragment, control, storage, template_position)?;
+                template_row_of(payloads, fragment, control, storage, template_position)?;
             if state.contents != root {
                 return Err(SessionError::TemplateMetadataUnavailable);
             }

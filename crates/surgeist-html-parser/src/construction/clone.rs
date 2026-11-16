@@ -161,7 +161,7 @@ impl SessionStorage {
                     .template_contents()
                     .map(|node| node.position())
                 {
-                    self.template_slot(c, node)?;
+                    self.template_row(c, node)?;
                     self.node_document_ref(c, contents)?;
                     let mut next = self
                         .construction
@@ -232,8 +232,8 @@ impl SessionStorage {
             .template_contents()
             .is_some()
         {
-            let (_, source) = self.template_slot(c, source)?;
-            let (_, copy) = self.template_slot(c, copy)?;
+            let (_, source) = self.template_row(c, source)?;
+            let (_, copy) = self.template_row(c, copy)?;
             let document = self.node_document_ref(c, copy.contents)?;
             let next = self.first_child_position(c, source.contents)?;
             self.start_effect(
@@ -393,7 +393,7 @@ impl SessionStorage {
     ) -> Result<usize, SessionError> {
         let template = self.html_local(c, source, "template")?;
         if template {
-            self.template_slot(c, source)?;
+            self.template_row(c, source)?;
         }
         let mut prepared = self.prepare_document_allocation(c, Some(document), template)?;
         let bindings = self.prepare_clone_metadata(c, source, &mut prepared)?;

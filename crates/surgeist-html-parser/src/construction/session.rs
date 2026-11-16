@@ -238,14 +238,10 @@ impl ParserArenaSession {
         }
         // A template the parser created has the row of its metadata, which a preexisting one
         // lacks.
-        for payload in &storage.payloads.values {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Template { node: Some(owner), .. } if *owner == index)
-            {
-                return Ok(contents);
-            }
+        match storage.payloads.facts.templates.find(control, index)? {
+            Some(_) => Ok(contents),
+            None => Err(SessionError::TemplateInsertionStateUnavailable),
         }
-        Err(SessionError::TemplateInsertionStateUnavailable)
     }
     #[cfg(test)]
     pub(crate) fn template_contents(

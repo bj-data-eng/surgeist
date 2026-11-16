@@ -213,20 +213,7 @@ impl SessionStorage {
         if let Some(raw) = nonce_raw {
             self.push_nonce_row(control, index, raw)?;
         }
-        for (offset, slot) in cause_slots.into_iter().enumerate().take(count) {
-            if let Some(slot) = slot {
-                let Some(RetainedPayload::ConstructionCause { node, .. }) =
-                    self.payloads.values.get_mut(slot)
-                else {
-                    return Err(latch_registry_row(control));
-                };
-                *node = Some(
-                    index
-                        .checked_add(offset)
-                        .ok_or_else(|| latch_registry_row(control))?,
-                );
-            }
-        }
+        self.push_node_causes(control, index, cause_slots)?;
         Ok(handle)
     }
 

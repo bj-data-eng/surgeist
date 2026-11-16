@@ -47,13 +47,7 @@ fn combined_template_record_reserve_one_short_precedes_inert_document_and_cache_
             .map(|document| document.state),
         Some(template::DocumentState::Ordinary { inert: None })
     ));
-    assert!(
-        !storage
-            .payloads
-            .values
-            .iter()
-            .any(|payload| matches!(payload, RetainedPayload::Template { .. }))
-    );
+    assert_eq!(storage.payloads.facts.templates.len(), 0);
     assert_eq!(storage.payloads.facts.documents.len(), 1);
     // The reservation grows two banks, the rows and then their depths. The limit that is one byte
     // short of both refuses the second, and the first keeps the room it reserved, as a grown bank

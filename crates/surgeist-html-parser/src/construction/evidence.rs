@@ -570,17 +570,8 @@ impl ParserArenaSession {
             .evidence
             .insert(ParseEvidence::prepare(c)?)
             .initialize_native_source(c, source)?;
-        let slots = storage.prepare_node_causes(c, 1)?;
-        let [first, _] = slots;
-        if let Some(slot) = first {
-            let RetainedPayload::ConstructionCause { node, .. } =
-                storage.payloads.row_mut(c, slot)?
-            else {
-                return Err(latch_registry_row(c));
-            };
-            *node = Some(0);
-        }
-        Ok(())
+        let causes = storage.prepare_node_causes(c, 1)?;
+        storage.push_node_causes(c, 0, causes)
     }
     pub(crate) fn evidence(
         &mut self,

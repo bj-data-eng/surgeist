@@ -863,31 +863,12 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
         if count == 256 {
             let storage = session.active().unwrap();
             assert_eq!(storage.construction.len(), 2);
-            // The registry holds the two node-cause rows and no string row: the text is the
-            // record's own, and the groups of its tokens are parts of one group.
-            assert_eq!(storage.payloads.values.len(), 2);
-            assert_eq!(
-                storage
-                    .payloads
-                    .values
-                    .iter()
-                    .filter(|payload| matches!(payload, RetainedPayload::ConstructionCause { .. }))
-                    .count(),
-                2
-            );
-            assert_eq!(
-                storage
-                    .payloads
-                    .values
-                    .iter()
-                    .filter(|payload| matches!(
-                        payload,
-                        RetainedPayload::String { .. } | RetainedPayload::HistoricalString { .. }
-                    ))
-                    .count(),
-                0
-            );
-            // Two registry rows, a join cell and a document cell for each of the two records,
+            // The registry holds no row: the text is the record's own, the groups of its tokens
+            // are parts of one group, and the causes of the two records' creation are the two
+            // rows of the table of causes.
+            assert_eq!(storage.payloads.values.len(), 0);
+            assert_eq!(storage.payloads.facts.causes.len(), 2);
+            // Two cause rows, a join cell and a document cell for each of the two records,
             // and the one entry of the table of origins that holds the text's group.
             assert_eq!(
                 retained
