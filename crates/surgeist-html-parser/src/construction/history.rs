@@ -1804,18 +1804,37 @@ mod tests {
             .unwrap()
             .history_counts()
             .1;
-        let (namespace, slot) = session
+        let field = session
             .active_mut()
             .unwrap()
             .copy_context_namespace(&mut c)
+            .unwrap()
             .unwrap();
         assert_eq!(
-            namespace.uri().unwrap().code_units(),
+            field.string.code_units(),
             "urn:retained".encode_utf16().collect::<Vec<_>>()
         );
-        let slot = slot.unwrap();
-        let pointer = namespace.uri().unwrap().code_units().as_ptr();
-        drop(namespace);
+        let pointer = field.string.code_units().as_ptr();
+        // The group is the field's namespace group once an element holds it: it is bound to the
+        // units of the element's namespace then, and none holds it here, so a leaf bound to the
+        // string of the row that the copy registered stands in for the element.
+        let slot = session
+            .active()
+            .unwrap()
+            .payloads
+            .values
+            .len()
+            .checked_sub(1)
+            .unwrap();
+        session
+            .active_mut()
+            .unwrap()
+            .evidence
+            .as_mut()
+            .unwrap()
+            .bind_leaf_value(&mut c, field.group.as_ref().unwrap(), slot)
+            .unwrap();
+        drop(field.string);
         let mut lexer =
             LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let event = lexer

@@ -14,6 +14,9 @@ mod formatting;
 mod g2_d2;
 mod g2b_d3;
 mod g2c_nonce;
+#[cfg(feature = "detail")]
+mod g2d_names;
+pub(super) mod g2d_origins;
 mod image_form;
 mod input;
 mod input_types;

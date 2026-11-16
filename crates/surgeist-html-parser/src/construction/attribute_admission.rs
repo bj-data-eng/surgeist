@@ -77,7 +77,7 @@ impl HtmlAttributeMerge for MergeCandidates<'_> {
 }
 
 /// The UTF-16 units a name counts: its local name, prefix and namespace URI.
-fn name_units_of(
+pub(super) fn name_units_of(
     control: &mut ParseControl,
     name: &surgeist_html::values::QualifiedName,
 ) -> Result<usize, SessionError> {

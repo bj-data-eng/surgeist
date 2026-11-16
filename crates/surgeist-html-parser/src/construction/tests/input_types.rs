@@ -1942,9 +1942,20 @@ fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller()
 
     // A real source-less implied literal is not a Range computation. Its
     // empty lexical map cannot authorize an origin-free generated copy.
-    let body = session.allocate_implicit_body(&mut c, None).unwrap();
-    let literal = session.active().unwrap().payloads.values.iter().position(|value|
-        matches!(value, RetainedPayload::String { location: FieldRef::ElementName(id), .. } if *id == body.index)).unwrap();
+    session.allocate_implicit_body(&mut c, None).unwrap();
+    // The strings of the implied body's name and namespace are the record's own. The one string
+    // row it made is the shared literal of its namespace, which no tag spelled.
+    let literal = session
+        .active()
+        .unwrap()
+        .payloads
+        .values
+        .iter()
+        .position(|value| {
+            matches!(value, RetainedPayload::String { value, location: FieldRef::Detached, .. }
+            if value.to_utf8().is_ok_and(|text| text == "http://www.w3.org/1999/xhtml"))
+        })
+        .unwrap();
     let refused = {
         let storage = session.active().unwrap();
         storage

@@ -525,8 +525,10 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
     // The registry holds the 14 rows listed above less the three that named the documents of
     // the nodes, which the parse holds once for their tree, the lookup-registry row of the
     // textarea, whose registry is its context's, and the nonce string and row of the textarea,
-    // which has the empty nonce of its namespace.
-    assert_eq!(session.active().unwrap().payloads.values.len(), 8);
+    // which has the empty nonce of its namespace: 8. The strings of its name and namespace are
+    // the record's own, so the two rows that held them are gone, less the string of the HTML
+    // namespace literal that the first of them was and that stays as a row of its own: 7.
+    assert_eq!(session.active().unwrap().payloads.values.len(), 7);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -576,8 +578,9 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
     let storage = session.active().unwrap();
     // The registry holds the 14 rows less the three that named documents, the lookup-registry
     // row of the textarea and the nonce string and row of the textarea, and the five reset
-    // slots, 13.
-    assert_eq!(storage.payloads.values.len(), 13);
+    // slots, and the two that held the strings of the textarea's name and namespace, with the
+    // string of the namespace literal kept as a row of its own: 12.
+    assert_eq!(storage.payloads.values.len(), 12);
     let RetainedPayload::String { value, .. } = &storage.payloads.values[current_slot] else {
         panic!("original current raw retained")
     };

@@ -1,9 +1,9 @@
 //! Allocation of nodes, payload rows and prepared slots in the active session storage.
 
 use super::*;
+use surgeist_html::construction::ConstructionNodeKind;
 #[cfg(test)]
 use surgeist_html::values::{OrderedAttributes, QualifiedName};
-use surgeist_html::{construction::ConstructionNodeKind, values::Namespace};
 
 /// The name and attributes of an element that exists before the parse, as a test hands them to the
 /// allocator.
@@ -671,39 +671,43 @@ impl SessionStorage {
         nonce: NonceAtCreation,
     ) -> Result<ParserNode, SessionError> {
         let result = (|| {
-            let (name, name_ticket) = self.register_string(control, name, origins)?;
-            drop(name);
-            // The selected HTML namespace is a defining literal, copied through
-            // the same admitted exact buffer as token-created units.
-            let (namespace, namespace_ticket) =
-                self.register_literal(control, Literal::HtmlNamespace)?;
-            let (name_id, name) = self.intern_row_name(
-                control,
-                name_ticket,
-                &Namespace::from_uri(namespace.clone()),
-            )?;
-            control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+            let name = self
+                .field_string(control, name, origins)?
+                .into_managed(control)?;
+            // The namespace of the element is the selected HTML namespace, a defining literal that
+            // the parse's first registration of it creates.
+            let namespace = match self.literal_field(control, Literal::HtmlNamespace) {
+                Ok(namespace) => namespace,
+                Err(error) => {
+                    name.release(control)?;
+                    return Err(error);
+                }
+            };
+            let (identity, name_group) = self.element_identity(control, name, Some(&namespace))?;
             let count = attributes.len();
-            let template = exact_ascii(control, Some(&name), "template")?;
-            let link_flags = exact_ascii(control, Some(&name), "link")?
-                .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
-            control.charge(HtmlParseWorkCategory::RecordWrite, 6)?;
-            let node_index = self.construction.len();
-            let node = self.allocate_prepared_owned(
-                control,
-                NewRecord::NamedElement(name_id, link_flags, nonce),
-                template,
-                0,
-                0,
-                prepared,
-            )?;
-            if node.index != node_index {
-                return Err(latch_registry_row(control));
-            }
-            self.bind_string(name_ticket, FieldRef::ElementName(node.index))
-                .map_err(|_| latch_registry_row(control))?;
-            self.bind_string(namespace_ticket, FieldRef::Namespace(node.index))
-                .map_err(|_| latch_registry_row(control))?;
+            let node = (|| {
+                control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+                let template = exact_ascii(control, Some(&identity.local), "template")?;
+                let link_flags = exact_ascii(control, Some(&identity.local), "link")?
+                    .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
+                control.charge(HtmlParseWorkCategory::RecordWrite, 6)?;
+                let node_index = self.construction.len();
+                let node = self.allocate_prepared_owned(
+                    control,
+                    NewRecord::NamedElement(identity.id, link_flags, nonce),
+                    template,
+                    0,
+                    identity.units,
+                    prepared,
+                )?;
+                if node.index != node_index {
+                    return Err(latch_registry_row(control));
+                }
+                Ok(node)
+            })()?;
+            // The groups of the origins of the strings are the groups of the element's fields.
+            self.bind_field(control, FieldRef::ElementName(node.index), name_group, 0)?;
+            self.bind_field(control, FieldRef::Namespace(node.index), namespace.group, 0)?;
             // The attributes of the token are appended in source order, each copied into the
             // storage with the groups of its origins.
             if count >= NAME_INDEX_MIN_ENTRIES {

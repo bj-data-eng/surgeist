@@ -1450,6 +1450,123 @@ fn processing_instruction_rows_leave_nothing_retained_when_the_parse_stops_after
     );
 }
 
+/// The elements a report holds.
+fn elements_of(report: &crate::HtmlParseReport) -> usize {
+    let arena = &report.history().storage().view;
+    (0..arena.len())
+        .filter(|&position| {
+            matches!(
+                arena.node_at(position).unwrap().kind(),
+                crate::construction::ConstructionNodeKind::Element(_)
+            )
+        })
+        .count()
+}
+
+/// The strings of an element's name and namespace are the record's own, and the groups of their
+/// origins are admitted to the table of origins one at a time, each admission a slot of the sweep.
+/// A parse that stops after any of them leaves nothing retained. The sites the sweep reaches are
+/// the admissions of the table, and their number is derived from the report: the document has no
+/// attribute and no text, so its groups are the two of each of its elements and the three of its
+/// doctype.
+#[cfg(feature = "detail")]
+#[test]
+fn element_name_origins_leave_nothing_retained_when_the_parse_stops_after_their_admission() {
+    use std::cell::Cell;
+    let documents: [(&'static str, bool); 5] = [
+        // Implied `html`, `head` and `body`, and an element with its end tag.
+        ("<!doctype html><p><b></b></p>", false),
+        // Foreign elements with adjusted names, in the SVG and MathML namespaces.
+        (
+            "<!doctype html><svg><foreignObject></foreignObject><linearGradient/></svg><math><mi></mi></math>",
+            false,
+        ),
+        // Elements the adoption agency and the reconstruction of formatting elements create.
+        ("<!doctype html><b><i><p></b></i></p><p>", false),
+        // Clones a select makes into its selectedcontent.
+        (
+            "<!doctype html><select><button><selectedcontent></selectedcontent></button>\
+             <option><b></b></option></select>",
+            false,
+        ),
+        // A contextual parse, which has no doctype.
+        ("<p><b></b></p><svg><g></g></svg>", true),
+    ];
+    for (source, contextual) in documents {
+        let elements = Cell::new(0);
+        let parse = |limits: HtmlParseLimits| -> Result<(), Box<Stopped>> {
+            let report = if contextual {
+                crate::HtmlFragmentParseRequest::with_options(
+                    HtmlSource::utf8(source),
+                    fragment_context(),
+                    limits,
+                    HtmlParserScriptingMode::Inert,
+                    true,
+                )
+                .unwrap()
+                .with_detail(crate::DetailSet::ALL)
+                .unwrap()
+                .parse()
+            } else {
+                crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits)
+                    .with_detail(crate::DetailSet::ALL)
+                    .unwrap()
+                    .parse()
+            };
+            match report {
+                Ok(report) => {
+                    elements.set(elements_of(&report));
+                    Ok(())
+                }
+                Err(failure) => Err(stopped(&failure)),
+            }
+        };
+        let (retained, sites) = retained_after_each_prepared_slot(&parse);
+        assert!(retained.is_empty(), "{source}: {retained:?}");
+        let doctype = if contextual { 0 } else { 3 };
+        assert_eq!(
+            sites_at(&sites, "src/construction/detail_origins.rs", "insert"),
+            2 * elements.get() + doctype,
+            "{source}"
+        );
+    }
+}
+
+/// The namespace of a fragment context that no parse literal names is copied once for the parse and
+/// shared by every element created in it, so its one registry row is admitted where the first
+/// element needs it. A parse that stops after any admission leaves nothing retained, and the
+/// report of the parse that completes holds exactly one row for the namespace.
+#[test]
+fn the_row_of_a_captured_namespace_leaves_nothing_retained_when_the_parse_stops_after_its_slot() {
+    let rows = std::cell::Cell::new(0);
+    let parse = |limits: HtmlParseLimits| -> Result<(), Box<Stopped>> {
+        let report = crate::HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<foo></foo><bar><baz></baz></bar>"),
+            super::tests::g2d_origins::retained_namespace_context(),
+            limits,
+        )
+        .unwrap()
+        .parse()
+        .map_err(|failure| stopped(&failure))?;
+        let holding = report
+            .history()
+            .storage()
+            .payloads
+            .values
+            .iter()
+            .filter(|row| {
+                matches!(row, RetainedPayload::String { value, .. }
+                    if value.to_utf8().is_ok_and(|text| text == "urn:retained"))
+            })
+            .count();
+        rows.set(holding);
+        Ok(())
+    };
+    let (retained, _sites) = retained_after_each_prepared_slot(&parse);
+    assert!(retained.is_empty(), "{retained:?}");
+    assert_eq!(rows.get(), 1);
+}
+
 #[test]
 fn a_refused_row_that_owns_a_string_is_released_with_the_registry() {
     let request = request("<body><div id=a>");

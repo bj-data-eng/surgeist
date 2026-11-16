@@ -87,13 +87,15 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Root record, its document cell, its entry in the list of documents and its facts = 4.
     // Fresh template adds three native records' join cells and document cells, the entry of the
-    // inert Document, the template and inert Document facts and name/namespace owners, and no
-    // creation row or nonce slot: completed 15.
+    // inert Document, the template and inert Document facts, the string of the namespace literal
+    // and the two origin groups of the strings of the template's name and namespace, which are the
+    // record's own, and no creation row or nonce slot: completed 16.
     // Document/native preflight needs 8 above the root's 4 before lexical take: a join cell and a
     // document cell for each of the three native records, the template row and the inert
-    // Document's facts. At 14 the tag is transferred but admission of the remaining records
-    // fails after the inert Document.
-    for cap in [11, 14, 15] {
+    // Document's facts. At 15 the tag is transferred and its records exist, as the strings of the
+    // template's name and namespace admit no entry before them, and the last entry cannot be
+    // admitted.
+    for cap in [11, 15, 16] {
         let source = crate::HtmlSource::utf8("<template>");
         let mut c = ParseControl::new(
             limits()
@@ -121,14 +123,14 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             None,
             CreationContext::Ordinary,
         );
-        if cap == 15 {
+        if cap == 16 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                15
+                16
             );
             assert_eq!(session.active().unwrap().construction.len(), 4);
             assert!(
@@ -148,7 +150,7 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             assert_eq!(input.is_some(), cap == 11);
             assert_eq!(
                 session.active().unwrap().construction.len(),
-                if cap == 11 { 1 } else { 2 }
+                if cap == 11 { 1 } else { 4 }
             );
             assert_eq!(
                 session.freeze(&mut c).err(),

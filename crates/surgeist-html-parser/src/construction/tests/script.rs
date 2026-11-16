@@ -919,17 +919,102 @@ fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
     }
 }
 
+/// The auxiliary entries a session of an ordinary Document holds, derived from the sizes of what it
+/// retains: one entry for each of
+/// - the join cell and the document cell of each record (two for a record),
+/// - a registry row,
+/// - a row of the table of nonces,
+/// - an entry of the table of origins,
+/// - a row of the table of Document facts, which holds the facts of the Document at record 0 (and
+///   of the inert Document of a template, which this document has none of), and
+/// - an entry of the list of contexts, which names the (document, registry) pair that every record
+///   of the Document shares: one entry for the one pair this document's nodes name.
+///
+/// The Document's facts row and its context entry are the two entries a fresh Document holds beside
+/// the cells of its records.
+fn entries_of(session: &ParserArenaSession) -> u64 {
+    let storage = session.active().unwrap();
+    let facts = &storage.payloads.facts;
+    (2 * storage.construction.len()
+        + storage.payloads.values.len()
+        + facts.nonces.len()
+        + storage.payloads.detail_origins.len()
+        + facts.documents.len()
+        + facts.contexts.entries().len()) as u64
+}
+
 #[test]
 fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    // Before script creation Document/html + cause/nonce/join
-    // owners retain 11 slots; html holds no creation row, and the
-    // completion of the Document is a field of the session and admits none.
-    // Script metadata is reserved first: 13 stops at document/native preflight.
-    // Script adds document metadata, name/URI, its node-join cell and cause, and no creation row
-    // or nonce slot: completed 18. At 17 the tag is transferred but the node-join cell cannot
-    // be admitted; every initialized row is retained.
-    for cap in [13, 17, 18] {
+    // Before script creation Document/html + cause/nonce/join owners retain `before` slots; html
+    // holds no creation row, and the completion of the Document is a field of the session and
+    // admits none. Script metadata is reserved first: `before + 2` stops at document/native
+    // preflight. Script adds document metadata, its node-join cell and cause, and no creation row
+    // or nonce slot: completed at `needed`, which `entries_of` derives from the sizes the session retains. The strings of
+    // its name and namespace are the record's own.
+    // One entry short the tag is transferred and the record exists, as its name and namespace
+    // admit no entry before its node-join cell, and the last entry cannot be admitted; every
+    // initialized row is retained.
+    let (before, needed) = {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head><script>"),
+            limits(),
+        );
+        let (mut c, mut session, capability) = fresh_script_owner(&request);
+        let before = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        assert_eq!(before, entries_of(&session));
+        // The one Document has one facts row, and its records name one context.
+        assert_eq!(session.active().unwrap().payloads.facts.documents.len(), 1);
+        assert_eq!(
+            session
+                .active()
+                .unwrap()
+                .payloads
+                .facts
+                .contexts
+                .entries()
+                .len(),
+            1
+        );
+        let mut tokenizer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
+        let mut incoming = loop {
+            let kind = lexical_kind(&mut tokenizer, &mut c);
+            if matches!(&kind, TokenKind::Tag(tag) if tag.name.value.text().code_units() == [0x73,0x63,0x72,0x69,0x70,0x74])
+            {
+                let TokenKind::Tag(tag) = kind else {
+                    unreachable!()
+                };
+                break Some(tag);
+            }
+            release_token_kind(&mut Some(kind), &mut c).unwrap();
+        };
+        session
+            .allocate_disabled_parser_script(
+                &mut c,
+                &mut incoming,
+                None,
+                crate::construction::CreationContext::Ordinary,
+                &capability,
+            )
+            .unwrap();
+        let needed = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        assert_eq!(needed, entries_of(&session));
+        tokenizer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        (before, needed)
+    };
+    // The script adds one record (two cells), two registry rows and two entries of the table of
+    // origins, those of its name and namespace.
+    assert_eq!(needed, before + 6);
+    for cap in [before + 2, needed - 1, needed] {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><script>"),
             limits()
@@ -960,10 +1045,10 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             crate::construction::CreationContext::Ordinary,
             &capability,
         );
-        assert_eq!(incoming.is_some(), cap == 13);
+        assert_eq!(incoming.is_some(), cap == before + 2);
         assert_eq!(
             session.active().unwrap().construction.len(),
-            if cap == 18 { 3 } else { 2 }
+            if cap == before + 2 { 2 } else { 3 }
         );
         let count = session
             .active()
@@ -973,14 +1058,14 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             .iter()
             .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
             .count();
-        if cap == 18 {
+        if cap == needed {
             result.unwrap();
             assert_eq!(count, 1);
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                18
+                needed
             );
         } else {
             assert!(matches!(
@@ -1006,7 +1091,7 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
         assert_eq!(c.stop(), first);
         assert_eq!(
             c.usage().resource(HtmlParseResource::ManagedNodes).current,
-            if cap == 18 { 3 } else { 2 }
+            if cap == before + 2 { 2 } else { 3 }
         );
     }
 }

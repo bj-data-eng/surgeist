@@ -20418,3 +20418,24 @@ fn stepping_a_driver_whose_stage_waits_at_a_boundary_latches_the_tree_builder_st
     driver.release().unwrap();
     assert_released(&driver.control);
 }
+
+/// The largest fixed layout a small parse reaches is the value its completion writes: the completed
+/// parse, its driver and an optional driver, each by value (`write` in `terminal.rs` for a document,
+/// in `context.rs` for a fragment). Every bank of such a parse is smaller, so the high water of the
+/// atomic layouts is that sum of sizes, 81,600 bytes in a release build of a document parse.
+#[test]
+fn the_largest_layout_of_a_small_parse_is_the_value_its_completion_writes() {
+    use crate::HtmlParseResource::AtomicLayoutBytes;
+    let document = crate::HtmlDocumentParseRequest::offline(
+        crate::HtmlSource::utf8("<!doctype html><p>a"),
+        limits(100),
+    )
+    .parse()
+    .unwrap();
+    assert_eq!(
+        document.usage().resource(AtomicLayoutBytes).high_water(),
+        (size_of::<terminal::CompletedStandaloneDocument<'static>>()
+            + size_of::<StandaloneDocumentDriver<'static>>()
+            + size_of::<Option<StandaloneDocumentDriver<'static>>>()) as u64
+    );
+}

@@ -15,7 +15,7 @@ use surgeist_html::{
         native::custom_element_state_without_definition,
         template::{HtmlTemplateContentsOwnerDocument, template_contents_owner_document},
     },
-    values::{DocumentString, Namespace, QualifiedName},
+    values::{DocumentString, QualifiedName},
 };
 
 /// Owned positions join parser metadata; captured identities retain their owner.
@@ -659,10 +659,14 @@ impl ParserArenaSession {
 }
 
 impl SessionStorage {
+    /// The namespace of the fragment's context element, as the namespace of an element created in
+    /// it: the string and the group of the origins the capture made of it. A namespace that is one
+    /// of the parse's literals shares its string. Another is copied once into a string that one
+    /// registry row holds for the parse, which every element in it shares.
     pub(super) fn copy_context_namespace(
         &mut self,
         c: &mut ParseControl,
-    ) -> Result<(Namespace, Option<usize>), SessionError> {
+    ) -> Result<Option<storage_attributes::LiteralField>, SessionError> {
         c.require_identity(&self.control)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let context = &self
@@ -677,72 +681,44 @@ impl SessionStorage {
         let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
             return Err(SessionError::ContextUnavailable);
         };
-        let Some(uri) = element.name().namespace().uri() else {
-            return Ok((Namespace::none(), None));
+        let Some(uri) = element.name().namespace().uri().cloned() else {
+            return Ok(None);
         };
+        let uri = &uri;
         // A namespace that is one of the parse's literals shares its string.
         let literal = Literal::of_uri_units(uri.code_units());
-        let frozen = if literal.is_some() {
-            None
-        } else {
-            let mut buffer = Utf16Buffer::new(c)?;
-            if let Err(stop) = buffer.extend_units(uri.code_units(), c) {
-                buffer.release(c)?;
-                return Err(stop.into());
-            }
-            Some(buffer.freeze(c)?)
-        };
         // This private path is reached only after actual fragment creation
         // qualification. The canonical evidence owner retains captured URI
         // qualification; it cannot invent a lexical TextOrigin for this copy.
         let previous = if let Some(evidence) = provenance::graph_in(&mut self.evidence) {
-            match evidence.current_cause(c) {
-                Ok(previous) => previous,
-                Err(error) => {
-                    if let Some(frozen) = frozen {
-                        frozen.release(c)?;
-                    }
-                    return Err(error);
-                }
-            }
+            evidence.current_cause(c)?
         } else {
             None
         };
         let group = if let Some(evidence) = provenance::graph_in(&mut self.evidence) {
-            let text = frozen.as_ref().map_or(uri, FrozenUtf16::text);
-            match evidence.retain_captured_namespace(
+            Some(evidence.retain_captured_namespace(
                 c,
                 provenance::CapturedParserTrigger::new(
                     context,
                     provenance::HtmlParseCapturedCauseRole::ContextNamespace,
                 ),
-                text,
-            ) {
-                Ok(group) => Some(group),
-                Err(error) => {
-                    if let Some(frozen) = frozen {
-                        frozen.release(c)?;
-                    }
-                    return Err(error);
-                }
-            }
+                uri,
+            )?)
         } else {
             None
         };
         // Capture qualification belongs to the copied field. The element and
         // subsequent attributes retain the actual triggering lexical cause.
-        if let Err(error) = self.end_node_copy(c, previous.as_ref()) {
-            if let Some(frozen) = frozen {
-                frozen.release(c)?;
-            }
-            return Err(error);
-        }
-        let (value, ticket) = match (frozen, literal) {
-            (Some(frozen), _) => self.register_group_string_owned(c, frozen, group)?,
-            (None, Some(literal)) => self.register_literal_copy(c, literal, group)?,
-            (None, None) => return Err(latch_registry_row(c)),
+        self.end_node_copy(c, previous.as_ref())?;
+        let (string, counted) = match literal {
+            Some(literal) => self.shared_literal(c, literal)?,
+            None => self.shared_context_namespace(c, uri.code_units())?,
         };
-        Ok((Namespace::from_uri(value), Some(ticket)))
+        Ok(Some(storage_attributes::LiteralField {
+            string,
+            group,
+            counted,
+        }))
     }
 }
 

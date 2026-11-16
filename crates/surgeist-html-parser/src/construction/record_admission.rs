@@ -82,6 +82,9 @@ pub(super) struct RecordAdmission<'a> {
     pub(super) attributes: bool,
     /// The units the operation adds that the parse already counted when it made their strings.
     pub(super) counted: u64,
+    /// The units of the strings of the name of an element that the operation creates. The records
+    /// do not count them, and the parse holds them with the element.
+    pub(super) named_units: u64,
     insertion: Option<Insertion<'a>>,
 }
 
@@ -217,6 +220,16 @@ impl HtmlRecordAdmission for RecordAdmission<'_> {
                 self.control
                     .stop_representation(HtmlParseResource::ManagedUtf16Units)
             })?)
+        } else if self.named_units != 0 {
+            Some(
+                self.holds
+                    .string_units
+                    .checked_add(self.named_units)
+                    .ok_or_else(|| {
+                        self.control
+                            .stop_representation(HtmlParseResource::ManagedUtf16Units)
+                    })?,
+            )
         } else {
             None
         };
@@ -265,6 +278,7 @@ impl<'a> RecordAdmission<'a> {
             leaf: false,
             attributes: false,
             counted: 0,
+            named_units: 0,
             insertion: None,
         }
     }
@@ -342,6 +356,14 @@ impl SessionStorage {
         let leaf = kind.is_leaf();
         let mut admission = RecordAdmission::new(control, identity, holds, requests);
         admission.leaf = leaf;
+        if matches!(kind, NewRecord::NamedElement(..)) {
+            admission.named_units = requests
+                .iter()
+                .find_map(|&(resource, units)| {
+                    (resource == HtmlParseResource::ManagedUtf16Units).then_some(units)
+                })
+                .unwrap_or(0);
+        }
         let created = match kind {
             NewRecord::Document(mode) => construction.create_document(mode, &mut admission),
             NewRecord::Fragment => construction.create_fragment(&mut admission),

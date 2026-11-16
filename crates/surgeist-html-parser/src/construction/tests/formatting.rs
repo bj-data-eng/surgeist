@@ -765,7 +765,8 @@ fn formatting_child_transfer_preserves_existing_destination_order_and_backlinks(
 }
 
 #[test]
-fn formatting_namespace_copy_exact_and_one_short_buffer_limit_retains_original_and_staged_name() {
+fn formatting_namespace_copy_exact_and_one_short_buffer_limit_retains_original_and_releases_staged_name()
+ {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Original b needs one unit. Replay's copied name moves to Managed
     // before the defining 28-unit HTML namespace is buffered: peak 1+28.
@@ -805,11 +806,13 @@ fn formatting_namespace_copy_exact_and_one_short_buffer_limit_retains_original_a
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
                 1
             );
+            // The staged name was moved to the managed domain before the namespace was buffered;
+            // the refusal releases it, as it releases the string of any element it creates.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
                     .current,
-                1
+                0
             );
             assert_freeze_reports_first_stop(&mut session, &mut c, first);
         } else {

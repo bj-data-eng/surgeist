@@ -236,9 +236,11 @@ impl ParserArenaSession {
         if contents.is_none() {
             return Ok(None);
         }
+        // A template the parser created has the row of its metadata, which a preexisting one
+        // lacks.
         for payload in &storage.payloads.values {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::String { location: FieldRef::ElementName(owner), .. } if *owner == index)
+            if matches!(payload, RetainedPayload::Template { node: Some(owner), .. } if *owner == index)
             {
                 return Ok(contents);
             }
