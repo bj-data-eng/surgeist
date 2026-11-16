@@ -334,9 +334,12 @@ fn the_template_shadow_and_cause_a_report_answers_for_a_node_are_those_of_its_tr
     );
     // No source of this test writes a `template for` marker, so no template has a target.
     assert_eq!(tally.template_markers, 0);
-    assert!(corpus.2 >= 100, "the corpus has templates");
+    assert!(
+        corpus.2 >= 50 * g2_d2::details().len(),
+        "the corpus has templates"
+    );
     assert!(tally.templates > corpus.2);
-    assert!(tally.shadows >= 16);
+    assert!(tally.shadows >= 8 * g2_d2::details().len());
     assert!(tally.shadow_clones >= 1);
     if cfg!(feature = "detail") {
         assert_eq!(tally.detailed, tally.parses / 2);
