@@ -94,8 +94,16 @@ bytes independently and that an input over either refuses the whole decode
 `CssDecodedStylesheetInput::decode` rustdoc); neither orders the two errors, so
 when both are exceeded either limit error is accepted. The decoded snapshot is then parsed in Standards and Quirks
 modes: diagnostics against the decoded-source coordinates, the clean report,
-equality with parsing the same text, and, for a recognized charset prefix, the
-documented leading `UnknownAtRule` drop at offset 0.
+equality with parsing the same text, and the reporting of a leading `@charset`
+([Syntax 3 sections 3.2 and 8.3](../../../references/SOURCE-EDITIONS.md#css-syntax-3-edition),
+as the [reference](../docs/reference.md#stylesheet-encoding-guidance) states
+it): the exact declaration at the start of the decoded text, spelled in this
+package from the clause as `@charset "`, ASCII characters but `"`, `";` within
+the first 1024 bytes, gives no diagnostic, whether or not its label names an
+encoding and whichever source selected the encoding; any other `@charset` at
+the start gives the `UnknownAtRule` drop at offset 0. The UTF-8 source and
+structured rules targets check no property that depends on that reporting, so
+they carry no such expectation.
 
 ## UTF-8 source
 
