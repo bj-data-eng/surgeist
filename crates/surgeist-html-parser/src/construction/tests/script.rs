@@ -919,6 +919,19 @@ fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
     }
 }
 
+/// The auxiliary entries a session of an ordinary Document holds, derived from the sizes of what it
+/// retains: the join cell and the document cell of each record, a registry row, a row of the table
+/// of nonces and an entry of the table of origins, each one entry, and two entries that the Document
+/// holds beside them.
+fn entries_of(session: &ParserArenaSession) -> u64 {
+    let storage = session.active().unwrap();
+    (2 * storage.construction.len()
+        + storage.payloads.values.len()
+        + storage.payloads.facts.nonces.len()
+        + storage.payloads.detail_origins.len()
+        + 2) as u64
+}
+
 #[test]
 fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
@@ -926,7 +939,7 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
     // holds no creation row, and the completion of the Document is a field of the session and
     // admits none. Script metadata is reserved first: `before + 2` stops at document/native
     // preflight. Script adds document metadata, its node-join cell and cause, and no creation row
-    // or nonce slot: completed at `needed`, which a parse without caps measures. The strings of
+    // or nonce slot: completed at `needed`, which `entries_of` derives from the sizes the session retains. The strings of
     // its name and namespace are the record's own.
     // One entry short the tag is transferred and the record exists, as its name and namespace
     // admit no entry before its node-join cell, and the last entry cannot be admitted; every
@@ -941,6 +954,7 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             .usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current;
+        assert_eq!(before, entries_of(&session));
         let mut tokenizer =
             LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut incoming = loop {
@@ -967,12 +981,15 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             .usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current;
+        assert_eq!(needed, entries_of(&session));
         tokenizer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
         (before, needed)
     };
-    assert!(needed > before + 2);
+    // The script adds one record (two cells), two registry rows and two entries of the table of
+    // origins, those of its name and namespace.
+    assert_eq!(needed, before + 6);
     for cap in [before + 2, needed - 1, needed] {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><script>"),
