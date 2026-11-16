@@ -43,5 +43,11 @@ path = "src/bin/source.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "css-value-worker"
+path = "src/bin/value.rs"
+test = false
+doc = false
+
 [lints]
 workspace = true

@@ -14,10 +14,12 @@ mod nodes;
 mod source;
 #[cfg(test)]
 mod testing;
+mod values;
 
 pub use bytes::{ByteCase, ByteTarget};
 pub use check::Violation;
 pub use source::{SourceCase, SourceTarget};
+pub use values::{ValueCase, ValueTarget};
 
 use surgeist_fuzz::{
     CaseOutcome, FailureClass, FailureKey, FuzzError, FuzzErrorKind, PropertyId, Result,

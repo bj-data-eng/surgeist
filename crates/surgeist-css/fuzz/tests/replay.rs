@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Every target through the shared framework: capture, exact replay, generation,
 //! optional property and coverage engines, and seed freshness.
-use surgeist_css_fuzz::{ByteTarget, SourceTarget};
+use surgeist_css_fuzz::{ByteTarget, SourceTarget, ValueTarget};
 use surgeist_fuzz::{CaseTarget, Generation, OutcomeKind, engine};
 
 fn check_literals<T: CaseTarget>(target: &T, count: u8, literal: impl Fn(u8) -> T::Case) {
@@ -42,6 +42,10 @@ fn literals_capture_exact_inputs_and_replay_the_same_checked_properties() {
     let source = SourceTarget::new();
     check_literals(&source, SourceTarget::LITERALS, |id| {
         source.literal(id).unwrap()
+    });
+    let values = ValueTarget::new();
+    check_literals(&values, ValueTarget::LITERALS, |id| {
+        values.literal(id).unwrap()
     });
 }
 
@@ -88,6 +92,7 @@ fn generated<T: CaseTarget>(target: &T) {
 fn bounded_generation_is_deterministic_and_uses_the_replay_evaluator() {
     generated(&ByteTarget::new());
     generated(&SourceTarget::new());
+    generated(&ValueTarget::new());
 }
 
 #[cfg(feature = "property")]
@@ -122,6 +127,7 @@ fn property<T: CaseTarget>(target: &T, seed: u64) {
 fn finite_property_runs_capture_nonvacuous_public_observations() {
     property(&ByteTarget::new(), 1147);
     property(&SourceTarget::new(), 1147);
+    property(&ValueTarget::new(), 1147);
 }
 
 #[cfg(feature = "coverage")]
@@ -152,6 +158,7 @@ fn coverage<T: CaseTarget>(target: &T) {
 fn finite_coverage_callbacks_capture_the_same_case_as_direct_replay() {
     coverage(&ByteTarget::new());
     coverage(&SourceTarget::new());
+    coverage(&ValueTarget::new());
 }
 
 fn seed_freshness<T: CaseTarget>(
@@ -188,4 +195,14 @@ fn generated_seed_artifacts_match_the_authoritative_literal_factories_and_codec(
     seed_freshness(&source, "source", SourceTarget::LITERALS, |id| {
         source.literal(id).unwrap()
     });
+    let values = ValueTarget::new();
+    seed_freshness(&values, "values", ValueTarget::LITERALS, |id| {
+        values.literal(id).unwrap()
+    });
+    seed_freshness(
+        &values,
+        "known-failures",
+        ValueTarget::KNOWN_FAILURES,
+        |id| values.known_failure(id).unwrap(),
+    );
 }

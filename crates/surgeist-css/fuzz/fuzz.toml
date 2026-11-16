@@ -1,5 +1,5 @@
 schema = 1
-fixtures = ["seeds/bytes", "seeds/source", "seeds/csstree"]
+fixtures = ["seeds/bytes", "seeds/source", "seeds/csstree", "seeds/values"]
 
 [[targets]]
 id = "surgeist-css::byte-decoding"
@@ -25,6 +25,20 @@ format = { identity = "surgeist-css::source-case", revision = 1 }
 generator_identity = { identity = "surgeist-css::utf8-source", revision = 1 }
 encoding = "raw-bytes"
 limits = { bytes = 16384, nodes = 0, depth = 0, text_units = 16384, operations = 0 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
+
+[[targets]]
+id = "surgeist-css::property-value"
+owner = "surgeist-css"
+binary = "css-value-worker"
+properties = ["surgeist-css::global-and-substitution", "surgeist-css::property-metadata", "surgeist-css::specified-round-trip", "surgeist-css::known-value-serialization", "surgeist-css::sibling-recovery", "surgeist-css::implicit-closure", "surgeist-css::front-agreement", "surgeist-css::source-coordinates", "surgeist-css::report-cleanliness", "surgeist-css::retained-nodes"]
+source_references = ["references/SOURCE-EDITIONS.md#css-syntax-3-edition", "crates/surgeist-css/docs/reference.md#raw-property-values", "crates/surgeist-css/docs/reference.md#checked-declaration-construction", "crates/surgeist-css/docs/reference.md#canonical-ordinary-number-output", "crates/surgeist-css/docs/reference.md#authored-opacity-and-specified-serialization", "crates/surgeist-css/docs/reference.md#block-contents", "crates/surgeist-css/src/property/mod.rs", "crates/surgeist-css/src/declaration/declaration_serialization.rs", "crates/surgeist-css/fuzz/README.md#property-values"]
+format = { identity = "surgeist-css::value-case", revision = 1 }
+generator_identity = { identity = "surgeist-css::property-value", revision = 1 }
+encoding = "structured"
+limits = { bytes = 4096, nodes = 32, depth = 4, text_units = 2304, operations = 16 }
 requirements = { features = [], capabilities = ["replay", "case-capture"] }
 min_evaluated = 1
 max_generation_rejections = 0
