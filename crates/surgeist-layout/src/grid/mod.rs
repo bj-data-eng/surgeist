@@ -49,6 +49,8 @@ pub(crate) use observation::{
 mod placement;
 mod subgrid;
 #[cfg(test)]
+pub(crate) mod subgrid_work;
+#[cfg(test)]
 #[path = "../grid_tests.rs"]
 mod tests;
 mod topology;
@@ -338,6 +340,8 @@ where
         stage,
         parent_context,
     } = request;
+    #[cfg(test)]
+    subgrid_work::observe(subgrid_work::Observation::ContextualGrid);
     let contextual_minimum =
         standalone_intrinsic_minimum_phases(&child.projection(), child.inherited_axes());
     let intrinsic_minimum = Size::new(
@@ -346,6 +350,8 @@ where
     );
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let (run_input, boundary, entry) = if intrinsic_axes.width || intrinsic_axes.height {
+        #[cfg(test)]
+        subgrid_work::observe(subgrid_work::Observation::MinimumProbe);
         let available = Size::new(
             intrinsic_minimum
                 .width
@@ -1169,6 +1175,8 @@ fn compute_grid_with_context_source<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    #[cfg(test)]
+    subgrid_work::observe(subgrid_work::Observation::ContextualGrid);
     let style_input = container;
     let inherited_axes = container.inherited_axes();
     let contextual_minimum =
@@ -1223,6 +1231,8 @@ where
         .with_settled_auto_scrollbars(input.settled_auto_scrollbars())
         .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass())
         .with_baseline_demand_from(input);
+        #[cfg(test)]
+        subgrid_work::observe(subgrid_work::Observation::MinimumProbe);
         let measured = compute_grid_with_scrollbar_settlement(
             tree,
             node,

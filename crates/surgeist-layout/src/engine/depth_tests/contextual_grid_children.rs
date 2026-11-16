@@ -1,4 +1,5 @@
 use super::*;
+use crate::grid::subgrid_work::{SubgridWork, take_subgrid_work};
 use crate::{
     AlignContent, AlignItems, ComputedOverflow, GridAxisKind, GridLanesFlow, GridPlacement,
     MinSizeOf, Overflow, PreferredSizeOf, ScrollbarWidthOf, SizeContainment, SubgridTrack,
@@ -461,4 +462,99 @@ fn subgrid_chain_leaf_refusal_surfaces_unchanged() {
             assert_chain_failure_surfaces_unchanged::<f64>();
         },
     );
+}
+
+// Work bounds for a chain of nested subgrids. A level needs one contextual Grid
+// computation of its subgrid child for placement, which may probe the child's
+// standalone minimum once and refresh its baselines once, so those grow with
+// the depth. Intrinsic traversal prepares each wrapper once for each distinct
+// combination of axis, contribution purpose and sizing phase that the root
+// asks for, and a Grid Lanes level adds the contextual computations of its
+// lane candidates; both are a fixed number per level, at most the per-level
+// counts below. None of them may grow with the number of paths through the
+// chain.
+const WRAPPER_PREPARATIONS_PER_LEVEL: usize = 24;
+const CONTEXTUAL_GRIDS_PER_LEVEL: usize = 14;
+
+fn assert_subgrid_work_grows_linearly(name: &str, depth: u32, work: SubgridWork) {
+    let levels = depth as usize;
+    assert!(
+        work.contextual_grids <= CONTEXTUAL_GRIDS_PER_LEVEL * (levels + 1),
+        "{name} at depth {depth}: {} contextual Grid computations exceed {}",
+        work.contextual_grids,
+        CONTEXTUAL_GRIDS_PER_LEVEL * (levels + 1),
+    );
+    assert!(
+        work.baseline_refreshes <= levels,
+        "{name} at depth {depth}: {} baseline refreshes exceed {levels}",
+        work.baseline_refreshes,
+    );
+    assert!(
+        work.minimum_probes <= 2 * levels,
+        "{name} at depth {depth}: {} standalone-minimum probes exceed {}",
+        work.minimum_probes,
+        2 * levels,
+    );
+    assert!(
+        work.wrapper_preparations <= WRAPPER_PREPARATIONS_PER_LEVEL * (levels + 1),
+        "{name} at depth {depth}: {} wrapper preparations exceed {}",
+        work.wrapper_preparations,
+        WRAPPER_PREPARATIONS_PER_LEVEL * (levels + 1),
+    );
+}
+
+fn subgrid_work_of<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> SubgridWork {
+    take_subgrid_work();
+    compute_layout(tree, 0, standalone()).expect("subgrid chain layout");
+    take_subgrid_work()
+}
+
+#[test]
+fn subgrid_grid_chain_work_grows_linearly_with_depth() {
+    for depth in [2, 3, 4] {
+        for span in [Span::Whole, Span::SecondColumnFirstRow] {
+            assert_subgrid_work_grows_linearly(
+                "Grid chain",
+                depth,
+                subgrid_work_of::<f32>(&subgrid_grid_chain::<f32>(depth, span)),
+            );
+            assert_subgrid_work_grows_linearly(
+                "Grid chain",
+                depth,
+                subgrid_work_of::<f64>(&subgrid_grid_chain::<f64>(depth, span)),
+            );
+        }
+    }
+}
+
+#[test]
+fn subgrid_lanes_chain_work_grows_linearly_with_depth() {
+    for depth in [2, 3, 4] {
+        assert_subgrid_work_grows_linearly(
+            "Grid Lanes chain",
+            depth,
+            subgrid_work_of::<f32>(&subgrid_lanes_chain::<f32>(depth)),
+        );
+        assert_subgrid_work_grows_linearly(
+            "Grid Lanes chain",
+            depth,
+            subgrid_work_of::<f64>(&subgrid_lanes_chain::<f64>(depth)),
+        );
+    }
+}
+
+#[test]
+fn one_axis_subgrid_chain_work_grows_linearly_with_depth() {
+    for depth in [2, 3, 4] {
+        assert_subgrid_work_grows_linearly(
+            "one-axis chain",
+            depth,
+            subgrid_work_of::<f32>(&standalone_minimum_chain::<f32>(depth)),
+        );
+        assert_subgrid_work_grows_linearly(
+            "one-axis chain",
+            depth,
+            subgrid_work_of::<f64>(&standalone_minimum_chain::<f64>(depth)),
+        );
+    }
 }

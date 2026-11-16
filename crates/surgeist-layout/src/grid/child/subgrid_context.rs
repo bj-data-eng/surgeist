@@ -1065,6 +1065,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
                 padding,
                 scrollbar_gutter: Edges::ZERO,
             };
+            #[cfg(test)]
+            crate::grid::subgrid_work::observe(
+                crate::grid::subgrid_work::Observation::BaselineRefresh,
+            );
             let stage = input
                 .sizing_stage
                 .mapped(container_flow_axes, child_flow_axes);

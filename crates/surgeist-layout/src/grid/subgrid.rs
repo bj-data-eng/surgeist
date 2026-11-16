@@ -2586,6 +2586,8 @@ pub(super) fn visit_grid_minimum_wrapper_children<'input, Tree, M, T>(
 where
     Tree: Compute<'input, M>,
 {
+    #[cfg(test)]
+    super::subgrid_work::observe(super::subgrid_work::Observation::WrapperPreparation);
     let containment = size_containment(tree.node_input(node));
     if grid_minimum_wrapper_contained(tree.node_input(node), request.axis) {
         return Ok(Vec::new());
