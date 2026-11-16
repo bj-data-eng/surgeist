@@ -1,10 +1,11 @@
 //! Color 5 alpha and authored absolute-eligibility contracts.
 use crate::css::support::checked_color as color;
+use crate::css::support::math_depth::{ComposedDepthBoundary, Construction};
 use surgeist_css::CssParser;
 use surgeist_css::color::{
     CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssAlphaColor, CssColor,
-    CssRelativeColorChannel, CssRelativeColorEnvironment, CssRelativeColorExpression,
-    CssRelativeColorExpressionValue, CssRelativeColorResultDomain,
+    CssColorConstructionError, CssRelativeColorChannel, CssRelativeColorEnvironment,
+    CssRelativeColorExpression, CssRelativeColorExpressionValue, CssRelativeColorResultDomain,
 };
 use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
 use surgeist_css::numeric::{CssCalculationExpressionRef, CssCalculationType};
@@ -177,15 +178,19 @@ fn checked_alpha_graph_enforces_depth_without_discarding_children() {
             .unwrap_err()
             .is_nesting_limit()
     );
-    for depth in [254, 255, 256] {
-        let text = format!("{}alpha{}", "calc(".repeat(depth), ")".repeat(depth));
-        let result = CssAlphaColor::try_new(color("red"), Some(alpha(&text)));
-        if depth < 256 {
-            assert!(result.is_ok());
-        } else {
-            assert!(result.unwrap_err().is_nesting_limit());
-        }
+    ComposedDepthBoundary {
+        name: "alpha channel calculation",
+        leaf: "alpha",
+        accepted: &[254, 255],
+        rejected: &[256],
+        build: |_, text| {
+            Construction::of(
+                CssAlphaColor::try_new(color("red"), Some(alpha(text))),
+                CssColorConstructionError::is_nesting_limit,
+            )
+        },
     }
+    .assert();
 }
 
 #[test]

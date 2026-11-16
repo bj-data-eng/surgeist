@@ -1,11 +1,16 @@
 //! Authored clipping, scrolling, and ellipsis controls from CSS Overflow 3.
 
 use crate::component::CssComponentValue;
-use crate::numeric::{CssLength, CssNonNegative, CssNumeric};
+use crate::numeric::{CssLength, CssNumeric};
 use crate::values::common::CssBoxEdgeKeyword;
 use crate::values::text::CssTextOverflow;
 
-/// The authored `<visual-box> || <length [0,∞]>` clip-margin value.
+/// The authored `<visual-box> || <length>` clip-margin value.
+///
+/// The offset is an ordinary signed length (Overflow 3 Editor's Draft
+/// section 3.2): a negative length is an inset, and a calculation keeps its
+/// symbolic sum without range clamping. Clamping to the scroll container and
+/// the `border-box` offset suppression belong to downstream resolution.
 ///
 /// # Specified serialization
 ///
@@ -13,7 +18,7 @@ use crate::values::text::CssTextOverflow;
 #[derive(Clone, Debug)]
 pub struct CssOverflowClipMargin {
     authored_box_edge: Option<CssBoxEdgeKeyword>,
-    authored_offset: Option<CssNumeric<CssLength, CssNonNegative>>,
+    authored_offset: Option<CssNumeric<CssLength>>,
 }
 
 impl PartialEq for CssOverflowClipMargin {
@@ -34,7 +39,7 @@ impl CssOverflowClipMargin {
     #[must_use]
     pub fn try_new(
         authored_box_edge: Option<CssBoxEdgeKeyword>,
-        authored_offset: Option<CssNumeric<CssLength, CssNonNegative>>,
+        authored_offset: Option<CssNumeric<CssLength>>,
     ) -> Option<Self> {
         if authored_box_edge.is_none() && authored_offset.is_none() {
             return None;
@@ -61,11 +66,11 @@ impl CssOverflowClipMargin {
         Self::try_new(None, Some(Self::zero_px())).expect("valid clip-margin initial")
     }
 
-    fn zero_px() -> CssNumeric<CssLength, CssNonNegative> {
-        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+    fn zero_px() -> CssNumeric<CssLength> {
+        CssNumeric::<CssLength>::try_from_component(
             CssComponentValue::try_dimension("0", "px").expect("valid dimension"),
         )
-        .expect("valid nonnegative length")
+        .expect("valid length")
     }
 
     /// Borrows the authored visual box, if present.
@@ -74,7 +79,7 @@ impl CssOverflowClipMargin {
     }
 
     /// Borrows the authored offset, if present.
-    pub fn authored_offset(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
+    pub fn authored_offset(&self) -> Option<&CssNumeric<CssLength>> {
         self.authored_offset.as_ref()
     }
 
@@ -87,7 +92,7 @@ impl CssOverflowClipMargin {
     }
 
     /// Returns the effective offset, defaulting to exact `0px`.
-    pub fn offset(&self) -> CssNumeric<CssLength, CssNonNegative> {
+    pub fn offset(&self) -> CssNumeric<CssLength> {
         self.authored_offset.clone().unwrap_or_else(Self::zero_px)
     }
 }

@@ -1,6 +1,6 @@
 //! Authored descriptor phases with original component provenance.
 
-use crate::component::{CssComponentValueError, CssSerializedValue, CssValueOrigin};
+use crate::component::CssSerializedValue;
 use crate::component::{CssComponentValueLimits, CssComponentValues};
 use crate::declaration::CssSubstitutionDependentValue;
 use crate::diagnostic::CssError;
@@ -11,7 +11,7 @@ use crate::rule::counter_style::{
     CssCounterStyleNegative, CssCounterStylePad, CssCounterStyleRange, CssCounterStyleSpeakAs,
     CssCounterStyleSystem, CssCounterSymbol, CssCounterSymbols,
 };
-use crate::rule::descriptor_values::DescriptorValueFailure;
+use crate::rule::descriptor_values::{self, CheckedDescriptorValue, DescriptorValueFailure};
 use crate::source::CssParsedOrigin;
 use crate::source::Provenance;
 
@@ -207,12 +207,6 @@ macro_rules! descriptor_value_api {
 }
 pub(crate) use descriptor_value_api;
 
-fn reject_counterstyle_recovered(
-    components: &CssComponentValues,
-) -> Result<(), CssCounterStyleValueError> {
-    components.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()).into())
-}
-
 /// A checked component-native `@counter-style` descriptor construction or reentry failure.
 ///
 /// The supplied components were not admitted ([`Self::component_error`]), the descriptor
@@ -225,21 +219,34 @@ pub struct CssCounterStyleValueError {
 
 descriptor_value_api!(CssCounterStyleValueError, "counter-style");
 
-impl CssCounterStyleValueError {
-    fn from_component(error: CssComponentValueError) -> Self {
-        DescriptorValueFailure::component(error).into()
+impl CheckedDescriptorValue for CssCounterStyleDescriptorValue {
+    type Kind = CssCounterStyleDescriptorKind;
+    type Error = CssCounterStyleValueError;
+
+    fn selector(&self) -> Self::Kind {
+        self.kind
     }
 
-    fn from_grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
-        DescriptorValueFailure::grammar(error, serialized).into()
+    fn is_pending(&self) -> bool {
+        matches!(self.data, CounterStyleValueData::Pending(_))
     }
 
-    fn residual(origin: CssValueOrigin) -> Self {
-        DescriptorValueFailure::residual(origin).into()
-    }
-
-    fn not_pending() -> Self {
-        DescriptorValueFailure::not_pending().into()
+    fn from_checked(
+        kind: Self::Kind,
+        components: CssComponentValues,
+        serialized: &CssSerializedValue,
+    ) -> Result<Self, CssError> {
+        let data = crate::parser::counter_style::construct_descriptor_value(
+            kind,
+            &components,
+            serialized,
+        )?;
+        Ok(Self {
+            kind,
+            data,
+            components: components.into(),
+            origin: Provenance::new(None),
+        })
     }
 }
 
@@ -252,32 +259,7 @@ impl CssCounterStyleDescriptorValue {
         components: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssCounterStyleValueError> {
-        components
-            .validate_with_limits(limits)
-            .map_err(CssCounterStyleValueError::from_component)?;
-        reject_counterstyle_recovered(&components)?;
-        Self::from_validated_components(kind, components, limits)
-    }
-    fn from_validated_components(
-        kind: CssCounterStyleDescriptorKind,
-        components: CssComponentValues,
-        limits: CssComponentValueLimits,
-    ) -> Result<Self, CssCounterStyleValueError> {
-        let serialized = components
-            .serialize_tokens(limits)
-            .map_err(CssCounterStyleValueError::from_component)?;
-        let data = crate::parser::counter_style::construct_descriptor_value(
-            kind,
-            &components,
-            &serialized,
-        )
-        .map_err(|error| CssCounterStyleValueError::from_grammar(error, &serialized))?;
-        Ok(Self {
-            kind,
-            data,
-            components: components.into(),
-            origin: Provenance::new(None),
-        })
+        descriptor_values::admit(kind, components, limits)
     }
     /// Rechecks a replacement without performing host lookup or substitution.
     ///
@@ -287,17 +269,7 @@ impl CssCounterStyleDescriptorValue {
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssCounterStyleValueError> {
-        if !matches!(self.data, CounterStyleValueData::Pending(_)) {
-            return Err(CssCounterStyleValueError::not_pending());
-        }
-        replacement
-            .validate_with_limits(limits)
-            .map_err(CssCounterStyleValueError::from_component)?;
-        reject_counterstyle_recovered(&replacement)?;
-        if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
-            return Err(CssCounterStyleValueError::residual(origin));
-        }
-        Self::from_validated_components(self.kind, replacement, limits)
+        descriptor_values::reenter(self, replacement, limits)
     }
 }
 

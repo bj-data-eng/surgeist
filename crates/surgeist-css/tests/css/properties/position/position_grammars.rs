@@ -542,6 +542,7 @@ fn position_offset_construction_accepts_only_authored_length_percentages() {
 #[test]
 fn generic_position_typed_calculation_preserves_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "mask-position offset calculation",
         template: "mask-position: left {}1px{}; color: red",
         accepted: &[255, 256],
         rejected: &[257],

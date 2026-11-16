@@ -2,6 +2,7 @@
 //! typing. Root-only unitless-zero admission does not turn zero into a length.
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
+use crate::css::support::math_depth::{ComposedDepthBoundary, Construction};
 use surgeist_css::CssParser;
 use surgeist_css::component::{
     CssComponentValueError, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
@@ -283,16 +284,26 @@ fn inserted_wrapper_and_separators_are_included_in_exact_component_and_byte_limi
 
 #[test]
 fn a_supported_child_depth_cannot_silently_exceed_the_aggregate_wrapper_depth() {
-    let source = format!("{}1px{}", "calc(".repeat(256), ")".repeat(256));
-    let child = operand(&source);
-    let error = Calculation::try_sum(child, [], Default::default()).unwrap_err();
-    resource(&error, ComponentFailure::NestingLimit);
-    let source = format!("{}1px{}", "calc(".repeat(255), ")".repeat(255));
-    let sum = Calculation::try_sum(operand(&source), [], Default::default()).unwrap();
-    assert_eq!(
-        sum.serialize_tokens(Default::default()).unwrap().as_css(),
-        format!("calc({source})")
-    );
+    ComposedDepthBoundary {
+        name: "one-operand sum of a nested calculation",
+        leaf: "1px",
+        accepted: &[255],
+        rejected: &[256],
+        build: |_, source| match Calculation::try_sum(operand(source), [], Default::default()) {
+            Ok(sum) => {
+                assert_eq!(
+                    sum.serialize_tokens(Default::default()).unwrap().as_css(),
+                    format!("calc({source})")
+                );
+                Construction::Built
+            }
+            Err(error) => {
+                resource(&error, ComponentFailure::NestingLimit);
+                Construction::NestingLimit
+            }
+        },
+    }
+    .assert();
 }
 
 #[test]

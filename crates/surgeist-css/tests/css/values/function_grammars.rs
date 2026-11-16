@@ -500,6 +500,7 @@ fn shape_commands_parse_through_the_clip_path_front_door() {
 #[test]
 fn basic_shape_calculations_preserve_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "circle radius calculation",
         template: "clip-path: circle({}1px{}); color: red",
         accepted: &[255],
         rejected: &[256, 257],
@@ -801,6 +802,7 @@ fn filter_checked_scalars_and_lists_reject_unrepresentable_states() {
 #[test]
 fn filter_calculations_preserve_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "brightness amount calculation",
         template: "filter: brightness({}1{}); color: red",
         accepted: &[255],
         rejected: &[256, 257],
@@ -1047,6 +1049,7 @@ fn repeated_easing_failures_recover_to_valid_timing_and_color_siblings() {
 #[test]
 fn easing_symbolic_math_preserves_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "cubic-bezier ordinate calculation",
         template: "transition-timing-function: cubic-bezier(0, {}1{}, 1, 1); color: red",
         accepted: &[255],
         rejected: &[256, 257],
@@ -1444,6 +1447,7 @@ fn transform_checked_scalars_and_lists_reject_unrepresentable_states() {
 #[test]
 fn transform_calculations_preserve_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "rotate angle calculation",
         template: "transform: rotate({}1deg{}); color: red",
         accepted: &[255],
         rejected: &[256, 257],

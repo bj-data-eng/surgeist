@@ -1,6 +1,7 @@
-use crate::component::{CssComponentValueLimits, CssComponentValues};
+use crate::component::{CssComponentValueLimits, CssComponentValues, CssSerializedValue};
 use crate::declaration::CssSubstitutionDependentValue;
-use crate::rule::descriptor_values::DescriptorValueFailure;
+use crate::diagnostic::CssError;
+use crate::rule::descriptor_values::{self, CheckedDescriptorValue};
 use crate::rule::font_face::CssFontDisplay;
 use crate::rule::font_feature_values::CssFontFeatureValuesError;
 use crate::rule::font_feature_values::{CssFontFeatureValueIndex, CssFontFeatureValueKind};
@@ -136,10 +137,60 @@ impl CssFontFeatureValue {
     }
 }
 
-fn reject_fontfeature_recovered(
-    components: &CssComponentValues,
-) -> Result<(), CssFontFeatureValuesError> {
-    components.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()).into())
+impl CheckedDescriptorValue for CssFontFeatureDisplayValue {
+    type Kind = ();
+    type Error = CssFontFeatureValuesError;
+
+    fn selector(&self) -> Self::Kind {}
+
+    fn is_pending(&self) -> bool {
+        matches!(self.data, FontFeatureDisplayData::Pending(_))
+    }
+
+    fn from_checked(
+        (): Self::Kind,
+        components: CssComponentValues,
+        serialized: &CssSerializedValue,
+    ) -> Result<Self, CssError> {
+        let data =
+            crate::parser::font_feature_values::construct_display_value(&components, serialized)?;
+        Ok(Self {
+            data,
+            components: components.into(),
+            origin: Provenance::new(None),
+        })
+    }
+}
+
+impl CheckedDescriptorValue for CssFontFeatureValue {
+    type Kind = CssFontFeatureValueKind;
+    type Error = CssFontFeatureValuesError;
+
+    fn selector(&self) -> Self::Kind {
+        self.kind
+    }
+
+    fn is_pending(&self) -> bool {
+        matches!(self.data, FontFeatureValueData::Pending(_))
+    }
+
+    fn from_checked(
+        kind: Self::Kind,
+        components: CssComponentValues,
+        serialized: &CssSerializedValue,
+    ) -> Result<Self, CssError> {
+        let data = crate::parser::font_feature_values::construct_feature_value(
+            kind,
+            &components,
+            serialized,
+        )?;
+        Ok(Self {
+            kind,
+            data,
+            components: components.into(),
+            origin: Provenance::new(None),
+        })
+    }
 }
 
 impl CssFontFeatureDisplayValue {
@@ -150,27 +201,7 @@ impl CssFontFeatureDisplayValue {
         components: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontFeatureValuesError> {
-        components
-            .validate_with_limits(limits)
-            .map_err(CssFontFeatureValuesError::from_component)?;
-        reject_fontfeature_recovered(&components)?;
-        Self::from_validated_components(components, limits)
-    }
-    fn from_validated_components(
-        components: CssComponentValues,
-        limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValuesError> {
-        let serialized = components
-            .serialize_tokens(limits)
-            .map_err(CssFontFeatureValuesError::from_component)?;
-        let data =
-            crate::parser::font_feature_values::construct_display_value(&components, &serialized)
-                .map_err(|error| CssFontFeatureValuesError::from_grammar(error, &serialized))?;
-        Ok(Self {
-            data,
-            components: components.into(),
-            origin: Provenance::new(None),
-        })
+        descriptor_values::admit((), components, limits)
     }
     /// Rechecks a replacement without performing host lookup or substitution.
     ///
@@ -180,17 +211,7 @@ impl CssFontFeatureDisplayValue {
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontFeatureValuesError> {
-        if !matches!(self.data, FontFeatureDisplayData::Pending(_)) {
-            return Err(CssFontFeatureValuesError::not_pending());
-        }
-        replacement
-            .validate_with_limits(limits)
-            .map_err(CssFontFeatureValuesError::from_component)?;
-        reject_fontfeature_recovered(&replacement)?;
-        if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
-            return Err(CssFontFeatureValuesError::residual(origin));
-        }
-        Self::from_validated_components(replacement, limits)
+        descriptor_values::reenter(self, replacement, limits)
     }
 }
 
@@ -203,32 +224,7 @@ impl CssFontFeatureValue {
         components: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontFeatureValuesError> {
-        components
-            .validate_with_limits(limits)
-            .map_err(CssFontFeatureValuesError::from_component)?;
-        reject_fontfeature_recovered(&components)?;
-        Self::from_validated_components(kind, components, limits)
-    }
-    fn from_validated_components(
-        kind: CssFontFeatureValueKind,
-        components: CssComponentValues,
-        limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValuesError> {
-        let serialized = components
-            .serialize_tokens(limits)
-            .map_err(CssFontFeatureValuesError::from_component)?;
-        let data = crate::parser::font_feature_values::construct_feature_value(
-            kind,
-            &components,
-            &serialized,
-        )
-        .map_err(|error| CssFontFeatureValuesError::from_grammar(error, &serialized))?;
-        Ok(Self {
-            kind,
-            data,
-            components: components.into(),
-            origin: Provenance::new(None),
-        })
+        descriptor_values::admit(kind, components, limits)
     }
     /// Rechecks a replacement without performing host lookup or substitution.
     ///
@@ -238,17 +234,7 @@ impl CssFontFeatureValue {
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontFeatureValuesError> {
-        if !matches!(self.data, FontFeatureValueData::Pending(_)) {
-            return Err(CssFontFeatureValuesError::not_pending());
-        }
-        replacement
-            .validate_with_limits(limits)
-            .map_err(CssFontFeatureValuesError::from_component)?;
-        reject_fontfeature_recovered(&replacement)?;
-        if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
-            return Err(CssFontFeatureValuesError::residual(origin));
-        }
-        Self::from_validated_components(self.kind, replacement, limits)
+        descriptor_values::reenter(self, replacement, limits)
     }
 }
 impl CssFontFeatureDisplayValue {
