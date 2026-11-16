@@ -42,6 +42,14 @@ pub fn all() -> Vec<Case> {
     }));
     cases.extend(property_cases());
     cases.extend(color_cases());
+    cases.extend(COLOR_RANGE_INPUTS.iter().map(|(slug, input)| {
+        Case::new(
+            format!("front.property-value.text.color-range-{slug}"),
+            "property-value.text",
+            "color",
+            input,
+        )
+    }));
     for front in ["color.used.large-actions", "color.authored.large-actions"] {
         let suffix = front.strip_prefix("color.").unwrap();
         cases.push(Case::new(
@@ -50,6 +58,17 @@ pub fn all() -> Vec<Case> {
             "absent",
             NUMERICAL_OVERFLOW_INPUT,
         ));
+        // A range input that needs more actions than the corpus ceiling is
+        // refused on the ordinary fronts; its outcome is the one recorded here,
+        // under the large allowance, which the corpus limit tests compare with.
+        for (slug, input) in COLOR_RANGE_INPUTS {
+            cases.push(Case::new(
+                format!("color.range-{slug}.absent.{suffix}"),
+                front,
+                "absent",
+                input,
+            ));
+        }
     }
     cases.extend(COLOR_LIMIT_INPUTS.iter().map(|(slug, input)| {
         Case::new(
@@ -224,7 +243,14 @@ fn value_key(value: &str) -> String {
 /// resolution and the controlled protocol, under one or more fact sets.
 fn color_cases() -> Vec<Case> {
     let mut cases = Vec::new();
-    for (slug, facts, input) in COLOR_INPUTS {
+    let range = COLOR_RANGE_INPUTS
+        .iter()
+        .map(|(slug, input)| (format!("range-{slug}"), "absent", *input))
+        .collect::<Vec<_>>();
+    let corpus = COLOR_INPUTS
+        .iter()
+        .map(|(slug, facts, input)| ((*slug).to_owned(), *facts, *input));
+    for (slug, facts, input) in corpus.chain(range) {
         for front in [
             "color.used.utf8.whole",
             "color.used.utf16.whole",
@@ -326,6 +352,162 @@ const COLOR_INPUTS: &[(&str, &str, &str)] = &[
         "lab(50 calc(infinity) 0)",
     ),
     ("numerical-mix-overflow", "absent", NUMERICAL_OVERFLOW_INPUT),
+];
+
+/// `(slug, input)`: colour components at both ends of the binary32 range and
+/// beyond binary64, observed through the colour fronts (case ids
+/// `color.range-{slug}.absent.{front}`) and the property-value text front
+/// (case ids `front.property-value.text.color-range-{slug}`).
+const COLOR_RANGE_INPUTS: &[(&str, &str)] = &[
+    ("lab-1e308", "lab(0 1e308 0)"),
+    ("lab-1e39", "lab(0 1e39 0)"),
+    ("lab-1e999", "lab(0 1e999 0)"),
+    ("rgb-1e999", "rgb(1e999 0 0)"),
+    ("oklch-hue-1e308", "oklch(0.5 0.1 1e308)"),
+    ("lab-calc-infinity", "lab(0 calc(infinity) 0)"),
+    ("lab-calc-overflow", "lab(0 calc(1e308 * 10) 0)"),
+    ("lab-calc-leaves", "lab(0 calc(1e308 * 1e-300) 0)"),
+    ("mix-lab", "color-mix(in lab, lab(0 1e308 0), red)"),
+    ("lab-largest-edge", "lab(0 3.4028234663852886e38 0)"),
+    (
+        "lab-below-threshold",
+        "lab(0 340282356779733661637539395458142568447 0)",
+    ),
+    (
+        "lab-at-threshold",
+        "lab(0 340282356779733661637539395458142568448 0)",
+    ),
+    ("lab-smallest-edge", "lab(0 1.401298464324817e-45 0)"),
+    ("lab-1e-45", "lab(0 1e-45 0)"),
+    ("lab-1e-50", "lab(0 1e-50 0)"),
+    ("lab-tiny-binary64", "lab(0 2.2250738585072014e-308 0)"),
+    ("srgb-percent-1e41", "color(srgb 1e41% 0 0)"),
+    // Mix weights below the window (estimates), and a weight inside it.
+    (
+        "mix-weights-estimate",
+        "color-mix(in srgb, red 3e-60%, blue 7e-60%)",
+    ),
+    (
+        "mix-weights-estimate-tail",
+        "color-mix(in srgb, red 1e-47%, blue 3e-47%)",
+    ),
+    (
+        "mix-weights-window",
+        "color-mix(in srgb, red 1e-22%, blue 3e-22%)",
+    ),
+    // Hues below the window in every unit, and inside a mix.
+    ("oklch-hue-1e-47turn", "oklch(0.5 0.1 1e-47turn)"),
+    ("lch-hue-minus-1e-47deg", "lch(50 20 -1e-47deg)"),
+    (
+        "mix-hue-below",
+        "color-mix(in oklch longer hue, oklch(0.5 0.1 1e-47turn), oklch(0.5 0.1 90))",
+    ),
+    ("hsl-hue-below-missing", "hsl(1e-47turn none 50%)"),
+    // Relative overrides, a profile expression, calculated alpha and origin
+    // colours with components beyond the range or below the window.
+    ("relative-override-1e308", "lab(from red l 1e308 b)"),
+    ("relative-override-1e2000000", "lab(from red l 1e2000000 b)"),
+    (
+        "relative-override-calc-1e2000000",
+        "lab(from red l calc(1e2000000) b)",
+    ),
+    ("relative-rgb-1e2000000", "rgb(from red 1e2000000 g b)"),
+    (
+        "relative-color-srgb-1e2000000",
+        "color(from red srgb r g 1e2000000)",
+    ),
+    ("relative-hue-1e308deg", "lch(from red l c 1e308deg)"),
+    ("relative-override-below", "lab(from red l 1e-47% b)"),
+    (
+        "profile-expression-1e308",
+        "color(from red --P 1e308 calc(1e2000000) 1e-47 / calc(1e2000000))",
+    ),
+    ("alpha-calc-1e2000000", "lab(0 0 0 / calc(1e2000000))"),
+    (
+        "alpha-calc-estimate",
+        "lab(0 0 0 / calc(838206077758223174e25 * 1.15877145983404e-31))",
+    ),
+    (
+        "lab-calc-estimate-text",
+        "lab(0 calc(838206077758223174e25 * 1.15877145983404e-31) 0)",
+    ),
+    ("origin-lab-1e308", "lab(from lab(0 1e308 0) l a b)"),
+    ("origin-lab-1e2000000", "lab(from lab(0 1e2000000 0) l a b)"),
+    ("origin-hue-1e308deg", "lch(from lch(50 20 1e308deg) l c h)"),
+    ("origin-alpha-1e999", "alpha(from lab(0 0 0 / 1e999))"),
+    // The neighbours of the scaled threshold.
+    ("lab-percent-below-scaled", "lab(0 2.722258854237869e38% 0)"),
+    (
+        "lab-percent-above-scaled",
+        "lab(0 2.7222588542378694e38% 0)",
+    ),
+    (
+        "hsl-turn-below-scaled",
+        "hsl(9.452287688325934e35turn 100% 50%)",
+    ),
+    (
+        "hsl-turn-above-scaled",
+        "hsl(9.452287688325936e35turn 100% 50%)",
+    ),
+    // A percentage calculation is cut after its slot's scale, and a relative
+    // rgb() channel is cut as the unit coordinate it becomes (the number
+    // divided by 255, the percentage by 100).
+    (
+        "relative-oklab-percent-calc",
+        "oklab(from red l calc(1e40% * 1) b)",
+    ),
+    (
+        "origin-oklab-percent-calc",
+        "oklab(from oklab(0.5 calc(1e40% * 1) 0) l a b)",
+    ),
+    (
+        "relative-lab-percent-calc",
+        "lab(from red l calc(2.8e38% * 1) b)",
+    ),
+    (
+        "origin-lab-percent-calc",
+        "lab(from lab(0 calc(2.8e38% * 1) 0) l a b)",
+    ),
+    (
+        "relative-hsl-percent-calc",
+        "hsl(from red h calc(3.4e38% * 1) l)",
+    ),
+    (
+        "origin-hsl-percent-calc",
+        "hsl(from hsl(0 calc(3.5e38% * 1) 50%) h s l)",
+    ),
+    ("relative-rgb-number", "rgb(from red 5e38 g b)"),
+    (
+        "relative-rgb-number-calc",
+        "rgb(from red calc(5e38 * 1) g b)",
+    ),
+    ("relative-rgb-percent", "rgb(from red 1e39% g b)"),
+    (
+        "relative-rgb-percent-calc",
+        "rgb(from red calc(1e39% * 1) g b)",
+    ),
+    (
+        "relative-rgb-number-below-scaled",
+        "rgb(from red 8.677200097883207e40 g b)",
+    ),
+    (
+        "relative-rgb-number-above-scaled",
+        "rgb(from red 8.677200097883208e40 g b)",
+    ),
+    (
+        "relative-rgb-percent-below-scaled",
+        "rgb(from red 3.402823567797336e40% g b)",
+    ),
+    (
+        "relative-rgb-percent-above-scaled",
+        "rgb(from red 3.4028235677973366e40% g b)",
+    ),
+    ("origin-rgb-number", "rgb(from rgb(5e38 0 0) r g b)"),
+    ("origin-rgb-percent", "rgb(from rgb(1e39% 0 0) r g b)"),
+    (
+        "origin-rgb-percent-calc",
+        "rgb(from rgb(calc(1e40% * 1) 0 0) r g b)",
+    ),
 ];
 
 /// `(front, argument, slug, input)`; the case id is `front.{front}.{slug}`.
