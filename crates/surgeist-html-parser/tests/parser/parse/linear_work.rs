@@ -706,23 +706,33 @@ fn work_added_by_each_doubling_of_nested_declarative_shadow_roots_is_near_double
 }
 
 #[test]
-fn a_declarative_shadow_root_adds_the_same_visits_whatever_shadow_roots_enclose_it() {
+fn a_declarative_shadow_root_adds_visits_that_grow_only_with_the_keys_of_the_table_searches() {
     // The layers deepen both the tree and the stack, and the scope checks the
     // added layer makes end at its own template, so nothing the layer does
-    // needs to look beyond the layers around it. The sizes are not capacities of a
-    // bank: the layer that fills a bank also takes its growth, which charges visits of
-    // its own (the layer after 25 adds five more than after 26, 100 or 400), and the
+    // needs to look beyond the layers around it. The metadata of its template is a
+    // row of the table of templates, which the layer searches a fixed number of times:
+    // each search reads `floor(log2 n) + 1` keys of a table of `n` rows, so what a layer
+    // adds grows by a fixed number of visits each time the enclosing layers double. A
+    // layer has one template and so one row in the table of templates; the bound
+    // allows 16 searches for it. The sizes are not capacities of a bank: the layer that
+    // fills a bank also takes its growth, which charges visits of its own, and the
     // doubling tests above bound that growth.
     let added = |layers: usize| {
         let layer = format!("{SHADOW_LAYER}{SHADOW_LAYER_END}");
         parse_fragment_work(nested_shadow_roots(layers, &layer)).visited as i64
             - parse_fragment_work(nested_shadow_roots(layers, "")).visited as i64
     };
-    let measures = [26, 100, 400].map(added);
-    assert!(
-        measures.iter().all(|visits| *visits == measures[0]),
-        "one more shadow root added {measures:?} record visits inside 26, 100 and 400"
-    );
+    let sizes = [26_usize, 100, 400];
+    let measures = sizes.map(added);
+    let keys = |layers: usize| i64::from((layers + 1).ilog2());
+    for (pair, sizes) in measures.windows(2).zip(sizes.windows(2)) {
+        let growth = pair[1] - pair[0];
+        let allowed = 16 * (keys(sizes[1]) - keys(sizes[0]));
+        assert!(
+            (0..=allowed).contains(&growth),
+            "one more shadow root added {measures:?} record visits inside {sizes:?} shadow roots"
+        );
+    }
 }
 
 /// `roomy_limits` with room for the stacks, trees and credits that the longest
