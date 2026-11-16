@@ -52,7 +52,10 @@ pub(crate) fn admit<V: CheckedDescriptorValue>(
 
 /// Rechecks a replacement for a pending value without substituting: the
 /// receiver must be pending, then the replacement faces the limits, the refusal
-/// of recovered components and of residual substitutions, and the grammar.
+/// of residual substitutions, the refusal of recovered components, and the
+/// grammar, in that order. A replacement that holds a residual `var()` or
+/// `env()` and an implicit closure, such as `f(var(--x)`, is refused as
+/// residual, as a property replacement is.
 pub(crate) fn reenter<V: CheckedDescriptorValue>(
     pending: &V,
     replacement: CssComponentValues,
@@ -64,10 +67,10 @@ pub(crate) fn reenter<V: CheckedDescriptorValue>(
     replacement
         .validate_with_limits(limits)
         .map_err(DescriptorValueFailure::component)?;
-    replacement.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()))?;
     if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
         return Err(DescriptorValueFailure::residual(origin).into());
     }
+    replacement.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()))?;
     admit_checked(pending.selector(), replacement, limits)
 }
 

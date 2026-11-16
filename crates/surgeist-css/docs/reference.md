@@ -84,6 +84,71 @@ recovery diagnostic. It does not rerun a grammar or test contextual usability.
 sequence through `diagnostics()`, `first()`, and `into_diagnostics()`. See the
 [report definitions](../src/report.rs) for their contracts.
 
+## Stylesheet encoding guidance
+
+The byte front implements [Syntax 3 §3.2](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#input-byte-stream),
+[decode](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#css-decode-bytes) and
+[determine the fallback encoding](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#determine-the-fallback-encoding),
+in the selected 2026-10-01 edition; the [edition differences](#css-syntax-3-edition-differences)
+list no change to that section from the 2021 text. The guidance below is the
+section's advice to stylesheet authors and to the host adapters that supply
+stylesheet bytes. It describes the inputs the front reads and adds no grammar
+and no diagnostic.
+
+**Authors.** Write stylesheets in UTF-8 and have the encoding declared by the HTTP
+header or an equivalent, or by the referring document. When neither is
+available, begin the stylesheet with a UTF-8 byte order mark or with the exact
+characters `@charset "utf-8";`. Each path selects UTF-8 in this crate:
+
+| Declared by | The host passes in `DecodeHints` | `selection()` of the decoded input |
+| --- | --- | --- |
+| HTTP or an equivalent protocol | `protocol_label: Some("utf-8")` | `Protocol` |
+| The referring document | `environment_encoding: Encoding::for_label("utf-8")` | `Environment` |
+| A UTF-8 byte order mark | nothing; the mark is not in `source()` | `ByteOrderMark` |
+| The exact `@charset "utf-8";` prefix | nothing | `CharsetPrefix` |
+| Nothing | nothing | `DefaultUtf8` |
+
+The prefix is recognized only as the byte sequence `@charset "`, label bytes
+that are ASCII and not a quotation mark, and `";`, all within the first 1024
+bytes and at the very start. Extra or tab spaces, a comment, single quotes, a
+different case in `@charset`, a space before the semicolon, a missing
+semicolon, any text before it and a label that names no encoding are not
+recognized; the front then falls through to the environment encoding and then
+UTF-8. The label is read as an Encoding Standard label, so its case and
+surrounding ASCII whitespace do not matter and a UTF-16 label selects UTF-8.
+A stylesheet in UTF-16 needs a byte order mark, a protocol label or an
+environment encoding: a UTF-16 sheet without any of them is decoded as UTF-8,
+and a declaration written in UTF-16 is not the ASCII byte sequence.
+
+**Host adapters.** An adapter extracts the protocol label (the `charset` parameter
+of `Content-Type`, for example) and the referring document's encoding and passes
+them in `DecodeHints`; the crate parses no HTTP header or `<meta>` element and
+defines no environment encoding. Syntax 3 says new document formats and linking
+mechanisms [should not provide an environment encoding](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#environment-encoding),
+so that the stylesheet defaults to UTF-8. An adapter for such a format passes
+`environment_encoding: None`; only a legacy mechanism that defines one passes it.
+Without a protocol label, prefix or environment encoding, bytes that are not UTF-8
+decode as UTF-8, where a malformed sequence becomes U+FFFD and
+`had_replacements()` reports it. That is decoder provenance, not a CSS diagnostic.
+
+**The declaration is not a rule.** Syntax 3 [§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#charset-rule)
+requires an `@charset` rule that is actually parsed to be treated as an
+unrecognized rule and dropped as invalid when the stylesheet is grammar-checked.
+The byte front keeps the declaration in the decoded text, so
+`CssParser::parse_sheet_bytes` reports a stylesheet that declares itself through
+the prefix with one `UnknownAtRule` diagnostic and the `DropAtRule` action over
+the declaration, and `into_validation_result` refuses it. The protocol,
+environment and byte-order-mark paths add no diagnostic. Diagnostic and origin
+offsets address the decoded UTF-8 source, so the declaration occupies the first
+offsets and a multibyte character shifts every later offset from its position in
+`original_bytes()`. A host that treats the prefix as encoding metadata recognizes
+it as the leading `UnknownAtRule` at offset 0 of an input whose `selection()` is
+`CharsetPrefix`.
+
+[How to decode a stylesheet from bytes](how-to.md#decode-a-stylesheet-from-bytes)
+shows the calls. The [conformance classes](explanation.md#stylesheet-conformance-classes)
+state how the byte front relates to the specification's conformance statement.
+
 ## CSS Syntax 3 edition differences
 
 The selected [CSS Syntax 3 edition](../../../references/SOURCE-EDITIONS.md#css-syntax-3-edition)
@@ -2039,6 +2104,9 @@ The three value carriers accept `try_from_components(.., limits)` and
 or programmatic component origins and rejects recovered closures. Reentry requires
 a pending receiver and rejects any residual decoded `var()` or `env()` before
 checking the completed ordinary grammar, including the selected index count.
+Reentry checks the receiver, the limits, a residual substitution, a recovered
+closure and the grammar in that order, so a replacement holding a residual and an
+implicit closure, such as `f(var(--x)`, reports the residual at its opener.
 Each operation uses cumulative component and byte limits and returns a new value
 atomically; the pending receiver remains reusable. Raw-source `origin()` is
 `Some` for its complete actual value window. Checked construction and reentry
@@ -4115,7 +4183,8 @@ does not qualify; quoted strings and URL data remain data. Pending values retain
 their components and origins. `reparse_after_substitution` accepts caller-supplied
 replacement components, rejects residual actual `var()`/`env()` functions,
 and returns an ordinary checked value or a typed error. Construction and reentry
-reject recovered implicit closures with their original closing origin; browser
+reject recovered implicit closures with their original closing origin; reentry
+refuses a residual substitution before a recovered closure. Browser
 parsing can retain them with recovery diagnostics. CSS performs no substitution.
 
 Descriptor values, descriptor occurrences, and profile rules expose
@@ -5118,8 +5187,10 @@ invalid descriptor is dropped independently, but a definition with no retained
 family descriptor is discarded. `base-palette` accepts `light`, `dark`, an exact
 nonnegative integer token, or symbolic Integer-root math. `override-colors`
 accepts a nonempty comma-separated list of nonnegative indices and absolute
-colors; repeated indices are retained, not resolved. Missing optional
-descriptors remain absent. This follows [pinned Fonts 4 §9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values)
+colors; repeated indices are retained, not resolved. An index with no color
+after it is an incomplete pair, which the checked constructor, the text front
+and the stylesheet report as an invalid descriptor value naming the last
+authored token. Missing optional descriptors remain absent. This follows [pinned Fonts 4 §9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values)
 and [pinned Color 5's absolute-color definition](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#absolute-color).
 
 Valid `var()` or `env()` anywhere in a descriptor defers its entire value before
@@ -5128,7 +5199,7 @@ components without replacing their parsed or programmatic origins, and rejects a
 component recovered by implicit closure with `is_recovered_component()`. A pending
 value's `reparse_after_substitution` accepts caller-supplied components and
 rejects any residual, including nested or escaped, substitution function before
-checking the ordinary descriptor grammar. No substitution environment, font
+refusing a recovered closure and checking the ordinary descriptor grammar. No substitution environment, font
 lookup, palette execution, or root-element evaluation is supplied here.
 
 `CssFontPaletteDescriptorValue::serialize_specified(limits)` and
@@ -5307,7 +5378,8 @@ owns cross-crate lowering. Raw descriptor-value parsing returns
 while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
 replacement components and returns an ordinary value; residual `var()` or
-`env()`, recovered components and invalid ordinary grammar are typed failures.
+`env()`, recovered components and invalid ordinary grammar are typed failures,
+checked in that order.
 This API never executes substitution. The authored `font` shorthand supplies
 checked values, intrinsic expansion/reset contributions and bounded specified
 serialization. Named-instance, language and metric descriptors use the complete
@@ -10049,6 +10121,72 @@ return no partial CSS and leave retained operands/origins reusable. Specified
 math retains Values 4 wrappers and sorted symbolic units. Reference-box bases,
 matrix execution, computed/resolved values, perspective floors, used-value
 flattening and rendering/backface decisions belong to downstream owners.
+
+### SVG transform source questions
+
+The crate parses the CSS `transform` property grammar only. It has no front for
+the SVG `transform`, `patternTransform` or `gradientTransform` attributes, no
+`animate` or `set` element and no interpolation, so it accepts none of the
+attribute-only productions: unitless numbers as lengths or angles, optional
+commas between numbers, a `rotate` with a center, or a comma-separated function
+list. The three source questions below record what the selected sources say and
+what the crate does; the attribute grammar and its integration belong to
+[#560](https://github.com/bj-data-eng/surgeist/issues/560) and transform-list
+interpolation to
+[#552](https://github.com/bj-data-eng/surgeist/issues/552).
+
+The `skewX` production. [Transforms 1 §7.2](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-skewX)
+prints the `skewX` production as `"skewY" wsp* "(" wsp* number wsp* ")"`, the
+same text as the [`skewY` production](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-skewY)
+that follows it. Against that literal, the `transform` production of the same
+section lists `skewX` and `skewY` as separate alternatives, the `skewX` railroad
+diagram is labelled `skewX`, the [§7.3 mapping table](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-transform-functions)
+maps `skewX` to `skewX()`, and [§9.1](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#funcdef-transform-skewx)
+defines `skewX() = skewX( [ <angle> | <zero> ] )`. The retained copy also labels
+its `skewY` railroad diagram `skewX`. Both clauses stay as printed; the source
+is not repaired into a product production. In the property grammar `skewX()` and
+`skewY()` are distinct functions that each take one `<angle>` or `<zero>`, and a
+unitless nonzero number, which §7.3 reads as degrees for the attribute, is
+rejected. Which token the attribute's `skewX` production matches is deferred to
+the owner of the attribute grammar; the crate admits no attribute production
+until that owner decides it.
+
+The `animate` `to` and `paced` cases. [Transforms 1 §8.1](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#svg-animate-element)
+makes `<transform-list>` animatable and additive for `animate` and `set`, with
+the effect post-multiplied and the steps taken from [§11](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#interpolation-of-transforms).
+It leaves two cases open. The behavior of `to` animations on `animate` is
+"undefined", because a smooth change from the underlying value conflicts with
+post-multiplication; the source suggests from-to, from-by, by or values
+animations instead. The `calcMode` value `paced` is undefined for the data type;
+if it is specified, user agents may choose `linear`, and a later version may
+define paced animation. [§8.2](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#neutral-element)
+names `translate(0)`, `scale(0)`, `rotate(0)`, `skewX(0)` and `skewY(0)` as
+neutral elements and defines none for the other functions. The crate runs no
+animation, so it requires no interpolation for `to`, maps no `paced` value and
+selects no `linear` fallback; those functions are valid authored `transform`
+values.
+
+The 3D function syntax. [Transforms 2 §11](../../../references/css-transforms-2--WD-css-transforms-2-20211109--f1ada2510670.md#svg-three-dimensional-functions)
+requires 3D transform functions to apply to `a`, `g`, `svg`, graphics elements,
+graphics referencing elements and `foreignObject`. Neither they nor
+`perspective`, `perspective-origin`, `transform-style` and `backface-visibility`
+can be used on `clipPath`, `linearGradient`, `radialGradient` or `pattern`: a
+transform list with a 3D function is ignored whole there and those property
+values are ignored, while transformable descendants may use them. The same section carries an open
+Issue to describe the 3D function syntax in SVG formally, and
+[§17](../../../references/css-transforms-2--WD-css-transforms-2-20211109--f1ada2510670.md#svg-transform)
+parses the newly introduced presentation attributes by SVG 1.1 data types. The
+only function grammar the sources give for the 3D functions is the property
+grammar of [§12.2](../../../references/css-transforms-2--WD-css-transforms-2-20211109--f1ada2510670.md#three-d-transform-functions).
+The crate accepts `matrix3d()`, `translate3d()`, `translateZ()`, `scale3d()`,
+`scaleZ()`, `rotate3d()`, `rotateX()`, `rotateY()`, `rotateZ()` and
+`perspective()` with those property argument types, retains every function of a
+mixed 2D and 3D list in authored order, and adds no SVG attribute grammar for
+them. Whether a list is ignored for a given element depends on the element, so it
+belongs to style resolution rather than authored syntax.
+
+The [source-question tests](../tests/css/properties/transforms/svg_transform_source_questions.rs)
+pin the property behavior stated above.
 
 ## Explicit document parser context
 

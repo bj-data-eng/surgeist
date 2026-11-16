@@ -205,7 +205,7 @@ impl CssFontFeatureDisplayValue {
     }
     /// Rechecks a replacement without performing host lookup or substitution.
     ///
-    /// Rejects recovered closures and residual decoded var/env functions before ordinary grammar.
+    /// Rejects residual decoded var/env functions, then recovered closures, before ordinary grammar.
     pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
@@ -228,7 +228,7 @@ impl CssFontFeatureValue {
     }
     /// Rechecks a replacement without performing host lookup or substitution.
     ///
-    /// Rejects recovered closures and residual decoded var/env functions before ordinary grammar.
+    /// Rejects residual decoded var/env functions, then recovered closures, before ordinary grammar.
     pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,

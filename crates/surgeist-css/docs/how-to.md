@@ -140,6 +140,41 @@ recovery diagnostic sequence. `into_validation_result()` accepts exactly a clean
 Use the ordinary report when recovered syntax and
 its diagnostics are useful to the caller.
 
+## Decode a stylesheet from bytes
+
+A host that reads a stylesheet from the network or a file decodes the bytes first and
+passes the decoded input to the parser. The host supplies what it knows about the
+encoding; the crate reads no header or `<meta>` element. The hints below come from
+a `Content-Type: text/css; charset=utf-8` header, and `DecodeHints` and `DecodeLimits`
+are items of `surgeist_css_parser::input`:
+
+```rust
+use surgeist_css::source::CssDecodedStylesheetInput;
+use surgeist_css::CssParser;
+use surgeist_css_parser::input::{DecodeHints, DecodeLimits, EncodingSelection};
+
+let hints = DecodeHints { protocol_label: Some("utf-8"), environment_encoding: None };
+let input = CssDecodedStylesheetInput::decode(
+    "a { content: \"é\" }".as_bytes(),
+    hints,
+    DecodeLimits::default(),
+)
+.expect("within the limits");
+assert_eq!(input.selection(), EncodingSelection::Protocol);
+assert_eq!(input.encoding().name(), "UTF-8");
+assert!(CssParser::default().parse_sheet_bytes(&input).is_clean());
+```
+
+The input records the encoding that decoded the bytes and which source selected it.
+With no protocol label, a leading `@charset "utf-8";` selects UTF-8 and
+`selection()` is `CharsetPrefix`, but the declaration stays in the text and the
+report carries one `UnknownAtRule` diagnostic over it, because no `@charset` rule
+exists. A UTF-8 byte order mark selects UTF-8 without a diagnostic. Pass
+`environment_encoding` only for a legacy linking mechanism that defines one; for a
+new format leave it `None` so that the stylesheet defaults to UTF-8. See the
+[encoding guidance](reference.md#stylesheet-encoding-guidance) for the exact
+declaration and the coordinates of diagnostics.
+
 ## Inspect support metadata
 
 Use `conformance::feature_metadata` for an exact stable feature ID,

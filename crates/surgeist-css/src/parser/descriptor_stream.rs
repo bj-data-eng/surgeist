@@ -226,6 +226,11 @@ pub(super) fn from_window<'i, T>(
         -> Result<T, SyntaxError<'w, crate::diagnostic::error::property::Error>>,
 ) -> Value<'i, T> {
     let first = input.site();
+    if matches!(span, Span::Component) && input.only_whitespace_remains() && !input.is_refused() {
+        // The grammar asks for a component past the end of the value: the value is
+        // incomplete, and fails where it ends, as a value with no component does.
+        return Err(fail(numeric, input.end_site(), unexpected_syntax_end));
+    }
     let mut probe = input.clone();
     match span {
         Span::Component => {

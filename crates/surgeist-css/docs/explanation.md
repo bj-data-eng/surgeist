@@ -56,6 +56,52 @@ spelling is implemented. The [reference](reference.md) describes current familie
 and their explicit limits; the [source registry](../src/conformance/mod.rs) owns the
 exact IDs, statuses, subsets, and exclusions.
 
+## Stylesheet conformance classes
+
+This crate follows the [conformance section](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#w3c-conformance)
+of the selected [Syntax 3 edition](../../../references/SOURCE-EDITIONS.md#css-syntax-3-edition)
+(1 October 2026): its [document conventions](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#w3c-conventions)
+and its [conformance classes](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#w3c-conformance-classes),
+together with the byte-stream clauses [§3.2](reference.md#stylesheet-encoding-guidance)
+and [§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#charset-rule).
+Under the conventions, requirements are descriptive assertions and RFC 2119 key
+words, which bind in their lowercase spelling, and all text is normative except
+sections marked non-normative, examples and notes. The crate takes requirements
+only from normative text and treats notes and examples as explanation. The specification
+defines three classes, and the module is the unit of each: a claim covers the
+whole module, not one feature or one stylesheet.
+
+A style sheet is conformant when every statement that uses the module's syntax is
+"valid according to the generic CSS grammar" and to the grammar of each feature
+(Syntax 3, Conformance classes). A clean `CssParseReport` (`is_clean()`, or
+`into_validation_result()` returning `Ok`) records that every statement was
+consumed by an implemented generic or feature grammar without recovery. It is
+evidence for the productions the [support catalog](#support-metadata-describes-a-selected-surface)
+marks supported and does not prove conformance. A diagnostic can also come
+from valid syntax: a `Partial` or `RecognizedUnsupported` record leaves syntax
+outside its subset reported, and a leading `@charset "utf-8";` declaration is
+reported as the unrecognized rule that [§8.3](reference.md#stylesheet-encoding-guidance)
+requires.
+
+A renderer is conformant when it parses every feature of the module and renders
+the document accordingly, apart from limits of the device. `surgeist-css` is not
+a renderer. It parses and validates authored syntax and keeps symbolic values
+unresolved; cascade, inheritance, substitution, matching, layout and painting
+belong to downstream crates. It claims no renderer conformance, and a consumer
+that makes one composes this crate with those crates and owns the claim. Whether
+a feature parses is stated by the catalog, not by the class.
+
+An authoring tool is conformant when it writes stylesheets that are syntactically
+correct under the generic and feature grammars. `surgeist-css` is not an authoring
+tool. Its serializers write specified values and the selected literal CSSOM rule
+and sheet formats, following the Syntax 3 §9 requirement that serialized CSS
+parse back to the same syntax data, and the crate does not claim that every stylesheet an
+application assembles from them is conformant.
+
+The decoding and encoding guidance is advice to authors and host adapters; it is
+not a parser grammar. The [reference](reference.md#stylesheet-encoding-guidance)
+lists the inputs and what each selects.
+
 ## Selector recovery and downstream matching
 
 Pseudo-classes for UI interaction, form state, structure, selector-list filtering, and overlay state are parsed as authored selector syntax. This crate does not evaluate pseudo-class matches; runtime matching belongs to downstream Surgeist layers with node and interaction state.

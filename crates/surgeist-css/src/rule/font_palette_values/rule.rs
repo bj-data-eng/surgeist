@@ -6,11 +6,12 @@ use std::fmt;
 use crate::color::{CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor};
 use crate::component::{
     CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssComponentValues,
-    CssSerializedOrigin, CssSerializedValue, CssValueOrigin,
+    CssSerializedOrigin, CssSerializedValue,
 };
 use crate::declaration::CssSubstitutionDependentValue;
 use crate::diagnostic::CssError;
 use crate::numeric::{CssInteger, CssNonNegative, CssNumeric};
+use crate::rule::descriptor_values::{self, CheckedDescriptorValue};
 use crate::rule::font_face::CssFontFaceFamily;
 use crate::source::CssSourcePosition;
 
@@ -37,26 +38,6 @@ enum FontPaletteValuesKind {
 impl CssFontPaletteValuesError {
     const fn new(kind: FontPaletteValuesKind) -> Self {
         Self { kind }
-    }
-
-    fn from_component(error: CssComponentValueError) -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::component(error).into()
-    }
-
-    fn from_grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::grammar(error, serialized).into()
-    }
-
-    fn implicit(origin: CssValueOrigin) -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::recovered(origin).into()
-    }
-
-    fn residual(origin: CssValueOrigin) -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::residual(origin).into()
-    }
-
-    fn not_pending() -> Self {
-        crate::rule::descriptor_values::DescriptorValueFailure::not_pending().into()
     }
 
     const fn value(&self) -> Option<&crate::rule::descriptor_values::DescriptorValueFailure> {
@@ -294,6 +275,36 @@ pub struct CssFontPaletteDescriptorValue {
     data: CssFontPaletteDescriptorData,
 }
 
+impl CheckedDescriptorValue for CssFontPaletteDescriptorValue {
+    type Kind = CssFontPaletteDescriptorKind;
+    type Error = CssFontPaletteValuesError;
+
+    fn selector(&self) -> Self::Kind {
+        self.kind
+    }
+
+    fn is_pending(&self) -> bool {
+        matches!(self.data, CssFontPaletteDescriptorData::Pending(_))
+    }
+
+    fn from_checked(
+        kind: Self::Kind,
+        components: CssComponentValues,
+        serialized: &CssSerializedValue,
+    ) -> Result<Self, CssError> {
+        let data = crate::parser::font_palette_values::construct_descriptor_value(
+            kind,
+            &components,
+            serialized,
+        )?;
+        Ok(Self {
+            kind,
+            components: components.into(),
+            data,
+        })
+    }
+}
+
 impl CssFontPaletteDescriptorValue {
     /// Checks the selected grammar while retaining mixed or programmatic origins.
     ///
@@ -303,43 +314,18 @@ impl CssFontPaletteDescriptorValue {
         components: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontPaletteValuesError> {
-        components
-            .validate_with_limits(limits)
-            .map_err(CssFontPaletteValuesError::from_component)?;
-        components.ensure_closed(|origin| CssFontPaletteValuesError::implicit(origin.clone()))?;
-        let serialized = components
-            .serialize_tokens(limits)
-            .map_err(CssFontPaletteValuesError::from_component)?;
-        let data = crate::parser::font_palette_values::construct_descriptor_value(
-            kind,
-            &components,
-            &serialized,
-        )
-        .map_err(|error| CssFontPaletteValuesError::from_grammar(error, &serialized))?;
-        Ok(Self {
-            kind,
-            components: components.into(),
-            data,
-        })
+        descriptor_values::admit(kind, components, limits)
     }
 
     /// Rechecks caller-supplied replacement components without performing substitution.
-    /// Residual decoded `var()` or `env()` anywhere in the tree is rejected first.
+    /// Residual decoded `var()` or `env()` anywhere in the tree is rejected first,
+    /// ahead of a recovered closure.
     pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontPaletteValuesError> {
-        if !matches!(self.data, CssFontPaletteDescriptorData::Pending(_)) {
-            return Err(CssFontPaletteValuesError::not_pending());
-        }
-        replacement
-            .validate_with_limits(limits)
-            .map_err(CssFontPaletteValuesError::from_component)?;
-        if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
-            return Err(CssFontPaletteValuesError::residual(origin));
-        }
-        Self::try_new(self.kind, replacement, limits)
+        descriptor_values::reenter(self, replacement, limits)
     }
 
     pub(crate) fn from_parts(

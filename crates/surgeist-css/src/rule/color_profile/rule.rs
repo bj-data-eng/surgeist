@@ -203,7 +203,8 @@ impl CssColorProfileDescriptorValue {
     }
 
     /// Rechecks caller-supplied replacement components without performing substitution.
-    /// Residual decoded `var()` or `env()` anywhere in the tree is rejected first.
+    /// Residual decoded `var()` or `env()` anywhere in the tree is rejected first,
+    /// ahead of a recovered closure.
     pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,

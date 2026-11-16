@@ -81,8 +81,11 @@ impl CssAuthoredFontFaceDescriptorValue {
 impl CssPendingFontFaceDescriptorValue {
     /// Reparses a fully substituted descriptor and returns only an ordinary value.
     ///
-    /// Callers perform substitution before this step. Residual `var()` or `env()`
-    /// references, recovery, and implicit closures are errors.
+    /// Callers perform substitution before this step. After the limits, a
+    /// residual `var()` or `env()` reference, an implicit closure, and a value
+    /// the grammar refuses or recovers are errors, checked in that order: a
+    /// replacement holding a residual and an implicit closure reports the
+    /// residual.
     ///
     /// Reparses substituted components with explicit resource limits.
     /// The same strict grammar and residual-substitution rules apply.
@@ -94,10 +97,10 @@ impl CssPendingFontFaceDescriptorValue {
         replacement
             .validate_with_limits(limits)
             .map_err(CssFontFaceValueError::component)?;
-        replacement.ensure_closed(|origin| CssFontFaceValueError::implicit(origin.clone()))?;
         if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
             return Err(CssFontFaceValueError::residual(origin));
         }
+        replacement.ensure_closed(|origin| CssFontFaceValueError::implicit(origin.clone()))?;
         match CssAuthoredFontFaceDescriptorValue::try_from_components(
             self.kind,
             replacement,

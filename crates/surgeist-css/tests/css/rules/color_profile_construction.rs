@@ -338,12 +338,33 @@ fn strict_construction_and_reentry_reject_recovered_closures_with_original_origi
                 .any(|diagnostic| diagnostic.action()
                     == CssRecoveryAction::RetainWithImplicitClosure)
         );
+        // A replacement that holds a residual `env()` is refused as residual first, with
+        // the origin on its opener; one that holds none is refused as recovered.
+        let reentered = pending(kind)
+            .reparse_after_substitution(parsed.components().clone(), Default::default())
+            .unwrap_err();
+        if source.starts_with("env(") {
+            assert!(
+                reentered.is_residual_substitution(),
+                "{source}: {reentered:?}"
+            );
+            let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = reentered.origin()
+            else {
+                panic!("the residual opener")
+            };
+            assert_eq!(origin.span().start().byte_offset().value(), 0);
+            assert_eq!(origin.span().end().byte_offset().value(), "env(".len());
+            assert_eq!(origin.source().as_str(), source);
+        }
         for error in [
-            Value::try_new(kind, parsed.components().clone(), Default::default()).unwrap_err(),
-            pending(kind)
-                .reparse_after_substitution(parsed.components().clone(), Default::default())
-                .unwrap_err(),
-        ] {
+            Some(
+                Value::try_new(kind, parsed.components().clone(), Default::default()).unwrap_err(),
+            ),
+            (!source.starts_with("env(")).then_some(reentered),
+        ]
+        .into_iter()
+        .flatten()
+        {
             assert!(error.is_recovered_component(), "{error:?}");
             let CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { at, opening }) =
                 error.origin()

@@ -866,7 +866,7 @@ fn rejections_apply_in_the_documented_order_and_report_the_earlier_cause() {
         assert!(feature.is_recovered_component(), "{source}: {feature:?}");
         assert!(counter.diagnostic().is_none());
     }
-    // Reentry: not pending, then limits, then closure, then residual substitution, then grammar.
+    // Reentry: not pending, then limits, then residual substitution, then closure, then grammar.
     let pending_counter = Counter::try_from_components(
         CounterKind::Prefix,
         components("env(x)"),
@@ -908,7 +908,7 @@ fn rejections_apply_in_the_documented_order_and_report_the_earlier_cause() {
             .map(component_failure),
         Some(ComponentFailure::ComponentLimit)
     );
-    // The closure is refused before the residual function it contains.
+    // The residual function is refused before the closure that also holds it.
     let counter = pending_counter
         .reparse_after_substitution(replacement.clone(), Default::default())
         .unwrap_err();
@@ -918,9 +918,9 @@ fn rejections_apply_in_the_documented_order_and_report_the_earlier_cause() {
     let feature = pending_feature
         .reparse_after_substitution(replacement, Default::default())
         .unwrap_err();
-    assert!(counter.is_recovered_component(), "{counter:?}");
-    assert!(display.is_recovered_component(), "{display:?}");
-    assert!(feature.is_recovered_component(), "{feature:?}");
+    assert!(counter.is_residual_substitution(), "{counter:?}");
+    assert!(display.is_residual_substitution(), "{display:?}");
+    assert!(feature.is_residual_substitution(), "{feature:?}");
     // A residual function that is closed is refused before the grammar judges the rest.
     let replacement = components("SECRET 1 var(--x)");
     let counter = pending_counter
@@ -1258,6 +1258,171 @@ fn font_palette_grammar_rejections_name_the_first_violating_token_and_its_coordi
     }
 }
 
+/// Fonts 4 section 9.2.3 gives `override-colors` as `[ <integer [0,∞]> <color> ]#`, so
+/// an index without its color is an incomplete pair: the descriptor grammar read to the
+/// end of the value and wanted more. The crate's location rule names the last authored
+/// token when input ends first, as the stylesheet and the other pair grammars do; the
+/// failure is an invalid descriptor value, not an invalid component.
+#[test]
+fn an_incomplete_override_colors_pair_names_the_last_token_on_every_front() {
+    let cases = [
+        // The color is missing after the first index.
+        (
+            "0",
+            invalid_value(
+                (0, 0, 0),
+                token(CssTokenKind::Number, "0"),
+                Some(((0, 0, 0), (1, 0, 1))),
+            ),
+        ),
+        // Trailing whitespace and comments are trivia, not the color.
+        (
+            "0 ",
+            invalid_value(
+                (0, 0, 0),
+                token(CssTokenKind::Number, "0"),
+                Some(((0, 0, 0), (1, 0, 1))),
+            ),
+        ),
+        (
+            "0/*c*/",
+            invalid_value(
+                (0, 0, 0),
+                token(CssTokenKind::Number, "0"),
+                Some(((0, 0, 0), (1, 0, 1))),
+            ),
+        ),
+        // A comma follows the index: it is where the color was wanted.
+        (
+            "0,",
+            invalid_value(
+                (1, 0, 1),
+                token(CssTokenKind::Comma, ","),
+                Some(((1, 0, 1), (2, 0, 2))),
+            ),
+        ),
+        // The second pair is incomplete; the first is complete.
+        (
+            "0 red, 1",
+            invalid_value(
+                (7, 0, 7),
+                token(CssTokenKind::Number, "1"),
+                Some(((7, 0, 7), (8, 0, 8))),
+            ),
+        ),
+        // The last token is on the second line.
+        (
+            "0 red,\n 1",
+            invalid_value(
+                (8, 1, 1),
+                token(CssTokenKind::Number, "1"),
+                Some(((8, 1, 1), (9, 1, 2))),
+            ),
+        ),
+    ];
+    for (source, expected) in cases {
+        let kind = PaletteKind::OverrideColors;
+        let constructed =
+            Palette::try_new(kind, components(source), Default::default()).unwrap_err();
+        assert_rejection(
+            constructed.diagnostic(),
+            constructed.origin(),
+            source,
+            &expected,
+        );
+        assert!(constructed.component_error().is_none(), "{source:?}");
+
+        // Reentry runs the same grammar over the replacement.
+        let reentered = palette(kind, "env(x)")
+            .reparse_after_substitution(components(source), Default::default())
+            .unwrap_err();
+        assert_eq!(constructed, reentered, "{source:?}");
+
+        // The source-text front reports the same failure.
+        let report = Palette::parse(&CssParser::default(), source, kind);
+        let [parsed] = report.diagnostics() else {
+            panic!("{source:?}: {:?}", report.diagnostics())
+        };
+        let parsed = parsed.error();
+        assert_eq!(parsed.code(), expected.code, "{source:?}");
+        assert_position(
+            parsed.position(),
+            expected.position.0,
+            expected.position.1,
+            expected.position.2,
+        );
+        assert_eq!(
+            parsed
+                .encountered()
+                .map(|token| (token.kind(), token.authored())),
+            expected.token,
+            "{source:?}"
+        );
+
+        // The stylesheet drops the descriptor and locates the same token, at the
+        // same distance from the start of its value.
+        let sheet = format!("@font-palette-values --x{{font-family:A;override-colors:{source}}}");
+        let value_start = sheet.len() - source.len() - 1;
+        let report = CssParser::default().parse_sheet(&sheet);
+        let [dropped] = report.diagnostics() else {
+            panic!("{sheet:?}: {:?}", report.diagnostics())
+        };
+        let dropped = dropped.error();
+        assert_eq!(dropped.code(), expected.code, "{sheet:?}");
+        assert_eq!(
+            dropped.position().byte_offset().value(),
+            value_start + expected.position.0,
+            "{sheet:?}"
+        );
+        assert_eq!(
+            dropped
+                .encountered()
+                .map(|token| (token.kind(), token.authored())),
+            expected.token,
+            "{sheet:?}"
+        );
+    }
+}
+
+/// The other descriptor grammars of two components or more, which read a component
+/// past the end of an incomplete value through the same window, report an invalid
+/// descriptor value from the checked components and from source text.
+#[test]
+fn incomplete_pair_values_of_the_other_descriptors_report_an_invalid_descriptor_value() {
+    for (kind, source) in [
+        (CounterKind::Range, "1"),
+        (CounterKind::Range, "1 "),
+        (CounterKind::Range, "1 infinite, 2"),
+        (CounterKind::Pad, "3"),
+        (CounterKind::Pad, "3 "),
+        (CounterKind::AdditiveSymbols, "1"),
+        (CounterKind::AdditiveSymbols, "1 \"a\", 2"),
+    ] {
+        let constructed =
+            Counter::try_from_components(kind, components(source), Default::default()).unwrap_err();
+        let diagnostic = constructed.diagnostic().expect("a grammar diagnostic");
+        assert_eq!(
+            diagnostic.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "{kind:?} {source:?}"
+        );
+        assert!(
+            constructed.component_error().is_none(),
+            "{kind:?} {source:?}"
+        );
+        let report = Counter::parse(&CssParser::default(), source, kind);
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .all(|d| d.error().code() == CssErrorCode::InvalidDescriptorValue)
+                && !report.diagnostics().is_empty(),
+            "{kind:?} {source:?}: {:?}",
+            report.diagnostics()
+        );
+    }
+}
+
 fn profile_failures() -> Failures<ProfileError> {
     let kind = ProfileKind::RenderingIntent;
     Failures {
@@ -1402,7 +1567,7 @@ fn color_profile_and_palette_construction_count_implicit_closers_before_refusing
 }
 
 #[test]
-fn color_profile_rejections_apply_limits_then_closure_then_residual_then_grammar() {
+fn color_profile_rejections_apply_limits_then_residual_then_closure_then_grammar() {
     let kind = ProfileKind::RenderingIntent;
     // Construction: the closure is refused before the grammar failure it also has.
     for source in ["1 env(x", "SECRET env(x"] {
@@ -1424,11 +1589,11 @@ fn color_profile_rejections_apply_limits_then_closure_then_residual_then_grammar
         error.component_error().map(component_failure),
         Some(ComponentFailure::ComponentLimit)
     );
-    // The closure is refused before the residual function it contains.
+    // The residual function is refused before the closure that also holds it.
     let error = pending
         .reparse_after_substitution(replacement, Default::default())
         .unwrap_err();
-    assert!(error.is_recovered_component(), "{error:?}");
+    assert!(error.is_residual_substitution(), "{error:?}");
     // A closed residual function is refused before the grammar judges the rest.
     let error = pending
         .reparse_after_substitution(components("SECRET 1 var(--x)"), Default::default())
@@ -1463,9 +1628,9 @@ fn palette_rejections_apply_limits_then_residual_then_closure_then_grammar() {
         error.component_error().map(component_failure),
         Some(ComponentFailure::ComponentLimit)
     );
-    // Unlike the other descriptor values, a residual function is refused before the
-    // implicit closure that also holds it ("Residual ... anywhere in the tree is
-    // rejected first"): the failure names the opening `var(`, not the closer.
+    // A residual function is refused before the implicit closure that also holds it
+    // ("Residual ... anywhere in the tree is rejected first"): the failure names the
+    // opening `var(`, not the closer.
     let error = pending
         .reparse_after_substitution(replacement, Default::default())
         .unwrap_err();
@@ -1489,6 +1654,178 @@ fn palette_rejections_apply_limits_then_residual_then_closure_then_grammar() {
         .reparse_after_substitution(components("SECRET"), Default::default())
         .unwrap_err();
     assert!(error.diagnostic().is_some(), "{error:?}");
+}
+
+/// What a reentry refusal reports, whatever the family's error type.
+struct Refusal {
+    residual: bool,
+    recovered: bool,
+    origin: Option<CssSerializedOrigin>,
+}
+
+fn refusal(residual: bool, recovered: bool, origin: Option<&CssSerializedOrigin>) -> Refusal {
+    Refusal {
+        residual,
+        recovered,
+        origin: origin.cloned(),
+    }
+}
+
+/// Reentry refuses a residual substitution before a recovered closure, as a property
+/// replacement does: a replacement that holds both reports the residual, whose origin is
+/// its opener and not the implicit closer, and one that holds only a closure is still
+/// refused as recovered. `reenter` runs one family's reentry over a replacement.
+#[track_caller]
+fn assert_residual_refused_before_closure(
+    family: &str,
+    mut reenter: impl FnMut(CssComponentValues) -> Refusal,
+) {
+    // Each replacement holds an implicit closure and a `var()` or `env()` function: the
+    // residual is the unclosed function itself, or sits inside the unclosed block.
+    for (source, start, end) in [
+        ("f(var(--x)", (2, 0, 2), (6, 0, 6)),
+        ("[g(env(y", (3, 0, 3), (7, 0, 7)),
+        ("SECRET var(--x", (7, 0, 7), (11, 0, 11)),
+    ] {
+        let refused = reenter(components(source));
+        assert!(
+            refused.residual,
+            "{family} {source:?}: not a residual substitution"
+        );
+        assert!(
+            !refused.recovered,
+            "{family} {source:?}: a recovered closure"
+        );
+        let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin))) = &refused.origin
+        else {
+            panic!(
+                "{family} {source:?}: the residual opener, got {:?}",
+                refused.origin
+            )
+        };
+        assert_origin_region(origin, source, start, end);
+    }
+    for source in ["calc(1 + 1", "[g(1"] {
+        let refused = reenter(components(source));
+        assert!(
+            refused.recovered,
+            "{family} {source:?}: not a recovered closure"
+        );
+        assert!(
+            !refused.residual,
+            "{family} {source:?}: a residual substitution"
+        );
+    }
+}
+
+#[test]
+fn counter_style_reentry_refuses_a_residual_substitution_before_a_recovered_closure() {
+    let pending = Counter::try_from_components(
+        CounterKind::Prefix,
+        components("env(x)"),
+        Default::default(),
+    )
+    .unwrap();
+    assert_residual_refused_before_closure("counter-style", |replacement| {
+        let error = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err();
+        refusal(
+            error.is_residual_substitution(),
+            error.is_recovered_component(),
+            Some(error.origin()),
+        )
+    });
+}
+
+#[test]
+fn font_feature_display_reentry_refuses_a_residual_substitution_before_a_recovered_closure() {
+    let pending = Display::try_from_components(components("env(x)"), Default::default()).unwrap();
+    assert_residual_refused_before_closure("font-feature display", |replacement| {
+        let error = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err();
+        refusal(
+            error.is_residual_substitution(),
+            error.is_recovered_component(),
+            error.origin(),
+        )
+    });
+}
+
+#[test]
+fn font_feature_value_reentry_refuses_a_residual_substitution_before_a_recovered_closure() {
+    let pending = Feature::try_from_components(
+        FeatureKind::Styleset,
+        components("env(x)"),
+        Default::default(),
+    )
+    .unwrap();
+    assert_residual_refused_before_closure("font-feature value", |replacement| {
+        let error = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err();
+        refusal(
+            error.is_residual_substitution(),
+            error.is_recovered_component(),
+            error.origin(),
+        )
+    });
+}
+
+#[test]
+fn color_profile_reentry_refuses_a_residual_substitution_before_a_recovered_closure() {
+    let pending = profile(ProfileKind::RenderingIntent, "env(x)");
+    assert_residual_refused_before_closure("color-profile", |replacement| {
+        let error = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err();
+        refusal(
+            error.is_residual_substitution(),
+            error.is_recovered_component(),
+            Some(error.origin()),
+        )
+    });
+}
+
+#[test]
+fn font_face_pending_reentry_refuses_a_residual_substitution_before_a_recovered_closure() {
+    use surgeist_css::rule::font_face::{
+        CssAuthoredFontFaceDescriptorValue as Face, CssFontFaceDescriptorKind as FaceKind,
+    };
+    let Face::Pending(pending) = Face::try_from_components(
+        FaceKind::FontDisplay,
+        components("env(x)"),
+        Default::default(),
+    )
+    .unwrap() else {
+        panic!("a font-face env() value defers")
+    };
+    assert_residual_refused_before_closure("font-face", |replacement| {
+        let error = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err();
+        refusal(
+            error.is_residual_substitution(),
+            error.is_recovered_component(),
+            Some(error.origin()),
+        )
+    });
+}
+
+#[test]
+fn font_palette_reentry_refuses_a_residual_substitution_before_a_recovered_closure() {
+    let pending = palette(PaletteKind::BasePalette, "env(x)");
+    assert_residual_refused_before_closure("font-palette", |replacement| {
+        let error = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err();
+        refusal(
+            error.is_residual_substitution(),
+            error.is_recovered_component(),
+            error.origin(),
+        )
+    });
 }
 
 #[test]

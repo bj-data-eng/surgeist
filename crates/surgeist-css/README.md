@@ -90,6 +90,10 @@ Encoding labels, CSS fallback precedence and BOM overrides, with optional atomic
 byte limits. The immutable input retains original bytes and the exact unfiltered
 UTF-8 snapshot used by parsing. The stylesheet location is host-supplied symbolic
 text; see the [entry-point reference](docs/reference.md#entry-points-and-features).
+The [encoding guidance](docs/reference.md#stylesheet-encoding-guidance) states what
+authors and host adapters supply, and the
+[conformance classes](docs/explanation.md#stylesheet-conformance-classes) state what
+the crate claims.
 
 `CssParser::parse_sheet_utf16` accepts shared original UTF16,
 uses the general CSS Syntax input cursor for newline/NUL/surrogate preprocessing,
