@@ -12,6 +12,9 @@ description = "Bounded CSS ingestion, recovery and authored-value cases with exa
 [package.metadata]
 cargo-fuzz = true
 
+[package.metadata.surgeist-fuzz]
+descriptor = "fuzz.toml"
+
 [features]
 default = []
 property = ["surgeist-fuzz/property", "dep:proptest"]
@@ -24,6 +27,12 @@ surgeist-fuzz = { path = "../../surgeist-fuzz", version = "=0.1.0" }
 toml = "=0.9.8"
 proptest = { version = "=1.11.0", default-features = false, features = ["std"], optional = true }
 libfuzzer-sys = { version = "=0.4.13", optional = true }
+
+[[bin]]
+name = "css-bytes-worker"
+path = "src/bin/bytes.rs"
+test = false
+doc = false
 
 [lints]
 workspace = true

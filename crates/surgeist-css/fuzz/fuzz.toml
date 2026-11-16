@@ -1,0 +1,16 @@
+schema = 1
+fixtures = ["seeds/bytes"]
+
+[[targets]]
+id = "surgeist-css::byte-decoding"
+owner = "surgeist-css"
+binary = "css-bytes-worker"
+properties = ["surgeist-css::encoding-selection", "surgeist-css::decoded-text", "surgeist-css::decode-limits", "surgeist-css::source-coordinates", "surgeist-css::report-cleanliness"]
+source_references = ["references/SOURCE-EDITIONS.md#css-syntax-3-edition", "crates/surgeist-css/docs/reference.md#stylesheet-encoding-guidance", "crates/surgeist-css/docs/reference.md#source-coordinates-and-diagnostics", "crates/surgeist-css/src/source/stylesheet_input.rs", "crates/surgeist-css-parser/src/input/decode.rs", "crates/surgeist-css/fuzz/README.md#byte-decoding"]
+format = { identity = "surgeist-css::byte-case", revision = 1 }
+generator_identity = { identity = "surgeist-css::byte-decoding", revision = 1 }
+encoding = "structured"
+limits = { bytes = 8192, nodes = 0, depth = 0, text_units = 4160, operations = 0 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
