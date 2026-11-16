@@ -33,7 +33,9 @@ pub(super) struct PayloadStorage {
     /// returns them.
     pub(super) prepared_entries: u64,
     /// The row of the first registration of each literal string, which later registrations share.
-    pub(super) literals: [Option<usize>; LITERALS],
+    /// The rows of the first registrations of the parse's literals, and last the row of the
+    /// namespace of the fragment's context when no literal is it.
+    pub(super) literals: [Option<usize>; LITERALS + 1],
     pub(super) preexisting_units: usize,
     /// Registry rows of selectedcontent metadata. Rows are never removed, so zero
     /// proves that no select has a selectedcontent descendant to update.

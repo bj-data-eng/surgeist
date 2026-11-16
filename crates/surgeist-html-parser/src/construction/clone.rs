@@ -976,8 +976,8 @@ impl SessionStorage {
     }
     /// Copies the namespace of the element at `source` for a clone of it: a namespace that is one of
     /// the parse's literals shares its string, with a copy of the group of the source's namespace
-    /// origins. Another is copied into a string that one registry row holds for the clone. An element
-    /// with no namespace has none.
+    /// origins. Another is the namespace of the fragment's context, whose string the parse holds
+    /// once. An element with no namespace has none.
     fn copy_namespace_field(
         &mut self,
         c: &mut ParseControl,
@@ -1005,17 +1005,11 @@ impl SessionStorage {
                 counted,
             }));
         }
-        let mut buffer = Utf16Buffer::new(c)?;
-        if let Err(error) = buffer.extend_units(uri.code_units(), c) {
-            buffer.release(c)?;
-            return Err(error.into());
-        }
-        let frozen = buffer.freeze(c)?;
-        let (string, _) = self.register_group_string_owned(c, frozen, None)?;
+        let (string, counted) = self.shared_context_namespace(c, uri.code_units())?;
         Ok(Some(storage_attributes::LiteralField {
             string,
             group,
-            counted: true,
+            counted,
         }))
     }
     /// Qualifies the group of the origins of `field` that the parse holds, if it has one.

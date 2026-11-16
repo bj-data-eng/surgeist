@@ -164,7 +164,7 @@ impl SessionStorage {
                 kind_slots,
                 explicit_forms: None,
                 prepared_entries: 0,
-                literals: [None; LITERALS],
+                literals: [None; LITERALS + 1],
                 preexisting_units: 0,
                 selectedcontent_rows: 0,
                 repeated_unique_rows: 0,

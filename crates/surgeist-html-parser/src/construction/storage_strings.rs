@@ -193,6 +193,41 @@ impl SessionStorage {
         };
         Ok((value.clone(), counted))
     }
+    /// The string of the namespace of the fragment's context when no literal is it, which every
+    /// element in it shares, and whether this occurrence is the one that made it: the first copies
+    /// the units into a string that a registry row holds with no group of origins, and counts them.
+    pub(super) fn shared_context_namespace(
+        &mut self,
+        control: &mut ParseControl,
+        units: &[u16],
+    ) -> Result<(DocumentString, bool), SessionError> {
+        if let Some(Some(slot)) = self.payloads.literals.get(LITERALS).copied() {
+            let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot) else {
+                return Err(latch_registry_row(control));
+            };
+            if value.code_units() != units {
+                return Err(latch_registry_row(control));
+            }
+            return Ok((value.clone(), false));
+        }
+        let mut buffer = Utf16Buffer::new(control)?;
+        if let Err(stop) = buffer.extend_units(units, control) {
+            buffer.release(control)?;
+            return Err(stop.into());
+        }
+        let frozen = buffer.freeze(control)?;
+        let (value, slot) = self.register_group_string_owned(control, frozen, None)?;
+        let Some(RetainedPayload::String { allocation, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(control));
+        };
+        allocation.mark_shared();
+        let Some(entry) = self.payloads.literals.get_mut(LITERALS) else {
+            return Err(latch_registry_row(control));
+        };
+        *entry = Some(slot);
+        Ok((value, true))
+    }
     /// The row of the first registration of `literal` in this parse, if there was one.
     fn first_literal(
         &self,
