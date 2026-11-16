@@ -63,7 +63,16 @@ fn records(report: &crate::HtmlParseReport) -> Records {
     }
 }
 
+/// A build without the `detail` feature records no causes.
+#[cfg(not(feature = "detail"))]
+fn creation_rows(
+    _: &crate::HtmlParseReport,
+) -> Option<std::collections::HashMap<HtmlNodeId, usize>> {
+    None
+}
+
 /// The creation rows of a report that records its causes, by node: how many rows each node has.
+#[cfg(feature = "detail")]
 fn creation_rows(
     report: &crate::HtmlParseReport,
 ) -> Option<std::collections::HashMap<HtmlNodeId, usize>> {
@@ -203,7 +212,6 @@ fn shadow_context(context: &str) -> crate::HtmlFragmentContext {
         construction::HtmlDocumentMode,
         values::{Namespace, OrderedAttributes, QualifiedName},
     };
-    use surgeist_html_semantics::*;
     let (namespace, local) = match context.split_once(' ') {
         Some(("svg", local)) => (Namespace::svg(), local),
         _ => (Namespace::html(), context),
