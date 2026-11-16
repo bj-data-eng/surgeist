@@ -202,6 +202,16 @@ fn check(report: &crate::HtmlParseReport, label: &str, tally: &mut Tally) {
     }
 }
 
+/// The details a parse of the corpus selects: none, and all of them in a build that has the
+/// `detail` feature.
+pub(super) fn details() -> Vec<crate::DetailSet> {
+    let mut details = vec![crate::DetailSet::NONE];
+    if cfg!(feature = "detail") {
+        details.push(crate::DetailSet::ALL);
+    }
+    details
+}
+
 /// Parses every case of the retained html5lib tree-construction corpus that runs without
 /// scripting, once with no detail and once with all of it, and hands each report with its label to
 /// `visit`. A fragment case whose context the corpus names that the capture cannot build is skipped;
@@ -225,7 +235,7 @@ pub(super) fn each_corpus_parse(
             if case.script_on {
                 continue;
             }
-            for detail in [crate::DetailSet::NONE, crate::DetailSet::ALL] {
+            for detail in details() {
                 let label = format!("{name}/{} detail={detail:?}", ordinal + 1);
                 let parsed = match case.fragment {
                     None => crate::HtmlDocumentParseRequest::offline(
@@ -288,7 +298,7 @@ fn the_document_published_for_each_corpus_node_is_the_one_its_column_named() {
     // one with all of them for each case the test runs. The other counts follow from the parses:
     // every node is named by the column or not, every parse has a root, and every node of a
     // parse of this corpus is in a document.
-    assert_eq!(tally.parses, 3_534);
+    assert_eq!(tally.parses, 1_767 * details().len());
     assert_eq!(tally.named + tally.unnamed, tally.nodes);
     assert!(tally.nodes >= tally.parses);
     assert!(tally.roots >= tally.parses);

@@ -174,7 +174,7 @@ fn the_creation_state_a_report_answers_by_node_is_its_record_or_the_default_of_i
     let mut tally = tally.into_inner();
     let corpus = (tally.parses, tally.nodes, tally.with_record);
     for source in CUSTOM {
-        for detail in [crate::DetailSet::NONE, crate::DetailSet::ALL] {
+        for detail in super::g2_d2::details() {
             let label = format!("{source} detail={detail:?}");
             let report = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(source),
@@ -223,8 +223,11 @@ fn the_creation_state_a_report_answers_by_node_is_its_record_or_the_default_of_i
     assert!(tally.failures.is_empty());
     // The corpus is pinned: one parse with details off and one with all of them for each case,
     // and the extra sources add a document parse and a fragment parse in each of the two modes.
-    assert_eq!(corpus.0, 3_534);
-    assert_eq!(tally.parses, corpus.0 + 4 * CUSTOM.len());
+    assert_eq!(corpus.0, 1_767 * super::g2_d2::details().len());
+    assert_eq!(
+        tally.parses,
+        corpus.0 + 2 * super::g2_d2::details().len() * CUSTOM.len()
+    );
     // Every node is an element or is not, and every element has a record or is plain.
     assert_eq!(tally.elements + tally.not_elements, tally.nodes);
     assert_eq!(tally.with_record + tally.plain, tally.elements);
