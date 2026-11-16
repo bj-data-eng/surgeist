@@ -56,35 +56,55 @@ fn units_are(units: &[u16], literal: &str) -> bool {
 }
 
 impl SessionStorage {
-    /// Whether a token that carries `attributes` has a `nonce` attribute. Each attribute is
-    /// charged one visit and the comparison of the five units of the literal, whatever its name,
-    /// so that the work of a token is linear in its attributes and does not step with the length
-    /// of their names.
+    /// Whether a token that carries `attributes` has a `nonce` attribute.
     pub(super) fn token_carries_nonce(
         control: &mut ParseControl,
         attributes: &OwnedVec<crate::parser::tokenizer::token::Attribute>,
     ) -> Result<NonceAtCreation, SessionError> {
-        for attribute in attributes.as_slice() {
+        Self::names_carry_nonce(
+            control,
+            attributes
+                .as_slice()
+                .iter()
+                .map(|attribute| attribute.name.value.text().code_units()),
+        )
+    }
+    /// Whether one of the attribute `names` is `nonce`. Each name is charged one visit and the
+    /// comparison of the five units of the literal, whatever it is, so that the work of a token
+    /// is linear in its attributes and does not step with the length of their names.
+    pub(super) fn names_carry_nonce<'n>(
+        control: &mut ParseControl,
+        names: impl Iterator<Item = &'n [u16]>,
+    ) -> Result<NonceAtCreation, SessionError> {
+        for name in names {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             for _ in 0..NONCE_LITERAL_UNITS {
                 control.charge_unit_literal_comparison()?;
             }
-            if units_are(attribute.name.value.text().code_units(), "nonce") {
+            if units_are(name, "nonce") {
                 return Ok(NonceAtCreation::Token);
             }
         }
         Ok(NonceAtCreation::Absent)
     }
     /// Whether an element of the HTML namespace named `name` that a token with `attributes`
-    /// creates has a row: its token carries a `nonce` attribute, or it is `html` or `body`. The
-    /// name is charged one visit and the comparison of the four units of each literal, whatever
-    /// it is.
+    /// creates has a row: its token carries a `nonce` attribute, or it is `html` or `body`.
     pub(super) fn html_nonce_at_creation(
         control: &mut ParseControl,
         name: &DocumentString,
         attributes: &OwnedVec<crate::parser::tokenizer::token::Attribute>,
     ) -> Result<NonceAtCreation, SessionError> {
         let token = Self::token_carries_nonce(control, attributes)?;
+        Self::html_or_root(control, token, name)
+    }
+    /// `token` when it is a row, and otherwise whether the element of the HTML namespace named
+    /// `name` is `html` or `body`. The name is charged one visit and the comparison of the four
+    /// units of each literal, whatever it is.
+    pub(super) fn html_or_root(
+        control: &mut ParseControl,
+        token: NonceAtCreation,
+        name: &DocumentString,
+    ) -> Result<NonceAtCreation, SessionError> {
         if token.has_row() {
             return Ok(token);
         }

@@ -45,23 +45,22 @@ impl SessionStorage {
             "http://www.w3.org/1999/xhtml",
         )? && exact_ascii(control, Some(name.local_name()), "template")?;
         let units = name_units(control, &name)?;
+        // The production check, over the names of the attributes the test hands the allocator.
+        let token = Self::names_carry_nonce(
+            control,
+            attributes
+                .as_slice()
+                .iter()
+                .map(|attribute| attribute.name().local_name().code_units()),
+        )?;
         let nonce = if exact_ascii(
             control,
             name.namespace().uri(),
             "http://www.w3.org/1999/xhtml",
-        )? && (exact_ascii(control, Some(name.local_name()), "html")?
-            || exact_ascii(control, Some(name.local_name()), "body")?)
-        {
-            NonceAtCreation::Root
+        )? {
+            Self::html_or_root(control, token, name.local_name())?
         } else {
-            let mut found = NonceAtCreation::Absent;
-            for attribute in attributes.as_slice() {
-                if exact_ascii(control, Some(attribute.name().local_name()), "nonce")? {
-                    found = NonceAtCreation::Token;
-                    break;
-                }
-            }
-            found
+            token
         };
         let node = self.allocate_native(
             control,
