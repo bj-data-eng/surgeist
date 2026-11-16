@@ -558,3 +558,92 @@ fn one_axis_subgrid_chain_work_grows_linearly_with_depth() {
         );
     }
 }
+
+// Intrinsic Grid chain. Node 0 is a 70x70 Grid with two automatic columns and
+// two automatic rows. Nodes 1..=depth are Grid subgrids in both axes, each
+// the only item of its parent and spanning both tracks of each axis. The last
+// subgrid holds two leaves of definite size: `depth + 1` is 30x20 in the first
+// track of each axis and `depth + 2` is 40x50 in the second. The automatic
+// tracks take their sizes from those leaves through every subgrid level.
+fn intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    let auto_tracks = || vec![TrackComponentOf::AUTO, TrackComponentOf::AUTO];
+    let mut tree = PublicLayoutTreeOf::new().style(
+        0,
+        NodeInputOf {
+            display: Display::Grid,
+            size: px_size(70.0, 70.0),
+            grid_template_columns: auto_tracks(),
+            grid_template_rows: auto_tracks(),
+            ..NodeInputOf::default()
+        },
+    );
+    for node in 1..=depth {
+        tree = tree
+            .style(
+                node,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_row: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_template_columns: subgrid(),
+                    grid_template_rows: subgrid(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .children(node - 1, [node]);
+    }
+    for (leaf, line, width, height) in [(depth + 1, 1, 30.0, 20.0), (depth + 2, 2, 40.0, 50.0)] {
+        tree = tree.style(
+            leaf,
+            NodeInputOf {
+                grid_column: GridPlacement::try_line(line).unwrap(),
+                grid_row: GridPlacement::try_line(line).unwrap(),
+                size: px_size(width, height),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    tree.children(depth, [depth + 1, depth + 2])
+}
+
+// CSS Grid Level 2, section 9: the items of a subgrid take part in the track
+// sizing of the parent grid as if they were its own items. The automatic
+// tracks therefore size to the leaves, 30px and 40px wide, 20px and 50px high,
+// and the root's 70px by 70px box has no free space to distribute. Every
+// subgrid fills its grid area, which is the whole root.
+fn assert_intrinsic_subgrid_chain<S: LayoutScalar>(depth: u32) {
+    let tree = intrinsic_subgrid_chain::<S>(depth);
+    let batch = compute_layout(&tree, 0, standalone()).expect("intrinsic subgrid chain layout");
+    assert_eq!(batch.node_layouts().len(), depth as usize + 3);
+    assert_box(&batch, 0, (0.0, 0.0), (70.0, 70.0));
+    for node in 1..=depth {
+        assert_box(&batch, node, (0.0, 0.0), (70.0, 70.0));
+    }
+    assert_box(&batch, depth + 1, (0.0, 0.0), (30.0, 20.0));
+    assert_box(&batch, depth + 2, (30.0, 20.0), (40.0, 50.0));
+}
+
+#[test]
+fn shallow_intrinsic_subgrid_chain_sizes_tracks_from_its_leaves() {
+    assert_intrinsic_subgrid_chain::<f32>(3);
+    assert_intrinsic_subgrid_chain::<f64>(3);
+}
+
+#[test]
+fn intrinsic_subgrid_chain_work_grows_linearly_with_depth() {
+    for depth in [2, 3, 4] {
+        for work in [
+            subgrid_work_of::<f32>(&intrinsic_subgrid_chain::<f32>(depth)),
+            subgrid_work_of::<f64>(&intrinsic_subgrid_chain::<f64>(depth)),
+        ] {
+            // Intrinsic contributions reach the root through every level in a
+            // bounded number of traversals of the chain.
+            assert!(
+                work.wrapper_preparations <= WRAPPER_PREPARATIONS_PER_LEVEL * (depth as usize + 1),
+                "intrinsic chain at depth {depth}: {} wrapper preparations exceed {}",
+                work.wrapper_preparations,
+                WRAPPER_PREPARATIONS_PER_LEVEL * (depth as usize + 1),
+            );
+        }
+    }
+}
