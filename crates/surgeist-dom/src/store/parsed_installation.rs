@@ -398,9 +398,10 @@ impl<'a> Source<'a> {
     }
     /// Adds every node of the trees rooted at `roots`, children and template contents included, in
     /// the order of their record positions, which is the order the parser created them in, so
-    /// that a parent is added before its children and the nodes of one result are keyed in one
-    /// order whatever records the report holds for them. A node that no root reaches, such as an
-    /// element the parser created and removed, is not added. One step is charged for each cell of
+    /// that the nodes of one result are keyed in one order whatever records the report holds for
+    /// them. A parent is not always created before its children: the adoption agency moves nodes
+    /// under parents created after them. A node that no root reaches, such as an element the
+    /// parser created and removed, is not added. One step is charged for each cell of
     /// the scan, and one for each node reached and for each edge followed. The scratch the walk
     /// holds is reserved through the control and returned when the walk ends.
     fn add_trees(&mut self, roots: &[HtmlNodeId], c: &mut Control<'_>) -> Result<(), Error> {

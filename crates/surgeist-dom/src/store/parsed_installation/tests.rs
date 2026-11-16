@@ -1777,8 +1777,9 @@ fn an_id_without_a_row_is_not_found_and_a_position_past_the_cells_is_refused() {
 }
 
 /// The rows of a source hold every node of the trees of the report once, and the nodes of a tree
-/// in the order the parser created them, whatever records the report holds: a parent precedes its
-/// children, and elements with no record of their own follow the order of those that have one.
+/// in the order the parser created them, whatever records the report holds, so that elements with
+/// no record of their own are keyed with those that have one. Creation order is not tree order: the
+/// adoption agency places a node under a parent created after it.
 #[test]
 fn the_rows_of_a_source_hold_every_node_once_in_creation_order() {
     let cancel = AtomicBool::new(false);
