@@ -47,7 +47,7 @@ pub(super) fn parse_font_language_override<'i>(
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|_| unexpected_at(location))?;
-    CssFontLanguageString::try_from_component(component)
+    CssFontLanguageString::from_parser_component(component)
         .map(CssFontLanguageOverride::String)
         .map_err(|_| unexpected_at(location))
 }

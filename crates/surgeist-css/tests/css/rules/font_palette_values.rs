@@ -216,10 +216,7 @@ fn checked_construction_rejects_recovered_closures_that_parsing_retains() {
             Default::default(),
         )
         .unwrap_err();
-        assert!(
-            error.diagnostic().is_none() && error.component_error().is_none(),
-            "{source}: {error:?}"
-        );
+        assert!(error.is_recovered_component(), "{source}: {error:?}");
         let Some(CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { at, opening })) =
             error.origin()
         else {
@@ -247,10 +244,7 @@ fn strict_reentry_rejects_a_recovered_replacement_without_residual_substitution(
     let error = pending
         .reparse_after_substitution(recovered, Default::default())
         .unwrap_err();
-    assert!(
-        error.diagnostic().is_none() && error.component_error().is_none(),
-        "{error:?}"
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
 }
 
 #[test]

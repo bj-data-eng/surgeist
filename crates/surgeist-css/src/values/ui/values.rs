@@ -316,7 +316,7 @@ impl CssNavigationTargetName {
                 CssComponentValueErrorKind::InvalidString,
             ));
         }
-        if component.implicit_termination_origin().is_some() {
+        if !component.is_closed() {
             return Err(invalid(
                 &component,
                 CssComponentValueErrorKind::InvalidToken,
@@ -404,7 +404,7 @@ impl CssNavigationReference {
             return None;
         }
         if let Some(CssNavigationTarget::Name(name)) = &target
-            && name.component.implicit_termination_origin().is_some()
+            && !name.component.is_closed()
         {
             return None;
         }

@@ -1470,7 +1470,7 @@ impl CssCalculationExpression {
     pub(crate) fn is_closed(&self) -> bool {
         self.components
             .as_ref()
-            .is_some_and(|v| v.first_implicit_origin().is_none())
+            .is_some_and(CssComponentValues::is_closed)
     }
 
     pub(crate) fn component_nesting_depth(&self) -> u32 {
@@ -2421,11 +2421,8 @@ pub(crate) fn validate_calc_size_graph(
     limits: CssComponentValueLimits,
     recovered: bool,
 ) -> Result<()> {
-    if !recovered && let Some(origin) = values.first_implicit_origin() {
-        return Err(CssNumericConstructionError::at_origin(
-            CssNumericConstructionErrorKind::RecoveredComponent,
-            origin.clone(),
-        ));
+    if !recovered {
+        crate::numeric::value::reject_recovered(values)?;
     }
     validate_components(
         values.items(),

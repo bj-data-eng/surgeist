@@ -40,11 +40,7 @@ impl CssDurationList {
     /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
     pub fn try_new(values: Vec<CssNumeric<CssTime, CssNonNegative>>) -> Option<Self> {
-        if values.is_empty()
-            || values
-                .iter()
-                .any(|value| value.first_implicit_origin().is_some())
-        {
+        if values.is_empty() || values.iter().any(|value| !value.is_closed()) {
             None
         } else {
             Some(Self { values })
@@ -77,11 +73,7 @@ impl CssDelayList {
     /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
     pub fn try_new(values: Vec<CssNumeric<CssTime>>) -> Option<Self> {
-        if values.is_empty()
-            || values
-                .iter()
-                .any(|value| value.first_implicit_origin().is_some())
-        {
+        if values.is_empty() || values.iter().any(|value| !value.is_closed()) {
             None
         } else {
             Some(Self { values })
@@ -246,14 +238,7 @@ impl CssLinearStop {
     }
 
     fn has_explicit_numeric_closure(&self) -> bool {
-        self.output
-            .calculation()
-            .is_none_or(|value| value.components().first_implicit_origin().is_none())
-            && self.inputs.iter().all(|input| {
-                input
-                    .calculation()
-                    .is_none_or(|value| value.components().first_implicit_origin().is_none())
-            })
+        self.output.is_closed() && self.inputs.iter().all(CssNumeric::is_closed)
     }
 
     /// Returns the authored output value of the stop.
@@ -712,12 +697,8 @@ impl CssTransition {
         delay: Option<CssNumeric<CssTime>>,
         timing_function: Option<CssEasing>,
     ) -> Option<Self> {
-        if duration
-            .as_ref()
-            .is_some_and(|v| v.first_implicit_origin().is_some())
-            || delay
-                .as_ref()
-                .is_some_and(|v| v.first_implicit_origin().is_some())
+        if duration.as_ref().is_some_and(|v| !v.is_closed())
+            || delay.as_ref().is_some_and(|v| !v.is_closed())
         {
             return None;
         }
@@ -783,10 +764,8 @@ impl CssTransitionList {
     #[must_use]
     pub fn try_new(values: Vec<CssTransition>) -> Option<Self> {
         if values.iter().any(|v| {
-            v.duration()
-                .is_some_and(|d| d.first_implicit_origin().is_some())
-                || v.delay()
-                    .is_some_and(|d| d.first_implicit_origin().is_some())
+            v.duration().is_some_and(|d| !d.is_closed())
+                || v.delay().is_some_and(|d| !d.is_closed())
         }) {
             None
         } else {
@@ -844,14 +823,8 @@ impl CssAnimation {
     /// Rejects an empty item or retained recovery in its duration or delay.
     #[must_use]
     pub fn try_new(components: CssAnimationComponents) -> Option<Self> {
-        if components
-            .duration
-            .as_ref()
-            .is_some_and(|v| v.first_implicit_origin().is_some())
-            || components
-                .delay
-                .as_ref()
-                .is_some_and(|v| v.first_implicit_origin().is_some())
+        if components.duration.as_ref().is_some_and(|v| !v.is_closed())
+            || components.delay.as_ref().is_some_and(|v| !v.is_closed())
         {
             return None;
         }
@@ -948,10 +921,8 @@ impl CssAnimationList {
     pub fn try_new(values: Vec<CssAnimation>) -> Option<Self> {
         if values.is_empty()
             || values.iter().any(|v| {
-                v.duration()
-                    .is_some_and(|d| d.first_implicit_origin().is_some())
-                    || v.delay()
-                        .is_some_and(|d| d.first_implicit_origin().is_some())
+                v.duration().is_some_and(|d| !d.is_closed())
+                    || v.delay().is_some_and(|d| !d.is_closed())
             })
         {
             None

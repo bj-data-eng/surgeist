@@ -30,8 +30,16 @@ impl CssAngularColorStopPosition {
     }
 
     /// Retains checked angular-percentage math without resolving its percentage basis.
-    pub fn from_calculation(value: CssCalculation<CssAnglePercentage>) -> Self {
-        Self::Calculation(value)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssNumericConstructionError`] when the calculation holds a component
+    /// recovered by implicit closure.
+    pub fn try_from_calculation(
+        value: CssCalculation<CssAnglePercentage>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        crate::numeric::value::reject_recovered(value.components())?;
+        Ok(Self::Calculation(value))
     }
 
     /// Borrows the original numeric occurrence, including its source coordinates.

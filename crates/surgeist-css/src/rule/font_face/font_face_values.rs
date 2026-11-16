@@ -32,7 +32,19 @@ impl CssFontNamedInstanceString {
     }
 
     /// Retains exactly one checked string component, including its original source.
+    /// A string recovered by implicit closure reports `InvalidToken` at that closure.
     pub fn try_from_component(
+        component: CssComponentValue,
+    ) -> std::result::Result<Self, CssComponentValueError> {
+        let value = Self::from_parser_component(component)?;
+        value
+            .component
+            .ensure_closed(CssComponentValueError::recovered)?;
+        Ok(value)
+    }
+
+    /// Parser admission retains a string recovered at the end of its input.
+    pub(crate) fn from_parser_component(
         component: CssComponentValue,
     ) -> std::result::Result<Self, CssComponentValueError> {
         if !matches!(

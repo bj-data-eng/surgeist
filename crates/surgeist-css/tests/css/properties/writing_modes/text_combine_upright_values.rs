@@ -51,23 +51,12 @@ fn checked_digit_count_rejects_recovered_math_that_parsing_retains() {
         .calculation()
         .expect("parsing retains the recovered count math")
         .clone();
-    // At HEAD the constructor is infallible, so the contract is stated on its result: an
-    // admitted count retains no component recovered by implicit closure.
-    let admitted = CssTextCombineDigitCount::from_calculation(recovered);
-    let held = admitted.calculation().expect("calculation count");
-    let [root] = held.components().items() else {
-        panic!("one math root")
-    };
-    let surgeist_css::component::CssComponentValueRef::Function(function) = root.view() else {
-        panic!("math root")
-    };
-    assert!(
-        !matches!(
-            function.closing_origin(),
-            CssValueOrigin::ImplicitClosure { .. }
-        ),
-        "the checked constructor admitted a recovered closure"
-    );
+    let error = CssTextCombineDigitCount::try_from_calculation(recovered).unwrap_err();
+    assert!(error.is_recovered_component(), "{error:?}");
+    assert!(matches!(
+        error.origin(),
+        Some(CssValueOrigin::ImplicitClosure { .. })
+    ));
 }
 
 fn output(value: &CssTextCombineUpright, expected: &str) {
@@ -143,7 +132,7 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
             Default::default(),
         )
         .unwrap();
-        let count = CssTextCombineDigitCount::from_calculation(calculation.clone());
+        let count = CssTextCombineDigitCount::try_from_calculation(calculation.clone()).unwrap();
         assert!(count.literal().is_none());
         assert_eq!(count.calculation().unwrap(), &calculation);
         assert_eq!(count.calculation().unwrap().components(), &components);
@@ -160,7 +149,8 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
         output(&value, expected);
     }
     let count =
-        CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::literal(1));
+        CssTextCombineDigitCount::try_from_calculation(CssCalculation::<CssInteger>::literal(1))
+            .unwrap();
     assert!(matches!(
         count.calculation().unwrap().origin(),
         CssValueOrigin::Programmatic
@@ -286,9 +276,10 @@ fn metadata_initial_and_reentry_keep_exact_current_payloads() {
 
 #[test]
 fn calculation_leaf_budgets_include_outer_nodes_and_prefix_bytes() {
-    let value = CssTextCombineUpright::Digits(Some(CssTextCombineDigitCount::from_calculation(
-        CssCalculation::<CssInteger>::literal(1),
-    )));
+    let value = CssTextCombineUpright::Digits(Some(
+        CssTextCombineDigitCount::try_from_calculation(CssCalculation::<CssInteger>::literal(1))
+            .unwrap(),
+    ));
     let before = value.clone();
     let text = "digits calc(1)";
     assert_eq!(

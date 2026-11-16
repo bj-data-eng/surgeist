@@ -55,7 +55,7 @@ fn character<'i>(
     ) {
         return Err(unexpected_at(location));
     }
-    CssCharacterAlignment::try_from_component(component, fallback)
+    CssCharacterAlignment::from_parser_component(component, fallback)
         .map_err(|_| unexpected_at(location))
 }
 
@@ -77,7 +77,7 @@ fn alignment<'i>(
             let keyword_location = input.site();
             let ident = input.consume_ident().map_err(basic)?;
             let fallback = position(ident).ok_or_else(|| unexpected_at(keyword_location))?;
-            let component = CssCharacterAlignment::try_from_component(
+            let component = CssCharacterAlignment::from_parser_component(
                 component.component().clone(),
                 Some(fallback),
             )

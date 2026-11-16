@@ -152,7 +152,7 @@ fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin
         Some(CssNumericDimension::Angle)
     );
     let origin = expression.origin().clone();
-    let position = CssAngularColorStopPosition::from_calculation(expression);
+    let position = CssAngularColorStopPosition::try_from_calculation(expression).unwrap();
     assert_eq!(position.origin(), &origin);
     assert_eq!(
         position.serialize_specified(Default::default()).unwrap(),
@@ -303,13 +303,14 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
     CssComponentValues::parse(&CssParser::default(), &css).unwrap()
 }
 fn angular_math(functions: usize) -> CssAngularColorStopPosition {
-    CssAngularColorStopPosition::from_calculation(
+    CssAngularColorStopPosition::try_from_calculation(
         CssCalculation::<CssAnglePercentage>::try_from_components(
             math(functions, "1deg"),
             Default::default(),
         )
         .unwrap(),
     )
+    .unwrap()
 }
 fn line_math(functions: usize) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_calculation(
@@ -522,25 +523,12 @@ fn checked_position_rejects_recovered_math_that_parsing_retains() {
     let CssAngularColorStopPosition::Calculation(recovered) = &stop.positions()[1] else {
         panic!("parsing retains the recovered position math")
     };
-    // At HEAD the constructor is infallible, so the contract is stated on its result: an
-    // admitted position retains no component recovered by implicit closure.
-    let admitted = CssAngularColorStopPosition::from_calculation(recovered.clone());
-    let CssAngularColorStopPosition::Calculation(held) = &admitted else {
-        panic!("calculation position")
-    };
-    let [root] = held.components().items() else {
-        panic!("one math root")
-    };
-    let surgeist_css::component::CssComponentValueRef::Function(function) = root.view() else {
-        panic!("math root")
-    };
-    assert!(
-        !matches!(
-            function.closing_origin(),
-            CssValueOrigin::ImplicitClosure { .. }
-        ),
-        "the checked constructor admitted a recovered closure"
-    );
+    let error = CssAngularColorStopPosition::try_from_calculation(recovered.clone()).unwrap_err();
+    assert!(error.is_recovered_component(), "{error:?}");
+    assert!(matches!(
+        error.origin(),
+        Some(CssValueOrigin::ImplicitClosure { .. })
+    ));
 }
 
 #[test]

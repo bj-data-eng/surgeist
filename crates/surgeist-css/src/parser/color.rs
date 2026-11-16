@@ -73,7 +73,7 @@ pub(super) fn parse_authored_mix_weight<'i>(
     if matches!(input.consume_after_whitespace(), Ok(Token::Function(_))) {
         let expression =
             parse_numeric_function(input, &state, numeric, CalculationRoot::Percentage)?;
-        return CssColorMixWeight::try_calculation(
+        return CssColorMixWeight::from_parser_calculation(
             CssCalculation::<CssPercentage>::from_expression(expression),
         )
         .map_err(|error| {

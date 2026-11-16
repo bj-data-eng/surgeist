@@ -30,6 +30,12 @@ impl CssImageConstructionError {
     pub(crate) const fn new(kind: ImageConstructionKind) -> Self {
         Self { kind }
     }
+    /// Names the first component a checked constructor found recovered.
+    pub(crate) fn recovered(origin: &crate::component::CssValueOrigin) -> Self {
+        Self::new(ImageConstructionKind::RecoveredComponent(
+            origin.clone().into(),
+        ))
+    }
     crate::diagnostic::error::kind_predicates! { kind;
         /// Returns whether a property-specific `none` keyword was given as an image.
         is_not_image => ImageConstructionKind::NotImage,

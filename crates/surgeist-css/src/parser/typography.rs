@@ -159,7 +159,7 @@ pub(crate) fn parse_text_combine_upright<'i>(
                 }
                 Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
                     let expression = parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
-                    CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::from_expression(expression))
+                    CssTextCombineDigitCount::from_parser_calculation(CssCalculation::<CssInteger>::from_expression(expression))
                 }
                 token => return Err(location.unexpected::<Error>(token)),
             };
@@ -982,7 +982,7 @@ pub(crate) fn parse_hyphenate_character<'i>(
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|_| unexpected_at(location))?;
-    CssHyphenateString::try_from_component(component)
+    CssHyphenateString::from_parser_component(component)
         .map(CssHyphenateCharacter::String)
         .ok_or_else(|| unexpected_at(location))
 }

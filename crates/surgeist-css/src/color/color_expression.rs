@@ -26,15 +26,17 @@ impl crate::color::CssRelativeColorExpression {
     ///
     /// # Errors
     ///
-    /// Returns an error when `values` is empty, holds more than one value, exceeds `limits`,
-    /// is inconsistent with `environment` or `result_domain`, or is not a valid value for the
-    /// result domain.
+    /// Returns an error when `values` holds a component recovered by implicit closure
+    /// (including a comment closed by the end of its input), is empty, holds more than one
+    /// value, exceeds `limits`, is inconsistent with `environment` or `result_domain`, or is
+    /// not a valid value for the result domain.
     pub fn try_from_components(
         values: CssComponentValues,
         environment: crate::color::CssRelativeColorEnvironment,
         result_domain: crate::color::CssRelativeColorResultDomain,
         limits: CssComponentValueLimits,
     ) -> Result<Self> {
+        crate::numeric::value::reject_recovered(&values)?;
         construct_relative_color_expression(
             values,
             environment,
@@ -203,9 +205,11 @@ impl CssProfileColorExpression {
     ///
     /// # Errors
     ///
-    /// Returns an error when `values` is empty, holds more than one value, or is not a valid
-    /// expression of those kinds.
+    /// Returns an error when `values` holds a component recovered by implicit closure
+    /// (including a comment closed by the end of its input), is empty, holds more than one
+    /// value, or is not a valid expression of those kinds.
     pub fn try_from_components(values: CssComponentValues) -> Result<Self> {
+        crate::numeric::value::reject_recovered(&values)?;
         Self::from_components(values.into(), AdmissionPolicy::Strict)
     }
     pub(crate) fn from_parser_components(

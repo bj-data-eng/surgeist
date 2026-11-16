@@ -46,12 +46,7 @@ impl CssStripeLengthPercentage {
     pub fn try_from_calculation(
         calculation: CssCalculation<CssLengthPercentage>,
     ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(origin) = calculation.components().first_implicit_origin() {
-            return Err(CssNumericConstructionError::at_origin(
-                CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
-        }
+        crate::numeric::value::reject_recovered(calculation.components())?;
         Self::from_parser_calculation(calculation)
     }
     pub(crate) fn from_parser_calculation(
@@ -102,15 +97,12 @@ impl CssStripeThickness {
             Self::Flex(value) => value.origin(),
         }
     }
-    pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
+    fn calculation_components(&self) -> Option<&crate::component::CssComponentValues> {
         match self {
-            Self::LengthPercentage(value) => value
-                .value
-                .calculation()
-                .and_then(|value| value.components().first_implicit_origin()),
-            Self::Flex(value) => value
-                .calculation()
-                .and_then(|value| value.components().first_implicit_origin()),
+            Self::LengthPercentage(value) => {
+                value.value.calculation().map(CssCalculation::components)
+            }
+            Self::Flex(value) => value.calculation().map(CssCalculation::components),
         }
     }
     pub(crate) fn nesting_depth(&self) -> u32 {
@@ -149,6 +141,18 @@ pub struct CssStripe {
     thickness: Option<CssStripeThickness>,
 }
 impl CssStripe {
+    /// Rejects a recovered color component or a recovered thickness calculation.
+    fn ensure_closed(
+        color: &crate::component::CssComponentValues,
+        thickness: Option<&CssStripeThickness>,
+    ) -> Result<(), CssImageConstructionError> {
+        color.ensure_closed(CssImageConstructionError::recovered)?;
+        thickness
+            .and_then(CssStripeThickness::calculation_components)
+            .map_or(Ok(()), |values| {
+                values.ensure_closed(CssImageConstructionError::recovered)
+            })
+    }
     /// Checks one complete color component and every retained child's closure.
     pub fn try_new(
         color: CssComponentValue,
@@ -157,19 +161,7 @@ impl CssStripe {
         let values =
             crate::component::CssComponentValues::try_new(vec![color.clone()], Default::default())
                 .map_err(CssImageConstructionError::from)?;
-        if let Some(origin) = values.first_implicit_origin() {
-            return Err(CssImageConstructionError::new(
-                ImageConstructionKind::RecoveredComponent(origin.clone().into()),
-            ));
-        }
-        if let Some(origin) = thickness
-            .as_ref()
-            .and_then(CssStripeThickness::first_implicit_origin)
-        {
-            return Err(CssImageConstructionError::new(
-                ImageConstructionKind::RecoveredComponent(origin.clone().into()),
-            ));
-        }
+        Self::ensure_closed(&values, thickness.as_ref())?;
         Self::check_component_depth(&values, thickness.as_ref())?;
         let color_value = crate::parser::image_1d::checked_color(&values)?;
         Ok(Self {
@@ -253,20 +245,7 @@ impl CssStripes {
                 Default::default(),
             )
             .map_err(CssImageConstructionError::from)?;
-            if let Some(origin) = values.first_implicit_origin() {
-                return Err(CssImageConstructionError::new(
-                    ImageConstructionKind::RecoveredComponent(origin.clone().into()),
-                ));
-            }
-            if let Some(origin) = stripe
-                .thickness
-                .as_ref()
-                .and_then(CssStripeThickness::first_implicit_origin)
-            {
-                return Err(CssImageConstructionError::new(
-                    ImageConstructionKind::RecoveredComponent(origin.clone().into()),
-                ));
-            }
+            CssStripe::ensure_closed(&values, stripe.thickness.as_ref())?;
         }
         Ok(Self {
             stripes,
@@ -306,11 +285,7 @@ impl CssImage1D {
     pub fn try_from_components(
         values: crate::component::CssComponentValues,
     ) -> Result<Self, CssImageConstructionError> {
-        if let Some(origin) = values.first_implicit_origin() {
-            return Err(CssImageConstructionError::new(
-                ImageConstructionKind::RecoveredComponent(origin.clone().into()),
-            ));
-        }
+        values.ensure_closed(CssImageConstructionError::recovered)?;
         crate::parser::image_1d::checked_image(&values)
     }
     /// Returns the stripes of this image.

@@ -340,6 +340,12 @@ impl CssComponentValueError {
         }
     }
 
+    /// Names the first component a checked constructor found recovered, as an invalid
+    /// token at its implicit closure.
+    pub(crate) fn recovered(origin: &CssValueOrigin) -> Self {
+        Self::new(CssComponentValueErrorKind::InvalidToken, origin.clone())
+    }
+
     fn programmatic(kind: CssComponentValueErrorKind) -> Self {
         Self::new(kind, CssValueOrigin::Programmatic)
     }
@@ -1035,6 +1041,38 @@ impl CssComponentValue {
             ComponentData::Token(_) | ComponentData::Comment { .. } => None,
         }
     }
+
+    /// The first component of this subtree, in source order, closed implicitly at the end of
+    /// its input: the component itself, else a descendant.
+    pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
+        let mut pending = vec![self];
+        while let Some(component) = pending.pop() {
+            let implicit = component.implicit_termination_origin();
+            if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = implicit {
+                return Some(origin);
+            }
+            if let Some(children) = component.child_values() {
+                pending.extend(children.items.iter().rev());
+            }
+        }
+        None
+    }
+
+    /// Whether this component and its descendants are all closed explicitly.
+    pub(crate) fn is_closed(&self) -> bool {
+        self.first_implicit_origin().is_none()
+    }
+
+    /// The single-component form of [`CssComponentValues::ensure_closed`].
+    pub(crate) fn ensure_closed<E>(
+        &self,
+        recovered: impl FnOnce(&CssValueOrigin) -> E,
+    ) -> Result<(), E> {
+        match self.first_implicit_origin() {
+            Some(origin) => Err(recovered(origin)),
+            None => Ok(()),
+        }
+    }
 }
 
 fn is_whitespace(component: &CssComponentValue) -> bool {
@@ -1438,18 +1476,31 @@ impl CssComponentValues {
         Self::from_items(items.to_vec(), limits)
     }
 
-    pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
-        let mut pending: Vec<_> = self.items.iter().rev().collect();
-        while let Some(component) = pending.pop() {
-            let implicit = component.implicit_termination_origin();
-            if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = implicit {
-                return Some(origin);
-            }
-            if let Some(children) = component.child_values() {
-                pending.extend(children.items.iter().rev());
-            }
+    /// The one rule public checked constructors apply to recovered components.
+    ///
+    /// A component is recovered when a token, comment, function or block was
+    /// implicitly closed at the end of its input. Parser admission retains such
+    /// components and reports them as diagnostics; a checked constructor refuses
+    /// the first of them in source order and names it through its own error type.
+    pub(crate) fn ensure_closed<E>(
+        &self,
+        recovered: impl FnOnce(&CssValueOrigin) -> E,
+    ) -> Result<(), E> {
+        match self.first_implicit_origin() {
+            Some(origin) => Err(recovered(origin)),
+            None => Ok(()),
         }
-        None
+    }
+
+    /// Whether [`Self::ensure_closed`] admits these components.
+    pub(crate) fn is_closed(&self) -> bool {
+        self.first_implicit_origin().is_none()
+    }
+
+    pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
+        self.items
+            .iter()
+            .find_map(CssComponentValue::first_implicit_origin)
     }
 
     pub(crate) fn implicit_opening_offsets(&self) -> Vec<usize> {

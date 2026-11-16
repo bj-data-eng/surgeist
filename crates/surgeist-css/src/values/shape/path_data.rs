@@ -83,14 +83,14 @@ impl CssPathData {
                 None,
             ));
         };
-        if matches!(admission, Admission::Strict)
-            && let Some(origin) = component.implicit_termination_origin()
-        {
-            return Err(CssShapeConstructionError::path_data(
-                PathDataFailure::RecoveredInput,
-                origin.clone(),
-                None,
-            ));
+        if matches!(admission, Admission::Strict) {
+            component.ensure_closed(|origin| {
+                CssShapeConstructionError::path_data(
+                    PathDataFailure::RecoveredInput,
+                    origin.clone(),
+                    None,
+                )
+            })?;
         }
         Self::validate(decoded.to_owned(), component.origin().clone())
     }

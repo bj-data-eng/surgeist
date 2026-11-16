@@ -1785,7 +1785,9 @@ glyph-orientation alias.
 grammar alongside `None` and `All`. `Digits(None)` preserves an omitted count;
 `Digits(Some(count))` preserves an explicit count. The checked
 `CssTextCombineDigitCount` admits literal integers from 2 through 4 through
-`try_literal`, or a checked `CssCalculation<CssInteger>` through `from_calculation`.
+`try_literal`, or a checked `CssCalculation<CssInteger>` through `try_from_calculation`,
+which rejects a calculation holding a component recovered by implicit closure
+(parsing retains it).
 Its `literal()` and `calculation()` accessors distinguish these cases. Parsed
 and checked declarations share this grammar and preserve component origins.
 The property inherits by default, has initial `None`, expands to one longhand,
@@ -3832,7 +3834,10 @@ The selected Color 5 surface includes relative `rgb`/`rgba`, `hsl`/`hsla`,
 `hwb`, `lab`, `lch`, `oklab`, `oklch`, and predefined RGB/XYZ `color()` spaces.
 Relative origin channels are numeric in every environment. The checked
 `CssRelativeColorExpression::try_from_components` takes an environment and
-result slot and reports typed numeric errors with component path and origin.
+result slot and reports typed numeric errors with component path and origin; it
+rejects components holding a component recovered by implicit closure, including a
+comment closed by the end of its input, as do `CssCalculation::try_from_components`
+and `CssProfileColorExpression::try_from_components`.
 `CssRelativeColor::try_new` derives its environment and three result slots from
 the function; mismatched expressions are rejected. The source and expressions
 remain symbolic, including optional alpha. `CssAlphaColor::try_new` similarly
@@ -4197,7 +4202,9 @@ order; it does not compute a color.
 Omission means Oklab when resolved. Each color has an optional weight before or
 after it. Literal `CssColorMixPercentage` uses one exact checked percentage
 in the inclusive 0..100 range; a `CssColorMixWeight` calculation retains a
-symbolic percentage math root. `CssColorMixComponent::new` takes a color and
+symbolic percentage math root, and `CssColorMixWeight::try_calculation` rejects a
+calculation holding a component recovered by implicit closure (parsing retains
+it). `CssColorMixComponent::new` takes a color and
 optional weight; `CssColorMix::try_new` checks the list and composed depth.
 `CssColorInterpolationMethod::try_new(space, hue)` checks predefined methods:
 an explicit hue strategy requires HSL, HWB, LCH or Oklch. Rectangular spaces
@@ -4722,7 +4729,8 @@ the selected Text 4 prose from the historical grammar and UAX29 boundary.
 An omitted positional fallback remains omitted in the authored model; its intrinsic
 effective fallback is `right`. The checked `CssCharacterAlignment` retains the
 string component's origin and exposes both decoded text and the authored
-fallback. Its constructors reject empty and multiple-cluster strings.
+fallback. Its constructors reject empty and multiple-cluster strings, and
+`try_from_component` rejects a string closed by end of input (parsing retains it).
 `CssTextAlignValue`, `CssTextAlignAllValue`, and `CssTextAlignLastValue` expose
 the three distinct grammars and bounded canonical specified-value
 serialization. `CssPropertyValue<CssTextAlignValue>::value()` and
@@ -5116,7 +5124,8 @@ and [pinned Color 5's absolute-color definition](https://www.w3.org/TR/2026/WD-c
 
 Valid `var()` or `env()` anywhere in a descriptor defers its entire value before
 ordinary grammar. `CssFontPaletteDescriptorValue::try_new` checks supplied
-components without replacing their parsed or programmatic origins. A pending
+components without replacing their parsed or programmatic origins, and rejects a
+component recovered by implicit closure with `is_recovered_component()`. A pending
 value's `reparse_after_substitution` accepts caller-supplied components and
 rejects any residual, including nested or escaped, substitution function before
 checking the ordinary descriptor grammar. No substitution environment, font
@@ -5145,15 +5154,17 @@ The selected [Fonts 4 §4.7](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/
 `font-named-instance` descriptor accepts `auto` or any string, including an
 empty or unknown name. `CssFontNamedInstance::String` contains a checked
 `CssFontNamedInstanceString`; its `try_new` and `try_from_component` preserve
-respectively programmatic and parsed string provenance. `as_str`, `component`
+respectively programmatic and parsed string provenance, and `try_from_component`
+rejects a string closed by end of input (parsing retains it). `as_str`, `component`
 and `origin` expose the decoded name and its retained source. Checked decoded
 NUL is rejected by the shared string component owner; parsed CSS NUL follows
 CSS replacement semantics.
 
 [§4.10](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-language-override-desc)
 `font-language-override` accepts `normal` or a string and reuses
-`CssFontLanguageOverride` and `CssFontLanguageString` from the property owner.
-Neither string descriptor performs language-tag validation or font matching.
+`CssFontLanguageOverride` and `CssFontLanguageString` from the property owner;
+`CssFontLanguageString::try_from_component` rejects a string closed by end of input
+(parsing retains it). Neither string descriptor performs language-tag validation or font matching.
 
 The [§4.11 metric descriptors](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-metrics-override-desc)
 `ascent-override`, `descent-override` and `line-gap-override` each contain
@@ -6563,7 +6574,9 @@ group, a nonempty stop list, and zero, one, or two positions on each stop.
 positions; `CssAngularColorStop` and `CssAngularColorStopList` check conic stop
 cardinality and hint order. Angular positions use `CssAngularColorStopPosition`
 with checked angle, percentage, exact bare zero, or
-`numeric::CssCalculation<CssAnglePercentage>`; its percentage basis remains symbolic.
+`numeric::CssCalculation<CssAnglePercentage>` through `try_from_calculation`, which
+rejects a calculation holding a component recovered by implicit closure (parsing
+retains it); its percentage basis remains symbolic.
 `CssConicGradient::new` retains optional `from`, full `at`, interpolation, and
 stops. Linear and radial `with_interpolation` retain an explicitly selected
 method separately from omission, using the existing Color 4/5 owner.
@@ -7625,8 +7638,9 @@ belongs downstream.
 `CssUrl::is_local_url()` reports the Values 4 local URL flag for decoded targets
 beginning with `#`; it does not resolve the fragment. `CssIdent::try_new()`
 checks decoded identifier representability without consumer keyword exclusions.
-`CssUrlModifierFunction::try_new()` checks the modifier's function syntax and
-keeps its immutable argument components; `argument_components()` retains original
+`CssUrlModifierFunction::try_new()` checks the modifier's function syntax, rejects
+arguments holding a component closed by the end of its input (parsing retains
+them), and keeps its immutable argument components; `argument_components()` retains original
 token origins from parsed or checked input. The `arguments().as_css()` view
 preserves authored argument text, and URL equality continues to use
 that text and the decoded modifier name rather than source coordinates.
@@ -8927,7 +8941,8 @@ to later processing. `text-spacing-trim` has seven longhand alternatives:
 space-all, normal, space-first, trim-start, trim-both, trim-all and auto.
 
 The checked public constructors preserve those distinctions:
-`CssHyphenateString::try_from_component` retains an original string token;
+`CssHyphenateString::try_from_component` retains an original string token and
+returns `None` for a string closed by end of input (parsing retains it);
 `CssHyphenateLimitCharsComponent::Integer` and `CssHyphenateLimitLines::Integer`
 hold a `CssNumeric<CssInteger, CssNonNegative>`, which admits the selected range
 through the existing integer owner; and `CssHyphenateLimitChars::try_new(total, before,

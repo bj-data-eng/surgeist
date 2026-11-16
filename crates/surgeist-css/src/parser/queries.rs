@@ -832,13 +832,13 @@ fn construct_media(
     condition_only: bool,
 ) -> Result<CssMediaQuery, CssMediaConstructionError> {
     values.validate_with_limits(limits)?;
-    if let Some(origin) = values.first_implicit_origin() {
-        return Err(CssMediaConstructionError::from(
+    values.ensure_closed(|origin| {
+        CssMediaConstructionError::from(
             crate::query::media::construction::MediaConstructionKind::RecoveredInput {
                 origin: origin.clone().into(),
             },
-        ));
-    }
+        )
+    })?;
     let serialized = values.serialize_tokens(limits)?;
     let source = serialized.as_css();
     let numeric = NumericInputContext::components(&values, &serialized);

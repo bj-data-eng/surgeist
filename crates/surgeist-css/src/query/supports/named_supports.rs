@@ -372,13 +372,7 @@ impl CssSupportsTestBody {
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssSupportsConstructionError> {
         values.validate_with_limits(limits)?;
-        if let Some(origin) = values.first_implicit_origin() {
-            return Err(CssSupportsConstructionError::from(
-                crate::query::supports::construction::SupportsConstructionKind::RecoveredInput {
-                    origin: origin.clone().into(),
-                },
-            ));
-        }
+        values.ensure_closed(CssSupportsConstructionError::recovered)?;
         let body = crate::parser::named_supports::construct_test_body(values, limits)?;
         let output = body.serialize_tokens(limits)?;
         validate_emitted_budget(&output, limits, &CssValueOrigin::Programmatic)?;

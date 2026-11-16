@@ -35,8 +35,15 @@ pub struct CssHyphenateString {
 }
 impl CssHyphenateString {
     /// Accepts exactly one string token, preserving its original origin.
+    ///
+    /// Returns `None` for any other component, or for a string recovered by implicit closure.
     #[must_use]
     pub fn try_from_component(component: CssComponentValue) -> Option<Self> {
+        component.ensure_closed(|_| ()).ok()?;
+        Self::from_parser_component(component)
+    }
+    /// Parser admission retains a string recovered at the end of its input.
+    pub(crate) fn from_parser_component(component: CssComponentValue) -> Option<Self> {
         matches!(
             component.view(),
             CssComponentValueRef::Token(CssValueTokenRef::String(_))

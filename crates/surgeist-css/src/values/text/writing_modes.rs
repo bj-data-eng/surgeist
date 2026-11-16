@@ -186,8 +186,10 @@ mod combine_cumulative_bridge_contract {
 
     #[test]
     fn programmatic_literal_calculation_keeps_calc_category() {
-        let count =
-            CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::literal(1));
+        let count = CssTextCombineDigitCount::try_from_calculation(
+            CssCalculation::<CssInteger>::literal(1),
+        )
+        .unwrap();
         let value = CssTextCombineUpright::Digits(Some(count));
         let mut writer = SpecifiedRuleWriter::new(Limits::default());
         writer.append("!").unwrap();

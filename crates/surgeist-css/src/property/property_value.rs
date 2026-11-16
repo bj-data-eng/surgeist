@@ -264,11 +264,14 @@ impl std::error::Error for CssPropertyValueError {
 }
 
 fn recovered_component_error(value: &CssComponentValues) -> Option<CssPropertyValueError> {
-    let origin = value.first_implicit_origin()?;
-    Some(CssPropertyValueError::grammar_failure(
-        crate::diagnostic::error::property::implicit_eof_kind(),
-        CssSerializedOrigin::End(Some(origin.clone())),
-    ))
+    value
+        .ensure_closed(|origin| {
+            CssPropertyValueError::grammar_failure(
+                crate::diagnostic::error::property::implicit_eof_kind(),
+                CssSerializedOrigin::End(Some(origin.clone())),
+            )
+        })
+        .err()
 }
 
 pub(crate) fn parse_property_value_with_context(
