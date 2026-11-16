@@ -130,7 +130,11 @@ fn assert_justified_and_start_aligned_paragraphs_break_alike<S: LayoutScalar>() 
                 start.rtl = rtl;
                 start.white_space = white_space;
                 let expected = start.breaks::<S>();
-                for justify in [TextJustification::InterWord, TextJustification::Spaces] {
+                for justify in [
+                    TextJustification::InterWord,
+                    TextJustification::InterCharacter,
+                    TextJustification::Spaces,
+                ] {
                     let mut document = Document::new(width, Some(justify));
                     document.rtl = rtl;
                     document.white_space = white_space;
