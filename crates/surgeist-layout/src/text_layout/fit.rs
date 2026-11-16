@@ -1285,8 +1285,8 @@ struct CandidateEnvironment<B, C, A, R, X> {
     roles_backing: super::scope_alignment::EntryBacking,
     box_uses: Vec<super::boxes::BoxTrialUse>,
     observed: Option<balance::Observations>,
-    /// Participant-offset ranges `[start, end)` of forced-break groups with the verdict of whether
-    /// every glyph of their whole content advances the pen forwards.
+    /// `(first line start, group end, verdict)` of forced-break groups, sorted by group end: whether
+    /// every glyph of the group's content from that line start on advances the pen forwards.
     spacing_verdicts: Vec<(usize, usize, bool)>,
     band: B,
     canonical: C,

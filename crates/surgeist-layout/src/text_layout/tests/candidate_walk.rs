@@ -167,35 +167,37 @@ fn auto_line_search_evaluates_only_the_words_that_fit_plus_the_first_that_does_n
     assert!(candidates[1] <= candidates[0] * 5 / 2, "{candidates:?}");
 }
 
-/// Negative spacing that still leaves every word and space advancing the line keeps the bound.
-fn assert_forward_advances_keep_the_bound(document: &mut Document, words_per_line: usize) {
+/// Negative spacing anywhere in the group keeps every candidate of a line search: the spacing
+/// after the last glyph of a candidate is trimmed at its edge, so a longer candidate can be
+/// narrower than a shorter one.
+fn assert_negative_spacing_keeps_the_full_walk(document: &mut Document, words_per_line: usize) {
     let count = 50;
     document.source = WORD.repeat(count);
     let (work, lines, per_line) = candidate_work(document);
     assert_eq!(per_line, words_per_line);
     assert_eq!(lines, count.div_ceil(words_per_line));
     assert!(
-        work.candidates <= (per_line + 2) * work.line_searches,
-        "{work:?} exceeds the bound"
+        work.candidates > (per_line + 2) * work.line_searches,
+        "{work:?} must keep the full walk"
     );
 }
 
 #[test]
-fn negative_letter_spacing_that_keeps_each_glyph_advancing_keeps_the_walk_bounded() {
+fn negative_letter_spacing_keeps_the_full_candidate_walk() {
     // CSS Text 3 section 8.1: -2px leaves each 10px glyph 8px, so "XXX XXX XXX" is 88px and a
     // fourth word reaches 120px: three words per 100px line.
     let mut document = Document::new("", 100.0);
     document.letter_spacing = -2.0;
-    assert_forward_advances_keep_the_bound(&mut document, 3);
+    assert_negative_spacing_keeps_the_full_walk(&mut document, 3);
 }
 
 #[test]
-fn negative_word_spacing_that_keeps_each_word_advancing_keeps_the_walk_bounded() {
+fn negative_word_spacing_keeps_the_full_candidate_walk() {
     // CSS Text 3 section 8.2: -15px makes each 10px space advance -5px, so three "XXX" words are
     // 90 - 10 = 80px and a fourth reaches 105px: three words per 100px line.
     let mut document = Document::new("", 100.0);
     document.word_spacing = -15.0;
-    assert_forward_advances_keep_the_bound(&mut document, 3);
+    assert_negative_spacing_keeps_the_full_walk(&mut document, 3);
 }
 
 #[test]

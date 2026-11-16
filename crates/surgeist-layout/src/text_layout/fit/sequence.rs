@@ -33,6 +33,37 @@ pub(super) struct OpportunityWalk {
     monotone: bool,
 }
 
+/// Every glyph of `line`, in run order, advances the pen by at least its raw provider advance and
+/// at least zero, and no run starts before the previous run ends. The step of a run's last glyph
+/// is measured to the run advance, which excludes any spacing trimmed at the line edge.
+fn glyph_advances_hold(line: &FinalizedLine) -> bool {
+    const SLACK: f64 = 1e-9;
+    let holds = |step: f64, raw: f64| step >= 0.0 && step >= raw - SLACK * raw.abs().max(1.0);
+    let mut previous_end: Option<f64> = None;
+    for run in line.run_views() {
+        let origin = run.origin().x;
+        if previous_end.is_some_and(|end| origin < end - SLACK * end.abs().max(1.0)) {
+            return false;
+        }
+        let mut previous: Option<(f64, f64)> = None;
+        for glyph in run.glyphs() {
+            if let Some((pen, raw)) = previous
+                && !holds(glyph.pen() - pen, raw)
+            {
+                return false;
+            }
+            previous = Some((glyph.pen(), f64::from(glyph.advance())));
+        }
+        if let Some((pen, raw)) = previous
+            && !holds(run.advance() - pen, raw)
+        {
+            return false;
+        }
+        previous_end = Some(origin + run.advance());
+    }
+    true
+}
+
 impl OpportunityWalk {
     pub(super) fn of(input: &FitInput<'_>, opportunities: &[Opportunity]) -> Self {
         Self {
@@ -44,6 +75,7 @@ impl OpportunityWalk {
                 && input.inline_boxes.is_none()
                 && input.atomics.is_empty()
                 && input.controls.iter().all(|row| row.boundary.is_none())
+                && matches!(input.orientation, LineOrientation::Horizontal)
                 && input.available.operation() == crate::SizingOperation::Normal
                 && crate::layout_math::normal_available_size(input.available).is_some()
                 && opportunities.iter().all(|(_, _, kind, alternatives)| {
@@ -237,10 +269,10 @@ where
         }
     }
 
-    /// Whether no glyph of the group that ends at the first mandatory break at or after `rest`
-    /// advances the pen backwards, which is how negative letter and word spacing appear in the
-    /// finalized line. One trial of the whole remaining group answers for every line of the
-    /// group, so it runs once per group.
+    /// Whether every glyph of the group that ends at the first mandatory break at or after `rest`
+    /// advances the pen by at least its own raw advance, and by at least zero, so that no
+    /// negative letter or word spacing applies anywhere inside the group. One trial of the whole
+    /// remaining group answers for every line of the group, so it runs once per group.
     fn advances_never_shrink(
         &mut self,
         input: &FitInput<'_>,
@@ -248,10 +280,14 @@ where
         rest: &[Opportunity],
     ) -> Result<bool, FitError> {
         let start = query.start.view().participant_offset();
-        if let Some((.., verdict)) = self
+        // The verdicts are sorted by group end and disjoint in end, so the group of this line is
+        // the first one that ends after the line start. Line searches move forward, which makes a
+        // new verdict an append.
+        let slot = self
             .spacing_verdicts
-            .iter()
-            .find(|(from, to, _)| *from <= start && start < *to)
+            .partition_point(|(_, to, _)| *to <= start);
+        if let Some((from, _, verdict)) = self.spacing_verdicts.get(slot)
+            && *from <= start
         {
             return Ok(*verdict);
         }
@@ -280,21 +316,14 @@ where
             }),
             &mut zone,
         )?;
-        // Each glyph's net advance is the step to the next pen of its run, and the last glyph's
-        // is the step to the run advance. Every net advance must be non-negative.
-        let verdict = trial.candidate.is_some_and(|candidate| {
-            candidate.finalized.run_views().all(|run| {
-                let mut previous: Option<f64> = None;
-                for glyph in run.glyphs() {
-                    if previous.is_some_and(|pen| glyph.pen() < pen) {
-                        return false;
-                    }
-                    previous = Some(glyph.pen());
-                }
-                previous.is_none_or(|pen| run.advance() >= pen)
-            })
-        });
-        self.spacing_verdicts.push((start, *end, verdict));
+        let verdict = trial
+            .candidate
+            .is_some_and(|candidate| glyph_advances_hold(&candidate.finalized));
+        match self.spacing_verdicts.get_mut(slot) {
+            // A search that backtracked to an earlier line of the same group covers more of it.
+            Some(entry) if entry.1 == *end => *entry = (start, *end, verdict),
+            _ => self.spacing_verdicts.insert(slot, (start, *end, verdict)),
+        }
         Ok(verdict)
     }
 
@@ -470,11 +499,20 @@ where
                 // - the line band has no later transition, so a taller candidate or a candidate
                 //   placed lower on the pixel grid sees the same band or a narrower one, because
                 //   floats and taller lines only remove inline space, never add it;
-                // - no glyph of the group advances the pen backwards, as negative letter or word
-                //   spacing does, so each added word or space adds a non-negative advance.
-                //   Hanging and collapsible trailing spaces only leave the end of the shorter
-                //   candidate and rejoin the interior of the longer one, so they never make a
-                //   longer candidate narrower.
+                // - no negative letter or word spacing applies inside the group: every glyph
+                //   advances the pen by at least its raw advance (`glyph_advances_hold`).
+                //
+                // What `fits` compares: with no inline boxes or atomics the line is measured with
+                // the Native authority, whose required inline size is the larger of the signed
+                // flow advance and the span of the occupied cluster intervals. Every cluster
+                // interval starts where the previous one ends, so the span is at least the flow
+                // and equals the width from the first to the last included cluster. When every
+                // cluster advances by at least zero that width cannot shrink as clusters are
+                // added. A longer candidate keeps every cluster of a shorter one in the same
+                // order and places the shorter candidate's trimmed edge, a collapsible trailing
+                // space, hanging punctuation or the spacing after its last glyph, inside the
+                // line, where it only adds width; with no negative spacing the trimmed edge
+                // adds at least zero, so it cannot make the shorter candidate the wider one.
                 if overflows_for_good
                     && !full_walk_forced()
                     && walk.monotone
