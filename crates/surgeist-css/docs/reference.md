@@ -5183,8 +5183,10 @@ invalid descriptor is dropped independently, but a definition with no retained
 family descriptor is discarded. `base-palette` accepts `light`, `dark`, an exact
 nonnegative integer token, or symbolic Integer-root math. `override-colors`
 accepts a nonempty comma-separated list of nonnegative indices and absolute
-colors; repeated indices are retained, not resolved. Missing optional
-descriptors remain absent. This follows [pinned Fonts 4 §9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values)
+colors; repeated indices are retained, not resolved. An index with no color
+after it is an incomplete pair, which the checked constructor, the text front
+and the stylesheet report as an invalid descriptor value naming the last
+authored token. Missing optional descriptors remain absent. This follows [pinned Fonts 4 §9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values)
 and [pinned Color 5's absolute-color definition](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#absolute-color).
 
 Valid `var()` or `env()` anywhere in a descriptor defers its entire value before
