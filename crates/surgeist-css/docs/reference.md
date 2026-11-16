@@ -6627,6 +6627,16 @@ wrappers expose that list through `value()`. Intrinsic expansion and
 normalization preserve source occurrence, importance, and pending replacement
 components; they do not load images or match layers with sibling properties.
 
+Author guidance for `background-image`, from
+[Backgrounds 3](../../../references/css-backgrounds-3--CRD-css-backgrounds-3-20240311--8a291792b2fd.md#background-image):
+pair a background image with a `background-color` that keeps the text readable
+if the image is unavailable, since an image that fails to download or cannot be
+displayed draws nothing. Do not use background images as the only channel for
+important information: images are not accessible in non-graphical
+presentations, and high-contrast display modes may turn background images off.
+This crate parses and serializes these values only; it applies no fallback
+color and does not check contrast.
+
 The mask shorthand uses the same shared image/`none` grammar, including selected
 gradients and LightDark images, as `mask-image`, following Masking 1 §7.1/§7.9.
 `CssMaskLayer::try_new` accepts those images and rejects wholly empty layers.
