@@ -143,3 +143,60 @@ fn a_declarative_shadow_host_holds_no_registry_row() {
         }
     }
 }
+
+/// The growth of the parse facts by the three tables is the sum of their sizes: a table is its
+/// key bank and its row bank, a vector and a capacity record for each and the count of admitted
+/// rows, whatever its row, and the facts are the sum of their fields. The oracle is the
+/// layout of the standard `Vec`: three words, and of the capacity record: its owner, its
+/// capacity and its admitted count.
+#[test]
+fn the_three_tables_add_the_sum_of_their_sizes_to_the_parse_facts() {
+    use super::super::family_table::FamilyTable;
+    use super::super::payload_registry::ParseFacts;
+    use crate::parser::control::VectorCapacity;
+    use std::mem::size_of;
+    let word = size_of::<usize>();
+    let capacity = 3 * word;
+    assert_eq!(size_of::<Vec<u32>>(), 3 * word);
+    assert_eq!(size_of::<VectorCapacity<u32>>(), capacity);
+    // The key bank (vector and capacity) and the row bank (vector, capacity, admitted count).
+    let table = (3 * word + capacity) + (3 * word + capacity + word);
+    assert_eq!(size_of::<FamilyTable<u8>>(), table);
+    assert_eq!(size_of::<FamilyTable<template::TemplateMetadata>>(), table);
+    assert_eq!(size_of::<FamilyTable<context::ShadowState>>(), table);
+    assert_eq!(
+        size_of::<FamilyTable<provenance::ConstructionCauseRef>>(),
+        table
+    );
+    assert_eq!(table, 104);
+    // The facts hold three tables more than the one of each earlier family: their size is the
+    // sum of the sizes of their fields, rounded to the alignment.
+    let mut c = control();
+    let storage = ParserArenaSession::new(
+        &mut c,
+        RootKind::Document(surgeist_html::construction::HtmlDocumentMode::NoQuirks),
+    )
+    .unwrap();
+    let facts = &storage.active().unwrap().payloads.facts;
+    let fields = std::mem::size_of_val(&facts.completion)
+        + std::mem::size_of_val(&facts.documents)
+        + std::mem::size_of_val(&facts.csp)
+        + std::mem::size_of_val(&facts.missing)
+        + std::mem::size_of_val(&facts.associations)
+        + std::mem::size_of_val(&facts.contexts)
+        + std::mem::size_of_val(&facts.creation)
+        + std::mem::size_of_val(&facts.nonces)
+        + std::mem::size_of_val(&facts.templates)
+        + std::mem::size_of_val(&facts.shadows)
+        + std::mem::size_of_val(&facts.causes);
+    assert_eq!(
+        size_of::<ParseFacts>(),
+        fields.next_multiple_of(std::mem::align_of::<ParseFacts>())
+    );
+    let new_tables = std::mem::size_of_val(&facts.templates)
+        + std::mem::size_of_val(&facts.shadows)
+        + std::mem::size_of_val(&facts.causes);
+    assert_eq!(new_tables, 3 * table);
+    let mut storage = storage;
+    storage.release(&mut c).unwrap();
+}
