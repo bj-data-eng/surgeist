@@ -488,22 +488,32 @@ fn root_annotations_fail_before_environment_deferral() {
 }
 
 #[test]
-fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
-    // Syntax 3 CRD 2026-10-01 #typedef-declaration-value admits matched blocks;
-    // Env 1 WD 2025-09-23 §3 assumes the entire descriptor grammar valid.
-    for source in ["env(intent) { x }", "{ x } env(intent)"] {
+fn a_root_block_beside_another_value_is_refused_under_environment_whole_grammar_deferral() {
+    // A block that is the whole value, and a block nested in env(), remain
+    // declaration-value data (Syntax 3 §7.2).
+    for source in ["{ env(intent) }", "env(intent, { x })"] {
         let parsed = fragment(source, Kind::RenderingIntent);
         assert!(parsed.is_clean(), "{source}: {:?}", parsed.diagnostics());
         assert!(matches!(
             parsed.syntax().as_ref().unwrap().view(),
             View::Pending(_)
         ));
-        assert!(matches!(
-            value(Kind::RenderingIntent, source).view(),
-            View::Pending(_)
-        ));
-        // Syntax 3 §5.5.6 step 8: as a declaration, a block beside another
-        // value returns nothing, whatever env() could defer.
+    }
+    // Syntax 3 CRD 2026-10-01 §5.5.6 step 8: a declaration whose value holds a
+    // top-level block beside another value returns nothing, whatever Env 1
+    // WD 2025-09-23 §3 defers, so the value fronts refuse it, as the sheet does.
+    for source in ["env(intent) { x }", "{ x } env(intent)"] {
+        let parsed = fragment(source, Kind::RenderingIntent);
+        assert!(parsed.syntax().is_none(), "{source}: {:?}", parsed.syntax());
+        assert!(
+            Value::try_new(
+                Kind::RenderingIntent,
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default()
+            )
+            .is_err(),
+            "{source}"
+        );
         let sheet = CssParser::default().parse_sheet(format!(
             "@color-profile --x {{ rendering-intent: {source}; }} .after {{ color: red; }}"
         ));

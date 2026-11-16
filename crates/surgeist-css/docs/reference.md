@@ -64,8 +64,10 @@ equal contents compare equal while `same_input` and `same_snapshot` remain false
 Sheet components use that exact snapshot. CSS offsets address decoded UTF-8,
 and columns count UTF-16 units; original network-byte offsets are separate.
 CR, FF, CRLF and NUL remain in the snapshot for the existing tokenizer to filter.
-An inferred charset prefix remains in decoded text and passes through the current
-string sheet grammar; decoding does not strip it or certify charset admission.
+The exact encoding declaration at the start of the decoded text remains in it; the
+sheet fronts consume it without a rule or a diagnostic
+([the declaration is not a rule](#stylesheet-encoding-guidance)), and decoding does
+not strip it.
 
 `surgeist_css_parser::input::DecodeLimits` bounds original bytes and decoded UTF-8 bytes
 independently. Defaults follow component-input length policy, with no extra
@@ -131,19 +133,43 @@ Without a protocol label, prefix or environment encoding, bytes that are not UTF
 decode as UTF-8, where a malformed sequence becomes U+FFFD and
 `had_replacements()` reports it. That is decoder provenance, not a CSS diagnostic.
 
-**The declaration is not a rule.** Syntax 3 [§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#charset-rule)
-requires an `@charset` rule that is actually parsed to be treated as an
-unrecognized rule and dropped as invalid when the stylesheet is grammar-checked.
-The byte front keeps the declaration in the decoded text, so
-`CssParser::parse_sheet_bytes` reports a stylesheet that declares itself through
-the prefix with one `UnknownAtRule` diagnostic and the `DropAtRule` action over
-the declaration, and `into_validation_result` refuses it. The protocol,
-environment and byte-order-mark paths add no diagnostic. Diagnostic and origin
-offsets address the decoded UTF-8 source, so the declaration occupies the first
-offsets and a multibyte character shifts every later offset from its position in
-`original_bytes()`. A host that treats the prefix as encoding metadata recognizes
-it as the leading `UnknownAtRule` at offset 0 of an input whose `selection()` is
-`CharsetPrefix`.
+**The declaration is not a rule.** Syntax 3 [§3.2](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#input-byte-stream)
+calls the byte sequence an encoding declaration that only looks like an at-rule, and
+[§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#charset-rule)
+says no `@charset` rule exists: one that is actually parsed is an unrecognized
+rule, dropped as invalid. The stylesheet fronts (`CssParser::parse_sheet`,
+`parse_sheet_bytes` and `parse_sheet_utf16`) therefore consume the exact
+declaration at the start of the decoded text: it yields no rule and no diagnostic,
+so a stylesheet that begins with it has a clean report that
+`into_validation_result` accepts. The declaration is the byte sequence above, found
+in the text by `surgeist_css_parser::input::encoding_declaration`, the same
+function the decoder selects an encoding by, so decoded bytes and the same text
+passed to `parse_sheet` give the same report. Whether the label names an encoding
+does not matter to the report, and neither does which source selected the
+encoding: a protocol label, the environment encoding or a byte order mark decides
+over the declaration, which is still consumed. A byte order mark is removed by
+decoding, so the declaration after it is at the start of the text. A U+FEFF
+character in the text given to `parse_sheet` is not removed and precedes the
+declaration, which is then not at the start. `parse_sheet_utf16` finds the
+declaration in its preprocessed text (Syntax 3 §3.3: CR, FF and CRLF become one
+LF, and NUL becomes U+FFFD), so it differs from the text and byte fronts in two
+cases: a NUL in the label is not ASCII after preprocessing, so that front keeps
+the `UnknownAtRule` diagnostic where the others consume the declaration; and a
+CRLF in the label shortens the text, so a declaration whose semicolon is byte
+1025 of the original text can end within the first 1024 bytes of the
+preprocessed text and be consumed there only. A CR, FF or LF in the label is
+consumed by every front.
+
+Every other `@charset` keeps one `UnknownAtRule` diagnostic with the `DropAtRule`
+action: another spelling than the exact form, a second declaration, one after any
+other text including a comment or whitespace, and one inside a block or a nested
+rule list. The single-rule fronts (`CssRule::parse` and the CSSOM-facing one-rule
+insertion), block contents and the other fragment fronts consume nothing at their
+start and report `@charset` as they report any unknown at-rule. Retained rules,
+diagnostics and origins keep the coordinates of the decoded text, whose first
+offsets the declaration occupies; a multibyte character shifts every later offset
+from its position in `original_bytes()`. No retained node refers to the
+declaration, and sheet serialization does not write it.
 
 [How to decode a stylesheet from bytes](how-to.md#decode-a-stylesheet-from-bytes)
 shows the calls. The [conformance classes](explanation.md#stylesheet-conformance-classes)
@@ -169,7 +195,7 @@ behavior and whether the move changed it.
 | §5.4.3 parse a stylesheet uses §5.5.1 consume a stylesheet's contents (no top-level flag); CDO/CDC are discarded. | Unchanged top-level dispatch. | Unchanged |
 | §5.5.3 at the top level: a prelude whose first two non-whitespace values are a `--` ident and a colon consumes its block and returns nothing. | `--foo:hover {}` was a valid type-plus-pseudo-class rule; it is now dropped with `DropQualifiedRule`. | Behavior change |
 | §5.5.4 and §5.5.5 consume every block as block contents; a failed declaration is reconsumed as a qualified rule with a `;` stop token, and §7.1 makes rules invalid in a `<declaration-list>`. | Rule-list bodies moved under #1328. Declaration-list bodies (`@font-face`, keyframe blocks, `@font-palette-values`, `@color-profile`, `@font-feature-values` and its blocks) now drop a nested rule as one unit and keep the declarations around it; `@font-face` and keyframe blocks are no longer dropped whole. | Behavior change |
-| §5.5.6 rejects a non-custom declaration whose value holds a top-level `{}` block beside other tokens, and §5.5.5 keeps interleaved declarations as nested declaration runs. | Already implemented through the block-contents definition. | Unchanged |
+| §5.5.6 rejects a non-custom declaration whose value holds a top-level `{}` block beside other tokens, and §5.5.5 keeps interleaved declarations as nested declaration runs. | Implemented through the block-contents definition. The property-value text front, checked component construction, the `@supports`, `@import supports()` and `@when supports()` declaration tests, and the descriptor value fronts refuse the same values at the opening brace, whether or not the value holds a substitution function; strict reentry refuses a replacement of that form through the same grammar. | Unchanged |
 | §5.4.10 parse a comma-separated list of component values appends a group only while input remains, so a final comma followed by no token adds no group. | Media query lists, forgiving selector lists and `@font-face` `src` lists no longer report an empty final member; `@media screen,{}` keeps one clean query. Checked import and custom-media construction agree. | Behavior change |
 | §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `CssParser::parse_block_contents` is the single declaration-list front: it implements §5.5.5 "consume a block's contents" for style attributes, CSSOM `cssText` and raw lists. | Behavior change |
 | §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8, §5.4.9 and §5.4.10. | `CssRule::parse`, `CssDeclaration::parse`, `CssComponentValues::parse` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
@@ -845,6 +871,11 @@ values may be empty and contain nested curly punctuation.
 
 Importance comes only from the argument. Root `!` annotations, semicolons and
 stray closing delimiters reject the complete input even after `var()` or `env()`.
+A non-custom value that holds a top-level `{}` block beside any other
+non-whitespace value is rejected too, with an unexpected-token error on the
+block's opening brace, as [Syntax 3 §5.5.6](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration)
+step 8 and `parse_block_contents` do; a `{}` block as the entire value, a block
+nested in another component and a custom value are not affected.
 Rejection reports `RejectInput`; resource limits retain `StopAtNestingLimit`.
 Implicit EOF closures are reported only when the value survives validation.
 
@@ -861,7 +892,11 @@ grammar. Its `CssPropertyTarget` is a canonical known-property identity or a che
 custom-property name (`Property`), an explicit `CssPropertyGrammar` (`Grammar`), or a
 property in `@page` or margin-box context (`PageProperty`, `MarginProperty`);
 importance is supplied separately. Top-level annotations, declaration separators
-and trailing grammar tokens are errors. The result retains ordinary, CSS-wide
+and trailing grammar tokens are errors, as is a top-level `{}` block beside any
+other non-whitespace value of a non-custom property, located on the block. The
+checks run in this order: an implicit closure of the supplied components is
+reported first, so `{} var(--x` is refused for its closure and `{} var(--x)` for
+its brace. The result retains ordinary, CSS-wide
 and substitution-dependent values without resolving them.
 
 ```rust
@@ -2085,8 +2120,11 @@ qualifying `env()` family: all ten Counter Styles descriptors, outer
 blocks. Every `env()` in the value must qualify; one malformed `env()` is not
 rescued by another valid `env()`. An independently invalid `var()` does not veto
 a valid `env()`, while `var()` alone supplies no exception in these contexts.
-Root annotations and declaration boundaries are checked before admission.
-Matched nested blocks remain data. A root bang in an `env()` fallback is invalid,
+Root annotations and declaration boundaries are checked before admission, as is
+a top-level `{}` block beside any other non-whitespace value, which every
+descriptor value front refuses at the brace ([Syntax 3 §5.5.6](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration)
+step 8). A `{}` block that is the whole value, and blocks nested in other
+components, remain data. A root bang in an `env()` fallback is invalid,
 while a bang inside a nested function is retained as nested content.
 
 `CssCounterStyleDescriptorValue::view`, `CssFontFeatureDisplayValue::view`, and
@@ -4183,7 +4221,9 @@ from its descriptors.
 `CssColorProfileDescriptorValue::try_new` share the whole-value grammar.
 Valid `env()` qualifies for whole-grammar deferral under
 [Env 1 §3](https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function),
-including other tokens such as `var()` and matched blocks. A standalone `var()`
+including other tokens such as `var()` and blocks that are the whole value or
+nested in another component; a top-level `{}` block beside any other value is
+refused at the brace, as in every descriptor value front. A standalone `var()`
 does not qualify; quoted strings and URL data remain data. Pending values retain
 their components and origins. `reparse_after_substitution` accepts caller-supplied
 replacement components, rejects residual actual `var()`/`env()` functions,
@@ -9877,8 +9917,10 @@ values without cascade, substitution, query evaluation, resource loading or
 layout. It does not apply live CSSOM declaration selection or shorthand
 recombination to the immutable authored graph. [Syntax 3 §8.3](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#charset-rule)
 defines every apparent parsed `@charset` rule as unrecognized. Ordinary parsing
-drops it with an `UnknownAtRule` diagnostic; specified output serializes only
-the retained rules while the original report keeps that recovery provenance.
+consumes the exact encoding declaration at the start of a stylesheet without a
+diagnostic and drops every other `@charset` with an `UnknownAtRule` diagnostic;
+specified output serializes only the retained rules while the original report
+keeps that recovery provenance.
 
 Media lists use the existing bounded CSSOM projection provider. Invalid
 recovered members become `not all` in place, preserving valid sibling order and
@@ -10310,7 +10352,13 @@ whitespace, comment removal or escape processing. Root importance annotations
 are invalid method value syntax, even though the rule form permits them. These
 method syntax failures return `CssSupportsConstructionError` with the responsible
 original argument origin. Ordinary unsupported declarations still retain an
-authored test without a known typed view. Both arguments keep separate source
+authored test without a known typed view, as does a declaration of a non-custom
+name whose value holds a top-level `{}` block beside any other non-whitespace
+value (`(width: {} var(--x))`) in the rule, `@import supports()`, `@when
+supports()` and method fronts alike ([Syntax 3 §5.5.6](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration)
+step 8); a `{}` block as the entire value and a custom property name keep their
+result. A `style()` container feature validates no value and retains every
+authored value. Both arguments keep separate source
 snapshots. These APIs do not evaluate support or execute DOM operations.
 
 ### Surgeist named-support test child composition

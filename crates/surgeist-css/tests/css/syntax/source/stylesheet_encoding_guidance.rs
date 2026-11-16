@@ -9,8 +9,9 @@
 //! is U+041F), never from a run. The fallback order, the byte limit and the
 //! label rules are pinned in `stylesheet_byte_input.rs` and in the parser
 //! crate; these tests pin the guidance paths themselves, the near-misses of
-//! the exact declaration that the clause's note lists, bomless UTF-16 and the
-//! coordinates of the diagnostics of a decoded sheet.
+//! the exact declaration that the clause's note lists, bomless UTF-16, the
+//! coordinates of the diagnostics of a decoded sheet and the clean report of a
+//! sheet that begins with the exact declaration.
 
 use surgeist_css::CssParser;
 use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
@@ -223,11 +224,11 @@ fn diagnostics_of_a_legacy_decoded_sheet_use_decoded_source_coordinates() {
 }
 
 #[test]
-fn a_leading_declaration_is_reported_as_an_unrecognized_rule_with_decoded_coordinates() {
-    // §8.3: "any occurrences of an @charset rule must be treated as an
-    // unrecognized rule, and thus dropped as invalid". Decoding keeps the
-    // declaration in the text, so the report carries one extra diagnostic over
-    // its 24 bytes and every later coordinate is shifted by them.
+fn a_leading_declaration_is_consumed_and_later_coordinates_keep_their_decoded_values() {
+    // §3.2 calls the declaration an encoding declaration that only looks like
+    // an at-rule, and §8.3 says no `@charset` rule exists. The exact leading
+    // declaration yields no rule and no diagnostic; decoding keeps it in the
+    // text, so every later coordinate is shifted by its 24 bytes.
     let declaration = b"@charset \"windows-1252\";";
     let bytes = [
         &declaration[..],
@@ -237,30 +238,37 @@ fn a_leading_declaration_is_reported_as_an_unrecognized_rule_with_decoded_coordi
     let input = decode(&bytes, DecodeHints::default());
     assert_eq!(input.selection(), EncodingSelection::CharsetPrefix);
     let report = CssParser::default().parse_sheet_bytes(&input);
-    let [charset, property] = report.diagnostics() else {
-        panic!("one dropped declaration and one unknown property")
+    let [property] = report.diagnostics() else {
+        panic!(
+            "only the unknown property is reported: {:?}",
+            report.diagnostics()
+        )
     };
-    assert_eq!(charset.error().code(), CssErrorCode::UnknownAtRule);
-    assert_eq!(charset.action(), CssRecoveryAction::DropAtRule);
-    assert_eq!(charset.span().start().byte_offset().value(), 0);
-    assert_eq!(charset.span().end().byte_offset().value(), 24);
     assert_eq!(property.error().code(), CssErrorCode::UnknownProperty);
+    assert_eq!(property.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(property.error().position().byte_offset().value(), 43);
     assert_eq!(property.error().position().column().value(), 39);
     let [CssRule::Style(style)] = report.syntax().rules() else {
-        panic!("the style rule survives the dropped declaration")
+        panic!("the style rule follows the declaration")
     };
+    assert_eq!(style.position().byte_offset().value(), 24);
     // `content` and `color` stay; `mystery` is the dropped declaration.
     assert_eq!(style.declarations().len(), 2);
 }
 
 #[test]
-fn a_clean_stylesheet_needs_a_guided_path_other_than_the_leading_declaration() {
+fn a_clean_stylesheet_may_begin_with_the_leading_declaration() {
     // The same valid rule is clean through a protocol label, a BOM, the
-    // environment encoding and the UTF-8 fallback, but an exact leading
-    // declaration is reported by the grammar (§8.3) and so is not accepted by
-    // `into_validation_result`.
+    // environment encoding, the UTF-8 fallback and the exact leading
+    // declaration, which is consumed (§3.2), so `into_validation_result`
+    // accepts each of them.
     let rule = b"a{color:red}";
+    let declared = decode(
+        &[&b"@charset \"utf-8\";"[..], rule].concat(),
+        DecodeHints::default(),
+    );
+    assert_eq!(declared.selection(), EncodingSelection::CharsetPrefix);
+    let declared_bytes = declared.original_bytes().to_vec();
     for (path, bytes, hints) in [
         ("protocol", rule.to_vec(), protocol("utf-8")),
         ("environment", rule.to_vec(), environment("utf-8")),
@@ -270,25 +278,21 @@ fn a_clean_stylesheet_needs_a_guided_path_other_than_the_leading_declaration() {
             DecodeHints::default(),
         ),
         ("fallback", rule.to_vec(), DecodeHints::default()),
+        (
+            "declaration",
+            declared_bytes.clone(),
+            DecodeHints::default(),
+        ),
+        (
+            "byte order mark and declaration",
+            [&b"\xEF\xBB\xBF"[..], &declared_bytes].concat(),
+            DecodeHints::default(),
+        ),
     ] {
         let report = CssParser::default().parse_sheet_bytes(&decode(&bytes, hints));
         assert!(report.is_clean(), "{path}: {:?}", report.diagnostics());
         assert!(report.into_validation_result().is_ok(), "{path}");
     }
-    let declared = decode(
-        &[&b"@charset \"utf-8\";"[..], rule].concat(),
-        DecodeHints::default(),
-    );
-    assert_eq!(declared.selection(), EncodingSelection::CharsetPrefix);
-    let failure = CssParser::default()
-        .parse_sheet_bytes(&declared)
-        .into_validation_result()
-        .expect_err("the declaration is an unrecognized rule");
-    let [diagnostic] = failure.diagnostics() else {
-        panic!("exactly the declaration is reported")
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::UnknownAtRule);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), 17);
 }
 
 #[test]

@@ -38,7 +38,8 @@
 //! - [`input`]: [`input::decode`], which decodes a style sheet's bytes as
 //!   section 3.2 says (the fallback encoding from a protocol label, an
 //!   `@charset` declaration or the environment, then the Encoding Standard's
-//!   decoders); [`input::filter_code_points`] and [`input::preprocess_utf16`],
+//!   decoders), and [`input::encoding_declaration`], the `@charset` declaration's
+//!   pattern on its own; [`input::filter_code_points`] and [`input::preprocess_utf16`],
 //!   which apply the preprocessing of section 3.3 to a string and to UTF-16
 //!   units, the latter with a [`SourceMap`](input::SourceMap) back to the
 //!   original units; and the stepwise [`InputCursor`](input::InputCursor), which

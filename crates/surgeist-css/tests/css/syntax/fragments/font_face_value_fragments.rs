@@ -261,9 +261,20 @@ fn raw_descriptor_boundaries_reject_annotations_and_delimiters_before_src_recove
 
 #[test]
 fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
-    // Fonts 4 §4.3.1 validates comma-separated members independently. The
-    // matched block is invalid font-src data, so it is discarded as a member.
-    for source in ["local(X),bad()", "local(X),bad(", "local(X),{}"] {
+    // Syntax 3 §5.5.6 step 8: a value with a top-level `{}` block beside other
+    // values is no declaration's value, so the whole text is refused at the
+    // brace and no member is recovered from it.
+    let source = "local(X),{}";
+    let report =
+        CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, Kind::Src);
+    assert!(report.syntax().is_none(), "{source}: {report:?}");
+    let first = report.diagnostics().first().unwrap();
+    assert_eq!(first.action(), CssRecoveryAction::RejectInput);
+    assert_eq!(first.error().position().byte_offset().value(), 9);
+    // Fonts 4 §4.3.1 validates comma-separated members independently. An
+    // invalid member that is no root block, even one that holds a block, is
+    // discarded as a member.
+    for source in ["local(X),bad()", "local(X),bad(", "local(X),bad({})"] {
         let report =
             CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, Kind::Src);
         assert_eq!(

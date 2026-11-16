@@ -485,7 +485,9 @@ pub(super) fn consume_remaining(input: &mut Stream<'_>) {
 }
 
 /// Admits the root of a descriptor's value: no `;` and no closing token may
-/// end a component of the declaration's value. The stream is left where it was.
+/// end a component of the declaration's value, and no `{}` block may share the
+/// value with another component (Syntax 3 section 5.5.6, step 8), as it may not
+/// when the value defers to substitution. The stream is left where it was.
 pub(super) fn validate_root<'i>(
     input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
@@ -497,7 +499,24 @@ pub(super) fn validate_root<'i>(
             token,
             Token::Semicolon | Token::CloseCurly | Token::CloseParen | Token::CloseSquare
         )
-    })
+    })?;
+    refuse_root_block(input, numeric, owner, descriptor)
+}
+
+/// Fails at the opening brace of a top-level `{}` block that shares the value
+/// of a descriptor with another component. The stream is left where it was.
+pub(super) fn refuse_root_block<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    owner: &str,
+    descriptor: &str,
+) -> Result<(), ValueError<'i>> {
+    match input.root_block_beside_values() {
+        Some(block) => Err(fail(numeric, block, |location| {
+            invalid_descriptor_syntax_token_at(location, owner, descriptor, Token::OpenCurly)
+        })),
+        None => Ok(()),
+    }
 }
 
 /// Refuses a `!` at the root of value text that a grammar has read to its end:

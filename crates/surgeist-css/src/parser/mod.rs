@@ -669,7 +669,12 @@ fn parse_sheet_snapshot_inner(
     source_snapshot: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
-    let source = source_snapshot.as_str();
+    // The exact encoding declaration at the start is not a rule (Syntax 3
+    // sections 3.2 and 8.3): the grammar, the nesting depth and the lexical
+    // faults read a view of the text with the declaration blanked, at the
+    // original offsets.
+    let view = reconstruction::without_encoding_declaration(source_snapshot.as_str());
+    let source = view.as_deref().unwrap_or(source_snapshot.as_str());
     // The 256-level public limit exceeds small default thread stacks; deep
     // input runs on the bounded parser thread or is refused, never deep here.
     let profile = bounded_execution::StackProfile::Structural;
@@ -1757,6 +1762,9 @@ fn parse_property_value_from_parser<'i>(
         }
     }
     parser.restore(start);
+    if !matches!(grammar, PropertyValueGrammar::Custom(_)) {
+        refuse_root_block_beside_values(parser)?;
+    }
     let body = parse_property_declaration_body_from_property_input(
         grammar,
         parser,
@@ -1765,6 +1773,23 @@ fn parse_property_value_from_parser<'i>(
     )?;
     parser.require_empty()?;
     Ok(body)
+}
+
+/// Syntax 3 section 5.5.6, step 8: the value of a non-custom declaration is no
+/// `{}` block beside other values, whether the grammar validates it or defers
+/// it to substitution. Every front that reads the value of a non-custom
+/// property as source text or components calls this before a body parser reads
+/// it; the failure is the unexpected opening brace. The stream does not move.
+fn refuse_root_block_beside_values<'i>(
+    parser: &mut syntax_types::Stream<'i>,
+) -> Result<
+    (),
+    crate::parser::syntax_types::SyntaxError<'i, crate::diagnostic::error::property::Error>,
+> {
+    match parser.root_block_beside_values() {
+        Some(block) => Err(block.unexpected(surgeist_css_parser::Token::OpenCurly)),
+        None => Ok(()),
+    }
 }
 
 fn parse_property_declaration_body_from_property_input<'i>(

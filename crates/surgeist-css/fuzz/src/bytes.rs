@@ -492,22 +492,61 @@ fn parse_checks(input: &CssDecodedStylesheetInput) -> Check {
                 "parsing the decoded snapshot differs from parsing its text",
             ));
         }
-        if input.selection() == EncodingSelection::CharsetPrefix
-            && text.starts_with("@charset \"")
-            && !report.diagnostics().iter().any(|diagnostic| {
-                diagnostic.error().position().byte_offset().value() == 0
-                    && diagnostic.error().code() == CssErrorCode::UnknownAtRule
-                    && diagnostic.action() == CssRecoveryAction::DropAtRule
-            })
-        {
-            return Err(Violation::new(
-                check::CLEANLINESS,
-                "charset-prefix-not-dropped",
-                "the inferred charset declaration is not the dropped leading unknown at-rule",
-            ));
-        }
+        charset_reporting(text, report.diagnostics())?;
     }
     Ok(())
+}
+
+/// Syntax 3 section 3.2 and section 8.3, with the decision recorded on issue
+/// #2868: the exact encoding declaration at the start of the decoded text is
+/// consumed and gives no diagnostic; any other `@charset` at-rule at the start
+/// is an unrecognized at-rule dropped with one diagnostic at offset 0.
+fn charset_reporting(
+    text: &str,
+    diagnostics: &[surgeist_css::diagnostic::CssRecoveryDiagnostic],
+) -> Check {
+    let reported = diagnostics.iter().any(|diagnostic| {
+        diagnostic.error().position().byte_offset().value() == 0
+            && diagnostic.error().code() == CssErrorCode::UnknownAtRule
+            && diagnostic.action() == CssRecoveryAction::DropAtRule
+    });
+    if leading_declaration_len(text).is_some() {
+        if reported {
+            return Err(Violation::new(
+                check::CLEANLINESS,
+                "charset-declaration-reported",
+                "the exact leading encoding declaration is reported as an unknown at-rule",
+            ));
+        }
+    } else if starts_with_charset_at_rule(text) && !reported {
+        return Err(Violation::new(
+            check::CLEANLINESS,
+            "charset-at-rule-not-dropped",
+            "a leading @charset that is not the exact declaration is not a dropped unknown at-rule",
+        ));
+    }
+    Ok(())
+}
+
+/// The length of the encoding declaration at the start of `text`: `@charset "`,
+/// any ASCII characters but the quotation mark, then `";`, wholly within the
+/// first 1024 bytes. Spelled from the clause, not from the crate.
+fn leading_declaration_len(text: &str) -> Option<usize> {
+    let head = text.as_bytes().get(..text.len().min(1024))?;
+    let rest = head.strip_prefix(b"@charset \"")?;
+    let end = rest.iter().position(|byte| *byte == b'"')?;
+    let label = rest.get(..end)?;
+    (rest.get(end + 1) == Some(&b';') && label.is_ascii()).then_some(10 + end + 2)
+}
+
+/// Whether `text` begins with the at-keyword `@charset` followed by trivia, a
+/// string, a semicolon or a block: an at-rule of that name, not a longer name.
+fn starts_with_charset_at_rule(text: &str) -> bool {
+    text.strip_prefix("@charset").is_some_and(|rest| {
+        rest.bytes()
+            .next()
+            .is_some_and(|byte| b" \t\r\n\x0c\"';{".contains(&byte))
+    })
 }
 
 impl CaseTarget for ByteTarget {

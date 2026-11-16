@@ -6,7 +6,7 @@ serialization, CSSOM declaration selection and known-property metadata) and the
 public `surgeist-css-parser` encoding types. Shared
 [surgeist-fuzz](../../surgeist-fuzz/README.md) owns engines, workers,
 supervision, artifacts, replay and reduction. CSS owns the codecs, generators,
-expectations, seeds and known failures here. No CSS production API or private
+expectations and seeds here. No CSS production API or private
 algorithm is copied or exposed, and no production crate depends on this
 package.
 
@@ -94,8 +94,16 @@ bytes independently and that an input over either refuses the whole decode
 `CssDecodedStylesheetInput::decode` rustdoc); neither orders the two errors, so
 when both are exceeded either limit error is accepted. The decoded snapshot is then parsed in Standards and Quirks
 modes: diagnostics against the decoded-source coordinates, the clean report,
-equality with parsing the same text, and, for a recognized charset prefix, the
-documented leading `UnknownAtRule` drop at offset 0.
+equality with parsing the same text, and the reporting of a leading `@charset`
+([Syntax 3 sections 3.2 and 8.3](../../../references/SOURCE-EDITIONS.md#css-syntax-3-edition),
+as the [reference](../docs/reference.md#stylesheet-encoding-guidance) states
+it): the exact declaration at the start of the decoded text, spelled in this
+package from the clause as `@charset "`, ASCII characters but `"`, `";` within
+the first 1024 bytes, gives no diagnostic, whether or not its label names an
+encoding and whichever source selected the encoding; any other `@charset` at
+the start gives the `UnknownAtRule` drop at offset 0. The UTF-8 source and
+structured rules targets check no property that depends on that reporting, so
+they carry no such expectation.
 
 ## UTF-8 source
 
@@ -170,8 +178,11 @@ exponents to 999, 40-digit integers and fractions), and separators including
 comments, and checks the fronts agree, diagnostics, retained nodes and the round
 trip.
 
-Two inputs that show one failure are retained as
-[known failures](#known-failures).
+Literals 30 and 31 are the closed and the cut form of a `{}` block beside
+`var()` for `width`. Syntax 3 section 5.5.6, step 8 refuses such a value in
+every front, as the declaration front does
+([#2884](https://github.com/bj-data-eng/surgeist/issues/2884)); the recipe lane
+checks that the property-value front and the block-contents front agree on it.
 
 ## Structured rules
 
@@ -231,28 +242,6 @@ evaluator and replays exactly.
 ```sh
 cargo run --offline --locked -j 1 -p surgeist-css-fuzz --example import_csstree -- crates/surgeist-css/fuzz
 ```
-
-## Known failures
-
-`seeds/known-failures/` holds minimized inputs that fail today. They are not
-seeds and not regressions, because neither would pass, and the directory is not
-a registered fixture. `known_failures_reproduce_replay_and_reduce_with_their_exact_keys`
-in [src/values/tests.rs](src/values/tests.rs) keeps each reproducing its exact
-failure key and replaying from canonical bytes, and shows that same-failure
-reduction keeps the key. When the product behavior changes the test fails;
-promote the case to a regression with its requirement source then.
-
-| File | Failure key | Input |
-| --- | --- | --- |
-| `00.case` | `front-agreement` / `block-front-rejects-a-clean-value` | `width`: `{} var(--x)` |
-| `01.case` | `specified-round-trip` / `serialization-does-not-reparse-cleanly` | `width`: `{} var(--x` |
-
-`parse_property_value` retains a non-custom value with a top-level `{}` block
-beside other tokens once `var()` defers its validation, while the declaration
-front drops the same text; the retained declaration serializes to text that
-`parse_block_contents` rejects. In `01.case` the unclosed form is retained with
-an implicit closure and serializes closed. Both inputs belong to
-[#2884](https://github.com/bj-data-eng/surgeist/issues/2884).
 
 ## Explicit exclusions
 
@@ -363,9 +352,3 @@ canonical bytes, and `minimize --artifact failures/ID --attempts 200
 --confirmations 2 --wall-ms 600000 --case-ms 5000` reduces it while keeping the
 key. Both need the same storage quotas as above: the default quota stopped a
 replay with "artifact entry count exceeds quota".
-
-`property-value` generation reaches the failure of
-[#2884](https://github.com/bj-data-eng/surgeist/issues/2884) (a value with a
-top-level `{}` block beside `var()` or `env()`), so a generated `check` or `run`
-of that target stops at a finding until #2884 is fixed. The regression run over
-`seeds/values` is unaffected: its files pass.

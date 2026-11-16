@@ -210,10 +210,4 @@ fn generated_seed_artifacts_match_the_authoritative_literal_factories_and_codec(
     seed_freshness(&rules, "rules", RulesTarget::LITERALS, |id| {
         rules.literal(id).unwrap()
     });
-    seed_freshness(
-        &values,
-        "known-failures",
-        ValueTarget::KNOWN_FAILURES,
-        |id| values.known_failure(id).unwrap(),
-    );
 }

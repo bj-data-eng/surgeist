@@ -137,8 +137,11 @@ impl CssParser {
     /// Parses a UTF-8 stylesheet into valid authored syntax and recovery diagnostics.
     ///
     /// The ordinary parser retains valid top-level rules in source order and reports
-    /// each discarded top-level rule with its complete balanced source span. Parsed
-    /// `@charset` rules are unrecognized and dropped; top-level CDO/CDC tokens are
+    /// each discarded top-level rule with its complete balanced source span. The
+    /// exact encoding declaration at the start of the text (`@charset "`, ASCII
+    /// characters but `"`, `";`, within the first 1024 bytes; Syntax 3 section 3.2)
+    /// is consumed with no rule and no diagnostic, whatever its label; any other
+    /// parsed `@charset` rule is unrecognized and dropped. Top-level CDO/CDC tokens are
     /// ignored without diagnostics. The UTF-8 input is not decoded. The stylesheet
     /// root is structural depth zero; up to 256 shared rule-block/component/function
     /// levels are retained, and the first level beyond that drops its smallest
@@ -175,7 +178,10 @@ impl CssParser {
 
     /// Parses the exact snapshot of a decoded stylesheet input.
     ///
-    /// Decoder replacement is not itself a CSS diagnostic. The sheet has no
+    /// The report is that of [`Self::parse_sheet`] over the snapshot's text, so the
+    /// exact encoding declaration at the start of the text is consumed without a
+    /// diagnostic, whichever source selected the encoding. Decoder replacement is
+    /// not itself a CSS diagnostic. The sheet has no
     /// location until [`CssParseReport::with_location`] attaches one; a location
     /// never affects parsing.
     #[must_use]
@@ -184,6 +190,11 @@ impl CssParser {
     }
 
     /// Preprocesses shared original UTF16, then parses an ordinary stylesheet.
+    ///
+    /// The report is that of [`Self::parse_sheet`] over the preprocessed text,
+    /// including the consumption of the exact encoding declaration at its start.
+    /// The declaration is found in the preprocessed text, so a NUL in its label,
+    /// which becomes U+FFFD, makes it no declaration here.
     ///
     /// Polls during preparation and immediately before/after grammar execution;
     /// the grammar has no fine-grained interruption checkpoint.
@@ -356,7 +367,11 @@ impl CssParser {
     ///
     /// Invalid grammar returns `None` with `RejectInput`; resource exhaustion
     /// uses `StopAtNestingLimit`. Implicit EOF closures are reported only on
-    /// retention.
+    /// retention. A non-custom value with a top-level `{}` block beside any
+    /// other non-whitespace value returns `None` with an unexpected-token
+    /// `RejectInput` on the block's opening brace, whether or not a
+    /// substitution function defers its validation; a custom value, and a `{}`
+    /// block as the entire value, are judged by their own grammar.
     ///
     /// A page or margin value has no source-text front: it is checked from owned
     /// components through [`CssDeclaration::try_from_components`], so

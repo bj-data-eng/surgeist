@@ -33,11 +33,16 @@ fn initial_layer_statements_allow_namespaces_with_or_without_imports() {
             "@charset \"UTF-8\"; @LaYeR reset; @\\69mport 'a.css'; ",
             vec!["layer", "import", "namespace", "style"],
         ),
+        (
+            "@charset 'UTF-8'; @LaYeR reset; @\\69mport 'a.css'; ",
+            vec!["layer", "import", "namespace", "style"],
+        ),
     ] {
         let source = format!("{prefix}@namespace svg 'urn:svg'; svg|rect {{margin:0}}");
         let report = CssParser::default().parse_sheet(&source);
-        if prefix.starts_with("@charset") {
-            // Syntax 3 section 8.3: encoding prefixes are not grammar rules.
+        if prefix.starts_with("@charset '") {
+            // Syntax 3 sections 3.2 and 8.3: only the exact leading
+            // declaration is consumed; any other `@charset` is dropped.
             let [diagnostic] = report.diagnostics() else {
                 panic!(
                     "only the charset rule is dropped: {:?}",

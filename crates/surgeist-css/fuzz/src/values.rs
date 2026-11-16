@@ -603,7 +603,7 @@ impl Default for ValueTarget {
 
 impl ValueTarget {
     /// The number of source-qualified literal cases.
-    pub const LITERALS: u8 = 30;
+    pub const LITERALS: u8 = 32;
 
     #[must_use]
     pub fn new() -> Self {
@@ -641,46 +641,11 @@ impl ValueTarget {
         }
     }
 
-    /// The number of retained known failures.
-    pub const KNOWN_FAILURES: u8 = 2;
-
-    /// Minimized inputs that fail today. They are not seeds and not regressions
-    /// (neither would pass): each is retained with the failure it reproduces.
-    ///
-    /// 0 and 1: the property-value front retains a value with a top-level `{}`
-    /// block beside other tokens once `var()` defers its validation, but the
-    /// declaration front drops the same text (Syntax 3 section 5.5.6), so the
-    /// retained declaration cannot be written back as a declaration (#2884).
-    pub fn known_failure(&self, id: u8) -> Result<ValueCase> {
-        let word = |text: &str| -> Result<u8> {
-            WORDS
-                .iter()
-                .position(|candidate| *candidate == text)
-                .and_then(|index| u8::try_from(index).ok())
-                .ok_or_else(|| error("known failure word"))
-        };
-        let item = |text: &str, gap: u8| -> Result<Item> {
-            Ok(Item {
-                piece: Piece::Word(word(text)?),
-                gap,
-            })
-        };
-        let block_with_substitution = |closed: bool| -> Result<ValueCase> {
-            let mut items = vec![item("{", 0)?, item("}", 1)?, item("var(--x", 0)?];
-            if closed {
-                items.push(item(")", 0)?);
-            }
-            ValueCase::new(Lane::Recipe { property: 0, items }, false)
-        };
-        match id {
-            0 => block_with_substitution(true),
-            1 => block_with_substitution(false),
-            _ => Err(error("unknown known failure")),
-        }
-    }
-
-    /// Source-qualified literals: every known value, sibling and closure row, and
-    /// one metadata case for each universal form.
+    /// Source-qualified literals: every known value, sibling and closure row,
+    /// one metadata case for each universal form, and the two minimized inputs
+    /// of a top-level `{}` block beside `var()` (the closed and the cut form),
+    /// which Syntax 3 section 5.5.6, step 8 refuses and every front must refuse
+    /// as the declaration front does.
     pub fn literal(&self, id: u8) -> Result<ValueCase> {
         let id = usize::from(id);
         if id < ROWS.len() {
@@ -705,6 +670,25 @@ impl ValueTarget {
                 },
                 false,
             )
+        } else if id < ROWS.len() + 4 + CLOSURES.len() + 2 {
+            let word = |text: &str| -> Result<u8> {
+                WORDS
+                    .iter()
+                    .position(|candidate| *candidate == text)
+                    .and_then(|index| u8::try_from(index).ok())
+                    .ok_or_else(|| error("block literal word"))
+            };
+            let item = |text: &str, gap: u8| -> Result<Item> {
+                Ok(Item {
+                    piece: Piece::Word(word(text)?),
+                    gap,
+                })
+            };
+            let mut items = vec![item("{", 0)?, item("}", 1)?, item("var(--x", 0)?];
+            if id == ROWS.len() + 4 + CLOSURES.len() {
+                items.push(item(")", 0)?);
+            }
+            ValueCase::new(Lane::Recipe { property: 0, items }, false)
         } else {
             Err(error("unknown literal"))
         }

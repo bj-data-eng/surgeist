@@ -10,6 +10,11 @@
 //!   start of the first 1024 bytes, the environment encoding, then UTF-8), and
 //!   decodes with the Encoding Standard's decoders, which give a byte order
 //!   mark precedence. It returns the [`Decoded`] text, still unfiltered.
+//! - [`encoding_declaration`] is the pattern of that declaration on its own: the
+//!   [`EncodingDeclaration`] that a style sheet's bytes, or the UTF-8 bytes of
+//!   its text, begin with, whether or not its label names an encoding. [`decode`]
+//!   selects its encoding by it, and a host that reads text can tell by it
+//!   whether the text begins with the declaration.
 //! - [`filter_code_points`] is section 3.3, "Preprocessing the input stream",
 //!   over a whole string.
 //! - [`preprocess_utf16`] is section 3.3 over UTF-16 units that may hold lone
@@ -45,7 +50,8 @@ mod preprocess;
 
 pub use cursor::{InputCursor, InputError, InputKind, InputRequest, Scalar};
 pub use decode::{
-    DecodeError, DecodeHints, DecodeLimits, Decoded, Encoding, EncodingSelection, decode,
+    DecodeError, DecodeHints, DecodeLimits, Decoded, Encoding, EncodingDeclaration,
+    EncodingSelection, decode, encoding_declaration,
 };
 pub use filter::filter_code_points;
 pub(crate) use filter::{absorbs_line_feed, filter_code_point, is_filtered};

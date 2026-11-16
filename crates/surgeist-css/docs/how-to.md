@@ -167,9 +167,9 @@ assert!(CssParser::default().parse_sheet_bytes(&input).is_clean());
 
 The input records the encoding that decoded the bytes and which source selected it.
 With no protocol label, a leading `@charset "utf-8";` selects UTF-8 and
-`selection()` is `CharsetPrefix`, but the declaration stays in the text and the
-report carries one `UnknownAtRule` diagnostic over it, because no `@charset` rule
-exists. A UTF-8 byte order mark selects UTF-8 without a diagnostic. Pass
+`selection()` is `CharsetPrefix`; the declaration stays in the text, and the sheet
+front consumes it, because no `@charset` rule exists, so the report is clean. A
+UTF-8 byte order mark selects UTF-8 without a diagnostic. Pass
 `environment_encoding` only for a legacy linking mechanism that defines one; for a
 new format leave it `None` so that the stylesheet defaults to UTF-8. See the
 [encoding guidance](reference.md#stylesheet-encoding-guidance) for the exact

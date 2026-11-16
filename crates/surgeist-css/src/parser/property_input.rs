@@ -407,6 +407,15 @@ pub(crate) trait StreamExt<'i> {
     /// Owned text for retained output only. Grammar never consumes this string.
     fn authored_text_between(&self, from: Site<'i>, to: Site<'i>) -> String;
     fn authored_text_since(&self, from: Site<'i>) -> String;
+    /// The opening brace of the first top-level `{}` block of the stream when
+    /// another top-level component that is no whitespace or comment shares the
+    /// value with it, and `None` otherwise; the stream does not move.
+    ///
+    /// Syntax 3 section 5.5.6 (consume a declaration), step 8: a declaration
+    /// of a name that is no custom property name has no such value. Every
+    /// front that admits a non-custom declaration value, whether it validates
+    /// it against a grammar or defers it to substitution, reads it here first.
+    fn root_block_beside_values(&mut self) -> Option<Site<'i>>;
 }
 
 impl<'i> StreamExt<'i> for Stream<'i> {
@@ -544,6 +553,28 @@ impl<'i> StreamExt<'i> for Stream<'i> {
 
     fn authored_text_since(&self, from: Site<'i>) -> String {
         self.authored_text_between(from, self.site())
+    }
+
+    fn root_block_beside_values(&mut self) -> Option<Site<'i>> {
+        let start = self.mark();
+        let mut values = 0_usize;
+        let mut block = None;
+        // Each token read here is one complete top-level component.
+        loop {
+            let at = self.site();
+            let Ok(token) = self.consume_token_with_comments() else {
+                break;
+            };
+            if matches!(token, Token::Whitespace | Token::Comment) {
+                continue;
+            }
+            values += 1;
+            if block.is_none() && matches!(token, Token::OpenCurly) {
+                block = Some(at);
+            }
+        }
+        self.restore(start);
+        block.filter(|_| values > 1)
     }
 }
 

@@ -1000,8 +1000,10 @@ fn suppressed_pending_occurrences_consume_complete_work_even_when_only_later_val
 }
 
 #[test]
-fn matched_root_blocks_are_declaration_value_data_under_whole_env_deferral() {
-    for source in ["env(x) {}", "{ x } env(x)", "env(x, f(!important))"] {
+fn blocks_are_declaration_value_data_under_whole_env_deferral_unless_beside_another_value() {
+    // A block that is the whole value or nested in another component is
+    // declaration-value data (Syntax 3 §7.2).
+    for source in ["{ env(x) }", "env(x, {y})", "env(x, f(!important))"] {
         assert!(matches!(
             counter(CounterKind::Prefix, source).view(),
             CounterView::Pending(_)
@@ -1011,6 +1013,29 @@ fn matched_root_blocks_are_declaration_value_data_under_whole_env_deferral() {
             feature(FeatureKind::Styleset, source).view(),
             FeatureView::Pending(_)
         ));
+    }
+    // Syntax 3 §5.5.6 step 8: a top-level `{}` block beside another value is no
+    // declaration's value, so env() does not rescue it.
+    for source in ["env(x) {}", "{ x } env(x)"] {
+        counter_grammar(
+            Counter::try_from_components(
+                CounterKind::Prefix,
+                components(source),
+                Default::default(),
+            )
+            .unwrap_err(),
+        );
+        font_grammar(
+            Display::try_from_components(components(source), Default::default()).unwrap_err(),
+        );
+        font_grammar(
+            Feature::try_from_components(
+                FeatureKind::Styleset,
+                components(source),
+                Default::default(),
+            )
+            .unwrap_err(),
+        );
     }
     counter_grammar(
         Counter::try_from_components(

@@ -1,7 +1,9 @@
 //! CSS Env 1 WD 2025-09-23 §3 assumes the entire descriptor grammar valid
 //! when its env functions are syntactically valid. Syntax 3 CRD 2026-10-01 §7.2
 //! permits matched blocks in declaration-value, while excluding unmatched
-//! closers and root semicolons/bangs. These tests use the public string and component fronts.
+//! closers and root semicolons/bangs; §5.5.6 step 8 leaves no declaration whose
+//! value holds a top-level `{}` block beside another value. These tests use the
+//! public string and component fronts.
 
 use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::CssParser;
@@ -29,6 +31,9 @@ const PALETTE_VALUES: [&str; 4] = [
     "{hello} env(choice)",
     "env(choice) {inner {deep}}",
 ];
+/// A block that is the whole value is declaration-value data (Syntax 3 §7.2).
+const FACE_WHOLE: [&str; 2] = ["{env(width)}", "{ env(width) {inner} }"];
+const PALETTE_WHOLE: [&str; 2] = ["{env(x)}", "{ env(x) {inner} }"];
 const PALETTE_KINDS: [PaletteKind; 3] = [
     PaletteKind::FontFamily,
     PaletteKind::BasePalette,
@@ -75,8 +80,8 @@ fn pending_palette(value: &PaletteValue, kind: PaletteKind, text: &str, source: 
 }
 
 #[test]
-fn raw_font_face_width_defers_matched_root_blocks_and_retains_original_components() {
-    for value in FACE_VALUES {
+fn raw_font_face_width_defers_a_whole_value_block_and_refuses_a_block_beside_a_value() {
+    for value in FACE_WHOLE {
         let report = CssAuthoredFontFaceDescriptorValue::parse(
             &CssParser::default(),
             value,
@@ -85,11 +90,22 @@ fn raw_font_face_width_defers_matched_root_blocks_and_retains_original_component
         assert!(report.is_clean(), "{value}: {report:?}");
         pending_face(report.syntax().as_ref().unwrap(), value, value);
     }
+    for value in FACE_VALUES {
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            FaceKind::FontWidth,
+        );
+        assert!(report.syntax().is_none(), "{value}: {report:?}");
+        invalid_descriptor("font-face", "font-width")
+            .at("{")
+            .assert_first(&report);
+    }
 }
 
 #[test]
-fn checked_font_face_width_defers_matched_root_blocks_without_losing_provenance() {
-    for value in FACE_VALUES {
+fn checked_font_face_width_defers_a_whole_value_block_and_refuses_a_block_beside_a_value() {
+    for value in FACE_WHOLE {
         let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let checked = FaceValue::try_from_components(
             FaceKind::FontWidth,
@@ -103,11 +119,23 @@ fn checked_font_face_width_defers_matched_root_blocks_without_losing_provenance(
         };
         assert_eq!(pending.components(), &components);
     }
+    for value in FACE_VALUES {
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+        let error =
+            FaceValue::try_from_components(FaceKind::FontWidth, components, Default::default())
+                .unwrap_err();
+        let Some(detail) = error.diagnostic() else {
+            panic!("{value}: grammar failure: {error:?}")
+        };
+        invalid_descriptor("font-face", "font-width")
+            .at("{")
+            .assert_kind(detail);
+    }
 }
 
 // Syntax 3 CRD 2026-10-01 §5.5.6 step 8: as a declaration, a value that holds
 // a block beside another value returns nothing, whatever env() could defer.
-// The blocks stay data in the value fronts above.
+// The value fronts above refuse the same values at the block.
 //
 // §5.5.5 then reads the same text as a qualified rule that ends at its block: a
 // value that ends with the block is one dropped unit, and a value with
@@ -160,25 +188,42 @@ fn font_face_rule_drops_width_with_a_block_beside_a_value_and_keeps_the_followin
 }
 
 #[test]
-fn raw_palette_descriptors_defer_matched_root_blocks_and_retain_original_components() {
+fn raw_palette_descriptors_defer_a_whole_value_block_and_refuse_a_block_beside_a_value() {
     for kind in PALETTE_KINDS {
-        for value in PALETTE_VALUES {
+        for value in PALETTE_WHOLE {
             let report = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(report.is_clean(), "{}:{value}: {report:?}", kind.as_str());
             pending_palette(report.syntax().as_ref().unwrap(), kind, value, value);
+        }
+        for value in PALETTE_VALUES {
+            let report = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
+            assert!(report.syntax().is_none(), "{}:{value}", kind.as_str());
+            invalid_descriptor("font-palette-values", kind.as_str())
+                .at("{")
+                .assert_first(&report);
         }
     }
 }
 
 #[test]
-fn checked_palette_descriptors_defer_matched_root_blocks_without_losing_provenance() {
+fn checked_palette_descriptors_defer_a_whole_value_block_and_refuse_a_block_beside_a_value() {
     for kind in PALETTE_KINDS {
-        for value in PALETTE_VALUES {
+        for value in PALETTE_WHOLE {
             let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
             let checked =
                 PaletteValue::try_new(kind, components.clone(), Default::default()).unwrap();
             pending_palette(&checked, kind, value, value);
             assert_eq!(checked.components(), &components);
+        }
+        for value in PALETTE_VALUES {
+            let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+            let error = PaletteValue::try_new(kind, components, Default::default()).unwrap_err();
+            let Some(detail) = error.diagnostic() else {
+                panic!("{}:{value}: grammar failure: {error:?}", kind.as_str())
+            };
+            invalid_descriptor("font-palette-values", kind.as_str())
+                .at("{")
+                .assert_kind(detail);
         }
     }
 }
@@ -223,13 +268,15 @@ fn palette_rule_drops_a_block_beside_a_value_and_keeps_the_following_rule() {
 fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fronts() {
     // A root block opens no production of either ordinary grammar. Env 1
     // §3 defers only a syntactically valid env(), so a malformed one leaves
-    // the ordinary grammar, which rejects the env() function token itself.
+    // the ordinary grammar. Syntax 3 §5.5.6 step 8 refuses a block beside
+    // another value before any descriptor grammar reads it, so the responsible
+    // token of such a value is the block's brace, not the env() token.
     for (value, token) in [
         ("{}", "{"),
         ("{hello}", "{"),
-        ("env() {}", "env("),
-        ("env(123) {}", "env("),
-        ("env(choice) env() {}", "env("),
+        ("env() {}", "{"),
+        ("env(123) {}", "{"),
+        ("env(choice) env() {}", "{"),
     ] {
         let at = |expected: ExpectedRejection| expected.at(token);
         let face_rejection = at(invalid_descriptor("font-face", "font-width"));
