@@ -38,9 +38,11 @@ impl CssCounterChangeValue {
 ///
 /// # Specified serialization
 ///
-/// Emits every counter name and effective integer for the selected longhand. Omitted operands
-/// remain absent in this authored model. Serialization inserts `0` for reset/set or `1` for
-/// increment, without executing any counter operations or resolving symbolic integer calculations.
+/// Emits every counter name and its integer for the selected longhand, except that an integer
+/// equal to the longhand's default (`0` for reset/set, `1` for increment) is left out, as an
+/// omitted operand is. Omitted operands remain absent in this authored model. Serialization
+/// neither executes counter operations nor resolves symbolic integer calculations, so a
+/// calculation always stays.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterChangesValue {
     changes: Option<Vec<CssCounterChangeValue>>,

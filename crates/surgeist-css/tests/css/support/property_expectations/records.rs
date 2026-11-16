@@ -1190,7 +1190,7 @@ property_records! {
     CounterIncrement, "counter-increment" {
         metadata: longhand(false, |v| assert!(v.changes().is_none())),
         // Lists 3 (WD 2020-11-17) §4.2: an omitted counter-increment <integer>
-        // is 1, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // is 1, so CSSOM 1 §6.7.2 omits it.
         catalog: grammar_catalog!("baseline.property.counter-increment", "section 1" => "section", rejected("1")),
         dispatch: "section 1",
         wrapper: yes,
@@ -1420,7 +1420,7 @@ property_records! {
             assert_eq!(v, &CssAuthoredFontFeatureSettings::Normal)
         }),
         // Fonts 4 (WD 2026-09-07) §6.12: `on` is 1 and an omitted value is 1,
-        // so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // so CSSOM 1 §6.7.2 omits it.
         catalog: grammar_catalog!("baseline.property.font-feature-settings", "\"kern\" on, \"liga\" 0" => "\"kern\", \"liga\" 0", rejected("\"abc\" on")),
         dispatch: "\"kern\" on, \"liga\" 0",
         wrapper: yes,

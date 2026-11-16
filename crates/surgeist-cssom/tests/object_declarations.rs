@@ -320,7 +320,7 @@ fn font_face_fifteen_reflections_aliases_empty_absence_and_common_priority_rules
         set_font_feature_settings,
         font_feature_settings,
         "'kern' 1",
-        "\"kern\" 1"
+        "\"kern\""
     );
     field!(
         set_font_variation_settings,

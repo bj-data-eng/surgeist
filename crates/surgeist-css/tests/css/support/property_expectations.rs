@@ -320,29 +320,13 @@ impl PropertyExpectation {
 /// change the meaning, with that current serialization. Each record states
 /// the spec form and its basis:
 ///
-/// - `place-items`: Box Alignment 3 (WD 2026-01-30) §7.3 copies an omitted
-///   `<'justify-items'>` from `<'align-items'>`, giving `stretch`.
 /// - `background-size`: Backgrounds 3 §2.9, omitted second size is `auto`.
-/// - `counter-increment`: Lists 3 §4.2, omitted integer is 1.
-/// - `font-feature-settings`: Fonts 4 §6.12, `on` and an omitted value are 1.
 /// - `shape-outside`: Shapes 1 §6.1, omitted box is margin-box.
 /// - `mask-border`: Masking 1 §8.7, initial `auto` width and `alpha` mode.
 pub const KNOWN_SERIALIZATION_DEFECTS: &[(&str, &str)] = &[
     (
-        "baseline.property.place-items",
-        "place-items: stretch stretch;",
-    ),
-    (
         "baseline.property.background-size",
         "background-size: cover, 10px auto;",
-    ),
-    (
-        "baseline.property.counter-increment",
-        "counter-increment: section 1;",
-    ),
-    (
-        "baseline.property.font-feature-settings",
-        "font-feature-settings: \"kern\" on, \"liga\" 0;",
     ),
     (
         "official.property.shape-outside",

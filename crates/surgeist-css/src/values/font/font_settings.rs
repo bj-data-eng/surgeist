@@ -91,6 +91,13 @@ impl CssAuthoredFontFeatureList {
 }
 
 /// Current authored `font-feature-settings` property and descriptor value.
+///
+/// # Specified serialization
+///
+/// Writes each tag as a string. The feature value `1` is left out whether it
+/// was omitted, written `on` or written as the literal `1`, and `off` is
+/// written `0` (Fonts 4 §6.12; CSSOM 1 §6.7.2). Any other integer, including a
+/// calculation, stays as authored.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredFontFeatureSettings {
@@ -177,19 +184,28 @@ impl CssAuthoredFontFeatureSettings {
                     }
                     writer.node()?;
                     writer.append_string(feature.tag().as_str())?;
+                    // Fonts 4 §6.12: an omitted value, `on` and `1` are one
+                    // value, which CSSOM 1 §6.7.2 writes as nothing; `off` is
+                    // `0`, which is the shorter spelling. A calculation is
+                    // never compared with `1`, so it stays as authored.
                     match feature.value() {
                         CssAuthoredFontFeatureValue::Omitted => {}
                         CssAuthoredFontFeatureValue::On => {
-                            writer.append(" ")?;
-                            writer.keyword("on")?;
+                            writer.without_output(|writer| writer.keyword("on"))?;
                         }
                         CssAuthoredFontFeatureValue::Off => {
                             writer.append(" ")?;
-                            writer.keyword("off")?;
+                            writer.keyword("0")?;
                         }
                         CssAuthoredFontFeatureValue::Index(value) => {
-                            writer.append(" ")?;
-                            value.append_specified(&mut writer.context, &mut writer.css)?;
+                            if value.literal().and_then(|literal| literal.value()) == Some(1) {
+                                writer.without_output(|writer| {
+                                    value.append_specified(&mut writer.context, &mut writer.css)
+                                })?;
+                            } else {
+                                writer.append(" ")?;
+                                value.append_specified(&mut writer.context, &mut writer.css)?;
+                            }
                         }
                     }
                 }

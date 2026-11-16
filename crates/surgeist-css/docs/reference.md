@@ -5028,7 +5028,9 @@ through `value()`. Feature indices are
 `numeric::CssNumeric<CssInteger, CssNonNegative>`, which is not `Copy`; borrow through
 `value()` and inspect exact indices with
 `literal()` and `calculation()`, or `CssNumericLiteral::value()` when the integer
-is representable as `i32`.
+is representable as `i32`. Specified serialization leaves out the value `1`
+(omitted, `on` or the literal `1`; Fonts 4 §6.12), writes `off` as `0`, and keeps
+any other integer, including a calculation, as authored.
 `CssFontSizeAdjust::Number` holds `numeric::CssNumeric<CssNumber, CssNonNegative>`; inspect
 its exact literal or calculation. The signed
 `numeric::CssNumeric<CssNumber>` serves variation values. All these scalars and settings
@@ -6391,10 +6393,13 @@ whether each integer was authored. The three property wrappers expose
 Content 3 checked counter-name domain; integer tokens remain exact at any
 magnitude, and integer calculations retain their authored tree and origin.
 For canonical specified serialization, pass `CssCounterProperty` explicitly:
-an omitted operand writes `0` for reset/set and `1` for increment. One bounded
-writer charges the list, entries, names, and numeric subtrees cumulatively;
-synthetic defaults consume projection and byte budgets without invented input
-nodes. Counter execution, clamping, and duplicate application remain downstream.
+the default integer is `0` for reset/set and `1` for increment (Lists 3 §4.1 and
+§4.2), and an omitted operand or a literal integer equal to it is left out, since
+CSSOM 1 §6.7.2 omits a component that does not change the value. An integer
+calculation is never compared with the default and stays as authored. One bounded
+writer charges the list, entries, names, and numeric subtrees cumulatively; a
+literal default is visited and charged like any other integer without producing
+bytes. Counter execution, clamping, and duplicate application remain downstream.
 
 [CSS Text 4 §§8.1–8.2](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#word-spacing-property)
 defines `word-spacing` and `letter-spacing` as inherited longhands with
@@ -6786,8 +6791,11 @@ copies align except that a baseline in `place-content` defaults justify to
 `start`. Each longhand has a private-field checked value around the shared
 authored alignment vocabulary, so an item-only position cannot enter a content
 property by typed construction. The place values hold two independently
-checked property values. Canonical specified serialization emits both effective
-components with one resource budget; explicit `first baseline` serializes as
+checked property values. Canonical specified serialization emits the align
+component and then the justify component with one resource budget, leaving the
+justify component out when the omission rule above would supply it from the
+align component, so that `place-items: stretch stretch` serializes as `stretch`
+and `place-content: baseline start` as `baseline`; explicit `first baseline` serializes as
 `baseline` while the authored wrapper retains its original spelling and checked
 alignment value. For the ambiguous shorthand
 `baseline last baseline`, parsing prefers bare `baseline` for align and

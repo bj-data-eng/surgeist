@@ -1,7 +1,6 @@
 //! Checked authored values for the nine Box Alignment 3 properties.
 
 use crate::serialization::CssSerializationError;
-use crate::serialization::specified_rule_serialization::SpecifiedProvider as _;
 use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
@@ -192,7 +191,12 @@ macro_rules! checked_pair {
         ///
         /// # Specified serialization
         ///
-        /// Serializes both effective components in align-then-justify order.
+        /// Serializes the align component and then the justify component, in
+        /// align-then-justify order. The justify component is left out when
+        /// the shorthand's omission rule would supply it from the align
+        /// component (Box Alignment 3 §5.2, §6.3, §7.3), so that parsing the
+        /// serialized text gives the same pair; `first baseline` and
+        /// `baseline` are one value.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub struct $name {
             align: $align,
@@ -225,33 +229,23 @@ macro_rules! checked_pair {
             pub const fn justify(&self) -> $justify {
                 self.justify
             }
-
-            pub(crate) fn append_cssom_inverse_to_rule_writer(
-                &self,
-                writer: &mut crate::serialization::specified_rule_serialization::SpecifiedRuleWriter,
-            ) -> SerializationResult<()> {
-                writer.source_member(0, |writer| self.align.append_to_rule_writer(writer))?;
-                writer.source_member(1, |writer| {
-                    if self.justify == Self::from_align(self.align).justify {
-                        writer.without_output(|writer| self.justify.append_to_rule_writer(writer))
-                    } else {
-                        writer.append(" ")?;
-                        self.justify.append_to_rule_writer(writer)
-                    }
-                })
-            }
         }
         impl crate::serialization::specified_rule_serialization::SpecifiedProvider for $name {
             fn append_to_rule_writer(
                 &self,
                 writer: &mut crate::serialization::specified_rule_serialization::SpecifiedRuleWriter,
             ) -> std::result::Result<(), crate::serialization::CssSerializationError> {
-                let context = &mut writer.context;
-                let output = &mut writer.css;
-                serialize_value_into(self.align.value(), context, output)?;
-                context.append(output, " ")?;
-                serialize_value_into(self.justify.value(), context, output)?;
-                Ok(())
+                writer.source_member(0, |writer| self.align.append_to_rule_writer(writer))?;
+                writer.source_member(1, |writer| {
+                    // The justify value is visited either way; it is written
+                    // only when parsing the align value alone would not give it.
+                    if same_meaning(self.justify.value(), ($default)(self.align.value())) {
+                        writer.without_output(|writer| self.justify.append_to_rule_writer(writer))
+                    } else {
+                        writer.append(" ")?;
+                        self.justify.append_to_rule_writer(writer)
+                    }
+                })
             }
         }
         crate::serialization::specified_rule_serialization::specified_serialization!($name);
@@ -267,6 +261,20 @@ const fn content_default(value: CssAlignmentValue) -> CssAlignmentValue {
     } else {
         value
     }
+}
+
+/// Whether two components of one axis mean the same: `first baseline` is the
+/// bare `baseline` (Box Alignment 3 §4.2), which serializes alike.
+fn same_meaning(left: CssAlignmentValue, right: CssAlignmentValue) -> bool {
+    fn bare(value: CssAlignmentValue) -> CssAlignmentValue {
+        match value {
+            CssAlignmentValue::Baseline(CssBaselinePosition::First) => {
+                CssAlignmentValue::Baseline(CssBaselinePosition::Baseline)
+            }
+            other => other,
+        }
+    }
+    bare(left) == bare(right)
 }
 
 const fn copied(value: CssAlignmentValue) -> CssAlignmentValue {
