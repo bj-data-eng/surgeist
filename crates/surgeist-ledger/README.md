@@ -254,6 +254,19 @@ against every scope on the chain first and changes usage only when all accept,
 so it keeps no journal. A refusal, an unreadable scope or a longer chain is
 admitted by the general path instead.
 
+Run the charging granularity comparison with
+`cargo bench --offline --locked -j 1 -p surgeist-ledger --bench granularity`.
+On a pair of 20 work and 3 resource dimensions it reports the cost of a batch of
+one to eight work changes on an owned and a shared operation, two and three
+scopes from the root, with profiling off, summarized and timed; of a phase; of
+building and dropping an operation alone and with eight children; of recording
+a gauge; and of one and of four threads charging sibling scopes of one shared
+operation, as the mean time a participant takes per batch. Its last table
+runs a loop of events that keeps a local limit check and charges the ledger per
+event, per block of 64 or 4096 events, or once after the loop, beside the same
+loop with no ledger and with plain two-scope counters. A consumer chooses how
+often a high-volume site charges from that table.
+
 Platforms without a supported standard clock can select untimed profiling
 or supply a monotonic source through `Operation::with_profile_clock`.
 A phase callback borrows the operation through a `Phase` view, so the ledger
