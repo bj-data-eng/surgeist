@@ -33,6 +33,32 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     ) -> Option<&mut crate::group_alignment::State<Self::Node, Self::Scalar>> {
         None
     }
+    /// Opens a capture of the writes this computation stages, and returns
+    /// where they begin. Captures nest and close in reverse order.
+    fn begin_effect_capture(&mut self) -> usize {
+        0
+    }
+    /// Closes the innermost capture and returns its writes, or `None` when
+    /// they were not recorded.
+    fn end_effect_capture(
+        &mut self,
+        _start: usize,
+    ) -> Option<crate::engine::StagedEffects<Self::Node, Self::Scalar>> {
+        None
+    }
+    /// Stages again, in order, the writes of an earlier computation that a
+    /// reuse stands in for.
+    fn replay_effects(
+        &mut self,
+        _effects: &crate::engine::StagedEffects<Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M> {
+        Ok(())
+    }
+    /// Whether this computation may stand a reuse in for the repetition of a
+    /// subgrid computation. Absence repeats every computation.
+    fn reuses_subgrid_computations(&self) -> bool {
+        false
+    }
     /// The subgrid wrapper resolutions of this computation, which every visit
     /// of a wrapper with equal inputs shares. Absence retains nothing.
     fn wrapper_resolution_memo(

@@ -312,9 +312,18 @@ pub(in crate::grid) struct ContextualFingerprint<'input, Node, S: LayoutScalar> 
     stage: GridSizingStage,
     container: GridContainerInput<'input, S>,
     loan: SubgridItemLoan<'input, Node, S>,
+    /// The writes the computation staged, which a reuse stages again.
+    effects: Option<crate::engine::StagedEffects<Node, S>>,
 }
 
 impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ContextualFingerprint<'input, Node, S> {
+    pub(in crate::grid) fn retain_effects(
+        &mut self,
+        effects: Option<crate::engine::StagedEffects<Node, S>>,
+    ) {
+        self.effects = effects;
+    }
+
     /// The inputs of `request`, or `None` when its parent context is not a
     /// loan that can be compared.
     pub(in crate::grid) fn of(request: &GridContextRequest<'input, Node, S>) -> Option<Self> {
@@ -327,6 +336,7 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ContextualFingerprint<'inp
             stage: request.stage,
             container: request.child,
             loan: (**loan).clone(),
+            effects: None,
         })
     }
 
@@ -1278,10 +1288,15 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
             //   input the computation reads (`is_reproduced_by`).
             // Any other item is recomputed, as before.
             if let Some(first) = &item.first_request
+                && let Some(effects) = &first.effects
+                && tree.reuses_subgrid_computations()
                 && !crate::grid::subgrid_reuse_disabled()
                 && refresh_adds_nothing(input, subgrid_item, &sizing)
                 && first.is_reproduced_by(&request)
             {
+                // The recomputation would stage its writes again, each
+                // replacing its earlier write and moving last.
+                tree.replay_effects(effects)?;
                 continue;
             }
             #[cfg(test)]

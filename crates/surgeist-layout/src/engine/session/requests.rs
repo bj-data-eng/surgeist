@@ -154,7 +154,10 @@ enum GridCompletion<Node, S: LayoutScalar> {
     },
     /// A contextual computation caches and memoizes nothing; its receipt is
     /// the Grid result its parent consumes.
-    Context,
+    Context {
+        /// Where the writes of the computation begin in the session's capture.
+        effects_start: usize,
+    },
 }
 
 struct GridObservationRequest<'input, Node, S: LayoutScalar> {
@@ -1107,11 +1110,15 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let node = request.node();
+        let effects_start = self.begin_effect_capture();
         let mut computation = begin_grid_context_computation(self, request)?;
         match computation.advance(self)? {
-            ControlFlow::Break(result) => Ok(Request::Complete(CompletedRequest::Context(
-                Box::new(result),
-            ))),
+            ControlFlow::Break(result) => {
+                let result = result.with_effects(self.end_effect_capture(effects_start));
+                Ok(Request::Complete(CompletedRequest::Context(Box::new(
+                    result,
+                ))))
+            }
             ControlFlow::Continue(child) => {
                 pending
                     .grids
@@ -1122,7 +1129,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     Self::schedule_grid_request(child, &mut pending_child, &mut pending.order)?;
                 pending.grids.push(GridRequest {
                     computation,
-                    completion: GridCompletion::Context,
+                    completion: GridCompletion::Context { effects_start },
                     child: pending_child,
                 });
                 Ok(request)
@@ -1152,9 +1159,12 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                             result.into_output(),
                         )
                     }
-                    GridCompletion::Context => Ok(Request::Complete(CompletedRequest::Context(
-                        Box::new(result),
-                    ))),
+                    GridCompletion::Context { effects_start } => {
+                        let result = result.with_effects(self.end_effect_capture(effects_start));
+                        Ok(Request::Complete(CompletedRequest::Context(Box::new(
+                            result,
+                        ))))
+                    }
                 }
             }
             ControlFlow::Continue(child) => {

@@ -727,6 +727,9 @@ pub(crate) struct GridComputeResult<Node, S: LayoutScalar = Scalar> {
     baseline_groups: GridBaselineGroups<S>,
     effective_gutter: Option<Edges<S>>,
     executed_baselines: Option<ExecutedBaselineInventory<Node, S>>,
+    /// The writes the computation staged, when a contextual request captured
+    /// them for a later reuse.
+    effects: Option<crate::engine::StagedEffects<Node, S>>,
 }
 
 type GridComputeOutcome<Node, S, M> = LayoutResultOf<Node, GridComputeResult<Node, S>, S, M>;
@@ -735,6 +738,15 @@ impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
     /// The geometry of the computation, without its contextual receipt.
     pub(crate) fn into_output(self) -> ComputeOutputOf<S> {
         self.output
+    }
+
+    /// The receipt with the writes its computation staged.
+    pub(crate) fn with_effects(
+        mut self,
+        effects: Option<crate::engine::StagedEffects<Node, S>>,
+    ) -> Self {
+        self.effects = effects;
+        self
     }
 
     fn from_output(output: ComputeOutputOf<S>) -> Self {
@@ -747,6 +759,7 @@ impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
             },
             effective_gutter: None,
             executed_baselines: None,
+            effects: None,
         }
     }
 }
@@ -2826,6 +2839,7 @@ impl<Node: Copy, S: LayoutScalar> GridPassOutput<'_, Node, S> {
             baseline_groups,
             effective_gutter,
             executed_baselines,
+            effects: None,
         })
     }
 }

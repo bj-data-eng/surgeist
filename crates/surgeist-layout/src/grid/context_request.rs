@@ -92,8 +92,17 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContextRequest<'input, Node, 
             stage,
             parent_context,
         } = self;
-        compute_grid_with_context_source(tree, node, input, minimum, child, stage, |constants| {
-            parent_context.build(container, node, constants)
-        })
+        let start = tree.begin_effect_capture();
+        let outcome = compute_grid_with_context_source(
+            tree,
+            node,
+            input,
+            minimum,
+            child,
+            stage,
+            |constants| parent_context.build(container, node, constants),
+        );
+        let effects = tree.end_effect_capture(start);
+        outcome.map(|result| result.with_effects(effects))
     }
 }

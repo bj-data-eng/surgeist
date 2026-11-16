@@ -581,9 +581,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
             prepared,
             child_axes,
             stage,
-            fingerprint,
+            mut fingerprint,
             ..
         } = *item;
+        if let Some(fingerprint) = &mut fingerprint {
+            fingerprint.retain_effects(result.effects.clone());
+        }
         let source = require_executed_baselines(
             node,
             prepared.child,

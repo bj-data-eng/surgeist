@@ -2581,6 +2581,8 @@ pub(super) struct WrapperResolution<'input, Node, S: LayoutScalar> {
     constants: Constants<S>,
     initialized: InitializedGridTracks<'input, Node, S>,
     resolved: Option<GridTrackResolution<Node, S>>,
+    /// The writes the preparation staged, which a reuse stages again.
+    effects: Option<crate::engine::StagedEffects<Node, S>>,
 }
 
 /// The inputs that determine a `WrapperResolution`.
@@ -2779,6 +2781,7 @@ where
             constants,
             initialized,
             resolved: None,
+            effects: None,
         });
     }
     let opposite = match queried_axis {
@@ -2824,6 +2827,7 @@ where
         constants,
         initialized,
         resolved,
+        effects: None,
     })
 }
 
@@ -2875,20 +2879,35 @@ where
         stage: query.stage,
     };
     let reuse = !super::subgrid_reuse_disabled();
-    let resolution = match tree
+    let reused = tree
         .wrapper_resolution_memo()
         .filter(|_| reuse)
-        .and_then(|memo| memo.get(&identity))
-    {
-        Some(resolution) => resolution,
+        .and_then(|memo| memo.get(&identity));
+    let resolution = match reused {
+        Some(resolution) => {
+            // A recomputation would stage its writes again, each replacing its
+            // earlier write and moving last. The reuse stages the same writes
+            // in the same order, so the order the batch publishes is the same.
+            if let Some(effects) = &resolution.effects {
+                tree.replay_effects(effects)?;
+            }
+            resolution
+        }
         None => {
-            let resolution = std::sync::Arc::new(prepare_wrapper_resolution::<Tree, M>(
+            let start = tree.begin_effect_capture();
+            let prepared = prepare_wrapper_resolution::<Tree, M>(
                 tree,
                 &identity,
                 &container_style,
                 containment,
-            )?);
-            if let Some(memo) = tree.wrapper_resolution_memo().filter(|_| reuse) {
+            );
+            let effects = tree.end_effect_capture(start);
+            let mut resolution = prepared?;
+            resolution.effects = effects;
+            let resolution = std::sync::Arc::new(resolution);
+            if resolution.effects.is_some()
+                && let Some(memo) = tree.wrapper_resolution_memo().filter(|_| reuse)
+            {
                 memo.insert(&identity, &resolution)
                     .map_err(|_| allocation_error(node))?;
             }

@@ -1,7 +1,9 @@
 mod cache_stores;
 mod memo;
+mod staged_effects;
 #[cfg(test)]
 pub(crate) use memo::compute_ordinary_with_request_trace;
+pub(crate) use staged_effects::{StagedEffect, StagedEffects};
 mod requests;
 
 #[cfg(test)]
@@ -113,6 +115,7 @@ where
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
     memo: Option<memo::Memo<Tree::Node, Tree::Scalar>>,
     wrappers: crate::grid::WrapperResolutionMemo<'a, Tree::Node, Tree::Scalar>,
+    effects: staged_effects::EffectLog<Tree::Node, Tree::Scalar>,
     entry_storage: Option<EntryStorage>,
     meter: Meter,
 }
@@ -506,6 +509,7 @@ where
             },
             memo: None,
             wrappers: crate::grid::WrapperResolutionMemo::default(),
+            effects: staged_effects::EffectLog::new(),
             entry_storage: None,
             meter,
         }
@@ -877,6 +881,8 @@ where
             .transpose()
     }
     pub(super) fn next_groups(&mut self, basis: &GroupBasis<Tree>) {
+        // A reused subgrid computation belongs to the pass that staged it.
+        self.wrappers.clear();
         if let (Some(state), Some(basis)) = (&mut self.groups, basis) {
             state.next_pass(basis);
         }
@@ -1067,6 +1073,7 @@ where
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
     ) -> SessionResult<Tree, ()> {
         self.invalidate_scoped_request_memo();
+        self.wrappers.clear();
         if let Some(text) = self.text.as_mut() {
             text.formatted_next_pass().map_err(|error| {
                 crate::error::staging_text_error(
@@ -2257,10 +2264,47 @@ where
         self.groups.as_mut()
     }
 
+    fn begin_effect_capture(&mut self) -> usize {
+        self.effects.begin()
+    }
+
+    fn end_effect_capture(
+        &mut self,
+        start: usize,
+    ) -> Option<crate::engine::StagedEffects<Self::Node, Self::Scalar>> {
+        self.effects.end(start)
+    }
+
+    fn replay_effects(
+        &mut self,
+        effects: &crate::engine::StagedEffects<Self::Node, Self::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        for effect in effects.iter() {
+            match *effect {
+                StagedEffect::Store {
+                    node,
+                    input,
+                    context,
+                    output,
+                } => self.cache_store(node, &input, context, output)?,
+                StagedEffect::Clear(node) => self.cache_clear(node)?,
+                StagedEffect::Geometry(entry) => self.set_unrounded(entry),
+            }
+        }
+        Ok(())
+    }
+
+    fn reuses_subgrid_computations(&self) -> bool {
+        // Group alignment numbers its owners and members by the sequence of
+        // computations, so a skipped repeat renumbers every later one.
+        self.groups.is_none()
+    }
+
     fn wrapper_resolution_memo(
         &mut self,
     ) -> Option<&mut crate::grid::WrapperResolutionMemo<'input, Self::Node, Self::Scalar>> {
-        Some(&mut self.wrappers)
+        self.reuses_subgrid_computations()
+            .then_some(&mut self.wrappers)
     }
 
     fn text_computation(
@@ -2305,6 +2349,7 @@ where
     }
 
     fn set_unrounded(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        self.effects.record(StagedEffect::Geometry(entry));
         if let Some(scopes) = self.block_scopes_mut() {
             scopes.stage_adoption(entry.node());
         }
@@ -2906,6 +2951,12 @@ where
         context: crate::CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
     ) -> SessionResult<Tree, ()> {
+        self.effects.record(StagedEffect::Store {
+            node,
+            input: *input,
+            context,
+            output,
+        });
         if let Some(formatted) = self.text.as_mut().and_then(|text| text.formatted.as_mut()) {
             formatted
                 .bind_output(node, input, context, output)
@@ -2981,6 +3032,7 @@ where
     }
 
     fn cache_clear(&mut self, node: Self::Node) -> SessionResult<Tree, ()> {
+        self.effects.record(StagedEffect::Clear(node));
         let hidden_effect_index = self
             .memo
             .as_ref()
