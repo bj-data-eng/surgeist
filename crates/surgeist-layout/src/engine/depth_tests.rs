@@ -44,7 +44,7 @@ fn standalone<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     )
 }
 
-fn on_bounded_stack(test: &str, run: impl FnOnce() + Send + 'static) {
+pub(crate) fn on_bounded_stack(test: &str, run: impl FnOnce() + Send + 'static) {
     const CHILD: &str = "SURGEIST_TEST_LAYOUT_TREE_DEPTH_CHILD";
     const STACK_BYTES: usize = 2 * 1024 * 1024;
 
@@ -1863,3 +1863,4 @@ fn scoped_flex_work_is_bounded_per_node_f64() {
 mod framed_float;
 mod grid_overflow_observation;
 mod named_inline;
+mod scoped_flex;
