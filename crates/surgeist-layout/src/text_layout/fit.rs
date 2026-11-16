@@ -1285,6 +1285,9 @@ struct CandidateEnvironment<B, C, A, R, X> {
     roles_backing: super::scope_alignment::EntryBacking,
     box_uses: Vec<super::boxes::BoxTrialUse>,
     observed: Option<balance::Observations>,
+    /// Participant-offset ranges `[start, end)` of forced-break groups with the verdict of whether
+    /// every glyph of their whole content advances the pen forwards.
+    spacing_verdicts: Vec<(usize, usize, bool)>,
     band: B,
     canonical: C,
     allocate: A,
@@ -2434,6 +2437,7 @@ pub(crate) fn fit(
         roles_backing: super::scope_alignment::EntryBacking::default(),
         box_uses: Vec::new(),
         observed: None,
+        spacing_verdicts: Vec::new(),
         band: band_source,
         canonical: canonical_block,
         allocate,
@@ -2589,6 +2593,7 @@ where
         // is still evaluated in the ordinary chooser's preference order.
         let constrained = input.tail == TailContext::CompleteBlock
             && crate::layout_math::normal_available_size(input.available).is_some();
+        let walk = sequence::OpportunityWalk::of(input, opportunities);
         let mut visited: Vec<Vec<CandidateKey>> = Vec::new();
         let mut terminal_constraint_rejected = false;
         'sequence: loop {
@@ -2620,6 +2625,7 @@ where
                         progress: &progress,
                         accepted_prefix: result,
                         opportunities,
+                        walk,
                         rejected_choices,
                         goal,
                         constrained,

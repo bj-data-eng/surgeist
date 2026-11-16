@@ -17,6 +17,7 @@ struct Document {
     float: Option<(f64, f64)>,
     wrap_style: TextWrapStyle,
     letter_spacing: f64,
+    word_spacing: f64,
 }
 
 impl Document {
@@ -27,6 +28,7 @@ impl Document {
             float: None,
             wrap_style: TextWrapStyle::Auto,
             letter_spacing: 0.0,
+            word_spacing: 0.0,
         }
     }
 
@@ -38,6 +40,7 @@ impl Document {
     fn lay_out<S: LayoutScalar>(&self) -> Vec<(String, surgeist_text::Rect)> {
         let mut style = ahem_style(10.0, 10.0);
         style.letter_spacing = self.letter_spacing;
+        style.word_spacing = self.word_spacing;
         let paragraph = PreparedParagraph::plain(1, Source::new(self.source.as_str()), style);
         let children = if self.float.is_some() {
             vec![2, 1]
@@ -162,6 +165,52 @@ fn auto_line_search_evaluates_only_the_words_that_fit_plus_the_first_that_does_n
     }
     // Doubling the paragraph at most doubles its candidates once per-line work is bounded.
     assert!(candidates[1] <= candidates[0] * 5 / 2, "{candidates:?}");
+}
+
+/// Negative spacing that still leaves every word and space advancing the line keeps the bound.
+fn assert_forward_advances_keep_the_bound(document: &mut Document, words_per_line: usize) {
+    let count = 50;
+    document.source = WORD.repeat(count);
+    let (work, lines, per_line) = candidate_work(document);
+    assert_eq!(per_line, words_per_line);
+    assert_eq!(lines, count.div_ceil(words_per_line));
+    assert!(
+        work.candidates <= (per_line + 2) * work.line_searches,
+        "{work:?} exceeds the bound"
+    );
+}
+
+#[test]
+fn negative_letter_spacing_that_keeps_each_glyph_advancing_keeps_the_walk_bounded() {
+    // CSS Text 3 section 8.1: -2px leaves each 10px glyph 8px, so "XXX XXX XXX" is 88px and a
+    // fourth word reaches 120px: three words per 100px line.
+    let mut document = Document::new("", 100.0);
+    document.letter_spacing = -2.0;
+    assert_forward_advances_keep_the_bound(&mut document, 3);
+}
+
+#[test]
+fn negative_word_spacing_that_keeps_each_word_advancing_keeps_the_walk_bounded() {
+    // CSS Text 3 section 8.2: -15px makes each 10px space advance -5px, so three "XXX" words are
+    // 90 - 10 = 80px and a fourth reaches 105px: three words per 100px line.
+    let mut document = Document::new("", 100.0);
+    document.word_spacing = -15.0;
+    assert_forward_advances_keep_the_bound(&mut document, 3);
+}
+
+#[test]
+fn word_spacing_that_moves_the_pen_backwards_keeps_the_full_candidate_walk() {
+    // CSS Text 3 section 8.2: -25px makes each 10px space advance -15px and splits that around the
+    // space, so the pen steps back 2.5px at each space. A later word can then be narrower than the
+    // content before it, so no candidate may be skipped after one overflows.
+    let mut document = Document::new("XXXX ".repeat(50), 100.0);
+    document.word_spacing = -25.0;
+    let (work, lines, per_line) = candidate_work(&document);
+    assert!(lines > 1);
+    assert!(
+        work.candidates > (per_line + 2) * work.line_searches,
+        "{work:?} must keep the full walk"
+    );
 }
 
 fn assert_trailing_space_hangs<S: LayoutScalar>() {
