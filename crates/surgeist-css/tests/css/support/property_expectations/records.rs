@@ -834,7 +834,7 @@ property_records! {
     ShapeOutside, "shape-outside" {
         metadata: longhand(false, |v| assert_eq!(*v, CssShapeOutside::None)),
         // Shapes 1 (CRD 2025-06-12) §6.1: an omitted <shape-box> defaults to
-        // margin-box, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // margin-box, so CSSOM 1 §6.7.2 omits it next to a basic shape.
         catalog: complete_grammar_catalog!("official.property.shape-outside", "margin-box circle(50%)" => "circle(50%)", rejected("circle() fill-box")),
         source: "S-SHAPES1",
         dispatch: "margin-box circle(50%)",
@@ -2162,7 +2162,7 @@ property_records! {
         // <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]?, so the
         // initial `auto` width may be omitted between the slashes while the
         // outset stays, and the initial `alpha` mode may be omitted; CSSOM 1
-        // §6.7.2 omits both. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // §6.7.2 omits both.
         catalog: complete_grammar_catalog!("official.property.mask-border", "url(a) 1 2 fill / auto / 2 round alpha" => "url(\"a\") 1 2 fill / / 2 round", rejected("fill 1")),
         source: "S-MASKING1", dispatch: "url(a) 1 2 fill / auto / 2 round alpha", wrapper: yes,
         inverse: ("none", "none"),

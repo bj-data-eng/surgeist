@@ -146,6 +146,11 @@ mask_list!(
 
 /// Authored mask-border components. Four-edge child domains reuse the checked
 /// border-image owners; defaults and shorthand slash grammar belong to Masking.
+///
+/// # Specified serialization
+///
+/// A member written as its initial value is left out of the text, and a value
+/// with every member left out is `none`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskBorder {
     source: Option<CssImageValue>,

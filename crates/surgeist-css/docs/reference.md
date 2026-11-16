@@ -3410,6 +3410,11 @@ duplicate boxes, image/box combinations and foreign shape-box keywords are inval
 The three models provide `serialize_specified(limits)`. Box and `none` cost one semantic node;
 shape/box composition adds one aggregate plus the shared shape children and
 one node for an explicit box. Images keep the shared provider's node costs.
+Shapes 1 §6.1 gives a basic shape without a box the reference box margin-box, so
+specified serialization leaves an explicit margin-box out next to a basic shape
+(CSSOM 1 §6.7.2 omits a component that does not change the meaning); the box is
+still visited and charged. A standalone box is the whole value and is always
+written, and every other box is written after the shape.
 
 `shape-image-threshold.value()` and its terminal view borrow the existing
 `CssOpacityValue`, retaining exact ordinary number/percentage components and
@@ -3440,7 +3445,7 @@ let outside = CssShapeOutside::BasicShape(CssShapeOutsideShape::new(
 ));
 assert_eq!(
     outside.serialize_specified(CssSerializationLimits::default()).unwrap(),
-    "circle() margin-box",
+    "circle()",
 );
 ```
 
@@ -9673,6 +9678,19 @@ None, slice `10 fill`, width Auto, outset `2`, repeat Round/Space and Luminance
 mode costs thirty nodes in each work budget, even though each four-edge value
 shortens to one emitted component. Final UTF-8 bytes share the same cumulative
 limit; failures return no partial string and leave the source model retryable.
+
+Specified mask-border output leaves out a member that is literally at its
+initial value, as [CSSOM 1 §6.7.2](https://www.w3.org/TR/cssom/#serializing-css-values)
+omits a component that does not change the meaning, and writes members through
+the writer that `border-image` uses. The source `none`, a slice that is the
+number `0` without `fill`, a width that is `auto` on every side, an outset that is
+the number `0` on every side, repeat `stretch` and mode `alpha` are left out; each
+is still visited, so the work above does not change. A slice stays while a width
+or an outset follows it, and an outset after an omitted width keeps both slashes,
+as in `10 fill / / 2 round`. A zero percentage, a zero length and a calculation
+are other values than the initial literal and stay. When every member is left
+out the value is `none`, one generated projection node. The example above writes
+`10 fill / / 2 round space luminance`.
 
 ## Cursor images, transform, mask and Outline output
 

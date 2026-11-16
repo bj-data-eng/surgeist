@@ -321,22 +321,10 @@ impl PropertyExpectation {
 /// the spec form and its basis:
 ///
 /// - `background-size`: Backgrounds 3 §2.9, omitted second size is `auto`.
-/// - `shape-outside`: Shapes 1 §6.1, omitted box is margin-box.
-/// - `mask-border`: Masking 1 §8.7, initial `auto` width and `alpha` mode.
-pub const KNOWN_SERIALIZATION_DEFECTS: &[(&str, &str)] = &[
-    (
-        "baseline.property.background-size",
-        "background-size: cover, 10px auto;",
-    ),
-    (
-        "official.property.shape-outside",
-        "shape-outside: circle(50%) margin-box;",
-    ),
-    (
-        "official.property.mask-border",
-        "mask-border: url(\"a\") 1 2 fill / auto / 2 round alpha;",
-    ),
-];
+pub const KNOWN_SERIALIZATION_DEFECTS: &[(&str, &str)] = &[(
+    "baseline.property.background-size",
+    "background-size: cover, 10px auto;",
+)];
 
 macro_rules! optional {
     () => {
