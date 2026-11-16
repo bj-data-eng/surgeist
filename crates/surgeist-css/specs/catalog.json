@@ -1059,7 +1059,7 @@
         ],
         "authored_owner": "css",
         "authored_requirements": [
-          "Accept exactly content-box, padding-box or border-box as the optional visual-box component of overflow-clip-margin, in either order with an optional nonnegative length. Preserve omission and reject all other box-edge keywords at checked construction."
+          "Accept exactly content-box, padding-box or border-box as the optional visual-box component of overflow-clip-margin, in either order with an optional signed length. Preserve omission and reject all other box-edge keywords at checked construction."
         ],
         "downstream_owners": [
           "style",

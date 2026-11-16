@@ -7,7 +7,7 @@ use crate::parser::syntax_types::SyntaxError;
 use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
-use super::values::parse_nonnegative_length;
+use super::values::parse_length;
 use crate::numeric::expression::NumericInputContext;
 use crate::values::box_model::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::values::common::CssBoxEdgeKeyword;
@@ -16,7 +16,7 @@ pub(super) fn parse_overflow_clip_margin<'i>(
     input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssOverflowClipMargin, SyntaxError<'i, Error>> {
-    // `<visual-box> || <length [0,∞]>`: an identifier commits the box and a
+    // `<visual-box> || <length>`: an identifier commits the box and a
     // numeric token or function commits the length.
     fn next_token_is<'i>(input: &mut Stream<'i>, admit: fn(Token<'i>) -> bool) -> bool {
         let state = input.mark();
@@ -56,7 +56,7 @@ pub(super) fn parse_overflow_clip_margin<'i>(
                         )
                     })
                 },
-                |input| parse_nonnegative_length(input, numeric),
+                |input| parse_length(input, numeric),
             ),
             _ => unreachable!("two overflow-clip-margin operands"),
         },

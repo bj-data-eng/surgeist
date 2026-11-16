@@ -4,7 +4,7 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::CssParser;
 use surgeist_css::component::CssComponentValue;
-use surgeist_css::numeric::{CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::numeric::{CssLength, CssNumeric};
 use surgeist_css::property::CssKnownPropertyValueRef;
 use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_css::values::box_model::{
@@ -13,8 +13,8 @@ use surgeist_css::values::box_model::{
 use surgeist_css::values::common::CssBoxEdgeKeyword;
 use surgeist_css::values::text::CssTextOverflow;
 
-fn length(number: &str, unit: &str) -> CssNumeric<CssLength, CssNonNegative> {
-    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+fn length(number: &str, unit: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(
         CssComponentValue::try_dimension(number, unit).unwrap(),
     )
     .unwrap()
@@ -129,6 +129,72 @@ fn clip_margin_equality_ignores_origins_and_spelling_but_keeps_omission() {
         parsed_clip_margin("padding-box 0px")
     );
     assert_ne!(parsed_clip_margin("0px"), parsed_clip_margin("padding-box"));
+}
+
+#[test]
+fn checked_clip_margin_admits_signed_offsets_and_matches_parsed_values() {
+    // The checked constructor takes the same signed `<length>` owner the parser
+    // does: negative literals (insets), zero and positive offsets are all valid.
+    for (edge, text, number, unit, expected) in [
+        (None, "-1px", "-1", "px", "-1px"),
+        (None, "-0.5em", "-0.5", "em", "-0.5em"),
+        (None, "1px", "1", "px", "1px"),
+        (
+            Some(CssBoxEdgeKeyword::ContentBox),
+            "-2px",
+            "-2",
+            "px",
+            "content-box -2px",
+        ),
+        (
+            Some(CssBoxEdgeKeyword::BorderBox),
+            "-3px",
+            "-3",
+            "px",
+            "border-box -3px",
+        ),
+        (
+            Some(CssBoxEdgeKeyword::PaddingBox),
+            "-1e-999px",
+            "-1e-999",
+            "px",
+            "padding-box 0px",
+        ),
+    ] {
+        let authored = match edge {
+            Some(edge) => format!("{} {text}", edge.as_str()),
+            None => text.to_owned(),
+        };
+        let checked = CssOverflowClipMargin::try_new(edge, Some(length(number, unit))).unwrap();
+        assert_eq!(checked, parsed_clip_margin(&authored), "{authored}");
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{authored}"
+        );
+    }
+    // The boxes are still limited to the visual boxes for a signed offset.
+    for edge in [
+        CssBoxEdgeKeyword::MarginBox,
+        CssBoxEdgeKeyword::FillBox,
+        CssBoxEdgeKeyword::StrokeBox,
+        CssBoxEdgeKeyword::ViewBox,
+    ] {
+        assert!(CssOverflowClipMargin::try_new(Some(edge), Some(length("-2", "px"))).is_none());
+    }
+    // A signed offset alone is a complete value, and zero is not omission.
+    assert!(CssOverflowClipMargin::try_new(None, Some(length("-2", "px"))).is_some());
+    assert_ne!(
+        CssOverflowClipMargin::try_new(None, Some(length("-2", "px"))),
+        CssOverflowClipMargin::try_new(None, Some(length("2", "px")))
+    );
+    assert_ne!(
+        CssOverflowClipMargin::try_new(Some(CssBoxEdgeKeyword::ContentBox), None),
+        CssOverflowClipMargin::try_new(
+            Some(CssBoxEdgeKeyword::ContentBox),
+            Some(length("0", "px"))
+        )
+    );
 }
 
 #[test]

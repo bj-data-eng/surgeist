@@ -7872,12 +7872,20 @@ make `overflow-clip-margin`, `scroll-behavior`, `scrollbar-gutter`, and
 `text-overflow` complete, noninherited authored longhands. Their initials are
 `0px`, `auto`, `auto`, and `clip`, respectively. The clip margin imports only
 [Box 4's `<visual-box>` production](https://www.w3.org/TR/2024/WD-css-box-4-20240804/#typedef-visual-box):
-`content-box | padding-box | border-box`. It accepts that edge and a
-nonnegative length in either order; either component may be omitted, but at
-least one is required. Its checked value preserves omitted components, exposes
-effective defaults of `padding-box` and exact `0px`, and serializes authored
-components in canonical box-first order under one resource budget. Length math
-remains symbolic until downstream resolution.
+`content-box | padding-box | border-box`. It accepts that edge and a signed
+`<length>` in either order, following the retained
+[Overflow 3 Editor's Draft capture](../../../references/css-overflow-3-geometry-clauses--editor-capture-20261010--86c09a636507.md#overflow-clip-margin),
+whose offset is a `<length>` where negative values indicate insets and
+percentages are not admitted. Either component may be omitted, but at least
+one is required. The offset is a `numeric::CssNumeric<CssLength>`: literal
+negative, zero and positive lengths are admitted (including exactly retained
+tiny negatives), and length math keeps its signed sum without range clamping.
+Its checked value preserves omitted components, exposes effective defaults of
+`padding-box` and exact `0px`, and serializes authored components in canonical
+box-first order under one resource budget. Length math remains symbolic until
+downstream resolution; clamping to the scroll container's padding box and
+ignoring the `border-box` offset on scroll containers belong to the
+downstream owners of clip geometry.
 
 `scroll-behavior` accepts `auto | smooth`; `scrollbar-gutter` accepts `auto`,
 `stable`, or `stable both-edges` in either authored keyword order. The existing
