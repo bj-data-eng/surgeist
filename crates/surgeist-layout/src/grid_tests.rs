@@ -38,6 +38,8 @@ mod oracle_comparison;
 mod scroll_composition;
 #[path = "grid_tests/subgrid_clamping_contracts_tests.rs"]
 mod subgrid_clamping_contracts;
+#[path = "grid_tests/subgrid_share_tests.rs"]
+mod subgrid_share;
 #[path = "grid_tests/topology_placement_tests.rs"]
 mod topology_placement;
 #[path = "grid_tests/tracks_intrinsic_tests.rs"]
