@@ -11,6 +11,7 @@ mod check;
 mod codec;
 mod cursor;
 mod nodes;
+mod rules;
 mod source;
 #[cfg(test)]
 mod testing;
@@ -18,6 +19,7 @@ mod values;
 
 pub use bytes::{ByteCase, ByteTarget};
 pub use check::Violation;
+pub use rules::{RulesCase, RulesTarget};
 pub use source::{SourceCase, SourceTarget};
 pub use values::{ValueCase, ValueTarget};
 

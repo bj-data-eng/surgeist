@@ -348,7 +348,7 @@ fn survives_six_places(text: &str) -> bool {
 /// Values that are invalid for their property or not a declaration at all, each
 /// balanced so that the next `;` ends the unit. Recovery must drop the unit and
 /// keep its valid siblings.
-const INVALID: [&str; 12] = [
+pub(crate) const INVALID: [&str; 12] = [
     "width: bogus-keyword-xyz",
     "width: 10px 20px 30px 40px 50px",
     "color: 1px",

@@ -57,6 +57,12 @@ fn the_package_registers_every_target_with_its_worker_and_seed_directory() {
         "css-value-worker",
         "seeds/values",
     );
+    assert_registered(
+        &registry,
+        "surgeist-css::structured-rules",
+        "css-rules-worker",
+        "seeds/rules",
+    );
     let source = registry
         .get(&TargetId::new("surgeist-css::utf8-source").unwrap())
         .unwrap();
@@ -70,7 +76,7 @@ fn the_package_registers_every_target_with_its_worker_and_seed_directory() {
 
 #[cfg(not(feature = "coverage"))]
 mod process {
-    use surgeist_css_fuzz::{ByteTarget, SourceTarget, ValueTarget};
+    use surgeist_css_fuzz::{ByteTarget, RulesTarget, SourceTarget, ValueTarget};
     use surgeist_fuzz::{CaseTarget, OutcomeKind, worker::*};
 
     fn exchange(binary: &str, canonical: Vec<u8>) {
@@ -130,6 +136,11 @@ mod process {
         exchange(
             env!("CARGO_BIN_EXE_css-value-worker"),
             values.encode(&values.literal(2).unwrap()).unwrap(),
+        );
+        let rules = RulesTarget::new();
+        exchange(
+            env!("CARGO_BIN_EXE_css-rules-worker"),
+            rules.encode(&rules.literal(6).unwrap()).unwrap(),
         );
     }
 }

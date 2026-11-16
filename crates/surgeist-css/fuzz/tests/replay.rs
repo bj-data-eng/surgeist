@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Every target through the shared framework: capture, exact replay, generation,
 //! optional property and coverage engines, and seed freshness.
-use surgeist_css_fuzz::{ByteTarget, SourceTarget, ValueTarget};
+use surgeist_css_fuzz::{ByteTarget, RulesTarget, SourceTarget, ValueTarget};
 use surgeist_fuzz::{CaseTarget, Generation, OutcomeKind, engine};
 
 fn check_literals<T: CaseTarget>(target: &T, count: u8, literal: impl Fn(u8) -> T::Case) {
@@ -46,6 +46,10 @@ fn literals_capture_exact_inputs_and_replay_the_same_checked_properties() {
     let values = ValueTarget::new();
     check_literals(&values, ValueTarget::LITERALS, |id| {
         values.literal(id).unwrap()
+    });
+    let rules = RulesTarget::new();
+    check_literals(&rules, RulesTarget::LITERALS, |id| {
+        rules.literal(id).unwrap()
     });
 }
 
@@ -93,6 +97,7 @@ fn bounded_generation_is_deterministic_and_uses_the_replay_evaluator() {
     generated(&ByteTarget::new());
     generated(&SourceTarget::new());
     generated(&ValueTarget::new());
+    generated(&RulesTarget::new());
 }
 
 #[cfg(feature = "property")]
@@ -128,6 +133,7 @@ fn finite_property_runs_capture_nonvacuous_public_observations() {
     property(&ByteTarget::new(), 1147);
     property(&SourceTarget::new(), 1147);
     property(&ValueTarget::new(), 1147);
+    property(&RulesTarget::new(), 1147);
 }
 
 #[cfg(feature = "coverage")]
@@ -159,6 +165,7 @@ fn finite_coverage_callbacks_capture_the_same_case_as_direct_replay() {
     coverage(&ByteTarget::new());
     coverage(&SourceTarget::new());
     coverage(&ValueTarget::new());
+    coverage(&RulesTarget::new());
 }
 
 fn seed_freshness<T: CaseTarget>(
@@ -198,6 +205,10 @@ fn generated_seed_artifacts_match_the_authoritative_literal_factories_and_codec(
     let values = ValueTarget::new();
     seed_freshness(&values, "values", ValueTarget::LITERALS, |id| {
         values.literal(id).unwrap()
+    });
+    let rules = RulesTarget::new();
+    seed_freshness(&rules, "rules", RulesTarget::LITERALS, |id| {
+        rules.literal(id).unwrap()
     });
     seed_freshness(
         &values,

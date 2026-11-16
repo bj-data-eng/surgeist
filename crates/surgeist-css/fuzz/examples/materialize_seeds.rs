@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Materialize the fixed source-qualified cases through their canonical codecs.
 use std::{error::Error, fs, path::Path};
-use surgeist_css_fuzz::{ByteTarget, SourceTarget, ValueTarget};
+use surgeist_css_fuzz::{ByteTarget, RulesTarget, SourceTarget, ValueTarget};
 use surgeist_fuzz::CaseTarget;
 
 fn write<T: CaseTarget>(
@@ -50,6 +50,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         &values,
         ValueTarget::LITERALS,
         |id| values.literal(id),
+    )?;
+    let rules = RulesTarget::new();
+    write(
+        &destination.join("rules"),
+        &rules,
+        RulesTarget::LITERALS,
+        |id| rules.literal(id),
     )?;
     // Failing inputs are retained apart from the seeds, which all pass.
     write(
