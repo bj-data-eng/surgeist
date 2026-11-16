@@ -412,3 +412,85 @@ fn direction_white_space_and_justification_lay_out_the_same_with_the_early_stop(
     }
     assert!(stops > 0, "no line search stopped early");
 }
+
+#[test]
+fn inter_character_justification_lays_out_the_same_with_the_early_stop() {
+    let spans = [span("XX XX XX XX XX XX XX XX", 5.0, 0.0, 0.0)];
+    let mut stops = 0;
+    for rtl in [false, true] {
+        for width in [55.0, 90.0, 100.0] {
+            let setup = Setup {
+                justification: TextJustification::InterCharacter,
+                rtl,
+                ..Setup::new(width).justified()
+            };
+            stops += assert_same_with_full_walk::<f32>("inter-character", &spans, setup);
+            stops += assert_same_with_full_walk::<f64>("inter-character", &spans, setup);
+        }
+    }
+    assert!(stops > 0, "no line search stopped early");
+}
+
+#[test]
+fn hanging_punctuation_with_stretched_justification_lays_out_the_same_with_the_early_stop() {
+    let text = "\u{201c}XX XX XX. XX XXX XX XXXX XX XX. XX XXX XX XX XXXX XX.\u{201d}";
+    let spans = [span(text, 10.0, 0.0, 0.0)];
+    let hanging = [
+        (true, None, true),
+        (true, Some(text::HangingPunctuationEnd::ForceEnd), false),
+        (false, Some(text::HangingPunctuationEnd::ForceEnd), true),
+        (false, Some(text::HangingPunctuationEnd::AllowEnd), true),
+        (true, Some(text::HangingPunctuationEnd::AllowEnd), false),
+    ];
+    let mut stops = 0;
+    for (first, end, last) in hanging {
+        for justification in [
+            TextJustification::InterWord,
+            TextJustification::InterCharacter,
+        ] {
+            for width in [70.0, 130.0] {
+                let setup = Setup {
+                    justification,
+                    hanging: text::HangingPunctuation::new(first, end, last),
+                    ..Setup::new(width).justified()
+                };
+                stops += assert_same_with_full_walk::<f32>("hanging, justified", &spans, setup);
+                stops += assert_same_with_full_walk::<f64>("hanging, justified", &spans, setup);
+            }
+        }
+    }
+    assert!(stops > 0, "no line search stopped early");
+}
+
+#[test]
+fn negative_spacing_with_justification_lays_out_the_same_with_the_early_stop() {
+    // Negative spacing vetoes the stop wherever a glyph's natural pen step goes backwards, so no
+    // stop is required; the layouts must still agree, stretched or not.
+    for (letter_spacing, word_spacing, size) in [
+        (-2.0, 0.0, 10.0),
+        (-6.0, 0.0, 5.0),
+        (0.0, -5.0, 10.0),
+        (0.0, -15.0, 10.0),
+        (0.0, -25.0, 10.0),
+    ] {
+        let spans = [span(
+            "XXX XX X XXXX XX X XXX XXXXX X XX XXXX XXX XX",
+            size,
+            letter_spacing,
+            word_spacing,
+        )];
+        for justification in [
+            TextJustification::InterWord,
+            TextJustification::InterCharacter,
+        ] {
+            for width in [30.0, 60.0, 100.0] {
+                let setup = Setup {
+                    justification,
+                    ..Setup::new(width).justified()
+                };
+                assert_same_with_full_walk::<f32>("negative, justified", &spans, setup);
+                assert_same_with_full_walk::<f64>("negative, justified", &spans, setup);
+            }
+        }
+    }
+}

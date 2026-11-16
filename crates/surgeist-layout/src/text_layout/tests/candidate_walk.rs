@@ -18,6 +18,9 @@ struct Document {
     wrap_style: TextWrapStyle,
     letter_spacing: f64,
     word_spacing: f64,
+    size: f32,
+    /// Justify every line, including the last, with this method.
+    justification: Option<TextJustification>,
 }
 
 impl Document {
@@ -29,6 +32,8 @@ impl Document {
             wrap_style: TextWrapStyle::Auto,
             letter_spacing: 0.0,
             word_spacing: 0.0,
+            size: 10.0,
+            justification: None,
         }
     }
 
@@ -38,7 +43,7 @@ impl Document {
 
     /// The placed lines as trimmed source text and physical bounds.
     fn lay_out<S: LayoutScalar>(&self) -> Vec<(String, surgeist_text::Rect)> {
-        let mut style = ahem_style(10.0, 10.0);
+        let mut style = ahem_style(self.size, 10.0);
         style.letter_spacing = self.letter_spacing;
         style.word_spacing = self.word_spacing;
         let paragraph = PreparedParagraph::plain(1, Source::new(self.source.as_str()), style);
@@ -59,6 +64,13 @@ impl Document {
                         PreferredSizeOf::AUTO,
                     ),
                     text_wrap_style: self.wrap_style,
+                    text_align: self
+                        .justification
+                        .map_or(TextAlign::Start, |_| TextAlign::Justify),
+                    text_align_last: self
+                        .justification
+                        .map_or(TextAlignLast::Auto, |_| TextAlignLast::Justify),
+                    text_justification: self.justification.unwrap_or(TextJustification::None),
                     ..NodeInputOf::default()
                 },
             )
@@ -213,6 +225,47 @@ fn word_spacing_that_moves_the_pen_backwards_keeps_the_full_candidate_walk() {
         work.candidates > (per_line + 2) * work.line_searches,
         "{work:?} must keep the full walk"
     );
+}
+
+/// The early stop counter of one document laid out as the layout runs it.
+fn early_stops(document: &Document) -> usize {
+    candidate_work(document).0.early_stops
+}
+
+#[test]
+fn justified_text_without_negative_spacing_still_stops_the_line_search_early() {
+    for justification in [
+        TextJustification::InterWord,
+        TextJustification::InterCharacter,
+    ] {
+        let mut document = Document::words(50, 100.0);
+        document.justification = Some(justification);
+        assert!(early_stops(&document) > 0, "{justification:?}");
+    }
+}
+
+#[test]
+fn justified_inter_character_text_with_negative_letter_spacing_keeps_the_full_candidate_walk() {
+    // CSS Text 3 section 8.1: letter-spacing -12px on a 5px glyph leaves -7px per glyph. Under
+    // text-align Justify and text-align-last Justify each candidate's negative flow is stretched
+    // to the 100px block, and a stretched line must never lead to a stop: it can lift the steps
+    // that would show the negative spacing.
+    let mut document = Document::new("XX ".repeat(6), 100.0);
+    document.size = 5.0;
+    document.letter_spacing = -12.0;
+    document.justification = Some(TextJustification::InterCharacter);
+    assert_eq!(early_stops(&document), 0);
+}
+
+#[test]
+fn justified_inter_word_text_with_negative_letter_spacing_keeps_the_full_candidate_walk() {
+    // The same text under inter-word justification, which stretches only the spaces, so the
+    // steps inside a word stay at -7px.
+    let mut document = Document::new("XX ".repeat(6), 100.0);
+    document.size = 5.0;
+    document.letter_spacing = -12.0;
+    document.justification = Some(TextJustification::InterWord);
+    assert_eq!(early_stops(&document), 0);
 }
 
 fn assert_trailing_space_hangs<S: LayoutScalar>() {
