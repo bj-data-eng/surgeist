@@ -455,9 +455,9 @@ pub struct HtmlNodeId {
 impl HtmlNodeId {
     /// The record position of the node within the result that issued the id: the index of its
     /// record in that result's storage, below the number of nodes the result's usage counts. It
-    /// stays the same for the life of the result. It carries no tree or document order, and it
-    /// names no node of another result, so it indexes a table only of the result that issued
-    /// the id.
+    /// stays the same for the life of the result. Positions increase in the order the nodes were
+    /// created within one result. They carry no tree or document order, and a position names no
+    /// node of another result, so it indexes a table only of the result that issued the id.
     pub fn position(self) -> usize {
         self.index.position()
     }
