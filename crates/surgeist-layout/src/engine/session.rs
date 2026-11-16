@@ -2048,6 +2048,91 @@ where
     }
 }
 
+/// How one scoped Block child continues after its entry and input are settled.
+pub(super) enum ScopedChildStart<Node, S: LayoutScalar> {
+    /// A scope owner's entry completed the child.
+    Output(ComputeOutputOf<S>),
+    /// The child is not a scoped Block box and computes as an ordinary child.
+    Fallback {
+        node: Node,
+        input: ComputeInputOf<S>,
+    },
+    /// The child is a scoped Block box whose scope frame is already pushed.
+    Descend(ScopedChild<Node, S>),
+}
+
+type ScopedChildResult<Tree> = super::block_scope::ComputeResult<
+    <Tree as Traverse>::Node,
+    ScopedChildStart<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+
+/// A scoped Block box whose frame was pushed at `depth`.
+pub(super) struct ScopedChild<Node, S: LayoutScalar> {
+    pub(super) node: Node,
+    pub(super) input: ComputeInputOf<S>,
+    pub(super) depth: usize,
+}
+
+impl<'a, Tree> ComputeSession<'a, Tree>
+where
+    Tree: LayoutTree,
+{
+    pub(super) fn begin_scoped_child(
+        &mut self,
+        request: crate::block::scope::ChildRequest<Tree::Node, Tree::Scalar>,
+    ) -> ScopedChildResult<Tree> {
+        if let Some(entry) = request.entry
+            && let Some(fragment) = &mut self.fragmentation
+            && let Some(scopes) = &mut fragment.scopes
+            && scopes.dispatch.owners.contains(&request.node)
+        {
+            let output = scopes.receive_entry(entry, &mut fragment.margins)?;
+            self.record_block_body(entry.node, entry.input, output)?;
+            return Ok(ScopedChildStart::Output(output));
+        }
+
+        if self.block_scopes().is_none()
+            || self.tree.has_leaf_measurement(request.node)
+            || self.tree.node_input(request.node).display.inner_display() != crate::Display::Block
+        {
+            return Ok(ScopedChildStart::Fallback {
+                node: request.node,
+                input: request.input,
+            });
+        }
+        let input = self.prepare_child_input(request.node, request.input)?;
+        if input.run_mode() == RunMode::PerformHiddenLayout
+            || self.tree.node_input(request.node).display == crate::Display::None
+        {
+            return Ok(ScopedChildStart::Fallback {
+                node: request.node,
+                input,
+            });
+        }
+
+        let scopes = self
+            .block_scopes_mut()
+            .ok_or_else(|| crate::block::intrinsic::profile_error(request.node))?;
+        let depth = scopes.frames.len();
+        scopes.push_frame(request.node, input, request.entry)?;
+        Ok(ScopedChildStart::Descend(ScopedChild {
+            node: request.node,
+            input: input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL),
+            depth,
+        }))
+    }
+
+    /// Releases the scope frames pushed at or after `depth`. A suspension has
+    /// already moved its frames into the scope request.
+    pub(super) fn release_scope_frames(&mut self, depth: usize) {
+        if let Some(scopes) = self.block_scopes_mut() {
+            scopes.frames.truncate(depth);
+        }
+    }
+}
+
 impl<Tree> Traverse for ComputeSession<'_, Tree>
 where
     Tree: LayoutTree,
@@ -2380,46 +2465,13 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        if let Some(entry) = request.entry
-            && let Some(fragment) = &mut self.fragmentation
-            && let Some(scopes) = &mut fragment.scopes
-            && scopes.dispatch.owners.contains(&request.node)
-        {
-            let output = scopes.receive_entry(entry, &mut fragment.margins)?;
-            self.record_block_body(entry.node, entry.input, output)?;
-            return Ok(output);
+        match self.begin_scoped_child(request)? {
+            ScopedChildStart::Output(output) => Ok(output),
+            ScopedChildStart::Fallback { node, input } => {
+                self.compute_child(node, input).map_err(Into::into)
+            }
+            ScopedChildStart::Descend(child) => self.drive_scoped_child(child),
         }
-
-        if self.block_scopes().is_none()
-            || self.tree.has_leaf_measurement(request.node)
-            || self.tree.node_input(request.node).display.inner_display() != crate::Display::Block
-        {
-            return self
-                .compute_child(request.node, request.input)
-                .map_err(Into::into);
-        }
-        let input = self.prepare_child_input(request.node, request.input)?;
-        if input.run_mode() == RunMode::PerformHiddenLayout
-            || self.tree.node_input(request.node).display == crate::Display::None
-        {
-            return self.compute_child(request.node, input).map_err(Into::into);
-        }
-
-        let scopes = self
-            .block_scopes_mut()
-            .ok_or_else(|| crate::block::intrinsic::profile_error(request.node))?;
-        let depth = scopes.frames.len();
-        scopes.push_frame(request.node, input, request.entry)?;
-        let result = self.compute_child_uncached_scoped(
-            request.node,
-            input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL),
-        );
-        if !matches!(result, Err(super::block_scope::ComputeStop::NeedScope(_)))
-            && let Some(scopes) = self.block_scopes_mut()
-        {
-            scopes.frames.truncate(depth);
-        }
-        result
     }
 
     fn compute_child(

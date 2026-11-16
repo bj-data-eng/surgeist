@@ -402,12 +402,76 @@ pub(crate) struct InlineComponents<Node, S: LayoutScalar> {
     pub(crate) minimum: Option<super::fragment_minimum::Receipt<S>>,
 }
 
+/// One prepared same-axis Block container whose children are still pending.
+struct PrepareFrame<Node, S: LayoutScalar> {
+    constants: Constants<S>,
+    children: std::vec::IntoIter<Node>,
+    first_in_flow: bool,
+}
+
 pub(crate) fn prepare<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     input: ComputeInputOf<Tree::Scalar>,
     fragment_axes: FlowAxes,
     entries: &mut Vec<InlineComponents<Tree::Node, Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let mut stack = Vec::new();
+    push_prepared(tree, node, input, fragment_axes, entries, &mut stack)?;
+    // Depth-first in child order: a child is projected and sized from its
+    // parent's constants only after every earlier sibling subtree is prepared.
+    while let Some(frame) = stack.last_mut() {
+        let Some(child) = frame.children.next() else {
+            stack.pop();
+            continue;
+        };
+        let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
+        let InlineParticipantKindOf::Box(style) = projection.kind() else {
+            return Err(profile_error(child));
+        };
+        if style.display == crate::Display::None || style.common.position == Position::Absolute {
+            continue;
+        }
+        let prepared = super::in_flow::prepare_child(
+            tree,
+            child,
+            &style,
+            &frame.constants,
+            super::in_flow::ChildSizingContext {
+                inner_size: frame
+                    .constants
+                    .flow_axes
+                    .physical_size(frame.constants.logical_node_inner_size()),
+                request: frame.constants.sizing_request,
+                run_mode: RunMode::ComputeSize,
+                axis: RequestedAxis::Both,
+                first_in_flow: &mut frame.first_in_flow,
+            },
+        )?;
+        push_prepared(
+            tree,
+            child,
+            prepared.input,
+            fragment_axes,
+            entries,
+            &mut stack,
+        )?;
+    }
+    Ok(())
+}
+
+/// Records a same-axis Block container's demanded components and pushes its
+/// frame; any other node contributes nothing.
+fn push_prepared<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+    fragment_axes: FlowAxes,
+    entries: &mut Vec<InlineComponents<Tree::Node, Tree::Scalar>>,
+    stack: &mut Vec<PrepareFrame<Tree::Node, Tree::Scalar>>,
 ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -453,32 +517,18 @@ where
         false,
     );
     let children = tree.children(node).collect::<Vec<_>>();
-    let mut first_in_flow = true;
-    for child in children {
-        let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
-        let InlineParticipantKindOf::Box(style) = projection.kind() else {
-            return Err(profile_error(child));
-        };
-        if style.display == crate::Display::None || style.common.position == Position::Absolute {
-            continue;
-        }
-        let prepared = super::in_flow::prepare_child(
-            tree,
-            child,
-            &style,
-            &constants,
-            super::in_flow::ChildSizingContext {
-                inner_size: constants
-                    .flow_axes
-                    .physical_size(constants.logical_node_inner_size()),
-                request: constants.sizing_request,
-                run_mode: RunMode::ComputeSize,
-                axis: RequestedAxis::Both,
-                first_in_flow: &mut first_in_flow,
-            },
-        )?;
-        prepare(tree, child, prepared.input, fragment_axes, entries)?;
-    }
+    stack.try_reserve(1).map_err(|_| {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::Allocation,
+        )
+    })?;
+    stack.push(PrepareFrame {
+        constants,
+        children: children.into_iter(),
+        first_in_flow: true,
+    });
     Ok(())
 }
 

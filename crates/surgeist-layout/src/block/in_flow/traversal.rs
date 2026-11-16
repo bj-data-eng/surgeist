@@ -52,6 +52,23 @@ impl<'input, Node: Copy, S: LayoutScalar> InFlowChild<'input, Node, S> {
         (self.request, self.pending)
     }
 
+    /// The layout request that `compute` forwards to `compute_block_child`.
+    pub(crate) fn scoped_box_request(&self) -> Option<crate::block::scope::ChildRequest<Node, S>> {
+        let BlockChildRequest::Layout(request) = &self.request else {
+            return None;
+        };
+        match &self.pending {
+            PendingInFlowChild::Box(child) if !child.preparation.inherits_float_exclusions => {
+                Some(crate::block::scope::ChildRequest {
+                    node: request.node,
+                    input: request.input,
+                    entry: request.entry,
+                })
+            }
+            _ => None,
+        }
+    }
+
     pub(in crate::block) fn compute<Tree, M>(
         self,
         tree: &mut Tree,

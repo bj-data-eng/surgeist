@@ -1860,6 +1860,7 @@ fn scoped_flex_work_is_bounded_per_node_f64() {
         .unwrap();
 }
 
+mod fragment_intrinsic;
 mod framed_float;
 mod grid_overflow_observation;
 mod named_inline;
