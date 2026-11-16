@@ -6,8 +6,7 @@ use surgeist_html::{
     values::DocumentString,
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseCompletion, HtmlParseMetadataStep, HtmlParseReport,
-    HtmlSource,
+    HtmlDocumentParseRequest, HtmlParseCompletion, HtmlParseReport, HtmlSource,
 };
 
 fn completed_document(source: &str) -> HtmlParseReport {

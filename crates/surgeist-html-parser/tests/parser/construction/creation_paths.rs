@@ -8,8 +8,8 @@ use surgeist_html::{
     values::DocumentString,
 };
 use surgeist_html_parser::{
-    HtmlParseConstructionOperation, HtmlParseDestination, HtmlParseFailureReason,
-    HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource, HtmlParseStop, HtmlSource,
+    HtmlParseConstructionOperation, HtmlParseDestination, HtmlParseFailureReason, HtmlParseReport,
+    HtmlParseResource, HtmlParseStop, HtmlSource,
 };
 
 /// The creation state of each element of the report named `local`, in tree order. The report
