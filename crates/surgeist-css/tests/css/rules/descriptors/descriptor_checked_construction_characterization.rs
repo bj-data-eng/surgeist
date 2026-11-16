@@ -1258,6 +1258,171 @@ fn font_palette_grammar_rejections_name_the_first_violating_token_and_its_coordi
     }
 }
 
+/// Fonts 4 section 9.2.3 gives `override-colors` as `[ <integer [0,∞]> <color> ]#`, so
+/// an index without its color is an incomplete pair: the descriptor grammar read to the
+/// end of the value and wanted more. The crate's location rule names the last authored
+/// token when input ends first, as the stylesheet and the other pair grammars do; the
+/// failure is an invalid descriptor value, not an invalid component.
+#[test]
+fn an_incomplete_override_colors_pair_names_the_last_token_on_every_front() {
+    let cases = [
+        // The color is missing after the first index.
+        (
+            "0",
+            invalid_value(
+                (0, 0, 0),
+                token(CssTokenKind::Number, "0"),
+                Some(((0, 0, 0), (1, 0, 1))),
+            ),
+        ),
+        // Trailing whitespace and comments are trivia, not the color.
+        (
+            "0 ",
+            invalid_value(
+                (0, 0, 0),
+                token(CssTokenKind::Number, "0"),
+                Some(((0, 0, 0), (1, 0, 1))),
+            ),
+        ),
+        (
+            "0/*c*/",
+            invalid_value(
+                (0, 0, 0),
+                token(CssTokenKind::Number, "0"),
+                Some(((0, 0, 0), (1, 0, 1))),
+            ),
+        ),
+        // A comma follows the index: it is where the color was wanted.
+        (
+            "0,",
+            invalid_value(
+                (1, 0, 1),
+                token(CssTokenKind::Comma, ","),
+                Some(((1, 0, 1), (2, 0, 2))),
+            ),
+        ),
+        // The second pair is incomplete; the first is complete.
+        (
+            "0 red, 1",
+            invalid_value(
+                (7, 0, 7),
+                token(CssTokenKind::Number, "1"),
+                Some(((7, 0, 7), (8, 0, 8))),
+            ),
+        ),
+        // The last token is on the second line.
+        (
+            "0 red,\n 1",
+            invalid_value(
+                (8, 1, 1),
+                token(CssTokenKind::Number, "1"),
+                Some(((8, 1, 1), (9, 1, 2))),
+            ),
+        ),
+    ];
+    for (source, expected) in cases {
+        let kind = PaletteKind::OverrideColors;
+        let constructed =
+            Palette::try_new(kind, components(source), Default::default()).unwrap_err();
+        assert_rejection(
+            constructed.diagnostic(),
+            constructed.origin(),
+            source,
+            &expected,
+        );
+        assert!(constructed.component_error().is_none(), "{source:?}");
+
+        // Reentry runs the same grammar over the replacement.
+        let reentered = palette(kind, "env(x)")
+            .reparse_after_substitution(components(source), Default::default())
+            .unwrap_err();
+        assert_eq!(constructed, reentered, "{source:?}");
+
+        // The source-text front reports the same failure.
+        let report = Palette::parse(&CssParser::default(), source, kind);
+        let [parsed] = report.diagnostics() else {
+            panic!("{source:?}: {:?}", report.diagnostics())
+        };
+        let parsed = parsed.error();
+        assert_eq!(parsed.code(), expected.code, "{source:?}");
+        assert_position(
+            parsed.position(),
+            expected.position.0,
+            expected.position.1,
+            expected.position.2,
+        );
+        assert_eq!(
+            parsed
+                .encountered()
+                .map(|token| (token.kind(), token.authored())),
+            expected.token,
+            "{source:?}"
+        );
+
+        // The stylesheet drops the descriptor and locates the same token, at the
+        // same distance from the start of its value.
+        let sheet = format!("@font-palette-values --x{{font-family:A;override-colors:{source}}}");
+        let value_start = sheet.len() - source.len() - 1;
+        let report = CssParser::default().parse_sheet(&sheet);
+        let [dropped] = report.diagnostics() else {
+            panic!("{sheet:?}: {:?}", report.diagnostics())
+        };
+        let dropped = dropped.error();
+        assert_eq!(dropped.code(), expected.code, "{sheet:?}");
+        assert_eq!(
+            dropped.position().byte_offset().value(),
+            value_start + expected.position.0,
+            "{sheet:?}"
+        );
+        assert_eq!(
+            dropped
+                .encountered()
+                .map(|token| (token.kind(), token.authored())),
+            expected.token,
+            "{sheet:?}"
+        );
+    }
+}
+
+/// The other descriptor grammars of two components or more, which read a component
+/// past the end of an incomplete value through the same window, report an invalid
+/// descriptor value from the checked components and from source text.
+#[test]
+fn incomplete_pair_values_of_the_other_descriptors_report_an_invalid_descriptor_value() {
+    for (kind, source) in [
+        (CounterKind::Range, "1"),
+        (CounterKind::Range, "1 "),
+        (CounterKind::Range, "1 infinite, 2"),
+        (CounterKind::Pad, "3"),
+        (CounterKind::Pad, "3 "),
+        (CounterKind::AdditiveSymbols, "1"),
+        (CounterKind::AdditiveSymbols, "1 \"a\", 2"),
+    ] {
+        let constructed =
+            Counter::try_from_components(kind, components(source), Default::default()).unwrap_err();
+        let diagnostic = constructed.diagnostic().expect("a grammar diagnostic");
+        assert_eq!(
+            diagnostic.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "{kind:?} {source:?}"
+        );
+        assert!(
+            constructed.component_error().is_none(),
+            "{kind:?} {source:?}"
+        );
+        let report = Counter::parse(&CssParser::default(), source, kind);
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .all(|d| d.error().code() == CssErrorCode::InvalidDescriptorValue)
+                && !report.diagnostics().is_empty(),
+            "{kind:?} {source:?}: {:?}",
+            report.diagnostics()
+        );
+    }
+}
+
 fn profile_failures() -> Failures<ProfileError> {
     let kind = ProfileKind::RenderingIntent;
     Failures {
