@@ -16,8 +16,8 @@ use crate::engine::containment::{
 use crate::error::{layout_own_geometry_error, sizing_resolution_error};
 use crate::geometry::{LogicalSizeOf, PhysicalAxis};
 use crate::layout_math::{
-    OptionalSizeExt, UncheckedOptionalSizeSubExt, child_orthogonal_fallback, resolution_optional,
-    resolution_or_zero, resolve_containing_padding_border,
+    OptionalSizeExt, UncheckedOptionalSizeSubExt, child_orthogonal_fallback, resolve_auto_optional,
+    resolve_auto_or_zero, resolve_containing_padding_border, resolve_length_or_zero,
 };
 use crate::output::{PhysicalBaseline, omit_indefinite_percentage_axis};
 use crate::scroll::{
@@ -4703,27 +4703,6 @@ fn resolve_grid_gap<S: LayoutScalar>(
     })
 }
 
-fn resolve_length_or_zero<S: LayoutScalar>(
-    length: LengthOf<S>,
-    basis: Option<S>,
-) -> Result<S, LengthResolutionStatus<S>> {
-    resolution_or_zero(length.resolve_with_status(basis))
-}
-
-fn resolve_auto_or_zero<S: LayoutScalar>(
-    length: LengthAutoOf<S>,
-    basis: Option<S>,
-) -> Result<S, LengthResolutionStatus<S>> {
-    resolution_or_zero(length.resolve_with_status(basis))
-}
-
-fn resolve_auto_optional<S: LayoutScalar>(
-    length: LengthAutoOf<S>,
-    basis: Option<S>,
-) -> Result<Option<S>, LengthResolutionStatus<S>> {
-    resolution_optional(length.resolve_with_status(basis))
-}
-
 trait SizeOptionExt {
     type Scalar: LayoutScalar;
     fn clamp_min_before_max_optional(self, min: Self, max: Self) -> Self;
@@ -4848,8 +4827,8 @@ mod fri06_c13_t06_characterization_tests {
 
     fn characterize_constants<S: LayoutScalar>(largest: S) {
         crate::layout_math::assert_fri06_c13_t06_resolution_policy::<S>(
-            resolution_or_zero,
-            resolution_optional,
+            crate::layout_math::resolution_or_zero,
+            crate::layout_math::resolution_optional,
         );
 
         let border = Edges::new(

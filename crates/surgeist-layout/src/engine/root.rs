@@ -4,11 +4,6 @@ use crate::error::{
 };
 use crate::geometry::{FlowAxes, PhysicalAxis, PhysicalSide};
 use crate::layout_math::{MaxBeforeMinScalarClampExt, OptionalSizeExt};
-use crate::scroll::{
-    CanonicalRetainedScrollSourceOf, CanonicalScrollRangeSeedPolicy,
-    CanonicalScrollSourceBuilderOf, ScrollOriginAxes, ScrollOriginProgression,
-    SettledAutoScrollbarState,
-};
 use crate::sizing::resolve::{
     EdgesResultExt, ResolvedPreferredSize, SizingResolutionError, resolve_auto_or_zero_fallible,
     resolve_length_or_zero_fallible, resolve_maximum_optional, resolve_minimum_optional,
@@ -648,28 +643,19 @@ where
         return Ok(None);
     }
 
-    let settled_auto_scrollbars = SettledAutoScrollbarState::INITIAL;
-    let source = match output.scroll_geometry {
-        Some(ref geometry) => CanonicalRetainedScrollSourceOf::Existing(geometry),
-        None => CanonicalRetainedScrollSourceOf::Reconstruct {
+    crate::scroll::retained_child_scroll_geometry(
+        crate::scroll::RetainedChildScrollSourceOf {
+            box_projection: crate::scroll::ScrollBoxProjection::from_node(style),
+            target_projection: crate::scroll::ScrollTargetProjection::from_node(style),
+            size: output.size,
             content_size: output.content_size,
+            padding: edges.padding,
+            border: edges.border,
+            child_compute_geometry: output.scroll_geometry,
         },
-    };
-    CanonicalScrollSourceBuilderOf::for_node(
-        crate::scroll::ScrollBoxProjection::from_node(style),
-        crate::scroll::ScrollTargetProjection::from_node(style),
-        output.size,
-        edges.border,
-        edges.padding,
-        settled_auto_scrollbars,
-        ScrollOriginAxes::new(
-            ScrollOriginProgression::FlowEndward,
-            ScrollOriginProgression::FlowEndward,
+        crate::scroll::RetainedChildReconstruction::DirectLine(
+            crate::scroll::CanonicalScrollRangeSeedPolicy::IncludeReservedGutter,
         ),
-    )
-    .geometry_from_retained_source(
-        source,
-        CanonicalScrollRangeSeedPolicy::IncludeReservedGutter,
     )
     .map(Some)
     .map_err(|error| root_scroll_error(node, error))

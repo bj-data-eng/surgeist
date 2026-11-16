@@ -1,8 +1,6 @@
 use super::alignment::{alignment_fallback, alignment_offset};
 use super::input::{with_flex_item_projection, with_flex_item_scroll_projections};
-use super::scroll::{
-    FlexChildContribution, retain_flex_scroll_geometry, retained_flex_child_scroll_geometry,
-};
+use super::scroll::{FlexChildContribution, retain_flex_scroll_geometry};
 use super::{Constants, resolve_auto_optional, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error};
 use crate::geometry::{LogicalSizeOf, PhysicalAxis};
@@ -329,14 +327,19 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
             tree,
             child,
             |scroll_box, scroll_target| {
-                retained_flex_child_scroll_geometry(
-                    scroll_box,
-                    scroll_target,
-                    final_size,
-                    output.content_size,
-                    padding,
-                    border,
-                    output.scroll_geometry,
+                crate::scroll::retained_child_scroll_geometry(
+                    crate::scroll::RetainedChildScrollSourceOf {
+                        box_projection: scroll_box,
+                        target_projection: scroll_target,
+                        size: final_size,
+                        content_size: output.content_size,
+                        padding,
+                        border,
+                        child_compute_geometry: output.scroll_geometry,
+                    },
+                    crate::scroll::RetainedChildReconstruction::DirectLine(
+                        crate::scroll::CanonicalScrollRangeSeedPolicy::IncludeReservedGutter,
+                    ),
                 )
             },
         )

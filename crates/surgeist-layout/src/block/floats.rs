@@ -1,5 +1,5 @@
 use super::relative::{self, InsetReference};
-use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
+use super::scroll::BlockScrollContributions;
 use super::{Constants, with_block_scroll_projections};
 use crate::error::{layout_child_geometry_error, value_resolution_error};
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
@@ -1561,14 +1561,19 @@ where
             tree,
             float.node,
             |box_projection, target_projection| {
-                retained_child_scroll_geometry(
-                    box_projection,
-                    target_projection,
-                    float.size,
-                    float.content_size,
-                    float.padding,
-                    float.border,
-                    float.child_compute_geometry,
+                crate::scroll::retained_child_scroll_geometry(
+                    crate::scroll::RetainedChildScrollSourceOf {
+                        box_projection,
+                        target_projection,
+                        size: float.size,
+                        content_size: float.content_size,
+                        padding: float.padding,
+                        border: float.border,
+                        child_compute_geometry: float.child_compute_geometry,
+                    },
+                    crate::scroll::RetainedChildReconstruction::DirectLine(
+                        crate::scroll::CanonicalScrollRangeSeedPolicy::ExcludeReservedGutter,
+                    ),
                 )
             },
         )

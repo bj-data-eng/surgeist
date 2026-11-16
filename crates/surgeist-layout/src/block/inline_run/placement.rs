@@ -1,5 +1,4 @@
 use super::super::relative::{self, InsetReference};
-use super::super::scroll::retained_child_scroll_geometry;
 use super::prepare::InlineRunControl;
 use super::*;
 use crate::inline::InlineSourcePositionOf;
@@ -425,14 +424,19 @@ where
                 tree,
                 child,
                 |box_projection, target_projection| {
-                    retained_child_scroll_geometry(
-                        box_projection,
-                        target_projection,
-                        source.item.size,
-                        source.item.content_size,
-                        source.item.padding,
-                        source.item.border,
-                        output.scroll_geometry,
+                    crate::scroll::retained_child_scroll_geometry(
+                        crate::scroll::RetainedChildScrollSourceOf {
+                            box_projection,
+                            target_projection,
+                            size: source.item.size,
+                            content_size: source.item.content_size,
+                            padding: source.item.padding,
+                            border: source.item.border,
+                            child_compute_geometry: output.scroll_geometry,
+                        },
+                        crate::scroll::RetainedChildReconstruction::DirectLine(
+                            crate::scroll::CanonicalScrollRangeSeedPolicy::ExcludeReservedGutter,
+                        ),
                     )
                 },
             )

@@ -1,7 +1,7 @@
 use super::super::relative::{self, InsetReference};
-use super::super::sizing::{resolve_auto_optional, resolve_length_or_zero};
 use super::super::{BlockChildReceipt, float_text, in_flow};
 use super::*;
+use crate::layout_math::{resolve_auto_optional, resolve_length_or_zero};
 
 pub(super) type InlineRunControl<Node, S> = (Node, usize, Option<crate::VerticalAlignOf<S>>);
 

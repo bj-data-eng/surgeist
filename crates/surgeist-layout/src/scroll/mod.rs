@@ -18,6 +18,8 @@ mod snap;
 mod snap_distance;
 
 #[cfg(test)]
+mod retained_child_tests;
+#[cfg(test)]
 mod snap_tests;
 
 use box_geometry::{AutoScrollbarOverflowObservation, scroll_rect_axis_interval, used_overflow_at};
@@ -40,12 +42,14 @@ pub(crate) use contribution::{
 pub(crate) use input::{ScrollBoxProjection, ScrollTargetProjection};
 
 use construction::CanonicalScrollRectFact;
+#[cfg(test)]
+pub(crate) use construction::rebuild_canonical_scroll_geometry_for_border_box;
 pub(crate) use construction::{
-    CanonicalRetainedScrollSourceOf, CanonicalScrollGeometryErrorOf,
-    CanonicalScrollGeometrySourceOf, CanonicalScrollRangeSeedPolicy,
-    CanonicalScrollSourceBuilderOf, MeasuredLeafScrollGeometrySourceOf,
+    CanonicalScrollGeometryErrorOf, CanonicalScrollGeometrySourceOf,
+    CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf,
+    MeasuredLeafScrollGeometrySourceOf, RetainedChildReconstruction, RetainedChildScrollSourceOf,
     canonical_measured_leaf_scroll_geometry, canonical_scroll_box_from_source,
-    canonical_scroll_geometry_from_source, rebuild_canonical_scroll_geometry_for_border_box,
+    canonical_scroll_geometry_from_source, retained_child_scroll_geometry,
     settled_auto_scrollbars_change_available_geometry,
 };
 
