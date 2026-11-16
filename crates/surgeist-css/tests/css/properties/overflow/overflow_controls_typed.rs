@@ -331,3 +331,176 @@ fn clip_margin_serialization_uses_one_budget_for_outer_box_offset_and_math() {
             .is_byte_limit()
     );
 }
+
+fn specified(value: &str) -> String {
+    parsed_clip_margin(value)
+        .serialize_specified(Default::default())
+        .unwrap()
+}
+
+#[test]
+fn signed_literal_offsets_serialize_canonically_in_box_first_order() {
+    // Values 4 canonical serialization: the sign is kept, trailing zeros and
+    // the plus sign are dropped, and a result that rounds to zero is `0`.
+    for (authored, expected) in [
+        ("-1px", "-1px"),
+        ("+1px", "1px"),
+        ("-2.50PX content-box", "content-box -2.5px"),
+        ("-0.5em border-box", "border-box -0.5em"),
+        ("padding-box -3px", "padding-box -3px"),
+        ("-0px", "0px"),
+        ("-0", "0"),
+        ("padding-box -0.000e999px", "padding-box 0px"),
+        ("-1e-999px", "0px"),
+        ("-0.0000004px", "0px"),
+        ("-0.0000005px", "-0.000001px"),
+        ("-1.0000004px", "-1px"),
+    ] {
+        assert_eq!(specified(authored), expected, "{authored}");
+    }
+}
+
+#[test]
+fn signed_literal_offsets_keep_exact_sign_and_magnitude_until_serialization() {
+    let inset = parsed_clip_margin("-1px");
+    assert_eq!(inset.authored_box_edge(), None);
+    assert_eq!(inset.box_edge(), CssBoxEdgeKeyword::PaddingBox);
+    assert!(inset.authored_offset().unwrap().calculation().is_none());
+    assert_eq!(
+        inset
+            .offset()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-1px"
+    );
+    assert_ne!(inset, parsed_clip_margin("1px"));
+    assert_ne!(inset, parsed_clip_margin("padding-box -1px"));
+    assert_eq!(inset, parsed_clip_margin("-1.0px"));
+    assert_eq!(inset, parsed_clip_margin("-1PX"));
+    // A tiny negative is exactly nonzero even though it serializes as zero.
+    assert_ne!(parsed_clip_margin("-1e-999px"), parsed_clip_margin("0px"));
+    assert_ne!(
+        parsed_clip_margin("-1e-999px"),
+        parsed_clip_margin("1e-999px")
+    );
+    // Negative zero is zero.
+    assert_eq!(parsed_clip_margin("-0px"), parsed_clip_margin("0px"));
+    assert_eq!(parsed_clip_margin("-0"), parsed_clip_margin("0"));
+    assert_eq!(parsed_clip_margin("-0px"), CssOverflowClipMargin::initial());
+}
+
+#[test]
+fn signed_symbolic_offsets_stay_unresolved_math_without_range_clamping() {
+    // Values 4 sum canonicalization (as for `outline-offset: calc(1px - 2em)`
+    // -> `calc(-2em + 1px)`) with no clamp of a negative result to zero.
+    for (authored, expected) in [
+        ("calc(-1px)", "calc(-1px)"),
+        ("calc(1px - 2px)", "calc(-1px)"),
+        ("border-box calc(1px - 2em)", "border-box calc(-2em + 1px)"),
+        ("calc(2em - 3px)", "calc(2em - 3px)"),
+        (
+            "calc(-2em - 3px) content-box",
+            "content-box calc(-2em - 3px)",
+        ),
+        ("calc(1px + 2em)", "calc(2em + 1px)"),
+    ] {
+        assert_eq!(specified(authored), expected, "{authored}");
+        let value = parsed_clip_margin(authored);
+        assert!(
+            value.authored_offset().unwrap().calculation().is_some(),
+            "{authored}: math stays a calculation, not a clamped literal"
+        );
+        assert!(
+            value.authored_offset().unwrap().literal().is_none(),
+            "{authored}"
+        );
+    }
+    assert_ne!(
+        parsed_clip_margin("calc(1px - 2px)"),
+        parsed_clip_margin("0px")
+    );
+    assert_ne!(
+        parsed_clip_margin("calc(1px - 2px)"),
+        parsed_clip_margin("-1px")
+    );
+}
+
+#[test]
+fn signed_offsets_serialize_within_exact_byte_and_node_budgets() {
+    let value = parsed_clip_margin("-2px content-box");
+    assert_eq!(
+        value
+            .serialize_specified(CssSerializationLimits::new(3, 3, 16))
+            .unwrap(),
+        "content-box -2px"
+    );
+    for (limits, kind) in [
+        (
+            CssSerializationLimits::new(2, 3, 16),
+            SerializationFailure::InputNodeLimit,
+        ),
+        (
+            CssSerializationLimits::new(3, 2, 16),
+            SerializationFailure::ProjectionNodeLimit,
+        ),
+        (
+            CssSerializationLimits::new(3, 3, 15),
+            SerializationFailure::ByteLimit,
+        ),
+    ] {
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
+    }
+
+    let math = parsed_clip_margin("border-box calc(1px - 2em)");
+    let serialized = math.serialize_specified(Default::default()).unwrap();
+    assert_eq!(serialized, "border-box calc(-2em + 1px)");
+    assert_eq!(
+        math.serialize_specified(CssSerializationLimits::new(256, 256, serialized.len()))
+            .unwrap(),
+        serialized
+    );
+    assert!(
+        math.serialize_specified(CssSerializationLimits::new(256, 256, serialized.len() - 1))
+            .unwrap_err()
+            .is_byte_limit()
+    );
+    assert!(
+        math.serialize_specified(CssSerializationLimits::new(2, 256, 256))
+            .unwrap_err()
+            .is_input_node_limit()
+    );
+    assert!(
+        math.serialize_specified(CssSerializationLimits::new(256, 2, 256))
+            .unwrap_err()
+            .is_projection_node_limit()
+    );
+}
+
+#[test]
+fn signed_offsets_in_a_block_leave_neighbors_and_recovery_unchanged() {
+    let report = CssParser::default().parse_block_contents(
+        "color:red;overflow-clip-margin:-1px content-box;overflow-clip-margin:-1%;color:blue",
+    );
+    // The accepted inset is retained, the percentage declaration is dropped
+    // atomically, and the neighbors are untouched.
+    assert_eq!(report.syntax().len(), 3);
+    assert_eq!(report.diagnostics().len(), 1);
+    let CssKnownPropertyValueRef::OverflowClipMargin(value) = report.syntax()[1]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("typed clip margin")
+    };
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "content-box -1px"
+    );
+}
