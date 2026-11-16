@@ -15,7 +15,7 @@ use surgeist_html::elements::native::{HtmlCommonScope, HtmlCustomElementState};
 use surgeist_html::parsing::HtmlParserScriptingMode;
 use surgeist_html_semantics::*;
 
-fn document_report(html: &str) -> crate::HtmlParseReport {
+pub(super) fn document_report(html: &str) -> crate::HtmlParseReport {
     crate::HtmlDocumentParseRequest::offline(
         crate::HtmlSource::utf8(html),
         crate::parser::tree_builder::tests::limits(100),
@@ -25,7 +25,7 @@ fn document_report(html: &str) -> crate::HtmlParseReport {
 }
 
 /// The elements of a published report named `local`, in tree-construction order.
-fn elements(report: &crate::HtmlParseReport, local: &str) -> Vec<HtmlNodeId> {
+pub(super) fn elements(report: &crate::HtmlParseReport, local: &str) -> Vec<HtmlNodeId> {
     let arena = &report.history().storage().view;
     (0..arena.len())
         .filter_map(|position| {
@@ -68,7 +68,7 @@ fn scope(report: &crate::HtmlParseReport, id: &HtmlNodeId) -> Option<HtmlCommonS
 }
 
 /// The contents of the one template of `report`.
-fn template_contents(report: &crate::HtmlParseReport) -> HtmlNodeId {
+pub(super) fn template_contents(report: &crate::HtmlParseReport) -> HtmlNodeId {
     let mut cursor = report.metadata();
     loop {
         match cursor.advance() {
@@ -182,7 +182,7 @@ fn nodes_that_are_not_elements_have_no_creation_state() {
 /// A fragment parse in the context of a `div`. With `registry` the document and the element name
 /// a global registry as their lookup registry, and otherwise the Null registry. With `shadow` the
 /// parse allows declarative shadow roots.
-fn fragment_report(html: &str, registry: bool, shadow: bool) -> crate::HtmlParseReport {
+pub(super) fn fragment_report(html: &str, registry: bool, shadow: bool) -> crate::HtmlParseReport {
     let mut builder = HtmlCaptureBuilder::new(
         HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),

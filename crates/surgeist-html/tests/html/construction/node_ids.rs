@@ -113,3 +113,51 @@ fn debug_output_names_the_serial_and_the_zero_based_position() {
         "{id}"
     );
 }
+
+/// Every node of a result has its own record position below the node count of the result's usage,
+/// whatever its place in the tree, and the position of a record is the same in two results built
+/// the same way: it names a record of one result and carries no order.
+#[test]
+fn a_node_position_is_its_record_below_the_node_count_of_the_result() {
+    let build = || {
+        let mut builder = HtmlDocument::builder(limits(), HtmlDocumentMode::NoQuirks).unwrap();
+        let root = builder.root();
+        let template = builder
+            .append_element(
+                &root,
+                QualifiedName::new(Namespace::html(), None, "template"),
+                OrderedAttributes::default(),
+            )
+            .unwrap();
+        let contents = builder.template_contents(&template).unwrap().unwrap();
+        // Created after the contents, placed before the template.
+        builder.append_text(&contents, "inside").unwrap();
+        builder
+            .append_element(
+                &root,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+            )
+            .unwrap();
+        builder.finish().unwrap()
+    };
+    let document = build();
+    let mut positions = Vec::new();
+    let mut pending = vec![document.root().id()];
+    while let Some(id) = pending.pop() {
+        let node = document.node(&id).unwrap();
+        positions.push(id.position());
+        pending.extend(node.children());
+        pending.extend(node.template_contents());
+    }
+    let nodes = document.usage().nodes();
+    positions.sort_unstable();
+    assert_eq!(positions, (0..nodes).collect::<Vec<_>>());
+    // The records of a second build sit at the same positions, in a result of their own.
+    let other = build();
+    assert_eq!(
+        other.root().id().position(),
+        document.root().id().position()
+    );
+    assert_ne!(other.root().id(), document.root().id());
+}

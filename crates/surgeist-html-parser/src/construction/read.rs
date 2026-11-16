@@ -1009,7 +1009,11 @@ impl<'a> HtmlParseHistory<'a> {
 }
 
 impl<'a> report::HtmlParseMetadata<'a> {
-    /// Actual independent cryptographic slot, including initialized empty.
+    /// The value of the nonce slot an element holds a row for, which is empty until a `nonce`
+    /// attribute is installed. An element whose token carried a `nonce` attribute, a clone of one,
+    /// and `html` and `body` have a record; any other element has the empty nonce, which
+    /// [`HtmlParseReport::cryptographic_nonce`](crate::HtmlParseReport::cryptographic_nonce)
+    /// answers by node.
     pub fn cryptographic_nonce(&self) -> Option<&'a DocumentString> {
         self.nonce()
     }

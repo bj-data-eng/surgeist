@@ -744,12 +744,13 @@ fn formatting_child_transfer_preserves_existing_destination_order_and_backlinks(
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
         // A join cell and a context cell for each record, a row for each registry row, a row for
-        // each Document's facts, a row for each creation state and an entry for each context the
-        // nodes name.
+        // each Document's facts, a row for each creation state, a row for each nonce and an entry
+        // for each context the nodes name.
         2 * session.active().unwrap().construction.len() as u64
             + session.active().unwrap().payloads.values.len() as u64
             + session.active().unwrap().payloads.facts.documents.len() as u64
             + session.active().unwrap().payloads.facts.creation.len() as u64
+            + session.active().unwrap().payloads.facts.nonces.len() as u64
             + session
                 .active()
                 .unwrap()
@@ -895,7 +896,7 @@ fn formatting_wide_replay_source_map_coexistence_exact_and_one_short_reclaims_pa
     // Keep the real lexical owner across replay: two occurrence/cause pairs
     // and 523 actual delimiter/field parts add 527 retained source rows.
     // The retained lexer last-start b adds one buffered unit (514 -> 515).
-    for cap in [1564, 1565] {
+    for cap in [1562, 1563] {
         let source = crate::HtmlSource::utf8(format!("<b v='{}'>", "x".repeat(512)));
         let mut c = ParseControl::new(
             limits()
@@ -925,12 +926,12 @@ fn formatting_wide_replay_source_map_coexistence_exact_and_one_short_reclaims_pa
             1041
         );
         let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
-        if cap == 1564 {
-            // 1041 retained entries plus the copy leave one short of 1565.
+        if cap == 1562 {
+            // 1041 retained entries plus the copy leave one short of 1563.
             let first = HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::SourceMapEntries,
-                limit: 1564,
-                current: 1564,
+                limit: 1562,
+                current: 1562,
                 requested_delta: 1,
             };
             assert_eq!(result.err(), Some(SessionError::Stop(first)));
@@ -938,7 +939,7 @@ fn formatting_wide_replay_source_map_coexistence_exact_and_one_short_reclaims_pa
                 c.usage()
                     .resource(HtmlParseResource::SourceMapEntries)
                     .current,
-                1564
+                1562
             );
             assert_eq!(
                 c.usage()
@@ -958,13 +959,13 @@ fn formatting_wide_replay_source_map_coexistence_exact_and_one_short_reclaims_pa
                 c.usage()
                     .resource(HtmlParseResource::SourceMapEntries)
                     .current,
-                1565
+                1563
             );
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::SourceMapEntries)
                     .high_water,
-                1565
+                1563
             );
         }
         let stop = c.stop();
@@ -1107,6 +1108,7 @@ fn formatting_child_transfer_stops_with_an_ordered_coherent_prefix_and_reclaims_
                 + storage.payloads.values.len() as u64
                 + storage.payloads.facts.documents.len() as u64
                 + storage.payloads.facts.creation.len() as u64
+                + storage.payloads.facts.nonces.len() as u64
                 + storage.payloads.facts.contexts.entries().len() as u64
         );
         if result.is_err() {

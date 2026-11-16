@@ -76,6 +76,10 @@ pub(super) struct ParseFacts {
     /// The creation state of the elements that have one other than the default of their
     /// namespace: those with a custom element name, an `is` attribute or a saved `is` value.
     pub(super) creation: FamilyTable<context::ElementCreationState>,
+    /// The nonce slot of the elements that have a row for it: those whose token carries a `nonce`
+    /// attribute, the clones of such an element, and `html` and `body`. Any other element of the
+    /// HTML, SVG or MathML namespace has the empty nonce.
+    pub(super) nonces: FamilyTable<NonceRow>,
 }
 impl ParseFacts {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
@@ -115,6 +119,17 @@ impl ParseFacts {
                 return Err(error);
             }
         };
+        let nonces = match FamilyTable::new(control) {
+            Ok(nonces) => nonces,
+            Err(error) => {
+                missing.release(control, &owner, |_, _| Ok(()))?;
+                documents.release(control, &owner, |_, _| Ok(()))?;
+                associations.release(control, &owner)?;
+                contexts.release(control, &owner)?;
+                creation.release(control, &owner, |_, _| Ok(()))?;
+                return Err(error);
+            }
+        };
         Ok(Self {
             completion: None,
             documents,
@@ -123,6 +138,7 @@ impl ParseFacts {
             associations,
             contexts,
             creation,
+            nonces,
         })
     }
 }
@@ -143,10 +159,6 @@ pub(super) enum RetainedPayload {
     Image {
         node: usize,
         state: associated::ImageMetadata,
-    },
-    Nonce {
-        node: Option<usize>,
-        raw: usize,
     },
     BaseDocument {
         node: usize,
@@ -371,9 +383,6 @@ fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
         RetainedPayload::Hyperlink { node, .. } => (Join::Hyperlink, *node),
         RetainedPayload::Style { node, .. } => (Join::Style, *node),
         RetainedPayload::Dialog { node, .. } => (Join::Dialog, *node),
-        RetainedPayload::Nonce {
-            node: Some(node), ..
-        } => (Join::Nonce, *node),
         RetainedPayload::Input {
             node: Some(node), ..
         } => (Join::Input, *node),
@@ -765,6 +774,7 @@ impl PayloadStorage {
             associations,
             contexts,
             creation,
+            nonces,
             ..
         } = facts;
         let join_entries = node_joins.len() as u64;
@@ -790,6 +800,8 @@ impl PayloadStorage {
             &mut refused,
             creation.release(control, owner, |_, _| Ok(())),
         );
+        // The strings the rows name are rows of the registry, released with it.
+        keep_first(&mut refused, nonces.release(control, owner, |_, _| Ok(())));
         // The storage the owner's state holds is returned with the registry's own, below.
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         if let Some(log) = csp {

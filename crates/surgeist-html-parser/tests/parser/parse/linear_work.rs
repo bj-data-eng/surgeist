@@ -953,11 +953,14 @@ fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doub
     // `</p>` closes the `b` it contains, which stays in the list of active formatting elements;
     // the `x` that follows reconstructs it, copying every attribute to the new element. Every
     // measure of the work is linear in the number of attributes: the replay compares no name
-    // pairwise.
+    // pairwise. The names have one length, so that the total length of the names, which the
+    // parse reads, is linear in the number of attributes: names of the decimal digits of their
+    // index lengthen by one unit at each power of ten, which makes the units read grow by more
+    // than a factor of two between 1,000 and 2,000 attributes whatever the algorithm.
     assert_measures_at_most_two_point_two_times(
         [250, 500, 1_000, 2_000],
         |n| {
-            let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
+            let attributes: String = (0..n).map(|i| format!(" a{i:05}=v")).collect();
             format!("<!doctype html><p><b{attributes}></p>x")
         },
         &[

@@ -446,8 +446,8 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             original
         );
         assert_eq!(session.active().unwrap().construction.len(), 3);
-        // 8 registry rows, 9 with the Document's row that the Document table holds.
-        assert_eq!(session.active().unwrap().payloads.values.len(), 8);
+        // 6 registry rows, 7 with the Document's row that the Document table holds.
+        assert_eq!(session.active().unwrap().payloads.values.len(), 6);
         assert!(session.active().unwrap().effects.form.is_none());
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();

@@ -69,7 +69,11 @@ causes; later HTML/body attribute merges do not rewrite that saved value.
 Ordinary offline and completed inert/disabled contextual reports lend
 subject-qualified common state for actual Null lookup registries. Its
 `HtmlCommonState<Infallible>` retains the profile's actual null previous focus;
-nonce is retained independently. A/Area records preserve the actual source-time URL
+nonce is retained independently: an element whose token carried a `nonce`
+attribute, a clone of one, and `html` and `body` have a metadata record for it.
+`HtmlParseReport::cryptographic_nonce` answers by node with that value or, for
+any other element of the HTML, SVG or MathML namespace, the empty nonce. A/Area
+records preserve the actual source-time URL
 snapshot and historical parse Document. Absent href, observed URL parse failure
 and unavailable context are separate states. Immutable request observation banks
 are qualified against the actual Document's base, encoding and full external

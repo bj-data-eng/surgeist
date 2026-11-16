@@ -441,26 +441,20 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
     let states = rows(&report);
     assert!(known_refresh(&states[0]));
     assert!(states[0].first_missing().is_none());
-    let mut cursor = report.metadata();
+    // Each element answers its creation state by node, whether or not a record holds it, so the
+    // `meta` elements are found in the tree and not among the records.
+    let document = report.document().unwrap();
     let mut subjects = Vec::new();
-    loop {
-        match cursor.advance() {
-            // Each element answers its creation state by node, whether or not a record holds it,
-            // and has more than one record, so each is collected once.
-            HtmlParseMetadataStep::Record(row) => {
-                if let surgeist_html::construction::HtmlNodeKind::Element(element) =
-                    row.node().kind()
-                    && element.name().local_name() == &DocumentString::from("meta")
-                    && report.creation(&row.node().id()).unwrap().value().is_some()
-                    && !subjects.contains(&row.node().id())
-                {
-                    subjects.push(row.node().id());
-                }
-            }
-            HtmlParseMetadataStep::Skipped => (),
-            HtmlParseMetadataStep::Complete => break,
-            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+    let mut pending = vec![document.root().id()];
+    while let Some(id) = pending.pop() {
+        let node = document.node(&id).unwrap();
+        if let surgeist_html::construction::HtmlNodeKind::Element(element) = node.kind()
+            && element.name().local_name() == &DocumentString::from("meta")
+            && report.creation(&id).unwrap().value().is_some()
+        {
+            subjects.push(id);
         }
+        pending.extend(node.children());
     }
     assert_eq!(subjects.len(), 2);
     assert_ne!(subjects[0], subjects[1]);

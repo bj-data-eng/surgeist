@@ -882,7 +882,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             let image = result.unwrap();
             assert_form_owner(&session, &mut c, &image, None, false);
             // Prior name/namespace + record ticket + form/creation
-            // metadata + two nonce slots, plus one standalone Image row.
+            // metadata, plus one standalone Image row.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
@@ -943,8 +943,8 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             // Metadata, name and namespace are initialized;
             // the next actual record-ticket entry is the rejected slot.
             assert_eq!(session.active().unwrap().construction.len(), 3);
-            // 13 registry rows, 14 with the Document's row that the Document table holds.
-            assert_eq!(session.active().unwrap().payloads.values.len(), 13);
+            // 9 registry rows, 10 with the Document's row that the Document table holds.
+            assert_eq!(session.active().unwrap().payloads.values.len(), 9);
             assert!(
                 session
                     .active()

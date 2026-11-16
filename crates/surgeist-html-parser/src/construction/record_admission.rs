@@ -31,9 +31,14 @@ pub(super) enum NewRecord<'a> {
     Element(
         surgeist_html::values::QualifiedName,
         Option<surgeist_html::elements::link::HtmlLinkFlags>,
+        NonceAtCreation,
     ),
     /// An element of a name the storage has interned.
-    NamedElement(NameId, Option<surgeist_html::elements::link::HtmlLinkFlags>),
+    NamedElement(
+        NameId,
+        Option<surgeist_html::elements::link::HtmlLinkFlags>,
+        NonceAtCreation,
+    ),
     ShadowContents(HtmlShadowRootProperties),
 }
 
@@ -349,13 +354,13 @@ impl SessionStorage {
                 construction.create_doctype(name, Some(public), Some(system), &mut admission)
             }
             #[cfg(test)]
-            NewRecord::Element(name, flags) => construction.create_element(
+            NewRecord::Element(name, flags, _) => construction.create_element(
                 &name,
                 surgeist_html::values::OrderedAttributes::default(),
                 flags,
                 &mut admission,
             ),
-            NewRecord::NamedElement(name, flags) => {
+            NewRecord::NamedElement(name, flags, _) => {
                 construction.create_element_named(&name, flags, &mut admission)
             }
             NewRecord::ShadowContents(properties) => {

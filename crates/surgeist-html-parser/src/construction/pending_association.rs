@@ -378,26 +378,27 @@ impl SessionStorage {
         self.association_field(c, FieldRef::AttributeValue(node, position))
             .map(Some)
     }
-    /// The internal nonce row's value, separate from the potentially hidden
-    /// authored attribute. One join cell and one row, whatever else is retained.
+    /// A row of its own that holds the empty string.
+    fn association_empty(&mut self, c: &mut ParseControl) -> Result<ValueRow, SessionError> {
+        let buffer = Utf16Buffer::new(c)?;
+        let frozen = buffer.freeze(c)?;
+        let (native, row) = self.register_group_string_owned(c, frozen, None)?;
+        drop(native);
+        Ok(ValueRow(row))
+    }
+    /// The nonce of the element `node`, which is of the HTML namespace: the value of its row in
+    /// the table of nonces, separate from the potentially hidden authored attribute, and the
+    /// empty nonce when it has no row. One search of the table and one row of its own, whatever
+    /// else is retained.
     fn association_nonce(
         &mut self,
         c: &mut ParseControl,
         node: usize,
-    ) -> Result<Option<ValueRow>, SessionError> {
-        if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::Nonce {
-                node: Some(owner),
-                raw,
-            }) = self.payloads.values.get(slot)
-                && *owner == node
-            {
-                let raw = *raw;
-                return self.association_string(c, raw).map(Some);
-            }
+    ) -> Result<ValueRow, SessionError> {
+        match self.nonce_slot(c, node)? {
+            Some((_, raw)) => self.association_string(c, raw),
+            None => self.association_empty(c),
         }
-        Ok(None)
     }
     fn association_style_inputs(
         &mut self,
@@ -453,9 +454,7 @@ impl SessionStorage {
                 *slot = self.association_attribute(c, node, local)?;
             }
             // Internal nonce is separate from the potentially hidden authored attribute.
-            if let Some(nonce) = self.association_nonce(c, node)? {
-                attributes[4] = Some(nonce);
-            }
+            attributes[4] = Some(self.association_nonce(c, node)?);
             let mut next = self
                 .construction
                 .node_at(node)
@@ -1148,14 +1147,15 @@ impl SessionStorage {
             }
         }
     }
-    /// Test harness: reads the association nonce of `node`.
+
+    /// Test harness: takes the association nonce of `node`.
     #[cfg(test)]
-    pub(super) fn association_nonce_present(
+    pub(super) fn association_nonce_row(
         &mut self,
         c: &mut ParseControl,
         node: usize,
-    ) -> Result<bool, SessionError> {
-        Ok(self.association_nonce(c, node)?.is_some())
+    ) -> Result<(), SessionError> {
+        self.association_nonce(c, node).map(drop)
     }
     pub(super) fn association_style_trigger(
         &mut self,

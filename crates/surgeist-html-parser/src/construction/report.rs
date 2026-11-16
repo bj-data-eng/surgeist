@@ -174,6 +174,9 @@ pub(crate) struct ReportStorage {
     closed_common: bool,
     /// The start positions by node, built at the first read.
     pub(super) starts: std::sync::OnceLock<positions::StartIndex>,
+    /// The empty nonce every element of the HTML, SVG and MathML namespaces that holds no row
+    /// has, made at the first read that needs it.
+    empty_nonce: std::sync::OnceLock<DocumentString>,
 }
 pub(crate) struct PreparedReportStorage<'a> {
     history: PreparedHistory<'a>,
@@ -450,21 +453,6 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_select(arena, select, c)?;
                     }
                 }
-                RetainedPayload::Nonce { node, raw } => {
-                    let node = node.ok_or(SessionError::NonceMetadataUnavailable)?;
-                    let record = checked_node(arena, node, c)?;
-                    c.charge(
-                        HtmlParseWorkCategory::InspectByte,
-                        surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
-                    )?;
-                    let ConstructionNodeKind::Element(element) = record.kind() else {
-                        return Err(SessionError::NonceMetadataUnavailable);
-                    };
-                    if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
-                        return Err(SessionError::NonceMetadataUnavailable);
-                    }
-                    checked_raw(storage, *raw, c)?;
-                }
                 RetainedPayload::Textarea { state, .. } => {
                     checked_raw(storage, state.raw, c)?;
                 }
@@ -528,6 +516,7 @@ impl<'a> PreparedReportStorage<'a> {
             }
         }
         qualify_creation_rows(storage, arena, c)?;
+        qualify_nonce_rows(storage, arena, c)?;
         if closed_common {
             qualify_elements(storage, arena, c)?;
         }
@@ -667,6 +656,7 @@ impl<'a> PreparedReportStorage<'a> {
             history: self.history.commit()?,
             closed_common: self.closed_common,
             starts: std::sync::OnceLock::new(),
+            empty_nonce: std::sync::OnceLock::new(),
         })
     }
 }
@@ -710,6 +700,34 @@ fn qualify_creation_rows(
         if let Some(saved) = state.saved_is {
             checked_raw(storage, saved, c)?;
         }
+    }
+    Ok(())
+}
+/// Qualifies the rows of the table of nonces: each names an element of the HTML, SVG or MathML
+/// namespace, and the string it holds resolves.
+fn qualify_nonce_rows(
+    storage: &FrozenStorage,
+    arena: &HtmlConstructionResult,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
+    for (node, row) in storage.payloads.facts.nonces.iter() {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<nonce::NonceRow>() as u64,
+        )?;
+        let record = checked_node(arena, node, c)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
+        )?;
+        let ConstructionNodeKind::Element(element) = record.kind() else {
+            return Err(SessionError::NonceMetadataUnavailable);
+        };
+        if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
+            return Err(SessionError::NonceMetadataUnavailable);
+        }
+        checked_raw(storage, row.raw, c)?;
     }
     Ok(())
 }
@@ -937,7 +955,6 @@ fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
         | RetainedPayload::Style { node, .. }
         | RetainedPayload::Dialog { node, .. } => MetadataNode::Bound(*node),
         RetainedPayload::Base { node, .. }
-        | RetainedPayload::Nonce { node, .. }
         | RetainedPayload::PiAttributes { node, .. }
         | RetainedPayload::Template { node, .. }
         | RetainedPayload::SvgScript { node, .. }
@@ -1158,6 +1175,56 @@ impl ReportStorage {
             probes: creation_probes.saturating_add(registry_probes),
         })
     }
+    /// The cryptographic nonce of the element `node`: the value of its row in the table of nonces,
+    /// and for an element of the HTML, SVG or MathML namespace with no row the empty nonce. A node
+    /// that is not an element, and an element of another namespace, has none.
+    pub(crate) fn node_nonce(
+        &self,
+        node: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<HtmlParseNodeRead<Option<&DocumentString>>, HtmlParseNodeReadError> {
+        let storage = self.history.storage();
+        let arena = arena(storage);
+        let record = arena
+            .node_by_result_id(node)
+            .map_err(|_| HtmlParseNodeReadError::Foreign)?;
+        let ConstructionNodeKind::Element(element) = record.kind() else {
+            return Ok(HtmlParseNodeRead {
+                value: None,
+                probes: 0,
+            });
+        };
+        if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
+            return Ok(HtmlParseNodeRead {
+                value: None,
+                probes: 0,
+            });
+        }
+        let nonces = &storage.payloads.facts.nonces;
+        let (found, probes) = nonces.find_published(record.position());
+        let value = match found {
+            None => self.empty_nonce.get_or_init(DocumentString::default),
+            Some(index) => {
+                let row =
+                    nonces
+                        .row(index)
+                        .ok_or(HtmlParseNodeReadError::Unresolved(unresolved(
+                            read::HtmlParseUnresolvedKind::Fact,
+                        )))?;
+                let resolver = Resolver {
+                    history: &self.history,
+                    storage,
+                    arena,
+                };
+                resolver
+                    .raw(row.raw)
+                    .map_err(HtmlParseNodeReadError::Unresolved)?
+            }
+        };
+        Ok(HtmlParseNodeRead {
+            value: Some(value),
+            probes,
+        })
+    }
     /// The document of the tree that holds `node`, for tests that ask about a node whose root they
     /// do not know.
     #[cfg(test)]
@@ -1190,6 +1257,7 @@ impl ReportStorage {
             next: 0,
             document: 0,
             creation: 0,
+            nonce: 0,
             fault: None,
         }
     }
@@ -1296,6 +1364,8 @@ pub struct HtmlParseMetadataCursor<'a> {
     document: usize,
     /// The next row of the table of creation states, read after the Document table.
     creation: usize,
+    /// The next row of the table of nonces, read after the table of creation states.
+    nonce: usize,
     fault: Option<read::HtmlParseUnresolvedReference>,
 }
 #[expect(
@@ -1374,7 +1444,7 @@ impl<'a> HtmlParseMetadataCursor<'a> {
         let (Some(node), Some(state)) =
             (creation.node_at(self.creation), creation.row(self.creation))
         else {
-            return HtmlParseMetadataStep::Complete;
+            return self.advance_nonce();
         };
         self.creation = self.creation.saturating_add(1);
         let resolver = Resolver {
@@ -1397,6 +1467,26 @@ impl<'a> HtmlParseMetadataCursor<'a> {
             state,
             registry_is_null,
         ) {
+            Ok(record) => HtmlParseMetadataStep::Record(record),
+            Err(fault) => {
+                self.fault = Some(fault);
+                HtmlParseMetadataStep::Fault(fault)
+            }
+        }
+    }
+    /// The elements with a row in the table of nonces, each one actual row.
+    fn advance_nonce(&mut self) -> HtmlParseMetadataStep<'a> {
+        let nonces = &self.storage.payloads.facts.nonces;
+        let (Some(node), Some(row)) = (nonces.node_at(self.nonce), nonces.row(self.nonce)) else {
+            return HtmlParseMetadataStep::Complete;
+        };
+        self.nonce = self.nonce.saturating_add(1);
+        let resolver = Resolver {
+            history: self.history,
+            storage: self.storage,
+            arena: self.arena,
+        };
+        match HtmlParseMetadata::issue_nonce(resolver, self.closed_common, node, row) {
             Ok(record) => HtmlParseMetadataStep::Record(record),
             Err(fault) => {
                 self.fault = Some(fault);
@@ -1579,6 +1669,8 @@ impl<'a> Resolver<'a> {
 enum Refs<'a> {
     None,
     Raw(&'a DocumentString),
+    /// A row of the table of nonces: the value of the nonce slot of its element.
+    Nonce(&'a DocumentString),
     Input {
         raw: &'a DocumentString,
         image_source: Option<&'a DocumentString>,
@@ -1653,7 +1745,6 @@ impl<'a> Refs<'a> {
         node: HtmlNode<'a>,
     ) -> Result<Self, Fault> {
         Ok(match payload {
-            RetainedPayload::Nonce { raw, .. } => Self::Raw(r.raw(*raw)?),
             RetainedPayload::Textarea { state, .. } => Self::Raw(r.raw(state.raw)?),
             RetainedPayload::Input { raw, state, .. } => Self::Input {
                 raw: r.raw(*raw)?,
@@ -2095,6 +2186,20 @@ impl<'a> HtmlParseMetadata<'a> {
             refs: Refs::resolve_creation(resolver, state, registry_is_null)?,
         })
     }
+    /// The record of an element with a row in the table of nonces, issued from that row.
+    fn issue_nonce(
+        resolver: Resolver<'a>,
+        closed_common: bool,
+        node: usize,
+        row: &nonce::NonceRow,
+    ) -> Result<Self, Fault> {
+        Ok(Self {
+            node: resolver.native(node)?,
+            closed_common,
+            payload: None,
+            refs: Refs::Nonce(resolver.raw(row.raw)?),
+        })
+    }
     /// The record of a Document the parse owns, issued from its table row.
     fn issue_document(
         resolver: Resolver<'a>,
@@ -2223,8 +2328,8 @@ impl<'a> HtmlParseMetadata<'a> {
         self.node
     }
     pub(super) fn nonce(&self) -> Option<&'a DocumentString> {
-        match (self.payload?, self.refs) {
-            (RetainedPayload::Nonce { .. }, Refs::Raw(raw)) => Some(raw),
+        match self.refs {
+            Refs::Nonce(raw) => Some(raw),
             _ => None,
         }
     }

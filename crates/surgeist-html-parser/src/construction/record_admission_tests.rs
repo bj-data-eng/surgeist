@@ -59,7 +59,13 @@ fn allocate_element(
         )
         .unwrap();
     let node = storage
-        .allocate(control, NewRecord::NamedElement(id, None), template, 0, 0)
+        .allocate(
+            control,
+            NewRecord::NamedElement(id, None, NonceAtCreation::Absent),
+            template,
+            0,
+            0,
+        )
         .unwrap();
     node.handle
 }

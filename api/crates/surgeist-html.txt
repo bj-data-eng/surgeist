@@ -3996,6 +3996,8 @@ pub fn surgeist_html::construction::HtmlNode<'a>::shadow_properties(self) -> cor
 pub fn surgeist_html::construction::HtmlNode<'a>::template_contents(self) -> core::option::Option<surgeist_html::construction::HtmlNodeId>
 pub fn surgeist_html::construction::HtmlNode<'a>::template_contents_kind(self) -> core::option::Option<surgeist_html::construction::HtmlTemplateContentsKind>
 pub struct surgeist_html::construction::HtmlNodeId
+impl surgeist_html::construction::HtmlNodeId
+pub fn surgeist_html::construction::HtmlNodeId::position(self) -> usize
 impl core::fmt::Debug for surgeist_html::construction::HtmlNodeId
 pub fn surgeist_html::construction::HtmlNodeId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::construction::HtmlProcessingInstruction
