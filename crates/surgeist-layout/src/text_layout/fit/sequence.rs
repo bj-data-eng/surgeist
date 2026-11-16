@@ -318,9 +318,16 @@ where
             }),
             &mut zone,
         )?;
-        let verdict = trial
-            .candidate
-            .is_some_and(|candidate| glyph_advances_hold(&candidate.finalized));
+        // A line stretched by justification can hide negative spacing: the stretch lifts the very
+        // steps the check reads. A stretched group line is only possible where a shorter
+        // candidate of the group overflowed although the whole group fits, that is, where the
+        // flow is not monotone, so it keeps the walk. With non-negative spacing the group's flow
+        // is at least that of its overflowing prefix, the group line overflows as well and is
+        // never stretched.
+        let verdict = trial.candidate.is_some_and(|candidate| {
+            candidate.amounts.iter().all(|amount| *amount == 0.0)
+                && glyph_advances_hold(&candidate.finalized)
+        });
         match self.spacing_verdicts.get_mut(slot) {
             // A search that backtracked to an earlier line of the same group covers more of it.
             Some(entry) if entry.1 == *end => *entry = (start, *end, verdict),

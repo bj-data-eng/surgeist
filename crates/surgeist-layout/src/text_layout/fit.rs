@@ -1661,13 +1661,17 @@ where
             };
             let fits = !disposition.is_formatted() || fits_width(admission, css_width);
             // The same comparison on the natural line. Only the ordinary operation compares it.
+            // It only decides whether the line search may stop early, so it never raises an error
+            // of its own: a layout the stop does not apply to must behave as it did without it.
+            // A failed width counts as a fit, because a fit forbids the stop and a misfit
+            // would allow it.
             let natural_fits = match input.available.operation() {
                 crate::SizingOperation::Normal => {
                     !disposition.is_formatted()
-                        || fits_width(
-                            natural_fit,
-                            css_margin_edge_width(natural_fit, request.context.indent)?,
-                        )
+                        || match css_margin_edge_width(natural_fit, request.context.indent) {
+                            Ok(css_width) => fits_width(natural_fit, css_width),
+                            Err(_) => true,
+                        }
                 }
                 crate::SizingOperation::MinContent | crate::SizingOperation::MaxContent => fits,
             };
