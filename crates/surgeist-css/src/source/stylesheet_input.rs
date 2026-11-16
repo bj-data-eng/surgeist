@@ -77,7 +77,8 @@ impl CssDecodedStylesheetInput {
     }
 
     /// Returns the one unfiltered UTF-8 source used by sheet parsing.
-    /// Its UTF-8 offsets are not offsets into the original byte stream.
+    /// Its UTF-8 offsets are not offsets into the original byte stream, and a
+    /// leading encoding declaration is in it.
     #[must_use]
     pub fn source(&self) -> &CssSourceSnapshot {
         &self.0.source
@@ -132,7 +133,9 @@ impl CssDecodedStylesheetInput {
     /// Decodes a complete byte input according to CSS Syntax's fallback and BOM precedence.
     ///
     /// Decoding retains CR, FF, CRLF and NUL for the existing tokenizer to filter.
-    /// An inferred ASCII charset prefix remains in the decoded text. The limits are
+    /// An inferred ASCII charset prefix remains in the decoded text, where
+    /// [`CssParser::parse_sheet_bytes`](crate::CssParser::parse_sheet_bytes)
+    /// consumes the exact declaration at the start without a diagnostic. The limits are
     /// atomic and independent: an input over either refuses the whole decode.
     ///
     /// # Errors

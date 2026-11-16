@@ -79,9 +79,9 @@ consumed by an implemented generic or feature grammar without recovery. It is
 evidence for the productions the [support catalog](#support-metadata-describes-a-selected-surface)
 marks supported and does not prove conformance. A diagnostic can also come
 from valid syntax: a `Partial` or `RecognizedUnsupported` record leaves syntax
-outside its subset reported, and a leading `@charset "utf-8";` declaration is
-reported as the unrecognized rule that [§8.3](reference.md#stylesheet-encoding-guidance)
-requires.
+outside its subset reported, and an `@charset` that is not the exact encoding
+declaration at the start of the stylesheet is reported as the unrecognized rule
+that [§8.3](reference.md#stylesheet-encoding-guidance) requires.
 
 A renderer is conformant when it parses every feature of the module and renders
 the document accordingly, apart from limits of the device. `surgeist-css` is not

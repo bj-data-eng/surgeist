@@ -8,6 +8,7 @@ use super::{ScopedBodyKind, fragments, parse_sheet_inner};
 use crate::diagnostic::error::from_parse_error;
 use crate::rule::{CssRule, CssSheet, CssStyleBlock};
 use crate::source::CssSourceSnapshot;
+use surgeist_css_parser::input::encoding_declaration;
 
 #[derive(Clone)]
 pub(crate) enum BoundedParseContext {
@@ -68,6 +69,10 @@ impl BoundedParseContext {
     }
 }
 
+/// Parses the sheet that `source_snapshot` holds. `source` is the text whose
+/// tokens are read: the snapshot's own text, or a view of it whose leading
+/// encoding declaration is blanked (see [`without_encoding_declaration`]),
+/// which keeps the snapshot's positions.
 pub(crate) fn parse_sheet_bounded(
     source: &str,
     source_snapshot: &CssSourceSnapshot,
@@ -75,12 +80,33 @@ pub(crate) fn parse_sheet_bounded(
     namespaces: SharedNamespaces,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
-    let report = parse_bounded(source, source_snapshot, context, namespaces, parser_context);
+    let state = RecoveryState::at_depth_with_snapshot(0, namespaces, source_snapshot.clone())
+        .with_parser_context(parser_context);
+    let state = if std::ptr::eq(source, source_snapshot.as_str()) {
+        state
+    } else {
+        state.with_text(source)
+    };
+    let report = parse_bounded_in(source, source_snapshot, context, state);
     let (syntax, diagnostics) = report.into_parts();
     let BoundedParseSyntax::Rules(sheet) = syntax else {
         return crate::CssParseReport::new(CssSheet::new(), diagnostics);
     };
     crate::CssParseReport::new(sheet, diagnostics)
+}
+
+/// `source` with its leading encoding declaration blanked, or `None` when it
+/// does not begin with one.
+///
+/// The declaration is the one `surgeist_css_parser::input::encoding_declaration`
+/// finds, which is also the one the byte-decoding front selects an encoding
+/// by (Syntax 3 section 3.2). It is not a rule: section 8.3 says no `@charset`
+/// rule exists. The view keeps every offset and line break, so the grammar
+/// reads the text after the declaration at the coordinates of the original,
+/// and reads nothing of the declaration itself.
+pub(super) fn without_encoding_declaration(source: &str) -> Option<String> {
+    let declaration = encoding_declaration(source.as_bytes())?;
+    Some(mask_source_span(source, 0, declaration.byte_len()))
 }
 
 pub(crate) fn parse_bounded(
@@ -92,6 +118,16 @@ pub(crate) fn parse_bounded(
 ) -> crate::CssParseReport<BoundedParseSyntax> {
     let state = RecoveryState::at_depth_with_snapshot(0, namespaces, source_snapshot.clone())
         .with_parser_context(parser_context);
+    parse_bounded_in(source, source_snapshot, context, state)
+}
+
+/// [`parse_bounded`] over a `state` that the caller built.
+fn parse_bounded_in(
+    source: &str,
+    source_snapshot: &CssSourceSnapshot,
+    context: BoundedParseContext,
+    state: RecoveryState,
+) -> crate::CssParseReport<BoundedParseSyntax> {
     let report = parse_over(source, context, state);
     let (syntax, mut diagnostics) = report.into_parts();
     // Native locations describe this admitted view, whose masks preserve bytes

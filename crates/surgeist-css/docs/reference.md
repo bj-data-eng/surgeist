@@ -64,8 +64,10 @@ equal contents compare equal while `same_input` and `same_snapshot` remain false
 Sheet components use that exact snapshot. CSS offsets address decoded UTF-8,
 and columns count UTF-16 units; original network-byte offsets are separate.
 CR, FF, CRLF and NUL remain in the snapshot for the existing tokenizer to filter.
-An inferred charset prefix remains in decoded text and passes through the current
-string sheet grammar; decoding does not strip it or certify charset admission.
+The exact encoding declaration at the start of the decoded text remains in it; the
+sheet fronts consume it without a rule or a diagnostic
+([the declaration is not a rule](#stylesheet-encoding-guidance)), and decoding does
+not strip it.
 
 `surgeist_css_parser::input::DecodeLimits` bounds original bytes and decoded UTF-8 bytes
 independently. Defaults follow component-input length policy, with no extra
@@ -131,19 +133,43 @@ Without a protocol label, prefix or environment encoding, bytes that are not UTF
 decode as UTF-8, where a malformed sequence becomes U+FFFD and
 `had_replacements()` reports it. That is decoder provenance, not a CSS diagnostic.
 
-**The declaration is not a rule.** Syntax 3 [§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#charset-rule)
-requires an `@charset` rule that is actually parsed to be treated as an
-unrecognized rule and dropped as invalid when the stylesheet is grammar-checked.
-The byte front keeps the declaration in the decoded text, so
-`CssParser::parse_sheet_bytes` reports a stylesheet that declares itself through
-the prefix with one `UnknownAtRule` diagnostic and the `DropAtRule` action over
-the declaration, and `into_validation_result` refuses it. The protocol,
-environment and byte-order-mark paths add no diagnostic. Diagnostic and origin
-offsets address the decoded UTF-8 source, so the declaration occupies the first
-offsets and a multibyte character shifts every later offset from its position in
-`original_bytes()`. A host that treats the prefix as encoding metadata recognizes
-it as the leading `UnknownAtRule` at offset 0 of an input whose `selection()` is
-`CharsetPrefix`.
+**The declaration is not a rule.** Syntax 3 [§3.2](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#input-byte-stream)
+calls the byte sequence an encoding declaration that only looks like an at-rule, and
+[§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#charset-rule)
+says no `@charset` rule exists: one that is actually parsed is an unrecognized
+rule, dropped as invalid. The stylesheet fronts (`CssParser::parse_sheet`,
+`parse_sheet_bytes` and `parse_sheet_utf16`) therefore consume the exact
+declaration at the start of the decoded text: it yields no rule and no diagnostic,
+so a stylesheet that begins with it has a clean report that
+`into_validation_result` accepts. The declaration is the byte sequence above, found
+in the text by `surgeist_css_parser::input::encoding_declaration`, the same
+function the decoder selects an encoding by, so decoded bytes and the same text
+passed to `parse_sheet` give the same report. Whether the label names an encoding
+does not matter to the report, and neither does which source selected the
+encoding: a protocol label, the environment encoding or a byte order mark decides
+over the declaration, which is still consumed. A byte order mark is removed by
+decoding, so the declaration after it is at the start of the text. A U+FEFF
+character in the text given to `parse_sheet` is not removed and precedes the
+declaration, which is then not at the start. `parse_sheet_utf16` finds the
+declaration in its preprocessed text (Syntax 3 §3.3: CR, FF and CRLF become one
+LF, and NUL becomes U+FFFD), so it differs from the text and byte fronts in two
+cases: a NUL in the label is not ASCII after preprocessing, so that front keeps
+the `UnknownAtRule` diagnostic where the others consume the declaration; and a
+CRLF in the label shortens the text, so a declaration whose semicolon is byte
+1025 of the original text can end within the first 1024 bytes of the
+preprocessed text and be consumed there only. A CR, FF or LF in the label is
+consumed by every front.
+
+Every other `@charset` keeps one `UnknownAtRule` diagnostic with the `DropAtRule`
+action: another spelling than the exact form, a second declaration, one after any
+other text including a comment or whitespace, and one inside a block or a nested
+rule list. The single-rule fronts (`CssRule::parse` and the CSSOM-facing one-rule
+insertion), block contents and the other fragment fronts consume nothing at their
+start and report `@charset` as they report any unknown at-rule. Retained rules,
+diagnostics and origins keep the coordinates of the decoded text, whose first
+offsets the declaration occupies; a multibyte character shifts every later offset
+from its position in `original_bytes()`. No retained node refers to the
+declaration, and sheet serialization does not write it.
 
 [How to decode a stylesheet from bytes](how-to.md#decode-a-stylesheet-from-bytes)
 shows the calls. The [conformance classes](explanation.md#stylesheet-conformance-classes)
@@ -9891,8 +9917,10 @@ values without cascade, substitution, query evaluation, resource loading or
 layout. It does not apply live CSSOM declaration selection or shorthand
 recombination to the immutable authored graph. [Syntax 3 §8.3](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#charset-rule)
 defines every apparent parsed `@charset` rule as unrecognized. Ordinary parsing
-drops it with an `UnknownAtRule` diagnostic; specified output serializes only
-the retained rules while the original report keeps that recovery provenance.
+consumes the exact encoding declaration at the start of a stylesheet without a
+diagnostic and drops every other `@charset` with an `UnknownAtRule` diagnostic;
+specified output serializes only the retained rules while the original report
+keeps that recovery provenance.
 
 Media lists use the existing bounded CSSOM projection provider. Invalid
 recovered members become `not all` in place, preserving valid sibling order and

@@ -669,7 +669,12 @@ fn parse_sheet_snapshot_inner(
     source_snapshot: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
-    let source = source_snapshot.as_str();
+    // The exact encoding declaration at the start is not a rule (Syntax 3
+    // sections 3.2 and 8.3): the grammar, the nesting depth and the lexical
+    // faults read a view of the text with the declaration blanked, at the
+    // original offsets.
+    let view = reconstruction::without_encoding_declaration(source_snapshot.as_str());
+    let source = view.as_deref().unwrap_or(source_snapshot.as_str());
     // The 256-level public limit exceeds small default thread stacks; deep
     // input runs on the bounded parser thread or is refused, never deep here.
     let profile = bounded_execution::StackProfile::Structural;
