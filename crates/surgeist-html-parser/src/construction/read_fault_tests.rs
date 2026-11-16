@@ -713,23 +713,26 @@ fn a_textarea_naming_a_raw_value_that_is_not_a_string_faults_the_cursor() {
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
+/// The contents of the one template of `report`, a tree whose root names the inert document.
+fn template_contents(report: &crate::HtmlParseReport) -> surgeist_html::construction::HtmlNodeId {
+    let mut cursor = report.metadata();
+    loop {
+        match cursor.advance() {
+            crate::HtmlParseMetadataStep::Record(record) => {
+                if let Some(template) = record.template() {
+                    return template.contents().id();
+                }
+            }
+            crate::HtmlParseMetadataStep::Skipped => {}
+            _ => panic!("the report holds a template"),
+        }
+    }
+}
+
 #[test]
 fn a_tree_document_naming_a_missing_node_is_an_unresolved_reference() {
     let mut report = parse("<template><p>A</template>");
-    let contents = {
-        let mut cursor = report.metadata();
-        loop {
-            match cursor.advance() {
-                crate::HtmlParseMetadataStep::Record(record) => {
-                    if let Some(template) = record.template() {
-                        break template.contents().id();
-                    }
-                }
-                crate::HtmlParseMetadataStep::Skipped => {}
-                _ => panic!("the report holds a template"),
-            }
-        }
-    };
+    let contents = template_contents(&report);
     // The contents of the template are a tree whose root names the inert document; the
     // document the report holds for it names a record that is not there.
     let documents = frozen(&mut report).payloads.facts.contexts.documents_mut();
@@ -1088,6 +1091,27 @@ fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
 }
 
 // ---- a link's node document and flags ----
+
+#[test]
+fn a_table_entry_past_the_list_of_documents_is_an_unresolved_reference() {
+    let mut report = parse("<template><p>A</template>");
+    let contents = template_contents(&report);
+    // The one row of the table is the contents root's; its entry names no document of the list.
+    let named = frozen(&mut report)
+        .payloads
+        .facts
+        .contexts
+        .named_mut()
+        .expect("a frozen parse holds the table");
+    assert_eq!(named.len(), 1);
+    *named.row_mut(0).unwrap() = u32::MAX;
+    assert_eq!(
+        report.tree_document(&contents).err(),
+        Some(
+            crate::construction::report::HtmlParseTreeDocumentError::Unresolved(fault(Kind::Fact))
+        )
+    );
+}
 
 #[test]
 fn a_link_with_no_row_in_the_table_of_named_documents_faults_the_cursor() {
