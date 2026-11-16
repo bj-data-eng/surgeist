@@ -621,8 +621,17 @@ pub(super) fn associated_root_of(
     root: usize,
 ) -> Result<bool, SessionError> {
     use surgeist_html::construction::HtmlFragmentOwner;
-    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    let record = storage.node_at(root).ok_or(SessionError::ForeignNode)?;
+    // The visit that reads the record of a template's owner is charged with the visit of the root.
+    let record = storage.node_at(root);
+    let template_owner = record.as_ref().is_some_and(|record| {
+        matches!(
+            record.fragment_owner(),
+            Some(HtmlFragmentOwner::Template(_))
+        )
+    });
+    let visits = if template_owner { 2 } else { 1 };
+    control.charge(HtmlParseWorkCategory::RecordVisit, visits)?;
+    let record = record.ok_or(SessionError::ForeignNode)?;
     match record.fragment_owner() {
         None => Ok(false),
         Some(HtmlFragmentOwner::ShadowHost(_)) => Ok(fragment.is_none()),
@@ -637,7 +646,6 @@ pub(super) fn associated_root_of(
             if !SessionStorage::html_local_in(control, storage, template_position, "template")? {
                 return Err(SessionError::WrongToken);
             }
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let owner = storage
                 .node_at(template_position)
                 .ok_or(SessionError::ForeignNode)?;
