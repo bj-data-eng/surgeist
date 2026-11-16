@@ -2727,19 +2727,29 @@ where
     }
 }
 
-/// Line searches and the break opportunities they evaluate as candidates,
-/// counted on the current thread so a test can bound the work of one layout.
+/// Line searches, the break opportunities they evaluate as candidates and the line searches that
+/// stopped early, counted on the current thread so a test can bound the work of one layout.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct CandidateWork {
     pub(super) line_searches: usize,
     pub(super) candidates: usize,
+    pub(super) early_stops: usize,
+}
+
+/// What one call of `observe_candidate_work` counts.
+#[cfg(test)]
+#[derive(Clone, Copy)]
+enum Observation {
+    LineSearch,
+    Candidate,
+    EarlyStop,
 }
 
 #[cfg(test)]
 thread_local! {
     static CANDIDATE_WORK: std::cell::Cell<CandidateWork> =
-        const { std::cell::Cell::new(CandidateWork { line_searches: 0, candidates: 0 }) };
+        const { std::cell::Cell::new(CandidateWork { line_searches: 0, candidates: 0, early_stops: 0 }) };
 }
 
 #[cfg(test)]
@@ -2777,13 +2787,13 @@ const fn full_walk_forced() -> bool {
 }
 
 #[cfg(test)]
-fn observe_candidate_work(line_search: bool) {
+fn observe_candidate_work(observation: Observation) {
     CANDIDATE_WORK.with(|cell| {
         let mut work = cell.get();
-        if line_search {
-            work.line_searches += 1;
-        } else {
-            work.candidates += 1;
+        match observation {
+            Observation::LineSearch => work.line_searches += 1,
+            Observation::Candidate => work.candidates += 1,
+            Observation::EarlyStop => work.early_stops += 1,
         }
         cell.set(work);
     });

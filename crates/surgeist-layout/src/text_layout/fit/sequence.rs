@@ -127,7 +127,7 @@ where
         search: SequenceLineSearch<'_>,
     ) -> Result<Option<AcceptedCandidate>, FitError> {
         #[cfg(test)]
-        observe_candidate_work(true);
+        observe_candidate_work(Observation::LineSearch);
         let SequenceLineSearch {
             progress,
             constrained,
@@ -384,7 +384,7 @@ where
                     continue;
                 }
                 #[cfg(test)]
-                observe_candidate_work(false);
+                observe_candidate_work(Observation::Candidate);
                 let variants = (*kind != PreparedBreakKind::Discretionary)
                     .then_some(None)
                     .into_iter()
@@ -523,6 +523,8 @@ where
                     && choice.as_ref().is_some_and(|candidate| candidate.fits)
                     && self.advances_never_shrink(input, &query, &opportunities[index..])?
                 {
+                    #[cfg(test)]
+                    observe_candidate_work(Observation::EarlyStop);
                     break;
                 }
                 if !matches!(
