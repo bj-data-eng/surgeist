@@ -291,8 +291,8 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
         Ok(_) => panic!("the independently retained small-cap witness published a complete batch"),
         Err(error) => error,
     };
-    let LayoutErrorKindOf::Text(error) = error.kind() else {
-        panic!("the valid small-cap fixture must refuse as the exact Text resource error")
+    let LayoutErrorKindOf::ResourceLimit(error) = error.kind() else {
+        panic!("the valid small-cap fixture must refuse as the exact layout resource limit")
     };
     assert_eq!(error.code, text::ErrorCode::ScopeAlignmentRefused);
     let Some(text::ErrorDetail::ScopeAlignment { reason }) = error.detail() else {

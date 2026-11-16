@@ -517,7 +517,7 @@ pub surgeist_layout::LayoutErrorKindOf::TextSpacingBudget
 pub surgeist_layout::LayoutErrorKindOf::TextSpacingBudget::advance: f64
 pub surgeist_layout::LayoutErrorKindOf::TextSpacingBudget::available: f64
 pub surgeist_layout::LayoutErrorKindOf::UnsupportedCapability(surgeist_layout::LayoutUnsupportedCapability)
-impl<S: surgeist_layout::LayoutScalar, M: core::fmt::Display> core::fmt::Display for surgeist_layout::LayoutErrorKindOf<S, M>
+impl<S: surgeist_layout::LayoutScalar, M> core::fmt::Display for surgeist_layout::LayoutErrorKindOf<S, M>
 pub fn surgeist_layout::LayoutErrorKindOf<S, M>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::LayoutErrorSiteOf<Node>
 pub surgeist_layout::LayoutErrorSiteOf::ContainerSubject
@@ -1925,7 +1925,7 @@ pub const fn surgeist_layout::LayoutErrorOf<Node, S, M>::operation(&self) -> sur
 pub const fn surgeist_layout::LayoutErrorOf<Node, S, M>::site(&self) -> surgeist_layout::LayoutErrorSiteOf<Node> where Node: core::marker::Copy
 impl<Node, S, M> core::error::Error for surgeist_layout::LayoutErrorOf<Node, S, M> where Node: core::fmt::Debug, S: surgeist_layout::LayoutScalar, M: core::error::Error + 'static
 pub fn surgeist_layout::LayoutErrorOf<Node, S, M>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
-impl<Node, S, M> core::fmt::Display for surgeist_layout::LayoutErrorOf<Node, S, M> where Node: core::fmt::Debug, S: surgeist_layout::LayoutScalar, M: core::fmt::Display
+impl<Node, S, M> core::fmt::Display for surgeist_layout::LayoutErrorOf<Node, S, M> where Node: core::fmt::Debug, S: surgeist_layout::LayoutScalar
 pub fn surgeist_layout::LayoutErrorOf<Node, S, M>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_layout::LayoutFlowInput<'tree, Tree: surgeist_layout::LayoutTree>
 impl<'tree, Tree: surgeist_layout::LayoutTree> surgeist_layout::LayoutFlowInput<'tree, Tree>

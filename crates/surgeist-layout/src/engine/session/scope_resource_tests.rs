@@ -489,8 +489,8 @@ fn global_bridge(work: usize) {
                 .unwrap_err();
             assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
             assert_eq!(error.operation(), LayoutOperation::TextPlacement);
-            let LayoutErrorKindOf::Text(error) = error.kind() else {
-                panic!("global scope work must remain a Text resource refusal")
+            let LayoutErrorKindOf::ResourceLimit(error) = error.kind() else {
+                panic!("global scope work must be a layout resource limit")
             };
             assert_eq!(error.code, text::ErrorCode::ScopeAlignmentRefused);
             let Some(text::ErrorDetail::ScopeAlignment { reason }) = error.detail() else {

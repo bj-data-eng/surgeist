@@ -221,10 +221,10 @@ pub fn process_wrapping_source<Source: WrapEdgeSource>(
     // alone normalizes identical targets into retained cause identities.
     let requests = input.computed_line_boundaries.clone();
     let processed = surgeist_text::process_contextual_source(input).map_err(|cause| {
-        crate::LayoutErrorOf::new(
+        crate::error::staging_text_error(
             crate::LayoutErrorSiteOf::Node(root),
             crate::LayoutOperation::TextCapture,
-            crate::LayoutErrorKindOf::Text(cause),
+            cause,
         )
     })?;
     let scopes = (0..inventory.scopes.len())

@@ -757,10 +757,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             inline_boxes_requested,
         )
         .map_err(|error| {
-            crate::LayoutErrorOf::new(
+            crate::error::staging_text_error(
                 crate::LayoutErrorSiteOf::Node(root),
                 crate::LayoutOperation::TextCapture,
-                crate::LayoutErrorKindOf::Text(error),
+                error,
             )
         })?;
         let mut resolved = capture::resolve(

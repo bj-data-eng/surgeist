@@ -103,8 +103,8 @@ pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::I
     Allocation,
     /// The actual Text owner refused the captured protocol operation.
     Text(surgeist_text::Error),
-    /// A work, record or storage budget of the layout engine was exhausted
-    /// while it staged or funded its own bookkeeping. The Text error names the
+    /// A scope-alignment limit, overflow or allocation budget was exhausted
+    /// wherever layout raised the Text error. The Text error names the
     /// exhausted limit and is the error's source; a budget refusal is not a
     /// Text protocol refusal and not cancellation.
     ResourceLimit(surgeist_text::Error),
@@ -473,14 +473,13 @@ where
     )
 }
 
-/// Adapts a Text refusal raised while the engine stages or funds its own
-/// bookkeeping. An exhausted work, record or storage budget is a resource
-/// limit of layout; any other refusal remains the Text owner's.
-pub(crate) fn staging_text_error<Node, S: LayoutScalar, M>(
-    site: LayoutErrorSiteOf<Node>,
-    operation: LayoutOperation,
+/// Classifies a Text refusal by its cause. An exhausted work, record or
+/// storage budget of the scope-alignment accounting is a resource limit of
+/// layout wherever layout raises it; any other refusal remains the Text
+/// owner's.
+pub(crate) fn text_error_kind<S: LayoutScalar, M>(
     error: surgeist_text::Error,
-) -> LayoutErrorOf<Node, S, M> {
+) -> LayoutErrorKindOf<S, M> {
     let budget = matches!(
         error.detail(),
         Some(surgeist_text::ErrorDetail::ScopeAlignment {
@@ -489,12 +488,20 @@ pub(crate) fn staging_text_error<Node, S: LayoutScalar, M>(
                 | surgeist_text::ScopeAlignmentError::Allocation { .. },
         })
     );
-    let kind = if budget {
+    if budget {
         LayoutErrorKindOf::ResourceLimit(error)
     } else {
         LayoutErrorKindOf::Text(error)
-    };
-    LayoutErrorOf::new(site, operation, kind)
+    }
+}
+
+/// Builds the failure for a Text refusal, classified by its cause.
+pub(crate) fn staging_text_error<Node, S: LayoutScalar, M>(
+    site: LayoutErrorSiteOf<Node>,
+    operation: LayoutOperation,
+    error: surgeist_text::Error,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(site, operation, text_error_kind(error))
 }
 
 pub(crate) fn value_resolution_error<Node, S, M>(
@@ -584,7 +591,7 @@ pub(crate) fn wrapping_error<Node, S: LayoutScalar, M>(
 /// exposes the private classification.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutScrollGeometryErrorOf<S: LayoutScalar = DefaultScalar> {
-    cause: ScrollGeometryCauseOf<S>,
+    pub(crate) cause: ScrollGeometryCauseOf<S>,
 }
 
 pub type LayoutScrollGeometryError = LayoutScrollGeometryErrorOf<DefaultScalar>;
@@ -629,7 +636,7 @@ impl<S: LayoutScalar> fmt::Display for LayoutScrollGeometryErrorOf<S> {
             ScrollGeometryCauseOf::BoxClipGutter(cause) => {
                 write!(f, "scroll box clip or gutter rejected: {cause:?}")
             }
-            ScrollGeometryCauseOf::Rect(cause) => write!(f, "scroll rectangle rejected: {cause}"),
+            ScrollGeometryCauseOf::Rect(_) => f.write_str("scroll rectangle rejected"),
             ScrollGeometryCauseOf::Coordinate(cause) => {
                 write!(f, "scroll coordinate rejected: {cause:?}")
             }
@@ -689,10 +696,24 @@ impl<Node: fmt::Debug> fmt::Display for LayoutErrorSiteOf<Node> {
     }
 }
 
-/// Formats the kind. Measurement failures print through `M`'s `Display`.
-impl<S: LayoutScalar, M: fmt::Display> fmt::Display for LayoutErrorKindOf<S, M> {
+/// Formats the kind without repeating a cause that `source()` of the error
+/// returns: measurement, Text, resource-limit and scroll geometry failures, and
+/// rejected measurement output and float exclusion provider output, state the
+/// failure and the facts the cause does not carry. Other invalid input prints
+/// its `Debug` form.
+impl<S: LayoutScalar, M> fmt::Display for LayoutErrorKindOf<S, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidInput(LayoutInvalidInputOf::MeasurementOutput(output)) => {
+                write!(
+                    f,
+                    "measurement output rejected on the {:?} axis",
+                    output.axis
+                )
+            }
+            Self::InvalidInput(LayoutInvalidInputOf::FloatExclusionProviderOutput { .. }) => {
+                f.write_str("float exclusion provider output rejected")
+            }
             Self::InvalidInput(input) => write!(f, "invalid input: {input:?}"),
             Self::BlockFragmentation(failure) => {
                 write!(f, "block fragmentation failed: {failure:?}")
@@ -701,11 +722,11 @@ impl<S: LayoutScalar, M: fmt::Display> fmt::Display for LayoutErrorKindOf<S, M> 
             Self::UnsupportedCapability(capability) => {
                 write!(f, "unsupported capability: {capability:?}")
             }
-            Self::Measurement(error) => write!(f, "measurement failed: {error}"),
+            Self::Measurement(_) => f.write_str("measurement failed"),
             Self::Allocation => f.write_str("layout could not allocate its working storage"),
-            Self::Text(error) => write!(f, "text operation refused: {error}"),
-            Self::ResourceLimit(error) => write!(f, "layout resource limit reached: {error}"),
-            Self::ScrollGeometry(error) => write!(f, "{error}"),
+            Self::Text(_) => f.write_str("text operation refused"),
+            Self::ResourceLimit(_) => f.write_str("layout resource limit reached"),
+            Self::ScrollGeometry(_) => f.write_str("scroll geometry rejected"),
             Self::TextFeedbackCycle => {
                 f.write_str("text feedback repeated a complete basis without acceptance")
             }
@@ -728,13 +749,12 @@ impl<S: LayoutScalar, M: fmt::Display> fmt::Display for LayoutErrorKindOf<S, M> 
 
 /// Formats as `<operation> failed at <site>: <kind>`.
 ///
-/// `Node` needs `Debug` to name the site and `M` needs `Display` for
-/// measurement failures.
+/// `Node` needs `Debug` to name the site. The measurement error is reported
+/// through `source()`, so `M` needs no bound.
 impl<Node, S, M> fmt::Display for LayoutErrorOf<Node, S, M>
 where
     Node: fmt::Debug,
     S: LayoutScalar,
-    M: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

@@ -2635,21 +2635,7 @@ pub(super) fn fri06_mr02_geometry_error_input<S: LayoutScalar>(
     )
 }
 
-pub(super) fn fri06_mr02_geometry_error_assert<S: LayoutScalar, M: core::fmt::Debug>(
-    error: LayoutErrorOf<u32, S, M>,
-    site: LayoutErrorSiteOf<u32>,
-    operation: LayoutOperation,
-) {
-    assert_eq!(error.site(), site);
-    assert_eq!(error.operation(), operation);
-    let LayoutErrorKindOf::ScrollGeometry(cause) = error.kind() else {
-        panic!("unexpected typed error kind: {:?}", error.kind());
-    };
-    assert!(
-        !cause.to_string().is_empty(),
-        "the retained scroll geometry cause must describe the rejected fact"
-    );
-}
+pub(super) use crate::test_support::scroll_geometry::assert_geometry_error as fri06_mr02_geometry_error_assert;
 
 pub(super) fn assert_fri06_mr02_geometry_error_grid_own<S: LayoutScalar>() {
     let largest = fri06_mr02_geometry_error_largest_finite();

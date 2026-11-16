@@ -89,7 +89,7 @@ fn measurement_failure_displays_and_sources_the_host_error() {
     let error = error_of(LayoutErrorKindOf::Measurement(HostFailure("no metrics")));
     assert_eq!(
         error.to_string(),
-        "child layout failed at node 3: measurement failed: host failure: no metrics"
+        "child layout failed at node 3: measurement failed"
     );
     let source = error.source().expect("a measurement failure has a cause");
     assert_eq!(
@@ -102,8 +102,12 @@ fn measurement_failure_displays_and_sources_the_host_error() {
 fn text_failure_sources_the_text_error() {
     let refusal = text::Error::new(text::ErrorCode::InvalidTextProtocol, "bad request");
     let error = error_of::<core::convert::Infallible>(LayoutErrorKindOf::Text(refusal));
-    assert!(error.to_string().contains("bad request"), "{error}");
+    assert_eq!(
+        error.to_string(),
+        "child layout failed at node 3: text operation refused"
+    );
     let source = error.source().expect("a Text refusal has a cause");
+    assert!(source.to_string().contains("bad request"), "{source}");
     assert_eq!(
         source.downcast_ref::<text::Error>().map(|error| error.code),
         Some(text::ErrorCode::InvalidTextProtocol)
@@ -115,9 +119,9 @@ fn resource_limit_is_distinct_from_text_and_sources_the_exhausted_budget() {
     let error =
         error_of::<core::convert::Infallible>(LayoutErrorKindOf::ResourceLimit(limit_error()));
     assert!(!matches!(error.kind(), LayoutErrorKindOf::Text(_)));
-    assert!(
-        error.to_string().contains("layout resource limit reached"),
-        "{error}"
+    assert_eq!(
+        error.to_string(),
+        "child layout failed at node 3: layout resource limit reached"
     );
     let cause = error
         .source()
@@ -183,6 +187,10 @@ fn rejected_measurement_output_sources_the_scalar_error() {
             scalar,
         )),
     ));
+    assert_eq!(
+        error.to_string(),
+        "child layout failed at node 3: measurement output rejected on the Horizontal axis"
+    );
     let source = error.source().expect("the scalar error is the cause");
     assert_eq!(
         source.downcast_ref::<NonNegativeFiniteScalarErrorOf<f64>>(),
@@ -216,11 +224,15 @@ fn scroll_geometry_failure_keeps_the_rejected_coordinate() {
         cause.contains("NonFinitePhysicalOffset") && cause.contains("inf"),
         "{cause}"
     );
-    assert!(
-        error.to_string().contains("scroll coordinate rejected"),
-        "{error}"
+    assert_eq!(
+        error.to_string(),
+        "child layout failed at node 5: scroll geometry rejected"
     );
-    assert!(error.source().is_some());
+    let source = error.source().expect("the geometry failure is the cause");
+    assert!(
+        source.to_string().contains("scroll coordinate rejected"),
+        "{source}"
+    );
 }
 
 #[test]
@@ -252,4 +264,42 @@ fn resolved_length_on_a_failure_path_is_its_own_invariant() {
         error.kind(),
         LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::ResolvedLengthOnFailurePath)
     ));
+}
+
+#[test]
+fn rejected_scroll_rectangle_is_reported_through_source_only() {
+    let rejected = crate::ScrollRectErrorOf::<f64>::NegativeSize {
+        axis: PhysicalAxis::Vertical,
+        value: -2.0,
+    };
+    let error: LayoutErrorOf<u32, f64> =
+        layout_own_geometry_error(5, RunMode::PerformLayout, rejected);
+    let LayoutErrorKindOf::ScrollGeometry(geometry) = error.kind() else {
+        panic!("a rejected scroll rectangle is a scroll geometry failure: {error:?}");
+    };
+    assert_eq!(geometry.to_string(), "scroll rectangle rejected");
+    let cause = geometry
+        .source()
+        .and_then(|source| source.downcast_ref::<crate::ScrollRectErrorOf<f64>>())
+        .expect("the rejected rectangle is the cause");
+    assert_eq!(*cause, rejected);
+    assert!(cause.to_string().contains("vertical"), "{cause}");
+}
+
+#[test]
+fn rejected_float_exclusion_provider_output_displays_without_its_cause_and_sources_it() {
+    let interval = FloatExclusionIntervalErrorOf::<f64>::NonFiniteBandMinimum { value: f64::NAN };
+    let error = error_of::<core::convert::Infallible>(LayoutErrorKindOf::InvalidInput(
+        LayoutInvalidInputOf::FloatExclusionProviderOutput { error: interval },
+    ));
+    assert_eq!(
+        error.to_string(),
+        "child layout failed at node 3: float exclusion provider output rejected"
+    );
+    let source = error.source().expect("the interval error is the cause");
+    assert!(
+        source
+            .downcast_ref::<FloatExclusionIntervalErrorOf<f64>>()
+            .is_some()
+    );
 }
