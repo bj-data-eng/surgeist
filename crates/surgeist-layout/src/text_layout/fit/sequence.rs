@@ -512,15 +512,15 @@ where
                 //   advances the pen by at least its raw advance (`glyph_advances_hold`);
                 // - the candidate's natural line, before any justification spacing, overflows.
                 //
-                // Why the natural line decides. `fits` compares the required inline size of the
-                // finalized line with the available size less the indent. A justified line is
-                // the natural line with non-negative spacing allocated to reach the capacity, so
-                // its required size is the capacity, up to rounding, whenever the natural line is
-                // narrower. Such a candidate can then fail `fits` although its natural line
-                // fits, which is why the stop reads `natural_fits`: the same comparison on the
-                // natural line. When the natural line overflows, allocated spacing only widens it
-                // (the extra spacing is non-negative, else the line keeps its natural form), so
-                // `fits` is false as well.
+                // Why the natural line decides. A justified line is the natural line with
+                // non-negative spacing allocated to reach the capacity, and under the ordinary
+                // operation it is admitted by its natural line, so `fits` and `natural_fits`
+                // agree for it. A line kept in its natural form after a failed allocation is
+                // admitted by its own fit, and `natural_fits` still reads the line before that
+                // fallback, so the stop requires both to overflow. When the natural line
+                // overflows, allocated spacing only widens it (the extra spacing is
+                // non-negative, else the line keeps its natural form), so `fits` is false as
+                // well.
                 //
                 // Why the natural width cannot shrink. With no inline boxes or atomics the line is
                 // measured with the Native authority, whose required inline size is the larger of
