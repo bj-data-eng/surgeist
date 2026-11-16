@@ -1200,7 +1200,10 @@ mod tests {
                 .unwrap()
                 .rekey_template_for_test()
         );
-        assert!(HtmlParseReport::take_document(&mut input).is_err());
+        assert!(matches!(
+            HtmlParseReport::take_document(&mut input),
+            Err(SessionError::WrongToken)
+        ));
         let kept = input.as_mut().expect("the seal is kept");
         kept.release().unwrap();
         super::super::tests::assert_released(&kept.parts.control);
@@ -1221,7 +1224,10 @@ mod tests {
                 .unwrap()
                 .rekey_shadow_for_test()
         );
-        assert!(HtmlParseReport::take_fragment(&mut input).is_err());
+        assert!(matches!(
+            HtmlParseReport::take_fragment(&mut input),
+            Err(SessionError::WrongToken)
+        ));
         let kept = input.as_mut().expect("the seal is kept");
         kept.release().unwrap();
         super::super::tests::assert_released(&kept.parts.control);
