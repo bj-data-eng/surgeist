@@ -75,6 +75,7 @@ members = [
     "crates/surgeist-animation",
     "crates/surgeist-color",
     "crates/surgeist-css",
+    "crates/surgeist-css/fuzz",
     "crates/surgeist-css-parser",
     "crates/surgeist-cssom",
     "crates/surgeist-dialog",

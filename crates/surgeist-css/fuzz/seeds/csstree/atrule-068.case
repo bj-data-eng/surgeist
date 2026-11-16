@@ -1,0 +1,1 @@
+@supports (flex:1){selector{color:green}}

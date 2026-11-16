@@ -1,0 +1,1 @@
+@atrule { .a { p: v; } .b { p: v } }

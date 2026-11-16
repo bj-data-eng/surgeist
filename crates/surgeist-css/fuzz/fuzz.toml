@@ -1,0 +1,58 @@
+schema = 1
+fixtures = ["seeds/bytes", "seeds/source", "seeds/csstree", "seeds/values", "seeds/rules"]
+
+[[targets]]
+id = "surgeist-css::byte-decoding"
+owner = "surgeist-css"
+binary = "css-bytes-worker"
+properties = ["surgeist-css::encoding-selection", "surgeist-css::decoded-text", "surgeist-css::decode-limits", "surgeist-css::source-coordinates", "surgeist-css::report-cleanliness"]
+source_references = ["references/SOURCE-EDITIONS.md#css-syntax-3-edition", "crates/surgeist-css/docs/reference.md#stylesheet-encoding-guidance", "crates/surgeist-css/docs/reference.md#source-coordinates-and-diagnostics", "crates/surgeist-css/src/source/stylesheet_input.rs", "crates/surgeist-css-parser/src/input/decode.rs", "crates/surgeist-css/fuzz/README.md#byte-decoding"]
+format = { identity = "surgeist-css::byte-case", revision = 1 }
+generator_identity = { identity = "surgeist-css::byte-decoding", revision = 1 }
+encoding = "structured"
+limits = { bytes = 8192, nodes = 0, depth = 0, text_units = 4160, operations = 0 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
+
+[[targets]]
+id = "surgeist-css::utf8-source"
+owner = "surgeist-css"
+binary = "css-source-worker"
+properties = ["surgeist-css::source-coordinates", "surgeist-css::report-cleanliness", "surgeist-css::retained-nodes", "surgeist-css::parse-determinism", "surgeist-css::utf16-parity"]
+source_references = ["references/SOURCE-EDITIONS.md#css-syntax-3-edition", "crates/surgeist-css/docs/reference.md#source-coordinates-and-diagnostics", "crates/surgeist-css/docs/reference.md#block-contents", "crates/surgeist-css/docs/reference.md#equality-and-provenance", "crates/surgeist-css/src/report.rs", "crates/surgeist-css/src/parser_context.rs", "crates/surgeist-css/src/source/position.rs", "crates/surgeist-css/fuzz/README.md#utf-8-source"]
+format = { identity = "surgeist-css::source-case", revision = 1 }
+generator_identity = { identity = "surgeist-css::utf8-source", revision = 1 }
+encoding = "raw-bytes"
+limits = { bytes = 16384, nodes = 0, depth = 0, text_units = 16384, operations = 0 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
+
+[[targets]]
+id = "surgeist-css::property-value"
+owner = "surgeist-css"
+binary = "css-value-worker"
+properties = ["surgeist-css::global-and-substitution", "surgeist-css::property-metadata", "surgeist-css::specified-round-trip", "surgeist-css::known-value-serialization", "surgeist-css::sibling-recovery", "surgeist-css::implicit-closure", "surgeist-css::front-agreement", "surgeist-css::source-coordinates", "surgeist-css::report-cleanliness", "surgeist-css::retained-nodes"]
+source_references = ["references/SOURCE-EDITIONS.md#css-syntax-3-edition", "crates/surgeist-css/docs/reference.md#raw-property-values", "crates/surgeist-css/docs/reference.md#checked-declaration-construction", "crates/surgeist-css/docs/reference.md#canonical-ordinary-number-output", "crates/surgeist-css/docs/reference.md#authored-opacity-and-specified-serialization", "crates/surgeist-css/docs/reference.md#block-contents", "crates/surgeist-css/src/property/mod.rs", "crates/surgeist-css/src/declaration/declaration_serialization.rs", "crates/surgeist-css/fuzz/README.md#property-values"]
+format = { identity = "surgeist-css::value-case", revision = 1 }
+generator_identity = { identity = "surgeist-css::property-value", revision = 1 }
+encoding = "structured"
+limits = { bytes = 4096, nodes = 32, depth = 4, text_units = 2304, operations = 16 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0
+
+[[targets]]
+id = "surgeist-css::structured-rules"
+owner = "surgeist-css"
+binary = "css-rules-worker"
+properties = ["surgeist-css::rule-recovery", "surgeist-css::diagnostic-locality", "surgeist-css::declaration-selection", "surgeist-css::nested-structure", "surgeist-css::source-coordinates", "surgeist-css::report-cleanliness", "surgeist-css::retained-nodes"]
+source_references = ["references/SOURCE-EDITIONS.md#css-syntax-3-edition", "crates/surgeist-css/docs/reference.md#block-contents", "crates/surgeist-css/docs/reference.md#authored-cssom-declaration-blocks", "crates/surgeist-css/docs/reference.md#source-coordinates-and-diagnostics", "crates/surgeist-css/src/declaration/specified_declaration_block.rs", "crates/surgeist-css/src/parser/rule_list.rs", "crates/surgeist-css/fuzz/README.md#structured-rules"]
+format = { identity = "surgeist-css::rules-case", revision = 1 }
+generator_identity = { identity = "surgeist-css::structured-rules", revision = 1 }
+encoding = "structured"
+limits = { bytes = 16384, nodes = 64, depth = 5, text_units = 16384, operations = 8 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 0

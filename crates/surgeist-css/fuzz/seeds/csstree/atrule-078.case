@@ -1,0 +1,1 @@
+@supports (box-shadow: something var(--complex) !important) {}

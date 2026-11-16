@@ -1,0 +1,1 @@
+.foo { var(--side): 20px }

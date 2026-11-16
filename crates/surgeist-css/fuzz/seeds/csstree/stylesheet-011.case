@@ -1,0 +1,6 @@
+@x {
+  unicode-range: U+2074, U+20AC, U+2212, U+2215, U+E0FF;
+}
+@x {
+  a: a();
+}

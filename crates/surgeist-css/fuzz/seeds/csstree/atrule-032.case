@@ -1,0 +1,1 @@
+@import 'test' all, screen and (min-width: 600px);

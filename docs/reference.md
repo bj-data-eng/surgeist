@@ -12,7 +12,8 @@ Alongside production crates, the workspace includes
 [`surgeist-generator`](../crates/surgeist-generator/Cargo.toml) shared corpus
 tooling, [`surgeist-fuzz`](../crates/surgeist-fuzz/Cargo.toml) bounded fuzz
 infrastructure, the HTML-owned [`surgeist-html-fuzz`](../crates/surgeist-html/fuzz/README.md)
-consumer, and the offline [CSSOM reflection tool](../tools/cssom-reflections/README.md).
+and CSS-owned [`surgeist-css-fuzz`](../crates/surgeist-css/fuzz/README.md)
+consumers, and the offline [CSSOM reflection tool](../tools/cssom-reflections/README.md).
 These are outside the facade's production dependencies and default members.
 
 The [API generator](../api/generator/Cargo.toml) and optional

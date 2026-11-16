@@ -1,0 +1,1 @@
+.foo, a:not(a = b) { foo: 1; }
