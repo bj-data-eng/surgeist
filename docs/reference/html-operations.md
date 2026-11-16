@@ -2675,7 +2675,9 @@ reopen execution or alter that snapshot. Its
   pending association occurrence.
   The association inventory lists the rows of the strings that registry rows hold (raw
   values such as those of nonces, textareas and inputs, and the original names of
-  adjusted foreign elements) in the order their rows were registered, then, in node
+  adjusted foreign elements) in the order their rows were registered, then the nonce
+  rows of the elements that hold one and the creation row of each node, which are in
+  node order and follow the raw rows, then, in node
   order, the rows of the strings that the records hold: for an element its name and
   namespace and then the name, value, namespace and prefix of each attribute in
   attribute order, and for another record its fields in field order: the data of a text
