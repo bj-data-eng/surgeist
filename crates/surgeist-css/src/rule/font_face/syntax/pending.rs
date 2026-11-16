@@ -61,9 +61,7 @@ impl CssAuthoredFontFaceDescriptorValue {
         values
             .validate_with_limits(limits)
             .map_err(CssFontFaceValueError::component)?;
-        if let Some(origin) = values.first_implicit_origin() {
-            return Err(CssFontFaceValueError::implicit(origin.clone()));
-        }
+        values.ensure_closed(|origin| CssFontFaceValueError::implicit(origin.clone()))?;
         let serialized = values
             .serialize_tokens(limits)
             .map_err(CssFontFaceValueError::component)?;
@@ -96,9 +94,7 @@ impl CssPendingFontFaceDescriptorValue {
         replacement
             .validate_with_limits(limits)
             .map_err(CssFontFaceValueError::component)?;
-        if let Some(origin) = replacement.first_implicit_origin() {
-            return Err(CssFontFaceValueError::implicit(origin.clone()));
-        }
+        replacement.ensure_closed(|origin| CssFontFaceValueError::implicit(origin.clone()))?;
         if let Some(origin) = crate::parser::variables::first_substitution_origin(&replacement) {
             return Err(CssFontFaceValueError::residual(origin));
         }

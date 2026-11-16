@@ -156,14 +156,7 @@ fn validate(
     limits: CssComponentValueLimits,
 ) -> Result<(), CssSupportsConstructionError> {
     values.validate_with_limits(limits)?;
-    if let Some(origin) = values.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::from(
-            crate::query::supports::construction::SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone().into(),
-            },
-        ));
-    }
-    Ok(())
+    values.ensure_closed(CssSupportsConstructionError::recovered)
 }
 pub(crate) fn construct_supports_condition(
     values: CssComponentValues,

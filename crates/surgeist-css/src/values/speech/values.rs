@@ -448,13 +448,13 @@ impl CssAudioCue {
 
     fn ensure_closed(&self) -> Result<(), crate::component::CssComponentValueError> {
         for modifier in self.url.modifiers() {
-            if let crate::values::common::CssUrlModifier::Function(function) = modifier
-                && let Some(origin) = function.argument_components().first_implicit_origin()
-            {
-                return Err(crate::component::CssComponentValueError::new(
-                    crate::component::values::CssComponentValueErrorKind::InvalidFunction,
-                    origin.clone(),
-                ));
+            if let crate::values::common::CssUrlModifier::Function(function) = modifier {
+                function.argument_components().ensure_closed(|origin| {
+                    crate::component::CssComponentValueError::new(
+                        crate::component::values::CssComponentValueErrorKind::InvalidFunction,
+                        origin.clone(),
+                    )
+                })?;
             }
         }
         Ok(())
@@ -800,7 +800,7 @@ impl CssVoiceFamilyList {
         if entries.iter().any(|entry| {
             matches!(entry,
             CssVoiceFamilyEntry::Generic(value)
-                if value.variant().is_some_and(|value| value.first_implicit_origin().is_some()))
+                if value.variant().is_some_and(|value| !value.is_closed()))
         }) {
             return None;
         }
@@ -1048,12 +1048,7 @@ impl CssVoiceOffset {
     pub fn try_from_calculation(
         value: crate::numeric::CssCalculation<crate::numeric::CssFrequencyPercentage>,
     ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(origin) = value.components().first_implicit_origin() {
-            return Err(CssNumericConstructionError::at_origin(
-                crate::numeric::expression::CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
-        }
+        crate::numeric::value::reject_recovered(value.components())?;
         let root = crate::numeric::specified_numeric::significant_root(value.components())?;
         if matches!(
             root.view(),
@@ -1114,15 +1109,7 @@ impl CssVoiceOffset {
                 .map(crate::numeric::CssCalculation::<crate::numeric::CssPercentage>::components),
             Self::Calculation(value) => Some(value.components()),
         };
-        if let Some(origin) =
-            components.and_then(crate::component::CssComponentValues::first_implicit_origin)
-        {
-            return Err(CssNumericConstructionError::at_origin(
-                crate::numeric::expression::CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
-        }
-        Ok(())
+        components.map_or(Ok(()), crate::numeric::value::reject_recovered)
     }
     fn append_specified(
         &self,
@@ -1356,17 +1343,8 @@ impl CssVoiceRate {
             >,
         >,
     ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(value) = percentage.as_ref().and_then(
-            crate::numeric::CssNumeric::<
-                crate::numeric::CssPercentage,
-                crate::numeric::CssNonNegative,
-            >::calculation,
-        ) && let Some(origin) = value.components().first_implicit_origin()
-        {
-            return Err(CssNumericConstructionError::at_origin(
-                crate::numeric::expression::CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
+        if let Some(percentage) = &percentage {
+            percentage.ensure_closed()?;
         }
         Self::from_parser(keyword, percentage)
     }
@@ -1506,14 +1484,7 @@ impl CssVoiceBalance {
     pub fn try_number(
         number: crate::numeric::CssNumeric<crate::numeric::CssNumber>,
     ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(value) = number.calculation()
-            && let Some(origin) = value.components().first_implicit_origin()
-        {
-            return Err(CssNumericConstructionError::at_origin(
-                crate::numeric::expression::CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
-        }
+        number.ensure_closed()?;
         Ok(Self::from_parser_number(number))
     }
     pub(crate) const fn from_parser_number(

@@ -65,8 +65,19 @@ impl CssFontLanguageString {
     ///
     /// # Errors
     ///
-    /// Returns an `InvalidString` error carrying the component's origin when the component is not a string token.
+    /// Returns an `InvalidString` error carrying the component's origin when the component is not a string token, and an `InvalidToken` error at its implicit closure when the string was recovered at the end of its input.
     pub fn try_from_component(
+        component: CssComponentValue,
+    ) -> Result<Self, CssComponentValueError> {
+        let value = Self::from_parser_component(component)?;
+        value
+            .component
+            .ensure_closed(CssComponentValueError::recovered)?;
+        Ok(value)
+    }
+
+    /// Parser admission retains a string recovered at the end of its input.
+    pub(crate) fn from_parser_component(
         component: CssComponentValue,
     ) -> Result<Self, CssComponentValueError> {
         if !matches!(

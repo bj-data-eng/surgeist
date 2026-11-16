@@ -4895,6 +4895,7 @@ pub fn surgeist_css::rule::font_palette_values::CssFontPaletteValuesError::diagn
 pub const fn surgeist_css::rule::font_palette_values::CssFontPaletteValuesError::is_invalid_name(&self) -> bool
 pub const fn surgeist_css::rule::font_palette_values::CssFontPaletteValuesError::is_missing_font_family(&self) -> bool
 pub fn surgeist_css::rule::font_palette_values::CssFontPaletteValuesError::is_not_pending(&self) -> bool
+pub fn surgeist_css::rule::font_palette_values::CssFontPaletteValuesError::is_recovered_component(&self) -> bool
 pub fn surgeist_css::rule::font_palette_values::CssFontPaletteValuesError::is_residual_substitution(&self) -> bool
 pub fn surgeist_css::rule::font_palette_values::CssFontPaletteValuesError::origin(&self) -> core::option::Option<&surgeist_css::component::CssSerializedOrigin>
 impl core::error::Error for surgeist_css::rule::font_palette_values::CssFontPaletteValuesError
@@ -5489,6 +5490,7 @@ pub const fn surgeist_css::rule::CssRuleConstructionError::is_invalid_placement(
 pub const fn surgeist_css::rule::CssRuleConstructionError::is_invalid_prelude_order(&self) -> bool
 pub const fn surgeist_css::rule::CssRuleConstructionError::is_invalid_rule_grammar(&self) -> bool
 pub const fn surgeist_css::rule::CssRuleConstructionError::is_invalid_selector_identifier(&self) -> bool
+pub const fn surgeist_css::rule::CssRuleConstructionError::is_invalid_style_rule_anchor(&self) -> bool
 pub const fn surgeist_css::rule::CssRuleConstructionError::is_namespace_mismatch(&self) -> bool
 pub const fn surgeist_css::rule::CssRuleConstructionError::is_nesting_limit(&self) -> bool
 pub const fn surgeist_css::rule::CssRuleConstructionError::is_recovered_input(&self) -> bool
@@ -5994,6 +5996,9 @@ pub surgeist_css::serialization::CssRuleCssomFormat::SupportsCondition
 #[non_exhaustive] pub enum surgeist_css::serialization::CssRuleCssomKind
 pub surgeist_css::serialization::CssRuleCssomKind::Else
 pub surgeist_css::serialization::CssRuleCssomKind::When
+#[non_exhaustive] pub enum surgeist_css::serialization::CssRuleSerializationOutput
+pub surgeist_css::serialization::CssRuleSerializationOutput::Cssom
+pub surgeist_css::serialization::CssRuleSerializationOutput::Specified
 pub struct surgeist_css::serialization::CssRuleGraphInput<'a>
 impl<'a> surgeist_css::serialization::CssRuleGraphInput<'a>
 pub const fn surgeist_css::serialization::CssRuleGraphInput<'a>::font_face(declarations: &'a surgeist_css::rule::font_face::CssSpecifiedFontFaceDeclarationBlock) -> Self
@@ -6013,6 +6018,7 @@ impl surgeist_css::serialization::CssRuleSerializationError
 pub const fn surgeist_css::serialization::CssRuleSerializationError::declaration_block_error(&self) -> core::option::Option<&surgeist_css::declaration::CssDeclarationBlockError>
 pub const fn surgeist_css::serialization::CssRuleSerializationError::is_resource_limit(&self) -> bool
 pub const fn surgeist_css::serialization::CssRuleSerializationError::keyframe_block_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_css::serialization::CssRuleSerializationError::output(&self) -> surgeist_css::serialization::CssRuleSerializationOutput
 pub fn surgeist_css::serialization::CssRuleSerializationError::rule_path(&self) -> &[usize]
 pub fn surgeist_css::serialization::CssRuleSerializationError::serialization_error(&self) -> core::option::Option<&surgeist_css::serialization::CssSerializationError>
 pub const fn surgeist_css::serialization::CssRuleSerializationError::unavailable_format(&self) -> core::option::Option<surgeist_css::serialization::CssRuleCssomFormat>
@@ -8378,8 +8384,8 @@ pub surgeist_css::values::image::CssAngularColorStopPosition::Calculation(surgei
 pub surgeist_css::values::image::CssAngularColorStopPosition::Percentage(surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssPercentage>)
 pub surgeist_css::values::image::CssAngularColorStopPosition::Zero(surgeist_css::numeric::CssZeroLiteral)
 impl surgeist_css::values::image::CssAngularColorStopPosition
-pub fn surgeist_css::values::image::CssAngularColorStopPosition::from_calculation(value: surgeist_css::numeric::CssCalculation<surgeist_css::numeric::CssAnglePercentage>) -> Self
 pub fn surgeist_css::values::image::CssAngularColorStopPosition::origin(&self) -> &surgeist_css::component::CssValueOrigin
+pub fn surgeist_css::values::image::CssAngularColorStopPosition::try_from_calculation(value: surgeist_css::numeric::CssCalculation<surgeist_css::numeric::CssAnglePercentage>) -> core::result::Result<Self, surgeist_css::numeric::CssNumericConstructionError>
 pub fn surgeist_css::values::image::CssAngularColorStopPosition::try_from_component(component: surgeist_css::component::CssComponentValue) -> core::result::Result<Self, surgeist_css::numeric::CssNumericConstructionError>
 impl surgeist_css::values::image::CssAngularColorStopPosition
 pub fn surgeist_css::values::image::CssAngularColorStopPosition::serialize_specified(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
@@ -10169,8 +10175,8 @@ pub fn surgeist_css::values::text::CssTextBoxValues::serialize_specified(&self, 
 pub struct surgeist_css::values::text::CssTextCombineDigitCount
 impl surgeist_css::values::text::CssTextCombineDigitCount
 pub const fn surgeist_css::values::text::CssTextCombineDigitCount::calculation(&self) -> core::option::Option<&surgeist_css::numeric::CssCalculation<surgeist_css::numeric::CssInteger>>
-pub const fn surgeist_css::values::text::CssTextCombineDigitCount::from_calculation(value: surgeist_css::numeric::CssCalculation<surgeist_css::numeric::CssInteger>) -> Self
 pub const fn surgeist_css::values::text::CssTextCombineDigitCount::literal(&self) -> core::option::Option<i32>
+pub fn surgeist_css::values::text::CssTextCombineDigitCount::try_from_calculation(value: surgeist_css::numeric::CssCalculation<surgeist_css::numeric::CssInteger>) -> core::result::Result<Self, surgeist_css::numeric::CssNumericConstructionError>
 pub const fn surgeist_css::values::text::CssTextCombineDigitCount::try_literal(value: i32) -> core::option::Option<Self>
 pub struct surgeist_css::values::text::CssTextConstructionError
 impl surgeist_css::values::text::CssTextConstructionError

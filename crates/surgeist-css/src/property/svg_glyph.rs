@@ -67,14 +67,7 @@ impl CssSvgGlyphOrientationVerticalValue {
     pub fn try_from_angle(
         angle: CssNumeric<CssAngle>,
     ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(calculation) = angle.calculation()
-            && let Some(origin) = calculation.components().first_implicit_origin()
-        {
-            return Err(CssNumericConstructionError::at_origin(
-                CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
-        }
+        angle.ensure_closed()?;
         Self::from_parser_angle(angle)
     }
     pub(crate) fn from_parser_angle(

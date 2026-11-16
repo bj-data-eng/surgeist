@@ -286,6 +286,10 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
                     error.is_invalid_selector_identifier(),
                     "InvalidSelectorIdentifier"
                 ),
+                (
+                    error.is_invalid_style_rule_anchor(),
+                    "InvalidStyleRuleAnchor"
+                ),
                 (error.is_namespace_mismatch(), "NamespaceMismatch"),
                 (error.is_nesting_limit(), "NestingLimit"),
                 (error.is_selector_nesting_limit(), "SelectorNestingLimit"),

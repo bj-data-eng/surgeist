@@ -543,7 +543,7 @@ fn parse_font_named_instance<'i>(
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|_| fail(numeric, location, unexpected_at))?;
-    CssFontNamedInstanceString::try_from_component(component)
+    CssFontNamedInstanceString::from_parser_component(component)
         .map(CssFontNamedInstance::String)
         .map_err(|_| fail(numeric, location, unexpected_at))
 }

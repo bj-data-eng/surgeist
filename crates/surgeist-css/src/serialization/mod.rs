@@ -81,7 +81,7 @@ pub use common_serialization::{
 };
 #[doc(inline)]
 pub use cssom_rule_serialization::{
-    CssRuleCssomFormat, CssRuleCssomKind, CssRuleSerializationError,
+    CssRuleCssomFormat, CssRuleCssomKind, CssRuleSerializationError, CssRuleSerializationOutput,
 };
 #[doc(inline)]
 pub use edited_rule::{CssGroupPreludeRef, CssRuleGraphInput, CssRuleSerializationLimits};

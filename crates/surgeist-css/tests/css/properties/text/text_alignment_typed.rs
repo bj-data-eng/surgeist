@@ -431,3 +431,38 @@ fn shared_text4_source_matches_complete_text_wrap_authored_grammar() {
     let report = CssParser::default().parse_block_contents("text-wrap:wrap nowrap");
     assert!(!report.is_clean());
 }
+
+#[test]
+fn recovered_alignment_string_is_retained_by_parsing_and_rejected_by_the_checked_constructor() {
+    let css = "text-align-all:\"a";
+    let report = CssParser::default().parse_block_contents(css);
+    // Syntax 3 §5.5.10 retains the string closed at EOF.
+    assert!(!report.is_clean());
+    assert_eq!(report.syntax().len(), 1);
+    let Some(CssKnownPropertyValueRef::TextAlignAll(wrapper)) =
+        report.syntax()[0].known().unwrap().property_value()
+    else {
+        panic!("text-align-all current value")
+    };
+    let CssTextAlignAllValue::Character(value) = wrapper.value() else {
+        panic!("parsing retains the recovered character")
+    };
+    assert_eq!(value.decoded(), "a");
+    let CssValueOrigin::Parsed(origin) = value.component().origin() else {
+        panic!("parsed opening and content")
+    };
+    assert_eq!(origin.source().as_str(), css);
+    assert!(
+        origin
+            .source()
+            .same_snapshot(report.syntax()[0].parsed_value().unwrap().source())
+    );
+    let error =
+        CssCharacterAlignment::try_from_component(value.component().clone(), None).unwrap_err();
+    let error = error.component_error().expect("component failure");
+    assert!(error.is_invalid_token(), "{error:?}");
+    assert!(matches!(
+        error.origin(),
+        CssValueOrigin::ImplicitClosure { .. }
+    ));
+}

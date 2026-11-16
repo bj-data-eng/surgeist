@@ -124,6 +124,12 @@ impl CssSupportsConstructionError {
     pub(crate) fn into_kind(self) -> SupportsConstructionKind {
         self.kind
     }
+    /// Names the first component a checked constructor found recovered.
+    pub(crate) fn recovered(origin: &CssValueOrigin) -> Self {
+        Self::from(SupportsConstructionKind::RecoveredInput {
+            origin: origin.clone().into(),
+        })
+    }
 }
 impl From<SupportsConstructionKind> for CssSupportsConstructionError {
     fn from(kind: SupportsConstructionKind) -> Self {
@@ -522,13 +528,7 @@ fn css_supports_declaration(
     let context = parser.context().standards();
     let property_values =
         crate::component::values::parse_component_values_with_limits(property, limits)?;
-    if let Some(origin) = property_values.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::from(
-            SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone().into(),
-            },
-        ));
-    }
+    property_values.ensure_closed(CssSupportsConstructionError::recovered)?;
     if !matches!(property_values.items(), [component]
         if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name == property))
     {
@@ -545,13 +545,7 @@ fn css_supports_declaration(
         ));
     }
     let value = crate::component::values::parse_component_values_with_limits(value, limits)?;
-    if let Some(origin) = value.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::from(
-            SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone().into(),
-            },
-        ));
-    }
+    value.ensure_closed(CssSupportsConstructionError::recovered)?;
     if let Some(component) = value.items().iter().find(|component| {
         matches!(
             component.view(),

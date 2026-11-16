@@ -139,10 +139,7 @@ impl CssFontFeatureValue {
 fn reject_fontfeature_recovered(
     components: &CssComponentValues,
 ) -> Result<(), CssFontFeatureValuesError> {
-    if let Some(origin) = components.first_implicit_origin() {
-        return Err(DescriptorValueFailure::recovered(origin.clone()).into());
-    }
-    Ok(())
+    components.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()).into())
 }
 
 impl CssFontFeatureDisplayValue {

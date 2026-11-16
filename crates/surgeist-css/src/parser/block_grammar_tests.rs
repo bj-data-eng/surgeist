@@ -421,9 +421,7 @@ type CeilingRow = (
 // has no ceiling of its own that could refuse all of it.
 #[test]
 fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_driver_enters() {
-    use CssErrorCode::{
-        InvalidAtRuleBody, InvalidQualifiedRule, NestingLimit, UnexpectedEnd, UnexpectedToken,
-    };
+    use CssErrorCode::{InvalidQualifiedRule, NestingLimit, UnexpectedEnd, UnexpectedToken};
     use CssRecoveryAction::{DropQualifiedRule, StopAtNestingLimit};
     const TABLE: &[CeilingRow] = &[
         (
@@ -1009,7 +1007,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             255,
             true,
             1,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
+            &[(NestingLimit, StopAtNestingLimit, 26, 536)],
         ),
         (
             "page-block",
@@ -1018,7 +1016,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             256,
             true,
             1,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
+            &[(NestingLimit, StopAtNestingLimit, 26, 538)],
         ),
         (
             "page-block",
@@ -1027,7 +1025,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             257,
             true,
             1,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
+            &[(NestingLimit, StopAtNestingLimit, 26, 540)],
         ),
         (
             "page-block",
@@ -1036,7 +1034,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             1000,
             true,
             1,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
+            &[(NestingLimit, StopAtNestingLimit, 26, 2026)],
         ),
         (
             "page-block",
@@ -1045,7 +1043,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             256,
             true,
             2,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
+            &[(NestingLimit, StopAtNestingLimit, 26, 538)],
         ),
         (
             "page-block",
@@ -1054,7 +1052,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             1000,
             true,
             2,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
+            &[(NestingLimit, StopAtNestingLimit, 26, 2026)],
         ),
         (
             "page-block",
@@ -1063,7 +1061,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             256,
             true,
             2,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 31, 32)],
+            &[(NestingLimit, StopAtNestingLimit, 31, 543)],
         ),
         (
             "page-block",
@@ -1072,7 +1070,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             257,
             true,
             2,
-            &[(InvalidAtRuleBody, DropQualifiedRule, 31, 32)],
+            &[(NestingLimit, StopAtNestingLimit, 31, 545)],
         ),
         (
             "page-block",
@@ -1299,7 +1297,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 544),
-                (InvalidAtRuleBody, DropQualifiedRule, 581, 582),
+                (NestingLimit, StopAtNestingLimit, 581, 1091),
             ],
         ),
         (
@@ -1311,7 +1309,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 546),
-                (InvalidAtRuleBody, DropQualifiedRule, 583, 584),
+                (NestingLimit, StopAtNestingLimit, 583, 1095),
             ],
         ),
         (
@@ -1323,7 +1321,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 548),
-                (InvalidAtRuleBody, DropQualifiedRule, 585, 586),
+                (NestingLimit, StopAtNestingLimit, 585, 1099),
             ],
         ),
         (
@@ -1335,7 +1333,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 2034),
-                (InvalidAtRuleBody, DropQualifiedRule, 2071, 2072),
+                (NestingLimit, StopAtNestingLimit, 2071, 4071),
             ],
         ),
         (
@@ -1347,7 +1345,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 546),
-                (InvalidAtRuleBody, DropQualifiedRule, 596, 597),
+                (NestingLimit, StopAtNestingLimit, 596, 1108),
             ],
         ),
         (
@@ -1359,7 +1357,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 2034),
-                (InvalidAtRuleBody, DropQualifiedRule, 2084, 2085),
+                (NestingLimit, StopAtNestingLimit, 2084, 4084),
             ],
         ),
         (
@@ -1371,7 +1369,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 39, 551),
-                (InvalidAtRuleBody, DropQualifiedRule, 604, 605),
+                (NestingLimit, StopAtNestingLimit, 604, 1116),
             ],
         ),
         (
@@ -1383,7 +1381,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_drive
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 39, 553),
-                (InvalidAtRuleBody, DropQualifiedRule, 606, 607),
+                (NestingLimit, StopAtNestingLimit, 606, 1120),
             ],
         ),
         (

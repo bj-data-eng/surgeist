@@ -210,10 +210,7 @@ pub(crate) use descriptor_value_api;
 fn reject_counterstyle_recovered(
     components: &CssComponentValues,
 ) -> Result<(), CssCounterStyleValueError> {
-    if let Some(origin) = components.first_implicit_origin() {
-        return Err(DescriptorValueFailure::recovered(origin.clone()).into());
-    }
-    Ok(())
+    components.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()).into())
 }
 
 /// A checked component-native `@counter-style` descriptor construction or reentry failure.

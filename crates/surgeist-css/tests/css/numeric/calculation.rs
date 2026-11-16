@@ -9,6 +9,7 @@ mod exact_numeric_construction;
 mod exact_numeric_function_domains;
 mod exact_numeric_grammar;
 mod exact_numeric_pure_consumers;
+mod number_division;
 mod numeric_angle_function_product_projection;
 mod numeric_angle_sum_replacement_projection;
 mod numeric_calculation_clone;

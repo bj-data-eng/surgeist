@@ -22,6 +22,7 @@ pub(crate) enum CssRuleConstructionErrorKind {
     NamespaceMismatch,
     InvalidSelectorIdentifier,
     InvalidBoundaryAnchor,
+    InvalidStyleRuleAnchor,
     NestingLimit,
     SelectorNestingLimit,
     CapacityOverflow,
@@ -37,6 +38,7 @@ impl CssRuleConstructionErrorKind {
             }
             Self::InvalidSelectorIdentifier => "a selector identifier is invalid",
             Self::InvalidBoundaryAnchor => "a scope boundary anchor is invalid",
+            Self::InvalidStyleRuleAnchor => "a style rule anchor is invalid",
             Self::NestingLimit => "rules nest deeper than the structural limit",
             Self::SelectorNestingLimit => "selectors nest deeper than the structural limit",
             Self::CapacityOverflow => "a structural size calculation overflowed",
@@ -121,6 +123,15 @@ impl CssRuleConstructionError {
         matches!(
             self.assembly(),
             Some(CssRuleConstructionErrorKind::InvalidBoundaryAnchor)
+        )
+    }
+    /// Returns whether a style rule's selector holds an explicit `&` of the other
+    /// anchor domain: a scope anchor outside a scope body, or a nesting anchor in one.
+    #[must_use]
+    pub const fn is_invalid_style_rule_anchor(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::InvalidStyleRuleAnchor)
         )
     }
     /// Returns whether rules nest deeper than the structural limit.
@@ -551,7 +562,9 @@ fn check<'a>(
                     CssStyleSelector::Selector(selector) => check_selector_with_anchors(
                         selector,
                         context,
-                        Some(inherited.scope_anchors),
+                        Some(AnchorDomain::StyleRule {
+                            scope: inherited.scope_anchors,
+                        }),
                     )?,
                     CssStyleSelector::Relative(selector) => {
                         // A scope body is relative to its scope root; a nested style
@@ -562,7 +575,9 @@ fn check<'a>(
                         check_selector_with_anchors(
                             selector.selector(),
                             context,
-                            Some(inherited.scope_anchors),
+                            Some(AnchorDomain::StyleRule {
+                                scope: inherited.scope_anchors,
+                            }),
                         )?;
                     }
                 }
@@ -628,7 +643,13 @@ fn check_scope_boundaries(
                 if matches!(member, CssStyleSelector::Relative(_)) && !allow_relative {
                     return Err(CssRuleConstructionErrorKind::InvalidPlacement);
                 }
-                check_selector_with_anchors(member.selector(), context, Some(scope_anchors))?;
+                check_selector_with_anchors(
+                    member.selector(),
+                    context,
+                    Some(AnchorDomain::ScopeBoundary {
+                        scope: scope_anchors,
+                    }),
+                )?;
             }
         }
     }
@@ -748,6 +769,31 @@ enum SelectorWork<'a> {
     Compound(&'a CssCompoundSelector, u32),
     Pseudo(&'a CssPseudoClass, u32),
 }
+/// The anchor domain a selector must stay in, and what owns the selector: a style
+/// rule or a scope boundary. `scope` selects scope anchors over nesting anchors.
+#[derive(Clone, Copy)]
+enum AnchorDomain {
+    StyleRule { scope: bool },
+    ScopeBoundary { scope: bool },
+}
+impl AnchorDomain {
+    fn check(self, compound: &CssCompoundSelector) -> Result<(), CssRuleConstructionErrorKind> {
+        let (scope, violation) = match self {
+            Self::StyleRule { scope } => {
+                (scope, CssRuleConstructionErrorKind::InvalidStyleRuleAnchor)
+            }
+            Self::ScopeBoundary { scope } => {
+                (scope, CssRuleConstructionErrorKind::InvalidBoundaryAnchor)
+            }
+        };
+        let other_domain = if scope {
+            compound.nesting_selectors() != 0
+        } else {
+            compound.has_scope_anchor()
+        };
+        if other_domain { Err(violation) } else { Ok(()) }
+    }
+}
 fn check_selector(
     selector: &CssSelector,
     context: &CssNamespaceContext,
@@ -757,7 +803,7 @@ fn check_selector(
 fn check_selector_with_anchors(
     selector: &CssSelector,
     context: &CssNamespaceContext,
-    scope_anchors: Option<bool>,
+    anchors: Option<AnchorDomain>,
 ) -> Result<(), CssRuleConstructionErrorKind> {
     let mut stack = CheckedStack::new(SelectorWork::Selector(selector, 0))?;
     while let Some(work) = stack.pop() {
@@ -784,14 +830,8 @@ fn check_selector_with_anchors(
                 }
             },
             SelectorWork::Compound(compound, depth) => {
-                if scope_anchors.is_some_and(|scope| {
-                    if scope {
-                        compound.nesting_selectors() != 0
-                    } else {
-                        compound.has_scope_anchor()
-                    }
-                }) {
-                    return Err(CssRuleConstructionErrorKind::InvalidBoundaryAnchor);
+                if let Some(anchors) = anchors {
+                    anchors.check(compound)?;
                 }
                 if let Some(name) = compound.type_selector() {
                     if let Some(local) = name.local_name() {

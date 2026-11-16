@@ -152,7 +152,7 @@ fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin
         Some(CssNumericDimension::Angle)
     );
     let origin = expression.origin().clone();
-    let position = CssAngularColorStopPosition::from_calculation(expression);
+    let position = CssAngularColorStopPosition::try_from_calculation(expression).unwrap();
     assert_eq!(position.origin(), &origin);
     assert_eq!(
         position.serialize_specified(Default::default()).unwrap(),
@@ -303,13 +303,14 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
     CssComponentValues::parse(&CssParser::default(), &css).unwrap()
 }
 fn angular_math(functions: usize) -> CssAngularColorStopPosition {
-    CssAngularColorStopPosition::from_calculation(
+    CssAngularColorStopPosition::try_from_calculation(
         CssCalculation::<CssAnglePercentage>::try_from_components(
             math(functions, "1deg"),
             Default::default(),
         )
         .unwrap(),
     )
+    .unwrap()
 }
 fn line_math(functions: usize) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_calculation(
@@ -496,6 +497,38 @@ fn selected_metadata_traces_the_exact_gradient_import_without_claiming_siblings(
             .parse_block_contents("background-image:repeating-conic-gradient(red,blue)")
             .is_clean()
     );
+}
+
+#[test]
+fn checked_position_rejects_recovered_math_that_parsing_retains() {
+    let source = "background-image:conic-gradient(red 10deg calc(20deg + 25%";
+    let report = CssParser::default().parse_block_contents(source);
+    // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error, and §5.5.10 retains it.
+    assert!(!report.is_clean());
+    assert_eq!(report.syntax().len(), 1);
+    let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("background image")
+    };
+    let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images() else {
+        panic!("conic")
+    };
+    let CssAngularColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
+        panic!("stop")
+    };
+    let CssAngularColorStopPosition::Calculation(recovered) = &stop.positions()[1] else {
+        panic!("parsing retains the recovered position math")
+    };
+    let error = CssAngularColorStopPosition::try_from_calculation(recovered.clone()).unwrap_err();
+    assert!(error.is_recovered_component(), "{error:?}");
+    assert!(matches!(
+        error.origin(),
+        Some(CssValueOrigin::ImplicitClosure { .. })
+    ));
 }
 
 #[test]

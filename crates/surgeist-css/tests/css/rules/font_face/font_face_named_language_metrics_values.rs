@@ -349,3 +349,33 @@ fn substituted_values_return_concrete_descriptor_branches_and_original_replaceme
         assert_eq!(parsed(kind, text), ordinary);
     }
 }
+
+#[test]
+fn recovered_named_instance_is_retained_by_parsing_and_rejected_by_the_checked_constructor() {
+    let css = "\"Grotesque";
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        css,
+        Kind::FontNamedInstance,
+    );
+    // Syntax 3 §5.5.10 retains the string closed at EOF.
+    assert!(!report.is_clean());
+    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(Value::FontNamedInstance(
+        CssFontNamedInstance::String(name),
+    ))) = report.syntax()
+    else {
+        panic!("parsing retains the recovered string")
+    };
+    assert_eq!(name.as_str(), "Grotesque");
+    let CssValueOrigin::Parsed(origin) = name.origin() else {
+        panic!("parsed opening and content")
+    };
+    assert_eq!(origin.source().as_str(), css);
+    let error =
+        CssFontNamedInstanceString::try_from_component(name.component().clone()).unwrap_err();
+    assert!(error.is_invalid_token(), "{error:?}");
+    assert!(matches!(
+        error.origin(),
+        CssValueOrigin::ImplicitClosure { .. }
+    ));
+}

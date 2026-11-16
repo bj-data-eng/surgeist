@@ -198,20 +198,14 @@ impl CssColor {
         }
         use CssColorRepresentation as R;
         let channel = |v: &CssColorComponent| match v {
-            CssColorComponent::NumberCalculation(v) => {
-                v.components().first_implicit_origin().is_none()
-            }
-            CssColorComponent::HintedNumberCalculation(v) => {
-                v.components().first_implicit_origin().is_none()
-            }
-            CssColorComponent::PercentageCalculation(v) => {
-                v.components().first_implicit_origin().is_none()
-            }
+            CssColorComponent::NumberCalculation(v) => v.components().is_closed(),
+            CssColorComponent::HintedNumberCalculation(v) => v.components().is_closed(),
+            CssColorComponent::PercentageCalculation(v) => v.components().is_closed(),
             _ => true,
         };
         let hue = |v: &CssColorHue| match v {
-            CssColorHue::NumberCalculation(v) => v.components().first_implicit_origin().is_none(),
-            CssColorHue::AngleCalculation(v) => v.components().first_implicit_origin().is_none(),
+            CssColorHue::NumberCalculation(v) => v.components().is_closed(),
+            CssColorHue::AngleCalculation(v) => v.components().is_closed(),
             _ => true,
         };
         let relative = |v: &CssRelativeColorExpression| match &v.value {
@@ -257,17 +251,16 @@ impl CssColor {
                     && v.channels
                         .iter()
                         .chain(v.alpha.iter())
-                        .all(|v| v.components().first_implicit_origin().is_none())
+                        .all(|v| v.components().is_closed())
             }
             R::Alpha(v) => v.source.is_closed() && v.alpha.iter().all(relative),
             R::LightDark(v) => v.light.is_closed() && v.dark.is_closed(),
             R::ContrastColor(v) => v.color.is_closed(),
             R::ColorMix(v) => v.components.iter().all(|v| {
                 v.color.is_closed()
-                    && v.weight.as_ref().is_none_or(|v| {
-                        v.calculation()
-                            .is_none_or(|v| v.components().first_implicit_origin().is_none())
-                    })
+                    && v.weight
+                        .as_ref()
+                        .is_none_or(|v| v.calculation().is_none_or(|v| v.components().is_closed()))
             }),
         }
     }
@@ -2240,8 +2233,18 @@ impl CssColorMixWeight {
     ///
     /// # Errors
     ///
-    /// Returns an error when `value` is not exactly one math function, ignoring whitespace and comments.
+    /// Returns an error when `value` holds a component recovered by implicit closure, or is
+    /// not exactly one math function, ignoring whitespace and comments.
     pub fn try_calculation(
+        value: CssCalculation<CssPercentage>,
+    ) -> Result<Self, crate::component::CssComponentValueError> {
+        value
+            .components()
+            .ensure_closed(crate::component::CssComponentValueError::recovered)?;
+        Self::from_parser_calculation(value)
+    }
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
         value: CssCalculation<CssPercentage>,
     ) -> Result<Self, crate::component::CssComponentValueError> {
         use crate::component::CssComponentValueRef as V;

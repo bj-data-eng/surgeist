@@ -1,6 +1,6 @@
 use crate::numeric::{
     CssCalculation, CssInteger, CssLength, CssLengthPercentage, CssNonNegative, CssNumber,
-    CssNumeric,
+    CssNumeric, CssNumericConstructionError,
 };
 
 /// # Specified serialization
@@ -82,8 +82,20 @@ impl CssTextCombineDigitCount {
     }
 
     /// Wraps an authored integer calculation as a digit count, without range checking.
-    #[must_use]
-    pub const fn from_calculation(value: CssCalculation<CssInteger>) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssNumericConstructionError`] when the calculation holds a component
+    /// recovered by implicit closure.
+    pub fn try_from_calculation(
+        value: CssCalculation<CssInteger>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        crate::numeric::value::reject_recovered(value.components())?;
+        Ok(Self::from_parser_calculation(value))
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) const fn from_parser_calculation(value: CssCalculation<CssInteger>) -> Self {
         Self {
             value: CssTextCombineDigitCountValue::Calculation(value),
         }

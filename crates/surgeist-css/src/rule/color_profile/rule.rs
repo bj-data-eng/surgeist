@@ -115,10 +115,7 @@ impl CssColorProfileDescriptorKind {
 }
 
 fn reject_recovered(components: &CssComponentValues) -> Result<(), CssColorProfileValueError> {
-    if let Some(origin) = components.first_implicit_origin() {
-        return Err(DescriptorValueFailure::recovered(origin.clone()).into());
-    }
-    Ok(())
+    components.ensure_closed(|origin| DescriptorValueFailure::recovered(origin.clone()).into())
 }
 
 /// A checked component-native `@color-profile` descriptor construction or reentry failure.

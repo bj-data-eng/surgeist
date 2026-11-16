@@ -113,10 +113,19 @@ impl CssUrlModifierFunction {
     /// arguments return a [`crate::component::CssComponentValueError`] for which
     /// [`is_invalid_function`](crate::component::CssComponentValueError::is_invalid_function)
     /// holds, with their original token origin. Unknown functions retain generic syntax.
+    ///
+    /// Arguments holding a component closed by the end of its input are rejected with the same
+    /// error kind, at the implicit closure; parsing retains such modifiers.
     pub fn try_new(
         name: CssIdent,
         arguments: crate::component::CssComponentValues,
     ) -> Result<Self, crate::component::CssComponentValueError> {
+        arguments.ensure_closed(|origin| {
+            crate::component::CssComponentValueError::new(
+                crate::component::values::CssComponentValueErrorKind::InvalidFunction,
+                origin.clone(),
+            )
+        })?;
         crate::component::CssComponentValue::try_function(name.as_str(), arguments.clone())?;
         let request_modifier = validate_request_url_modifier(name.as_str(), &arguments)?;
         let css = arguments

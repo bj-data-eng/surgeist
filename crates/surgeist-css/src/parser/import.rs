@@ -44,14 +44,13 @@ pub(crate) fn construct_import(
     use crate::component::CssComponentValueRef as Component;
     use crate::component::CssValueTokenRef as Value;
     values.validate_with_limits(limits)?;
-    if let Some(origin) = values.first_implicit_origin() {
-        return Err(
+    values.ensure_closed(|origin| {
+        crate::rule::CssRuleConstructionError::from(
             crate::rule::imports::ImportConstructionKind::RecoveredInput {
                 origin: origin.clone().into(),
-            }
-            .into(),
-        );
-    }
+            },
+        )
+    })?;
     let items = values.items();
     let first = items
         .iter()

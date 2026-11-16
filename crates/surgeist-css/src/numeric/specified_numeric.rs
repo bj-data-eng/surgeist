@@ -35,13 +35,8 @@ pub(crate) fn admit_calculation<C, T>(
     retain: fn(C) -> T,
 ) -> ConstructionResult<T> {
     let values = components(&calculation);
-    if matches!(admission, CalculationAdmission::Checked)
-        && let Some(origin) = values.first_implicit_origin()
-    {
-        return Err(CssNumericConstructionError::at_origin(
-            CssNumericConstructionErrorKind::RecoveredComponent,
-            origin.clone(),
-        ));
+    if matches!(admission, CalculationAdmission::Checked) {
+        crate::numeric::value::reject_recovered(values)?;
     }
     let root = significant_root(values)?;
     if matches!(root.view(), CssComponentValueRef::Token(_)) {

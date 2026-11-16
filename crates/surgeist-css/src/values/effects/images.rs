@@ -45,12 +45,7 @@ impl CssFilterImageString {
                 component.origin().clone(),
             ));
         }
-        if let Some(origin) = component.implicit_termination_origin() {
-            return Err(CssComponentValueError::new(
-                CssComponentValueErrorKind::InvalidToken,
-                origin.clone(),
-            ));
-        }
+        component.ensure_closed(CssComponentValueError::recovered)?;
         Ok(Self { component })
     }
     /// Borrows the decoded String; no URL equivalence or execution meaning is assigned.

@@ -184,14 +184,13 @@ impl From<CssComponentValueError> for CssConditionConstructionError {
 pub(crate) fn reject_recovered(
     values: &CssComponentValues,
 ) -> Result<(), CssConditionConstructionError> {
-    if let Some(origin) = values.first_implicit_origin() {
-        return Err(CssConditionConstructionError::from(
+    values.ensure_closed(|origin| {
+        CssConditionConstructionError::from(
             crate::query::when::ConditionConstructionKind::RecoveredInput {
                 origin: origin.clone().into(),
             },
-        ));
-    }
-    Ok(())
+        )
+    })
 }
 fn construct<T: Send>(
     values: CssComponentValues,

@@ -328,10 +328,7 @@ impl CssTextEmphasisString {
         })
     }
     fn is_closed(&self) -> bool {
-        !matches!(
-            self.component.implicit_termination_origin(),
-            Some(CssValueOrigin::ImplicitClosure { .. })
-        )
+        self.component.is_closed()
     }
     /// Creates an emphasis string from decoded text.
     ///
@@ -575,10 +572,7 @@ impl CssTextShadowLayer {
         let shadow = &self.shadow;
         length_closed(shadow.offset_x())
             && length_closed(shadow.offset_y())
-            && shadow.blur_radius().is_none_or(|v| {
-                v.calculation()
-                    .is_none_or(|c| c.components().first_implicit_origin().is_none())
-            })
+            && shadow.blur_radius().is_none_or(CssNumeric::is_closed)
             && shadow.spread_radius().is_none_or(length_closed)
             && shadow.color().is_none_or(CssColor::is_closed)
     }
@@ -594,14 +588,10 @@ impl CssTextShadowLayer {
     }
 }
 pub(crate) fn length_closed(value: &CssNumeric<CssLength>) -> bool {
-    value
-        .calculation()
-        .is_none_or(|c| c.components().first_implicit_origin().is_none())
+    value.is_closed()
 }
 pub(crate) fn length_percentage_closed(value: &CssNumeric<CssLengthPercentage>) -> bool {
-    value
-        .calculation()
-        .is_none_or(|c| c.components().first_implicit_origin().is_none())
+    value.is_closed()
 }
 /// A nonempty comma-separated list of text shadow layers.
 #[derive(Clone, Debug, PartialEq)]

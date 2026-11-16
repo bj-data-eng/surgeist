@@ -10,6 +10,7 @@ mod quirky_length_authored;
 mod quirky_length_context;
 mod quirky_length_shortening;
 mod recovered_calculation_construction;
+mod recovered_trailing_comment_construction;
 mod scalar_lexical_models;
 mod shared_numeric_construction;
 mod signed_numeric_identity;

@@ -47,6 +47,10 @@ impl CssFontPaletteValuesError {
         crate::rule::descriptor_values::DescriptorValueFailure::grammar(error, serialized).into()
     }
 
+    fn implicit(origin: CssValueOrigin) -> Self {
+        crate::rule::descriptor_values::DescriptorValueFailure::recovered(origin).into()
+    }
+
     fn residual(origin: CssValueOrigin) -> Self {
         crate::rule::descriptor_values::DescriptorValueFailure::residual(origin).into()
     }
@@ -97,6 +101,14 @@ impl CssFontPaletteValuesError {
     #[must_use]
     pub fn diagnostic(&self) -> Option<&CssError> {
         self.value()?.diagnostic()
+    }
+
+    /// Returns whether an implicitly closed component was supplied.
+    #[must_use]
+    pub fn is_recovered_component(&self) -> bool {
+        self.value().is_some_and(
+            crate::rule::descriptor_values::DescriptorValueFailure::is_recovered_component,
+        )
     }
 
     /// Returns whether strict reentry still contains a substitution function.
@@ -294,6 +306,7 @@ impl CssFontPaletteDescriptorValue {
         components
             .validate_with_limits(limits)
             .map_err(CssFontPaletteValuesError::from_component)?;
+        components.ensure_closed(|origin| CssFontPaletteValuesError::implicit(origin.clone()))?;
         let serialized = components
             .serialize_tokens(limits)
             .map_err(CssFontPaletteValuesError::from_component)?;

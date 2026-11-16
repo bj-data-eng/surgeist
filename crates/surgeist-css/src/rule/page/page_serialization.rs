@@ -301,7 +301,12 @@ impl CssMarginRule {
     ) -> std::result::Result<String, crate::serialization::CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.append_margin_cssom(self).map_err(|error| {
-            crate::serialization::CssRuleSerializationError::new(error, Vec::new(), None)
+            crate::serialization::CssRuleSerializationError::new(
+                crate::serialization::CssRuleSerializationOutput::Cssom,
+                error,
+                Vec::new(),
+                None,
+            )
         })?;
         Ok(writer.css)
     }
@@ -320,7 +325,12 @@ impl CssPageDeclarationBlock {
     ) -> std::result::Result<String, crate::serialization::CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.append_page_block(self).map_err(|error| {
-            crate::serialization::CssRuleSerializationError::new(error, Vec::new(), None)
+            crate::serialization::CssRuleSerializationError::new(
+                crate::serialization::CssRuleSerializationOutput::Cssom,
+                error,
+                Vec::new(),
+                None,
+            )
         })?;
         Ok(writer.css)
     }

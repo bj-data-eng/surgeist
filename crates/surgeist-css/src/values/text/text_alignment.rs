@@ -140,8 +140,20 @@ impl CssCharacterAlignment {
     ///
     /// # Errors
     ///
-    /// Returns an error carrying the component's origin when the component is not a string token or its text is not exactly one extended grapheme cluster.
+    /// Returns an error carrying the component's origin when the component is not a string token, its text is not exactly one extended grapheme cluster, or the string was recovered at the end of its input.
     pub fn try_from_component(
+        component: CssComponentValue,
+        authored_fallback: Option<CssTextAlignPosition>,
+    ) -> Result<Self, CssTextConstructionError> {
+        let value = Self::from_parser_component(component, authored_fallback)?;
+        value
+            .component
+            .ensure_closed(CssComponentValueError::recovered)?;
+        Ok(value)
+    }
+
+    /// Parser admission retains a string recovered at the end of its input.
+    pub(crate) fn from_parser_component(
         component: CssComponentValue,
         authored_fallback: Option<CssTextAlignPosition>,
     ) -> Result<Self, CssTextConstructionError> {

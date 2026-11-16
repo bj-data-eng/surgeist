@@ -87,7 +87,14 @@ impl<'a> CssImportRuleView<'a> {
                     .append_cssom_with_media(&mut writer, Some(self.media))
                     .map_err(Into::into)
             })
-            .map_err(|error| CssRuleSerializationError::new(error, Vec::new(), None))?;
+            .map_err(|error| {
+                CssRuleSerializationError::new(
+                    crate::serialization::CssRuleSerializationOutput::Cssom,
+                    error,
+                    Vec::new(),
+                    None,
+                )
+            })?;
         Ok(writer.css)
     }
 }

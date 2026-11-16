@@ -17,7 +17,9 @@ use crate::serialization::specified_rule_serialization::SpecifiedProvider as _;
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
 use crate::serialization::{CssGroupPreludeRef, CssRuleGraphInput};
-use crate::serialization::{CssRuleCssomFormat, CssRuleCssomKind, CssRuleSerializationError};
+use crate::serialization::{
+    CssRuleCssomFormat, CssRuleCssomKind, CssRuleSerializationError, CssRuleSerializationOutput,
+};
 
 type Result<T> = std::result::Result<T, RuleCssomSource>;
 
@@ -136,6 +138,7 @@ impl SpecifiedRuleWriter {
         )
         .map_err(|failure| {
             CssRuleSerializationError::new(
+                CssRuleSerializationOutput::Cssom,
                 failure.source,
                 failure.path,
                 failure.keyframe_block_index,
@@ -156,6 +159,7 @@ impl SpecifiedRuleWriter {
         )
         .map_err(|failure| {
             CssRuleSerializationError::new(
+                CssRuleSerializationOutput::Specified,
                 failure.source,
                 failure.path,
                 failure.keyframe_block_index,
@@ -178,6 +182,7 @@ impl SpecifiedRuleWriter {
         )
         .map_err(|failure| {
             CssRuleSerializationError::new(
+                CssRuleSerializationOutput::Cssom,
                 failure.source,
                 failure.path,
                 failure.keyframe_block_index,

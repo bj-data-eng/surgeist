@@ -7,7 +7,7 @@ use crate::css::support::rules::{ExpectedRejection, invalid_descriptor};
 use surgeist_css::CssParser;
 use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssValueOrigin,
+    CssSerializedOrigin, CssValueOrigin,
 };
 use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
 use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
@@ -187,6 +187,64 @@ fn recovered_raw_closure_is_distinct_from_strict_reentry() {
         )
         .unwrap_err();
     assert!(error.is_residual_substitution(), "{error:?}");
+}
+
+#[test]
+fn checked_construction_rejects_recovered_closures_that_parsing_retains() {
+    for (kind, source) in [
+        (Kind::BasePalette, "calc(1 + 1"),
+        (Kind::BasePalette, "env(index"),
+        (Kind::OverrideColors, "0 rgb(1 2 3"),
+    ] {
+        let report = CssFontPaletteDescriptorValue::parse(&CssParser::default(), source, kind);
+        assert!(!report.is_clean(), "{source}");
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.action()
+                    == CssRecoveryAction::RetainWithImplicitClosure),
+            "{source}"
+        );
+        let parsed = report
+            .syntax()
+            .as_ref()
+            .expect("browser recovery retains the descriptor");
+        let error = CssFontPaletteDescriptorValue::try_new(
+            kind,
+            parsed.components().clone(),
+            Default::default(),
+        )
+        .unwrap_err();
+        assert!(error.is_recovered_component(), "{source}: {error:?}");
+        let Some(CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { at, opening })) =
+            error.origin()
+        else {
+            panic!("{source}: original implicit closing origin")
+        };
+        assert_eq!(at.span().start().byte_offset().value(), source.len());
+        assert_eq!(opening.source().as_str(), source);
+    }
+}
+
+#[test]
+fn strict_reentry_rejects_a_recovered_replacement_without_residual_substitution() {
+    let pending = CssFontPaletteDescriptorValue::try_new(
+        Kind::BasePalette,
+        CssComponentValues::parse(&CssParser::default(), "env(index)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let report = CssFontPaletteDescriptorValue::parse(
+        &CssParser::default(),
+        "calc(1 + 1",
+        Kind::BasePalette,
+    );
+    let recovered = report.syntax().as_ref().unwrap().components().clone();
+    let error = pending
+        .reparse_after_substitution(recovered, Default::default())
+        .unwrap_err();
+    assert!(error.is_recovered_component(), "{error:?}");
 }
 
 #[test]

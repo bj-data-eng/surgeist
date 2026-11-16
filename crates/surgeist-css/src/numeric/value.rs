@@ -782,12 +782,13 @@ impl<T: CssNumericRoot> CssCalculation<T> {
     ///
     /// # Errors
     ///
-    /// Returns [`CssNumericConstructionError`] for recovered, malformed,
-    /// mistyped or over-limit components.
+    /// Returns [`CssNumericConstructionError`] for recovered (including a comment closed
+    /// by the end of its input), malformed, mistyped or over-limit components.
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self> {
+        reject_recovered(&values)?;
         crate::numeric::expression::construct(values, root_kind::<T>().calculation_root(), limits)
             .map(Self::from_expression)
     }
@@ -1227,10 +1228,10 @@ impl<T: CssNumericRoot, R: CssRange<T>> CssNumeric<T, R> {
         self.literal().map(CssNumericLiteral::component)
     }
 
-    /// The first recovered closure in retained math.
-    pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
+    /// Whether retained math, if any, holds no recovered closure.
+    pub(crate) fn is_closed(&self) -> bool {
         self.calculation()
-            .and_then(|value| value.components().first_implicit_origin())
+            .is_none_or(|value| value.components().is_closed())
     }
 
     pub(crate) fn ensure_closed(&self) -> Result<()> {
@@ -1402,13 +1403,9 @@ impl<T: CssNumericRoot, R: CssRange<T>>
 
 /// Rejects the first component recovered by implicit closure.
 pub(crate) fn reject_recovered(values: &CssComponentValues) -> Result<()> {
-    match values.first_implicit_origin() {
-        Some(origin) => Err(CssNumericConstructionError::at_origin(
-            Kind::RecoveredComponent,
-            origin.clone(),
-        )),
-        None => Ok(()),
-    }
+    values.ensure_closed(|origin| {
+        CssNumericConstructionError::at_origin(Kind::RecoveredComponent, origin.clone())
+    })
 }
 
 #[cfg(test)]

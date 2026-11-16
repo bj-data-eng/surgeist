@@ -723,9 +723,11 @@ impl Builder<'_, '_, '_> {
                     )
                 })
         } else {
-            CssColorMixWeight::try_calculation(CssCalculation::<CssPercentage>::from_expression(
-                self.numeric(index, CalculationRoot::Percentage)?,
-            ))
+            CssColorMixWeight::from_parser_calculation(
+                CssCalculation::<CssPercentage>::from_expression(
+                    self.numeric(index, CalculationRoot::Percentage)?,
+                ),
+            )
             .map_err(component_failure)
         }
     }
@@ -790,13 +792,13 @@ impl Builder<'_, '_, '_> {
                     !matches!(
                         function.closing_origin(),
                         CssValueOrigin::ImplicitClosure { .. }
-                    ) && function.values().first_implicit_origin().is_none()
+                    ) && function.values().is_closed()
                 }
                 CssComponentValueRef::Block(block) => {
                     !matches!(
                         block.closing_origin(),
                         CssValueOrigin::ImplicitClosure { .. }
-                    ) && block.values().first_implicit_origin().is_none()
+                    ) && block.values().is_closed()
                 }
                 _ => true,
             },

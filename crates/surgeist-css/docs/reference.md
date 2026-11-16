@@ -1106,8 +1106,34 @@ outcomes, operands with a context-dependent unit, every other function and
 keyframe selector matching. Decimal coefficients are binary64 approximations of
 their authored text, so same-unit arithmetic on them is as exact as binary64
 allows and makes no decimal claim: `0.1mm + 0.2mm` projects the binary64 sum of
-`0.1` and `0.2` once. Dividing by a plain Number still multiplies by its binary64
-reciprocal.
+`0.1` and `0.2` once.
+
+Dividing by a plain Number is one correctly rounded binary64 division
+([#1517](https://github.com/bj-data-eng/surgeist/issues/1517)). Values 4
+[assumes infinite precision](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
+in its definitions and
+[reduces an Invert node over a number](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification)
+to that number's reciprocal, which is exact at that precision. Multiplying by the
+binary64 reciprocal would round twice, so `calc(49 / 49)`,
+`calc(round(down, 7 * 7 / 49, 1))` and `calc(round(down, 49 / (7 * 7), 1))` emit
+`calc(1)`. A product with a Number divisor whose factors are all known scalars
+evaluates them in source order, each division one quotient: `10px / 49 * 49` is
+`10px`, `147 / 3 / 49` is `1` and `10px / 3` is the nearest binary64 value to ten
+thirds of a pixel. An authored reciprocal is a separate operation, so
+`49 * (1 / 49)` and `1 / 49 * 49` round `1 / 49` first and floor to `0`. A
+division by zero, an infinity or NaN keeps its IEEE result, and a quotient of
+finite operands beyond binary64 converts to the closest finite value (#1297). A
+product with a context-dependent or symbolic factor multiplies its plain Numbers
+first, then divides that coefficient by each Number divisor, so `10em / 3` divides
+the coefficient `10` and `1em / 49 * 49` emits `calc(1em)`; a divisor that still
+meets a symbolic factor stays the reciprocal Number of the specification's
+simplification. Keyframe selector matching keeps the reciprocal. Source-order
+evaluation converts each finite intermediate to the closest finite value before
+the next factor, so `calc(1e308px * 10 / 10)` emits `f64::MAX / 10` pixels, while
+`calc(1e308px * 10 * 0.1)`, which has no divisor, merges its Numbers first and
+emits `1e308px`. A product with a divisor still spends the shared projection node
+of its merged coefficient when it has at least two Numbers, a divisor counting as
+one, and another factor: `calc(10px / 3 * 3)` costs six nodes.
 
 [#1297](https://github.com/bj-data-eng/surgeist/issues/1297) revises the
 [#735](https://github.com/bj-data-eng/surgeist/issues/735) precision and phase
@@ -1759,7 +1785,9 @@ glyph-orientation alias.
 grammar alongside `None` and `All`. `Digits(None)` preserves an omitted count;
 `Digits(Some(count))` preserves an explicit count. The checked
 `CssTextCombineDigitCount` admits literal integers from 2 through 4 through
-`try_literal`, or a checked `CssCalculation<CssInteger>` through `from_calculation`.
+`try_literal`, or a checked `CssCalculation<CssInteger>` through `try_from_calculation`,
+which rejects a calculation holding a component recovered by implicit closure
+(parsing retains it).
 Its `literal()` and `calculation()` accessors distinguish these cases. Parsed
 and checked declarations share this grammar and preserve component origins.
 The property inherits by default, has initial `None`, expands to one longhand,
@@ -3806,7 +3834,10 @@ The selected Color 5 surface includes relative `rgb`/`rgba`, `hsl`/`hsla`,
 `hwb`, `lab`, `lch`, `oklab`, `oklch`, and predefined RGB/XYZ `color()` spaces.
 Relative origin channels are numeric in every environment. The checked
 `CssRelativeColorExpression::try_from_components` takes an environment and
-result slot and reports typed numeric errors with component path and origin.
+result slot and reports typed numeric errors with component path and origin; it
+rejects components holding a component recovered by implicit closure, including a
+comment closed by the end of its input, as do `CssCalculation::try_from_components`
+and `CssProfileColorExpression::try_from_components`.
 `CssRelativeColor::try_new` derives its environment and three result slots from
 the function; mismatched expressions are rejected. The source and expressions
 remain symbolic, including optional alpha. `CssAlphaColor::try_new` similarly
@@ -4171,7 +4202,9 @@ order; it does not compute a color.
 Omission means Oklab when resolved. Each color has an optional weight before or
 after it. Literal `CssColorMixPercentage` uses one exact checked percentage
 in the inclusive 0..100 range; a `CssColorMixWeight` calculation retains a
-symbolic percentage math root. `CssColorMixComponent::new` takes a color and
+symbolic percentage math root, and `CssColorMixWeight::try_calculation` rejects a
+calculation holding a component recovered by implicit closure (parsing retains
+it). `CssColorMixComponent::new` takes a color and
 optional weight; `CssColorMix::try_new` checks the list and composed depth.
 `CssColorInterpolationMethod::try_new(space, hue)` checks predefined methods:
 an explicit hue strategy requires HSL, HWB, LCH or Oklch. Rectangular spaces
@@ -4696,7 +4729,8 @@ the selected Text 4 prose from the historical grammar and UAX29 boundary.
 An omitted positional fallback remains omitted in the authored model; its intrinsic
 effective fallback is `right`. The checked `CssCharacterAlignment` retains the
 string component's origin and exposes both decoded text and the authored
-fallback. Its constructors reject empty and multiple-cluster strings.
+fallback. Its constructors reject empty and multiple-cluster strings, and
+`try_from_component` rejects a string closed by end of input (parsing retains it).
 `CssTextAlignValue`, `CssTextAlignAllValue`, and `CssTextAlignLastValue` expose
 the three distinct grammars and bounded canonical specified-value
 serialization. `CssPropertyValue<CssTextAlignValue>::value()` and
@@ -5090,7 +5124,8 @@ and [pinned Color 5's absolute-color definition](https://www.w3.org/TR/2026/WD-c
 
 Valid `var()` or `env()` anywhere in a descriptor defers its entire value before
 ordinary grammar. `CssFontPaletteDescriptorValue::try_new` checks supplied
-components without replacing their parsed or programmatic origins. A pending
+components without replacing their parsed or programmatic origins, and rejects a
+component recovered by implicit closure with `is_recovered_component()`. A pending
 value's `reparse_after_substitution` accepts caller-supplied components and
 rejects any residual, including nested or escaped, substitution function before
 checking the ordinary descriptor grammar. No substitution environment, font
@@ -5119,15 +5154,17 @@ The selected [Fonts 4 §4.7](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/
 `font-named-instance` descriptor accepts `auto` or any string, including an
 empty or unknown name. `CssFontNamedInstance::String` contains a checked
 `CssFontNamedInstanceString`; its `try_new` and `try_from_component` preserve
-respectively programmatic and parsed string provenance. `as_str`, `component`
+respectively programmatic and parsed string provenance, and `try_from_component`
+rejects a string closed by end of input (parsing retains it). `as_str`, `component`
 and `origin` expose the decoded name and its retained source. Checked decoded
 NUL is rejected by the shared string component owner; parsed CSS NUL follows
 CSS replacement semantics.
 
 [§4.10](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-language-override-desc)
 `font-language-override` accepts `normal` or a string and reuses
-`CssFontLanguageOverride` and `CssFontLanguageString` from the property owner.
-Neither string descriptor performs language-tag validation or font matching.
+`CssFontLanguageOverride` and `CssFontLanguageString` from the property owner;
+`CssFontLanguageString::try_from_component` rejects a string closed by end of input
+(parsing retains it). Neither string descriptor performs language-tag validation or font matching.
 
 The [§4.11 metric descriptors](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-metrics-override-desc)
 `ascent-override`, `descent-override` and `line-gap-override` each contain
@@ -5674,7 +5711,9 @@ of the construction and assembly context, as is the anchor domain of a style rul
 explicit `&`: a scope anchor (the scoping root, Cascade 6 section 2.5) in a scope body
 and in the groups inside it, a nesting anchor everywhere else, including the body of a
 style rule inside a scope. Construction rejects a style rule whose anchors belong to
-the other domain as an invalid boundary anchor. A style rule in a scope body follows the same
+the other domain as an invalid style rule anchor (`is_invalid_style_rule_anchor()`); a scope
+boundary selector of the other domain is an invalid boundary anchor
+(`is_invalid_boundary_anchor()`). A style rule in a scope body follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
 nesting children relative to the scoped style parent. A scope with a style ancestor retains
 its direct declaration runs as `CssRule::NestedDeclarations`, including runs inside
@@ -6535,7 +6574,9 @@ group, a nonempty stop list, and zero, one, or two positions on each stop.
 positions; `CssAngularColorStop` and `CssAngularColorStopList` check conic stop
 cardinality and hint order. Angular positions use `CssAngularColorStopPosition`
 with checked angle, percentage, exact bare zero, or
-`numeric::CssCalculation<CssAnglePercentage>`; its percentage basis remains symbolic.
+`numeric::CssCalculation<CssAnglePercentage>` through `try_from_calculation`, which
+rejects a calculation holding a component recovered by implicit closure (parsing
+retains it); its percentage basis remains symbolic.
 `CssConicGradient::new` retains optional `from`, full `at`, interpolation, and
 stops. Linear and radial `with_interpolation` retain an explicitly selected
 method separately from omission, using the existing Color 4/5 owner.
@@ -7597,8 +7638,9 @@ belongs downstream.
 `CssUrl::is_local_url()` reports the Values 4 local URL flag for decoded targets
 beginning with `#`; it does not resolve the fragment. `CssIdent::try_new()`
 checks decoded identifier representability without consumer keyword exclusions.
-`CssUrlModifierFunction::try_new()` checks the modifier's function syntax and
-keeps its immutable argument components; `argument_components()` retains original
+`CssUrlModifierFunction::try_new()` checks the modifier's function syntax, rejects
+arguments holding a component closed by the end of its input (parsing retains
+them), and keeps its immutable argument components; `argument_components()` retains original
 token origins from parsed or checked input. The `arguments().as_css()` view
 preserves authored argument text, and URL equality continues to use
 that text and the decoded modifier name rather than source coordinates.
@@ -8497,6 +8539,11 @@ new wrappers and existing descendants but not the stylesheet. Selector functiona
 depth is checked separately against the existing structural ceiling. Validation
 uses checked iterative stacks before constructing a new enclosing tree.
 
+`CssRuleSerializationError` names the output form that failed with `output()`:
+`CssRuleSerializationOutput::Specified` for `CssRuleGraphInput::serialize_specified`, and
+`CssRuleSerializationOutput::Cssom` for the `serialize_cssom` operations. Its message names
+the same form ("specified rule serialization" or "literal CSSOM rule serialization").
+
 `CssRule::serialize_specified(limits)` and the stylesheet front door dispatch both Fonts
 rule kinds through one cumulative writer. Font-face output emits only present
 effective descriptors and permits an empty body. Fonts 4 §4.1 selects the last
@@ -8894,7 +8941,8 @@ to later processing. `text-spacing-trim` has seven longhand alternatives:
 space-all, normal, space-first, trim-start, trim-both, trim-all and auto.
 
 The checked public constructors preserve those distinctions:
-`CssHyphenateString::try_from_component` retains an original string token;
+`CssHyphenateString::try_from_component` retains an original string token and
+returns `None` for a string closed by end of input (parsing retains it);
 `CssHyphenateLimitCharsComponent::Integer` and `CssHyphenateLimitLines::Integer`
 hold a `CssNumeric<CssInteger, CssNonNegative>`, which admits the selected range
 through the existing integer owner; and `CssHyphenateLimitChars::try_new(total, before,
