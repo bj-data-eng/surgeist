@@ -13,6 +13,7 @@ mod element_guard;
 mod formatting;
 mod g2_d2;
 mod g2b_d3;
+mod g2c_nonce;
 mod image_form;
 mod input;
 mod input_types;

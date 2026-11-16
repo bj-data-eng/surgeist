@@ -41,9 +41,9 @@ fn with_plain_elements<T>(
 /// The registry rows a plain element holds. The document and the lookup registry of a plain
 /// element are those of the tree it was created in, which the parse holds once for the tree, and
 /// its creation state is the default its namespace gives, so no row of the element holds any of
-/// them. The oracle is the families an element of the HTML namespace has independently of its
-/// context, in a parse that records detail: a nonce row, the strings of its name, its namespace
-/// and its empty nonce value, and the cause of its creation.
+/// them, and its nonce is the empty nonce of its namespace, which no row holds. The oracle is the
+/// families an element of the HTML namespace has independently of its context, in a parse that
+/// records detail: the strings of its name and its namespace, and the cause of its creation.
 fn registry_rows(session: &ParserArenaSession) -> usize {
     session.active().unwrap().payloads.values.len()
 }
@@ -67,9 +67,9 @@ fn a_plain_element_holds_no_registry_row_for_its_context() {
 }
 
 /// The registry rows of one plain element once its document, its lookup registry and its creation
-/// state are held by the context of its tree and by the defaults of its namespace: a nonce, three
-/// strings (name, namespace, empty nonce value) and a construction cause.
-const PLAIN_ELEMENT_ROWS: usize = 5;
+/// state are held by the context of its tree and by the defaults of its namespace: two strings
+/// (name, namespace) and a construction cause.
+const PLAIN_ELEMENT_ROWS: usize = 3;
 
 #[test]
 fn a_plain_element_adds_no_row_to_the_table_of_creation_states() {
