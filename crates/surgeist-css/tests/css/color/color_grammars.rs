@@ -788,6 +788,7 @@ fn invalid_perceptual_and_predefined_color_forms_drop_only_the_declaration() {
 #[test]
 fn perceptual_color_calculations_preserve_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "oklab channel calculation",
         template: "color: oklab({}1{} 2 3); opacity: 0.5",
         accepted: &[254, 255],
         rejected: &[256, 257],
@@ -822,6 +823,7 @@ fn invalid_color_separators_units_and_arities_drop_only_the_declaration() {
 #[test]
 fn authored_color_calculations_preserve_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "rgb channel calculation",
         template: "color: rgb({}1{} 2 3); opacity: 0.5",
         accepted: &[254, 255],
         rejected: &[256, 257],

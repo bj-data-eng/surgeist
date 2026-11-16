@@ -314,6 +314,7 @@ fn grid_repeat_failures_report_the_first_responsible_token_and_recover_progressi
 #[test]
 fn grid_repeat_calculations_preserve_the_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "grid repeat track calculation",
         template: "grid-template-columns: repeat(auto-fill, {}10px{}); color: red",
         accepted: &[254, 255],
         rejected: &[256, 257],

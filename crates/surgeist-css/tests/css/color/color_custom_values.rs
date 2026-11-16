@@ -2,11 +2,13 @@
 use crate::css::support::component_values as components;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
+use crate::css::support::math_depth::{ComposedDepthBoundary, Construction};
 use crate::css::support::{checked_color as color, declaration_color};
 use surgeist_css::color::{
-    CssAbsoluteColorEligibility, CssColor, CssColorComponent, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssColorProfileComponentName, CssColorProfileName, CssCustomColor,
-    CssProfileColorExpression, CssProfileColorExpressionRef, CssRelativeCustomColor,
+    CssAbsoluteColorEligibility, CssColor, CssColorComponent, CssColorConstructionError,
+    CssColorNumberLiteral, CssColorPercentageLiteral, CssColorProfileComponentName,
+    CssColorProfileName, CssCustomColor, CssProfileColorExpression, CssProfileColorExpressionRef,
+    CssRelativeCustomColor,
 };
 use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
@@ -245,26 +247,46 @@ fn relative_profile_alpha_is_an_unbound_name_and_not_transparency() {
 
 #[test]
 fn custom_and_relative_math_share_the_composed_depth_limit() {
-    for depth in [254, 255, 256] {
-        let text = format!("{}1{}", "calc(".repeat(depth), ")".repeat(depth));
-        let calculation =
-            CssCalculation::<CssNumber>::try_from_components(components(&text), Default::default())
-                .unwrap();
-        let custom = CssCustomColor::try_new(
-            profile(),
-            vec![CssColorComponent::NumberCalculation(calculation)],
-            None,
-        );
-        let relative =
-            CssRelativeCustomColor::try_new(color("red"), profile(), vec![expression(&text)], None);
-        if depth < 256 {
-            assert!(custom.is_ok());
-            assert!(relative.is_ok());
-        } else {
-            assert!(custom.unwrap_err().is_nesting_limit());
-            assert!(relative.unwrap_err().is_nesting_limit());
-        }
+    ComposedDepthBoundary {
+        name: "custom color channel calculation",
+        leaf: "1",
+        accepted: &[254, 255],
+        rejected: &[256],
+        build: |_, text| {
+            let calculation = CssCalculation::<CssNumber>::try_from_components(
+                components(text),
+                Default::default(),
+            )
+            .unwrap();
+            Construction::of(
+                CssCustomColor::try_new(
+                    profile(),
+                    vec![CssColorComponent::NumberCalculation(calculation)],
+                    None,
+                ),
+                CssColorConstructionError::is_nesting_limit,
+            )
+        },
     }
+    .assert();
+    ComposedDepthBoundary {
+        name: "relative custom color channel expression",
+        leaf: "1",
+        accepted: &[254, 255],
+        rejected: &[256],
+        build: |_, text| {
+            Construction::of(
+                CssRelativeCustomColor::try_new(
+                    color("red"),
+                    profile(),
+                    vec![expression(text)],
+                    None,
+                ),
+                CssColorConstructionError::is_nesting_limit,
+            )
+        },
+    }
+    .assert();
 }
 
 #[test]

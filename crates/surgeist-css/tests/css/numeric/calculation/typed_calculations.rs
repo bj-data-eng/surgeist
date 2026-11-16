@@ -342,6 +342,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
 #[test]
 fn calc_consumer_preserves_exact_depth_boundary_and_later_sibling() {
     MathDepthBoundary {
+        name: "width length calculation",
         template: "width: {}1px{}; color: red",
         accepted: &[255, 256],
         rejected: &[257],
@@ -353,6 +354,7 @@ fn calc_consumer_preserves_exact_depth_boundary_and_later_sibling() {
 #[test]
 fn opacity_percentage_calculation_preserves_exact_depth_boundary() {
     MathDepthBoundary {
+        name: "opacity percentage calculation",
         template: "opacity: {}1%{}; color: red",
         accepted: &[255, 256],
         rejected: &[257],

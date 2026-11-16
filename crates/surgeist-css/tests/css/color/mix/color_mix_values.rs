@@ -4,10 +4,12 @@ use crate::css::support::color_declaration as parsed;
 use crate::css::support::color_property::color_property_value as wrapper;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
+use crate::css::support::math_depth::{ComposedDepthBoundary, Construction};
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::color::{
-    CssColor, CssColorComponent, CssColorInterpolation, CssColorInterpolationMethod, CssColorMix,
-    CssColorMixComponent, CssColorMixPercentage, CssColorMixWeight, CssColorProfileName,
+    CssColor, CssColorComponent, CssColorConstructionError, CssColorInterpolation,
+    CssColorInterpolationMethod, CssColorMix, CssColorMixComponent, CssColorMixPercentage,
+    CssColorMixWeight, CssColorProfileName,
 };
 use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
@@ -340,24 +342,29 @@ fn checked_mixed_origin_weights_keep_the_actual_leaf_source() {
 
 #[test]
 fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
-    for (depth, succeeds) in [(255, true), (256, false)] {
-        let source = format!("{}25%{}", "calc(".repeat(depth), ")".repeat(depth));
-        let calculation = CssCalculation::<CssPercentage>::try_from_components(
-            CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
-            Default::default(),
-        )
-        .unwrap();
-        let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
-        let result = CssColorMix::try_new(
-            None,
-            vec![CssColorMixComponent::new(color("red"), Some(weight))],
-        );
-        if succeeds {
-            assert_eq!(result.unwrap().components().len(), 1);
-        } else {
-            assert!(result.unwrap_err().is_nesting_limit());
-        }
+    ComposedDepthBoundary {
+        name: "calculated mix weight",
+        leaf: "25%",
+        accepted: &[255],
+        rejected: &[256],
+        build: |_, text| {
+            let calculation = CssCalculation::<CssPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
+            .unwrap();
+            let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
+            let result = CssColorMix::try_new(
+                None,
+                vec![CssColorMixComponent::new(color("red"), Some(weight))],
+            );
+            if let Ok(mix) = &result {
+                assert_eq!(mix.components().len(), 1);
+            }
+            Construction::of(result, CssColorConstructionError::is_nesting_limit)
+        },
     }
+    .assert();
 }
 
 #[test]
@@ -503,26 +510,50 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
     }
 }
 
+/// A mix of the one color that `declaration` holds.
+fn mix_of(declaration: &CssDeclaration) -> Construction {
+    let child = wrapper(declaration).value().clone();
+    let result = CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)]);
+    if let Ok(mix) = &result {
+        assert_eq!(mix.components().len(), 1);
+    }
+    Construction::of(result, CssColorConstructionError::is_nesting_limit)
+}
+
 #[test]
 fn enclosing_mix_counts_absolute_and_relative_channel_math_depth() {
-    for (math_depth, succeeds) in [(254, true), (255, false)] {
-        let math = format!("{}1{}", "calc(".repeat(math_depth), ")".repeat(math_depth));
-        for text in [
-            format!("rgb({math} 0 0)"),
-            format!("rgb(from red {math} g b)"),
-        ] {
-            // The channel math is nested below the rgb function. The new mix
-            // adds one more function: 254 + 1 + 1 = 256, 255 + 1 + 1 = 257.
-            for declaration in [parsed(&text), checked(&text)] {
-                let child = wrapper(&declaration).value().clone();
-                let result =
-                    CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)]);
-                if succeeds {
-                    assert_eq!(result.unwrap().components().len(), 1);
-                } else {
-                    assert!(result.unwrap_err().is_nesting_limit());
-                }
-            }
-        }
+    // The channel math is nested below the rgb function. The new mix adds one
+    // more function: 254 + 1 + 1 = 256, 255 + 1 + 1 = 257.
+    for row in [
+        ComposedDepthBoundary {
+            name: "absolute channel, parsed",
+            leaf: "1",
+            accepted: &[254],
+            rejected: &[255],
+            build: |_, math| mix_of(&parsed(&format!("rgb({math} 0 0)"))),
+        },
+        ComposedDepthBoundary {
+            name: "absolute channel, checked",
+            leaf: "1",
+            accepted: &[254],
+            rejected: &[255],
+            build: |_, math| mix_of(&checked(&format!("rgb({math} 0 0)"))),
+        },
+        ComposedDepthBoundary {
+            name: "relative channel, parsed",
+            leaf: "1",
+            accepted: &[254],
+            rejected: &[255],
+            build: |_, math| mix_of(&parsed(&format!("rgb(from red {math} g b)"))),
+        },
+        ComposedDepthBoundary {
+            name: "relative channel, checked",
+            leaf: "1",
+            accepted: &[254],
+            rejected: &[255],
+            build: |_, math| mix_of(&checked(&format!("rgb(from red {math} g b)"))),
+        },
+    ] {
+        row.assert();
     }
 }
