@@ -524,6 +524,77 @@ fn source_global_pass_bridge_admits_scope_payloads_and_propagates_typed_work_ref
     global_bridge(WORK + PASS_WORK);
 }
 
+fn limits() -> text::ScopeAlignmentLimits {
+    text::ScopeAlignmentLimits::new(10000, 100, WORK, 16 << 20)
+}
+
+/// A session whose entry-source custody is installed, so child staging is
+/// funded from the captured scope-alignment owner.
+fn funded_session<'a>(
+    flow: &'a LayoutFlowInput<'a, PublicLayoutTreeOf<f64>>,
+) -> ComputeSession<'a, PublicLayoutTreeOf<f64>> {
+    let mut session = ComputeSession::with_flow(flow, vec![]);
+    session.entry_sources = Some(Arc::new(std::sync::Mutex::new(
+        crate::engine::entry_sources::SourceMemo::new(None),
+    )));
+    session
+}
+
+fn assert_staging_failure_is_not_text(
+    error: &LayoutErrorOf<u32, f64>,
+    limit: text::ScopeAlignmentLimitKind,
+) {
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0), "{error:?}");
+    assert_eq!(error.operation(), LayoutOperation::ChildLayout, "{error:?}");
+    assert!(
+        !matches!(error.kind(), LayoutErrorKindOf::Text(_)),
+        "a spent {limit:?} budget during child staging is a resource failure, \
+         not a Text protocol refusal: {error:?}"
+    );
+}
+
+#[test]
+fn child_staging_with_spent_scope_work_reports_a_resource_failure_not_text() {
+    let fixture = Fixture::new(WORK);
+    let flow = fixture.flow();
+
+    // Control: the same funded session stages a child while work remains.
+    let control = funded_session(&flow);
+    control
+        .child_staging(0, super::FloatChildTrial::InFlow, None)
+        .unwrap();
+
+    let mut spent = funded_session(&flow);
+    let resources = spent.text_computation().unwrap().scope_resources.clone();
+    resources.visit(limits(), WORK).unwrap();
+    let error = spent
+        .child_staging(0, super::FloatChildTrial::InFlow, None)
+        .err()
+        .expect("staging must refuse once the structural work budget is spent");
+    assert_staging_failure_is_not_text(&error, text::ScopeAlignmentLimitKind::StructuralWork);
+}
+
+#[test]
+fn child_staging_with_spent_scope_records_reports_a_resource_failure_not_text() {
+    let fixture = Fixture::new(WORK);
+    let flow = fixture.flow();
+    let mut spent = funded_session(&flow);
+    let resources = spent.text_computation().unwrap().scope_resources.clone();
+    let mut admitted = 0_usize;
+    loop {
+        match resources.materialize(limits(), 0, 1) {
+            Ok(()) => admitted += 1,
+            Err(_) => break,
+        }
+        assert!(admitted <= 10_000, "the record ceiling must be reachable");
+    }
+    let error = spent
+        .child_staging(0, super::FloatChildTrial::InFlow, None)
+        .err()
+        .expect("staging must refuse once the record budget is spent");
+    assert_staging_failure_is_not_text(&error, text::ScopeAlignmentLimitKind::Records);
+}
+
 #[cfg(test)]
 #[path = "percentage_basis_phase_refusal_tests.rs"]
 mod percentage_basis_phase_refusal_tests;
