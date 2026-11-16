@@ -14,6 +14,8 @@ mod color_authored_source_modes;
 mod color_checked_depth;
 mod color_complete_contract;
 mod color_component_context;
+mod color_component_range;
+mod color_component_range_roles;
 mod color_construction;
 mod color_custom_alpha;
 mod color_custom_values;

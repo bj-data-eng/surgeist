@@ -3,7 +3,9 @@
 //!
 //! CSS Values 4 §10.9.1 censors a top-level infinity to the context's
 //! maximum and NaN to zero, and §10.12 with the numeric-types range rule
-//! makes a finite value beyond binary64 the closest supported value. CSS
+//! makes a finite value beyond binary64 the closest supported value; a colour
+//! component beyond the single-precision float range is infinite and resolves
+//! to `±f32::MAX` (#2889). CSS
 //! Color 4 conversions over those finite channels are total. So every
 //! colour source, however extreme its literals and `calc()` values, resolves
 //! to a used colour, a standard failure, or a reached unavailable,
@@ -41,11 +43,10 @@ const SOURCE_BYTES: usize = 8192;
 /// Extreme literals, overflowing and infinite calculations, NaN, `none`
 /// and percentages, including values that are invalid in some slots.
 ///
-/// A literal beyond binary64 (`1e999`) is already the extreme `±f64::MAX`
-/// (#1297), and exact conversion of an in-range 300-digit literal such as
-/// `1e308` costs seconds of unoptimized work per occurrence, so the
-/// in-range extremes are named regression cases instead of generated ones.
-const VALUES: [&str; 25] = [
+/// A component beyond the single-precision float range is the extreme
+/// `±f32::MAX` and a numeral below `1e-46` is zero (#2889), so `1e308`, `1e39`
+/// and `1e-47` cost the read of their digits like `1e999` and `1e-400`.
+const VALUES: [&str; 28] = [
     "0",
     "-0",
     "1",
@@ -55,6 +56,9 @@ const VALUES: [&str; 25] = [
     "-1e999",
     "1e-400",
     "-1e-400",
+    "1e308",
+    "1e39",
+    "1e-47",
     "calc(infinity)",
     "calc(-infinity)",
     "calc(NaN)",
@@ -555,13 +559,14 @@ fn resolved(source: &str) -> Color {
     used
 }
 
-const MAX: f64 = f64::MAX;
+const MAX: f64 = f32::MAX as f64;
 
 #[test]
 fn an_infinite_unbounded_channel_calculation_is_the_largest_finite_value() {
     // Values 4 §10.9.1: infinities do not escape a top-level calculation;
     // they clamp to the largest value the context allows, and Lab a/b and
-    // color() channels are unbounded, so that is f64::MAX.
+    // color() channels are unbounded, so that is f32::MAX, the largest value
+    // of the implementation's component range (#2889).
     let lab = resolved("lab(50 calc(infinity) 0)");
     assert_eq!(lab.space(), surgeist_color::ColorSpace::Lab);
     assert_eq!(lab.channels(), [Some(50.0), Some(MAX), Some(0.0)]);
@@ -573,8 +578,9 @@ fn an_infinite_unbounded_channel_calculation_is_the_largest_finite_value() {
 #[test]
 fn an_overflowing_finite_channel_calculation_is_the_closest_finite_value() {
     // Values 4 numeric-types range rule (#1297): a finite value beyond
-    // binary64 is the closest supported value. exp(710) and 1e999 * 10 have
-    // finite operands; the oklch percentage lightness clamps to 100%.
+    // binary64 is the closest supported value, and beyond the component range
+    // it is f32::MAX (#2889). exp(710) and 1e999 * 10 have finite operands;
+    // the oklch percentage lightness clamps to 100%.
     let oklab = resolved("oklab(1 1 calc(exp(710)))");
     assert_eq!(oklab.channels(), [Some(1.0), Some(1.0), Some(MAX)]);
     let oklch = resolved("oklch(1e999% calc(1e999 * 10) 1)");
@@ -583,7 +589,7 @@ fn an_overflowing_finite_channel_calculation_is_the_closest_finite_value() {
 
 #[test]
 fn contrast_of_an_overflowing_color_uses_its_clamped_luminance() {
-    // hsl() lightness 1e999 is f64::MAX; its XYZ luminance exceeds binary64
+    // hsl() lightness 1e999 is f32::MAX; its XYZ luminance exceeds binary64
     // and clamps to one (Color 5 contrast-color), so black has more contrast.
     let black = resolved("contrast-color(hsl(0 50% 1e999))");
     assert_eq!(black.srgb_bytes(), Some([0, 0, 0]));

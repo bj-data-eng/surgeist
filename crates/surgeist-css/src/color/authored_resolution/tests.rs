@@ -227,7 +227,8 @@ fn an_infinite_branch_channel_resolves_to_the_largest_finite_value() {
         .unwrap(),
     );
     // Values 4 §10.9.1: the dark branch's infinite Lab axis clamps to the
-    // largest finite value instead of escaping the top-level calculation.
+    // largest value of the component range, f32::MAX (#2889), instead of
+    // escaping the top-level calculation.
     while op.as_ref().unwrap().action() != CssAuthoredColorActionDescription::Ready {
         step(op.as_mut().unwrap(), &mut banks).unwrap();
     }
@@ -236,7 +237,10 @@ fn an_infinite_branch_channel_resolves_to_the_largest_finite_value() {
         panic!("{:?}", result.outcome())
     };
     assert_eq!(value.space(), surgeist_color::ColorSpace::Lab);
-    assert_eq!(value.channels(), [Some(50.0), Some(f64::MAX), Some(0.0)]);
+    assert_eq!(
+        value.channels(),
+        [Some(50.0), Some(f32::MAX as f64), Some(0.0)]
+    );
     drop(result);
     drop(op);
     drop(banks);

@@ -1733,7 +1733,14 @@ mod tests {
             ("asin(1)", 90.0, true),
             ("calc(1in / 1px)", 96.0, false),
             ("calc(1s / 500ms)", 2.0, false),
-            ("calc(1.9e308grad)", 1.71e308, true),
+            // The literal is beyond binary64, so the angle is the nearest supported
+            // multiple of 360deg (Values 4 §5), which the numeric range tests pin as
+            // 31 encodings below f64::MAX (#2889).
+            (
+                "calc(1.9e308grad)",
+                f64::from_bits(f64::MAX.to_bits() - 31),
+                true,
+            ),
         ] {
             let mut owner = CssColorOperationOwner::new();
             let (table, mut slots) = lexical(&mut owner, input.as_bytes());

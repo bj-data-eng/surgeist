@@ -413,6 +413,18 @@ macro_rules! color_error {
         }
     };
 }
+macro_rules! color_success {
+    ($name:ident, $source:literal, $input:expr, $projection:expr, $bytes:expr, $text:literal) => {
+        #[test]
+        fn $name() {
+            assert_color_result(
+                &color($source),
+                Limits::new($input, $projection, $bytes),
+                Ok($text),
+            );
+        }
+    };
+}
 color_error!(
     mix_zero_input_precedes_other_limits,
     "color-mix(lab(125 0 0), blue)",
@@ -437,37 +449,39 @@ color_error!(
     0,
     ByteLimit
 );
-color_error!(
-    mix_inrange_beyond_i128_tiny_remains_bounded,
+// Components beyond the float range are `calc(infinity)` and numerals below
+// 1e-46 are `0`, at any exponent (#2889).
+color_success!(
+    mix_beyond_i128_tiny_lightness_is_zero,
     "color-mix(lab(1e-999999999999999999999999999999999999999999 0 0), blue)",
     usize::MAX,
     usize::MAX,
     64,
-    ByteLimit
+    "color-mix(lab(0 0 0), blue)"
 );
-color_error!(
-    mix_unbounded_positive_chroma_remains_bounded,
+color_success!(
+    mix_unbounded_positive_chroma_is_calc_infinity,
     "color-mix(lch(50 1e2000000 30), blue)",
     usize::MAX,
     usize::MAX,
     64,
-    ByteLimit
+    "color-mix(lch(50 calc(infinity) 30), blue)"
 );
-color_error!(
-    mix_unbounded_axis_remains_bounded,
+color_success!(
+    mix_unbounded_axis_is_calc_infinity,
     "color-mix(lab(50 1e2000000 0), blue)",
     usize::MAX,
     usize::MAX,
     64,
-    ByteLimit
+    "color-mix(lab(50 calc(infinity) 0), blue)"
 );
-color_error!(
-    mix_unbounded_axis_beyond_i128_remains_bounded,
+color_success!(
+    mix_unbounded_axis_beyond_i128_is_calc_infinity,
     "color-mix(lab(50 1e999999999999999999999999999999999999999999 0), blue)",
     usize::MAX,
     usize::MAX,
     64,
-    ByteLimit
+    "color-mix(lab(50 calc(infinity) 0), blue)"
 );
 color_error!(
     mix_true_origin_huge_coefficient_keeps_typed_failure,

@@ -121,18 +121,6 @@ mod tests {
                 false,
             ),
             (
-                "1.9e308grad",
-                1.71e308,
-                Some(CssNumericUnit::Angle(CssAngleUnit::Degrees)),
-                false,
-            ),
-            (
-                "-1.9e308grad",
-                -1.71e308,
-                Some(CssNumericUnit::Angle(CssAngleUnit::Degrees)),
-                false,
-            ),
-            (
                 "12PX",
                 12.0,
                 Some(CssNumericUnit::Length(crate::numeric::CssLengthUnit::Px)),
@@ -179,7 +167,17 @@ mod tests {
     }
     #[test]
     fn numeric_overflow_is_not_grammar_failure_or_explicit_infinity() {
-        for input in ["1e999", "-1e999", "1e999deg", "-1e999grad"] {
+        // A literal beyond binary64 is beyond the colour window like any other
+        // value past 1e41: its value is the closest finite value, never an
+        // infinity, and it is not rejected.
+        for input in [
+            "1e999",
+            "-1e999",
+            "1e999deg",
+            "-1e999grad",
+            "1.9e308grad",
+            "-1.9e308grad",
+        ] {
             let mut owner = CssColorOperationOwner::new();
             let mut lexer =
                 LexicalOperation::start(&mut owner, InputKind::Utf8, input.len()).unwrap();
@@ -190,13 +188,47 @@ mod tests {
                 LiteralConversion::start(&table, token, &slots[token.index], table.length())
                     .unwrap();
             let value = drive(&mut cursor, &mut slots);
-            if input.ends_with("deg") || input.ends_with("grad") {
-                assert_eq!(value.value.abs().to_bits(), f64::MAX.to_bits() - 31);
+            assert_eq!(value.range, LiteralRange::Beyond, "{input}");
+            // The value of the literal: f64::MAX, or for an angle the nearest
+            // supported multiple of 360deg, which the numeric range tests pin as
+            // 31 encodings below f64::MAX (Values 4 section 5).
+            let expected = if input.ends_with("999") {
+                f64::MAX
             } else {
-                // The closest finite value, never an infinity.
-                assert_eq!(value.value.abs(), f64::MAX);
-            }
+                f64::from_bits(f64::MAX.to_bits() - 31)
+            };
+            assert_eq!(value.value.abs().to_bits(), expected.to_bits(), "{input}");
             assert_eq!(value.value.is_sign_negative(), input.starts_with('-'));
+        }
+    }
+    #[test]
+    fn a_numeral_outside_the_colour_window_reports_its_side_of_the_range() {
+        for (input, range) in [
+            ("1e40", LiteralRange::Within),
+            ("9.999999999999999e40", LiteralRange::Within),
+            ("1e41", LiteralRange::Beyond),
+            ("1e308", LiteralRange::Beyond),
+            ("-1e41", LiteralRange::Beyond),
+            ("1e-46", LiteralRange::Within),
+            ("9.99e-47", LiteralRange::Below),
+            ("-5e-324", LiteralRange::Below),
+            ("0", LiteralRange::Within),
+            ("50%", LiteralRange::Within),
+            ("1e41%", LiteralRange::Beyond),
+            ("1e-47%", LiteralRange::Below),
+            ("1e41deg", LiteralRange::Beyond),
+            ("1e-47turn", LiteralRange::Below),
+        ] {
+            let mut owner = CssColorOperationOwner::new();
+            let mut lexer =
+                LexicalOperation::start(&mut owner, InputKind::Utf8, input.len()).unwrap();
+            let mut slots = lexical(&mut lexer, input.as_bytes());
+            let table = lexer.finish().unwrap();
+            let token = token(&table, &slots);
+            let mut cursor =
+                LiteralConversion::start(&table, token, &slots[token.index], table.length())
+                    .unwrap();
+            assert_eq!(drive(&mut cursor, &mut slots).range, range, "{input}");
         }
     }
     #[test]
@@ -205,6 +237,9 @@ mod tests {
         // record to read its bank: decimal digits and scaled digits, in the
         // plain, searched and gradian-rescaled paths, are algorithm-bank data.
         for input in [
+            "1e40",
+            "1.401298464324817e-45",
+            "3.4028234663852886e38",
             "1e100",
             "2.2250738585072014e-308",
             "1.9e308grad",
@@ -249,9 +284,13 @@ mod tests {
                     LiteralAction::Stopped => panic!("stop"),
                 }
             }
-            if input != "1e999" {
-                assert!(written > 0, "{input} writes scratch");
-            }
+            // Only a numeral inside the window is searched; every other numeral
+            // writes no scratch (and the gradian rescale is never reached).
+            let inside = matches!(
+                input,
+                "1e40" | "1.401298464324817e-45" | "3.4028234663852886e38"
+            );
+            assert_eq!(written > 0, inside, "{input} writes scratch: {written}");
         }
     }
     #[test]

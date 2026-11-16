@@ -150,7 +150,10 @@ pub(crate) enum DecimalRange {
     /// Every finite binary64; only a value beyond binary64 is not converted.
     Binary64,
     /// Exact inside the window, estimated outside it.
-    #[expect(dead_code, reason = "selected by the colour callers in a later step")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "selected by the colour callers in a later step")
+    )]
     Window(DecimalWindow),
 }
 
@@ -161,17 +164,23 @@ pub(crate) enum DecimalOutcome {
         negative: bool,
     },
     /// Beyond the window of the cursor's range. The estimate carries the sign.
-    #[expect(
-        dead_code,
-        reason = "produced by the window classification in a later step"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "produced by the window classification in a later step"
+        )
     )]
     Beyond {
         estimate: f64,
     },
     /// Below the window of the cursor's range. The estimate carries the sign.
-    #[expect(
-        dead_code,
-        reason = "produced by the window classification in a later step"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "produced by the window classification in a later step"
+        )
     )]
     Below {
         estimate: f64,
@@ -793,6 +802,25 @@ mod tests {
         fractional: usize,
         exponent_negative: bool,
         exponent: &str,
+        tamper: impl FnMut(&mut DecimalCursor),
+    ) -> (DecimalOutcome, Trace) {
+        drive_in(
+            DecimalRange::Binary64,
+            negative,
+            mantissa,
+            fractional,
+            exponent_negative,
+            exponent,
+            tamper,
+        )
+    }
+    fn drive_in(
+        range: DecimalRange,
+        negative: bool,
+        mantissa: &str,
+        fractional: usize,
+        exponent_negative: bool,
+        exponent: &str,
         mut tamper: impl FnMut(&mut DecimalCursor),
     ) -> (DecimalOutcome, Trace) {
         let layout = DecimalLayout::new(
@@ -803,7 +831,7 @@ mod tests {
             exponent.len(),
         )
         .unwrap();
-        let mut cursor = DecimalCursor::new(layout, DecimalRange::Binary64);
+        let mut cursor = DecimalCursor::new(layout, range);
         let mut trace = Trace {
             scratch: Vec::new(),
             comparisons: 0,
@@ -1428,5 +1456,145 @@ mod tests {
         // per64 boundaries, with one read + one write and finite transitions.
         assert!(trace.input_reads <= 17 * 65 + 3);
         assert!(trace.actions <= 64 * (1100 * 1075 * 2 + 1100 * 4 + 2200));
+    }
+
+    /// The window of colour numerals: from 1e-46 up to, not including, 1e41.
+    const COLOUR_WINDOW: DecimalWindow = DecimalWindow {
+        beyond: 42,
+        below: -46,
+    };
+    fn windowed(text: &str) -> (DecimalOutcome, Trace) {
+        let (negative, mantissa, fractional, exponent_negative, exponent) = split(text);
+        drive_in(
+            DecimalRange::Window(COLOUR_WINDOW),
+            negative,
+            &mantissa,
+            fractional,
+            exponent_negative,
+            &exponent,
+            |_| {},
+        )
+    }
+
+    #[test]
+    fn a_numeral_beyond_the_window_is_an_estimate_after_its_digits_are_read() {
+        // 1e41 is the first power of ten beyond the window (magnitude 42). The
+        // estimates are the documented model, evaluated independently: the
+        // coefficient as binary64, times the exact power 10^(e mod 22), times
+        // the rounded power 10^(22 j). The bits come from that model in
+        // binary64 arithmetic, not from this cursor.
+        for (text, negative, bits) in [
+            ("1e41", false, 0x4872_5dfa_371a_19e7_u64),
+            ("-1e41", true, 0x4872_5dfa_371a_19e7),
+            ("1e308", false, 0x7fe1_ccf3_85eb_c8a0),
+            // Two encodings above the correctly rounded 9.96067956606633e73.
+            ("9960679566066331e58", false, 0x4f4c_300e_b211_230a),
+            ("1.7976931348623157e308", false, 0x7fef_ffff_ffff_ffff),
+        ] {
+            let (outcome, trace) = windowed(text);
+            let DecimalOutcome::Beyond { estimate } = outcome else {
+                panic!("{text}: {outcome:?}")
+            };
+            assert_eq!(estimate.abs().to_bits(), bits, "{text}");
+            assert_eq!(estimate.is_sign_negative(), negative, "{text}");
+            // The digits are read and one kernel finishes; nothing is searched.
+            let digits = text.bytes().filter(u8::is_ascii_digit).count();
+            assert!(trace.scratch.is_empty(), "{text}");
+            assert!(trace.actions <= digits + 1, "{text}: {}", trace.actions);
+        }
+    }
+
+    #[test]
+    fn a_numeral_below_the_window_is_an_estimate_after_its_digits_are_read() {
+        // 1e-46 is the smallest numeral inside the window; below it, the
+        // estimate is the same model with a division.
+        for (text, negative, bits) in [
+            ("9.99e-47", false, 0x3662_4020_e110_a424_u64),
+            ("-9.99e-47", true, 0x3662_4020_e110_a424),
+            ("1e-300", false, 0x01a5_6e1f_c2f8_f359),
+            // Two encodings below the correctly rounded 9.997510968117049e-272.
+            ("9997510968117049e-287", false, 0x07ab_0abd_121f_f447),
+            ("2.2250738585072014e-308", false, 0x0010_0000_0000_0000),
+            ("5e-324", false, 1),
+        ] {
+            let (outcome, trace) = windowed(text);
+            let DecimalOutcome::Below { estimate } = outcome else {
+                panic!("{text}: {outcome:?}")
+            };
+            assert_eq!(estimate.abs().to_bits(), bits, "{text}");
+            assert_eq!(estimate.is_sign_negative(), negative, "{text}");
+            let digits = text.bytes().filter(u8::is_ascii_digit).count();
+            assert!(trace.scratch.is_empty(), "{text}");
+            assert!(trace.actions <= digits + 1, "{text}: {}", trace.actions);
+        }
+    }
+
+    #[test]
+    fn the_window_edges_are_the_neighbours_of_1e41_and_1e_minus_46() {
+        // Inside the window the conversion is exact, whatever the range.
+        for text in [
+            "9.999999999999999e40",
+            "99999999999999999999999999999999999999999",
+            "1e-46",
+            "1.0000000000000001e-46",
+            "3.4028234663852886e38",
+        ] {
+            let (outcome, _) = windowed(text);
+            let expected: f64 = text.parse().unwrap();
+            assert_eq!(outcome, DecimalOutcome::Finite(expected), "{text}");
+        }
+        assert!(matches!(
+            windowed("100000000000000000000000000000000000000000").0,
+            DecimalOutcome::Beyond { .. }
+        ));
+        assert!(matches!(
+            windowed("0.0000000000000000000000000000000000000000000009999").0,
+            DecimalOutcome::Below { .. }
+        ));
+    }
+
+    #[test]
+    fn numerals_beyond_binary64_or_with_huge_exponents_fall_outside_the_window() {
+        // A literal beyond binary64 is converted like any value beyond the
+        // window: the closest finite estimate, never an overflow.
+        for (text, outcome) in [
+            ("1e999", DecimalOutcome::Beyond { estimate: f64::MAX }),
+            (
+                "-1e999",
+                DecimalOutcome::Beyond {
+                    estimate: -f64::MAX,
+                },
+            ),
+            (
+                "1e999999999999999999999999999999999999999999",
+                DecimalOutcome::Beyond { estimate: f64::MAX },
+            ),
+            ("1e-999", DecimalOutcome::Below { estimate: 0.0 }),
+            (
+                "-1e-999999999999999999999999999999999999999999",
+                DecimalOutcome::Below { estimate: -0.0 },
+            ),
+        ] {
+            let (actual, trace) = windowed(text);
+            assert_eq!(actual, outcome, "{text}");
+            if let (
+                DecimalOutcome::Below { estimate: a, .. },
+                DecimalOutcome::Below { estimate: b, .. },
+            ) = (actual, outcome)
+            {
+                assert_eq!(a.to_bits(), b.to_bits(), "{text}: signed zero");
+            }
+            assert!(trace.scratch.is_empty(), "{text}");
+        }
+        // Zero stays the unsigned zero in either range.
+        assert_eq!(windowed("-0").0, DecimalOutcome::Finite(0.0));
+    }
+
+    #[test]
+    fn the_binary64_range_is_unchanged_by_the_window_parameter() {
+        let (outcome, _) = convert("1e308");
+        assert_eq!(outcome, DecimalOutcome::Finite(1e308));
+        let (outcome, _) = convert("1e-300");
+        assert_eq!(outcome, DecimalOutcome::Finite(1e-300));
     }
 }

@@ -588,19 +588,20 @@ fn wrapper_and_utf16_prefix_results_complete_only_the_final_used_color() {
 }
 
 #[test]
-fn nested_overflowing_mix_resolves_to_closest_finite_srgb_in_original_utf16_units() {
-    // lab(0 1e308 0) has X far beyond binary64 and Y = Z = 0; its D50-adapted
-    // linear sRGB column is (+, -, +), so Color 4 conversion saturates it to
-    // (MAX, -MAX, MAX). Even mixes with red and then blue halve and quarter
-    // those channels exactly. A leading supplementary character in a comment
-    // distinguishes original UTF-16 units from UTF-8 bytes.
+fn nested_overflowing_mix_resolves_to_finite_srgb_in_original_utf16_units() {
+    // lab(0 1e308 0) is lab(0 f32::MAX 0) (#2889): Y = Z = 0 and X is about
+    // 3e107, so its sRGB channels are about (1.03e45, -6.37e44, 2.15e44), the
+    // Lab to sRGB conversion of Color 4 evaluated independently in binary64.
+    // Equal-weight mixes with red and then blue give (2.58e44, -1.59e44,
+    // 5.36e43). A leading supplementary character in a comment distinguishes
+    // original UTF-16 units from UTF-8 bytes.
     let facts = absent_facts();
     let inner = "color-mix(in srgb, lab(0 1e308 0), red)";
     let prefix = "/*🦀*/color-mix(in srgb, ";
     let text = format!("{prefix}{inner}, blue)");
     let input: Vec<u16> = text.encode_utf16().collect();
-    // Exact conversion of a large authored exponent runs through the original
-    // incremental decimal owner, within the default action ceiling.
+    // The numeral beyond the window is read, not searched, within the default
+    // action ceiling.
     let result = parse_used_color(
         CssColorInput::Utf16(&input),
         CssColorGrammarRequest::WholeColor,
@@ -618,14 +619,17 @@ fn nested_overflowing_mix_resolves_to_closest_finite_srgb_in_original_utf16_unit
         value.space(),
         ColorSpace::Predefined(PredefinedColorSpace::Srgb)
     );
-    assert_eq!(
-        value.channels(),
-        [
-            Some(f64::MAX / 4.0),
-            Some(-f64::MAX / 4.0),
-            Some(f64::MAX / 4.0)
-        ]
-    );
+    for (actual, expected) in value.channels().into_iter().zip([
+        2.584734376430414e44,
+        -1.5915555775934266e44,
+        5.363849157506268e43,
+    ]) {
+        let actual = actual.unwrap();
+        assert!(
+            (actual - expected).abs() <= 1e-6 * expected.abs(),
+            "{actual:e} and not {expected:e}"
+        );
+    }
     assert_eq!(value.alpha(), Some(1.0));
 }
 

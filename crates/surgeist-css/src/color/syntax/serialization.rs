@@ -2801,12 +2801,14 @@ mod suppressed_color_semantics_tests {
 
     #[test]
     fn suppression_preserves_checked_exact_arithmetic_errors() {
-        let value = color("rgb(12345678901234567891e170141183460469231731687303715884105727 0 0)");
-        let mut writer = SpecifiedRuleWriter::new(Limits::new(100_000, 100_000, 0));
+        // A numeral inside the colour window is exact arithmetic charged per
+        // limb; a projection limit of two is exhausted by it, with no output.
+        let value = color("lab(0 123456789012345678901234567890123456789 0)");
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(100_000, 2, 0));
         let error = writer
             .without_output(|writer| append(&value, writer))
             .unwrap_err();
-        assert_eq!(error.kind(), K::CapacityOverflow);
+        assert_eq!(error.kind(), K::ProjectionNodeLimit);
         assert!(writer.css.is_empty());
         assert!(!writer.context.output_suppressed());
     }

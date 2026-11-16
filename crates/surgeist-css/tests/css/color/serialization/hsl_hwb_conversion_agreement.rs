@@ -90,9 +90,8 @@ fn specified_and_used_hsl_hwb_agree_at_rounding_ties() {
         "hsl(100grad 12.5% 33.3%)",
         "hwb(3rad 12.345678% 7.654321%)",
         "hsl(1e30 100% 50%)",
-        // A gradian overflowing binary64 before its exact 0.9 scaling is
-        // 1.71e308deg, as used resolution converts it, not the 360deg-multiple
-        // endpoint of an infinite product.
+        // A hue numeral beyond the colour window is infinite and normalizes to
+        // 0deg in both phases (#2889), whatever its unit.
         "hsl(1.9e308grad 100% 50%)",
         "hsl(-1.9e308grad 100% 50%)",
         "hwb(1.9e308grad 0% 0%)",
