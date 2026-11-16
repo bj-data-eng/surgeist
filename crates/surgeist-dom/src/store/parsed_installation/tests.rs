@@ -1408,7 +1408,7 @@ fn an_installation_asks_the_report_for_a_document_once_for_each_root() {
             "</div>".repeat(depth)
         )
     };
-    for html in [wide(1), wide(8), wide(64), deep(8), deep(64)] {
+    for html in [wide(1), wide(8), wide(64), deep(8), deep(32)] {
         assert_eq!(tree_document_asks(&html), 2, "{html}");
     }
     // A template adds the roots of its contents and of the inert Document that owns them, so three

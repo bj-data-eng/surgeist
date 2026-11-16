@@ -1330,27 +1330,59 @@ impl Dom {
         // provenance before forming nodes that belong to that inert owner.
         qualify_inert_template_realms(&report, &source, &mut draft, &mut c)?;
         let roots = source.roots(&mut c)?;
+        // Every node of a tree has the document of its root, so the report is asked once for each
+        // root, and the answer, with the input platform its Document holds, serves every row of
+        // the tree. The cell of a root is at its row.
+        let mut documents: Vec<Option<(Key, crate::DomNativeInputPlatform)>> = Vec::new();
+        c.reserve(&mut documents, source.rows.len())?;
+        documents.resize(source.rows.len(), None);
         for i in 0..source.rows.len() {
             c.step(1)?;
-            let node = source.rows[i].source;
-            if source.rows[i].key.is_some() {
+            let row = source.rows.get(i).ok_or(Error::RepresentationExhausted)?;
+            let (node, keyed) = (row.source, row.key);
+            let root = roots
+                .get(i)
+                .copied()
+                .ok_or(Error::MissingMetadata { subject: node.id() })?;
+            let known = documents
+                .get(root)
+                .copied()
+                .ok_or(Error::MissingMetadata { subject: node.id() })?;
+            let (document, input) = match known {
+                Some(known) => known,
+                None => {
+                    let root_id = source
+                        .rows
+                        .get(root)
+                        .ok_or(Error::MissingMetadata { subject: node.id() })?
+                        .source
+                        .id();
+                    let document = source
+                        .tree_document(&report, root_id, &mut c)?
+                        .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
+                    let document = source.document_key(document, &mut c)?;
+                    let transaction::KindRead::Document(document_metadata) =
+                        draft.node(document)?.kind()
+                    else {
+                        return Err(Error::UnsupportedState { subject: node.id() });
+                    };
+                    // Existing captured Documents retain their own current platform.
+                    let input = document_metadata.document_environment().input_platform();
+                    let cell = documents
+                        .get_mut(root)
+                        .ok_or(Error::MissingMetadata { subject: node.id() })?;
+                    *cell = Some((document, input));
+                    (document, input)
+                }
+            };
+            if let Some(key) = keyed {
+                // A Document keyed above is its own tree's root and names itself.
+                if draft.node(key)?.document() != document {
+                    return Err(Error::UnsupportedState { subject: node.id() });
+                }
                 continue;
             }
-            let root = *roots
-                .get(i)
-                .ok_or(Error::MissingMetadata { subject: node.id() })?;
-            let root = source.rows[root].source.id();
-            let document = source
-                .tree_document(&report, root, &mut c)?
-                .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
-            let document = source.document_key(document, &mut c)?;
-            let transaction::KindRead::Document(document_metadata) = draft.node(document)?.kind()
-            else {
-                return Err(Error::UnsupportedState { subject: node.id() });
-            };
-            // Existing captured Documents retain their own current platform.
-            let input = document_metadata.document_environment().input_platform();
-            source.rows[i].key = Some(state::allocate(
+            let key = state::allocate(
                 &source,
                 node,
                 &mut draft,
@@ -1358,7 +1390,12 @@ impl Dom {
                 input,
                 self.limits,
                 &mut c,
-            )?);
+            )?;
+            source
+                .rows
+                .get_mut(i)
+                .ok_or(Error::RepresentationExhausted)?
+                .key = Some(key);
         }
         for row in &source.rows {
             c.step(1)?;
