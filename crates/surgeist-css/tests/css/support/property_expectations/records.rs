@@ -339,9 +339,11 @@ property_records! {
                 height: None
             }]
         ))),
-        // Backgrounds 3 (CRD 2024-03-11) §2.9: an omitted second size is
-        // `auto`, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
-        catalog: grammar_catalog!("baseline.property.background-size", "cover, 10px auto" => "cover, 10px", rejected("solid")),
+        // The size pair is an explicit exception to CSSOM 1 §6.7.2 shortest
+        // serialization: the CSSWG resolved on 2025-04-01 (csswg-drafts #7802)
+        // that it always serializes as two values, and surgeist #895 selected
+        // that form, so `10px auto` keeps its second `auto`.
+        catalog: grammar_catalog!("baseline.property.background-size", "cover, 10px auto", rejected("solid")),
         dispatch: "cover, 10px auto",
         wrapper: yes,
     }
@@ -834,7 +836,7 @@ property_records! {
     ShapeOutside, "shape-outside" {
         metadata: longhand(false, |v| assert_eq!(*v, CssShapeOutside::None)),
         // Shapes 1 (CRD 2025-06-12) §6.1: an omitted <shape-box> defaults to
-        // margin-box, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // margin-box, so CSSOM 1 §6.7.2 omits it next to a basic shape.
         catalog: complete_grammar_catalog!("official.property.shape-outside", "margin-box circle(50%)" => "circle(50%)", rejected("circle() fill-box")),
         source: "S-SHAPES1",
         dispatch: "margin-box circle(50%)",
@@ -1190,7 +1192,7 @@ property_records! {
     CounterIncrement, "counter-increment" {
         metadata: longhand(false, |v| assert!(v.changes().is_none())),
         // Lists 3 (WD 2020-11-17) §4.2: an omitted counter-increment <integer>
-        // is 1, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // is 1, so CSSOM 1 §6.7.2 omits it.
         catalog: grammar_catalog!("baseline.property.counter-increment", "section 1" => "section", rejected("1")),
         dispatch: "section 1",
         wrapper: yes,
@@ -1420,7 +1422,7 @@ property_records! {
             assert_eq!(v, &CssAuthoredFontFeatureSettings::Normal)
         }),
         // Fonts 4 (WD 2026-09-07) §6.12: `on` is 1 and an omitted value is 1,
-        // so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // so CSSOM 1 §6.7.2 omits it.
         catalog: grammar_catalog!("baseline.property.font-feature-settings", "\"kern\" on, \"liga\" 0" => "\"kern\", \"liga\" 0", rejected("\"abc\" on")),
         dispatch: "\"kern\" on, \"liga\" 0",
         wrapper: yes,
@@ -2162,7 +2164,7 @@ property_records! {
         // <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]?, so the
         // initial `auto` width may be omitted between the slashes while the
         // outset stays, and the initial `alpha` mode may be omitted; CSSOM 1
-        // §6.7.2 omits both. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        // §6.7.2 omits both.
         catalog: complete_grammar_catalog!("official.property.mask-border", "url(a) 1 2 fill / auto / 2 round alpha" => "url(\"a\") 1 2 fill / / 2 round", rejected("fill 1")),
         source: "S-MASKING1", dispatch: "url(a) 1 2 fill / auto / 2 round alpha", wrapper: yes,
         inverse: ("none", "none"),

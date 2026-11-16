@@ -124,11 +124,15 @@ fn invalid(name: &str, values: &[&str]) {
 fn outside_admits_exactly_the_four_shapes_boxes_alone_and_in_either_shape_order() {
     for name in ["content-box", "padding-box", "border-box", "margin-box"] {
         accept("shape-outside", &[(name, name)]);
+        // Shapes 1 §6.1: the reference box defaults to `margin-box`, which
+        // specified serialization leaves out next to a basic shape.
+        let written = if name == "margin-box" {
+            "circle()".to_owned()
+        } else {
+            format!("circle() {name}")
+        };
         for input in [format!("circle() {name}"), format!("{name} circle()")] {
-            accept(
-                "shape-outside",
-                &[(input.as_str(), format!("circle() {name}").as_str())],
-            );
+            accept("shape-outside", &[(input.as_str(), written.as_str())]);
         }
     }
     accept(
@@ -142,12 +146,14 @@ fn outside_admits_exactly_the_four_shapes_boxes_alone_and_in_either_shape_order(
 
 #[test]
 fn omitted_reference_box_stays_omitted_and_explicit_margin_box_stays_authored() {
-    // Default margin-box is downstream context, not an authored parser insertion.
+    // Default margin-box is downstream context, not an authored parser insertion:
+    // the value keeps whether the box was written. Its text leaves the default
+    // out (Shapes 1 §6.1, CSSOM 1 §6.7.2), so both forms serialize alike.
     accept(
         "shape-outside",
         &[
             ("circle()", "circle()"),
-            ("circle() margin-box", "circle() margin-box"),
+            ("circle() margin-box", "circle()"),
         ],
     );
     let omitted = declaration("shape-outside", "circle()", 0);

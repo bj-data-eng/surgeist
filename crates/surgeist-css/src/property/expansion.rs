@@ -423,15 +423,6 @@ macro_rules! intrinsic_initial {
 // New inverse-only canonical spelling stays with each typed value owner;
 // existing authored occurrence serialization continues through its original method.
 macro_rules! append_inverse_value {
-    (PlaceContent, $value:ident, $writer:ident) => {
-        $value.append_cssom_inverse_to_rule_writer($writer)
-    };
-    (PlaceItems, $value:ident, $writer:ident) => {
-        $value.append_cssom_inverse_to_rule_writer($writer)
-    };
-    (PlaceSelf, $value:ident, $writer:ident) => {
-        $value.append_cssom_inverse_to_rule_writer($writer)
-    };
     (Columns, $value:ident, $writer:ident) => {
         $value.append_cssom_inverse_to_rule_writer($writer)
     };

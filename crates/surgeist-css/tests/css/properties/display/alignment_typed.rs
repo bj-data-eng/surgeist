@@ -221,7 +221,7 @@ fn shorthand_construction_and_omission_default_values_work_without_parsing() {
     );
     assert_eq!(
         content.serialize_specified(Default::default()).unwrap(),
-        "baseline start"
+        "baseline"
     );
     let right =
         CssJustifyContentValue::try_new(position(None, CssAlignmentPosition::Right)).unwrap();
@@ -238,7 +238,7 @@ fn shorthand_construction_and_omission_default_values_work_without_parsing() {
     assert_eq!(items.justify().value(), CssAlignmentValue::Stretch);
     assert_eq!(
         items.serialize_specified(Default::default()).unwrap(),
-        "stretch stretch"
+        "stretch"
     );
     let legacy = CssJustifyItemsValue::try_new(CssAlignmentValue::Legacy(None)).unwrap();
     let explicit = CssPlaceItemsValue::new(stretch, legacy);
@@ -254,7 +254,7 @@ fn shorthand_construction_and_omission_default_values_work_without_parsing() {
     assert_eq!(self_pair.justify().value(), CssAlignmentValue::Auto);
     assert_eq!(
         self_pair.serialize_specified(Default::default()).unwrap(),
-        "auto auto"
+        "auto"
     );
     let right = CssJustifySelfValue::try_new(position(None, CssAlignmentPosition::Right)).unwrap();
     let explicit = CssPlaceSelfValue::new(auto, right);
@@ -346,7 +346,7 @@ fn parsed_shorthands_keep_authored_css_and_canonical_specified_pairs() {
             .value()
             .serialize_specified(Default::default())
             .unwrap(),
-        "baseline start"
+        "baseline"
     );
     let canonical = value
         .value()

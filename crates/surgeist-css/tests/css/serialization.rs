@@ -3,6 +3,7 @@
 mod all_initial_line_shorthands;
 mod component_boundary_error_kinds;
 mod declaration_value_serialization;
+mod default_component_omission;
 mod misc_property_serialization;
 mod normalization_contract;
 mod normalization_stack;

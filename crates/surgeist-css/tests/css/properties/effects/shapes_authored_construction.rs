@@ -129,13 +129,23 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
         assert_eq!(composed.shape(), &shape);
         assert_eq!(composed.reference_box(), Some(reference_box));
         assert_ne!(composed, omitted);
-        let expected = format!("circle() {keyword}");
-        budget(&expected, 3, 3, |limits| {
+        // Shapes 1 §6.1: `margin-box` is the reference box of a basic shape
+        // without a `<shape-box>`, so its text is left out; its visit stays
+        // charged, and every other box is written.
+        let serialized = if keyword == "margin-box" {
+            "circle()".to_owned()
+        } else {
+            format!("circle() {keyword}")
+        };
+        let authored = format!("circle() {keyword}");
+        budget(&serialized, 3, 3, |limits| {
             composed.serialize_specified(limits)
         });
         let owner = CssShapeOutside::BasicShape(composed);
-        budget(&expected, 3, 3, |limits| owner.serialize_specified(limits));
-        for text in [format!("{keyword} circle()"), expected] {
+        budget(&serialized, 3, 3, |limits| {
+            owner.serialize_specified(limits)
+        });
+        for text in [format!("{keyword} circle()"), authored] {
             for source in [
                 parsed(CssKnownProperty::ShapeOutside, &text),
                 checked(
@@ -146,7 +156,7 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
                 assert_eq!(outside(&source), &owner);
                 assert_eq!(
                     source.serialize_specified(Default::default()).unwrap(),
-                    format!("shape-outside: circle() {keyword} !important;")
+                    format!("shape-outside: {serialized} !important;")
                 );
             }
         }

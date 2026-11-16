@@ -513,11 +513,12 @@ pub enum CssShapeOutside {
 }
 
 /// A basic shape with an optional explicit Shapes reference box.
-/// Omission stays distinct from explicit `margin-box`; the default is downstream.
+/// The value records whether `margin-box` was written; the default is downstream.
 ///
 /// # Specified serialization
 ///
 /// Serializes authored children without selecting geometry or loading images.
+/// A `margin-box` beside the shape is left out of the text.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssShapeOutsideShape {
     shape: CssBasicShape,

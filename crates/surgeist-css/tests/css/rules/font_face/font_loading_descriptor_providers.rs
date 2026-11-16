@@ -43,7 +43,7 @@ fn cases() -> [(Kind, &'static str, &'static str); 14] {
         (
             Kind::FontFeatureSettings,
             "'liga' off, 'kern' on",
-            "\"liga\" off, \"kern\" on",
+            "\"liga\" 0, \"kern\"",
         ),
         (Kind::FontVariationSettings, "'wght' 625.0", "\"wght\" 625"),
         (Kind::FontNamedInstance, "'Regular'", "\"Regular\""),
@@ -231,11 +231,11 @@ fn list_members_and_suppressed_equal_endpoints_share_cumulative_visit_limits() {
             "local(\"First\"), local(\"Second\")",
             5,
         ),
-        // Each setting retains its tag and its explicit on/off value.
+        // Each setting retains its tag; Fonts 4 §6.12 writes `on` as nothing and `off` as 0.
         (
             Kind::FontFeatureSettings,
             "'liga' off,'kern' on",
-            "\"liga\" off, \"kern\" on",
+            "\"liga\" 0, \"kern\"",
             4,
         ),
         (

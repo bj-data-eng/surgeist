@@ -187,15 +187,15 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["justify-items"], "center", "center"),
         // CssJustifySelfValue
         (&["justify-self"], "center", "center"),
-        // The authored alignment provider contract emits both effective roles,
-        // in Align3's align/justify order, including the copied omitted role.
-        // This declaration API does not add CSSOM shorthand minimization.
+        // Align 3 copies an omitted second role from the first (`baseline`
+        // gives `start` for place-content), so CSSOM 1 §6.7.2 leaves a second
+        // role that equals the copy out of the specified serialization.
         // CssPlaceContentValue
-        (&["place-content"], "center", "center center"),
+        (&["place-content"], "center", "center"),
         // CssPlaceItemsValue
-        (&["place-items"], "center", "center center"),
+        (&["place-items"], "center", "center"),
         // CssPlaceSelfValue
-        (&["place-self"], "center", "center center"),
+        (&["place-self"], "center", "center"),
         // CssVisibility
         (&["visibility"], "visible", "visible"),
         // CssContentValue
@@ -213,9 +213,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         // CssMarkerSide
         (&["marker-side"], "match-self", "match-self"),
         // CssCounterChangesValue
-        (&["counter-reset", "counter-set"], "Item", "Item 0"),
+        (&["counter-reset", "counter-set"], "Item", "Item"),
         // CssCounterChangesValue
-        (&["counter-increment"], "Item", "Item 1"),
+        (&["counter-increment"], "Item", "Item"),
         // CssSizeValue
         (
             &[
@@ -873,19 +873,15 @@ fn legacy_grammar_text_inverts_only_its_source_defined_semantic_mapping() {
 
 #[test]
 fn counter_defaults_and_math_share_the_declaration_budget_without_resolving_integers() {
-    for (name, value) in [
-        ("counter-reset", "0"),
-        ("counter-increment", "1"),
-        ("counter-set", "0"),
-    ] {
+    for name in ["counter-reset", "counter-increment", "counter-set"] {
         for declaration in [
             parsed(&format!("{name}:Item")),
             checked(name, "Item", CssImportance::Normal),
         ] {
-            let expected = format!("{name}: Item {value};");
-            // Declaration + name, then list + entry + name; generated default
-            // adds one projection node and no authored input node.
-            exact_limits(&declaration, &expected, 5, 6);
+            let expected = format!("{name}: Item;");
+            // Declaration + name, then list + entry + name; the default
+            // integer is omitted, so nothing is generated or charged for it.
+            exact_limits(&declaration, &expected, 5, 5);
         }
         for declaration in [
             parsed(&format!("{name}:Item calc(2.5)")),

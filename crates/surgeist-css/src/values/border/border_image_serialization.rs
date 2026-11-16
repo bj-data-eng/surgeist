@@ -315,7 +315,10 @@ impl CssBorderImageRepeat {
     }
 }
 
-fn literal_initial(component: Option<&CssComponentValue>, exponent: Option<i128>) -> bool {
+pub(crate) fn literal_initial(
+    component: Option<&CssComponentValue>,
+    exponent: Option<i128>,
+) -> bool {
     let Some(CssComponentValueRef::Token(
         CssValueTokenRef::Number(number) | CssValueTokenRef::Percentage(number),
     )) = component.map(CssComponentValue::view)
@@ -351,7 +354,7 @@ fn initial_width(value: &CssBorderImageWidth) -> bool {
     })
 }
 
-fn initial_outset(value: &CssBorderImageOutset) -> bool {
+pub(crate) fn initial_outset(value: &CssBorderImageOutset) -> bool {
     value.values().iter().all(|value| {
         matches!(value,
         CssBorderImageOutsetComponent::Number(number)
@@ -359,74 +362,121 @@ fn initial_outset(value: &CssBorderImageOutset) -> bool {
     })
 }
 
+/// The members the `border-image` and `mask-border` shorthands share, with the
+/// per-shorthand initial tests of the slice and width members. Both grammars
+/// are `<source> || <slice> [ / <width>? [ / <outset> ]? ]? || <repeat>`, so
+/// one writer decides which members CSSOM 1 "serialize a CSS value" omits.
+pub(crate) struct EdgeMembers<'a> {
+    pub(crate) source: Option<&'a CssImageValue>,
+    pub(crate) slice: Option<&'a CssBorderImageSlice>,
+    pub(crate) width: Option<&'a CssBorderImageWidth>,
+    pub(crate) outset: Option<&'a CssBorderImageOutset>,
+    pub(crate) repeat: Option<CssBorderImageRepeat>,
+    pub(crate) initial_slice: fn(&CssBorderImageSlice) -> bool,
+    pub(crate) initial_width: fn(&CssBorderImageWidth) -> bool,
+}
+
+/// Writes the members in grammar order, omitting a literal initial. The slice
+/// stays whenever a width or an outset follows it, and a retained outset after
+/// an omitted width keeps both slashes. Omitted members are still visited, so
+/// their work stays charged.
+pub(crate) fn append_edge_members(
+    writer: &mut SpecifiedRuleWriter,
+    emitted: &mut bool,
+    members: &EdgeMembers<'_>,
+) -> Result<()> {
+    if let Some(source) = members.source {
+        writer.source_member(0, |writer| {
+            if matches!(source, CssImageValue::None) {
+                writer.without_output(|writer| source.append_specified(writer))?;
+            } else {
+                writer.space_before_item(emitted)?;
+                source.append_specified(writer)?;
+            }
+            Ok(())
+        })?;
+    }
+    let retained_width = members
+        .width
+        .is_some_and(|value| !(members.initial_width)(value));
+    let retained_outset = members.outset.is_some_and(|value| !initial_outset(value));
+    if let Some(slice) = members.slice {
+        writer.source_member(1, |writer| {
+            if !retained_width && !retained_outset && (members.initial_slice)(slice) {
+                writer.without_output(|writer| slice.append_specified(writer))?;
+            } else {
+                writer.space_before_item(emitted)?;
+                slice.append_specified(writer)?;
+            }
+            Ok(())
+        })?;
+    }
+    if let Some(width) = members.width {
+        writer.source_member(2, |writer| {
+            if retained_width {
+                writer.append(" / ")?;
+                width.append_specified(writer)?;
+            } else {
+                writer.without_output(|writer| width.append_specified(writer))?;
+            }
+            Ok(())
+        })?;
+    }
+    if let Some(outset) = members.outset {
+        writer.source_member(3, |writer| {
+            if retained_outset {
+                writer.append(if retained_width { " / " } else { " / / " })?;
+                outset.append_specified(writer)?;
+            } else {
+                writer.without_output(|writer| outset.append_specified(writer))?;
+            }
+            Ok(())
+        })?;
+    }
+    if let Some(repeat) = members.repeat {
+        writer.source_member(4, |writer| {
+            if repeat.horizontal() == CssBorderImageRepeatKeyword::Stretch
+                && repeat.vertical() == CssBorderImageRepeatKeyword::Stretch
+            {
+                writer.without_output(|writer| repeat.append_specified(writer))?;
+            } else {
+                writer.space_before_item(emitted)?;
+                repeat.append_specified(writer)?;
+            }
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+/// The grammar needs a token for a shorthand whose members are all omitted:
+/// `none` is the initial source.
+pub(crate) fn append_all_initial_fallback(writer: &mut SpecifiedRuleWriter) -> Result<()> {
+    writer.source_member(0, |writer| {
+        writer.context.charge_projection(1)?;
+        writer.append("none")
+    })
+}
+
 impl CssBorderImage {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let mut emitted = false;
-        if let Some(source) = self.source() {
-            writer.source_member(0, |writer| {
-                if matches!(source, CssImageValue::None) {
-                    writer.without_output(|writer| source.append_specified(writer))?;
-                } else {
-                    writer.space_before_item(&mut emitted)?;
-                    source.append_specified(writer)?;
-                }
-                Ok(())
-            })?;
-        }
-        let retained_width = self.width().is_some_and(|value| !initial_width(value));
-        let retained_outset = self.outset().is_some_and(|value| !initial_outset(value));
-        if let Some(slice) = self.slice() {
-            writer.source_member(1, |writer| {
-                if !retained_width && !retained_outset && initial_slice(slice) {
-                    writer.without_output(|writer| slice.append_specified(writer))?;
-                } else {
-                    writer.space_before_item(&mut emitted)?;
-                    slice.append_specified(writer)?;
-                }
-                Ok(())
-            })?;
-        }
-        if let Some(width) = self.width() {
-            writer.source_member(2, |writer| {
-                if retained_width {
-                    writer.append(" / ")?;
-                    width.append_specified(writer)?;
-                } else {
-                    writer.without_output(|writer| width.append_specified(writer))?;
-                }
-                Ok(())
-            })?;
-        }
-        if let Some(outset) = self.outset() {
-            writer.source_member(3, |writer| {
-                if retained_outset {
-                    writer.append(if retained_width { " / " } else { " / / " })?;
-                    outset.append_specified(writer)?;
-                } else {
-                    writer.without_output(|writer| outset.append_specified(writer))?;
-                }
-                Ok(())
-            })?;
-        }
-        if let Some(repeat) = self.repeat() {
-            writer.source_member(4, |writer| {
-                if repeat.horizontal() == CssBorderImageRepeatKeyword::Stretch
-                    && repeat.vertical() == CssBorderImageRepeatKeyword::Stretch
-                {
-                    writer.without_output(|writer| repeat.append_specified(writer))?;
-                } else {
-                    writer.space_before_item(&mut emitted)?;
-                    repeat.append_specified(writer)?;
-                }
-                Ok(())
-            })?;
-        }
+        append_edge_members(
+            writer,
+            &mut emitted,
+            &EdgeMembers {
+                source: self.source(),
+                slice: self.slice(),
+                width: self.width(),
+                outset: self.outset(),
+                repeat: self.repeat(),
+                initial_slice,
+                initial_width,
+            },
+        )?;
         if !emitted {
-            writer.source_member(0, |writer| {
-                writer.context.charge_projection(1)?;
-                writer.append("none")
-            })?;
+            append_all_initial_fallback(writer)?;
         }
         Ok(())
     }

@@ -1,6 +1,13 @@
 //! Canonical authored Masking values sharing one cumulative writer.
 use crate::serialization::CssSerializationError;
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::values::border::border_image_serialization::{
+    EdgeMembers, append_all_initial_fallback, append_edge_members, literal_initial,
+};
+use crate::values::border::{
+    CssBorderImageSlice, CssBorderImageSliceComponent, CssBorderImageWidth,
+    CssBorderImageWidthComponent,
+};
 use crate::values::effects::{
     CssClipRule, CssMaskBorder, CssMaskBoxList, CssMaskClip, CssMaskClipList, CssMaskComposite,
     CssMaskCompositeList, CssMaskLayerBoxes, CssMaskMode, CssMaskModeList, CssMaskType,
@@ -65,50 +72,56 @@ provider!(CssMaskLayerBoxes, value, writer => {
         }
     }
 });
+/// Masking 1 §8.3: `mask-border-slice` is initially `0`, with no `fill`.
+fn initial_mask_border_slice(value: &CssBorderImageSlice) -> bool {
+    !value.fill()
+        && value.values().iter().all(|value| {
+            matches!(value,
+            CssBorderImageSliceComponent::Number(number)
+                if literal_initial(number.literal_component(), None))
+        })
+}
+
+/// Masking 1 §8.4: `mask-border-width` is initially `auto`.
+fn initial_mask_border_width(value: &CssBorderImageWidth) -> bool {
+    value
+        .values()
+        .iter()
+        .all(|value| matches!(value, CssBorderImageWidthComponent::Auto))
+}
+
+// Masking 1 §8.7 gives `mask-border` the grammar of `border-image` plus a mode,
+// so the shared members follow border-image's omission and the initial `alpha`
+// mode is omitted last; all-initial is `none`, as for `border-image`.
 provider!(CssMaskBorder, value, writer => {
     writer.node()?;
     let mut emitted = false;
-    if let Some(source) = value.source() {
-        writer.source_member(0, |writer| {
-        writer.space_before_item(&mut emitted)?;
-        source.append_to_rule_writer(writer)?;
-            Ok(())
-        })?;
-    }
-    if let Some(slice) = value.slice() {
-        writer.source_member(1, |writer| {
-        writer.space_before_item(&mut emitted)?;
-        slice.append_to_rule_writer(writer)?;
-            Ok(())
-        })?;
-    }
-    if let Some(width) = value.width() {
-        writer.source_member(2, |writer| {
-        writer.append(" / ")?;
-        width.append_to_rule_writer(writer)?;
-            Ok(())
-        })?;
-    }
-    if let Some(outset) = value.outset() {
-        writer.source_member(3, |writer| {
-        writer.append(if value.width().is_some() { " / " } else { " / / " })?;
-        outset.append_to_rule_writer(writer)?;
-            Ok(())
-        })?;
-    }
-    if let Some(repeat) = value.repeat() {
-        writer.source_member(4, |writer| {
-        writer.space_before_item(&mut emitted)?;
-        repeat.append_to_rule_writer(writer)?;
-            Ok(())
-        })?;
-    }
+    append_edge_members(
+        writer,
+        &mut emitted,
+        &EdgeMembers {
+            source: value.source(),
+            slice: value.slice(),
+            width: value.width(),
+            outset: value.outset(),
+            repeat: value.repeat(),
+            initial_slice: initial_mask_border_slice,
+            initial_width: initial_mask_border_width,
+        },
+    )?;
     if let Some(mode) = value.mode() {
         writer.source_member(5, |writer| {
-        writer.space_before_item(&mut emitted)?;
-        mode.append_to_rule_writer(writer)?;
+            if mode == CssMaskType::Alpha {
+                writer.without_output(|writer| mode.append_to_rule_writer(writer))?;
+            } else {
+                writer.space_before_item(&mut emitted)?;
+                mode.append_to_rule_writer(writer)?;
+            }
             Ok(())
         })?;
+    }
+    if !emitted {
+        append_all_initial_fallback(writer)?;
     }
     Ok(())
 });
@@ -176,10 +189,11 @@ mod tests {
             Some(CssMaskType::Alpha),
         )
         .unwrap();
-        // Prefix1 + border aggregate/source/mode3 + scalar sibling1.
-        let expected = "!none alpha;evenodd";
+        // Prefix1 + border aggregate/source/mode3 + the generated `none` of an
+        // all-initial border (projection only) + scalar sibling1.
+        let expected = "!none;evenodd";
         let mut writer =
-            SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 5, expected.len()));
+            SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 6, expected.len()));
         writer.node().unwrap();
         writer.append("!").unwrap();
         border.append_to_rule_writer(&mut writer).unwrap();
@@ -196,7 +210,7 @@ mod tests {
             writer.context.charge_projection(1).unwrap_err().kind(),
             Kind::ProjectionNodeLimit
         );
-        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(6, 6, 0));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(6, 8, 0));
         writer
             .without_output(|writer| {
                 border.append_to_rule_writer(writer)?;

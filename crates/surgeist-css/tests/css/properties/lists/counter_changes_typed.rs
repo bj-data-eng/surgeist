@@ -1,7 +1,10 @@
-//! Functional Lists 3 counter values. The pinned CSSOM 2021 §6.7.2 preserves
-//! compatible value spelling; the selected WebKit parser inserts omitted
-//! reset/set `0` and increment `1`. Values 4 defines exact integer tokens and
-//! symbolic integer-root math; expected text is sourced from those contracts.
+//! Functional Lists 3 counter values. Lists 3 §4.2 gives an omitted integer the
+//! value `1` for `counter-increment` and `0` for `counter-set`, and §4.1 gives
+//! `0` for `counter-reset`; CSSOM 1 (WD 2021-08-26) §6.7.2 leaves out a
+//! component whose omission does not change the meaning, so the specified
+//! serialization writes a literal default integer as nothing. Values 4 defines
+//! exact integer tokens and symbolic integer-root math, which stay as authored;
+//! expected text is sourced from those contracts.
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
@@ -97,9 +100,9 @@ fn one_checked_value_uses_explicit_property_context_for_missing_operands() {
     ])
     .unwrap();
     for (property, expected) in [
-        (CssCounterProperty::Reset, "chapter 0 section -2"),
-        (CssCounterProperty::Increment, "chapter 1 section -2"),
-        (CssCounterProperty::Set, "chapter 0 section -2"),
+        (CssCounterProperty::Reset, "chapter section -2"),
+        (CssCounterProperty::Increment, "chapter section -2"),
+        (CssCounterProperty::Set, "chapter section -2"),
     ] {
         assert_eq!(
             value
@@ -143,13 +146,13 @@ fn decoded_names_are_escaped_and_exact_large_integers_stay_exact() {
         value
             .serialize_specified(CssCounterProperty::Reset, Default::default())
             .unwrap(),
-        format!(r"\31 chapter {huge} chapter\ name 0")
+        format!(r"\31 chapter {huge} chapter\ name")
     );
     assert_eq!(
         value
             .serialize_specified(CssCounterProperty::Increment, Default::default())
             .unwrap(),
-        format!(r"\31 chapter {huge} chapter\ name 1")
+        format!(r"\31 chapter {huge} chapter\ name")
     );
 }
 
@@ -239,9 +242,9 @@ fn parsed_values_preserve_full_source_origins() {
                 )
                 .unwrap(),
             if property == CssKnownProperty::CounterIncrement {
-                "chapter 1 section -2 chapter 0"
+                "chapter section -2 chapter 0"
             } else {
-                "chapter 0 section -2 chapter 0"
+                "chapter section -2 chapter"
             }
         );
 
@@ -296,30 +299,74 @@ fn omitted_defaults_and_sibling_entries_share_exact_node_and_byte_budgets() {
     assert_eq!(
         one.serialize_specified(
             CssCounterProperty::Increment,
-            CssSerializationLimits::new(3, 4, 9),
+            CssSerializationLimits::new(3, 3, 7),
         )
         .unwrap(),
-        "chapter 1"
+        "chapter"
     );
+    // A literal default is left out of the output but still visited, so it
+    // costs what the same entry with another integer costs.
+    let one_literal = CssCounterChangesValue::try_changes(vec![entry(
+        "chapter",
+        Some(
+            CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(
+                1,
+            ))
+            .unwrap(),
+        ),
+    )])
+    .unwrap();
+    assert_eq!(
+        one_literal
+            .serialize_specified(
+                CssCounterProperty::Increment,
+                CssSerializationLimits::new(4, 4, 7),
+            )
+            .unwrap(),
+        "chapter"
+    );
+    for (limits, kind) in [
+        (
+            CssSerializationLimits::new(3, 4, 7),
+            SerializationFailure::InputNodeLimit,
+        ),
+        (
+            CssSerializationLimits::new(4, 3, 7),
+            SerializationFailure::ProjectionNodeLimit,
+        ),
+        (
+            CssSerializationLimits::new(4, 4, 6),
+            SerializationFailure::ByteLimit,
+        ),
+    ] {
+        assert_eq!(
+            serialization_failure(
+                &one_literal
+                    .serialize_specified(CssCounterProperty::Increment, limits)
+                    .unwrap_err()
+            ),
+            kind
+        );
+    }
     let two =
         CssCounterChangesValue::try_changes(vec![entry("chapter", None), entry("section", None)])
             .unwrap();
-    let expected = "chapter 1 section 1";
+    let expected = "chapter section";
     assert_eq!(
         two.serialize_specified(
             CssCounterProperty::Increment,
-            CssSerializationLimits::new(5, 7, expected.len()),
+            CssSerializationLimits::new(5, 5, expected.len()),
         )
         .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSerializationLimits::new(0, 7, expected.len()),
+            CssSerializationLimits::new(0, 5, expected.len()),
             SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSerializationLimits::new(4, 7, expected.len()),
+            CssSerializationLimits::new(4, 5, expected.len()),
             SerializationFailure::InputNodeLimit,
         ),
         (
@@ -327,11 +374,11 @@ fn omitted_defaults_and_sibling_entries_share_exact_node_and_byte_budgets() {
             SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSerializationLimits::new(5, 6, expected.len()),
+            CssSerializationLimits::new(5, 4, expected.len()),
             SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSerializationLimits::new(5, 7, expected.len() - 1),
+            CssSerializationLimits::new(5, 5, expected.len() - 1),
             SerializationFailure::ByteLimit,
         ),
     ] {

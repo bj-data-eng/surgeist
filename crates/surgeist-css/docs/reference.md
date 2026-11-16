@@ -3410,6 +3410,11 @@ duplicate boxes, image/box combinations and foreign shape-box keywords are inval
 The three models provide `serialize_specified(limits)`. Box and `none` cost one semantic node;
 shape/box composition adds one aggregate plus the shared shape children and
 one node for an explicit box. Images keep the shared provider's node costs.
+Shapes 1 §6.1 gives a basic shape without a box the reference box margin-box, so
+specified serialization leaves an explicit margin-box out next to a basic shape
+(CSSOM 1 §6.7.2 omits a component that does not change the meaning); the box is
+still visited and charged. A standalone box is the whole value and is always
+written, and every other box is written after the shape.
 
 `shape-image-threshold.value()` and its terminal view borrow the existing
 `CssOpacityValue`, retaining exact ordinary number/percentage components and
@@ -3440,7 +3445,7 @@ let outside = CssShapeOutside::BasicShape(CssShapeOutsideShape::new(
 ));
 assert_eq!(
     outside.serialize_specified(CssSerializationLimits::default()).unwrap(),
-    "circle() margin-box",
+    "circle()",
 );
 ```
 
@@ -5028,7 +5033,9 @@ through `value()`. Feature indices are
 `numeric::CssNumeric<CssInteger, CssNonNegative>`, which is not `Copy`; borrow through
 `value()` and inspect exact indices with
 `literal()` and `calculation()`, or `CssNumericLiteral::value()` when the integer
-is representable as `i32`.
+is representable as `i32`. Specified serialization leaves out the value `1`
+(omitted, `on` or the literal `1`; Fonts 4 §6.12), writes `off` as `0`, and keeps
+any other integer, including a calculation, as authored.
 `CssFontSizeAdjust::Number` holds `numeric::CssNumeric<CssNumber, CssNonNegative>`; inspect
 its exact literal or calculation. The signed
 `numeric::CssNumeric<CssNumber>` serves variation values. All these scalars and settings
@@ -6391,10 +6398,13 @@ whether each integer was authored. The three property wrappers expose
 Content 3 checked counter-name domain; integer tokens remain exact at any
 magnitude, and integer calculations retain their authored tree and origin.
 For canonical specified serialization, pass `CssCounterProperty` explicitly:
-an omitted operand writes `0` for reset/set and `1` for increment. One bounded
-writer charges the list, entries, names, and numeric subtrees cumulatively;
-synthetic defaults consume projection and byte budgets without invented input
-nodes. Counter execution, clamping, and duplicate application remain downstream.
+the default integer is `0` for reset/set and `1` for increment (Lists 3 §4.1 and
+§4.2), and an omitted operand or a literal integer equal to it is left out, since
+CSSOM 1 §6.7.2 omits a component that does not change the value. An integer
+calculation is never compared with the default and stays as authored. One bounded
+writer charges the list, entries, names, and numeric subtrees cumulatively; a
+literal default is visited and charged like any other integer without producing
+bytes. Counter execution, clamping, and duplicate application remain downstream.
 
 [CSS Text 4 §§8.1–8.2](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#word-spacing-property)
 defines `word-spacing` and `letter-spacing` as inherited longhands with
@@ -6598,6 +6608,12 @@ single-layer initials are `auto`, `repeat`, `padding-box`, `border-box`, and
 `scroll`, respectively. CSS-wide keywords remain symbolic; pending values
 reenter their original property grammar with unchanged occurrence and importance.
 
+A size pair is an explicit exception to CSSOM shortest serialization: the CSSWG
+resolved on 2025-04-01 ([csswg-drafts #7802](https://github.com/w3c/csswg-drafts/issues/7802))
+that `background-size` and `mask-size` always serialize as two values, and the
+selected policy (surgeist #895) writes the effective second `auto` (`10px` is
+`10px auto`) while `auto auto` is `auto` and `cover`/`contain` stay one token.
+
 `background-color` also contributes one noninherited terminal, retaining its
 checked `CssColor` with transparent intrinsic initial. Its existing
 `serialize_specified(limits)` provider preserves symbolic color dependencies. CSS-wide
@@ -6786,8 +6802,11 @@ copies align except that a baseline in `place-content` defaults justify to
 `start`. Each longhand has a private-field checked value around the shared
 authored alignment vocabulary, so an item-only position cannot enter a content
 property by typed construction. The place values hold two independently
-checked property values. Canonical specified serialization emits both effective
-components with one resource budget; explicit `first baseline` serializes as
+checked property values. Canonical specified serialization emits the align
+component and then the justify component with one resource budget, leaving the
+justify component out when the omission rule above would supply it from the
+align component, so that `place-items: stretch stretch` serializes as `stretch`
+and `place-content: baseline start` as `baseline`; explicit `first baseline` serializes as
 `baseline` while the authored wrapper retains its original spelling and checked
 alignment value. For the ambiguous shorthand
 `baseline last baseline`, parsing prefers bare `baseline` for align and
@@ -9665,6 +9684,19 @@ None, slice `10 fill`, width Auto, outset `2`, repeat Round/Space and Luminance
 mode costs thirty nodes in each work budget, even though each four-edge value
 shortens to one emitted component. Final UTF-8 bytes share the same cumulative
 limit; failures return no partial string and leave the source model retryable.
+
+Specified mask-border output leaves out a member that is literally at its
+initial value, as [CSSOM 1 §6.7.2](https://www.w3.org/TR/cssom/#serializing-css-values)
+omits a component that does not change the meaning, and writes members through
+the writer that `border-image` uses. The source `none`, a slice that is the
+number `0` without `fill`, a width that is `auto` on every side, an outset that is
+the number `0` on every side, repeat `stretch` and mode `alpha` are left out; each
+is still visited, so the work above does not change. A slice stays while a width
+or an outset follows it, and an outset after an omitted width keeps both slashes,
+as in `10 fill / / 2 round`. A zero percentage, a zero length and a calculation
+are other values than the initial literal and stay. When every member is left
+out the value is `none`, one generated projection node. The example above writes
+`10 fill / / 2 round space luminance`.
 
 ## Cursor images, transform, mask and Outline output
 

@@ -37,8 +37,15 @@ impl crate::serialization::specified_rule_serialization::SpecifiedProvider
         writer.node()?;
         self.shape().append_specified(writer)?;
         if let Some(reference_box) = self.reference_box() {
-            writer.append(" ")?;
-            reference_box.append_to_rule_writer(writer)?;
+            // Shapes 1 §6.1: without a `<shape-box>` the reference box is
+            // `margin-box`, so CSSOM 1 "serialize a CSS value" omits that
+            // literal default next to a basic shape. The visit stays charged.
+            if reference_box == CssShapeBox::MarginBox {
+                writer.without_output(|writer| reference_box.append_to_rule_writer(writer))?;
+            } else {
+                writer.append(" ")?;
+                reference_box.append_to_rule_writer(writer)?;
+            }
         }
         Ok(())
     }
@@ -73,8 +80,9 @@ mod tests {
     #[test]
     fn prefix_and_all_outside_branches_share_semantic_work_and_final_bytes() {
         let values = values();
-        let expected = "!circle() margin-box;light-dark(none, none);border-box;none";
-        // Prefix one, shape aggregate/function/box three, image function/none/none
+        let expected = "!circle();light-dark(none, none);border-box;none";
+        // Prefix one, shape aggregate/function/box three (the default
+        // `margin-box` is visited but not written), image function/none/none
         // three, standalone box one, none one: nine cumulative nodes.
         let mut writer =
             SpecifiedRuleWriter::new(CssSerializationLimits::new(9, 9, expected.len()));

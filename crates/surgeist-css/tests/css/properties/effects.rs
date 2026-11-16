@@ -7,6 +7,7 @@ mod clip_path_lifecycle;
 mod clip_typed;
 mod compositing_expansion_lifecycle;
 mod compositing_family_contract;
+mod default_member_omission;
 mod filter_blur_default;
 mod filter_construction_serialization;
 mod filter_image_construction_serialization;

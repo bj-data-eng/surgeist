@@ -6,9 +6,10 @@
 //! `shape-outside` borrows [`CssShapeOutside`], `shape-image-threshold` borrows
 //! [`CssOpacityValue`](crate::values::effects::CssOpacityValue), and `shape-margin` borrows
 //! [`CssNumeric<CssLengthPercentage, CssNonNegative>`](crate::numeric::CssNumeric). [`CssShapeOutsideShape`] retains
-//! an optional [`CssShapeBox`] with only the four visual/margin boxes. Omitted
-//! boxes stay distinct from explicit margin-box, and canonical pairs emit the
-//! shape first. Threshold values remain unclamped; ordinary margin literals
+//! an optional [`CssShapeBox`] with only the four visual/margin boxes. The
+//! value records whether margin-box was written, specified text leaves a
+//! margin-box beside a shape out, and canonical pairs emit the shape first.
+//! Threshold values remain unclamped; ordinary margin literals
 //! are nonnegative while actual math defers range handling. Geometry, resource
 //! loading, percentage bases and computed threshold clamping remain downstream.
 //!

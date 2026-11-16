@@ -1,8 +1,6 @@
 use crate::css::support::property_expectations;
 
-use property_expectations::{
-    BoundaryOutcome, CASES, CatalogExpectation, KNOWN_SERIALIZATION_DEFECTS,
-};
+use property_expectations::{BoundaryOutcome, CASES, CatalogExpectation};
 use surgeist_css::CssParser;
 use surgeist_css::conformance::{
     CssFeatureKind, CssSupportStatus, feature_metadata, property_support_metadata,
@@ -205,17 +203,7 @@ fn authored_property_cases_exercise_public_parser_behavior() {
         // in the specified serialization each record states.
         let expected = format!("{}: {};", case.name, serialization.unwrap_or(positive));
         let actual = declaration.serialize_specified(Default::default()).unwrap();
-        if let Some((_, current)) = KNOWN_SERIALIZATION_DEFECTS
-            .iter()
-            .find(|(id, _)| id == feature_id)
-        {
-            // The defect stays pinned: a fix fails here until its entry goes.
-            assert_ne!(
-                actual, expected,
-                "{feature_id} defect is fixed; remove its entry"
-            );
-            assert_eq!(actual, *current, "{feature_id} current serialization");
-        } else if actual != expected {
+        if actual != expected {
             serialization_mismatches.push(format!("{feature_id}: `{actual}` != `{expected}`"));
         }
 
