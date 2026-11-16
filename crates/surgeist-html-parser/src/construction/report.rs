@@ -2533,3 +2533,43 @@ mod tests {
         super::super::tests::storage_zero(&c);
     }
 }
+
+#[cfg(test)]
+mod creation_row_tests {
+    use super::*;
+
+    /// The rows of the table of creation states of a parse of `source`, and the record visits that
+    /// qualifying them charges in a closed profile.
+    fn qualify(source: &str) -> (usize, u64) {
+        let limits = crate::parser::tree_builder::tests::limits(100);
+        let report =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits)
+                .parse()
+                .unwrap();
+        let storage = report.history().storage();
+        let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+        let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
+        qualify_creation_rows(storage, &storage.view, &mut c, true).unwrap();
+        (
+            storage.payloads.facts.creation.len(),
+            c.usage().work(HtmlParseWorkCategory::RecordVisit) - before,
+        )
+    }
+
+    /// Qualifying a row of the table reads the row and the element it names, and the element walk
+    /// of report preparation classifies the name of each element once, whether or not the element
+    /// has a row. The classification of a name that is no known element reads the vocabulary,
+    /// which is far more than the two visits the row costs, so a row that is qualified by
+    /// classifying its name again makes the work of preparing a report grow with the length of the
+    /// vocabulary for each row.
+    #[test]
+    fn qualifying_the_rows_of_creation_states_classifies_no_name() {
+        for elements in [1_usize, 8, 32] {
+            let source = format!("<!doctype html>{}", "<x-a></x-a>".repeat(elements));
+            let (rows, visits) = qualify(&source);
+            assert_eq!(rows, elements);
+            // One visit for the row and one for the element it names.
+            assert_eq!(visits, 2 * rows as u64, "{elements} rows");
+        }
+    }
+}
