@@ -21,6 +21,8 @@ use surgeist_html::values::WeakTextBlock;
 use surgeist_ledger::Change;
 
 mod accounts;
+#[cfg(test)]
+pub(crate) use accounts::last_parse_counts;
 use accounts::{Accounts, Readings};
 mod admission;
 use admission::Site;
