@@ -7,7 +7,7 @@ use crate::{
 
 /// Lays out `tree` under a one-page block fragmentation request, with a
 /// 60px-wide root and a page frame tall enough to hold every node.
-fn scoped_layout<S: LayoutScalar>(
+pub(super) fn scoped_layout<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     nodes: u32,
 ) -> crate::CompletedLayoutBatchOf<u32, S> {
@@ -60,7 +60,7 @@ fn scoped_layout<S: LayoutScalar>(
 }
 
 /// The geometry of the one actual box published for each node.
-fn boxes<S: LayoutScalar>(
+pub(super) fn boxes<S: LayoutScalar>(
     batch: &crate::CompletedLayoutBatchOf<u32, S>,
     nodes: u32,
 ) -> Vec<crate::BoxFragmentGeometryOf<S>> {
