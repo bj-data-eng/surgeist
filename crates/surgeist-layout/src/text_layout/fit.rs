@@ -409,6 +409,8 @@ struct FinalizedCandidate {
     conditional_trial: Option<FinalizedLine>,
     amounts: Vec<f64>,
     natural_advance: f64,
+    /// Admission of the natural line, before any justification spacing was allocated.
+    natural_fit: surgeist_text::MarginEdgeFit,
 }
 
 fn text_alignment(alignment: TextAlign) -> Alignment {
@@ -590,6 +592,7 @@ fn finalize_candidate(
     resolve_boundary_context(prepared, controls, &mut request)?;
     let natural = natural_line(prepared, reusable, &request, scope_alignments)?;
     let natural_advance = natural.measurements().alignment().advance();
+    let natural_fit = natural.measurements().margin_edge_fit();
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
     if effective == TextAlign::Justify
@@ -606,6 +609,7 @@ fn finalize_candidate(
                 finalized: allocation.finalized,
                 amounts: allocation.amounts,
                 natural_advance,
+                natural_fit,
             });
         }
         if justification == TextJustification::InterCharacter
@@ -617,6 +621,7 @@ fn finalize_candidate(
                 conditional_trial: Some(natural),
                 amounts,
                 natural_advance,
+                natural_fit,
             });
         }
         // A proved unexpandable spacing result follows the real last-line
@@ -635,6 +640,7 @@ fn finalize_candidate(
                 .then_some(natural),
             request,
             natural_advance: finalized.measurements().alignment().advance(),
+            natural_fit,
             finalized,
             amounts,
         });
@@ -718,6 +724,7 @@ fn finalize_candidate(
                     finalized,
                     amounts,
                     natural_advance,
+                    natural_fit,
                 });
             }
         } else {
@@ -732,6 +739,7 @@ fn finalize_candidate(
                 conditional_trial: None,
                 request,
                 natural_advance: finalized.measurements().alignment().advance(),
+                natural_fit,
                 finalized,
                 amounts,
             });
@@ -743,6 +751,7 @@ fn finalize_candidate(
         finalized: natural,
         amounts,
         natural_advance,
+        natural_fit,
     })
 }
 
@@ -784,6 +793,7 @@ fn finalize_with_roles(
                 amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
                 request: active.clone(),
                 natural_advance: finalized.measurements().alignment().advance(),
+                natural_fit: finalized.measurements().margin_edge_fit(),
                 finalized,
             })
         } else {
@@ -969,6 +979,9 @@ struct EvaluatedCandidate {
     bands: LineBands,
     placed_start: f64,
     fits: bool,
+    /// Whether the natural line, before justification spacing was allocated, fits. Allocated
+    /// spacing only widens a line, so a candidate whose natural line overflows never fits.
+    natural_fits: bool,
     disposition: LineDisposition,
 }
 
@@ -1285,6 +1298,9 @@ struct CandidateEnvironment<B, C, A, R, X> {
     roles_backing: super::scope_alignment::EntryBacking,
     box_uses: Vec<super::boxes::BoxTrialUse>,
     observed: Option<balance::Observations>,
+    /// `(first line start, group end, verdict)` of forced-break groups, sorted by group end: whether
+    /// every glyph of the group's content from that line start on advances the pen forwards.
+    spacing_verdicts: Vec<(usize, usize, bool)>,
     band: B,
     canonical: C,
     allocate: A,
@@ -1461,7 +1477,15 @@ where
                 Vec<f64>,
                 super::scope_alignment::ScopeBasis,
             )> = Vec::new();
-            let (finalized, amounts, scopes, natural_advance, conditional_trial, role_basis) = loop {
+            let (
+                finalized,
+                amounts,
+                scopes,
+                natural_advance,
+                natural_fit,
+                conditional_trial,
+                role_basis,
+            ) = loop {
                 // Feedback retains actual allocations, but each attempt starts
                 // from the caller's method-bound target. An ordinary fallback
                 // result cannot replace the primary conditional authority.
@@ -1529,6 +1553,7 @@ where
                         candidate.amounts,
                         scope_basis,
                         candidate.natural_advance,
+                        candidate.natural_fit,
                         candidate.conditional_trial,
                         role_basis,
                     );
@@ -1628,11 +1653,28 @@ where
                 crate::SizingOperation::Normal => finalized.measurements().margin_edge_fit(),
             };
             let css_width = css_margin_edge_width(admission, request.context.indent)?;
-            let fits = !disposition.is_formatted()
-                || fit_width.is_none_or(|width| match css_width {
+            let fits_width = |admission: surgeist_text::MarginEdgeFit, css_width: Option<f64>| {
+                fit_width.is_none_or(|width| match css_width {
                     Some(required) => required <= width,
                     None => admission.required_inline_size() <= width - request.context.indent,
-                });
+                })
+            };
+            let fits = !disposition.is_formatted() || fits_width(admission, css_width);
+            // The same comparison on the natural line. Only the ordinary operation compares it.
+            // It only decides whether the line search may stop early, so it never raises an error
+            // of its own: a layout the stop does not apply to must behave as it did without it.
+            // A failed width counts as a fit, because a fit forbids the stop and a misfit
+            // would allow it.
+            let natural_fits = match input.available.operation() {
+                crate::SizingOperation::Normal => {
+                    !disposition.is_formatted()
+                        || match css_margin_edge_width(natural_fit, request.context.indent) {
+                            Ok(css_width) => fits_width(natural_fit, css_width),
+                            Err(_) => true,
+                        }
+                }
+                crate::SizingOperation::MinContent | crate::SizingOperation::MaxContent => fits,
+            };
             let usage = finalized.measurements().formatted_line_usage();
             if usage.first() || usage.last() {
                 let basis = role_basis.ok_or(FitError::InvalidGeometry)?;
@@ -1698,6 +1740,7 @@ where
                 bands,
                 placed_start,
                 fits,
+                natural_fits,
                 disposition,
             }));
         }
@@ -2434,6 +2477,7 @@ pub(crate) fn fit(
         roles_backing: super::scope_alignment::EntryBacking::default(),
         box_uses: Vec::new(),
         observed: None,
+        spacing_verdicts: Vec::new(),
         band: band_source,
         canonical: canonical_block,
         allocate,
@@ -2589,6 +2633,7 @@ where
         // is still evaluated in the ordinary chooser's preference order.
         let constrained = input.tail == TailContext::CompleteBlock
             && crate::layout_math::normal_available_size(input.available).is_some();
+        let walk = sequence::OpportunityWalk::of(input, opportunities);
         let mut visited: Vec<Vec<CandidateKey>> = Vec::new();
         let mut terminal_constraint_rejected = false;
         'sequence: loop {
@@ -2620,6 +2665,7 @@ where
                         progress: &progress,
                         accepted_prefix: result,
                         opportunities,
+                        walk,
                         rejected_choices,
                         goal,
                         constrained,
@@ -2719,6 +2765,78 @@ where
             return Ok(SequenceOutcome::Complete(progress));
         }
     }
+}
+
+/// Line searches, the break opportunities they evaluate as candidates and the line searches that
+/// stopped early, counted on the current thread so a test can bound the work of one layout.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct CandidateWork {
+    pub(super) line_searches: usize,
+    pub(super) candidates: usize,
+    pub(super) early_stops: usize,
+}
+
+/// What one call of `observe_candidate_work` counts.
+#[cfg(test)]
+#[derive(Clone, Copy)]
+enum Observation {
+    LineSearch,
+    Candidate,
+    EarlyStop,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CANDIDATE_WORK: std::cell::Cell<CandidateWork> =
+        const { std::cell::Cell::new(CandidateWork { line_searches: 0, candidates: 0, early_stops: 0 }) };
+}
+
+#[cfg(test)]
+pub(super) fn take_candidate_work() -> CandidateWork {
+    CANDIDATE_WORK.with(std::cell::Cell::take)
+}
+
+#[cfg(test)]
+thread_local! {
+    static FULL_WALK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `body` with every line search visiting its whole opportunity window, so a test can lay
+/// out one document with and without the early stop and compare the results.
+#[cfg(test)]
+pub(super) fn with_full_walk<R>(body: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            FULL_WALK.with(|cell| cell.set(self.0));
+        }
+    }
+    let _restore = Restore(FULL_WALK.with(|cell| cell.replace(true)));
+    body()
+}
+
+#[cfg(test)]
+fn full_walk_forced() -> bool {
+    FULL_WALK.with(std::cell::Cell::get)
+}
+
+#[cfg(not(test))]
+const fn full_walk_forced() -> bool {
+    false
+}
+
+#[cfg(test)]
+fn observe_candidate_work(observation: Observation) {
+    CANDIDATE_WORK.with(|cell| {
+        let mut work = cell.get();
+        match observation {
+            Observation::LineSearch => work.line_searches += 1,
+            Observation::Candidate => work.candidates += 1,
+            Observation::EarlyStop => work.early_stops += 1,
+        }
+        cell.set(work);
+    });
 }
 
 fn query_bands(

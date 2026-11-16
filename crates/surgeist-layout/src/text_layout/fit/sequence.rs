@@ -14,11 +14,77 @@ pub(super) struct SequenceLineSearch<'a> {
     pub(super) progress: &'a SequenceEntry,
     pub(super) accepted_prefix: &'a [FittedLine],
     pub(super) opportunities: &'a [Opportunity],
+    pub(super) walk: OpportunityWalk,
     pub(super) rejected_choices: &'a [CandidateKey],
     pub(super) goal: Option<LineQualityGoal>,
     pub(super) constrained: bool,
     #[cfg(test)]
     pub(super) scope: SequenceScope,
+}
+
+/// Facts about one run's opportunity window that decide how much of it a line search must visit.
+#[derive(Clone, Copy)]
+pub(super) struct OpportunityWalk {
+    /// The opportunities are in nondecreasing boundary order, so a line search may begin at the
+    /// first opportunity past its start instead of at the window's first opportunity.
+    ordered: bool,
+    /// The window and its context make fit monotone in the candidate end, apart from the
+    /// advance and band checks made at the decision point in `choose_primary_line`.
+    monotone: bool,
+}
+
+/// Every glyph of `line`, in run order, advances the pen by at least zero, exactly, and by at
+/// least its raw provider advance, within `SLACK` for the f32 to f64 conversion. No run starts
+/// before the previous run ends. The step of a run's last glyph is measured to the run advance,
+/// which excludes any spacing trimmed at the line edge.
+fn glyph_advances_hold(line: &FinalizedLine) -> bool {
+    /// Relative slack of the comparison with the raw advance only; no sign test uses it.
+    const SLACK: f64 = 1e-9;
+    let holds = |step: f64, raw: f64| step >= 0.0 && step >= raw - SLACK * raw.abs().max(1.0);
+    let mut previous_end: Option<f64> = None;
+    for run in line.run_views() {
+        let origin = run.origin().x;
+        if previous_end.is_some_and(|end| origin < end) {
+            return false;
+        }
+        let mut previous: Option<(f64, f64)> = None;
+        for glyph in run.glyphs() {
+            if let Some((pen, raw)) = previous
+                && !holds(glyph.pen() - pen, raw)
+            {
+                return false;
+            }
+            previous = Some((glyph.pen(), f64::from(glyph.advance())));
+        }
+        if let Some((pen, raw)) = previous
+            && !holds(run.advance() - pen, raw)
+        {
+            return false;
+        }
+        previous_end = Some(origin + run.advance());
+    }
+    true
+}
+
+impl OpportunityWalk {
+    pub(super) fn of(input: &FitInput<'_>, opportunities: &[Opportunity]) -> Self {
+        Self {
+            ordered: opportunities.windows(2).all(|pair| pair[0].0 <= pair[1].0),
+            monotone: matches!(
+                input.wrap_style,
+                crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable
+            ) && input.wrapping.is_none()
+                && input.inline_boxes.is_none()
+                && input.atomics.is_empty()
+                && input.controls.iter().all(|row| row.boundary.is_none())
+                && matches!(input.orientation, LineOrientation::Horizontal)
+                && input.available.operation() == crate::SizingOperation::Normal
+                && crate::layout_math::normal_available_size(input.available).is_some()
+                && opportunities.iter().all(|(_, _, kind, alternatives)| {
+                    alternatives.is_empty() && *kind != PreparedBreakKind::Discretionary
+                }),
+        }
+    }
 }
 
 struct PrimaryLineChoice {
@@ -62,6 +128,8 @@ where
         input: &FitInput<'_>,
         search: SequenceLineSearch<'_>,
     ) -> Result<Option<AcceptedCandidate>, FitError> {
+        #[cfg(test)]
+        observe_candidate_work(Observation::LineSearch);
         let SequenceLineSearch {
             progress,
             constrained,
@@ -203,6 +271,71 @@ where
         }
     }
 
+    /// Whether every glyph of the group that ends at the first mandatory break at or after `rest`
+    /// advances the pen by at least its own raw advance, and by at least zero, so that no
+    /// negative letter or word spacing applies anywhere inside the group. One trial of the whole
+    /// remaining group answers for every line of the group, so it runs once per group.
+    fn advances_never_shrink(
+        &mut self,
+        input: &FitInput<'_>,
+        query: &EndpointContext<'_>,
+        rest: &[Opportunity],
+    ) -> Result<bool, FitError> {
+        let start = query.start.view().participant_offset();
+        // The verdicts are sorted by group end and disjoint in end, so the group of this line is
+        // the first one that ends after the line start. Line searches mostly move forward, which
+        // makes a new verdict an append; a search that backtracks inserts or replaces one.
+        let slot = self
+            .spacing_verdicts
+            .partition_point(|(_, to, _)| *to <= start);
+        if let Some((from, _, verdict)) = self.spacing_verdicts.get(slot)
+            && *from <= start
+        {
+            return Ok(*verdict);
+        }
+        let Some((end, opportunity, kind, _)) = rest
+            .iter()
+            .find(|(_, _, kind, _)| *kind != PreparedBreakKind::Allowed)
+        else {
+            return Ok(false);
+        };
+        let mut zone = ZoneBasis {
+            policy: input.hyphenate_limit_zone,
+            references: Vec::new(),
+        };
+        let trial = self.choose_endpoint(
+            input,
+            query,
+            std::iter::once(LineEndpoint {
+                boundary: opportunity.view().boundary(),
+                termination: PreparedTermination::Ordinary(opportunity.clone()),
+                alternative: None,
+                ending: match kind {
+                    PreparedBreakKind::Forced => LineEnd::Forced,
+                    PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+                    PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
+                },
+            }),
+            &mut zone,
+        )?;
+        // A line stretched by justification can hide negative spacing: the stretch lifts the very
+        // steps the check reads. A stretched group line is only possible where a shorter
+        // candidate of the group overflowed although the whole group fits, that is, where the
+        // flow is not monotone, so it keeps the walk. With non-negative spacing the group's flow
+        // is at least that of its overflowing prefix, the group line overflows as well and is
+        // never stretched.
+        let verdict = trial.candidate.is_some_and(|candidate| {
+            candidate.amounts.iter().all(|amount| *amount == 0.0)
+                && glyph_advances_hold(&candidate.finalized)
+        });
+        match self.spacing_verdicts.get_mut(slot) {
+            // A search that backtracked to an earlier line of the same group covers more of it.
+            Some(entry) if entry.1 == *end => *entry = (start, *end, verdict),
+            _ => self.spacing_verdicts.insert(slot, (start, *end, verdict)),
+        }
+        Ok(verdict)
+    }
+
     fn choose_primary_line(
         &mut self,
         input: &FitInput<'_>,
@@ -215,6 +348,7 @@ where
             progress,
             accepted_prefix,
             opportunities,
+            walk,
             rejected_choices,
             goal,
             #[cfg(test)]
@@ -222,6 +356,13 @@ where
             ..
         } = search;
         let start = start_boundary.view().participant_offset();
+        // Opportunities before the line start are skipped below. With them in boundary order they
+        // form a prefix, which is skipped by search instead of by visiting each one.
+        let first = if walk.ordered && !full_walk_forced() {
+            opportunities.partition_point(|(end, ..)| *end < start)
+        } else {
+            0
+        };
         let mut choice: Option<EvaluatedCandidate>;
         let mut fitting_none;
         let mut first_ceiling;
@@ -243,12 +384,16 @@ where
                 goal,
                 ..ScopedChoices::default()
             };
-            for (end, opportunity, kind, alternatives) in opportunities {
+            for (index, (end, opportunity, kind, alternatives)) in
+                opportunities.iter().enumerate().skip(first)
+            {
                 #[cfg(test)]
                 balance::observe_work(scope, true);
                 if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
                     continue;
                 }
+                #[cfg(test)]
+                observe_candidate_work(Observation::Candidate);
                 let variants = (*kind != PreparedBreakKind::Discretionary)
                     .then_some(None)
                     .into_iter()
@@ -304,7 +449,15 @@ where
                             .map(|candidate| candidate.observed()),
                     ));
                 }
+                let mut overflows_for_good = false;
                 if let Some(candidate) = endpoint_choice {
+                    overflows_for_good = !candidate.fits
+                        && !candidate.natural_fits
+                        && candidate.disposition.is_formatted()
+                        && candidate
+                            .bands
+                            .next_transition(candidate.frame.logical_start, candidate.placed_start)
+                            .is_none();
                     if wrapping.is_some() {
                         ends.observe(&candidate, goal.is_some());
                     }
@@ -338,6 +491,62 @@ where
                 if input.available.operation() == crate::SizingOperation::MinContent
                     && ordinary_formatted
                 {
+                    break;
+                }
+                // Once a fitting line is chosen and a later candidate overflows, the remaining
+                // candidates cannot replace the chosen line when no longer candidate fits where
+                // a shorter one does not. The walk stops there only when all of these hold:
+                // - the window is plain: no hyphenation alternatives or discretionary breaks
+                //   (they add zone and ceiling facts per candidate), no inline boxes, atomics or
+                //   inline boundary allocations (their margins can be negative), no wrapping
+                //   classifier and no quality goal (both compare every fitting candidate), and an
+                //   Auto or Stable ordinary Normal sizing operation, which keeps the last fitting
+                //   candidate (`OpportunityWalk::of`);
+                // - this candidate is formatted, a fitting line is already chosen and the first
+                //   ordinary ceiling is set, so the skipped candidates could not change the
+                //   ceiling, the skipped-ordinary list or the fitting-none fact;
+                // - the line band has no later transition, so a taller candidate or a candidate
+                //   placed lower on the pixel grid sees the same band or a narrower one, because
+                //   floats and taller lines only remove inline space, never add it;
+                // - no negative letter or word spacing applies inside the group: every glyph
+                //   advances the pen by at least its raw advance (`glyph_advances_hold`);
+                // - the candidate's natural line, before any justification spacing, overflows.
+                //
+                // Why the natural line decides. `fits` compares the required inline size of the
+                // finalized line with the available size less the indent. A justified line is
+                // the natural line with non-negative spacing allocated to reach the capacity, so
+                // its required size is the capacity, up to rounding, whenever the natural line is
+                // narrower. Such a candidate can then fail `fits` although its natural line
+                // fits, which is why the stop reads `natural_fits`: the same comparison on the
+                // natural line. When the natural line overflows, allocated spacing only widens it
+                // (the extra spacing is non-negative, else the line keeps its natural form), so
+                // `fits` is false as well.
+                //
+                // Why the natural width cannot shrink. With no inline boxes or atomics the line is
+                // measured with the Native authority, whose required inline size is the larger of
+                // the signed flow advance and the span of the occupied cluster intervals. Every
+                // cluster interval starts where the previous one ends, so the span is at least
+                // the flow and equals the width from the first to the last included cluster. When
+                // every cluster advances by at least zero that width cannot shrink as clusters are
+                // added. A longer candidate keeps every cluster of a shorter one in the same
+                // order and places the shorter candidate's trimmed edge, a collapsible trailing
+                // space, hanging punctuation or the spacing after its last glyph, inside the
+                // line, where it only adds width; with no negative spacing the trimmed edge adds
+                // at least zero, so it cannot make the shorter candidate the wider one. Hence
+                // every skipped candidate has a natural width no smaller than the overflowing
+                // one, overflows naturally and, by the previous paragraph, does not fit.
+                if overflows_for_good
+                    && !full_walk_forced()
+                    && walk.monotone
+                    && goal.is_none()
+                    && wrapping.is_none()
+                    && self.observed.is_none()
+                    && first_ceiling.is_some()
+                    && choice.as_ref().is_some_and(|candidate| candidate.fits)
+                    && self.advances_never_shrink(input, &query, &opportunities[index..])?
+                {
+                    #[cfg(test)]
+                    observe_candidate_work(Observation::EarlyStop);
                     break;
                 }
                 if !matches!(
