@@ -57,4 +57,9 @@ cargo test --offline -p surgeist-css --no-default-features --test css css::confo
 The expected result is one passing test. Its assertions are in
 [tests/css/conformance/recovery_and_validation_front_doors.rs](../tests/css/conformance/recovery_and_validation_front_doors.rs).
 
+Bounded generated cases over byte decoding, sheet and style-attribute parsing,
+property values and nested rules live in the separate
+[fuzz package](../fuzz/README.md); its README lists the commands and what each
+finite run does and does not establish.
+
 Continue with [declaration inspection and clean-input validation](how-to.md).
