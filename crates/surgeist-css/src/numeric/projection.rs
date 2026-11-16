@@ -173,6 +173,11 @@ struct Node {
     // output projection records it, and only for finite values it can project
     // without the shared range rule intervening.
     exact: Option<SourceValue>,
+    // The Number divisor whose binary64 reciprocal this scalar holds (#1517).
+    // The scalar stays the reciprocal, which Values 4 §10.10.1 step 7 makes of
+    // an Invert node over a number; a product that can evaluate the division
+    // divides by this value instead, so the quotient rounds once.
+    divisor: Option<f64>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -207,6 +212,34 @@ impl Projection<'_> {
             previous + value
         };
         self.closest(result, previous.is_finite() && value.is_finite(), ty)
+    }
+    /// One source-order division step: the correctly rounded quotient. A zero,
+    /// infinite or NaN operand keeps its IEEE result, so only a quotient of two
+    /// finite operands with a nonzero divisor is converted by the range rule.
+    fn quotient(&self, previous: f64, divisor: f64, ty: CssNumericType) -> f64 {
+        self.closest(
+            previous / divisor,
+            previous.is_finite() && divisor.is_finite() && divisor != 0.0,
+            ty,
+        )
+    }
+    /// A scalar times a Number coefficient, or divided by the divisor the
+    /// coefficient is the reciprocal of.
+    fn scaled(
+        &self,
+        coefficient: f64,
+        divisor: Option<f64>,
+        value: f64,
+        ty: CssNumericType,
+    ) -> f64 {
+        match divisor {
+            Some(divisor) => self.quotient(value, divisor, ty),
+            None => self.closest(
+                coefficient * value,
+                coefficient.is_finite() && value.is_finite(),
+                ty,
+            ),
+        }
     }
     fn unit_for_type(&self, ty: CssNumericType) -> Unit {
         if self.mode == ProjectionMode::KeyframeMatching && ty.is(CssNumericDimension::Flex) {
@@ -246,6 +279,7 @@ impl Projection<'_> {
             ty,
             resolved_magnitude,
             exact: None,
+            divisor: None,
         });
         Ok(id)
     }
@@ -307,11 +341,17 @@ impl Projection<'_> {
             };
             let scalar = self.scalar(id)?;
             let number = scalar.unit == Unit::Number && !divide;
+            // A Number divisor divides the coefficient (#1517).
+            let divisor = self.arena[id].divisor.filter(|_| number);
             accumulator = match (accumulator, number, self.exact(id), divide) {
                 (Accumulator::Empty, true, _, _) => Accumulator::Number(scalar.value),
-                (Accumulator::Number(left), true, _, _) => Accumulator::Number(left * scalar.value),
+                (Accumulator::Number(left), true, _, _) => {
+                    Accumulator::Number(divisor.map_or(left * scalar.value, |d| left / d))
+                }
                 (Accumulator::Dimension(left), true, _, _) => {
-                    Accumulator::Dimension(left.with_coefficient(left.coefficient * scalar.value))
+                    Accumulator::Dimension(left.with_coefficient(
+                        divisor.map_or(left.coefficient * scalar.value, |d| left.coefficient / d),
+                    ))
                 }
                 (Accumulator::Empty, false, Some(source), false) => {
                     exact_factor = true;
@@ -421,7 +461,10 @@ impl Projection<'_> {
                     ty
                 };
                 known = Some(match known {
-                    Some(previous) => self.step(previous, value, product, step_type),
+                    Some(previous) => match self.arena[child].divisor.filter(|_| product) {
+                        Some(divisor) => self.quotient(previous, divisor, step_type),
+                        None => self.step(previous, value, product, step_type),
+                    },
                     None => value,
                 });
             } else {
@@ -525,12 +568,13 @@ impl Projection<'_> {
         if let Some(scalar) = self.scalar(id)
             && scalar.unit == Unit::Number
         {
-            let value = self.closest(
-                1.0 / scalar.value,
-                scalar.value != 0.0,
-                CssNumericType::NUMBER,
-            );
-            return self.value(value, Unit::Number, CssNumericType::NUMBER);
+            let divisor = scalar.value;
+            let value = self.closest(1.0 / divisor, divisor != 0.0, CssNumericType::NUMBER);
+            let id = self.value(value, Unit::Number, CssNumericType::NUMBER)?;
+            if self.mode == ProjectionMode::SpecifiedOutput {
+                self.arena[id].divisor = Some(divisor);
+            }
+            return Ok(id);
         }
         if let Kind::Invert(child) = self.arena[id].kind {
             return Ok(child);
@@ -617,26 +661,77 @@ impl Projection<'_> {
             }
         }
         flat.reverse();
+        // A product with a Number divisor whose factors are all known scalars
+        // evaluates them in source order, each division one correctly rounded
+        // quotient (#1517). Any other product keeps the reciprocal Number that
+        // Values 4 §10.10.1 step 7 makes of the divisor, below.
+        if self.mode == ProjectionMode::SpecifiedOutput
+            && ty.simple()
+            && flat.iter().any(|&id| self.arena[id].divisor.is_some())
+            && flat
+                .iter()
+                .all(|&id| self.scalar(id).is_some() && self.arena[id].resolved_magnitude.is_some())
+            && let Some(value) = self.resolved_terms(&flat, true, ty)
+        {
+            // The Numbers of a product with other factors merge into one
+            // coefficient that spends a shared projection node; this path
+            // evaluates without the node but charges it, so the work of a
+            // product does not depend on how its quotient is computed.
+            let numbers = flat
+                .iter()
+                .filter(|&&id| self.scalar(id).is_some_and(|s| s.unit == Unit::Number))
+                .count();
+            if numbers > 1 && numbers < flat.len() {
+                self.context.charge_generated_projection(1)?;
+            }
+            let exact = self.exact_product(&flat);
+            let id = self.value(
+                exact.map_or(value, |(value, _)| value),
+                self.unit_for_type(ty),
+                ty,
+            )?;
+            return Ok(self.set_exact(id, exact.and_then(|(_, source)| source)));
+        }
         // Product simplification merges Number children before distributing or
         // evaluating the typed product. Accumulate them in source order and
-        // retain the first Number's position among the remaining children.
+        // retain the first Number's position among the remaining children. The
+        // plain Numbers multiply first and each divisor then divides the
+        // coefficient, so `calc(1em / 49 * 49)` is exactly `1em`.
         let mut number: Option<(Id, f64, usize, usize)> = None;
+        let mut divisors = Vec::new();
         let mut other = Vec::new();
         for id in flat {
             if let Some(value) = self.scalar(id)
                 && value.unit == Unit::Number
             {
+                let value = value.value;
+                let divisor = self.arena[id].divisor;
+                divisors.extend(divisor);
                 if let Some((_, coefficient, count, _)) = &mut number {
-                    *coefficient =
-                        self.step(*coefficient, value.value, true, CssNumericType::NUMBER);
+                    if divisor.is_none() {
+                        *coefficient = self.step(*coefficient, value, true, CssNumericType::NUMBER);
+                    }
                     *count += 1;
                 } else {
-                    number = Some((id, value.value, 1, other.len()));
+                    // A divisor leaves the plain Number product empty.
+                    let start = if divisor.is_some() { 1.0 } else { value };
+                    number = Some((id, start, 1, other.len()));
                 }
             } else {
                 other.push(id);
             }
         }
+        if let Some((_, coefficient, count, _)) = &mut number
+            && *count > 1
+        {
+            for &divisor in &divisors {
+                *coefficient = self.quotient(*coefficient, divisor, CssNumericType::NUMBER);
+            }
+        }
+        // One Number divisor stays the divisor of its scalar node (#1517).
+        let single_divisor = number
+            .filter(|&(_, _, count, _)| count == 1)
+            .and_then(|_| divisors.first().copied());
         if let Some((first, coefficient, count, position)) = number {
             let id = if count == 1 {
                 first
@@ -667,11 +762,7 @@ impl Projection<'_> {
                     for id in children {
                         let value = self.scalar(id).expect("checked scalar child").clone();
                         let ty = self.arena[id].ty;
-                        let product = self.closest(
-                            coefficient * value.value,
-                            coefficient.is_finite() && value.value.is_finite(),
-                            ty,
-                        );
+                        let product = self.scaled(coefficient, single_divisor, value.value, ty);
                         distributed.push(self.value(product, value.unit, ty)?);
                     }
                     return self.sum(distributed, ty);
@@ -724,11 +815,7 @@ impl Projection<'_> {
             };
             let child = other[1 - position];
             if let Some(value) = self.scalar(child).cloned() {
-                let product = self.closest(
-                    coefficient * value.value,
-                    coefficient.is_finite() && value.value.is_finite(),
-                    ty,
-                );
+                let product = self.scaled(coefficient, single_divisor, value.value, ty);
                 return self.value(product, value.unit, ty);
             }
         }

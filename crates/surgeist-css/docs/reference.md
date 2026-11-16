@@ -1106,8 +1106,34 @@ outcomes, operands with a context-dependent unit, every other function and
 keyframe selector matching. Decimal coefficients are binary64 approximations of
 their authored text, so same-unit arithmetic on them is as exact as binary64
 allows and makes no decimal claim: `0.1mm + 0.2mm` projects the binary64 sum of
-`0.1` and `0.2` once. Dividing by a plain Number still multiplies by its binary64
-reciprocal.
+`0.1` and `0.2` once.
+
+Dividing by a plain Number is one correctly rounded binary64 division
+([#1517](https://github.com/bj-data-eng/surgeist/issues/1517)). Values 4
+[assumes infinite precision](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
+in its definitions and
+[reduces an Invert node over a number](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification)
+to that number's reciprocal, which is exact at that precision. Multiplying by the
+binary64 reciprocal would round twice, so `calc(49 / 49)`,
+`calc(round(down, 7 * 7 / 49, 1))` and `calc(round(down, 49 / (7 * 7), 1))` emit
+`calc(1)`. A product with a Number divisor whose factors are all known scalars
+evaluates them in source order, each division one quotient: `10px / 49 * 49` is
+`10px`, `147 / 3 / 49` is `1` and `10px / 3` is the nearest binary64 value to ten
+thirds of a pixel. An authored reciprocal is a separate operation, so
+`49 * (1 / 49)` and `1 / 49 * 49` round `1 / 49` first and floor to `0`. A
+division by zero, an infinity or NaN keeps its IEEE result, and a quotient of
+finite operands beyond binary64 converts to the closest finite value (#1297). A
+product with a context-dependent or symbolic factor multiplies its plain Numbers
+first, then divides that coefficient by each Number divisor, so `10em / 3` divides
+the coefficient `10` and `1em / 49 * 49` emits `calc(1em)`; a divisor that still
+meets a symbolic factor stays the reciprocal Number of the specification's
+simplification. Keyframe selector matching keeps the reciprocal. Source-order
+evaluation converts each finite intermediate to the closest finite value before
+the next factor, so `calc(1e308px * 10 / 10)` emits `f64::MAX / 10` pixels, while
+`calc(1e308px * 10 * 0.1)`, which has no divisor, merges its Numbers first and
+emits `1e308px`. A product with a divisor still spends the shared projection node
+of its merged coefficient when it has at least two Numbers, a divisor counting as
+one, and another factor: `calc(10px / 3 * 3)` costs six nodes.
 
 [#1297](https://github.com/bj-data-eng/surgeist/issues/1297) revises the
 [#735](https://github.com/bj-data-eng/surgeist/issues/735) precision and phase
