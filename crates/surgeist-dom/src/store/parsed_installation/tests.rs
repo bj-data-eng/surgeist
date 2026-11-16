@@ -169,11 +169,11 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
     .unwrap();
     let environment = environment(&mut dom);
     // The `a` element holds the record of its hyperlink state beside the records of the
-    // Document and the nodes, which makes the seventeen records the growth below needs.
+    // Document and the nodes.
     let report = report_for("<!doctype html><a>private</a>");
-    // This literal has seven source subjects and seventeen metadata records.
+    // This literal has seven source subjects and ten metadata records.
     // The selected geometric banks hold eight Rows while metadata grows from
-    // sixteen to thirty-two. Both metadata allocations coexist during copying;
+    // eight to sixteen. Both metadata allocations coexist during copying;
     // the peak is their sum, not a final-occupancy receipt from the allocator.
     // The original envelope also reserves the two actual mandatory shared
     // output Vec payload headers before collection. This is future-backing
@@ -188,9 +188,9 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
             HtmlParseMetadataStep::Complete => break,
         }
     }
-    assert_eq!(records, 17);
+    assert_eq!(records, 10);
     let peak = 8 * size_of::<Row<'_>>()
-        + (16 + 32) * size_of::<HtmlParseMetadata<'_>>()
+        + (8 + 16) * size_of::<HtmlParseMetadata<'_>>()
         + size_of::<Vec<DomParsedHtmlBinding>>()
         + size_of::<Vec<DomParsedHtmlCapturedBinding>>();
     let before = dom.snapshot();
