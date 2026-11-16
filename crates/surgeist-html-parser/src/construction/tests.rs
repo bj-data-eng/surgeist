@@ -14,6 +14,7 @@ mod formatting;
 mod g2_d2;
 mod g2b_d3;
 mod g2c_nonce;
+mod g2d_names;
 mod g2d_origins;
 mod image_form;
 mod input;
