@@ -332,8 +332,9 @@ fn scoped_memo_preserves_excluded_sampling_and_failed_completion() {
 /// A scoped Block child whose size containment overflows the scalar range
 /// fails while its Block computation begins, after its scope frame is pushed.
 /// The enclosing Block is an ordinary Block request under installed scopes.
-fn assert_scoped_child_start_failure_releases_its_frame<S: LayoutScalar>() {
-    let huge = S::from_f64(3.0e38);
+/// `largest` is a finite value of the scalar whose triple sum overflows it.
+fn assert_scoped_child_start_failure_releases_its_frame<S: LayoutScalar>(largest: f64) {
+    let huge = S::from_f64(largest);
     let tree = PublicLayoutTreeOf::<S>::new()
         .children(0, [1])
         .style(
@@ -374,6 +375,6 @@ fn assert_scoped_child_start_failure_releases_its_frame<S: LayoutScalar>() {
 
 #[test]
 fn scoped_child_start_failure_releases_its_scope_frame_under_an_ordinary_parent() {
-    assert_scoped_child_start_failure_releases_its_frame::<f32>();
-    assert_scoped_child_start_failure_releases_its_frame::<f64>();
+    assert_scoped_child_start_failure_releases_its_frame::<f32>(3.0e38);
+    assert_scoped_child_start_failure_releases_its_frame::<f64>(1.0e308);
 }
