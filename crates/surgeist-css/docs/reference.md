@@ -2104,6 +2104,9 @@ The three value carriers accept `try_from_components(.., limits)` and
 or programmatic component origins and rejects recovered closures. Reentry requires
 a pending receiver and rejects any residual decoded `var()` or `env()` before
 checking the completed ordinary grammar, including the selected index count.
+Reentry checks the receiver, the limits, a residual substitution, a recovered
+closure and the grammar in that order, so a replacement holding a residual and an
+implicit closure, such as `f(var(--x)`, reports the residual at its opener.
 Each operation uses cumulative component and byte limits and returns a new value
 atomically; the pending receiver remains reusable. Raw-source `origin()` is
 `Some` for its complete actual value window. Checked construction and reentry
@@ -4180,7 +4183,8 @@ does not qualify; quoted strings and URL data remain data. Pending values retain
 their components and origins. `reparse_after_substitution` accepts caller-supplied
 replacement components, rejects residual actual `var()`/`env()` functions,
 and returns an ordinary checked value or a typed error. Construction and reentry
-reject recovered implicit closures with their original closing origin; browser
+reject recovered implicit closures with their original closing origin; reentry
+refuses a residual substitution before a recovered closure. Browser
 parsing can retain them with recovery diagnostics. CSS performs no substitution.
 
 Descriptor values, descriptor occurrences, and profile rules expose
@@ -5195,7 +5199,7 @@ components without replacing their parsed or programmatic origins, and rejects a
 component recovered by implicit closure with `is_recovered_component()`. A pending
 value's `reparse_after_substitution` accepts caller-supplied components and
 rejects any residual, including nested or escaped, substitution function before
-checking the ordinary descriptor grammar. No substitution environment, font
+refusing a recovered closure and checking the ordinary descriptor grammar. No substitution environment, font
 lookup, palette execution, or root-element evaluation is supplied here.
 
 `CssFontPaletteDescriptorValue::serialize_specified(limits)` and
@@ -5374,7 +5378,8 @@ owns cross-crate lowering. Raw descriptor-value parsing returns
 while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
 replacement components and returns an ordinary value; residual `var()` or
-`env()`, recovered components and invalid ordinary grammar are typed failures.
+`env()`, recovered components and invalid ordinary grammar are typed failures,
+checked in that order.
 This API never executes substitution. The authored `font` shorthand supplies
 checked values, intrinsic expansion/reset contributions and bounded specified
 serialization. Named-instance, language and metric descriptors use the complete
