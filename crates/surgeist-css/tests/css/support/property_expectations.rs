@@ -254,21 +254,16 @@ impl PropertyExpectation {
     }
 
     /// Every ordinary `(authored, specified serialization)` row: the grammar
-    /// catalog's positive sample, unless its serialization is a pinned known
-    /// defect, followed by the record's additional `accepts` rows. `all`
-    /// admits no ordinary value.
+    /// catalog's positive sample followed by the record's additional
+    /// `accepts` rows. `all` admits no ordinary value.
     pub fn accepted_rows(&self) -> Vec<(&'static str, &'static str)> {
         let mut rows = Vec::new();
         if let Some(CatalogExpectation::Grammar {
-            feature_id,
             positive,
             serialization,
             ..
         }) = &self.catalog
             && !matches!(self.metadata, MetadataExpectation::UniversalReset)
-            && !KNOWN_SERIALIZATION_DEFECTS
-                .iter()
-                .any(|(id, _)| id == feature_id)
         {
             rows.push((*positive, serialization.unwrap_or(positive)));
         }
@@ -314,17 +309,6 @@ impl PropertyExpectation {
         );
     }
 }
-
-/// Positive vectors whose current specified serialization keeps a component
-/// that CSSOM 1 (WD 2021-08-26) §6.7.2 omits because omitting it does not
-/// change the meaning, with that current serialization. Each record states
-/// the spec form and its basis:
-///
-/// - `background-size`: Backgrounds 3 §2.9, omitted second size is `auto`.
-pub const KNOWN_SERIALIZATION_DEFECTS: &[(&str, &str)] = &[(
-    "baseline.property.background-size",
-    "background-size: cover, 10px auto;",
-)];
 
 macro_rules! optional {
     () => {

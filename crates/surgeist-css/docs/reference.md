@@ -6608,6 +6608,12 @@ single-layer initials are `auto`, `repeat`, `padding-box`, `border-box`, and
 `scroll`, respectively. CSS-wide keywords remain symbolic; pending values
 reenter their original property grammar with unchanged occurrence and importance.
 
+A size pair is an explicit exception to CSSOM shortest serialization: the CSSWG
+resolved on 2025-04-01 ([csswg-drafts #7802](https://github.com/w3c/csswg-drafts/issues/7802))
+that `background-size` and `mask-size` always serialize as two values, and the
+selected policy (surgeist #895) writes the effective second `auto` (`10px` is
+`10px auto`) while `auto auto` is `auto` and `cover`/`contain` stay one token.
+
 `background-color` also contributes one noninherited terminal, retaining its
 checked `CssColor` with transparent intrinsic initial. Its existing
 `serialize_specified(limits)` provider preserves symbolic color dependencies. CSS-wide

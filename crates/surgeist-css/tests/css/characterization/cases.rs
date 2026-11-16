@@ -126,8 +126,7 @@ fn property_cases() -> Vec<Case> {
             CatalogExpectation::Grammar { positive, .. } => *positive,
             CatalogExpectation::Complete { authored, .. } => *authored,
         });
-        // The grammar catalog's positive sample, including the samples whose
-        // serialization is a pinned known defect, then the extra accepts.
+        // The grammar catalog's positive sample, then the extra accepts.
         let accepted = positive
             .into_iter()
             .chain(
@@ -137,8 +136,8 @@ fn property_cases() -> Vec<Case> {
                     .map(|(authored, _)| authored),
             )
             .fold(Vec::new(), |mut values, value| {
-                // The catalog sample is also an accepted row unless it is a
-                // known serialization defect; one value is one case.
+                // The catalog sample is also an accepted row; one value is
+                // one case.
                 if !values.contains(&value) {
                     values.push(value);
                 }

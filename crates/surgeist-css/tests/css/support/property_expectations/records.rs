@@ -339,9 +339,11 @@ property_records! {
                 height: None
             }]
         ))),
-        // Backgrounds 3 (CRD 2024-03-11) §2.9: an omitted second size is
-        // `auto`, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
-        catalog: grammar_catalog!("baseline.property.background-size", "cover, 10px auto" => "cover, 10px", rejected("solid")),
+        // The size pair is an explicit exception to CSSOM 1 §6.7.2 shortest
+        // serialization: the CSSWG resolved on 2025-04-01 (csswg-drafts #7802)
+        // that it always serializes as two values, and surgeist #895 selected
+        // that form, so `10px auto` keeps its second `auto`.
+        catalog: grammar_catalog!("baseline.property.background-size", "cover, 10px auto", rejected("solid")),
         dispatch: "cover, 10px auto",
         wrapper: yes,
     }
