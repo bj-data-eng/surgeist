@@ -163,3 +163,28 @@ fn a_root_created_without_a_document_answers_unnamed() {
     output.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+/// A freeze that stops while it builds the table of named roots releases the table, and ends with
+/// the error that stopped it, the first reported, whatever the release answers. The table here
+/// was admitted by another controller, so the release into this one is refused and latches its
+/// own stop.
+#[test]
+fn a_refused_release_after_a_stopped_freeze_leaves_the_first_error() {
+    let mut c = control();
+    let mut other = control();
+    let named = FamilyTable::<u32>::new(&mut other).unwrap();
+    let owner = c.identity();
+    let ended = node_context::abandon_table(
+        &mut c,
+        &owner,
+        named,
+        SessionError::NodeDocumentUnavailable,
+    );
+    assert_eq!(ended, SessionError::NodeDocumentUnavailable);
+    assert_eq!(
+        c.stop(),
+        Some(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
+        ))
+    );
+}
