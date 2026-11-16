@@ -320,7 +320,7 @@ where
         let start = start_boundary.view().participant_offset();
         // Opportunities before the line start are skipped below. With them in boundary order they
         // form a prefix, which is skipped by search instead of by visiting each one.
-        let first = if walk.ordered {
+        let first = if walk.ordered && !full_walk_forced() {
             opportunities.partition_point(|(end, ..)| *end < start)
         } else {
             0
@@ -476,6 +476,7 @@ where
                 //   candidate and rejoin the interior of the longer one, so they never make a
                 //   longer candidate narrower.
                 if overflows_for_good
+                    && !full_walk_forced()
                     && walk.monotone
                     && goal.is_none()
                     && wrapping.is_none()

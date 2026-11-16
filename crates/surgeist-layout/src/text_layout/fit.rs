@@ -2748,6 +2748,35 @@ pub(super) fn take_candidate_work() -> CandidateWork {
 }
 
 #[cfg(test)]
+thread_local! {
+    static FULL_WALK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `body` with every line search visiting its whole opportunity window, so a test can lay
+/// out one document with and without the early stop and compare the results.
+#[cfg(test)]
+pub(super) fn with_full_walk<R>(body: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            FULL_WALK.with(|cell| cell.set(self.0));
+        }
+    }
+    let _restore = Restore(FULL_WALK.with(|cell| cell.replace(true)));
+    body()
+}
+
+#[cfg(test)]
+fn full_walk_forced() -> bool {
+    FULL_WALK.with(std::cell::Cell::get)
+}
+
+#[cfg(not(test))]
+const fn full_walk_forced() -> bool {
+    false
+}
+
+#[cfg(test)]
 fn observe_candidate_work(line_search: bool) {
     CANDIDATE_WORK.with(|cell| {
         let mut work = cell.get();
