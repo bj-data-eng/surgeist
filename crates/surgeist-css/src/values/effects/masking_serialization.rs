@@ -176,10 +176,11 @@ mod tests {
             Some(CssMaskType::Alpha),
         )
         .unwrap();
-        // Prefix1 + border aggregate/source/mode3 + scalar sibling1.
-        let expected = "!none alpha;evenodd";
+        // Prefix1 + border aggregate/source/mode3 + the generated `none` of an
+        // all-initial border (projection only) + scalar sibling1.
+        let expected = "!none;evenodd";
         let mut writer =
-            SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 5, expected.len()));
+            SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 6, expected.len()));
         writer.node().unwrap();
         writer.append("!").unwrap();
         border.append_to_rule_writer(&mut writer).unwrap();
@@ -196,7 +197,7 @@ mod tests {
             writer.context.charge_projection(1).unwrap_err().kind(),
             Kind::ProjectionNodeLimit
         );
-        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(6, 6, 0));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(6, 8, 0));
         writer
             .without_output(|writer| {
                 border.append_to_rule_writer(writer)?;

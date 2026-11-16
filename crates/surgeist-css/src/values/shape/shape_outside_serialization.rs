@@ -73,8 +73,9 @@ mod tests {
     #[test]
     fn prefix_and_all_outside_branches_share_semantic_work_and_final_bytes() {
         let values = values();
-        let expected = "!circle() margin-box;light-dark(none, none);border-box;none";
-        // Prefix one, shape aggregate/function/box three, image function/none/none
+        let expected = "!circle();light-dark(none, none);border-box;none";
+        // Prefix one, shape aggregate/function/box three (the default
+        // `margin-box` is visited but not written), image function/none/none
         // three, standalone box one, none one: nine cumulative nodes.
         let mut writer =
             SpecifiedRuleWriter::new(CssSerializationLimits::new(9, 9, expected.len()));

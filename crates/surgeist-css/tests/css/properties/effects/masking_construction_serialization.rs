@@ -238,29 +238,94 @@ fn border_constructor_reuses_checked_edges_and_rejects_impossible_slash_groups()
     }
     // Aggregate 1 + source 1 + slice (aggregate1/four edges2/fill1)10
     // + width (aggregate1/four auto leaves1)5 + outset (aggregate1/four edges2)9
-    // + repeat3 + mode1 = 30. Shortening visits all four expanded edges.
-    bounds(
-        "none 10 fill / auto / 2 round space luminance",
-        30,
-        30,
-        |limits| value.serialize_specified(limits),
-    );
+    // + repeat3 + mode1 = 30. Shortening visits all four expanded edges. The
+    // initial source `none` and the initial width `auto` are left out of the
+    // text but still visited, so the work stays 30.
+    bounds("10 fill / / 2 round space luminance", 30, 30, |limits| {
+        value.serialize_specified(limits)
+    });
     assert_eq!(value, before);
+    // Every member is initial: the one generated `none` token is a projection node.
     let only_source =
         CssMaskBorder::try_new(Some(CssImageValue::None), None, None, None, None, None).unwrap();
-    bounds("none", 2, 2, |limits| {
+    bounds("none", 2, 3, |limits| {
         only_source.serialize_specified(limits)
     });
     let only_mode =
         CssMaskBorder::try_new(None, None, None, None, None, Some(CssMaskType::Alpha)).unwrap();
-    bounds("alpha", 2, 2, |limits| {
-        only_mode.serialize_specified(limits)
+    bounds("none", 2, 3, |limits| only_mode.serialize_specified(limits));
+    let only_luminance =
+        CssMaskBorder::try_new(None, None, None, None, None, Some(CssMaskType::Luminance)).unwrap();
+    bounds("luminance", 2, 2, |limits| {
+        only_luminance.serialize_specified(limits)
     });
     let skipped_width =
         CssMaskBorder::try_new(None, Some(slice()), None, Some(outset()), None, None).unwrap();
     bounds("10 fill / / 2", 20, 20, |limits| {
         skipped_width.serialize_specified(limits)
     });
+}
+
+#[test]
+fn border_with_every_member_at_its_initial_serializes_none_and_still_visits_each() {
+    // Masking 1 §8.7 initials: source none, slice 0, width auto, outset 0,
+    // repeat stretch, mode alpha. All are left out; the grammar needs one token.
+    let initial = CssMaskBorder::try_new(
+        Some(CssImageValue::None),
+        Some(
+            CssBorderImageSlice::try_new(
+                vec![CssBorderImageSliceComponent::Number(number("0"))],
+                false,
+            )
+            .unwrap(),
+        ),
+        Some(width()),
+        Some(
+            CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Number(number("0"))])
+                .unwrap(),
+        ),
+        Some(CssBorderImageRepeat::new(
+            CssBorderImageRepeatKeyword::Stretch,
+            CssBorderImageRepeatKeyword::Stretch,
+        )),
+        Some(CssMaskType::Alpha),
+    )
+    .unwrap();
+    let before = initial.clone();
+    // Aggregate 1 + source 1 + slice (aggregate1/four edges2)9 + width 5
+    // + outset 9 + repeat 3 + mode 1 = 29 visited nodes, and the one generated
+    // `none` is a projection node.
+    bounds("none", 29, 30, |limits| initial.serialize_specified(limits));
+    assert_eq!(initial, before);
+    // A zero slice with `fill` is not the initial `0`, so it is kept; an
+    // initial outset after a kept slice is still left out.
+    for (slice, outset, expected) in [
+        (
+            CssBorderImageSlice::try_new(
+                vec![CssBorderImageSliceComponent::Number(number("0"))],
+                true,
+            )
+            .unwrap(),
+            None,
+            "0 fill",
+        ),
+        (
+            slice(),
+            Some(
+                CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Number(number(
+                    "0",
+                ))])
+                .unwrap(),
+            ),
+            "10 fill",
+        ),
+    ] {
+        let value = CssMaskBorder::try_new(None, Some(slice), None, outset, None, None).unwrap();
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+    }
 }
 
 #[test]
@@ -295,7 +360,7 @@ fn parsed_border_children_retain_span_and_origin_through_failure_and_retry() {
     assert_eq!(value, &before);
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
-        "10 20% fill / auto / 2 round luminance"
+        "10 20% fill / / 2 round luminance"
     );
     assert_eq!(top.origin(), &CssValueOrigin::Parsed(origin.clone()));
 }
@@ -383,7 +448,7 @@ fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projectio
     // a hinted Number without evaluating a contextual percentage basis.
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
-        "calc((1% + 1px) / 1px) / calc((1% + 1px) / 1px) alpha"
+        "calc((1% + 1px) / 1px) / calc((1% + 1px) / 1px)"
     );
     assert!(
         value
