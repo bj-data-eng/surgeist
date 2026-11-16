@@ -1650,7 +1650,17 @@ where
                 crate::SizingOperation::MaxContent => finalized
                     .measurements()
                     .margin_edge_max_content_contribution(),
-                crate::SizingOperation::Normal => finalized.measurements().margin_edge_fit(),
+                // Line breaking chooses what fits before justification (CSS Text 3 section 6.4.1),
+                // so a line that justification stretched is admitted by its natural line. The
+                // stretch fills the available size, and its rounding must not reject a line that
+                // fits naturally.
+                crate::SizingOperation::Normal => {
+                    if amounts.iter().any(|amount| *amount != 0.0) {
+                        natural_fit
+                    } else {
+                        finalized.measurements().margin_edge_fit()
+                    }
+                }
             };
             let css_width = css_margin_edge_width(admission, request.context.indent)?;
             let fits_width = |admission: surgeist_text::MarginEdgeFit, css_width: Option<f64>| {
