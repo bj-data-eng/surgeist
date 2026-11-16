@@ -1548,7 +1548,7 @@ mod tests {
             DecimalOutcome::Beyond { .. }
         ));
         assert!(matches!(
-            windowed("0.0000000000000000000000000000000000000000000009999").0,
+            windowed("0.00000000000000000000000000000000000000000000009999").0,
             DecimalOutcome::Below { .. }
         ));
     }

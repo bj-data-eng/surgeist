@@ -601,8 +601,10 @@ fn long_negative_exponent_chroma_clips_from_actual_public_token() {
 }
 
 #[test]
-fn positive_inrange_binary_underflow_keeps_exact_decimal_text() {
-    // 10^-400 is positive and in range, never the clipped lower endpoint.
-    let expected = format!("lab(0.{}1 0 0)", "0".repeat(399));
-    assert_text("lab(1e-400 0 0)", &expected);
+fn positive_binary_underflow_below_1e_minus_46_is_zero() {
+    // A numeral below 1e-46 is zero (#2889); the exact text of 1e-46, the
+    // smallest numeral inside the window, remains.
+    assert_text("lab(1e-400 0 0)", "lab(0 0 0)");
+    let expected = format!("lab(0.{}1 0 0)", "0".repeat(45));
+    assert_text("lab(1e-46 0 0)", &expected);
 }

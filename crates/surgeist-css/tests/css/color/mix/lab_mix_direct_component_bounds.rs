@@ -483,13 +483,15 @@ color_success!(
     64,
     "color-mix(lab(50 calc(infinity) 0), blue)"
 );
-color_error!(
-    mix_true_origin_huge_coefficient_keeps_typed_failure,
+// An origin colour is written as the colour standing alone is, without the
+// clamps of its slots, so a lightness beyond the range is `calc(infinity)`.
+color_success!(
+    mix_true_origin_huge_coefficient_is_calc_infinity,
     "color-mix(alpha(from lab(1e2000000 0 0)), blue)",
     usize::MAX,
     usize::MAX,
     64,
-    ByteLimit
+    "color-mix(alpha(from lab(calc(infinity) 0 0)), blue)"
 );
 color_error!(
     mix_contextual_lightness_keeps_required_text,
@@ -579,14 +581,20 @@ fn mix_long_negative_chroma_exponent_clips_from_real_public_token() {
     assert_text(&source, "color-mix(lch(50 0 30), blue)");
 }
 #[test]
-fn mix_positive_binary_underflow_keeps_exact_decimal_text() {
-    let expected = format!("color-mix(lab(0.{}1 0 0), blue)", "0".repeat(399));
-    assert_text("color-mix(lab(1e-400 0 0), blue)", &expected);
+fn mix_positive_binary_underflow_below_1e_minus_46_is_zero() {
+    assert_text(
+        "color-mix(lab(1e-400 0 0), blue)",
+        "color-mix(lab(0 0 0), blue)",
+    );
+    let expected = format!("color-mix(lab(0.{}1 0 0), blue)", "0".repeat(45));
+    assert_text("color-mix(lab(1e-46 0 0), blue)", &expected);
 }
 #[test]
-fn mix_positive_huge_chroma_has_no_ceiling() {
-    let expected = format!("color-mix(lch(50 1{} 30), blue)", "0".repeat(400));
-    assert_text("color-mix(lch(50 1e400 30), blue)", &expected);
+fn mix_positive_huge_chroma_is_calc_infinity() {
+    assert_text(
+        "color-mix(lch(50 1e400 30), blue)",
+        "color-mix(lch(50 calc(infinity) 30), blue)",
+    );
 }
 
 fn checked_literal(spelling: &str, programmatic: bool) -> CssColorComponent {

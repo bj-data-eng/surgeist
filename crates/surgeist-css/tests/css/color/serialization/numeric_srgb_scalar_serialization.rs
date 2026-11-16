@@ -268,10 +268,11 @@ text_case!(
 #[test]
 fn hwb_finite_lexical_overflow() {
     // A finite authored value converts to the closest finite binary64 value,
-    // not an infinity (Values 4 numeric types; #1297).
+    // not an infinity (Values 4 numeric types; #1297), and a calculation root
+    // beyond the component range is infinite (#2889).
     assert_text(
         "hwb(none calc(1e400) 20%)",
-        &format!("hwb(none {:.0}% 20%)", f64::MAX),
+        "hwb(none calc(infinity * 1%) 20%)",
     );
 }
 text_case!(
@@ -617,9 +618,11 @@ text_case!(
     "hwb(none -20% calc(1% * 1em / 1px))"
 );
 
-// Independent exact expansion of (2^53 - 1) * 2^971, the largest finite
-// binary64. Keep literal decimal digits as the oracle for the public formatter.
-const MAX_FINITE_INTEGER: &str = "179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368";
+// Independent exact expansion of (2^53 - 2^28 - 1) * 2^75 = 2^128 - 2^103 - 2^75,
+// the largest binary64 below the component threshold (the largest finite value
+// a calculation root keeps). Keep literal decimal digits as the oracle for the
+// public formatter.
+const MAX_FINITE_INTEGER: &str = "340282356779733623858607532500980858880";
 
 #[test]
 fn public_authored_lexical_seeds_have_the_independently_selected_bits() {
@@ -635,34 +638,34 @@ fn public_authored_lexical_seeds_have_the_independently_selected_bits() {
     // Radian conversion uses the existing binary64 180/PI factor, not an
     // invented exact-pi authority or a second angle conversion.
     assert_eq!((180.0 / std::f64::consts::PI).to_bits(), 0x404ca5dc1a63c1f8);
-    assert_eq!(MAX_FINITE_INTEGER.len(), 309);
+    assert_eq!(MAX_FINITE_INTEGER.len(), 39);
 }
 
 #[test]
 fn maximum_finite_hwb_positive_value_keeps_every_whole_digit() {
     assert_text(
-        "hwb(none calc(1.7976931348623157e308) 20%)",
+        "hwb(none calc(340282356779733623858607532500980858880) 20%)",
         &format!("hwb(none {MAX_FINITE_INTEGER}% 20%)"),
     );
 }
 #[test]
 fn maximum_finite_hwb_negative_value_keeps_every_whole_digit() {
     assert_text(
-        "hwb(none calc(-1.7976931348623157e308) 20%)",
+        "hwb(none calc(-340282356779733623858607532500980858880) 20%)",
         &format!("hwb(none -{MAX_FINITE_INTEGER}% 20%)"),
     );
 }
 #[test]
 fn maximum_finite_hsl_negative_lightness_keeps_every_whole_digit() {
     assert_text(
-        "hsl(none 50% calc(-1.7976931348623157e308))",
+        "hsl(none 50% calc(-340282356779733623858607532500980858880))",
         &format!("hsl(none 50% -{MAX_FINITE_INTEGER}%)"),
     );
 }
 #[test]
 fn maximum_finite_hsl_lightness_keeps_every_whole_digit() {
     assert_text(
-        "hsl(none 50% calc(1.7976931348623157e308))",
+        "hsl(none 50% calc(340282356779733623858607532500980858880))",
         &format!("hsl(none 50% {MAX_FINITE_INTEGER}%)"),
     );
 }
@@ -759,10 +762,10 @@ fn hwb_successful_capture_has_twenty_three_final_bytes() {
 }
 
 fn maximum_finite_bytes(sign: &str) {
-    let value = color(&format!("hwb(none calc({sign}1.7976931348623157e308) 20%)"));
+    let value = color(&format!("hwb(none calc({sign}{MAX_FINITE_INTEGER}) 20%)"));
     let expected = format!("hwb(none {sign}{MAX_FINITE_INTEGER}% 20%)");
-    // 309 integer digits + 15 syntax bytes, plus one for negative sign.
-    let bytes = 324 + sign.len();
+    // 39 integer digits + 15 syntax bytes, plus one for negative sign.
+    let bytes = 54 + sign.len();
     assert_eq!(expected.len(), bytes);
     assert_error(
         &value,
@@ -1036,4 +1039,30 @@ fn shadow_color_uses_ordinary_scalar_policy() {
         ),
         "hsl(none 50% 50%) 1px 2px"
     );
+}
+
+#[test]
+fn a_calculation_root_beyond_the_component_range_is_an_infinity() {
+    // The largest binary64 and the first value at the threshold are cut after
+    // the whole calculation is evaluated (#2889).
+    for (source, expected) in [
+        (
+            "hwb(none calc(1.7976931348623157e308) 20%)",
+            "hwb(none calc(infinity * 1%) 20%)",
+        ),
+        (
+            "hwb(none calc(-1.7976931348623157e308) 20%)",
+            "hwb(none calc(-infinity * 1%) 20%)",
+        ),
+        (
+            "hwb(none calc(340282356779733661637539395458142568448) 20%)",
+            "hwb(none calc(infinity * 1%) 20%)",
+        ),
+        (
+            "hsl(none 50% calc(1.7976931348623157e308))",
+            "hsl(none 50% calc(infinity * 1%))",
+        ),
+    ] {
+        assert_text(source, expected);
+    }
 }

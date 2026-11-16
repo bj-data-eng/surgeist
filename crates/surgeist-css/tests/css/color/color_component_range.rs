@@ -608,6 +608,16 @@ fn a_specified_component_beyond_the_float_range_is_calc_infinity() {
         ("lab(0 1e999 0)", "lab(0 calc(infinity) 0)"),
         ("lab(0 -1e999 0)", "lab(0 calc(-infinity) 0)"),
         ("lab(0 0 1e999)", "lab(0 0 calc(infinity))"),
+        // Specified text is not clamped (Values 4 section 10.12), so an ink beyond the
+        // range is an infinity like any unclamped component.
+        (
+            "device-cmyk(1e999 0 0 0)",
+            "device-cmyk(calc(infinity) 0 0 0)",
+        ),
+        (
+            "device-cmyk(0.5 -1e999 0 0)",
+            "device-cmyk(0.5 calc(-infinity) 0 0)",
+        ),
         ("lab(50 1e2000000 0)", "lab(50 calc(infinity) 0)"),
         (
             "lab(50 1e999999999999999999999999999999999999999999 0)",
@@ -695,7 +705,7 @@ fn a_specified_hue_beyond_the_range_is_zero_in_both_phases() {
             "lch(50 20 340282356779733642748073463979561713664)",
             "lch(50 20 0)",
         ),
-        ("lch(50 20 calc(1e308 * 10))", "lch(50 20 0)"),
+        ("lch(50 20 calc(1e308 * 10))", "lch(50 20 calc(infinity))"),
         ("hsl(1e308 100% 50%)", "rgb(255, 0, 0)"),
         ("hwb(1e999grad 0% 0%)", "rgb(255, 0, 0)"),
     ] {
@@ -722,6 +732,13 @@ fn a_specified_component_numeral_below_1e_minus_46_is_zero() {
         ("lab(0 -1e-47 0)", "lab(0 0 0)".to_owned()),
         ("lab(0 5e-324 0)", "lab(0 0 0)".to_owned()),
         ("lab(0 1e-47% 0)", "lab(0 0 0)".to_owned()),
+        ("rgb(1e-47 0 0)", "rgb(0, 0, 0)".to_owned()),
+        ("rgb(1e-47% 0 0)", "rgb(0, 0, 0)".to_owned()),
+        (
+            "device-cmyk(1e-50 0 0 0)",
+            "device-cmyk(0 0 0 0)".to_owned(),
+        ),
+        ("hsl(none 1e-47% 50%)", "hsl(none 0% 50%)".to_owned()),
         (
             "lab(1e-999999999999999999999999999999999999999999 0 0)",
             "lab(0 0 0)".to_owned(),
@@ -769,7 +786,7 @@ fn a_specified_mix_writes_calc_infinity_for_its_children() {
         ),
         (
             "color-mix(in srgb, lab(50 1e2000000 0), blue 30%)",
-            "color-mix(in srgb, lab(50 calc(infinity) 0), blue 30%)",
+            "color-mix(in srgb, lab(50 calc(infinity) 0) 70%, blue 30%)",
         ),
         (
             "color-mix(in lab, lch(50 1e999 1e308), red)",
