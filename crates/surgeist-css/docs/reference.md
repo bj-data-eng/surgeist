@@ -84,6 +84,71 @@ recovery diagnostic. It does not rerun a grammar or test contextual usability.
 sequence through `diagnostics()`, `first()`, and `into_diagnostics()`. See the
 [report definitions](../src/report.rs) for their contracts.
 
+## Stylesheet encoding guidance
+
+The byte front implements [Syntax 3 §3.2](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#input-byte-stream),
+[decode](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#css-decode-bytes) and
+[determine the fallback encoding](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#determine-the-fallback-encoding),
+in the selected 2026-10-01 edition; the [edition differences](#css-syntax-3-edition-differences)
+list no change to that section from the 2021 text. The guidance below is the
+section's advice to stylesheet authors and to the host adapters that supply
+stylesheet bytes. It describes the inputs the front reads and adds no grammar
+and no diagnostic.
+
+**Authors.** Write stylesheets in UTF-8 and have the encoding declared by the HTTP
+header or an equivalent, or by the referring document. When neither is
+available, begin the stylesheet with a UTF-8 byte order mark or with the exact
+characters `@charset "utf-8";`. Each path selects UTF-8 in this crate:
+
+| Declared by | The host passes in `DecodeHints` | `selection()` of the decoded input |
+| --- | --- | --- |
+| HTTP or an equivalent protocol | `protocol_label: Some("utf-8")` | `Protocol` |
+| The referring document | `environment_encoding: Encoding::for_label("utf-8")` | `Environment` |
+| A UTF-8 byte order mark | nothing; the mark is not in `source()` | `ByteOrderMark` |
+| The exact `@charset "utf-8";` prefix | nothing | `CharsetPrefix` |
+| Nothing | nothing | `DefaultUtf8` |
+
+The prefix is recognized only as the byte sequence `@charset "`, label bytes
+that are ASCII and not a quotation mark, and `";`, all within the first 1024
+bytes and at the very start. Extra or tab spaces, a comment, single quotes, a
+different case in `@charset`, a space before the semicolon, a missing
+semicolon, any text before it and a label that names no encoding are not
+recognized; the front then falls through to the environment encoding and then
+UTF-8. The label is read as an Encoding Standard label, so its case and
+surrounding ASCII whitespace do not matter and a UTF-16 label selects UTF-8.
+A stylesheet in UTF-16 needs a byte order mark, a protocol label or an
+environment encoding: a UTF-16 sheet without any of them is decoded as UTF-8,
+and a declaration written in UTF-16 is not the ASCII byte sequence.
+
+**Host adapters.** An adapter extracts the protocol label (the `charset` parameter
+of `Content-Type`, for example) and the referring document's encoding and passes
+them in `DecodeHints`; the crate parses no HTTP header or `<meta>` element and
+defines no environment encoding. Syntax 3 says new document formats and linking
+mechanisms [should not provide an environment encoding](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#environment-encoding),
+so that the stylesheet defaults to UTF-8. An adapter for such a format passes
+`environment_encoding: None`; only a legacy mechanism that defines one passes it.
+Without a protocol label, prefix or environment encoding, bytes that are not UTF-8
+decode as UTF-8, where a malformed sequence becomes U+FFFD and
+`had_replacements()` reports it. That is decoder provenance, not a CSS diagnostic.
+
+**The declaration is not a rule.** Syntax 3 [§8.3](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md#charset-rule)
+requires an `@charset` rule that is actually parsed to be treated as an
+unrecognized rule and dropped as invalid when the stylesheet is grammar-checked.
+The byte front keeps the declaration in the decoded text, so
+`CssParser::parse_sheet_bytes` reports a stylesheet that declares itself through
+the prefix with one `UnknownAtRule` diagnostic and the `DropAtRule` action over
+the declaration, and `into_validation_result` refuses it. The protocol,
+environment and byte-order-mark paths add no diagnostic. Diagnostic and origin
+offsets address the decoded UTF-8 source, so the declaration occupies the first
+offsets and a multibyte character shifts every later offset from its position in
+`original_bytes()`. A host that treats the prefix as encoding metadata recognizes
+it as the leading `UnknownAtRule` at offset 0 of an input whose `selection()` is
+`CharsetPrefix`.
+
+[How to decode a stylesheet from bytes](how-to.md#decode-a-stylesheet-from-bytes)
+shows the calls. The [conformance classes](explanation.md#stylesheet-conformance-classes)
+state how the byte front relates to the specification's conformance statement.
+
 ## CSS Syntax 3 edition differences
 
 The selected [CSS Syntax 3 edition](../../../references/SOURCE-EDITIONS.md#css-syntax-3-edition)
