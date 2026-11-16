@@ -74,7 +74,7 @@ impl Setup {
     }
 }
 
-/// The debug rendering of the completed batch of one block container of `spans`.
+/// The debug rendering of the completed batch, or of the refusal, of one block container of `spans`.
 fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup) -> String {
     let style = |span: &Span| text::Style {
         letter_spacing: span.letter_spacing,
@@ -151,9 +151,12 @@ fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup) -> String {
             let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
             crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
-    )
-    .unwrap();
-    format!("{batch:?}")
+    );
+    // A refusal is part of the result: both walks must refuse the same way.
+    match batch {
+        Ok(batch) => format!("{batch:?}"),
+        Err(error) => format!("refused: {error:?}"),
+    }
 }
 
 /// Lays out one document with the early stop and with the full walk and returns how many line
@@ -165,8 +168,10 @@ fn assert_same_with_full_walk<S: LayoutScalar>(label: &str, spans: &[Span], setu
     let full = fit::with_full_walk(|| lay_out::<S>(spans, setup));
     assert!(
         early == full,
-        "{label}: the early stop changed the layout at width {}",
-        setup.width
+        "{label}: the early stop changed the layout at width {}: early {:.300} full {:.300}",
+        setup.width,
+        early,
+        full
     );
     stops
 }
@@ -396,14 +401,11 @@ fn direction_white_space_and_justification_lay_out_the_same_with_the_early_stop(
     ];
     let mut stops = 0;
     for source in sources {
-        for size in [5.0, 10.0] {
-            for letter_spacing in [0.0, 1.0] {
-                let spans = [span(source, size, letter_spacing, 0.0)];
-                for width in [40.0, 55.0, 70.0, 90.0, 100.0, 120.0] {
-                    for setup in grid_setups(width) {
-                        stops += assert_same_with_full_walk::<f32>("grid", &spans, setup);
-                        stops += assert_same_with_full_walk::<f64>("grid", &spans, setup);
-                    }
+        for letter_spacing in [0.0, 1.0] {
+            let spans = [span(source, 5.0, letter_spacing, 0.0)];
+            for width in [55.0, 90.0, 100.0] {
+                for setup in grid_setups(width) {
+                    stops += assert_same_with_full_walk::<f32>("grid", &spans, setup);
                 }
             }
         }

@@ -409,6 +409,8 @@ struct FinalizedCandidate {
     conditional_trial: Option<FinalizedLine>,
     amounts: Vec<f64>,
     natural_advance: f64,
+    /// Admission of the natural line, before any justification spacing was allocated.
+    natural_fit: surgeist_text::MarginEdgeFit,
 }
 
 fn text_alignment(alignment: TextAlign) -> Alignment {
@@ -590,6 +592,7 @@ fn finalize_candidate(
     resolve_boundary_context(prepared, controls, &mut request)?;
     let natural = natural_line(prepared, reusable, &request, scope_alignments)?;
     let natural_advance = natural.measurements().alignment().advance();
+    let natural_fit = natural.measurements().margin_edge_fit();
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
     if effective == TextAlign::Justify
@@ -606,6 +609,7 @@ fn finalize_candidate(
                 finalized: allocation.finalized,
                 amounts: allocation.amounts,
                 natural_advance,
+                natural_fit,
             });
         }
         if justification == TextJustification::InterCharacter
@@ -617,6 +621,7 @@ fn finalize_candidate(
                 conditional_trial: Some(natural),
                 amounts,
                 natural_advance,
+                natural_fit,
             });
         }
         // A proved unexpandable spacing result follows the real last-line
@@ -635,6 +640,7 @@ fn finalize_candidate(
                 .then_some(natural),
             request,
             natural_advance: finalized.measurements().alignment().advance(),
+            natural_fit,
             finalized,
             amounts,
         });
@@ -718,6 +724,7 @@ fn finalize_candidate(
                     finalized,
                     amounts,
                     natural_advance,
+                    natural_fit,
                 });
             }
         } else {
@@ -732,6 +739,7 @@ fn finalize_candidate(
                 conditional_trial: None,
                 request,
                 natural_advance: finalized.measurements().alignment().advance(),
+                natural_fit,
                 finalized,
                 amounts,
             });
@@ -743,6 +751,7 @@ fn finalize_candidate(
         finalized: natural,
         amounts,
         natural_advance,
+        natural_fit,
     })
 }
 
@@ -784,6 +793,7 @@ fn finalize_with_roles(
                 amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
                 request: active.clone(),
                 natural_advance: finalized.measurements().alignment().advance(),
+                natural_fit: finalized.measurements().margin_edge_fit(),
                 finalized,
             })
         } else {
@@ -969,6 +979,9 @@ struct EvaluatedCandidate {
     bands: LineBands,
     placed_start: f64,
     fits: bool,
+    /// Whether the natural line, before justification spacing was allocated, fits. Allocated
+    /// spacing only widens a line, so a candidate whose natural line overflows never fits.
+    natural_fits: bool,
     disposition: LineDisposition,
 }
 
@@ -1464,7 +1477,15 @@ where
                 Vec<f64>,
                 super::scope_alignment::ScopeBasis,
             )> = Vec::new();
-            let (finalized, amounts, scopes, natural_advance, conditional_trial, role_basis) = loop {
+            let (
+                finalized,
+                amounts,
+                scopes,
+                natural_advance,
+                natural_fit,
+                conditional_trial,
+                role_basis,
+            ) = loop {
                 // Feedback retains actual allocations, but each attempt starts
                 // from the caller's method-bound target. An ordinary fallback
                 // result cannot replace the primary conditional authority.
@@ -1532,6 +1553,7 @@ where
                         candidate.amounts,
                         scope_basis,
                         candidate.natural_advance,
+                        candidate.natural_fit,
                         candidate.conditional_trial,
                         role_basis,
                     );
@@ -1631,11 +1653,24 @@ where
                 crate::SizingOperation::Normal => finalized.measurements().margin_edge_fit(),
             };
             let css_width = css_margin_edge_width(admission, request.context.indent)?;
-            let fits = !disposition.is_formatted()
-                || fit_width.is_none_or(|width| match css_width {
+            let fits_width = |admission: surgeist_text::MarginEdgeFit, css_width: Option<f64>| {
+                fit_width.is_none_or(|width| match css_width {
                     Some(required) => required <= width,
                     None => admission.required_inline_size() <= width - request.context.indent,
-                });
+                })
+            };
+            let fits = !disposition.is_formatted() || fits_width(admission, css_width);
+            // The same comparison on the natural line. Only the ordinary operation compares it.
+            let natural_fits = match input.available.operation() {
+                crate::SizingOperation::Normal => {
+                    !disposition.is_formatted()
+                        || fits_width(
+                            natural_fit,
+                            css_margin_edge_width(natural_fit, request.context.indent)?,
+                        )
+                }
+                crate::SizingOperation::MinContent | crate::SizingOperation::MaxContent => fits,
+            };
             let usage = finalized.measurements().formatted_line_usage();
             if usage.first() || usage.last() {
                 let basis = role_basis.ok_or(FitError::InvalidGeometry)?;
@@ -1701,6 +1736,7 @@ where
                 bands,
                 placed_start,
                 fits,
+                natural_fits,
                 disposition,
             }));
         }

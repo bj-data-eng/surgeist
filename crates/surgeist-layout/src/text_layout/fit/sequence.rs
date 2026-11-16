@@ -33,16 +33,18 @@ pub(super) struct OpportunityWalk {
     monotone: bool,
 }
 
-/// Every glyph of `line`, in run order, advances the pen by at least its raw provider advance and
-/// at least zero, and no run starts before the previous run ends. The step of a run's last glyph
-/// is measured to the run advance, which excludes any spacing trimmed at the line edge.
+/// Every glyph of `line`, in run order, advances the pen by at least zero, exactly, and by at
+/// least its raw provider advance, within `SLACK` for the f32 to f64 conversion. No run starts
+/// before the previous run ends. The step of a run's last glyph is measured to the run advance,
+/// which excludes any spacing trimmed at the line edge.
 fn glyph_advances_hold(line: &FinalizedLine) -> bool {
+    /// Relative slack of the comparison with the raw advance only; no sign test uses it.
     const SLACK: f64 = 1e-9;
     let holds = |step: f64, raw: f64| step >= 0.0 && step >= raw - SLACK * raw.abs().max(1.0);
     let mut previous_end: Option<f64> = None;
     for run in line.run_views() {
         let origin = run.origin().x;
-        if previous_end.is_some_and(|end| origin < end - SLACK * end.abs().max(1.0)) {
+        if previous_end.is_some_and(|end| origin < end) {
             return false;
         }
         let mut previous: Option<(f64, f64)> = None;
@@ -281,8 +283,8 @@ where
     ) -> Result<bool, FitError> {
         let start = query.start.view().participant_offset();
         // The verdicts are sorted by group end and disjoint in end, so the group of this line is
-        // the first one that ends after the line start. Line searches move forward, which makes a
-        // new verdict an append.
+        // the first one that ends after the line start. Line searches mostly move forward, which
+        // makes a new verdict an append; a search that backtracks inserts or replaces one.
         let slot = self
             .spacing_verdicts
             .partition_point(|(_, to, _)| *to <= start);
@@ -443,6 +445,7 @@ where
                 let mut overflows_for_good = false;
                 if let Some(candidate) = endpoint_choice {
                     overflows_for_good = !candidate.fits
+                        && !candidate.natural_fits
                         && candidate.disposition.is_formatted()
                         && candidate
                             .bands
@@ -484,35 +487,47 @@ where
                     break;
                 }
                 // Once a fitting line is chosen and a later candidate overflows, the remaining
-                // candidates cannot replace the chosen line when fit is monotone in the candidate
-                // end, that is, when no longer candidate is narrower than a shorter one. The walk
-                // stops there only when all of these hold:
+                // candidates cannot replace the chosen line when no longer candidate fits where
+                // a shorter one does not. The walk stops there only when all of these hold:
                 // - the window is plain: no hyphenation alternatives or discretionary breaks
                 //   (they add zone and ceiling facts per candidate), no inline boxes, atomics or
                 //   inline boundary allocations (their margins can be negative), no wrapping
                 //   classifier and no quality goal (both compare every fitting candidate), and an
                 //   Auto or Stable ordinary Normal sizing operation, which keeps the last fitting
                 //   candidate (`OpportunityWalk::of`);
-                // - this overflowing candidate is formatted, a fitting line is already chosen and
-                //   the first ordinary ceiling is set, so the skipped candidates could not change
-                //   the ceiling, the skipped-ordinary list or the fitting-none fact;
+                // - this candidate is formatted, a fitting line is already chosen and the first
+                //   ordinary ceiling is set, so the skipped candidates could not change the
+                //   ceiling, the skipped-ordinary list or the fitting-none fact;
                 // - the line band has no later transition, so a taller candidate or a candidate
                 //   placed lower on the pixel grid sees the same band or a narrower one, because
                 //   floats and taller lines only remove inline space, never add it;
                 // - no negative letter or word spacing applies inside the group: every glyph
-                //   advances the pen by at least its raw advance (`glyph_advances_hold`).
+                //   advances the pen by at least its raw advance (`glyph_advances_hold`);
+                // - the candidate's natural line, before any justification spacing, overflows.
                 //
-                // What `fits` compares: with no inline boxes or atomics the line is measured with
-                // the Native authority, whose required inline size is the larger of the signed
-                // flow advance and the span of the occupied cluster intervals. Every cluster
-                // interval starts where the previous one ends, so the span is at least the flow
-                // and equals the width from the first to the last included cluster. When every
-                // cluster advances by at least zero that width cannot shrink as clusters are
+                // Why the natural line decides. `fits` compares the required inline size of the
+                // finalized line with the available size less the indent. A justified line is
+                // the natural line with non-negative spacing allocated to reach the capacity, so
+                // its required size is the capacity, up to rounding, whenever the natural line is
+                // narrower. Such a candidate can then fail `fits` although its natural line
+                // fits, which is why the stop reads `natural_fits`: the same comparison on the
+                // natural line. When the natural line overflows, allocated spacing only widens it
+                // (the extra spacing is non-negative, else the line keeps its natural form), so
+                // `fits` is false as well.
+                //
+                // Why the natural width cannot shrink. With no inline boxes or atomics the line is
+                // measured with the Native authority, whose required inline size is the larger of
+                // the signed flow advance and the span of the occupied cluster intervals. Every
+                // cluster interval starts where the previous one ends, so the span is at least
+                // the flow and equals the width from the first to the last included cluster. When
+                // every cluster advances by at least zero that width cannot shrink as clusters are
                 // added. A longer candidate keeps every cluster of a shorter one in the same
                 // order and places the shorter candidate's trimmed edge, a collapsible trailing
                 // space, hanging punctuation or the spacing after its last glyph, inside the
-                // line, where it only adds width; with no negative spacing the trimmed edge
-                // adds at least zero, so it cannot make the shorter candidate the wider one.
+                // line, where it only adds width; with no negative spacing the trimmed edge adds
+                // at least zero, so it cannot make the shorter candidate the wider one. Hence
+                // every skipped candidate has a natural width no smaller than the overflowing
+                // one, overflows naturally and, by the previous paragraph, does not fit.
                 if overflows_for_good
                     && !full_walk_forced()
                     && walk.monotone
