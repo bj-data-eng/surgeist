@@ -122,7 +122,10 @@ struct BlockRequest<'input, Node, S: LayoutScalar> {
     completion: ChildCompletion<Node, S>,
     projection: OutputProjection,
     child: Option<PendingBlockChild<'input, Node, S>>,
-    /// The scope frame depth of a scoped Block box; `None` for an ordinary one.
+    /// A Block computed under installed fragmentation scopes: its scoped Block
+    /// box children continue as scoped child requests.
+    scoped: bool,
+    /// The scope frame depth of a scoped Block box; `None` for any other.
     scope_depth: Option<usize>,
 }
 
@@ -619,7 +622,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                         let container_display =
                             (!initial.leaf).then(|| initial.style.display.inner_display());
                         match container_display {
-                            Some(Display::Block) if self.block_scopes().is_none() => {
+                            Some(Display::Block) => {
                                 self.begin_block(node, input, completion, projection, pending)?
                             }
                             Some(Display::Flex) => {
@@ -731,6 +734,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     completion,
                     projection,
                     child: None,
+                    scoped: self.block_scopes().is_some(),
                     scope_depth: None,
                 });
                 Ok(Request::AdvanceBlock)
@@ -754,13 +758,15 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let parent = pending.blocks.last_mut().expect("active Block request");
-        if parent.scope_depth.is_some() {
-            return self.advance_scoped_block(pending);
-        }
+        let scoped = parent.scoped;
         match parent.computation.advance(self)? {
             ControlFlow::Break(result) => self.complete_block(result, pending),
             ControlFlow::Continue(child) => {
+                if scoped && let Some(request) = child.scoped_box_request() {
+                    return self.advance_scoped_box(child, request, pending);
+                }
                 let (request, child) = child.into_request();
+                let parent = pending.blocks.last_mut().expect("active Block request");
                 if let BlockChildRequest::Entry(query) = request {
                     parent.child = Some(child);
                     pending
@@ -774,7 +780,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     unreachable!()
                 };
                 debug_assert!(
-                    request.entry.is_none(),
+                    scoped || request.entry.is_none(),
                     "ordinary request has no scope entry"
                 );
                 let trial = child.float_trial();
@@ -796,6 +802,46 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     input: request.input,
                     projection: OutputProjection::Layout,
                 })
+            }
+        }
+    }
+
+    /// Continues a scoped Block box child on the request stack, after its scope
+    /// entry and input are settled.
+    fn advance_scoped_box(
+        &mut self,
+        child: crate::block::BlockChild<'input, Tree::Node, Tree::Scalar>,
+        request: crate::block::scope::ChildRequest<Tree::Node, Tree::Scalar>,
+        pending: &mut SessionPending<'input, Tree>,
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
+        let (_, accepted) = child.into_request();
+        pending
+            .order
+            .try_reserve(1)
+            .map_err(|_| reserve_error(request.node))?;
+        let parent = pending.blocks.last_mut().expect("active Block request");
+        match self.begin_scoped_child(request)? {
+            ScopedChildStart::Output(output) => {
+                parent.computation.accept_child(
+                    self,
+                    accepted,
+                    BlockChildReceipt::Layout(output),
+                )?;
+                Ok(Request::AdvanceBlock)
+            }
+            ScopedChildStart::Fallback { node, input } => {
+                parent.child = Some(accepted);
+                pending.order.push(PendingRequest::Block);
+                Ok(Request::Child {
+                    node,
+                    input,
+                    projection: OutputProjection::Layout,
+                })
+            }
+            ScopedChildStart::Descend(child) => {
+                parent.child = Some(accepted);
+                pending.order.push(PendingRequest::Block);
+                Ok(Request::ScopedChild(child))
             }
         }
     }
@@ -851,58 +897,10 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     },
                     projection: OutputProjection::Layout,
                     child: None,
+                    scoped: true,
                     scope_depth: Some(depth),
                 });
                 Ok(Request::AdvanceBlock)
-            }
-        }
-    }
-
-    /// Advances a scoped Block box. A scoped Block box child continues on the
-    /// request stack; every other child computes as it did in the synchronous
-    /// Block loop.
-    fn advance_scoped_block(
-        &mut self,
-        pending: &mut SessionPending<'input, Tree>,
-    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
-        loop {
-            let parent = pending.blocks.last_mut().expect("active Block request");
-            let child = match parent.computation.advance(self)? {
-                ControlFlow::Break(result) => return self.complete_block(result, pending),
-                ControlFlow::Continue(child) => child,
-            };
-            let Some(request) = child.scoped_box_request() else {
-                let (accepted, output) = child.compute(self)?;
-                parent.computation.accept_child(self, accepted, output)?;
-                continue;
-            };
-            let (_, accepted) = child.into_request();
-            pending
-                .order
-                .try_reserve(1)
-                .map_err(|_| reserve_error(request.node))?;
-            match self.begin_scoped_child(request)? {
-                ScopedChildStart::Output(output) => {
-                    parent.computation.accept_child(
-                        self,
-                        accepted,
-                        BlockChildReceipt::Layout(output),
-                    )?;
-                }
-                ScopedChildStart::Fallback { node, input } => {
-                    parent.child = Some(accepted);
-                    pending.order.push(PendingRequest::Block);
-                    return Ok(Request::Child {
-                        node,
-                        input,
-                        projection: OutputProjection::Layout,
-                    });
-                }
-                ScopedChildStart::Descend(child) => {
-                    parent.child = Some(accepted);
-                    pending.order.push(PendingRequest::Block);
-                    return Ok(Request::ScopedChild(child));
-                }
             }
         }
     }
