@@ -981,7 +981,12 @@ fn family(
                 .index(&node.id(), c)?
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
             c.step(1)?;
-            let availability = match source.rows[index].style_association {
+            let association = source
+                .rows
+                .get(index)
+                .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?
+                .style_association;
+            let availability = match association {
                 ParsedStyleAssociation::KnownNull => crate::DomStyleSheetAvailability::Established,
                 ParsedStyleAssociation::Unqualified | ParsedStyleAssociation::Pending => {
                     crate::DomStyleSheetAvailability::PendingParsedProcessing

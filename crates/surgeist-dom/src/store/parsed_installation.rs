@@ -370,7 +370,7 @@ impl<'a> Source<'a> {
     }
     fn key(&self, id: &HtmlNodeId, c: &mut Control<'_>) -> Result<Key, Error> {
         self.index(id, c)?
-            .and_then(|i| self.rows[i].key)
+            .and_then(|i| self.rows.get(i)?.key)
             .ok_or(Error::MissingMetadata { subject: *id })
     }
     fn document_key(
@@ -863,7 +863,13 @@ fn collect_rows<'a>(
                     && let Some(index) = source.index(&view.subject().id(), c)?
                 {
                     c.step(1)?;
-                    let association = &mut source.rows[index].style_association;
+                    let association = &mut source
+                        .rows
+                        .get_mut(index)
+                        .ok_or(Error::MissingMetadata {
+                            subject: view.subject().id(),
+                        })?
+                        .style_association;
                     if view.requires_processing() {
                         *association = ParsedStyleAssociation::Pending;
                     } else if view.kind()
@@ -904,7 +910,11 @@ fn collect_rows<'a>(
     let mut next = 0;
     while next < source.rows.len() {
         c.step(1)?;
-        let node = source.rows[next].source;
+        let node = source
+            .rows
+            .get(next)
+            .ok_or(Error::RepresentationExhausted)?
+            .source;
         if let Some(parent) = node.parent() {
             source.add(parent, c)?;
         } else if let Some(document) = source.tree_document(report, node.id(), c)? {
@@ -938,7 +948,12 @@ fn association_document(
             let index = source
                 .index(&node.id(), c)?
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
-            DocumentId(mapped[index])
+            DocumentId(
+                mapped
+                    .get(index)
+                    .copied()
+                    .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?,
+            )
         }
         HtmlParseMetadataDocument::Captured(node) => {
             let key = source.captured_key(&node.id(), c)?;
@@ -976,8 +991,10 @@ fn qualify_inert_template_realms(
         if let Some((_, _, Some(inert))) = record.document_facts()
             && let Some(row) = source.index(&record.node().id(), c)?
         {
-            let owner = source.rows[row]
-                .key
+            let owner = source
+                .rows
+                .get(row)
+                .and_then(|row| row.key)
                 .ok_or(Error::CapturedStateUnavailable)?;
             let inert = source.key(&inert.id(), c)?;
             inherit_template_realm(draft, owner, inert, c.cancel)?;
@@ -1213,7 +1230,11 @@ impl Dom {
         // inert owners. No native head/body skeleton or arbitrary target exists.
         for i in 0..source.rows.len() {
             c.step(1)?;
-            let node = source.rows[i].source;
+            let node = source
+                .rows
+                .get(i)
+                .ok_or(Error::RepresentationExhausted)?
+                .source;
             let HtmlNodeKind::Document(mode) = node.kind() else {
                 continue;
             };
@@ -1323,7 +1344,11 @@ impl Dom {
                     history.commit(cancelled)?;
                 }
             }
-            source.rows[i].key = Some(key);
+            source
+                .rows
+                .get_mut(i)
+                .ok_or(Error::RepresentationExhausted)?
+                .key = Some(key);
         }
         // An inert Template document has the realm of the Document that
         // created it, even though it has no browsing context. Establish the
