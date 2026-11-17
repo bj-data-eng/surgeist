@@ -18,7 +18,8 @@ scheduling, delivery and host/resource orchestration.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies and features | [Cargo.toml](Cargo.toml) |
-| Public front door and bounded capabilities | [src/lib.rs](src/lib.rs), [README.md](README.md) |
+| Public front door and bounded capabilities | [src/lib.rs](src/lib.rs) (five root items and the module table), [README.md](README.md) |
+| Public module paths | One file per public module beside `src/lib.rs` (`src/limits.rs`, `src/tree.rs`, `src/hosted/child.rs`, ...): module documentation and explicit re-export lists of items defined under `src/internal/`; [tests/module_paths.rs](tests/module_paths.rs) imports every item at its path |
 | Canonical storage, publication and admission | [src/internal/store.rs](src/internal/store.rs), [src/internal/store/](src/internal/store/) |
 | Batch and Source fronts | [src/internal/batch.rs](src/internal/batch.rs), [src/internal/source.rs](src/internal/source.rs), [src/internal/source/](src/internal/source/), [src/internal/store/source/](src/internal/store/source/) |
 | Identity, snapshots and change history | [src/internal/identity.rs](src/internal/identity.rs), [src/internal/snapshot.rs](src/internal/snapshot.rs), `DomChanges` in `src/internal/store.rs` |

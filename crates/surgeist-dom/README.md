@@ -19,10 +19,11 @@ finite limits, build a batch, and resolve its creation tickets after publication
 
 ```rust
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_dom::limits::{DomLimits, DomNameLimits};
+use surgeist_dom::{Dom, DomBatch, DomError};
 
-fn main() -> Result<(), surgeist_dom::DomError> {
-    let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+fn main() -> Result<(), DomError> {
+    let names = DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
     let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192, names)?)?;
     let mut batch = DomBatch::new();
     let document = batch.create_document();
@@ -35,6 +36,12 @@ fn main() -> Result<(), surgeist_dom::DomError> {
     Ok(())
 }
 ```
+
+Five items sit at the crate root: `Dom`, `DomBatch`, `DomCommit`, `DomSnapshot` and
+`DomError`. Every other public item has one path, in the domain module that owns it
+(`limits`, `identity`, `tree`, `edit` and the others the
+[crate-level documentation](src/lib.rs) lists). A module's documentation names its
+types and the contract page that owns the detail.
 
 The snapshot owns its captured state after later edits or destruction. Failed
 or cancelled batches preserve live state; final semantic no-ops do not advance
