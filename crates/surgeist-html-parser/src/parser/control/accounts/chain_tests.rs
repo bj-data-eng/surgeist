@@ -1,11 +1,12 @@
-//! The meter against the ledger operation it replaces.
+//! The chain of an unobserved parse against the operation of a parse.
 //!
 //! The authority is `surgeist-ledger`: a parse's own operation of two scopes, a
 //! charging scope without caps below a cap scope with the parse caps, admits a
-//! batch and refuses it by the ledger's rules. The meter must give the same
-//! outcome for every batch, and leave the same usage in both scopes.
+//! batch and refuses it by the ledger's rules. The chain an unobserved parse
+//! charges must give the same outcome for every batch, and leave the same usage
+//! in both scopes.
 
-use super::meter::{Meter, Reading};
+use super::{OwnedChain, Reading, owned_chain};
 use crate::accounting::{LedgerError, private};
 use surgeist_html::accounting::{
     HtmlChange, HtmlLimits, HtmlResource, HtmlResourceTable, HtmlWork,
@@ -53,13 +54,13 @@ struct Pair {
     operation: Operation<HtmlWork, HtmlResource>,
     cap: Scope,
     charging: Scope,
-    meter: Meter,
+    meter: OwnedChain,
 }
 
 impl Pair {
     fn new(limits: HtmlLimits) -> Self {
         let (operation, cap, charging) = private(limits).unwrap();
-        let meter = Meter::with_limits(limits).unwrap();
+        let meter = owned_chain(limits).unwrap();
         Self {
             operation,
             cap,
@@ -70,19 +71,19 @@ impl Pair {
 
     fn apply(&mut self, batch: &[HtmlChange]) -> (Result<(), Refused>, Result<(), Refused>) {
         let ledger = self.operation.apply_batch(self.charging, batch);
-        let meter = self.meter.apply(batch);
+        let meter = self.meter.apply_batch(batch);
         (
             outcome(ledger, self.cap, self.charging),
-            outcome(meter, self.meter.cap(), self.meter.charging()),
+            outcome(meter, self.meter.root(), self.meter.leaf()),
         )
     }
 
     fn check(&mut self, batch: &[HtmlChange]) -> (Result<(), Refused>, Result<(), Refused>) {
         let ledger = self.operation.check_batch(self.charging, batch);
-        let meter = self.meter.check(batch);
+        let meter = self.meter.check_batch(batch);
         (
             outcome(ledger, self.cap, self.charging),
-            outcome(meter, self.meter.cap(), self.meter.charging()),
+            outcome(meter, self.meter.root(), self.meter.leaf()),
         )
     }
 
@@ -90,11 +91,11 @@ impl Pair {
     /// the operation and in the meter.
     fn assert_same_usage(&self, context: &str) {
         for (ledger, meter) in [
-            (self.cap, self.meter.cap()),
-            (self.charging, self.meter.charging()),
+            (self.cap, self.meter.root()),
+            (self.charging, self.meter.leaf()),
         ] {
             let usage = self.operation.usage(ledger).unwrap();
-            let view = self.meter.view(meter).unwrap();
+            let view = self.meter.usage(meter).unwrap();
             for &dimension in HtmlWork::ALL {
                 assert_eq!(
                     Reading::work(usage, dimension),
@@ -213,7 +214,7 @@ struct Coverage {
 }
 
 #[test]
-fn the_meter_admits_and_refuses_like_the_ledger_operation() {
+fn the_chain_admits_and_refuses_like_the_ledger_operation() {
     let mut coverage = Coverage::default();
     let mut batch = Vec::new();
     for seed in 1..=1_000_u64 {
@@ -235,12 +236,7 @@ fn the_meter_admits_and_refuses_like_the_ledger_operation() {
             }
             let peaks: Vec<u64> = HtmlResource::ALL
                 .iter()
-                .map(|&resource| {
-                    pair.meter
-                        .view(pair.meter.charging())
-                        .unwrap()
-                        .peak(resource)
-                })
+                .map(|&resource| pair.meter.usage(pair.meter.leaf()).unwrap().peak(resource))
                 .collect();
             let (ledger, meter) = pair.apply(&batch);
             assert_eq!(ledger, meter, "outcome differs: {context}");
@@ -249,7 +245,7 @@ fn the_meter_admits_and_refuses_like_the_ledger_operation() {
                 Ok(()) => {
                     coverage.accepted += 1;
                     coverage.accepted_long += u64::from(batch.len() > 24);
-                    let view = pair.meter.view(pair.meter.charging()).unwrap();
+                    let view = pair.meter.usage(pair.meter.leaf()).unwrap();
                     for (&resource, &before) in HtmlResource::ALL.iter().zip(&peaks) {
                         coverage.peak_inside_batch += u64::from(
                             view.peak(resource) > before
@@ -310,7 +306,7 @@ fn a_peak_reached_inside_a_batch_stays_after_the_batch_releases_it() {
     let (ledger, meter) = pair.apply(&batch);
     assert_eq!((ledger, meter), (Ok(()), Ok(())));
     pair.assert_same_usage("after the batch");
-    let view = pair.meter.view(pair.meter.charging()).unwrap();
+    let view = pair.meter.usage(pair.meter.leaf()).unwrap();
     // The authority is the ledger's rule that intermediate live usage counts
     // toward the peak, written as the expected figures.
     assert_eq!(view.live(HtmlResource::ManagedNodes), 0);
@@ -318,7 +314,7 @@ fn a_peak_reached_inside_a_batch_stays_after_the_batch_releases_it() {
 }
 
 #[test]
-fn a_refused_batch_leaves_the_meter_as_it_was() {
+fn a_refused_batch_leaves_the_chain_as_it_was() {
     let limits = HtmlLimits::from_fn(
         |work| {
             if work == HtmlWork::Credits {
@@ -358,16 +354,16 @@ fn a_refused_batch_leaves_the_meter_as_it_was() {
         })
     );
     pair.assert_same_usage("after the refusal");
-    let view = pair.meter.view(pair.meter.cap()).unwrap();
+    let view = pair.meter.usage(pair.meter.root()).unwrap();
     assert_eq!(view.work(HtmlWork::Credits), 0);
     assert_eq!(view.live(HtmlResource::ManagedEdges), 2);
 }
 
 #[test]
-fn a_scope_of_another_operation_is_foreign_to_the_meter() {
-    let meter = Meter::with_limits(HtmlLimits::unlimited()).unwrap();
+fn a_scope_of_another_operation_is_foreign_to_the_chain() {
+    let meter = owned_chain(HtmlLimits::unlimited()).unwrap();
     let (_, other, _) = private(HtmlLimits::unlimited()).unwrap();
-    assert!(matches!(meter.view(other), Err(Error::ForeignScope)));
+    assert!(matches!(meter.usage(other), Err(Error::ForeignScope)));
     assert!(matches!(meter.limits(other), Err(Error::ForeignScope)));
 }
 
@@ -391,11 +387,11 @@ fn the_caps_of_the_scopes_are_those_of_the_ledger() {
     );
     let pair = Pair::new(limits);
     assert_eq!(
-        pair.meter.limits(pair.meter.cap()).unwrap(),
-        *pair.operation.limits(pair.cap).unwrap()
+        pair.meter.limits(pair.meter.root()).unwrap(),
+        pair.operation.limits(pair.cap).unwrap()
     );
     assert_eq!(
-        pair.meter.limits(pair.meter.charging()).unwrap(),
-        *pair.operation.limits(pair.charging).unwrap()
+        pair.meter.limits(pair.meter.leaf()).unwrap(),
+        pair.operation.limits(pair.charging).unwrap()
     );
 }
