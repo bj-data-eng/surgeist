@@ -17,10 +17,13 @@ use crate::accounting::{
     CssAccountingError, CssChange, CssFront, CssHostScope, CssLedger, CssLimits, CssResource,
     CssResourceTable, CssWork, CssWorkFields, CssWorkTable,
 };
-use crate::component::CssComponentValueLimits;
+use crate::component::{CssComponentValue, CssComponentValueLimits, CssComponentValues};
+use crate::declaration::CssImportance;
 use crate::parser::bounded_execution::work;
-use crate::source::CssDecodedStylesheetInput;
+use crate::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTextTarget};
+use crate::source::{CssDecodedStylesheetInput, CssUtf16InputLimits, CssUtf16Resource};
 use crate::{CssParser, CssParserContext};
+use std::sync::Arc;
 
 fn host(root: CssLimits, mode: ProfileMode) -> (CssLedger, CssHostScope) {
     let operation = Operation::with_profile("host", root, 1 + CssFront::ALL.len(), mode)
@@ -322,4 +325,343 @@ fn a_plain_front_after_an_accounted_call_charges_nothing() {
     // Each accounted call charges its own documents.
     parser.accounted(&host).parse_sheet("a{color:red}").unwrap();
     assert_eq!(charged(&ledger), after.map(|amount| 2 * amount));
+}
+
+fn utf16(text: &str) -> Arc<Vec<u16>> {
+    Arc::new(text.encode_utf16().collect())
+}
+
+fn never() -> Result<(), &'static str> {
+    Ok(())
+}
+
+fn work_limit(max_work: usize) -> CssUtf16InputLimits {
+    CssUtf16InputLimits {
+        max_work,
+        ..CssUtf16InputLimits::default()
+    }
+}
+
+/// The preparation steps of a UTF-16 sheet: the smallest work limit under
+/// which the plain front admits it, since the limit counts every step.
+fn preparation_steps(text: &str) -> u64 {
+    let admitted = |max_work| {
+        CssParser::default()
+            .parse_sheet_utf16(utf16(text), work_limit(max_work), never)
+            .is_ok()
+    };
+    let smallest = (0..100_000).find(|&max_work| admitted(max_work)).unwrap();
+    u64::try_from(smallest).unwrap()
+}
+
+fn steps(ledger: &CssLedger) -> u64 {
+    ledger
+        .usage(ledger.root())
+        .unwrap()
+        .work(CssWork::PreparationStep)
+}
+
+#[test]
+fn a_utf16_sheet_charges_its_units_its_preparation_steps_and_its_documents() {
+    let text = "a{color:red}";
+    let (ledger, host) = open_host();
+    let report = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(utf16(text), CssUtf16InputLimits::default(), never)
+        .unwrap()
+        .unwrap();
+    let plain = CssParser::default()
+        .parse_sheet_utf16(utf16(text), CssUtf16InputLimits::default(), never)
+        .unwrap();
+    assert_eq!(report, plain);
+    // The documents of the same text as a UTF-8 sheet.
+    assert_eq!(charged(&ledger), [12, 2, 6, 15]);
+    assert_eq!(steps(&ledger), preparation_steps(text));
+    assert!(steps(&ledger) > 12, "more than a step per unit");
+}
+
+#[test]
+fn utf16_block_contents_charge_their_units_and_the_documents_of_block_contents() {
+    let text = "color:red";
+    let (ledger, host) = open_host();
+    let report = CssParser::default()
+        .accounted(&host)
+        .parse_block_contents_utf16(utf16(text), CssUtf16InputLimits::default(), never)
+        .unwrap()
+        .unwrap();
+    let plain = CssParser::default()
+        .parse_block_contents_utf16(utf16(text), CssUtf16InputLimits::default(), never)
+        .unwrap();
+    assert_eq!(report.report(), plain.report());
+    assert_eq!(
+        report.report(),
+        &CssParser::default().parse_block_contents(text)
+    );
+    assert_eq!(charged(&ledger), [9, 3, 7, 21]);
+    assert!(steps(&ledger) > 9);
+}
+
+#[test]
+fn a_utf16_call_runs_in_an_input_phase_that_contains_its_parse_phase() {
+    for rules in [1, 100] {
+        let source = sheet(rules);
+        let mode = ProfileMode::Summary { timing: false };
+        let (ledger, host) = host(Limits::unlimited(), mode);
+        CssParser::default()
+            .accounted(&host)
+            .parse_sheet_utf16(utf16(&source), CssUtf16InputLimits::default(), never)
+            .unwrap()
+            .unwrap();
+        for front in CssFront::ALL {
+            let scope = report(&ledger, host.scope(front));
+            let expected = match front {
+                CssFront::Parse => (1, 3, 1),
+                CssFront::Input => (1, 2, 1),
+                _ => (0, 0, 0),
+            };
+            assert_eq!(
+                (scope.accepted_batches, scope.accepted_items, scope.phases),
+                expected,
+                "{front:?} with {rules} rules"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_refused_preparation_is_returned_inside_ok_and_charged_the_steps_it_took() {
+    let text = "a{color:red}";
+    let needed = usize::try_from(preparation_steps(text)).unwrap();
+    for max_work in [0, 3, needed - 1] {
+        let (ledger, host) = open_host();
+        let refused = CssParser::default()
+            .accounted(&host)
+            .parse_sheet_utf16(utf16(text), work_limit(max_work), never)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(refused.exhausted_limit(), Some(CssUtf16Resource::Work));
+        let plain = CssParser::default()
+            .parse_sheet_utf16(utf16(text), work_limit(max_work), never)
+            .unwrap_err();
+        assert_eq!(refused, plain);
+        // The step that crossed the limit is counted.
+        assert_eq!(steps(&ledger), u64::try_from(max_work + 1).unwrap());
+        assert_eq!(charged(&ledger)[0], 12);
+    }
+}
+
+#[test]
+fn a_preparation_refused_before_the_grammar_builds_no_document() {
+    let (ledger, host) = open_host();
+    let refused = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(utf16("a{color:red}"), work_limit(3), never)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(refused.exhausted_limit(), Some(CssUtf16Resource::Work));
+    assert_eq!(charged(&ledger), [12, 0, 0, 0]);
+}
+
+#[test]
+fn an_input_longer_than_its_unit_limit_is_refused_before_any_step() {
+    let limits = CssUtf16InputLimits {
+        max_input_units: 11,
+        ..CssUtf16InputLimits::default()
+    };
+    let (ledger, host) = open_host();
+    let refused = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(utf16("a{color:red}"), limits, never)
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        refused.exhausted_limit(),
+        Some(CssUtf16Resource::InputUnits)
+    );
+    assert_eq!(charged(&ledger), [12, 0, 0, 0]);
+    assert_eq!(steps(&ledger), 0);
+}
+
+#[test]
+fn an_interrupted_call_returns_the_interruption_and_charges_the_steps_before_it() {
+    // The first poll precedes every step; the fourth interrupts the third step.
+    for (failing, expected) in [(1_usize, 0_u64), (4, 2)] {
+        let (ledger, host) = open_host();
+        let mut polls = 0_usize;
+        let interrupted = CssParser::default()
+            .accounted(&host)
+            .parse_sheet_utf16(
+                utf16("a{color:red}"),
+                CssUtf16InputLimits::default(),
+                || {
+                    polls += 1;
+                    if polls == failing {
+                        Err("stop")
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(interrupted.into_interruption(), Ok("stop"));
+        assert_eq!(steps(&ledger), expected, "poll {failing}");
+        assert_eq!(charged(&ledger), [12, 0, 0, 0]);
+    }
+}
+
+#[test]
+fn a_host_cap_on_preparation_steps_replaces_the_result_of_a_utf16_call() {
+    let text = "a{color:red}";
+    let needed = preparation_steps(text);
+    let caps = cap(CssWorkFields {
+        PreparationStep: needed - 1,
+        ..CssWorkFields::splat(u64::MAX)
+    });
+    let (ledger, host) = host(caps, ProfileMode::Off);
+    let stop = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(utf16(text), CssUtf16InputLimits::default(), never)
+        .unwrap_err();
+    let refusal = stop.host_refusal().unwrap();
+    assert_eq!(
+        refusal.change(),
+        CssChange::Work(CssWork::PreparationStep, needed)
+    );
+    assert_eq!(
+        (refusal.limit(), refusal.total(), refusal.amount()),
+        (needed - 1, 0, needed)
+    );
+    // The input batch is refused whole; the parse work was charged before it.
+    assert_eq!(charged(&ledger), [0, 2, 6, 15]);
+    assert_eq!(steps(&ledger), 0);
+}
+
+#[test]
+fn a_property_value_charges_its_structure_and_its_value_document() {
+    // `calc(` opens one component holding `100%`, ` `, `-`, ` `, `12px`: six
+    // components and 17 bytes, in the structure document and in the value
+    // document.
+    let source = "calc(100% - 12px)";
+    let target =
+        || CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width));
+    let (ledger, host) = open_host();
+    let report = CssParser::default()
+        .accounted(&host)
+        .parse_property_value(source, target(), CssImportance::Normal)
+        .unwrap();
+    assert_eq!(
+        report,
+        CssParser::default().parse_property_value(source, target(), CssImportance::Normal)
+    );
+    assert!(report.is_clean());
+    assert_eq!(charged(&ledger), [17, 2, 12, 34]);
+}
+
+#[test]
+fn the_component_value_fronts_charge_the_one_document_of_their_text() {
+    let parser = CssParser::default();
+
+    // `a`: one component, one byte.
+    let (ledger, host) = open_host();
+    let value = parser.accounted(&host).parse_component_value("a").unwrap();
+    assert_eq!(value, CssComponentValue::parse(&parser, "a"));
+    assert_eq!(charged(&ledger), [1, 1, 1, 1]);
+
+    // `a b`: two idents and the whitespace between them.
+    let (ledger, host) = open_host();
+    let values = parser
+        .accounted(&host)
+        .parse_component_values("a b")
+        .unwrap();
+    assert_eq!(values, CssComponentValues::parse(&parser, "a b"));
+    assert!(values.is_ok());
+    assert_eq!(charged(&ledger), [3, 1, 3, 3]);
+
+    // `a, b`: two idents, the comma and the whitespace.
+    let (ledger, host) = open_host();
+    let list = parser
+        .accounted(&host)
+        .parse_comma_separated_component_values("a, b")
+        .unwrap();
+    assert_eq!(
+        list,
+        CssComponentValues::parse_comma_separated(&parser, "a, b")
+    );
+    assert_eq!(charged(&ledger), [4, 1, 4, 4]);
+}
+
+#[test]
+fn a_refused_component_value_list_is_returned_inside_ok_and_charged_its_bytes() {
+    // Three components against a limit of two.
+    let limits = CssComponentValueLimits::try_new(256, 2, 4096).unwrap();
+    let parser = CssParser::new(CssParserContext::default(), limits);
+    let (ledger, host) = open_host();
+    let refused = parser
+        .accounted(&host)
+        .parse_component_values("a b")
+        .unwrap();
+    assert!(refused.is_err());
+    assert_eq!(refused, CssComponentValues::parse(&parser, "a b"));
+    assert_eq!(charged(&ledger)[0], 3);
+}
+
+#[test]
+fn page_and_font_face_contents_charge_the_nodes_of_the_documents_they_build() {
+    let parser = CssParser::default();
+    let page = "margin:1px;size:a4";
+    let font_face = "font-family:x;font-weight:400";
+
+    let (_, built, _) = work::measure(|| {
+        let _ = parser.parse_page_block_contents(page);
+    });
+    let (ledger, host) = open_host();
+    let report = parser
+        .accounted(&host)
+        .parse_page_block_contents(page)
+        .unwrap();
+    assert_eq!(report, parser.parse_page_block_contents(page));
+    assert!(report.syntax().is_some());
+    let [input, documents, components, _] = charged(&ledger);
+    assert_eq!(input, u64::try_from(page.len()).unwrap());
+    assert!(documents >= 2, "{documents}");
+    assert_eq!(components, u64::try_from(built).unwrap());
+
+    let (_, built, _) = work::measure(|| {
+        let _ = parser.parse_font_face_block_contents(font_face);
+    });
+    let (ledger, host) = open_host();
+    let report = parser
+        .accounted(&host)
+        .parse_font_face_block_contents(font_face)
+        .unwrap();
+    assert_eq!(report, parser.parse_font_face_block_contents(font_face));
+    assert!(report.syntax().is_some());
+    let [input, documents, components, _] = charged(&ledger);
+    assert_eq!(input, u64::try_from(font_face.len()).unwrap());
+    assert!(documents >= 2, "{documents}");
+    assert_eq!(components, u64::try_from(built).unwrap());
+}
+
+#[test]
+fn deep_fragments_charge_what_the_parser_thread_built() {
+    // Seventy nested functions are past the 63 levels a fragment parses on
+    // the caller's stack.
+    let source = format!("{}1px{}", "calc(".repeat(70), ")".repeat(70));
+    let parser = CssParser::default();
+    let (_, built, _) = work::measure(|| {
+        let _ = CssComponentValue::parse(&parser, &source);
+    });
+    let (ledger, host) = open_host();
+    let value = parser
+        .accounted(&host)
+        .parse_component_value(&source)
+        .unwrap();
+    assert_eq!(value, CssComponentValue::parse(&parser, &source));
+    let [input, documents, components, _] = charged(&ledger);
+    assert_eq!(input, u64::try_from(source.len()).unwrap());
+    assert!(documents >= 1);
+    assert!(built > 0);
+    assert_eq!(components, u64::try_from(built).unwrap());
+    assert!(!crate::parse_work::is_collecting());
 }
