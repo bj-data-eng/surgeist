@@ -31,7 +31,10 @@ impl From<DomError> for DomParsedHtmlFrontierError {
 }
 impl std::fmt::Display for DomParsedHtmlFrontierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "original synchronous end refused: {self:?}")
+        f.write_str(match self {
+            Self::Style(_) => "the original Style prefix refused the synchronous end",
+            Self::Remaining(_) => "influencing original work remains before the synchronous end",
+        })
     }
 }
 impl std::error::Error for DomParsedHtmlFrontierError {

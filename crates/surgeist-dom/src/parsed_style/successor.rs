@@ -45,7 +45,23 @@ impl From<surgeist_html::elements::style::HtmlStyleProtocolError>
 }
 impl std::fmt::Display for DomParsedHtmlStyleSuccessorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "original Style successor refused: {self:?}")
+        f.write_str(match self {
+            Self::Style(_) => "the original Style prefix refused the successor",
+            Self::MissingOwner { .. } => {
+                "no CSSOM owner was supplied for the sheet that the predecessor created"
+            }
+            Self::MismatchedOwner { .. } => {
+                "the supplied CSSOM owner is not the owner bound to the destination root"
+            }
+            Self::OwnerBusy { .. } => "the CSSOM owner of the destination root is already borrowed",
+            Self::OwnerPoisoned { .. } => {
+                "the CSSOM owner of the destination root was poisoned by an earlier failure"
+            }
+            Self::Cssom(_) => "the CSSOM producer refused the Style successor",
+            Self::Remaining(_) => {
+                "the next influencing original work is outside this ParserPopped successor"
+            }
+        })
     }
 }
 impl std::error::Error for DomParsedHtmlStyleSuccessorError {

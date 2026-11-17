@@ -126,7 +126,53 @@ impl From<HtmlStyleProtocolError> for DomParsedHtmlStyleError {
 }
 impl std::fmt::Display for DomParsedHtmlStyleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "parsed Style prefix refused: {self:?}")
+        f.write_str(match self {
+            Self::Admission(_) => "the contribution was refused at admission",
+            Self::Busy { .. } => {
+                "the contribution's Style processing state is borrowed by another operation"
+            }
+            Self::Poisoned { .. } => {
+                "the contribution's Style processing state was poisoned by an earlier failure"
+            }
+            Self::UnsupportedProfile { .. } => {
+                "the original Style operation is outside the supported processing profile"
+            }
+            Self::WrongRequest => {
+                "the supplied request does not identify the original Style operation this command acts on"
+            }
+            Self::ExecutionNotAdmitted { .. } => {
+                "synchronous execution of the original contribution has not started"
+            }
+            Self::WrongExecutionProfile { .. } => {
+                "the Style execution profile is not the supported profile without executable JavaScript"
+            }
+            Self::AlreadyBound => "the initial inline policy of this Style operation is already bound",
+            Self::MissingPolicy => "no initial policy association was supplied",
+            Self::ReceiverOccupied => "the notification receiver already holds a continuation",
+            Self::NotificationTransferred => {
+                "the notification continuation was already transferred to its receiving owner"
+            }
+            Self::HandoffRequired { .. } => {
+                "the notification continuation of the completed invocation must be transferred before the Style operation can advance"
+            }
+            Self::MissingObservation => "no inline-policy observation was supplied",
+            Self::InvalidSheetInput => {
+                "the original Style history or inputs do not describe a valid sheet creation"
+            }
+            Self::WrongPhase { .. } => {
+                "the original Style operation is not in the phase this command requires"
+            }
+            Self::DecisionAlreadyAccepted { .. } => {
+                "the inline-policy decision for this Style operation was already accepted"
+            }
+            Self::PolicyContext { .. } => {
+                "the original inline-policy context cannot be used for this Style operation"
+            }
+            Self::Csp(_) => {
+                "the HTML Content Security Policy protocol rejected the Style request"
+            }
+            Self::Protocol(_) => "the HTML Style protocol rejected the reply",
+        })
     }
 }
 impl std::error::Error for DomParsedHtmlStyleError {

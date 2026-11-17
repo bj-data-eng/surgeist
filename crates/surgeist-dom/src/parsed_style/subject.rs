@@ -37,7 +37,16 @@ impl From<surgeist_html::elements::style::HtmlStyleProtocolError>
 }
 impl std::fmt::Display for DomParsedHtmlStyleSubjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "original Style subject refused: {self:?}")
+        f.write_str(match self {
+            Self::Style(_) => "the original Style prefix refused the next subject",
+            Self::Remaining(_) => {
+                "other influencing original work must run before the next Style subject"
+            }
+            Self::WrongOccurrence => {
+                "the supplied occurrence is not the next original Style subject"
+            }
+            Self::AlreadySelected => "the supplied occurrence was already selected",
+        })
     }
 }
 impl std::error::Error for DomParsedHtmlStyleSubjectError {
