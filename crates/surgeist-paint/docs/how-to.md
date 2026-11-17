@@ -2,9 +2,9 @@
 
 ## Admit bounded work
 
-Start with the explicit `PaintLimits::unlimited()` policy, then select named
+Start with the explicit `accounting::PaintLimits::unlimited()` policy, then select named
 `with_work_limit` and `with_resource_limit` caps and pass the limits to
-`PaintOptions::new`. Named getters expose the selected policy. Zero limits are
+`accounting::PaintOptions::new`. Named getters expose the selected policy. Zero limits are
 meaningful. `PaintReport` exposes phase/refusal/event values resolved from Ledger
 at construction; callers do not depend on numeric scope identities or name parsing.
 `plan_stacking`, `plan_paint_order`, `resolve_linear_gradient` and
@@ -34,7 +34,7 @@ positive coordinate receives a numerical refusal.
 Root usage is inclusive of child phases; inspect child attribution without
 adding it to the root totals.
 
-Select Ledger `ProfileMode::Off`, untimed/timed Summary, or bounded Detailed
+Select Ledger `surgeist_ledger::ProfileMode::Off`, untimed/timed Summary, or bounded Detailed
 observation. A supplied monotonic clock is configured with `with_clock`.
 Detailed event loss does not change totals or admission. Timing phases surround
 the actual synchronous algorithm; no async or GPU timing is claimed.

@@ -5,7 +5,9 @@ Read the [repository guide](../../AGENTS.md) for shared policy.
 ## Boundary and discovery
 
 Paint owns resolved stacking-context membership/child order and non-table CSS
-primitive sequencing. The [public front door](src/lib.rs), [stacking models](src/model.rs),
+primitive sequencing. The [public front door](src/lib.rs) declares the public
+domain modules, [stacking](src/stacking.rs) lists the stacking exports, and
+[stacking models](src/model.rs),
 [context algorithm](src/algorithm.rs), [paint-order module](src/paint_order/mod.rs)
 and [accounting](src/accounting.rs) own contracts. [README.md](README.md) links
 capability and custody documentation. Native resolved inputs do not certify
