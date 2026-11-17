@@ -3,8 +3,10 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomDocumentClass, DomError, DomLimits, DomResource, DomSnapshot,
-    NodeId,
+    Dom, DomBatch, DomError, DomSnapshot,
+    document::DomDocumentClass,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
 };
 use surgeist_html::elements::{form::HtmlNativeFormAssociationKind, native::HtmlElementClass};
 use surgeist_html::values::{DocumentString, Namespace};
@@ -49,7 +51,8 @@ fn dom() -> Dom {
             0,
             16,
             262144,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -354,7 +357,8 @@ fn actual_dom_capacity_failure_preserves_the_existing_tree_and_revision() {
             0,
             16,
             262144,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
