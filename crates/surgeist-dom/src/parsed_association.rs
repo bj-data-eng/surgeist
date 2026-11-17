@@ -138,8 +138,8 @@ impl From<DomError> for DomParsedHtmlAssociationAdmissionError {
 impl std::fmt::Display for DomParsedHtmlAssociationAdmissionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Dom(_) => "the canonical DOM refused parsed association admission",
-            Self::NotPending { .. } => "the contribution is no longer pending at its destination",
+            Self::Dom(_) => "the association owner or canonical DOM refused the operation",
+            Self::NotPending { .. } => "the contribution is not pending at its destination",
             Self::LimitReduction { .. } => {
                 "the original association limits cannot be lowered once bound"
             }
@@ -161,9 +161,7 @@ impl std::fmt::Display for DomParsedHtmlAssociationAdmissionError {
             Self::MissingPreferredName { .. } => {
                 "the report seals a preferred-name change without its original preferred name"
             }
-            Self::UnresolvedReport(_) => {
-                "the parse report is defective, so the contribution cannot be classified"
-            }
+            Self::UnresolvedReport(_) => "the contribution's parse report is defective",
         })
     }
 }

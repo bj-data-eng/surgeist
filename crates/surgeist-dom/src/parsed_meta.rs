@@ -45,20 +45,20 @@ impl From<DomError> for DomParsedHtmlMetaError {
 impl std::fmt::Display for DomParsedHtmlMetaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Admission(_) => "the whole parsed Meta contribution was refused at admission",
+            Self::Admission(_) => "the association owner or canonical DOM refused the operation",
             Self::OwnerBusy { .. } => "the CSSOM owner of the destination root is already borrowed",
             Self::OwnerPoisoned { .. } => {
                 "the CSSOM owner of the destination root was poisoned by an earlier failure"
             }
             Self::MissingOwner { .. } => "no CSSOM owner is available for the destination root",
             Self::MismatchedOwner { .. } => {
-                "the supplied CSSOM owner is not the owner bound to the destination root"
+                "the supplied CSSOM owner does not match the owner of the destination root"
             }
             Self::StaleProducer { .. } => {
                 "the sheet is not in the prepared CSSOM snapshot of the destination root"
             }
             Self::Cssom { .. } => {
-                "the CSSOM producer refused the parsed Meta change for the destination root"
+                "the CSSOM producer refused a parsed Meta operation for the destination root"
             }
         })
     }
