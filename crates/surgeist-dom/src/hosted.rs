@@ -497,6 +497,27 @@ pub enum DomDocumentConstructorError {
     IncompleteAssociation,
     Unavailable,
 }
+impl core::fmt::Display for DomDocumentConstructorError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::ForeignIssuer => {
+                "the Document constructor context was issued for a different DOM owner"
+            }
+            Self::ExpiredIssuer => "the Document constructor context's issuer has expired",
+            Self::PoisonedIssuer => {
+                "the Document constructor context's issuer was poisoned by an earlier failure"
+            }
+            Self::StaleAssociation => {
+                "the Document constructor context's Global association is stale or in the wrong phase"
+            }
+            Self::IncompleteAssociation => {
+                "the Document constructor context's association has an incomplete operation"
+            }
+            Self::Unavailable => "no hosted association is available for the Document constructor",
+        })
+    }
+}
+impl core::error::Error for DomDocumentConstructorError {}
 impl DomDocumentConstructorError {
     pub(crate) fn from_hosted(error: DomHostedError) -> crate::DomError {
         let reason = match error {

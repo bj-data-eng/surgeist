@@ -14,6 +14,47 @@ pub enum DomBaseFactsError {
     Missing(HtmlBaseMissing),
     PolicyMismatch,
 }
+/// The clause naming which input the base URL lacked, shared by every message
+/// that reports an `HtmlBaseMissing`.
+pub(crate) const fn missing_clause(missing: HtmlBaseMissing) -> &'static str {
+    match missing {
+        HtmlBaseMissing::DocumentFacts => "document facts are missing",
+        HtmlBaseMissing::DocumentUrl => "the document URL is missing",
+        HtmlBaseMissing::AboutBaseUrl => "the about:base URL is missing",
+        HtmlBaseMissing::CharacterEncoding => "the character encoding is missing",
+        HtmlBaseMissing::ParseObservation => "the parse observation is missing",
+        HtmlBaseMissing::Csp => "the Content Security Policy is missing",
+        HtmlBaseMissing::FrozenBase => "no frozen base exists",
+        HtmlBaseMissing::ResponseDomain => "the response domain is missing",
+    }
+}
+impl core::fmt::Display for DomBaseFactsError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::EnvironmentMismatch => {
+                f.write_str("base URL facts were captured for a different document environment")
+            }
+            Self::ForeignProducer => f.write_str(
+                "base URL facts came from a producer that does not belong to this document",
+            ),
+            Self::InputsMismatch => f.write_str(
+                "base URL facts were computed from inputs that differ from the document's current inputs",
+            ),
+            Self::BasisRevisionMismatch => {
+                f.write_str("base URL facts were captured at a different store revision")
+            }
+            Self::Missing(missing) => write!(
+                f,
+                "the base URL cannot be established: {}",
+                missing_clause(*missing)
+            ),
+            Self::PolicyMismatch => {
+                f.write_str("base URL facts were produced under a different policy")
+            }
+        }
+    }
+}
+impl core::error::Error for DomBaseFactsError {}
 /// Actual native response publication, never a UI/style/task delivery claim.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomBaseResponse {
