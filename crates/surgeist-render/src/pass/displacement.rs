@@ -191,7 +191,7 @@ pub(super) fn parameters(
         raw_map,
     } = shader_program(work)
     else {
-        return Err(crate::RenderAccountingError::Invariant.into());
+        return Err(crate::accounting::RenderAccountingError::Invariant.into());
     };
     let map_size = work.map_upload().map_or([0; 2], |upload| {
         [
@@ -395,13 +395,23 @@ impl PreparedDisplacementBinding {
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, Color, DisplacementInput, DisplacementSource, FilterColorSpace,
-        FilterDomains, Format, Layer, Rect, RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext,
         backend::DeviceCapabilities,
+        capability::Capabilities,
+        displacement::DisplacementInput,
+        displacement::DisplacementSource,
+        filter_domains::FilterDomains,
+        filter_model::FilterColorSpace,
         frame::{FrameContext, FramePlan},
+        geometry::Rect,
+        geometry::Size,
+        layer::Layer,
+        paint::Color,
         pass::{LoweredGraphPlan, RuntimePassKind},
         renderer::Antialiasing,
         resource::WorkingFormat,
+        scene::Scene,
+        surface::Format,
     };
     fn shared<T: Clone>(values: &[T], account: &Account) -> SharedValue<Vec<T>> {
         let mut result = account.retained(values.len()).unwrap();
@@ -411,7 +421,7 @@ mod tests {
     fn graph(scale: f64, zero: bool) -> crate::accounting::OwnedBox<crate::frame::GpuRenderGraph> {
         let bounds = Rect::new(0.0, 0.0, 6.0, 2.0);
         let mut preparation = RenderAccountingContext::default();
-        let operation = crate::prepare_displacement(
+        let operation = crate::displacement::prepare_displacement(
             DisplacementInput::new().with_scale(scale),
             FilterColorSpace::Srgb,
             &mut preparation,
@@ -422,8 +432,13 @@ mod tests {
         } else {
             (Size::new(1.0, 1.0), std::sync::Arc::from([255, 0, 0, 255]))
         };
-        let map =
-            crate::prepare_native_displacement_map(size, pixels, bounds, &mut preparation).unwrap();
+        let map = crate::displacement::prepare_native_displacement_map(
+            size,
+            pixels,
+            bounds,
+            &mut preparation,
+        )
+        .unwrap();
         let mut input = Scene::new();
         input.fill(bounds, Color::BLACK);
         let source = DisplacementSource::finite(
@@ -482,8 +497,8 @@ mod tests {
         .unwrap();
         assert!(matches!(
             error.displacement_diagnostic(),
-            Some(crate::DisplacementPreparationError::Numeric {
-                phase: crate::DisplacementNumericPhase::TableLayout,
+            Some(crate::displacement::DisplacementPreparationError::Numeric {
+                phase: crate::displacement::DisplacementNumericPhase::TableLayout,
                 value: 4096.0
             })
         ));

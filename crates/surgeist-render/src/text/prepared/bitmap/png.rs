@@ -396,9 +396,9 @@ mod tests {
         let mut stream = zlib(&FILTERED[0]);
         *stream.last_mut().unwrap() ^= 1; // wrong Adler; enclosing chunk CRC remains valid
         let bytes = image(&stream, false);
-        let mut context = crate::RenderAccountingContext::default();
+        let mut context = crate::accounting::RenderAccountingContext::default();
         let result: Result<()> = context.prepare(
-            crate::RenderAttemptKind::GlyphRun,
+            crate::accounting::RenderAttemptKind::GlyphRun,
             GlyphRunLimits::new(0, 0, 1 << 20, 0),
             #[cfg(feature = "render-text")]
             None,
@@ -411,7 +411,7 @@ mod tests {
         let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(
             report.status(),
-            crate::RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation)
+            crate::accounting::RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation)
         );
         assert!(report.usage().peak(RenderResource::ScratchCpuBytes) > 0);
         assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn mixed_scanlines_preserve_pixels_and_the_accepted_work_prefix() {
-        use crate::{RenderAccountingOptions, RenderLimits};
+        use crate::{accounting::RenderAccountingOptions, accounting::RenderLimits};
 
         let filtered = [
             1, 10, 20, 30, 255, 30, 30, 30, 0, 2, 40, 40, 40, 0, 40, 40, 40, 0, 4, 50, 50, 50, 0,
@@ -528,7 +528,9 @@ mod tests {
                         let report = terminal.attempt().unwrap();
                         assert_eq!(
                             report.status(),
-                            crate::RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation)
+                            crate::accounting::RenderAttemptStatus::Failed(
+                                crate::ErrorCode::GlyphPreparation
+                            )
                         );
                         // Two CRC passes each visit IHDR's 4+13 bytes, IDAT's
                         // 4+29 bytes, and IEND's 4 bytes. Splitting IDAT into
@@ -555,7 +557,7 @@ mod tests {
 
     #[test]
     fn png_work_caps_admit_exact_decode_and_refuse_before_the_last_pixel_byte() {
-        use crate::{RenderAccountingOptions, RenderLimits};
+        use crate::{accounting::RenderAccountingOptions, accounting::RenderLimits};
         for filtered in FILTERED {
             for (split, exact) in [(false, 124), (true, 140)] {
                 let bytes = image(&zlib(&filtered), split);
@@ -606,7 +608,10 @@ mod tests {
 
     #[test]
     fn decoded_pixels_and_actual_scratch_admission_are_invariant_across_profiles() {
-        use crate::{RenderAccountingOptions, RenderClock, RenderPhaseFilter, RenderProfile};
+        use crate::{
+            accounting::RenderAccountingOptions, accounting::RenderClock,
+            accounting::RenderPhaseFilter, accounting::RenderProfile,
+        };
         fn no_clock() -> std::time::Duration {
             panic!("untimed PNG decoding must not read the clock")
         }

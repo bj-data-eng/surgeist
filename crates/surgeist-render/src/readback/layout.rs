@@ -111,7 +111,7 @@ pub(super) fn decode_padded_rows(
 ) -> Result<crate::accounting::AccountedVec<u8>> {
     let mut rgba = account.retained(layout.decoded_len)?;
     for row in 0..layout.height {
-        account.work(crate::RenderWork::ReadbackRows, 1)?;
+        account.work(crate::accounting::RenderWork::ReadbackRows, 1)?;
         let start = u64::from(row)
             .checked_mul(u64::from(layout.padded_bytes_per_row))
             .and_then(|offset| usize::try_from(offset).ok())
@@ -124,7 +124,10 @@ pub(super) fn decode_padded_rows(
             .ok_or_else(|| readback_failed("mapped readback row was incomplete"))?;
         account.storage().phase(|| {
             let slot = rgba.copy_slot(row)?;
-            account.work(crate::RenderWork::ReadbackBytes, slot.element_count())?;
+            account.work(
+                crate::accounting::RenderWork::ReadbackBytes,
+                slot.element_count(),
+            )?;
             slot.write();
             Ok(())
         })?;

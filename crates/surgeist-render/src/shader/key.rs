@@ -1,10 +1,11 @@
 use crate::{
-    Format, Result,
+    Result,
     accounting::{
         Account, AccountedVec, CpuAccount, RenderResource, RenderWork, SharedValue, StorageAccount,
     },
     image::{Extend, ImageQuality, ImageRendering},
     resource::WorkingFormat,
+    surface::Format,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -479,7 +480,9 @@ impl RenderPipelineKey {
 mod tests {
     use super::*;
     use crate::accounting::RendererCpu;
-    use crate::{RenderAccountingOptions, RenderCpuScope, RenderLimits};
+    use crate::{
+        accounting::RenderAccountingOptions, accounting::RenderCpuScope, accounting::RenderLimits,
+    };
     use std::hash::{Hash, Hasher};
 
     fn live(cpu: &RendererCpu) -> u64 {

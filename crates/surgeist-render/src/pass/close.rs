@@ -30,11 +30,17 @@ use super::model::{
     runtime_affine_is_finite_and_non_singular,
 };
 use crate::{
-    BackendErrorCode, Color, Error, Format, PhysicalSize, Point, Result, Transform,
+    Error, Result,
     command::RenderClip,
+    error::BackendErrorCode,
+    geometry::PhysicalSize,
+    geometry::Point,
+    geometry::Transform,
+    paint::Color,
     renderer::Antialiasing,
     resource::WorkingFormat,
     shader::{SamplerKey, ShaderMaskQualityKey, ShaderMaskSamplingKey, ShaderSamplingFilterKey},
+    surface::Format,
 };
 
 /// Pure proof routines keep their semantic Option/bool result while this
@@ -3773,12 +3779,29 @@ fn same_resource_set(
 mod layer_composite_read_tests {
     use super::*;
     use crate::{
-        BlendMode, Capabilities, Image, ImageId, ImageQuality, Layer, Rect,
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
-        RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
-        RenderRefusalReason, ResolvedLayerAlphaMask, Scene, Size,
+        accounting::RenderAccountingContext,
+        accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind,
+        accounting::RenderAttemptStatus,
+        accounting::RenderEvent,
+        accounting::RenderLimits,
+        accounting::RenderPhase,
+        accounting::RenderPhaseFilter,
+        accounting::RenderProfile,
+        accounting::RenderQuantity,
+        accounting::RenderRefusalReason,
         backend::DeviceCapabilities,
+        capability::Capabilities,
         frame::{FrameContext, FramePlan},
+        geometry::Rect,
+        geometry::Size,
+        image::Image,
+        image::ImageId,
+        image::ImageQuality,
+        layer::BlendMode,
+        layer::Layer,
+        layer::ResolvedLayerAlphaMask,
+        scene::Scene,
     };
 
     fn authored_plan(clip: bool, mask: bool) -> (LoweredGraphPlan, Option<ImageId>) {
@@ -4070,7 +4093,9 @@ mod repeated_proof_accounting_tests {
 
     #[test]
     fn graph_close_preserves_transform_refusal_as_an_accounting_error() {
-        use crate::{RenderAttemptStatus, RenderPhase, RenderQuantity};
+        use crate::{
+            accounting::RenderAttemptStatus, accounting::RenderPhase, accounting::RenderQuantity,
+        };
 
         let plan = lower_capture_proof_fixture(
             1,
@@ -4111,7 +4136,7 @@ mod repeated_proof_accounting_tests {
 
     #[test]
     fn overflowing_capture_product_is_ineligible_after_its_first_finite_check() {
-        use crate::RenderPhase;
+        use crate::accounting::RenderPhase;
 
         let plan = lower_capture_proof_fixture(
             1,
@@ -4180,22 +4205,22 @@ mod repeated_proof_accounting_tests {
 
     fn empty_source_plan() -> LoweredGraphPlan {
         let account = Account::for_test();
-        let mut scene = crate::Scene::new();
+        let mut scene = crate::scene::Scene::new();
         scene.layer(
-            crate::Layer::new().with_composition(
-                crate::LayerComposition::try_porter_duff(
-                    crate::PorterDuffOperator::Clear,
-                    crate::BlendMode::Normal,
+            crate::layer::Layer::new().with_composition(
+                crate::layer::LayerComposition::try_porter_duff(
+                    crate::layer::PorterDuffOperator::Clear,
+                    crate::layer::BlendMode::Normal,
                 )
                 .unwrap(),
             ),
             |_| {},
         );
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &account)
+            .normalize(crate::capability::Capabilities::CURRENT, &account)
             .unwrap();
         let context = crate::frame::FrameContext::try_new(
-            crate::Size::new(2.0, 2.0),
+            crate::geometry::Size::new(2.0, 2.0),
             1.0,
             Antialiasing::Area,
             Color::BLACK,
@@ -4404,10 +4429,16 @@ mod repeated_proof_accounting_tests {
 
     fn color_plan() -> LoweredGraphPlan {
         lower_filter_proof_fixture(vec![
-            crate::FilterList::try_ops(vec![
-                crate::FilterOp::brightness(crate::FilterAmount::try_new(1.25).unwrap()),
-                crate::FilterOp::contrast(crate::FilterAmount::try_new(0.75).unwrap()),
-                crate::FilterOp::sepia(crate::UnitFilterAmount::try_new(0.5).unwrap()),
+            crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::brightness(
+                    crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                ),
+                crate::style::filter::FilterOp::contrast(
+                    crate::style::filter::FilterAmount::try_new(0.75).unwrap(),
+                ),
+                crate::style::filter::FilterOp::sepia(
+                    crate::style::filter::UnitFilterAmount::try_new(0.5).unwrap(),
+                ),
             ])
             .unwrap(),
         ])
@@ -4415,25 +4446,34 @@ mod repeated_proof_accounting_tests {
 
     fn shadow_plan() -> LoweredGraphPlan {
         lower_filter_proof_fixture(vec![
-            crate::FilterList::try_ops(vec![crate::FilterOp::drop_shadow(
-                crate::FilterDropShadow::try_new(
-                    Point::new(0.0, 0.0),
-                    crate::FilterBlur::try_new(0.25).unwrap(),
-                    Color::BLACK,
-                )
-                .unwrap(),
-            )])
+            crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::drop_shadow(
+                    crate::style::filter::FilterDropShadow::try_new(
+                        Point::new(0.0, 0.0),
+                        crate::style::filter::FilterBlur::try_new(0.25).unwrap(),
+                        Color::BLACK,
+                    )
+                    .unwrap(),
+                ),
+            ])
             .unwrap(),
         ])
     }
 
-    fn assert_refusal(report: &crate::RenderFrameReport, work: RenderWork, current: u64) {
+    fn assert_refusal(
+        report: &crate::accounting::RenderFrameReport,
+        work: RenderWork,
+        current: u64,
+    ) {
         let refusal = report
             .attempt()
             .unwrap()
             .refusal()
             .expect("accounted proof refusal");
-        assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
+        assert_eq!(
+            refusal.quantity,
+            crate::accounting::RenderQuantity::Work(work)
+        );
         assert_eq!(refusal.current, current);
         assert_eq!(refusal.amount, 1);
     }
@@ -4634,7 +4674,7 @@ mod repeated_proof_accounting_tests {
         );
         assert_eq!(
             report.attempt().unwrap().status(),
-            crate::RenderAttemptStatus::Refused
+            crate::accounting::RenderAttemptStatus::Refused
         );
         assert_refusal(&report, RenderWork::ShaderBindingVisits, 0);
     }
@@ -4936,19 +4976,23 @@ mod repeated_proof_accounting_tests {
 
     fn independent_path_clip(second_x: f64) -> RenderClip {
         let setup = Account::for_test();
-        let mut path = crate::Path::new();
+        let mut path = crate::shape::Path::new();
         path.move_to(Point::new(0.0, 0.0))
             .line_to(Point::new(second_x, 0.0))
             .line_to(Point::new(0.0, 2.0))
             .close();
-        let filled = crate::FilledPath::try_new(path, crate::FillRule::NonZero).unwrap();
-        let clip = crate::ClipInput::try_filled_path(filled).unwrap();
-        let mut scene = crate::Scene::new();
-        scene.layer(crate::Layer::new().try_clip_input(clip).unwrap(), |child| {
-            child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
-        });
+        let filled =
+            crate::shape::FilledPath::try_new(path, crate::shape::FillRule::NonZero).unwrap();
+        let clip = crate::style::clip::ClipInput::try_filled_path(filled).unwrap();
+        let mut scene = crate::scene::Scene::new();
+        scene.layer(
+            crate::layer::Layer::new().try_clip_input(clip).unwrap(),
+            |child| {
+                child.fill(crate::geometry::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+            },
+        );
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &setup)
+            .normalize(crate::capability::Capabilities::CURRENT, &setup)
             .unwrap();
         let crate::command::RenderCommand::Layer { layer, .. } = &commands[0] else {
             unreachable!()
@@ -5002,7 +5046,7 @@ mod repeated_proof_accounting_tests {
                 unreachable!()
             };
             assert!(
-                !std::ptr::eq::<crate::Path>(&**left, &**right),
+                !std::ptr::eq::<crate::shape::Path>(&**left, &**right),
                 "the equality fallback compares independent allocations"
             );
             capture.work = RuntimeVelloCapture::ClipCoverage(RuntimeClipCoverage {
@@ -5778,13 +5822,15 @@ fn dispatch_pass_semantics(
 mod accounting_tests {
     use super::*;
     use crate::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
-        RenderLimits,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderAttemptStatus, accounting::RenderLimits,
     };
 
     #[test]
     fn proof_sort_admits_each_swap_without_charging_a_refused_move() {
-        use crate::{RenderAccountingError, RenderPhase, RenderQuantity};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderPhase, accounting::RenderQuantity,
+        };
 
         let work = RenderWork::GraphProofSortMoves;
         for (limit, moves, probes, order) in [
@@ -5823,7 +5869,9 @@ mod accounting_tests {
 
     #[test]
     fn proof_map_drops_sort_backing_after_refusal_and_allows_retry() {
-        use crate::{RenderAccountingError, RenderPhase, RenderQuantity};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderPhase, accounting::RenderQuantity,
+        };
 
         let work = RenderWork::GraphProofSortMoves;
         let limits = RenderLimits::new().with_work_limit(work, 2).unwrap();
@@ -5861,7 +5909,10 @@ mod accounting_tests {
     #[test]
     fn proof_map_refuses_a_key_without_reserved_backing() {
         use crate::accounting::StorageContractError;
-        use crate::{RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusalReason};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderPhase, accounting::RenderQuantity,
+            accounting::RenderRefusalReason,
+        };
 
         for limit in [0, 1] {
             let limits = RenderLimits::new()
@@ -5910,7 +5961,10 @@ mod accounting_tests {
 
     #[test]
     fn proof_set_epoch_exhaustion_preserves_membership_and_first_error() {
-        use crate::{RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusalReason};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderPhase, accounting::RenderQuantity,
+            accounting::RenderRefusalReason,
+        };
 
         for prior_refusal in [false, true] {
             let limits = RenderLimits::new()
@@ -5976,7 +6030,7 @@ mod accounting_tests {
         context
             .run(
                 RenderAttemptKind::Frame,
-                crate::RenderPhase::Lower,
+                crate::accounting::RenderPhase::Lower,
                 |account| {
                     let proof = ProofContext::new(account);
                     let mut map = ProofMap::<u32, u64>::new([3, 1, 2], 3, &proof)?;
@@ -6033,7 +6087,7 @@ mod accounting_tests {
             RenderAccountingContext::new(RenderAccountingOptions::default().with_limits(limits));
         let result = context.run(
             RenderAttemptKind::Frame,
-            crate::RenderPhase::Lower,
+            crate::accounting::RenderPhase::Lower,
             |account| {
                 let proof = ProofContext::new(account);
                 let map = ProofMap {
@@ -6062,7 +6116,7 @@ mod accounting_tests {
         );
         let result = context.run(
             RenderAttemptKind::Frame,
-            crate::RenderPhase::Lower,
+            crate::accounting::RenderPhase::Lower,
             |account| {
                 let proof = ProofContext::new(account);
                 let _ = ProofMap::<u32, u64>::new([1, 2], 2, &proof)?;
@@ -6091,7 +6145,7 @@ mod accounting_tests {
             );
             let result = context.run(
                 RenderAttemptKind::Frame,
-                crate::RenderPhase::Lower,
+                crate::accounting::RenderPhase::Lower,
                 |account| {
                     let proof = ProofContext::new(account);
                     let map = ProofMap {

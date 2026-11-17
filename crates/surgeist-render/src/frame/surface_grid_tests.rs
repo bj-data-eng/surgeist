@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    Capabilities, Color, Image, ImageFit, Layer, Paint, ResolvedLayerAlphaMask, Scene, Size,
+    capability::Capabilities, geometry::Size, image::Image, image::ImageFit, layer::Layer,
+    layer::ResolvedLayerAlphaMask, paint::Color, paint::Paint, scene::Scene,
 };
 
 fn white_image() -> Image {

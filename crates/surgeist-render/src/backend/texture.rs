@@ -1,6 +1,6 @@
 use crate::accounting::{Account, Generation, GenerationClass, OwnedGpu, RenderPhase};
 use crate::texture::{TextureDescriptor, headless_texture_descriptor};
-use crate::{Format, PhysicalSize, Result};
+use crate::{Result, geometry::PhysicalSize, surface::Format};
 
 pub(crate) fn create_headless_texture(
     device: &wgpu::Device,

@@ -5,8 +5,10 @@ use crate::accounting::{
 };
 use crate::backend::{Backend, RendererExactSurfaceGraph as ExactGraph};
 use crate::{
-    Antialiasing, BackdropCaptureBounds, BackdropFilterInput, Capabilities, Color, FilterAmount,
-    FilterList, FilterOp, Layer, Rect, Scene, Size,
+    capability::Capabilities, geometry::Rect, geometry::Size, layer::Layer, paint::Color,
+    renderer::Antialiasing, scene::Scene, style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput, style::filter::FilterAmount, style::filter::FilterList,
+    style::filter::FilterOp,
 };
 
 fn source(kind: usize, caps: &DeviceCapabilities, account: &Account) -> OwnedBox<ExactGraph> {
@@ -15,42 +17,42 @@ fn source(kind: usize, caps: &DeviceCapabilities, account: &Account) -> OwnedBox
     if kind == 4 {
         let mut input = Scene::new();
         input.fill(bounds, Color::BLACK);
-        let operation = crate::prepare_morphology(
-            crate::MorphologyInput::new()
-                .with_operator(crate::MorphologyOperator::Dilate)
+        let operation = crate::morphology::prepare_morphology(
+            crate::morphology::MorphologyInput::new()
+                .with_operator(crate::morphology::MorphologyOperator::Dilate)
                 .with_radius(1.0),
-            crate::FilterColorSpace::Srgb,
-            &mut crate::RenderAccountingContext::default(),
+            crate::filter_model::FilterColorSpace::Srgb,
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         scene
             .morphology_layer(
                 Layer::new(),
                 operation,
-                crate::MorphologySource::finite(
+                crate::morphology::MorphologySource::finite(
                     input,
-                    crate::FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
+                    crate::filter_domains::FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
                 ),
             )
             .unwrap();
     } else if kind == 3 {
         let mut input = Scene::new();
         input.fill(bounds, Color::BLACK);
-        let operation = crate::prepare_drop_shadow(
-            crate::DropShadowInput::new()
+        let operation = crate::native_shadow::prepare_drop_shadow(
+            crate::native_shadow::DropShadowInput::new()
                 .with_standard_deviation(1.0)
                 .with_dx(0.5),
-            crate::FilterColorSpace::Srgb,
-            &mut crate::RenderAccountingContext::default(),
+            crate::filter_model::FilterColorSpace::Srgb,
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         scene
             .drop_shadow_layer(
                 Layer::new(),
                 operation,
-                crate::DropShadowSource::finite(
+                crate::native_shadow::DropShadowSource::finite(
                     input,
-                    crate::FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
+                    crate::filter_domains::FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
                 ),
             )
             .unwrap();
@@ -59,9 +61,9 @@ fn source(kind: usize, caps: &DeviceCapabilities, account: &Account) -> OwnedBox
     } else {
         let layer = if kind == 1 {
             Layer::new().with_composition(
-                crate::LayerComposition::try_porter_duff(
-                    crate::PorterDuffOperator::Clear,
-                    crate::BlendMode::Normal,
+                crate::layer::LayerComposition::try_porter_duff(
+                    crate::layer::PorterDuffOperator::Clear,
+                    crate::layer::BlendMode::Normal,
                 )
                 .unwrap(),
             )
@@ -152,12 +154,12 @@ fn view(graph: &ExactGraph) -> GraphPreparationSource<'_> {
     }
 }
 
-fn surface(identity: crate::backend::DeviceSlotIdentity) -> crate::Surface {
-    crate::Surface::with_backend(
-        crate::Attachment::Headless,
-        crate::SurfaceOptions {
+fn surface(identity: crate::backend::DeviceSlotIdentity) -> crate::surface::Surface {
+    crate::surface::Surface::with_backend(
+        crate::surface::Attachment::Headless,
+        crate::surface::SurfaceOptions {
             size: Size::new(2.0, 2.0),
-            ..crate::SurfaceOptions::default()
+            ..crate::surface::SurfaceOptions::default()
         },
         crate::surface::SurfaceBackend::Headless {
             device_identity: identity,
@@ -172,7 +174,10 @@ fn surface(identity: crate::backend::DeviceSlotIdentity) -> crate::Surface {
 
 #[test]
 fn tiny_forced_base_boxed_execution_publishes_literal_black_pixels() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+        crate::renderer::Options::default(),
+    ))
+    .unwrap();
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
     let mut scene = Scene::new();
@@ -180,12 +185,15 @@ fn tiny_forced_base_boxed_execution_publishes_literal_black_pixels() {
     let result = pollster::block_on(renderer.render_forced_base_graph_for_test(
         &mut surface,
         &scene,
-        crate::Parameters::default(),
+        crate::surface::Parameters::default(),
         WorkingFormat::HighPrecision,
     ))
     .unwrap();
     assert_eq!(result.output_extent, PhysicalSize::new(2, 2));
-    assert_eq!(result.stats.route, Some(crate::RenderRoute::GpuGraph));
+    assert_eq!(
+        result.stats.route,
+        Some(crate::stats::RenderRoute::GpuGraph)
+    );
     let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
     assert_eq!(
         pixels.rgba(),
@@ -235,8 +243,8 @@ fn forced_base_execution_records_render_phase_across_profiles() {
             } else {
                 forbidden_clock
             }));
-        let mut renderer = pollster::block_on(crate::Renderer::new(
-            crate::Options::default().with_accounting(options),
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+            crate::renderer::Options::default().with_accounting(options),
         ))
         .unwrap();
         let mut surface =
@@ -246,7 +254,7 @@ fn forced_base_execution_records_render_phase_across_profiles() {
         let result = pollster::block_on(renderer.render_forced_base_graph_for_test(
             &mut surface,
             &scene,
-            crate::Parameters::default(),
+            crate::surface::Parameters::default(),
             WorkingFormat::HighPrecision,
         ))
         .unwrap();
@@ -312,7 +320,7 @@ fn exact_execution_disposes_source_before_downstream_wait_and_cancellation() {
     use std::task::{Context, Poll, Waker};
     let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
     let mut backend = Backend::new(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         device_cpu,
         RenderAccountingOptions::new(),
     )
@@ -419,7 +427,7 @@ fn source_disposal_fault_precedes_submission_and_preserves_prior_semantic_error(
     }
     let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
     let mut backend = Backend::new(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         device_cpu,
         RenderAccountingOptions::new(),
     )
@@ -444,7 +452,8 @@ fn source_disposal_fault_precedes_submission_and_preserves_prior_semantic_error(
                 DISPOSED.with(|probe| {
                     *probe.borrow_mut() = Some(Box::new(move || {
                         if !resources_live() && !passes_live() {
-                            cleanup_cpu.note_fault(crate::RenderAccountingError::Invariant);
+                            cleanup_cpu
+                                .note_fault(crate::accounting::RenderAccountingError::Invariant);
                             true
                         } else {
                             false
@@ -498,7 +507,7 @@ fn source_disposal_fault_precedes_submission_and_preserves_prior_semantic_error(
 fn borrowed_exact_sources_retain_fact_identity_and_release_lists_before_prepared_output() {
     let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
     let mut backend = Backend::new(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         device_cpu.clone(),
         RenderAccountingOptions::new(),
     )
@@ -510,7 +519,7 @@ fn borrowed_exact_sources_retain_fact_identity_and_release_lists_before_prepared
     let ready = backend
         .ready_device_state_borrow_for_test(identity)
         .unwrap();
-    let resources = ResourceManager::new(crate::ResourceCacheBudget::DISABLED);
+    let resources = ResourceManager::new(crate::renderer::ResourceCacheBudget::DISABLED);
     let cache = DevicePassCache::new(
         resources.generation().clone(),
         device_cpu.at(RenderCpuScope::DeviceBacking),
@@ -637,7 +646,7 @@ Ok(())
 fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_source() {
     let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
     let mut backend = Backend::new(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         device_cpu.clone(),
         RenderAccountingOptions::new(),
     )
@@ -663,7 +672,8 @@ fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_sou
                 .run_sync(|attempt| {
                     let account = attempt.account();
                     let source = source(kind, &caps, account);
-                    let resources = ResourceManager::new(crate::ResourceCacheBudget::DISABLED);
+                    let resources =
+                        ResourceManager::new(crate::renderer::ResourceCacheBudget::DISABLED);
                     let cache = DevicePassCache::new(
                         resources.generation().clone(),
                         device_cpu.at(RenderCpuScope::DeviceBacking),
@@ -699,7 +709,7 @@ fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_sou
                             .expect("one real retained byte must prevent exact peak admission");
                         assert!(matches!(
                             error.accounting_diagnostic(),
-                            Some(crate::RenderAccountingError::CpuRefused { .. })
+                            Some(crate::accounting::RenderAccountingError::CpuRefused { .. })
                         ));
                         assert_eq!(
                             cpu.snapshot()
@@ -755,7 +765,7 @@ fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_sou
 fn immutable_preparation_plan_fixed_backing_admits_exact_bytes_and_releases_on_drop() {
     let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
     let mut backend = Backend::new(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         device_cpu,
         RenderAccountingOptions::new(),
     )
@@ -810,9 +820,9 @@ fn immutable_preparation_plan_fixed_backing_admits_exact_bytes_and_releases_on_d
             drop(owned);
         } else {
             assert!(
-                matches!(result.unwrap_err().accounting_diagnostic(),Some(crate::RenderAccountingError::CpuRefused {
-                quantity:crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),current,amount,
-                reason:crate::RenderRefusalReason::Limit {limit:actual},..
+                matches!(result.unwrap_err().accounting_diagnostic(),Some(crate::accounting::RenderAccountingError::CpuRefused {
+                quantity:crate::accounting::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),current,amount,
+                reason:crate::accounting::RenderRefusalReason::Limit {limit:actual},..
             }) if current==baseline && amount==bytes && actual==limit)
             );
         }
@@ -831,7 +841,7 @@ fn immutable_preparation_plan_fixed_backing_admits_exact_bytes_and_releases_on_d
 fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acquisition() {
     let device_cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
     let mut backend = Backend::new(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         device_cpu,
         RenderAccountingOptions::new(),
     )
@@ -939,9 +949,9 @@ fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acq
                 .err()
                 .expect("one byte below the aggregate backing must refuse");
             assert!(
-                matches!(error.accounting_diagnostic(), Some(crate::RenderAccountingError::CpuRefused {
-                quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes), current, amount,
-                reason: crate::RenderRefusalReason::Limit { limit: actual }, ..
+                matches!(error.accounting_diagnostic(), Some(crate::accounting::RenderAccountingError::CpuRefused {
+                quantity: crate::accounting::RenderQuantity::Resource(RenderResource::RetainedCpuBytes), current, amount,
+                reason: crate::accounting::RenderRefusalReason::Limit { limit: actual }, ..
             }) if current == baseline && amount == bytes && actual == limit)
             );
         }
@@ -989,7 +999,7 @@ fn acquired_binding_aggregate_fixed_backing_admits_exact_bytes_before_native_acq
 fn dedicated_slot_references_reject_equal_descriptor_wrong_owners_and_resolved_stale_leases() {
     let options = RenderAccountingOptions::new();
     let mut backend = Backend::new(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         RendererCpu::new(options).unwrap(),
         options,
     )
@@ -1005,7 +1015,7 @@ fn dedicated_slot_references_reject_equal_descriptor_wrong_owners_and_resolved_s
         .prepare_graph_resources(
             identity,
             lowered,
-            crate::EffectQualityPolicy::AllowReducedPrecision,
+            crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
             &setup,
         )
         .unwrap();

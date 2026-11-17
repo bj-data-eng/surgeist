@@ -202,7 +202,7 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
         input,
         Transform::translation(7.0, 9.0).unwrap(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(scene.layout(), input));

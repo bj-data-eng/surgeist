@@ -1,6 +1,7 @@
-use super::{
-    Error, Format, PrimitiveFamily, PrimitiveOperation, Result, RuntimeCapabilityUnavailableReason,
-    UnsupportedPrimitive,
+use super::{Error, Result};
+use crate::{
+    error::PrimitiveFamily, error::PrimitiveOperation, error::RuntimeCapabilityUnavailableReason,
+    error::UnsupportedPrimitive, surface::Format,
 };
 
 /// Runtime-phase facts reported for a selected device and surface through safe WGPU.
@@ -101,7 +102,7 @@ impl AvailableRuntimeCapabilities {
 ///
 /// Each flag is independent and describes runtime device support rather than
 /// semantic rendering support or enabled Cargo features. Selection between high
-/// and reduced precision is controlled separately by [`crate::EffectQualityPolicy`].
+/// and reduced precision is controlled separately by [`crate::renderer::EffectQualityPolicy`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EffectPrecisionCapabilities {
     high_precision: bool,
@@ -154,7 +155,7 @@ impl EffectPrecisionCapabilities {
 /// surface-adapter subsection instead reflects compiled feature and target
 /// availability, including `render-web` on `wasm32`. Neither describes a
 /// selected runtime device or surface; use
-/// [`crate::Renderer::runtime_capabilities`] for those runtime facts.
+/// [`crate::renderer::Renderer::runtime_capabilities`] for those runtime facts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Capabilities {
     geometry_targets: GeometryTargetCapabilities,
@@ -1130,7 +1131,7 @@ impl MaskClipCapabilities {
     }
 
     /// Returns whether resolved image masks execute in the GPU composition graph.
-    /// This includes [`crate::ResolvedLayerAlphaMask`] and [`crate::ResolvedLayerLuminanceMask`].
+    /// This includes [`crate::layer::ResolvedLayerAlphaMask`] and [`crate::layer::ResolvedLayerLuminanceMask`].
     #[must_use]
     pub const fn supports_resolved_alpha_mask_execution(self) -> bool {
         self.resolved_alpha_mask_execution
@@ -1303,7 +1304,7 @@ impl CompositingCapabilities {
     }
 
     /// Returns whether all sixteen mixing functions and the separate Plus
-    /// composition choice in [`crate::BlendMode`] are supported for layers.
+    /// composition choice in [`crate::layer::BlendMode`] are supported for layers.
     #[must_use]
     pub const fn supports_blend_modes(self) -> bool {
         self.blend_modes
@@ -1329,7 +1330,7 @@ impl CompositingCapabilities {
         self.porter_duff_composite_modes
     }
 
-    /// Returns whether the twelve basic [`crate::PorterDuffOperator`] choices execute.
+    /// Returns whether the twelve basic [`crate::layer::PorterDuffOperator`] choices execute.
     #[must_use]
     pub const fn supports_basic_porter_duff_modes(self) -> bool {
         self.basic_porter_duff_modes

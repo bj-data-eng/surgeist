@@ -3,10 +3,14 @@
 //! receiver has no executable preimplementation regression boundary.
 use super::convolution::{assert_pixel, bounds, image, pixel, renderer_and_surface};
 use crate::{
-    Color, DisplacementChannel as Channel, DisplacementInput, DisplacementSource, FilterColorSpace,
-    FilterDomains, Image, ImageBuffer, ImageFit, Layer, Parameters, PreparedDisplacement,
-    PreparedDisplacementMap, Rect, RenderAccountingContext, Renderer, Scene, Size, Surface,
-    Transform, prepare_displacement, prepare_native_displacement_map, resource::WorkingFormat,
+    accounting::RenderAccountingContext, displacement::DisplacementChannel as Channel,
+    displacement::DisplacementInput, displacement::DisplacementSource,
+    displacement::PreparedDisplacement, displacement::PreparedDisplacementMap,
+    displacement::prepare_displacement, displacement::prepare_native_displacement_map,
+    filter_domains::FilterDomains, filter_model::FilterColorSpace, geometry::Rect, geometry::Size,
+    geometry::Transform, image::Image, image::ImageBuffer, image::ImageFit, layer::Layer,
+    paint::Color, renderer::Renderer, resource::WorkingFormat, scene::Scene, surface::Parameters,
+    surface::Surface,
 };
 use std::sync::Arc;
 

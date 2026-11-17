@@ -1,10 +1,11 @@
 use self::native::{ReadbackMapFuture, ReadbackPlan};
 use super::{
-    BackendErrorCode, Error, PhysicalSize, Result, RuntimeOperation,
+    Error, Result,
     accounting::{Account, RenderPhase},
     backend::{Backend, DeviceSlotIdentity},
     gpu_transaction::GpuOperationStage,
 };
+use crate::{error::BackendErrorCode, error::RuntimeOperation, geometry::PhysicalSize};
 
 mod layout;
 mod native;

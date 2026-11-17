@@ -1,8 +1,10 @@
 use super::*;
 use crate::{
-    BlendMode, Capabilities, Color, Image, ImageRendering, Layer, RenderAccountingContext,
-    RenderAccountingError, RenderAccountingOptions, RenderAttemptKind, RenderLimits, RenderPhase,
-    RenderQuantity, RenderResource, Scene,
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind, accounting::RenderLimits,
+    accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderResource,
+    capability::Capabilities, image::Image, image::ImageRendering, layer::BlendMode, layer::Layer,
+    paint::Color, scene::Scene,
 };
 
 #[derive(Clone, Copy)]
@@ -292,7 +294,7 @@ fn capture_locality_restores_the_actual_parent_for_following_siblings() {
 #[test]
 fn surface_grid_query_preserves_the_first_sensitive_paint_and_paint_budget() {
     let rect = Rect::new(0.0, 0.0, 2.0, 2.0);
-    let image = Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255, 0, 0, 255])
+    let image = Image::from_rgba(crate::geometry::Size::new(1.0, 1.0), vec![255, 0, 0, 255])
         .unwrap()
         .rendering(ImageRendering::Pixelated);
     let mut scene = Scene::new();

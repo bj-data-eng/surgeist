@@ -36,8 +36,8 @@ use crate::image::{
 };
 use crate::renderer::Antialiasing;
 #[cfg(test)]
-use crate::style::FilterList;
-use crate::style::FilterOp;
+use crate::style::filter::FilterList;
+use crate::style::filter::FilterOp;
 
 #[cfg(test)]
 static NEXT_GRAPH_GENERATION: AtomicU64 = AtomicU64::new(1);
@@ -739,7 +739,7 @@ pub(super) struct SemanticFilterStepPlan {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticConvolutionPlan {
     pub(super) pass: SemanticPassId,
-    pub(super) operation: crate::PreparedConvolution,
+    pub(super) operation: crate::convolution::PreparedConvolution,
     pub(super) mapping: ConvolutionMapping,
     pub(super) stage: ConvolutionStage,
 }
@@ -771,7 +771,7 @@ pub(super) struct SemanticNativeShadowPlan {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticOffsetPlan {
     pub(super) pass: SemanticPassId,
-    pub(super) operation: crate::PreparedOffset,
+    pub(super) operation: crate::offset::PreparedOffset,
     pub(super) mapping: OffsetMapping,
     pub(super) stage: OffsetStage,
     pub(super) purpose: super::OffsetPurpose,
@@ -2588,7 +2588,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     crate::morphology::MorphologyForeground {
                         operation: foreground.operation,
                         source: crate::filter_source::FilterSourceDescriptor::Constant {
-                            color: crate::Color::TRANSPARENT,
+                            color: crate::paint::Color::TRANSPARENT,
                             filter: foreground.source.filter(),
                             result: foreground.source.result(),
                         },
@@ -2604,7 +2604,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     crate::native_shadow::DropShadowForeground {
                         operation: foreground.operation,
                         source: crate::filter_source::FilterSourceDescriptor::Constant {
-                            color: crate::Color::TRANSPARENT,
+                            color: crate::paint::Color::TRANSPARENT,
                             filter: foreground.source.filter(),
                             result: foreground.source.result(),
                         },
@@ -2628,7 +2628,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         crate::gaussian::GaussianForeground {
                             operation: foreground.operation,
                             source: crate::filter_source::FilterSourceDescriptor::Constant {
-                                color: crate::Color::TRANSPARENT,
+                                color: crate::paint::Color::TRANSPARENT,
                                 filter: foreground.source.filter(),
                                 result: foreground.source.result(),
                             },
@@ -2777,7 +2777,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
     fn prepare_convolution_source(
         &mut self,
         children: RenderCommands,
-        operation: &crate::PreparedConvolution,
+        operation: &crate::convolution::PreparedConvolution,
         raster_transform: Transform,
     ) -> Result<PreparedLayerSource> {
         let domains = operation.domains();
@@ -2817,7 +2817,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
     fn prepare_offset_source(
         &mut self,
         children: RenderCommands,
-        operation: &crate::PreparedOffset,
+        operation: &crate::offset::PreparedOffset,
         raster_transform: Transform,
     ) -> Result<PreparedLayerSource> {
         if super::offset::domains_are_empty(operation) {
@@ -2857,7 +2857,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
     fn apply_offset(
         &mut self,
         mut source: PlannedGraphResource,
-        operation: &crate::PreparedOffset,
+        operation: &crate::offset::PreparedOffset,
         raster_transform: Transform,
     ) -> Result<Option<PlannedGraphResource>> {
         self.account.work(RenderWork::FilterOperationVisits, 1)?;
@@ -2909,7 +2909,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         &mut self,
         source: PlannedGraphResource,
         spatial: NonEmptyFrameSpatialPlan,
-        operation: &crate::PreparedOffset,
+        operation: &crate::offset::PreparedOffset,
         mapping: OffsetMapping,
         stage: OffsetStage,
     ) -> Result<PlannedGraphResource> {
@@ -2927,7 +2927,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         &mut self,
         source: PlannedGraphResource,
         spatial: NonEmptyFrameSpatialPlan,
-        operation: &crate::PreparedOffset,
+        operation: &crate::offset::PreparedOffset,
         mapping: OffsetMapping,
         stage: OffsetStage,
         purpose: super::OffsetPurpose,
@@ -2966,7 +2966,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
     fn apply_convolution(
         &mut self,
         mut source: PlannedGraphResource,
-        operation: &crate::PreparedConvolution,
+        operation: &crate::convolution::PreparedConvolution,
         raster_transform: Transform,
     ) -> Result<Option<PlannedGraphResource>> {
         self.account.work(RenderWork::FilterOperationVisits, 1)?;
@@ -3080,7 +3080,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         &mut self,
         reads: &[PlannedGraphResource],
         spatial: NonEmptyFrameSpatialPlan,
-        operation: &crate::PreparedConvolution,
+        operation: &crate::convolution::PreparedConvolution,
         mapping: ConvolutionMapping,
         stage: ConvolutionStage,
     ) -> Result<PlannedGraphResource> {
@@ -3717,13 +3717,13 @@ fn any_command_in_tree(
 }
 
 fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) -> Result<bool> {
-    fn sensitive(image: &crate::Image) -> bool {
+    fn sensitive(image: &crate::image::Image) -> bool {
         matches!(
             image.rendering_hint(),
             Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
         )
     }
-    fn paint_sensitive(paint: &crate::Paint, account: &Account) -> Result<bool> {
+    fn paint_sensitive(paint: &crate::paint::Paint, account: &Account) -> Result<bool> {
         account.work(RenderWork::PaintVisits, 1)?;
         Ok(match paint.kind() {
             crate::paint::PaintKind::RepeatingGradient(_) => true,
@@ -3923,9 +3923,10 @@ mod diagnostic_tests {
     #[test]
     fn graph_planning_admits_span_and_external_layer_products() {
         use crate::{
-            Capabilities, Color, Layer, RenderAccountingContext, RenderAccountingError,
-            RenderAccountingOptions, RenderAttemptKind, RenderLimits, RenderPhase, RenderQuantity,
-            Scene, Size,
+            accounting::RenderAccountingContext, accounting::RenderAccountingError,
+            accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+            accounting::RenderLimits, accounting::RenderPhase, accounting::RenderQuantity,
+            capability::Capabilities, geometry::Size, layer::Layer, paint::Color, scene::Scene,
         };
 
         let mut scene = Scene::new();

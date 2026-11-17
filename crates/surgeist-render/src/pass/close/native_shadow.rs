@@ -234,7 +234,7 @@ fn validate_chain(
         };
         let filter = work.source().filter();
         let output = offset::intersection(work.source().result(), filter);
-        let domains = crate::FilterDomains::try_new(filter, filter, output).ok()?;
+        let domains = crate::filter_domains::FilterDomains::try_new(filter, filter, output).ok()?;
         if sample.id != sample_id
             || offset.operation() != &work.operation().offset(domains)
             || gaussian.spatial.logical_bounds != filter
@@ -338,11 +338,19 @@ fn validate_chain(
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, DropShadowInput, DropShadowSource, FilterColorSpace, FilterDomains, Layer,
-        Rect, RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext,
         backend::DeviceCapabilities,
+        capability::Capabilities,
+        filter_domains::FilterDomains,
+        filter_model::FilterColorSpace,
         frame::{FrameContext, FramePlan},
-        prepare_drop_shadow,
+        geometry::Rect,
+        geometry::Size,
+        layer::Layer,
+        native_shadow::DropShadowInput,
+        native_shadow::DropShadowSource,
+        native_shadow::prepare_drop_shadow,
+        scene::Scene,
     };
 
     fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {

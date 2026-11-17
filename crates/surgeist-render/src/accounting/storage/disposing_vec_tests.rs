@@ -399,7 +399,7 @@ fn callback_error_and_unwind_keep_unread_suffix_inside_original_backing_disposal
 fn push_uses_original_checked_growth_and_preserves_backing_on_refusal() {
     let cpu = RendererCpu::new(
         RenderAccountingOptions::new()
-            .with_limits(crate::RenderLimits::new().with_scratch_bytes(1)),
+            .with_limits(crate::accounting::RenderLimits::new().with_scratch_bytes(1)),
     )
     .unwrap();
     let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
@@ -411,9 +411,9 @@ fn push_uses_original_checked_growth_and_preserves_backing_on_refusal() {
     let error = owner.push(9).unwrap_err();
     assert!(matches!(
         error.accounting_diagnostic(),
-        Some(crate::RenderAccountingError::CpuRefused {
-            quantity: crate::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
-            reason: crate::RenderRefusalReason::Limit { limit: 1 },
+        Some(crate::accounting::RenderAccountingError::CpuRefused {
+            quantity: crate::accounting::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+            reason: crate::accounting::RenderRefusalReason::Limit { limit: 1 },
             ..
         })
     ));

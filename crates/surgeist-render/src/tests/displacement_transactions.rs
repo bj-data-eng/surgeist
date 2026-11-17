@@ -6,12 +6,26 @@
 use super::convolution::{bounds, image};
 use super::displacement::{active, finite_scene, native_map, source_scene};
 use crate::{
-    DisplacementChannel as Channel, ErrorCode, FilterDomains, GpuFaultKind, ImageBuffer, Layer,
-    Options, Parameters, RenderAttemptStatus, RenderResource, RenderRoute, Renderer,
-    ResourceCacheBudget, RuntimeCapabilityUnavailableReason, Scene, Size, Surface,
+    ErrorCode,
+    accounting::RenderAttemptStatus,
+    accounting::RenderResource,
+    displacement::DisplacementChannel as Channel,
+    error::GpuFaultKind,
+    error::RuntimeCapabilityUnavailableReason,
+    filter_domains::FilterDomains,
+    geometry::Size,
     gpu_transaction::test_support::{
         GraphBeforeSubmissionGateGuardForTest, GraphSubmissionGateGuardForTest,
     },
+    image::ImageBuffer,
+    layer::Layer,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
+    scene::Scene,
+    stats::RenderRoute,
+    surface::Parameters,
+    surface::Surface,
     surface::{HeadlessResources, SurfaceBackend},
 };
 use std::{
@@ -71,7 +85,7 @@ fn setup() -> (
     prior.image(
         image(2, 1, PRIOR_PIXELS.to_vec()),
         bounds(2, 1),
-        crate::ImageFit::Stretch,
+        crate::image::ImageFit::Stretch,
     );
     assert_eq!(
         render(&mut renderer, &mut surface, &prior).rgba(),
@@ -398,7 +412,7 @@ fn public_displacement_first_terminal_fault_preserves_publication_retires_once_a
         );
         assert_eq!(
             first
-                .error(crate::RuntimeOperation::SurfaceRendering)
+                .error(crate::error::RuntimeOperation::SurfaceRendering)
                 .runtime_capability_unavailable_diagnostic()
                 .unwrap()
                 .reason(),

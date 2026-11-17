@@ -38,7 +38,7 @@ impl SemanticFrameGraphPlanner<'_> {
         {
             let color = match foreground.source {
                 FilterSourceDescriptor::Constant { color, .. } => color,
-                _ => crate::Color::TRANSPARENT,
+                _ => crate::paint::Color::TRANSPARENT,
             };
             let mapping = GaussianMapping::new(None, result, [None; 2])
                 .with_color(color)
@@ -168,8 +168,8 @@ impl SemanticFrameGraphPlanner<'_> {
                 let size = grid::extent(result);
                 let height = u64::from(size[1]) + 2 * u64::from(radius);
                 if height > 8_388_608 {
-                    return Err(crate::GaussianPreparationError::Numeric {
-                        phase: crate::GaussianNumericPhase::GridIndex,
+                    return Err(crate::gaussian::GaussianPreparationError::Numeric {
+                        phase: crate::gaussian::GaussianNumericPhase::GridIndex,
                         value: height as f64,
                     }
                     .into());

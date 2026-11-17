@@ -1,7 +1,7 @@
 //! Checked Pad descriptors and analytic programs carried in the native ramp texture.
 
 use crate::accounting::{Account, AccountedVec, RenderResource, RenderWork};
-use crate::{BackendErrorCode, Color, Error, Result};
+use crate::{Error, Result, error::BackendErrorCode, paint::Color};
 use peniko::BrushRef;
 use vello_encoding::{DrawMonoid, DrawTag, Layout, Monoid, Ramps, StreamOffsets};
 
@@ -124,7 +124,7 @@ enum SceneField<'a> {
     Sweep {
         gradient: &'a peniko::Gradient,
         sweep: peniko::SweepGradientPosition,
-        target_extent: crate::PhysicalSize,
+        target_extent: crate::geometry::PhysicalSize,
     },
 }
 
@@ -144,7 +144,7 @@ impl<'a> SceneBrush<'a> {
     pub(crate) fn new(
         brush: BrushRef<'a>,
         sampling: Option<GradientSampling<'a>>,
-        target_extent: crate::PhysicalSize,
+        target_extent: crate::geometry::PhysicalSize,
     ) -> Self {
         let field = match brush {
             BrushRef::Gradient(gradient) => match gradient.kind {
@@ -217,7 +217,7 @@ impl<'a> From<&'a peniko::ImageBrush> for SceneBrush<'a> {
 #[cfg(test)]
 mod sweep_receiving_tests {
     use super::*;
-    use crate::{GradientRealizationError, PhysicalSize};
+    use crate::{error::GradientRealizationError, geometry::PhysicalSize};
     use vello_encoding::Transform;
 
     fn gradient() -> peniko::Gradient {
@@ -752,7 +752,10 @@ fn read_word(bytes: &[u8], offset: usize) -> Result<u32> {
 mod tests {
     use super::*;
     use crate::accounting::{RenderAttemptKind, RenderPhase};
-    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits,
+    };
     use vello_encoding::{Encoding, Resolver};
 
     fn endpoints() -> PadEndpoints {
@@ -1120,7 +1123,7 @@ mod tests {
         let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(
             report.refusal().unwrap().quantity(),
-            crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
+            crate::accounting::RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
         );
         assert_eq!(report.usage().peak(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(report.usage().work(RenderWork::SerializedBytes), 0);
@@ -1244,7 +1247,10 @@ mod tests {
             // RenderLimits are installed on the attempt root, so that parent
             // owns the refusal even though Encode submitted the work.
             assert_eq!(refusal.phase(), RenderPhase::Attempt);
-            assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(refused));
+            assert_eq!(
+                refusal.quantity(),
+                crate::accounting::RenderQuantity::Work(refused)
+            );
             assert_eq!(
                 refusal.current(),
                 if refused == RenderWork::ResourceProbes {
@@ -1256,7 +1262,7 @@ mod tests {
             assert_eq!(refusal.amount(), amount);
             assert_eq!(
                 refusal.reason(),
-                crate::RenderRefusalReason::Limit {
+                crate::accounting::RenderRefusalReason::Limit {
                     limit: if refused == RenderWork::ResourceProbes {
                         probes
                     } else {
@@ -1266,7 +1272,7 @@ mod tests {
             );
             assert_eq!(
                 error.accounting_diagnostic(),
-                Some(crate::RenderAccountingError::Refused(refusal))
+                Some(crate::accounting::RenderAccountingError::Refused(refusal))
             );
             assert_capture_work(
                 &context,
@@ -1335,7 +1341,10 @@ mod tests {
             let attempt = context.last_attempt().unwrap().attempt().unwrap();
             if let Some(work) = expected_refusal {
                 let refusal = attempt.refusal().unwrap();
-                assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(work));
+                assert_eq!(
+                    refusal.quantity(),
+                    crate::accounting::RenderQuantity::Work(work)
+                );
                 assert_eq!(refusal.phase(), RenderPhase::Attempt);
                 assert_eq!(
                     refusal.current(),
@@ -1348,7 +1357,7 @@ mod tests {
                 assert_eq!(refusal.amount(), 1);
                 assert_eq!(
                     refusal.reason(),
-                    crate::RenderRefusalReason::Limit {
+                    crate::accounting::RenderRefusalReason::Limit {
                         limit: if work == RenderWork::ResourceProbes {
                             probes
                         } else {
@@ -1358,7 +1367,7 @@ mod tests {
                 );
                 assert_eq!(
                     error.accounting_diagnostic(),
-                    Some(crate::RenderAccountingError::Refused(refusal))
+                    Some(crate::accounting::RenderAccountingError::Refused(refusal))
                 );
             } else {
                 assert_correspondence(&error);
@@ -1412,17 +1421,17 @@ mod tests {
         assert_eq!(refusal.phase(), RenderPhase::Attempt);
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Work(RenderWork::RasterResourceCopies)
+            crate::accounting::RenderQuantity::Work(RenderWork::RasterResourceCopies)
         );
         assert_eq!(refusal.current(), 0);
         assert_eq!(refusal.amount(), 1);
         assert_eq!(
             refusal.reason(),
-            crate::RenderRefusalReason::Limit { limit: 0 }
+            crate::accounting::RenderRefusalReason::Limit { limit: 0 }
         );
         assert_eq!(
             error.accounting_diagnostic(),
-            Some(crate::RenderAccountingError::Refused(refusal))
+            Some(crate::accounting::RenderAccountingError::Refused(refusal))
         );
         assert_eq!(
             attempt.usage().peak(RenderResource::RetainedCpuBytes),
@@ -1479,18 +1488,18 @@ mod tests {
         let refusal = attempt.refusal().unwrap();
         assert_eq!(
             error.accounting_diagnostic(),
-            Some(crate::RenderAccountingError::Refused(refusal))
+            Some(crate::accounting::RenderAccountingError::Refused(refusal))
         );
         assert_eq!(refusal.phase(), RenderPhase::Attempt);
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
+            crate::accounting::RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
         );
         assert_eq!(refusal.current(), bytes as u64);
         assert_eq!(refusal.amount(), bytes as u64);
         assert_eq!(
             refusal.reason(),
-            crate::RenderRefusalReason::Limit {
+            crate::accounting::RenderRefusalReason::Limit {
                 limit: bytes as u64
             }
         );

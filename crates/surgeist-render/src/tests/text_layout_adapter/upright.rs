@@ -315,7 +315,7 @@ fn upright_asymmetric_outlines_keep_raw_axes_and_vertical_pens_through_outer_pla
             &input,
             outer,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .expect("native upright Text outlines must reach the direct Render adapter");
         assert!(std::ptr::eq(scene.layout(), &input));
@@ -363,7 +363,7 @@ fn upright_asymmetric_outlines_keep_raw_axes_and_vertical_pens_through_outer_pla
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (run, transform) = outline(&retry.scene().commands[0]);
@@ -396,7 +396,7 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
         &input,
         outer,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .expect("accepted upright explicit decoration must accompany real unrotated glyphs");
     assert_eq!(system.stats(), stats);
@@ -417,7 +417,7 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
     };
     assert_eq!(
         *shape,
-        crate::Shape::rect(Rect::try_new(97.0, 20.0, 1.0, 20.0).unwrap())
+        crate::shape::Shape::rect(Rect::try_new(97.0, 20.0, 1.0, 20.0).unwrap())
     );
     let error = refuse(&input, outer, bounded(32, 1024, ROOM, 32, 32, 0));
     assert_limit(&error, TextLayoutResource::Decorations, 1, 0);
@@ -425,7 +425,7 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
         &input,
         outer,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(retry.layout(), &input));
@@ -508,7 +508,7 @@ fn upright_native_synthesis_uses_original_font_axes_once_before_outer_scaling() 
             &input,
             outer,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(system.stats(), stats);

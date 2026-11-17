@@ -327,7 +327,7 @@ fn native_asymmetric_ccw_basis_uses_raw_pens_offsets_and_one_outer_transform_wit
                 &input,
                 outer,
                 limits(),
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(scene.layout(), &input));
@@ -409,7 +409,7 @@ fn rtl_dflt_only_gpos_is_unpositioned_in_both_horizontal_and_native_ccw_profiles
             &input,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(system.stats(), stats);
@@ -486,7 +486,7 @@ fn actual_rtl_horizontal_provider_order_keeps_positive_raw_pens_in_upward_ccw_fl
             &input,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(system.stats(), stats);
@@ -538,7 +538,7 @@ fn ccw_physical_decoration_gets_only_caller_placement_after_native_line_mapping(
             &input,
             outer,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         let commands = &scene.scene().commands;
@@ -557,7 +557,7 @@ fn ccw_physical_decoration_gets_only_caller_placement_after_native_line_mapping(
         };
         assert_eq!(
             *shape,
-            crate::Shape::rect(Rect::try_new(-1.25, 19.25, 1.0, 21.25).unwrap())
+            crate::shape::Shape::rect(Rect::try_new(-1.25, 19.25, 1.0, 21.25).unwrap())
         );
     }
 }
@@ -584,7 +584,7 @@ fn ccw_synthesis_shears_actual_font_axes_before_rotation_and_nonuniform_scale() 
         &input,
         Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (run, transform) = outline(&scene.scene().commands[0]);
@@ -623,7 +623,7 @@ fn ccw_admits_actual_colr_layers_and_sbix_pixels_with_their_own_ink_and_instance
             &input,
             Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(system.stats(), stats);
@@ -669,7 +669,10 @@ fn ccw_admits_actual_colr_layers_and_sbix_pixels_with_their_own_ink_and_instance
                 else {
                     panic!("one retained decoded bitmap")
                 };
-                assert_eq!(image.size(), crate::Size::try_new(2.0, 3.0).unwrap());
+                assert_eq!(
+                    image.size(),
+                    crate::geometry::Size::try_new(2.0, 3.0).unwrap()
+                );
                 assert_eq!(*rect, Rect::try_new(1.0, -9.0, 2.0, 3.0).unwrap());
                 assert_eq!(brush_transform.as_coeffs(), [1.0, 0.0, 0.0, 1.0, 1.0, -9.0]);
                 assert_eq!(
@@ -699,7 +702,7 @@ fn ccw_numeric_and_resource_refusals_publish_no_prefix_and_keep_the_accepted_sce
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let retained = accepted.scene().clone();
@@ -737,7 +740,7 @@ fn ccw_numeric_and_resource_refusals_publish_no_prefix_and_keep_the_accepted_sce
             &input,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -764,7 +767,7 @@ fn ccw_selected_images_refuse_synthesis_precisely_and_keep_prior_publication() {
             &ordinary,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         let previous = accepted.scene().clone();
@@ -809,7 +812,7 @@ fn ccw_selected_images_refuse_synthesis_precisely_and_keep_prior_publication() {
                 &ordinary,
                 Transform::identity(),
                 limits(),
-                &mut crate::RenderAccountingContext::default()
+                &mut crate::accounting::RenderAccountingContext::default()
             )
             .is_ok()
         );
@@ -874,7 +877,7 @@ fn ccw_selected_line_refuses_cw_placement_without_losing_its_source_or_replay() 
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(system.stats(), before);
@@ -911,7 +914,7 @@ fn native_ccw_retains_actual_variable_instance_coordinates_and_qualified_ink() {
             &input,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(system.stats(), stats);

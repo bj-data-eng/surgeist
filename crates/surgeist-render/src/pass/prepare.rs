@@ -10,7 +10,7 @@ use crate::accounting::{Account, AccountedVec, OwnedGpu, RenderPhase, RenderWork
 use std::{marker::PhantomData, sync::Arc};
 
 use super::super::{
-    Format, PhysicalSize, Result,
+    Result,
     backend::DeviceCapabilities,
     filter::CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS,
     frame::GpuRenderGraph,
@@ -54,6 +54,7 @@ use super::{
         prepared_pass_spatial_uniform,
     },
 };
+use crate::{geometry::PhysicalSize, surface::Format};
 
 pub(crate) const VELLO_CAPTURE_TEXTURE_USAGES: wgpu::TextureUsages =
     wgpu::TextureUsages::STORAGE_BINDING
@@ -281,7 +282,7 @@ fn parameter_buffer_preflights(
             if size.is_some() {
                 count = count
                     .checked_add(1)
-                    .ok_or(crate::RenderAccountingError::Invariant)?;
+                    .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
             }
         }
     }
@@ -291,7 +292,8 @@ fn parameter_buffer_preflights(
         for (_, size) in pass.parameter_layout(account)? {
             if let Some(size) = size {
                 lengths.append_slot()?.write(
-                    u64::try_from(size).map_err(|_| crate::RenderAccountingError::Invariant)?,
+                    u64::try_from(size)
+                        .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?,
                 );
             }
         }
@@ -622,7 +624,7 @@ fn analyze_runtime_passes(
         {
             kernel_bound = kernel_bound
                 .checked_add(1)
-                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
+                .ok_or(crate::text::GlyphPreparationError::CapacityOverflow)?;
         }
         if pass_positions
             .insert_with(pass.id, position, account)?
@@ -662,20 +664,21 @@ fn analyze_runtime_passes(
             {
                 capabilities.validate_filter_float32(match work.purpose() {
                     crate::frame::GaussianPurpose::Standalone => {
-                        crate::RuntimeOperation::GaussianRendering
+                        crate::error::RuntimeOperation::GaussianRendering
                     }
                     crate::frame::GaussianPurpose::ConsumedAlpha => {
-                        crate::RuntimeOperation::NativeDropShadowRendering
+                        crate::error::RuntimeOperation::NativeDropShadowRendering
                     }
                 })?;
             }
             RuntimePassKind::Morphology(work) if work.needs_float32() => {
                 capabilities
-                    .validate_filter_float32(crate::RuntimeOperation::MorphologyRendering)?;
+                    .validate_filter_float32(crate::error::RuntimeOperation::MorphologyRendering)?;
             }
             RuntimePassKind::Convolution(work) if !work.operation().is_passthrough() => {
-                capabilities
-                    .validate_filter_float32(crate::RuntimeOperation::ConvolutionRendering)?;
+                capabilities.validate_filter_float32(
+                    crate::error::RuntimeOperation::ConvolutionRendering,
+                )?;
             }
             _ => {}
         }
@@ -1122,7 +1125,7 @@ fn prepare_convolution_weights(
         {
             count = count
                 .checked_add(1)
-                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
+                .ok_or(crate::text::GlyphPreparationError::CapacityOverflow)?;
         }
     }
     let mut weights = account.retained::<RuntimeConvolutionWeightsRequest>(count)?;
@@ -1684,7 +1687,7 @@ fn acquire_prepared_graph_resources(
             if size.is_some() {
                 counts[role.index()] = counts[role.index()]
                     .checked_add(1)
-                    .ok_or(crate::RenderAccountingError::Invariant)?;
+                    .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
             }
         }
     }
@@ -1947,7 +1950,7 @@ fn realize_prepared_graph_passes(
         {
             count = count
                 .checked_add(1)
-                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
+                .ok_or(crate::text::GlyphPreparationError::CapacityOverflow)?;
         }
     }
     let mut spatial_filter_objects = PassMap::new(account, count)?;
@@ -3031,9 +3034,11 @@ mod reconstructed_key_accounting_tests {
 
     fn terminal_fixture() -> LoweredGraphPlan {
         lower_filter_proof_fixture(vec![
-            crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
-                crate::FilterAmount::try_new(1.25).unwrap(),
-            )])
+            crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::brightness(
+                    crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                ),
+            ])
             .unwrap(),
         ])
     }
@@ -3064,11 +3069,14 @@ mod reconstructed_key_accounting_tests {
                     result.is_err(),
                     "preparation must admit the reached terminal record"
                 );
-                assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                assert_eq!(
+                    attempt.status(),
+                    crate::accounting::RenderAttemptStatus::Refused
+                );
                 let refusal = attempt.refusal().unwrap();
                 assert_eq!(
                     refusal.quantity,
-                    crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                    crate::accounting::RenderQuantity::Work(RenderWork::GraphNodeVisits)
                 );
                 assert_eq!((refusal.current, refusal.amount), (0, 1));
             }
@@ -3105,7 +3113,10 @@ mod reconstructed_key_accounting_tests {
                 let error = result.unwrap_err();
                 let attempt = report.attempt().unwrap();
                 if !empty && limit == 0 {
-                    assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                    assert_eq!(
+                        attempt.status(),
+                        crate::accounting::RenderAttemptStatus::Refused
+                    );
                     let refusal = attempt.refusal().unwrap();
                     assert_eq!((refusal.current, refusal.amount), (0, 1));
                 } else {
@@ -3179,9 +3190,11 @@ mod reconstructed_key_accounting_tests {
 
     #[test]
     fn preparation_reconstructed_cache_keys_refuse_before_the_first_binding_comparison() {
-        let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
-            crate::FilterAmount::try_new(1.25).unwrap(),
-        )])
+        let filters = crate::style::filter::FilterList::try_ops(vec![
+            crate::style::filter::FilterOp::brightness(
+                crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+            ),
+        ])
         .unwrap();
         let lowered = lower_filter_proof_fixture(vec![filters]);
         let setup = Account::for_test();
@@ -3204,11 +3217,14 @@ mod reconstructed_key_accounting_tests {
             "preparation must admit its own reconstructed binding comparison"
         );
         let attempt = report.attempt().unwrap();
-        assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+        assert_eq!(
+            attempt.status(),
+            crate::accounting::RenderAttemptStatus::Refused
+        );
         let refusal = attempt.refusal().unwrap();
         assert_eq!(
             refusal.quantity,
-            crate::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+            crate::accounting::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
         );
         assert_eq!((refusal.current, refusal.amount), (0, 1));
     }
@@ -3216,8 +3232,9 @@ mod reconstructed_key_accounting_tests {
     #[test]
     fn preparation_duplicate_runtime_read_follows_its_edge_admission() {
         use crate::{
-            ErrorCode, RenderAccountingError, RenderAttemptStatus, RenderQuantity,
-            RenderRefusalReason, RenderResource,
+            ErrorCode, accounting::RenderAccountingError, accounting::RenderAttemptStatus,
+            accounting::RenderQuantity, accounting::RenderRefusalReason,
+            accounting::RenderResource,
         };
 
         let lowered = terminal_fixture();
@@ -3308,19 +3325,23 @@ mod reconstructed_key_accounting_tests {
 
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let mut backend =
-            crate::backend::Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options)
-                .unwrap();
+        let mut backend = crate::backend::Backend::new(
+            crate::renderer::ResourceCacheBudget::DISABLED,
+            cpu,
+            options,
+        )
+        .unwrap();
         let identity = pollster::block_on(backend.select_device(None))
             .unwrap()
             .unwrap();
         let (device, _) = backend
-            .device_queue(identity, crate::RuntimeOperation::EffectRendering)
+            .device_queue(identity, crate::error::RuntimeOperation::EffectRendering)
             .unwrap();
-        let filters = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
-            crate::FilterBlur::try_new(4.0).unwrap(),
-        )])
-        .unwrap();
+        let filters =
+            crate::style::filter::FilterList::try_ops(vec![crate::style::filter::FilterOp::blur(
+                crate::style::filter::FilterBlur::try_new(4.0).unwrap(),
+            )])
+            .unwrap();
         let lowered = lower_filter_proof_fixture(vec![filters]);
         let setup = Account::for_test();
         let mut resources = PassMap::temporary(&setup, lowered.resources.len()).unwrap();
@@ -3400,18 +3421,23 @@ mod reconstructed_key_accounting_tests {
     #[test]
     fn preparation_kernel_reuse_admits_each_reconstructed_sample_comparison() {
         pollster::block_on(async {
-            let options = crate::RenderAccountingOptions::new();
+            let options = crate::accounting::RenderAccountingOptions::new();
             let cpu = crate::accounting::RendererCpu::new(options).unwrap();
-            let mut backend =
-                crate::backend::Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options)
-                    .unwrap();
+            let mut backend = crate::backend::Backend::new(
+                crate::renderer::ResourceCacheBudget::DISABLED,
+                cpu,
+                options,
+            )
+            .unwrap();
             let identity = backend.select_device(None).await.unwrap().unwrap();
             let (device, _) = backend
-                .device_queue(identity, crate::RuntimeOperation::EffectRendering)
+                .device_queue(identity, crate::error::RuntimeOperation::EffectRendering)
                 .unwrap();
-            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
-                crate::FilterBlur::try_new(0.25).unwrap(),
-            )])
+            let filters = crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::blur(
+                    crate::style::filter::FilterBlur::try_new(0.25).unwrap(),
+                ),
+            ])
             .unwrap();
             let lowered = lower_filter_proof_fixture(vec![filters]);
             let horizontal = lowered
@@ -3474,7 +3500,7 @@ mod reconstructed_key_accounting_tests {
                     let refusal = attempt.refusal().unwrap();
                     assert_eq!(
                         refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::KernelSampleVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::KernelSampleVisits)
                     );
                     assert_eq!((refusal.current, refusal.amount), (10, 1));
                     assert_eq!(

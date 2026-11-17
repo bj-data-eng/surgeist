@@ -4,7 +4,10 @@ use crate::accounting::{
 };
 use crate::filter_source::FilterSourceDescriptor;
 use crate::number_text::Number;
-use crate::{Color, FilterColorSpace, FilterDomains, FilterEdgeMode, Rect, Result, Scene};
+use crate::{
+    Result, filter_domains::FilterDomains, filter_model::FilterColorSpace,
+    filter_model::FilterEdgeMode, geometry::Rect, paint::Color, scene::Scene,
+};
 
 /// Gaussian parameter whose resolved value is invalid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -281,10 +284,12 @@ pub(crate) struct GaussianForeground {
 mod tests {
     use super::*;
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, Capabilities, Error, ErrorCode, Filter,
-        FilterList, FilterOp, Layer, LayerComposition, PorterDuffOperator, RenderAccountingOptions,
-        RenderAttemptStatus, RenderLimits, RenderQuantity, RenderResource, Transform,
-        command::NormalizedForegroundEffect, layer::LayerFilter, scene::Command,
+        Error, ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderResource,
+        capability::Capabilities, command::NormalizedForegroundEffect, geometry::Transform,
+        layer::Filter, layer::Layer, layer::LayerComposition, layer::LayerFilter,
+        layer::PorterDuffOperator, scene::Command, style::filter::BackdropCaptureBounds,
+        style::filter::BackdropFilterInput, style::filter::FilterList, style::filter::FilterOp,
     };
 
     fn domains() -> FilterDomains {
@@ -313,7 +318,7 @@ mod tests {
             .try_backdrop_filter(
                 BackdropFilterInput::try_new(
                     FilterList::try_ops(vec![FilterOp::blur(
-                        crate::FilterBlur::try_new(1.0).unwrap(),
+                        crate::style::filter::FilterBlur::try_new(1.0).unwrap(),
                     )])
                     .unwrap(),
                     BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 4.0, 5.0)).unwrap(),
@@ -448,7 +453,7 @@ mod tests {
             )
             .unwrap_err();
             assert!(
-                matches!(error.accounting_diagnostic(), Some(crate::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(work))
+                matches!(error.accounting_diagnostic(), Some(crate::accounting::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(work))
             );
             assert_eq!(
                 accounting.last_attempt().unwrap().status(),
@@ -702,12 +707,12 @@ mod tests {
                 .filters()
                 .supports_gpu_gaussian_filter_execution()
         );
-        let unavailable = crate::RuntimeCapabilityUnavailable::filter_float32_unavailable(
-            crate::RuntimeOperation::GaussianRendering,
+        let unavailable = crate::error::RuntimeCapabilityUnavailable::filter_float32_unavailable(
+            crate::error::RuntimeOperation::GaussianRendering,
         );
         assert_eq!(
             unavailable.operation(),
-            crate::RuntimeOperation::GaussianRendering
+            crate::error::RuntimeOperation::GaussianRendering
         );
     }
 }

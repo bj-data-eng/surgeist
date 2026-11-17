@@ -1,11 +1,11 @@
-use super::{Color, SymbolicColorPolicy};
+use crate::{capability::SymbolicColorPolicy, paint::Color};
 
-mod background;
-mod clip;
-mod decoration;
-mod filter;
-mod image;
-mod mask;
+pub(crate) mod background;
+pub(crate) mod clip;
+pub(crate) mod decoration;
+pub(crate) mod filter;
+pub(crate) mod image;
+pub(crate) mod mask;
 
 pub use self::background::{
     BackgroundBlendList, BackgroundBlendMode, BackgroundLayer, BackgroundNormalizationInput,
@@ -26,9 +26,8 @@ pub(crate) use self::filter::ColorFilterPipeline;
 #[cfg(test)]
 pub(crate) use self::filter::filter_drop_shadow_payload_accepts_shadow_for_test;
 pub use self::filter::{
-    BackdropCaptureBounds, BackdropFilterInput, ColorFilterOp, FilterAmount, FilterAngle,
-    FilterBlur, FilterDropShadow, FilterList, FilterOp, FilterOpKind, FilteredImagePaint,
-    UnitFilterAmount,
+    BackdropCaptureBounds, BackdropFilterInput, FilterAmount, FilterAngle, FilterBlur,
+    FilterDropShadow, FilterList, FilterOp, FilterOpKind, FilteredImagePaint, UnitFilterAmount,
 };
 pub use self::image::{
     BackgroundAreas, BackgroundAttachment, BackgroundBox, BackgroundClipGeometry,

@@ -12,12 +12,12 @@ mod gpu;
 #[path = "color_bitmap/png_color.rs"]
 mod png_color;
 
-fn limits() -> crate::GlyphRunLimits {
-    crate::GlyphRunLimits::new(4, 1024, 8 << 20, 8 << 20)
+fn limits() -> crate::text::GlyphRunLimits {
+    crate::text::GlyphRunLimits::new(4, 1024, 8 << 20, 8 << 20)
 }
 
-fn instance(size: f32) -> crate::TextInstance {
-    crate::TextInstance::try_new(size, vec![], crate::GlyphSynthesis::none()).unwrap()
+fn instance(size: f32) -> crate::text::TextInstance {
+    crate::text::TextInstance::try_new(size, vec![], crate::text::GlyphSynthesis::none()).unwrap()
 }
 
 fn assert_retained_ink(bytes: Vec<u8>, size: f32, expected: Rect) {
@@ -29,7 +29,7 @@ fn assert_retained_ink(bytes: Vec<u8>, size: f32, expected: Rect) {
         &instance,
         &glyphs,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     );
     assert!(
         result.is_ok(),
@@ -67,7 +67,7 @@ fn selected_colr_v1_executes_true_solid_glyph_translation_and_clip() {
 
 #[test]
 fn selected_colr_v1_report_counts_raw_program_and_consumed_paints() {
-    use crate::{RenderAccountingContext, RenderWork};
+    use crate::{accounting::RenderAccountingContext, accounting::RenderWork};
     let font = FontData::try_from_bytes(
         translated_clipped_v1(),
         0,
@@ -340,11 +340,11 @@ fn assert_registered_adapter(bytes: Vec<u8>, size: f32, ink: Rect) {
     assert_eq!(run.effective_instance().unwrap().font_size(), size);
     drop(system);
     let placement = Transform::translation(3.0, 11.0).unwrap();
-    let result = crate::prepare_text_layout(
+    let result = crate::text_layout::prepare_text_layout(
         &input,
         placement,
-        crate::TextLayoutLimits::new(limits(), 4, 4, 4),
-        &mut crate::RenderAccountingContext::default(),
+        crate::text_layout::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::accounting::RenderAccountingContext::default(),
     );
     assert!(
         result.is_ok(),
@@ -410,14 +410,17 @@ fn one_glyph() -> [TextGlyph; 1] {
     [TextGlyph::try_new(AHEM_GLYPH_X, 3.0, 11.0, 777.0).unwrap()]
 }
 
-fn refusal(bytes: Vec<u8>, instance: &crate::TextInstance) -> crate::GlyphPreparationError {
+fn refusal(
+    bytes: Vec<u8>,
+    instance: &crate::text::TextInstance,
+) -> crate::text::GlyphPreparationError {
     let error = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap()
         .prepare_glyph_run(
             instance,
             &one_glyph(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap_err();
     *error.glyph_preparation_diagnostic().unwrap()
@@ -437,7 +440,7 @@ fn transparent_selected_color_and_fully_decoded_png_prove_empty_without_advance_
                 &instance(20.0),
                 &one_glyph(),
                 limits(),
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(ready.bounds().kind(), TextRunBoundsKind::Empty);
@@ -464,7 +467,7 @@ fn unsupported_valid_colr_root_solid_refuses_before_reinterpreting_it_as_glyph_p
     assert_eq!(facts.solids, [(0, 1.0)]);
     assert_eq!(
         refusal(bytes, &instance(10.0)),
-        crate::GlyphPreparationError::UnsupportedColorPaint { format: 2 }
+        crate::text::GlyphPreparationError::UnsupportedColorPaint { format: 2 }
     );
 }
 
@@ -501,7 +504,7 @@ fn malformed_selected_v1_root_never_falls_back_to_a_valid_v0_root() {
     );
     assert_eq!(
         refusal(bytes, &instance(10.0)),
-        crate::GlyphPreparationError::InvalidFont
+        crate::text::GlyphPreparationError::InvalidFont
     );
 }
 
@@ -528,10 +531,10 @@ fn default_axis_is_retained_but_selected_image_variation_and_synthesis_refuse() 
         offset_sbix(),
     ] {
         let variable = with_axis(&bytes);
-        let zero = crate::TextInstance::try_new(
+        let zero = crate::text::TextInstance::try_new(
             20.0,
-            vec![crate::NormalizedCoordinate::try_from_bits(0).unwrap()],
-            crate::GlyphSynthesis::none(),
+            vec![crate::text::NormalizedCoordinate::try_from_bits(0).unwrap()],
+            crate::text::GlyphSynthesis::none(),
         )
         .unwrap();
         let ready =
@@ -541,28 +544,28 @@ fn default_axis_is_retained_but_selected_image_variation_and_synthesis_refuse() 
                     &zero,
                     &one_glyph(),
                     limits(),
-                    &mut crate::RenderAccountingContext::default(),
+                    &mut crate::accounting::RenderAccountingContext::default(),
                 )
                 .unwrap();
         assert_eq!(ready.instance(), &zero);
-        let varied = crate::TextInstance::try_new(
+        let varied = crate::text::TextInstance::try_new(
             20.0,
-            vec![crate::NormalizedCoordinate::try_from_bits(16384).unwrap()],
-            crate::GlyphSynthesis::none(),
+            vec![crate::text::NormalizedCoordinate::try_from_bits(16384).unwrap()],
+            crate::text::GlyphSynthesis::none(),
         )
         .unwrap();
         assert_eq!(
             refusal(variable, &varied),
-            crate::GlyphPreparationError::UnsupportedImageInstance
+            crate::text::GlyphPreparationError::UnsupportedImageInstance
         );
         for synthesis in [
-            crate::GlyphSynthesis::try_new(0.2, 0.0).unwrap(),
-            crate::GlyphSynthesis::try_new(0.0, 1.0).unwrap(),
+            crate::text::GlyphSynthesis::try_new(0.2, 0.0).unwrap(),
+            crate::text::GlyphSynthesis::try_new(0.0, 1.0).unwrap(),
         ] {
-            let selected = crate::TextInstance::try_new(20.0, vec![], synthesis).unwrap();
+            let selected = crate::text::TextInstance::try_new(20.0, vec![], synthesis).unwrap();
             assert_eq!(
                 refusal(bytes.clone(), &selected),
-                crate::GlyphPreparationError::UnsupportedImageInstance
+                crate::text::GlyphPreparationError::UnsupportedImageInstance
             );
         }
     }
@@ -572,15 +575,15 @@ fn default_axis_is_retained_but_selected_image_variation_and_synthesis_refuse() 
 fn selected_png_encoding_and_truncation_refuse_without_outline_substitution() {
     assert_eq!(
         refusal(ahem_sbix_font(grayscale_png()), &instance(16.0)),
-        crate::GlyphPreparationError::UnsupportedPng
+        crate::text::GlyphPreparationError::UnsupportedPng
     );
     assert_eq!(
         refusal(ahem_sbix_font(malformed_png()), &instance(16.0)),
-        crate::GlyphPreparationError::InvalidFont
+        crate::text::GlyphPreparationError::InvalidFont
     );
     assert_eq!(
         refusal(ahem_color_font(invalid_cpal()), &instance(16.0)),
-        crate::GlyphPreparationError::InvalidFont
+        crate::text::GlyphPreparationError::InvalidFont
     );
 }
 
@@ -595,22 +598,22 @@ fn selected_color_and_png_limits_are_atomic_and_same_input_retries_remain_valid(
             .unwrap();
         let instance = instance(20.0);
         for tight in [
-            crate::GlyphRunLimits::new(0, 1024, 8 << 20, 8 << 20),
-            crate::GlyphRunLimits::new(4, 1024, 0, 8 << 20),
-            crate::GlyphRunLimits::new(4, 1024, 8 << 20, 0),
+            crate::text::GlyphRunLimits::new(0, 1024, 8 << 20, 8 << 20),
+            crate::text::GlyphRunLimits::new(4, 1024, 0, 8 << 20),
+            crate::text::GlyphRunLimits::new(4, 1024, 8 << 20, 0),
         ] {
             let error = font
                 .prepare_glyph_run(
                     &instance,
                     &one_glyph(),
                     tight,
-                    &mut crate::RenderAccountingContext::default(),
+                    &mut crate::accounting::RenderAccountingContext::default(),
                 )
                 .unwrap_err();
             assert!(
                 matches!(
                     error.glyph_preparation_diagnostic(),
-                    Some(crate::GlyphPreparationError::Limit { .. })
+                    Some(crate::text::GlyphPreparationError::Limit { .. })
                 ),
                 "{error:?}"
             );
@@ -620,7 +623,7 @@ fn selected_color_and_png_limits_are_atomic_and_same_input_retries_remain_valid(
                     &instance,
                     &one_glyph(),
                     limits(),
-                    &mut crate::RenderAccountingContext::default(),
+                    &mut crate::accounting::RenderAccountingContext::default(),
                 )
                 .unwrap();
             assert_eq!(ready.instance(), &instance);
@@ -643,7 +646,7 @@ fn mixed_foreground_and_intrinsic_color_preserve_actual_overlap_order() {
             &instance(10.0),
             &glyphs,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     // These are actual executable payload colors and identical overlapping
@@ -688,7 +691,7 @@ fn visible_sbix_bitmap_fitting_charges_its_coordinate_work_in_bitmap() {
         surgeist_test::fixtures::FONT_LIMITS,
     )
     .unwrap();
-    let mut accounting = crate::RenderAccountingContext::default();
+    let mut accounting = crate::accounting::RenderAccountingContext::default();
     let ready = font
         .prepare_glyph_run(&instance(16.0), &one_glyph(), limits(), &mut accounting)
         .unwrap();
@@ -702,8 +705,8 @@ fn visible_sbix_bitmap_fitting_charges_its_coordinate_work_in_bitmap() {
     // Its affine product captures twelve factors and performs twenty operations.
     assert_eq!(
         attempt
-            .phase_usage(crate::RenderPhase::Bitmap)
-            .work(crate::RenderWork::CoordinateVisits),
+            .phase_usage(crate::accounting::RenderPhase::Bitmap)
+            .work(crate::accounting::RenderWork::CoordinateVisits),
         42,
         "visible sbix fitting must be charged in Bitmap"
     );
@@ -719,14 +722,14 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
     .unwrap();
     let limits_for_bitmap = |font: &FontData| {
         let font_charge = font.admitted_face().resource().retained_bytes();
-        crate::GlyphRunLimits::new(1, 0, 8 << 20, font_charge + 1024)
+        crate::text::GlyphRunLimits::new(1, 0, 8 << 20, font_charge + 1024)
     };
     let ready = tiny
         .prepare_glyph_run(
             &instance(16.0),
             &one_glyph(),
             limits_for_bitmap(&tiny),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(ready.path_elements().count(), 0);
@@ -750,14 +753,14 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
             &instance(16.0),
             &one_glyph(),
             limits_for_bitmap(&large),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert!(
         matches!(
             error.glyph_preparation_diagnostic(),
-            Some(crate::GlyphPreparationError::Limit {
-                resource: crate::GlyphResource::RetainedBytes,
+            Some(crate::text::GlyphPreparationError::Limit {
+                resource: crate::text::GlyphResource::RetainedBytes,
                 ..
             })
         ),
@@ -768,7 +771,7 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
             &instance(16.0),
             &one_glyph(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(retried.bounds().ink_rect().unwrap().width(), 32.0);
@@ -793,7 +796,7 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
     let encoded = crate::encode::encode_vello_scene_with_initial_transform(
         &commands,
         Transform::identity(),
-        crate::PhysicalSize::new(2, 2),
+        crate::geometry::PhysicalSize::new(2, 2),
         &crate::accounting::Account::for_test(),
     )
     .unwrap();
@@ -897,7 +900,7 @@ fn selected_color_and_bitmap_consumers_qualify_real_composite_closures_before_pu
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
-        let mut context = crate::RenderAccountingContext::default();
+        let mut context = crate::accounting::RenderAccountingContext::default();
         let error = font
             .prepare_glyph_run(
                 &instance(size),
@@ -908,14 +911,23 @@ fn selected_color_and_bitmap_consumers_qualify_real_composite_closures_before_pu
             .unwrap_err();
         assert_eq!(
             error.glyph_preparation_diagnostic(),
-            Some(&crate::GlyphPreparationError::InvalidFont)
+            Some(&crate::text::GlyphPreparationError::InvalidFont)
         );
         let report = context.last_attempt().unwrap();
         assert_eq!(report.cleanup_fault(), None);
         let usage = report.attempt().unwrap().usage();
-        assert_eq!(usage.live(crate::RenderResource::ScratchCpuBytes), 0);
-        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
-        assert_eq!(usage.work(crate::RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(
+            usage.live(crate::accounting::RenderResource::ScratchCpuBytes),
+            0
+        );
+        assert_eq!(
+            usage.live(crate::accounting::RenderResource::RetainedCpuBytes),
+            0
+        );
+        assert_eq!(
+            usage.work(crate::accounting::RenderWork::PreparedTransferredBytes),
+            0
+        );
         assert_retained_ink(composite_x(&bytes, false), size, expected);
     }
 }

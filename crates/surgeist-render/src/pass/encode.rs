@@ -21,10 +21,10 @@ mod native_shadow;
 mod offset;
 
 #[cfg(test)]
-use crate::BlendMode;
+use crate::layer::BlendMode;
 
 use super::super::{
-    Color, Format, PhysicalSize, Result, Transform,
+    Result,
     encode::{encode_vello_clip_coverage_scene, encode_vello_scene_with_initial_transform},
     renderer::Antialiasing,
     resource::{FrameCleanup, FrameResourceScope, GaussianKernelKey, ResourceManager},
@@ -59,6 +59,7 @@ use super::{
         VELLO_CAPTURE_TEXTURE_USAGES,
     },
 };
+use crate::{geometry::PhysicalSize, geometry::Transform, paint::Color, surface::Format};
 
 pub(super) fn filter_step_passes<'a>(
     steps: &'a [ExecutableFilterStepFacts],
@@ -5113,7 +5114,8 @@ mod repeated_proof_accounting_tests {
     async fn backend() -> (Backend, DeviceSlotIdentity) {
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let mut backend = Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options).unwrap();
+        let mut backend =
+            Backend::new(crate::renderer::ResourceCacheBudget::DISABLED, cpu, options).unwrap();
         let identity = backend
             .select_device(None)
             .await
@@ -5123,15 +5125,15 @@ mod repeated_proof_accounting_tests {
     }
 
     fn lower_receipt_scene(
-        scene: crate::Scene,
+        scene: crate::scene::Scene,
         capabilities: &crate::backend::DeviceCapabilities,
         setup: &Account,
     ) -> super::super::model::LoweredGraphPlan {
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, setup)
+            .normalize(crate::capability::Capabilities::CURRENT, setup)
             .unwrap();
         let context = crate::frame::FrameContext::try_new(
-            crate::Size::new(4.0, 4.0),
+            crate::geometry::Size::new(4.0, 4.0),
             1.0,
             Antialiasing::Area,
             Color::TRANSPARENT,
@@ -5142,7 +5144,9 @@ mod repeated_proof_accounting_tests {
             panic!("the authored receipt fixture requires a GPU graph");
         };
         let format = capabilities
-            .resolve_effect_working_format(crate::EffectQualityPolicy::AllowReducedPrecision)
+            .resolve_effect_working_format(
+                crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
+            )
             .unwrap();
         super::super::model::LoweredGraphPlan::try_lower_validated_graph(
             &graph,
@@ -5160,32 +5164,40 @@ mod repeated_proof_accounting_tests {
             let (mut backend, identity) = backend().await;
             let capabilities = backend.device_capabilities(identity).unwrap();
             let setup = Account::for_test();
-            let filters = crate::FilterList::try_ops(vec![
-                crate::FilterOp::brightness(crate::FilterAmount::try_new(1.25).unwrap()),
-                crate::FilterOp::blur(crate::FilterBlur::try_new(0.25).unwrap()),
-                crate::FilterOp::drop_shadow(
-                    crate::FilterDropShadow::try_new(
-                        crate::Point::new(0.0, 0.0),
-                        crate::FilterBlur::try_new(0.25).unwrap(),
+            let filters = crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::brightness(
+                    crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                ),
+                crate::style::filter::FilterOp::blur(
+                    crate::style::filter::FilterBlur::try_new(0.25).unwrap(),
+                ),
+                crate::style::filter::FilterOp::drop_shadow(
+                    crate::style::filter::FilterDropShadow::try_new(
+                        crate::geometry::Point::new(0.0, 0.0),
+                        crate::style::filter::FilterBlur::try_new(0.25).unwrap(),
                         Color::BLACK,
                     )
                     .unwrap(),
                 ),
             ])
             .unwrap();
-            let input = crate::BackdropFilterInput::try_new(
+            let input = crate::style::filter::BackdropFilterInput::try_new(
                 filters,
-                crate::BackdropCaptureBounds::try_new(crate::Rect::new(0.0, 0.0, 2.0, 2.0))
-                    .unwrap(),
+                crate::style::filter::BackdropCaptureBounds::try_new(crate::geometry::Rect::new(
+                    0.0, 0.0, 2.0, 2.0,
+                ))
+                .unwrap(),
                 None,
             )
             .unwrap();
-            let mut scene = crate::Scene::new();
-            scene.fill(crate::Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+            let mut scene = crate::scene::Scene::new();
+            scene.fill(crate::geometry::Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
             scene.layer(
-                crate::Layer::new().try_backdrop_filter(input).unwrap(),
+                crate::layer::Layer::new()
+                    .try_backdrop_filter(input)
+                    .unwrap(),
                 |child| {
-                    child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+                    child.fill(crate::geometry::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
                 },
             );
             let lowered = lower_receipt_scene(scene, &capabilities, &setup);
@@ -5193,7 +5205,7 @@ mod repeated_proof_accounting_tests {
                 .prepare_graph_resources(
                     identity,
                     lowered,
-                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                     &setup,
                 )
                 .unwrap();
@@ -5234,7 +5246,7 @@ mod repeated_proof_accounting_tests {
                     let refusal = attempt.refusal().unwrap();
                     assert_eq!(
                         refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::GraphNodeVisits)
                     );
                     assert_eq!((refusal.current, refusal.amount), (2, 1));
                 }
@@ -5288,25 +5300,33 @@ mod repeated_proof_accounting_tests {
                 let setup = Account::for_test();
                 let lowered = match mode {
                     0 => lower_filter_proof_fixture(vec![
-                        crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
-                            crate::FilterAmount::try_new(1.25).unwrap(),
-                        )])
+                        crate::style::filter::FilterList::try_ops(vec![
+                            crate::style::filter::FilterOp::brightness(
+                                crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                            ),
+                        ])
                         .unwrap(),
                     ]),
                     1 => lower_capture_proof_fixture(1, true, &capabilities),
                     _ => {
-                        let bounds = crate::Rect::new(0.0, 0.0, 2.0, 2.0);
-                        let image =
-                            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255; 4])
-                                .unwrap();
-                        let mask = crate::ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
-                        let mut scene = crate::Scene::new();
+                        let bounds = crate::geometry::Rect::new(0.0, 0.0, 2.0, 2.0);
+                        let image = crate::image::Image::from_rgba(
+                            crate::geometry::Size::new(1.0, 1.0),
+                            vec![255; 4],
+                        )
+                        .unwrap();
+                        let mask =
+                            crate::layer::ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
+                        let mut scene = crate::scene::Scene::new();
                         scene.layer(
-                            crate::Layer::new()
+                            crate::layer::Layer::new()
                                 .blend(BlendMode::Multiply)
                                 .with_resolved_alpha_mask(mask),
                             |child| {
-                                child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+                                child.fill(
+                                    crate::geometry::Rect::new(0.0, 0.0, 1.0, 1.0),
+                                    Color::BLACK,
+                                );
                             },
                         );
                         lower_receipt_scene(scene, &capabilities, &setup)
@@ -5316,14 +5336,14 @@ mod repeated_proof_accounting_tests {
                     .begin_gpu_operation(
                         identity,
                         crate::gpu_transaction::GpuOperationStage::Render,
-                        crate::RuntimeOperation::EffectRendering,
+                        crate::error::RuntimeOperation::EffectRendering,
                     )
                     .unwrap();
                 let mut prepared = backend
                     .prepare_graph_resources(
                         identity,
                         lowered,
-                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                         &setup,
                     )
                     .unwrap();
@@ -5379,7 +5399,7 @@ mod repeated_proof_accounting_tests {
                     let refusal = attempt.refusal().unwrap();
                     assert_eq!(
                         refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
                     );
                     assert_eq!((refusal.current, refusal.amount), (exact - 1, 1));
                 }
@@ -5397,7 +5417,10 @@ mod repeated_proof_accounting_tests {
                 drop(request);
                 drop(prepared);
                 transaction
-                    .finish(crate::RuntimeOperation::EffectRendering, Some(&setup))
+                    .finish(
+                        crate::error::RuntimeOperation::EffectRendering,
+                        Some(&setup),
+                    )
                     .await
                     .unwrap();
             }
@@ -5416,7 +5439,7 @@ mod repeated_proof_accounting_tests {
                     .prepare_graph_resources(
                         identity,
                         lowered,
-                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                         &setup,
                     )
                     .unwrap();
@@ -5464,9 +5487,11 @@ mod repeated_proof_accounting_tests {
         pollster::block_on(async {
             let (mut backend, identity) = backend().await;
             for limit in [4, 3] {
-                let filters = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
-                    crate::FilterBlur::try_new(0.25).unwrap(),
-                )])
+                let filters = crate::style::filter::FilterList::try_ops(vec![
+                    crate::style::filter::FilterOp::blur(
+                        crate::style::filter::FilterBlur::try_new(0.25).unwrap(),
+                    ),
+                ])
                 .unwrap();
                 let lowered = lower_filter_proof_fixture(vec![filters]);
                 let setup = Account::for_test();
@@ -5474,7 +5499,7 @@ mod repeated_proof_accounting_tests {
                     .prepare_graph_resources(
                         identity,
                         lowered,
-                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                         &setup,
                     )
                     .unwrap();
@@ -5570,7 +5595,7 @@ mod repeated_proof_accounting_tests {
                     let refusal = report.attempt().unwrap().refusal().unwrap();
                     assert_eq!(
                         refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
                     );
                     assert_eq!((refusal.current, refusal.amount), (3, 1));
                     assert_eq!(prepared.next_pass, index);
@@ -5606,16 +5631,21 @@ mod repeated_proof_accounting_tests {
     #[test]
     fn prepared_color_release_admits_its_exact_forward_prefix() {
         use crate::accounting::{FrameFixture, RenderCpuScope, RenderProfile};
-        use crate::{RenderAccountingError, RenderQuantity, RenderRefusalReason, RenderResource};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderQuantity,
+            accounting::RenderRefusalReason, accounting::RenderResource,
+        };
 
         pollster::block_on(async {
             let (mut backend, identity) = backend().await;
             let options = RenderAccountingOptions::new()
                 .with_profile(RenderProfile::Summary { timing: false });
             let preparation_cpu = RendererCpu::new(options).unwrap();
-            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
-                crate::FilterAmount::try_new(1.25).unwrap(),
-            )])
+            let filters = crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::brightness(
+                    crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                ),
+            ])
             .unwrap();
             let lowered = lower_filter_proof_fixture(vec![filters]);
             let (result, _, _, fault) = FrameFixture::new(&preparation_cpu, options)
@@ -5624,12 +5654,12 @@ mod repeated_proof_accounting_tests {
                     let transaction = backend.begin_gpu_operation(
                         identity,
                         crate::gpu_transaction::GpuOperationStage::Render,
-                        crate::RuntimeOperation::EffectRendering,
+                        crate::error::RuntimeOperation::EffectRendering,
                     )?;
                     let mut prepared = backend.prepare_graph_resources(
                         identity,
                         lowered,
-                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                         setup,
                     )?;
                     let index = prepared
@@ -5793,7 +5823,7 @@ mod repeated_proof_accounting_tests {
                     }
                     drop(prepared);
                     transaction
-                        .finish(crate::RuntimeOperation::EffectRendering, Some(setup))
+                        .finish(crate::error::RuntimeOperation::EffectRendering, Some(setup))
                         .await
                 })
                 .await
@@ -5806,7 +5836,7 @@ mod repeated_proof_accounting_tests {
 
     #[test]
     fn late_lease_fault_returns_other_leases_and_retains_parameter_backing() {
-        use crate::RenderResource;
+        use crate::accounting::RenderResource;
         use crate::accounting::{FrameFixture, RenderCpuScope, RenderProfile};
         use surgeist_ledger::Dimension;
 
@@ -5828,12 +5858,16 @@ mod repeated_proof_accounting_tests {
             ] {
                 let color = matches!(case, Case::LaterColorBuffer);
                 let filter = if color {
-                    crate::FilterOp::brightness(crate::FilterAmount::try_new(1.25).unwrap())
+                    crate::style::filter::FilterOp::brightness(
+                        crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                    )
                 } else {
-                    crate::FilterOp::blur(crate::FilterBlur::try_new(0.25).unwrap())
+                    crate::style::filter::FilterOp::blur(
+                        crate::style::filter::FilterBlur::try_new(0.25).unwrap(),
+                    )
                 };
                 let lowered = lower_filter_proof_fixture(vec![
-                    crate::FilterList::try_ops(vec![filter]).unwrap(),
+                    crate::style::filter::FilterList::try_ops(vec![filter]).unwrap(),
                 ]);
                 let (result, _, _, fault) = FrameFixture::new(&preparation_cpu, options)
                     .run(async |attempt| {
@@ -5841,12 +5875,12 @@ mod repeated_proof_accounting_tests {
                         let transaction = backend.begin_gpu_operation(
                             identity,
                             crate::gpu_transaction::GpuOperationStage::Render,
-                            crate::RuntimeOperation::EffectRendering,
+                            crate::error::RuntimeOperation::EffectRendering,
                         )?;
                         let mut prepared = backend.prepare_graph_resources(
                             identity,
                             lowered,
-                            crate::EffectQualityPolicy::AllowReducedPrecision,
+                            crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                             setup,
                         )?;
                         let index = prepared
@@ -6004,7 +6038,7 @@ mod repeated_proof_accounting_tests {
                         drop(prepared);
                         assert_eq!(cache_custody(), [0, 0, 0]);
                         transaction
-                            .finish(crate::RuntimeOperation::EffectRendering, Some(setup))
+                            .finish(crate::error::RuntimeOperation::EffectRendering, Some(setup))
                             .await
                     })
                     .await
@@ -6040,9 +6074,11 @@ mod repeated_proof_accounting_tests {
         pollster::block_on(async {
             let (mut backend, identity) = backend().await;
             for limit in [exact, exact - 1] {
-                let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
-                    crate::FilterAmount::try_new(1.25).unwrap(),
-                )])
+                let filters = crate::style::filter::FilterList::try_ops(vec![
+                    crate::style::filter::FilterOp::brightness(
+                        crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                    ),
+                ])
                 .unwrap();
                 let lowered = lower_filter_proof_fixture(vec![filters]);
                 let setup = Account::for_test();
@@ -6052,14 +6088,14 @@ mod repeated_proof_accounting_tests {
                     .begin_gpu_operation(
                         identity,
                         crate::gpu_transaction::GpuOperationStage::Render,
-                        crate::RuntimeOperation::EffectRendering,
+                        crate::error::RuntimeOperation::EffectRendering,
                     )
                     .unwrap();
                 let mut prepared = backend
                     .prepare_graph_resources(
                         identity,
                         lowered,
-                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                         &setup,
                     )
                     .unwrap();
@@ -6187,7 +6223,10 @@ mod repeated_proof_accounting_tests {
                         "the next inspection must refuse before atomic release"
                     );
                     let refusal = report.attempt().unwrap().refusal().unwrap();
-                    assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::accounting::RenderQuantity::Work(work)
+                    );
                     assert_eq!((refusal.current, refusal.amount), (exact - 1, 1));
                     assert_eq!(progress.completed_pass_count, 0);
                     assert_eq!(prepared.next_pass, index);
@@ -6229,7 +6268,10 @@ mod repeated_proof_accounting_tests {
                 drop(encoder);
                 drop(prepared);
                 transaction
-                    .finish(crate::RuntimeOperation::EffectRendering, Some(&setup))
+                    .finish(
+                        crate::error::RuntimeOperation::EffectRendering,
+                        Some(&setup),
+                    )
                     .await
                     .unwrap();
             }
@@ -6247,7 +6289,7 @@ mod repeated_proof_accounting_tests {
                 .prepare_graph_resources(
                     identity,
                     lowered,
-                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                     &setup,
                 )
                 .unwrap();
@@ -6313,7 +6355,7 @@ mod repeated_proof_accounting_tests {
                 .prepare_graph_resources(
                     identity,
                     lowered,
-                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                     &setup,
                 )
                 .unwrap();
@@ -6349,7 +6391,7 @@ mod repeated_proof_accounting_tests {
             let refusal = attempt.refusal().unwrap();
             assert_eq!(
                 refusal.quantity,
-                crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                crate::accounting::RenderQuantity::Work(RenderWork::GraphNodeVisits)
             );
             assert_eq!((refusal.current, refusal.amount), (3, 1));
             assert_eq!(
@@ -6373,7 +6415,7 @@ mod repeated_proof_accounting_tests {
                 .prepare_graph_resources(
                     identity,
                     lowered,
-                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    crate::renderer::EffectQualityPolicy::AllowReducedPrecision,
                     &setup,
                 )
                 .unwrap();
@@ -6422,7 +6464,7 @@ mod repeated_proof_accounting_tests {
                     let refusal = attempt.refusal().unwrap();
                     assert_eq!(
                         refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
                     );
                     assert_eq!((refusal.current, refusal.amount), (1, 1));
                     assert_eq!(attempt.usage().work(RenderWork::PathElementVisits), 0);

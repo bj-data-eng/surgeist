@@ -6,16 +6,21 @@ use super::{
     gaussian::{GaussianKernelKey, GaussianKernelPlan},
 };
 use crate::{
-    BackendErrorCode, Error, RenderAccountingError, RenderQuantity, RenderRefusalReason,
-    RenderResource, ResourceCacheBudget, Result,
+    Error, Result,
+    accounting::RenderAccountingError,
+    accounting::RenderQuantity,
+    accounting::RenderRefusalReason,
+    accounting::RenderResource,
     accounting::{
         Account, AccountedVec, CacheRegistration, CpuAccount, Generation, GenerationClass,
         OwnedGpu, StorageAccount,
     },
+    error::BackendErrorCode,
     image::{
         RawImageUploadDescriptor, RawImageUploadKey, ResolvedMaskUploadDescriptor,
         ResolvedMaskUploadKey,
     },
+    renderer::ResourceCacheBudget,
     texture::{EffectTextureDescriptor, EffectTextureKey},
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
 };
@@ -152,7 +157,7 @@ impl ResourceAllocationPreflight {
         account: &Account,
     ) -> Result<Self> {
         if descriptor.physical_size().width() == 0 || descriptor.physical_size().height() == 0 {
-            return Err(crate::RenderAccountingError::Invariant.into());
+            return Err(crate::accounting::RenderAccountingError::Invariant.into());
         }
         descriptor.validate_upload_byte_len(descriptor.bytes().len())?;
         Ok(Self {

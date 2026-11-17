@@ -3,9 +3,13 @@ use crate::accounting::{
     Account, AccountedVec, RenderResource, RenderWork, SharedValue, StorageAccount,
 };
 use crate::{
-    BackendErrorCode, Color, Error, Point, Rect, Result,
+    Error, Result,
+    error::BackendErrorCode,
     frame::CompositeSourceSpace,
+    geometry::Point,
+    geometry::Rect,
     layer::{BlendMode, LayerComposition, PorterDuffOperator},
+    paint::Color,
     pass::{
         RuntimeColorClampBoundary, RuntimeColorOperation, RuntimeColorOperationKind,
         RuntimeLayerCompositeParameters, RuntimeSpatialDescriptor,
@@ -52,8 +56,8 @@ impl GaussianParameterBytes {
         account: &Account,
     ) -> Result<Self> {
         let invalid = |value| {
-            Error::from(crate::GaussianPreparationError::Numeric {
-                phase: crate::GaussianNumericPhase::GridMapping,
+            Error::from(crate::gaussian::GaussianPreparationError::Numeric {
+                phase: crate::gaussian::GaussianNumericPhase::GridMapping,
                 value,
             })
         };
@@ -329,8 +333,8 @@ impl NativeShadowParameterBytes {
     pub(crate) fn try_new(facts: NativeShadowParameterFacts, account: &Account) -> Result<Self> {
         use super::ShaderNativeShadowSourceKey;
         let invalid = |value| {
-            Error::from(crate::DropShadowPreparationError::Numeric {
-                phase: crate::DropShadowNumericPhase::MergeMapping,
+            Error::from(crate::native_shadow::DropShadowPreparationError::Numeric {
+                phase: crate::native_shadow::DropShadowNumericPhase::MergeMapping,
                 value,
             })
         };
@@ -842,8 +846,11 @@ impl ColorFilterOperationBytes {
         operations: &[RuntimeColorOperation],
         limits: ColorFilterOperationBufferLimits,
     ) -> Result<Self> {
-        let owner = crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())?;
-        let storage = StorageAccount::Renderer(owner.at(crate::RenderCpuScope::DeviceBacking));
+        let owner = crate::accounting::RendererCpu::new(
+            crate::accounting::RenderAccountingOptions::default(),
+        )?;
+        let storage =
+            StorageAccount::Renderer(owner.at(crate::accounting::RenderCpuScope::DeviceBacking));
         Self::serialize(&storage, None, operations, limits)
     }
 }
@@ -1735,7 +1742,7 @@ impl CompositeParameterBytes {
             write_u32(&mut bytes, 88, mask.sampling.quality().parameter_code());
             write_u32(&mut bytes, 92, mask.sampling.extend().parameter_code());
             use crate::{
-                MaskLuminanceSpace,
+                layer::MaskLuminanceSpace,
                 layer::{MaskApplication, MaskValue},
             };
             let mask_value_code = match mask.value {
@@ -2054,9 +2061,9 @@ mod surface_grid_parameter_tests {
             dimensions: [2, 3],
             texel_center_facts: [0.25, 1.0 / 6.0, 0.5, 1.0 / 3.0],
             sampling: ShaderMaskSamplingKey::with_rendering(
-                crate::ImageQuality::Medium,
-                Some(crate::ImageRendering::Pixelated),
-                crate::Extend::Pad,
+                crate::image::ImageQuality::Medium,
+                Some(crate::image::ImageRendering::Pixelated),
+                crate::image::Extend::Pad,
             ),
         };
         let bytes = CompositeParameterBytes::try_from_facts(
@@ -2092,10 +2099,13 @@ mod accounting_tests {
     use crate::accounting::{FrameFixture, RendererCpu};
     use crate::filter::RuntimeUnitFilterAmount;
     use crate::{
-        GlyphRunLimits, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-        RenderAttemptKind, RenderAttemptStatus, RenderChangeKind, RenderCpuEvent, RenderCpuScope,
-        RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
-        RenderRefusal, RenderRefusalReason, UnitFilterAmount,
+        accounting::RenderAccountingContext, accounting::RenderAccountingError,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+        accounting::RenderAttemptStatus, accounting::RenderChangeKind, accounting::RenderCpuEvent,
+        accounting::RenderCpuScope, accounting::RenderEvent, accounting::RenderLimits,
+        accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderProfile,
+        accounting::RenderQuantity, accounting::RenderRefusal, accounting::RenderRefusalReason,
+        style::filter::UnitFilterAmount, text::GlyphRunLimits,
     };
 
     fn ordered_color_operations() -> [RuntimeColorOperation; 2] {
@@ -2320,7 +2330,7 @@ mod accounting_tests {
                 let mut context = RenderAccountingContext::new(options);
                 let result = context.run(
                     RenderAttemptKind::Frame,
-                    crate::RenderPhase::Encode,
+                    crate::accounting::RenderPhase::Encode,
                     |account| left.matches_in(right, account),
                 );
                 let report = context.last_attempt().unwrap().attempt().unwrap();
@@ -2332,14 +2342,14 @@ mod accounting_tests {
                 if limit == visits {
                     assert_eq!(result.unwrap(), expected);
                 } else {
-                    let Some(crate::RenderAccountingError::Refused(refusal)) =
+                    let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
                         result.unwrap_err().accounting_diagnostic()
                     else {
                         panic!("the next operation record must refuse");
                     };
                     assert_eq!(
                         refusal.quantity(),
-                        crate::RenderQuantity::Work(RenderWork::FilterOperationVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::FilterOperationVisits)
                     );
                     assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
                 }
@@ -2591,10 +2601,10 @@ mod offset_parameter_tests {
                 7 => input.source_extent[0] = 8_388_609,
                 _ => input.sampling = 4,
             }
-            let mut context = crate::RenderAccountingContext::default();
+            let mut context = crate::accounting::RenderAccountingContext::default();
             let result = context.run(
-                crate::RenderAttemptKind::Frame,
-                crate::RenderPhase::GpuPrepare,
+                crate::accounting::RenderAttemptKind::Frame,
+                crate::accounting::RenderPhase::GpuPrepare,
                 |account| OffsetParameterBytes::try_new(input, account),
             );
             assert!(result.is_err(), "case {invalid}");
@@ -2615,15 +2625,15 @@ mod offset_parameter_tests {
     #[test]
     fn offset_wire_admits_exactly_one_fixed_block_with_no_coefficient_work() {
         for (limit, succeeds) in [(255, false), (256, true)] {
-            let limits = crate::RenderLimits::new()
+            let limits = crate::accounting::RenderLimits::new()
                 .with_work_limit(RenderWork::SerializedBytes, limit)
                 .unwrap();
-            let mut context = crate::RenderAccountingContext::new(
-                crate::RenderAccountingOptions::default().with_limits(limits),
+            let mut context = crate::accounting::RenderAccountingContext::new(
+                crate::accounting::RenderAccountingOptions::default().with_limits(limits),
             );
             let result = context.run(
-                crate::RenderAttemptKind::Frame,
-                crate::RenderPhase::GpuPrepare,
+                crate::accounting::RenderAttemptKind::Frame,
+                crate::accounting::RenderPhase::GpuPrepare,
                 |account| OffsetParameterBytes::try_new(facts(), account),
             );
             assert_eq!(result.is_ok(), succeeds);
@@ -2654,9 +2664,9 @@ mod rebased_composite_parameter_tests {
                 dimensions: [2, 1],
                 texel_center_facts: [0.25, 0.5, 0.5, 1.0],
                 sampling: ShaderMaskSamplingKey::with_rendering(
-                    crate::ImageQuality::Medium,
+                    crate::image::ImageQuality::Medium,
                     None,
-                    crate::Extend::Reflect,
+                    crate::image::Extend::Reflect,
                 ),
                 value: crate::layer::MaskValue::Alpha,
                 application: crate::layer::MaskApplication::Attenuate,
@@ -2747,10 +2757,10 @@ mod rebased_composite_parameter_tests {
                 }
                 _ => input.destination.extent[0] = i32::MAX as u32,
             }
-            let mut context = crate::RenderAccountingContext::default();
+            let mut context = crate::accounting::RenderAccountingContext::default();
             let result = context.run(
-                crate::RenderAttemptKind::Frame,
-                crate::RenderPhase::GpuPrepare,
+                crate::accounting::RenderAttemptKind::Frame,
+                crate::accounting::RenderPhase::GpuPrepare,
                 |account| CompositeParameterBytes::try_from_facts(input, account),
             );
             assert!(result.is_err(), "case {invalid}");

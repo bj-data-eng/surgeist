@@ -1,5 +1,7 @@
 use crate::accounting::{Account, RenderWork};
-use crate::{Error, MorphologyNumericPhase, MorphologyPreparationError, Result};
+use crate::{
+    Error, Result, morphology::MorphologyNumericPhase, morphology::MorphologyPreparationError,
+};
 
 /// Reached, rebased values for the fixed morphology uniform protocol.
 #[derive(Clone, Copy, Debug, PartialEq)]

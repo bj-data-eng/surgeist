@@ -5,10 +5,11 @@ use super::{
     bounds::{LogicalBounds, NonEmptyFrameSpatialPlan},
 };
 use crate::{
-    Rect, Transform,
     accounting::{Account, RenderWork, SharedValue},
     error::{Error, Result},
     filter_source::FilterSourceDescriptor,
+    geometry::Rect,
+    geometry::Transform,
     resource::{GaussianKernelGeometry, GaussianKernelSamplingForm},
 };
 
@@ -62,7 +63,7 @@ pub(crate) struct GaussianPassFacts(SharedValue<GaussianPassData>);
 
 #[derive(Debug, PartialEq)]
 struct GaussianPassData {
-    operation: crate::PreparedGaussian,
+    operation: crate::gaussian::PreparedGaussian,
     source: crate::filter_source::FilterSourceDescriptor,
     mapping: GaussianMapping,
     stage: GaussianStage,
@@ -125,7 +126,7 @@ impl GaussianPassFacts {
             GaussianPurpose::ConsumedAlpha => GaussianChannels::Alpha,
         }
     }
-    pub(crate) fn operation(&self) -> &crate::PreparedGaussian {
+    pub(crate) fn operation(&self) -> &crate::gaussian::PreparedGaussian {
         &self.0.operation
     }
     pub(crate) fn source(&self) -> crate::filter_source::FilterSourceDescriptor {
@@ -166,7 +167,7 @@ impl GaussianMapping {
     pub(crate) const fn target_extent(self) -> [u32; 2] {
         self.grid.target_extent()
     }
-    pub(crate) const fn color(self) -> crate::Color {
+    pub(crate) const fn color(self) -> crate::paint::Color {
         self.grid.color()
     }
     pub(crate) const fn source_base(self) -> [i32; 2] {
@@ -196,7 +197,7 @@ impl GaussianMapping {
     pub(super) fn output_footprint(self) -> super::FilterOutputFootprint {
         self.grid.output_footprint()
     }
-    pub(super) const fn with_color(mut self, color: crate::Color) -> Self {
+    pub(super) const fn with_color(mut self, color: crate::paint::Color) -> Self {
         self.grid = self.grid.with_color(color);
         self
     }
@@ -283,7 +284,7 @@ impl GaussianMapping {
     /// source declaration and operation. No graph scan or coefficient work.
     pub(crate) fn proves_exact(
         self,
-        operation: &crate::PreparedGaussian,
+        operation: &crate::gaussian::PreparedGaussian,
         source: FilterSourceDescriptor,
         stage: GaussianStage,
         account: &Account,
@@ -297,7 +298,7 @@ impl GaussianMapping {
             output_bounds: LogicalBounds::NonEmpty(self.result.logical_bounds),
             surface_scale: self.result.raster_scale.get(),
             antialiasing: crate::renderer::Antialiasing::Area,
-            base_color: crate::Color::TRANSPARENT,
+            base_color: crate::paint::Color::TRANSPARENT,
         };
         if require_spatial(context, output, Transform::identity())? != self.result {
             return Ok(false);
@@ -305,7 +306,7 @@ impl GaussianMapping {
         if stage == GaussianStage::Constant {
             let color = match source {
                 FilterSourceDescriptor::Constant { color, .. } => color,
-                _ => crate::Color::TRANSPARENT,
+                _ => crate::paint::Color::TRANSPARENT,
             };
             let expected = Self::new(None, self.result, [None; 2])
                 .with_color(self.grid.color())
@@ -520,7 +521,7 @@ impl GaussianMapping {
     }
 }
 pub(super) fn kernel_geometries(
-    operation: crate::PreparedGaussian,
+    operation: crate::gaussian::PreparedGaussian,
     density: [f64; 2],
     account: &Account,
 ) -> Result<[Option<GaussianKernelGeometry>; 2]> {
@@ -576,8 +577,8 @@ pub(super) fn base_between(
     )
 }
 fn mapping_error(value: f64) -> Error {
-    crate::GaussianPreparationError::Numeric {
-        phase: crate::GaussianNumericPhase::GridMapping,
+    crate::gaussian::GaussianPreparationError::Numeric {
+        phase: crate::gaussian::GaussianNumericPhase::GridMapping,
         value,
     }
     .into()
@@ -586,8 +587,9 @@ fn mapping_error(value: f64) -> Error {
 mod tests {
     use super::*;
     use crate::{
-        Color, FilterColorSpace, FilterDomains, GaussianInput, GaussianSource, Layer,
-        RenderAccountingContext, Scene, Size, renderer::Antialiasing,
+        accounting::RenderAccountingContext, filter_domains::FilterDomains,
+        filter_model::FilterColorSpace, gaussian::GaussianInput, gaussian::GaussianSource,
+        geometry::Size, layer::Layer, paint::Color, renderer::Antialiasing, scene::Scene,
     };
     fn context(scale: f64) -> FrameContext {
         FrameContext::try_new(
@@ -598,8 +600,8 @@ mod tests {
         )
         .unwrap()
     }
-    fn operation(x: f64, y: f64) -> crate::PreparedGaussian {
-        crate::prepare_gaussian(
+    fn operation(x: f64, y: f64) -> crate::gaussian::PreparedGaussian {
+        crate::gaussian::prepare_gaussian(
             GaussianInput::new().with_standard_deviations(x, y),
             FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
@@ -612,7 +614,7 @@ mod tests {
     ) -> crate::accounting::OwnedBox<super::super::GpuRenderGraph> {
         let account = Account::for_test();
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &account)
+            .normalize(crate::capability::Capabilities::CURRENT, &account)
             .unwrap();
         match super::super::FramePlan::try_from_commands(commands, context(scale), &account)
             .unwrap()
@@ -873,24 +875,24 @@ mod tests {
 #[cfg(test)]
 mod pass_storage_tests {
     use super::*;
-    use crate::Color;
     use crate::accounting::{
         RenderAccountingContext, RenderAccountingError, RenderAccountingOptions, RenderCpuScope,
         RenderLimits, RenderQuantity, RenderRefusalReason, RenderResource, RendererCpu,
         StorageAccount,
     };
+    use crate::paint::Color;
     use crate::renderer::Antialiasing;
 
     fn parts() -> (crate::gaussian::GaussianForeground, GaussianMapping) {
         let domain = Rect::new(0.0, 0.0, 1.0, 1.0);
-        let operation = crate::prepare_gaussian(
-            crate::GaussianInput::new(),
-            crate::FilterColorSpace::Srgb,
+        let operation = crate::gaussian::prepare_gaussian(
+            crate::gaussian::GaussianInput::new(),
+            crate::filter_model::FilterColorSpace::Srgb,
             &mut RenderAccountingContext::default(),
         )
         .unwrap();
         let context = crate::frame::FrameContext::try_new(
-            crate::Size::new(1.0, 1.0),
+            crate::geometry::Size::new(1.0, 1.0),
             1.0,
             Antialiasing::Area,
             Color::TRANSPARENT,

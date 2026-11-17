@@ -1,5 +1,5 @@
 //! Resolved image domains shared by native filter primitives.
-use crate::{Error, Rect, Result};
+use crate::{Error, Result, geometry::Rect};
 
 /// Independent source, hard filter and primitive-result domains in layer-local units.
 ///
@@ -19,7 +19,7 @@ impl FilterDomains {
     ///
     /// Empty domains are valid. Invalid rectangles return
     /// [`crate::ErrorCode::InvalidInput`] with a filter-labelled
-    /// [`crate::InvalidValue`] diagnostic.
+    /// [`crate::error::InvalidValue`] diagnostic.
     pub fn try_new(source: Rect, filter: Rect, result: Rect) -> Result<Self> {
         for (role, rect) in [("source", source), ("filter", filter), ("result", result)] {
             validate_domain(role, rect)?;

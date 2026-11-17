@@ -299,14 +299,32 @@ mod role_lookup_accounting_tests {
     fn assert_prepared_mask_lattice_boundary(limit: u64) {
         use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{
-            Antialiasing, Capabilities, Color, Format, Image, ImageRendering, Layer, Rect,
-            RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderEvent,
-            RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
-            RenderRefusalReason, ResolvedLayerAlphaMask, Scene, Size, Transform,
+            accounting::RenderAccountingError,
+            accounting::RenderAccountingOptions,
+            accounting::RenderAttemptStatus,
+            accounting::RenderEvent,
+            accounting::RenderLimits,
+            accounting::RenderPhase,
+            accounting::RenderPhaseFilter,
+            accounting::RenderProfile,
+            accounting::RenderQuantity,
+            accounting::RenderRefusalReason,
             backend::DeviceCapabilities,
+            capability::Capabilities,
             frame::{FrameContext, FramePlan},
+            geometry::Rect,
+            geometry::Size,
+            geometry::Transform,
+            image::Image,
+            image::ImageRendering,
+            layer::Layer,
+            layer::ResolvedLayerAlphaMask,
+            paint::Color,
             pass::LoweredGraphPlan,
+            renderer::Antialiasing,
             resource::WorkingFormat,
+            scene::Scene,
+            surface::Format,
         };
 
         let setup = Account::for_test();
@@ -511,12 +529,12 @@ mod role_lookup_accounting_tests {
                 let error = result.unwrap_err();
                 assert!(matches!(
                     error.accounting_diagnostic(),
-                    Some(crate::RenderAccountingError::Refused(_))
+                    Some(crate::accounting::RenderAccountingError::Refused(_))
                 ));
                 let refusal = attempt.refusal().unwrap();
                 assert_eq!(
                     refusal.quantity,
-                    crate::RenderQuantity::Work(RenderWork::ResourceProbes)
+                    crate::accounting::RenderQuantity::Work(RenderWork::ResourceProbes)
                 );
                 assert_eq!((refusal.current, refusal.amount), (3, 1));
                 assert_eq!(attempt.usage().work(RenderWork::SerializedBytes), 0);
@@ -550,13 +568,14 @@ mod role_lookup_accounting_tests {
             prepared_pass_spatial_uniform(&pass, &resources, lowered.root_working_image, account)
         });
         let error = result.unwrap_err();
-        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
+            error.accounting_diagnostic()
         else {
             panic!("role inspection must refuse before the missing-binding diagnostic");
         };
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Work(RenderWork::ResourceProbes)
+            crate::accounting::RenderQuantity::Work(RenderWork::ResourceProbes)
         );
         assert_eq!((refusal.current(), refusal.amount()), (0, 1));
         assert_eq!(

@@ -1,9 +1,12 @@
 use crate::{
-    Attachment, Color, DeviceLossReason, EffectQualityPolicy, Error, ErrorCode, Format,
-    GpuFaultKind, Image, ImageBuffer, ImageFit, Options, Parameters, PhysicalSize, PresentMode,
-    Rect, RenderRoute, RenderSurfaceAvailability, Renderer, ResourceCacheBudget, Result,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Size, Stats, Surface,
-    SurfaceOptions, SurfaceResourceState, SurfaceState,
+    Error, ErrorCode, Result, error::DeviceLossReason, error::GpuFaultKind,
+    error::RenderSurfaceAvailability, error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation, geometry::PhysicalSize, geometry::Rect, geometry::Size, image::Image,
+    image::ImageBuffer, image::ImageFit, paint::Color, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::Renderer, renderer::ResourceCacheBudget, scene::Scene,
+    stats::RenderRoute, stats::Stats, surface::Attachment, surface::Format, surface::Parameters,
+    surface::PresentMode, surface::Surface, surface::SurfaceOptions, surface::SurfaceResourceState,
+    surface::SurfaceState,
 };
 
 use crate::{
@@ -31,7 +34,6 @@ use crate::surface::{
 
 #[cfg(feature = "render-window")]
 use crate::{
-    RuntimeCapabilities,
     backend::{
         DisplayFreePresentedDeviceCompatibilityForTest,
         configured_display_free_presented_surface_for_test,
@@ -44,6 +46,7 @@ use crate::{
         select_display_free_presented_device_for_test, set_presented_acquire_outcome_for_test,
         take_last_presented_texture_for_test,
     },
+    capability::RuntimeCapabilities,
     gpu_transaction::test_support::graph_terminal_loss_after_submission_for_test,
     surface::PresentedAcquireOutcomeForTest,
 };
@@ -1719,8 +1722,9 @@ fn assert_explicit_lost_resize_recovery(
 #[test]
 fn presented_resize_reports_configure_phase_only_when_configuration_is_required() {
     use crate::{
-        RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderEvent, RenderPhase,
-        RenderPhaseFilter, RenderProfile,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderClock, accounting::RenderEvent, accounting::RenderPhase,
+        accounting::RenderPhaseFilter, accounting::RenderProfile,
     };
 
     fn configure_routing_clock() -> std::time::Duration {
@@ -2624,8 +2628,10 @@ fn non_render_operations_do_not_mutate_last_successful_stats() {
 #[test]
 fn exact_graph_replaces_only_its_headless_target_after_frame_and_cleanup() {
     use crate::{
-        Layer, RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderEvent, RenderPhase,
-        RenderPhaseFilter, RenderProfile, RenderWork, ResolvedLayerAlphaMask,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderClock, accounting::RenderEvent, accounting::RenderPhase,
+        accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderWork,
+        layer::Layer, layer::ResolvedLayerAlphaMask,
     };
 
     pollster::block_on(async {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{GlyphSynthesis, TextInstance};
+use crate::{text::GlyphSynthesis, text::TextInstance};
 
 const FONT: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const X: u16 = 58;
@@ -113,7 +113,7 @@ fn prepare(font: &FontData) -> Result<PreparedGlyphRun> {
         &instance(),
         &[glyph(X)],
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
 }
 fn cause(result: Result<PreparedGlyphRun>) -> GlyphPreparationError {
@@ -212,7 +212,10 @@ fn cycles_and_truncated_or_uninterpreted_component_tails_never_publish_empty() {
         (3, vec![]),
     ]))
     .unwrap();
-    assert_eq!(prepared.bounds().kind(), crate::TextRunBoundsKind::Empty);
+    assert_eq!(
+        prepared.bounds().kind(),
+        crate::text::TextRunBoundsKind::Empty
+    );
     assert_eq!(prepared.path_elements().count(), 0);
 }
 
@@ -259,7 +262,7 @@ fn closure_storage_and_path_refusal_preserve_actual_inputs_for_same_owner_retry(
             &instance,
             &glyphs,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     for tight in [
@@ -272,7 +275,7 @@ fn closure_storage_and_path_refusal_preserve_actual_inputs_for_same_owner_retry(
                 &instance,
                 &glyphs,
                 tight,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap_err();
         assert!(matches!(
@@ -285,7 +288,7 @@ fn closure_storage_and_path_refusal_preserve_actual_inputs_for_same_owner_retry(
                 &instance,
                 &glyphs,
                 limits(),
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(retried.bounds(), ready.bounds());
@@ -492,7 +495,10 @@ fn actual_draw_depth_counts_empty_loca_loads_even_after_shallow_memoization() {
             if depth == 32 {
                 let output = result.unwrap();
                 if label == "source-proved empty root" {
-                    assert_eq!(output.bounds().kind(), crate::TextRunBoundsKind::Empty);
+                    assert_eq!(
+                        output.bounds().kind(),
+                        crate::text::TextRunBoundsKind::Empty
+                    );
                 } else {
                     assert_eq!(output.path_elements().count(), 5);
                 }
@@ -743,8 +749,8 @@ fn host_clock() -> std::time::Duration {
     START.get_or_init(std::time::Instant::now).elapsed()
 }
 
-fn profiles() -> [crate::RenderProfile; 6] {
-    use crate::{RenderPhaseFilter, RenderProfile};
+fn profiles() -> [crate::accounting::RenderProfile; 6] {
+    use crate::{accounting::RenderPhaseFilter, accounting::RenderProfile};
     [
         RenderProfile::Off,
         RenderProfile::Summary { timing: false },
@@ -770,8 +776,9 @@ fn profiles() -> [crate::RenderProfile; 6] {
 #[test]
 fn every_probe_and_edge_cap_preserves_literal_admitted_prefix_across_profiles() {
     use crate::{
-        RenderAccountingError, RenderAccountingOptions, RenderClock, RenderLimits, RenderQuantity,
-        RenderRefusalReason,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderClock, accounting::RenderLimits, accounting::RenderQuantity,
+        accounting::RenderRefusalReason,
     };
     // V=one real glyph probe, E=one edge admission. These are the independently
     // enumerated source/cache/active traces, with no completion probes.
@@ -871,7 +878,7 @@ fn every_probe_and_edge_cap_preserves_literal_admitted_prefix_across_profiles() 
 
 #[test]
 fn completed_miss_is_charged_before_root_to_leaf_cycle_detection() {
-    use crate::{RenderAccountingOptions, RenderLimits};
+    use crate::{accounting::RenderAccountingOptions, accounting::RenderLimits};
     let font = replace(&[(X, compound(-1, &[A, X], None))]);
     // Root1 + first child(active1,raw2) + completed A miss1 + active root1.
     let mut context = RenderAccountingContext::new(
@@ -927,7 +934,7 @@ fn point_backings(points: usize) -> [usize; 3] {
 
 #[test]
 fn root_current_is_inline_and_empty_children_still_qualify_without_fictional_root_storage() {
-    use crate::{RenderAccountingOptions, RenderLimits};
+    use crate::{accounting::RenderAccountingOptions, accounting::RenderLimits};
     for (changes, points, cache_bytes) in [
         (vec![(X, square())], 8, 0),
         (
@@ -979,8 +986,10 @@ fn root_current_is_inline_and_empty_children_still_qualify_without_fictional_roo
 #[test]
 fn outstanding_composite_slots_cover_simple_appends_completion_overlap_and_retry() {
     use crate::{
-        RenderAccountingError, RenderAccountingOptions, RenderChangeKind, RenderEvent,
-        RenderLimits, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderRefusalReason,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderChangeKind, accounting::RenderEvent, accounting::RenderLimits,
+        accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
+        accounting::RenderRefusalReason,
     };
     let font = replace(&[
         (X, compound(-1, &[59], None)),
@@ -1120,7 +1129,10 @@ fn outstanding_composite_slots_cover_simple_appends_completion_overlap_and_retry
 
 #[test]
 fn parent_replacement_moves_only_suspended_ancestors_and_refusal_releases_both_backings() {
-    use crate::{RenderAccountingError, RenderAccountingOptions, RenderLimits, RenderQuantity};
+    use crate::{
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderLimits, accounting::RenderQuantity,
+    };
     let font = replace(&[
         (X, compound(-1, &[59], None)),
         (59, compound(-1, &[60], None)),
@@ -1193,7 +1205,7 @@ fn parent_replacement_moves_only_suspended_ancestors_and_refusal_releases_both_b
 
 #[test]
 fn nonroot_composite_reserves_its_real_future_slot_before_header_validation() {
-    use crate::{RenderAccountingOptions, RenderLimits};
+    use crate::{accounting::RenderAccountingOptions, accounting::RenderLimits};
     let mut malformed = compound(-1, &[A], None);
     malformed[2..4].copy_from_slice(&2000i16.to_be_bytes());
     let font = replace(&[(X, compound(-1, &[59], None)), (59, malformed)]);
@@ -1227,8 +1239,9 @@ fn nonroot_composite_reserves_its_real_future_slot_before_header_validation() {
 #[test]
 fn nested_scratch_overlap_success_refusal_and_same_context_retry_are_profile_independent() {
     use crate::{
-        RenderAccountingError, RenderAccountingOptions, RenderClock, RenderLimits, RenderQuantity,
-        RenderRefusalReason,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderClock, accounting::RenderLimits, accounting::RenderQuantity,
+        accounting::RenderRefusalReason,
     };
     let font = replace(&[
         (X, compound(-1, &[59], None)),

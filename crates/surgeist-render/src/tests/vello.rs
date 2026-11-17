@@ -23,39 +23,121 @@ use crate::vello_engine::{
     scene::{VelloRasterScenario, VelloScene},
 };
 use crate::{
-    Antialiasing, Attachment, BackdropCaptureBounds, BackdropFilterInput, BackgroundAreas,
-    BackgroundBlendList, BackgroundBlendMode, BackgroundBox, BackgroundLayer,
-    BackgroundNormalizationInput, BackgroundPosition, BackgroundRepeat, BackgroundSize,
-    BackgroundStack, BlendMode, BorderSide, BorderStyle, BoxDecorationBreak, BoxDecorationFragment,
-    BoxDecorationInput, Capabilities, ClipGeometryKind, ClipInput, Color, CoordinateSpaceTag, Dash,
-    DeviceLossReason, EffectPrecisionCapabilities, EffectQualityPolicy, Error, ErrorCode, Extend,
-    FillRule, FilledPath, Filter, FilterList, FilterOp, FontData, FontRef, Format, GpuFaultKind,
-    Gradient, GradientStop, Image, ImageBuffer, ImageFit, ImagePlacementInput, ImageQuality, Layer,
-    LineCap, LineJoin, NormalizedBackgroundCommandKind, NormalizedBackgroundLayerSource,
-    NormalizedBackgroundStack, NormalizedBoxDecoration, NormalizedBoxDecorationCommandKind,
-    Options, Outline, OutlineStyle, Paint, Parameters, Path, PhysicalSize, Point, PrimitiveFamily,
-    PrimitiveOperation, Radii, Rect, RenderRoute, RenderSurfaceAvailability, Renderer,
-    ResourceCacheBudget, RuntimeCapabilities, RuntimeCapabilityUnavailableReason, RuntimeOperation,
-    Scene, Shadow, ShadowList, Shape, Size, SizeComponent, Stroke, StrokeAlign, StyleImageLayer,
-    StyleImageSource, Surface, SurfaceIdentityMismatchKind, SurfaceResourceState,
-    TextDecorationLine, TextGlyph, TextPaint, TextRun, TextRunBounds, TextShadowRun, Transform,
-    UnitFilterAmount, UnsupportedPrimitive,
+    Error, ErrorCode,
     backend::{
         DeviceSlotIdentity, OffscreenLocalSceneRenderRequest,
         render_internal_vello_local_scene_to_offscreen_texture,
     },
+    capability::Capabilities,
+    capability::EffectPrecisionCapabilities,
+    capability::RuntimeCapabilities,
     command,
     encode::{
         encode_vello_scene_with_initial_transform, glyph_paint_brush, image_brush, image_transform,
     },
+    error::DeviceLossReason,
+    error::GpuFaultKind,
+    error::PrimitiveFamily,
+    error::PrimitiveOperation,
+    error::RenderSurfaceAvailability,
+    error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation,
+    error::SurfaceIdentityMismatchKind,
+    error::UnsupportedPrimitive,
+    geometry::CoordinateSpaceTag,
+    geometry::PhysicalSize,
+    geometry::Point,
+    geometry::Radii,
+    geometry::Rect,
+    geometry::Size,
+    geometry::Transform,
+    image::Extend,
+    image::Image,
+    image::ImageBuffer,
+    image::ImageFit,
+    image::ImageQuality,
+    layer::BlendMode,
+    layer::Filter,
+    layer::Layer,
+    layer::Shadow,
+    layer::ShadowList,
     paint,
+    paint::Color,
+    paint::Gradient,
+    paint::GradientStop,
+    paint::Paint,
     reference::PremultipliedRgba8,
+    renderer::Antialiasing,
+    renderer::EffectQualityPolicy,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
     resource::{ResourceAccountingFault, ResourceManager, WorkingFormat},
     scene,
+    scene::Scene,
+    shape::Dash,
+    shape::FillRule,
+    shape::FilledPath,
+    shape::LineCap,
+    shape::LineJoin,
+    shape::Path,
+    shape::Shape,
+    shape::Stroke,
+    shape::StrokeAlign,
+    stats::RenderRoute,
+    style::background::BackgroundBlendList,
+    style::background::BackgroundBlendMode,
+    style::background::BackgroundLayer,
+    style::background::BackgroundNormalizationInput,
+    style::background::BackgroundStack,
+    style::background::NormalizedBackgroundCommandKind,
+    style::background::NormalizedBackgroundLayerSource,
+    style::background::NormalizedBackgroundStack,
+    style::clip::ClipGeometryKind,
+    style::clip::ClipInput,
+    style::decoration::BorderSide,
+    style::decoration::BorderStyle,
+    style::decoration::BoxDecorationBreak,
+    style::decoration::BoxDecorationFragment,
+    style::decoration::BoxDecorationInput,
+    style::decoration::NormalizedBoxDecoration,
+    style::decoration::NormalizedBoxDecorationCommandKind,
+    style::decoration::Outline,
+    style::decoration::OutlineStyle,
+    style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput,
+    style::filter::FilterList,
+    style::filter::FilterOp,
+    style::filter::UnitFilterAmount,
+    style::image::BackgroundAreas,
+    style::image::BackgroundBox,
+    style::image::BackgroundPosition,
+    style::image::BackgroundRepeat,
+    style::image::BackgroundSize,
+    style::image::ImagePlacementInput,
+    style::image::SizeComponent,
+    style::image::StyleImageLayer,
+    style::image::StyleImageSource,
+    surface::Attachment,
+    surface::Format,
+    surface::Parameters,
+    surface::Surface,
     surface::SurfaceBackend,
+    surface::SurfaceResourceState,
+    text::FontData,
+    text::FontRef,
+    text::TextDecorationLine,
+    text::TextGlyph,
+    text::TextPaint,
+    text::TextRun,
+    text::TextRunBounds,
+    text::TextShadowRun,
 };
 #[cfg(feature = "render-window")]
-use crate::{SurfaceOptions, SurfaceState, UnresolvedResource, UnresolvedResourceKind};
+use crate::{
+    error::UnresolvedResource, error::UnresolvedResourceKind, surface::SurfaceOptions,
+    surface::SurfaceState,
+};
 
 use std::{sync::Arc, time::Duration};
 
@@ -196,7 +278,7 @@ fn authored_runs_reuse_backend_font_identity_for_the_same_admitted_resource() {
 
 #[test]
 fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
-    use crate::GeometryRealizationError;
+    use crate::error::GeometryRealizationError;
 
     let font = FontData::try_from_bytes(
         AHEM_FONT_BYTES.to_vec(),
@@ -379,14 +461,14 @@ fn unfiltered_images_preserve_direct_sampling_normalization() {
 
     assert_eq!(
         scene
-            .inspect(&mut crate::RenderAccountingContext::default())
+            .inspect(&mut crate::accounting::RenderAccountingContext::default())
             .unwrap()
             .images,
         1
     );
     assert_eq!(
         scene
-            .inspect(&mut crate::RenderAccountingContext::default())
+            .inspect(&mut crate::accounting::RenderAccountingContext::default())
             .unwrap()
             .layers,
         0
@@ -605,7 +687,7 @@ fn shape_and_basic_shape_clips_normalize_and_render_from_owned_geometry() {
             .unwrap()
             .normalize(
                 Capabilities::CURRENT,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(normalized.geometry().kind(), &expected_geometry);
@@ -651,7 +733,7 @@ fn path_clip_rendering_preserves_authored_fill_rule() {
             .unwrap()
             .normalize(
                 Capabilities::CURRENT,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(
@@ -921,7 +1003,7 @@ fn matrix_full_background_box_image_text_stack_preserves_render_order() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let decoration = BoxDecorationInput::try_new(
@@ -944,7 +1026,7 @@ fn matrix_full_background_box_image_text_stack_preserves_render_order() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let decoration_line = TextDecorationLine::try_solid(
@@ -4427,7 +4509,7 @@ fn foreground_blur_above_the_execution_limit_returns_invalid_input() {
     assert_eq!(
         error
             .invalid_value_diagnostic()
-            .map(crate::InvalidValue::field),
+            .map(crate::error::InvalidValue::field),
         Some("filter blur radius"),
     );
     assert!(error.message().contains("between 0 and 256"));
@@ -4911,8 +4993,9 @@ fn direct_vello_pixels_match_characterization_cases() {
 #[test]
 fn direct_vello_binding_limit_preserves_exact_encoder_work_and_publication() {
     use crate::{
-        RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
-        RenderPhase, RenderQuantity, RenderRefusalReason, RenderWork,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderQuantity, accounting::RenderRefusalReason, accounting::RenderWork,
     };
 
     // One solid rectangle takes the small path scan, no clip dispatches and

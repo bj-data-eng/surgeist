@@ -1,8 +1,9 @@
 //! Accounted premultiplied numeric-sRGBA reduction for authenticated color measures.
 
 use crate::{
-    Color, Result,
+    Result,
     accounting::{Account, RenderWork},
+    paint::Color,
 };
 
 fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
@@ -95,8 +96,9 @@ impl PremultipliedSum {
 mod tests {
     use super::*;
     use crate::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
-        RenderPhase, RenderResource,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderResource,
     };
 
     fn colors() -> [Color; 2] {

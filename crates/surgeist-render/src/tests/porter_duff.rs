@@ -7,9 +7,10 @@ use super::{
     support::{graph_supported_working_formats_for_test, pixel_rgba},
 };
 use crate::{
-    BlendMode, Color, EffectQualityPolicy, ErrorCode, Image, Layer, LayerComposition, Options,
-    Path, Point, PorterDuffOperator as Op, Rect, Renderer, ResolvedLayerAlphaMask, Scene, Shape,
-    Size, Surface, Transform,
+    ErrorCode, geometry::Point, geometry::Rect, geometry::Size, geometry::Transform, image::Image,
+    layer::BlendMode, layer::Layer, layer::LayerComposition, layer::PorterDuffOperator as Op,
+    layer::ResolvedLayerAlphaMask, paint::Color, renderer::EffectQualityPolicy, renderer::Options,
+    renderer::Renderer, scene::Scene, shape::Path, shape::Shape, surface::Surface,
 };
 
 const SOURCE: [f32; 4] = [3.0 / 16.0, 1.0 / 16.0, 1.0 / 8.0, 1.0 / 4.0];
@@ -250,7 +251,7 @@ fn porter_duff_constructor_rejects_plus_and_layer_selectors_replace_the_whole_op
 #[test]
 fn porter_duff_shader_matches_twelve_factors_and_all_sixteen_mix_functions() {
     use crate::{
-        RuntimeOperation, backend::CompositionBlendVectorForTest,
+        backend::CompositionBlendVectorForTest, error::RuntimeOperation,
         gpu_transaction::GpuOperationStage,
     };
     let (mut backend, identity, requests) =
@@ -359,7 +360,8 @@ fn porter_duff_shader_matches_twelve_factors_and_all_sixteen_mix_functions() {
 #[test]
 fn porter_duff_empty_foreground_preserves_bounded_backdrop_filter_composition() {
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, FilterList, FilterOp, UnitFilterAmount,
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterList, style::filter::FilterOp, style::filter::UnitFilterAmount,
     };
 
     let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
@@ -421,12 +423,13 @@ fn render_noop_control(
     renderer: &mut Renderer,
     surface: &mut Surface,
     scene: &Scene,
-) -> crate::ImageBuffer {
+) -> crate::image::ImageBuffer {
     // A mathematically empty operation can disappear during normalization.
     // Observe the ordinary public route without demanding a retained graph.
     let before = surface.headless_publication_count_for_test();
     let stats =
-        pollster::block_on(renderer.render(surface, scene, crate::Parameters::default())).unwrap();
+        pollster::block_on(renderer.render(surface, scene, crate::surface::Parameters::default()))
+            .unwrap();
     assert!(stats.route.is_some());
     assert_eq!(stats, renderer.stats());
     assert_eq!(surface.headless_publication_count_for_test(), before + 1);
@@ -701,7 +704,7 @@ fn porter_duff_annihilated_source_needs_no_text_ink_but_retains_copy() {
         let mut scene = Scene::new();
         scene.fill(bounds, straight_color(RED));
         scene.layer(layer, |scene| {
-            super::support::add_planning_text(scene, crate::TextRunBounds::unspecified());
+            super::support::add_planning_text(scene, crate::text::TextRunBounds::unspecified());
         });
         for format in formats.iter().copied() {
             let output = render_pixels(&mut renderer, &mut surface, &scene, Some(format));
@@ -713,11 +716,14 @@ fn porter_duff_annihilated_source_needs_no_text_ink_but_retains_copy() {
     let mut visible = Scene::new();
     visible.layer(
         Layer::new().with_composition(composition(Op::Copy, BlendMode::Normal)),
-        |scene| super::support::add_planning_text(scene, crate::TextRunBounds::unspecified()),
+        |scene| super::support::add_planning_text(scene, crate::text::TextRunBounds::unspecified()),
     );
-    let error =
-        pollster::block_on(renderer.render(&mut surface, &visible, crate::Parameters::default()))
-            .unwrap_err();
+    let error = pollster::block_on(renderer.render(
+        &mut surface,
+        &visible,
+        crate::surface::Parameters::default(),
+    ))
+    .unwrap_err();
     assert_eq!(error.code(), ErrorCode::UnresolvedResource);
 }
 
@@ -734,7 +740,7 @@ fn porter_duff_singular_source_discards_unresolved_ink_but_executes_copy() {
         let mut scene = Scene::new();
         let add_source = |scene: &mut Scene| {
             scene.layer(copy, |scene| {
-                super::support::add_planning_text(scene, crate::TextRunBounds::unspecified());
+                super::support::add_planning_text(scene, crate::text::TextRunBounds::unspecified());
             });
         };
         if inherited {
@@ -748,14 +754,14 @@ fn porter_duff_singular_source_discards_unresolved_ink_but_executes_copy() {
                 pollster::block_on(renderer.render_with_exact_graph_working_format_for_test(
                     &mut surface,
                     &scene,
-                    crate::Parameters {
+                    crate::surface::Parameters {
                         base_color: Color::BLACK,
-                        ..crate::Parameters::default()
+                        ..crate::surface::Parameters::default()
                     },
                     format,
                 ))
                 .unwrap();
-            assert_eq!(stats.route, Some(crate::RenderRoute::GpuGraph));
+            assert_eq!(stats.route, Some(crate::stats::RenderRoute::GpuGraph));
             assert_eq!(stats.vello_passes, 0);
             assert_eq!(surface.headless_publication_count_for_test(), before + 1);
             let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
@@ -787,7 +793,7 @@ fn porter_duff_singular_own_clip_preserves_parent_without_source_prerequisites()
                     if unspecified_text {
                         super::support::add_planning_text(
                             scene,
-                            crate::TextRunBounds::unspecified(),
+                            crate::text::TextRunBounds::unspecified(),
                         );
                     } else {
                         scene.fill(bounds, straight_color(BLUE));
@@ -806,9 +812,9 @@ fn porter_duff_singular_own_clip_preserves_parent_without_source_prerequisites()
             pollster::block_on(renderer.render(
                 &mut surface,
                 &scene,
-                crate::Parameters {
+                crate::surface::Parameters {
                     base_color: Color::BLACK,
-                    ..crate::Parameters::default()
+                    ..crate::surface::Parameters::default()
                 },
             ))
             .unwrap();
@@ -952,7 +958,7 @@ fn plus_lighter_is_a_complete_composition() {
     let error = LayerComposition::try_porter_duff(Op::PlusLighter, BlendMode::Plus).unwrap_err();
     assert_eq!(error.code(), ErrorCode::InvalidInput);
     assert!(
-        crate::Capabilities::CURRENT
+        crate::capability::Capabilities::CURRENT
             .compositing()
             .supports_plus_lighter()
     );
@@ -1052,8 +1058,9 @@ fn plus_lighter_attenuates_clip_and_mask_before_saturation() {
 #[test]
 fn plus_lighter_obeys_the_ledger_composite_budget() {
     use crate::{
-        Parameters, RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus,
-        RenderLimits, RenderQuantity, RenderRefusalReason, RenderWork,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderQuantity,
+        accounting::RenderRefusalReason, accounting::RenderWork, surface::Parameters,
     };
 
     let limits = RenderLimits::new()

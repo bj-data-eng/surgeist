@@ -2,10 +2,22 @@
 
 use super::color;
 use crate::{
-    Error, FontData, GlyphSynthesis, NormalizedCoordinate, PreparedGlyphRun, Rect,
-    RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork, Result, TextGlyph,
-    TextInstance, TextPaint, TextRunBounds, Transform,
+    Error, Result,
+    accounting::RenderAccountingContext,
+    accounting::RenderAttemptKind,
+    accounting::RenderPhase,
+    accounting::RenderWork,
     accounting::{Account, AccountedVec},
+    geometry::Rect,
+    geometry::Transform,
+    text::FontData,
+    text::GlyphSynthesis,
+    text::NormalizedCoordinate,
+    text::PreparedGlyphRun,
+    text::TextGlyph,
+    text::TextInstance,
+    text::TextPaint,
+    text::TextRunBounds,
     text::{map_preparation_bounds, qualify_preparation_placement},
 };
 use std::mem::size_of;

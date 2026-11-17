@@ -1,11 +1,11 @@
 use super::*;
 use crate::{
-    PhysicalSize,
     accounting::{
         Generation, GenerationClass, ReadbackFixture, RenderAccountingError,
         RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderGenerationScope,
         RenderPhaseFilter, RenderProfile, RenderReadbackReport, RenderResource, RendererCpu,
     },
+    geometry::PhysicalSize,
     readback::native::lifecycle::ReadbackStagingDisposition,
 };
 use std::{

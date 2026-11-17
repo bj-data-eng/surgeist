@@ -4,7 +4,7 @@ use super::{
     RenderAccountingSetupError, RenderCpuScope, RenderResource, RenderWork, RendererCpu,
     storage::StorageAccount,
 };
-use crate::{Image, Result, image::ImageContentIdentity};
+use crate::{Result, image::Image, image::ImageContentIdentity};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 type Records = AccountedVec<ContentRecord>;

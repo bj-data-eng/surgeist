@@ -7,8 +7,9 @@ use super::{
     support::{graph_supported_working_formats_for_test, pixel_rgba},
 };
 use crate::{
-    Antialiasing, BlendMode, EffectQualityPolicy, Layer, Options, Rect, Renderer, Scene, Shape,
-    Size,
+    geometry::Rect, geometry::Size, layer::BlendMode, layer::Layer, renderer::Antialiasing,
+    renderer::EffectQualityPolicy, renderer::Options, renderer::Renderer, scene::Scene,
+    shape::Shape,
 };
 
 const SOURCE: [f32; 4] = [7.0 / 8.0, 1.0 / 8.0, 1.0 / 2.0, 1.0];
@@ -170,7 +171,7 @@ fn nonseparable_graph_shader_preserves_joint_rgb_roles_and_partial_alpha() {
     let vectors = cases
         .iter()
         .map(|case| CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(case.mode),
+            composition: crate::layer::LayerComposition::from_blend(case.mode),
             clip_alpha: None,
             source: case.source,
             parent: case.backdrop,

@@ -1,5 +1,8 @@
 use super::{Error, ErrorCode};
-use crate::{RenderAccountingError, RenderQuantity, RenderRefusalReason, RenderWork};
+use crate::{
+    accounting::RenderAccountingError, accounting::RenderQuantity, accounting::RenderRefusalReason,
+    accounting::RenderWork,
+};
 use std::{error::Error as _, fmt};
 
 #[test]
@@ -264,7 +267,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
             assert_eq!(error.gradient_hint_diagnostic(), Some(&hint));
         },
     );
-    let glyph = crate::GlyphPreparationError::InvalidFont;
+    let glyph = crate::text::GlyphPreparationError::InvalidFont;
     assert_context_enrichment(
         Error::from(glyph),
         "font, outline, color or bitmap data is invalid",
@@ -279,13 +282,13 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
 #[test]
 fn enrichment_preserves_text_layout_cause() {
     assert_context_enrichment(
-        Error::from(crate::TextLayoutError::CapacityOverflow),
+        Error::from(crate::text_layout::TextLayoutError::CapacityOverflow),
         "a count calculation overflowed",
         |error| {
             assert_eq!(error.code(), ErrorCode::TextLayout);
             assert!(matches!(
                 error.text_layout_diagnostic(),
-                Some(crate::TextLayoutError::CapacityOverflow)
+                Some(crate::text_layout::TextLayoutError::CapacityOverflow)
             ));
         },
     );
@@ -295,13 +298,13 @@ fn enrichment_preserves_text_layout_cause() {
 #[test]
 fn enrichment_preserves_paint_gradient_cause() {
     assert_context_enrichment(
-        Error::from(crate::PaintGradientError::UnsupportedZeroLengthLinear),
+        Error::from(crate::paint_gradient::PaintGradientError::UnsupportedZeroLengthLinear),
         "a linear gradient of zero length cannot be prepared",
         |error| {
             assert_eq!(error.code(), ErrorCode::PaintGradient);
             assert_eq!(
                 error.paint_gradient_diagnostic(),
-                Some(&crate::PaintGradientError::UnsupportedZeroLengthLinear)
+                Some(&crate::paint_gradient::PaintGradientError::UnsupportedZeroLengthLinear)
             );
         },
     );
@@ -469,7 +472,7 @@ fn the_runtime_capability_constructor_prints_its_fixed_sentence() {
 #[test]
 fn an_accounting_error_prints_its_chain_and_not_its_classification() {
     let error = Error::from(RenderAccountingError::Setup(
-        crate::RenderAccountingSetupError::Allocation,
+        crate::accounting::RenderAccountingSetupError::Allocation,
     ));
     assert_eq!(error.code(), ErrorCode::Accounting);
     assert_eq!(

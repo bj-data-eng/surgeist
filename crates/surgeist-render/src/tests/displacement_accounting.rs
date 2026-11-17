@@ -2,11 +2,15 @@
 use super::convolution::{assert_pixel, bounds, image};
 use super::displacement::{active, finite_scene, native_map, source_scene};
 use crate::{
-    Color, DisplacementChannel as Channel, DisplacementInput, FilterColorSpace, FilterDomains,
-    Layer, Options, Parameters, PreparedDisplacementMap, Rect, RenderAccountingContext,
-    RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderPhaseFilter, RenderProfile,
-    RenderQuantity, RenderWork, Renderer, ResourceCacheBudget, Scene, Size, prepare_displacement,
-    prepare_native_displacement_map,
+    accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhaseFilter,
+    accounting::RenderProfile, accounting::RenderQuantity, accounting::RenderWork,
+    displacement::DisplacementChannel as Channel, displacement::DisplacementInput,
+    displacement::PreparedDisplacementMap, displacement::prepare_displacement,
+    displacement::prepare_native_displacement_map, filter_domains::FilterDomains,
+    filter_model::FilterColorSpace, geometry::Rect, geometry::Size, layer::Layer, paint::Color,
+    renderer::Options, renderer::Renderer, renderer::ResourceCacheBudget, scene::Scene,
+    surface::Parameters,
 };
 use std::sync::Arc;
 
@@ -53,7 +57,7 @@ fn map() -> PreparedDisplacementMap {
 fn zero_map() -> PreparedDisplacementMap {
     native_map(0, 1, vec![], bounds(4, 1))
 }
-fn new_renderer(options: RenderAccountingOptions) -> (Renderer, crate::Surface) {
+fn new_renderer(options: RenderAccountingOptions) -> (Renderer, crate::surface::Surface) {
     let mut renderer = pollster::block_on(Renderer::new(
         Options::default()
             .with_resource_cache_budget(ResourceCacheBudget::DISABLED)
@@ -158,7 +162,7 @@ fn public_displacement_each_scheduled_counter_and_metadata_has_exact_cap_and_one
                 assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
                 assert_eq!(
                     error.accounting_diagnostic(),
-                    Some(crate::RenderAccountingError::Refused(refusal))
+                    Some(crate::accounting::RenderAccountingError::Refused(refusal))
                 );
                 assert_eq!(renderer.stats(), old_stats);
                 assert_eq!(
@@ -239,7 +243,12 @@ fn public_displacement_constructor_byte_work_is_separate_from_later_unused_map_f
         .displacement_layer(
             Layer::new(),
             effect,
-            crate::DisplacementSource::constant(Color::BLACK, bounds(4, 1), bounds(4, 1)).unwrap(),
+            crate::displacement::DisplacementSource::constant(
+                Color::BLACK,
+                bounds(4, 1),
+                bounds(4, 1),
+            )
+            .unwrap(),
             map,
         )
         .unwrap();
@@ -276,7 +285,7 @@ fn public_displacement_constructor_byte_work_is_separate_from_later_unused_map_f
 
 #[test]
 fn public_displacement_raw_map_capability_refusal_preserves_zero_and_bypass_routes_then_retries() {
-    use crate::{RuntimeCapabilityUnavailableReason, RuntimeOperation};
+    use crate::{error::RuntimeCapabilityUnavailableReason, error::RuntimeOperation};
     let (mut renderer, mut surface) = new_renderer(RenderAccountingOptions::new());
     let zero = fixture(2.0, zero_map());
     let raw = fixture(2.0, map());
@@ -317,7 +326,9 @@ fn public_displacement_raw_map_capability_refusal_preserves_zero_and_bypass_rout
 
 #[test]
 fn public_displacement_shared_native_bytes_have_one_renderer_import_and_actual_last_owner() {
-    use crate::{DisplacementSource, RenderCpuScope, RenderResource};
+    use crate::{
+        accounting::RenderCpuScope, accounting::RenderResource, displacement::DisplacementSource,
+    };
     let bytes: Arc<[u8]> = Arc::from([128, 0, 0, 255]);
     let weak = Arc::downgrade(&bytes);
     let map = prepare_native_displacement_map(
@@ -434,7 +445,7 @@ fn public_displacement_linear_rgb_builds_one_256_entry_color_table_before_two_ad
             );
             assert_eq!(
                 error.accounting_diagnostic(),
-                Some(crate::RenderAccountingError::Refused(refusal))
+                Some(crate::accounting::RenderAccountingError::Refused(refusal))
             );
             assert_eq!(renderer.stats(), old);
         } else {
@@ -463,7 +474,9 @@ fn public_displacement_linear_rgb_builds_one_256_entry_color_table_before_two_ad
 #[test]
 fn public_displacement_impossible_storage_limits_refuse_before_any_native_backing_and_preserve_route_omissions()
  {
-    use crate::{DisplacementNumericPhase, DisplacementPreparationError};
+    use crate::{
+        displacement::DisplacementNumericPhase, displacement::DisplacementPreparationError,
+    };
     let (mut renderer, mut surface) = new_renderer(RenderAccountingOptions::new());
     pollster::block_on(renderer.render(&mut surface, &Scene::new(), Parameters::default()))
         .unwrap();
@@ -542,7 +555,12 @@ fn public_displacement_actual_upload_serialization_and_native_creation_caps_are_
         .displacement_layer(
             Layer::new(),
             active(2.0, Channel::A, Channel::R),
-            crate::DisplacementSource::constant(Color::BLACK, bounds(4, 1), bounds(4, 1)).unwrap(),
+            crate::displacement::DisplacementSource::constant(
+                Color::BLACK,
+                bounds(4, 1),
+                bounds(4, 1),
+            )
+            .unwrap(),
             map(),
         )
         .unwrap();
@@ -587,7 +605,7 @@ fn public_displacement_actual_upload_serialization_and_native_creation_caps_are_
                 assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
                 assert_eq!(
                     error.accounting_diagnostic(),
-                    Some(crate::RenderAccountingError::Refused(refusal))
+                    Some(crate::accounting::RenderAccountingError::Refused(refusal))
                 );
                 assert_eq!(report.cleanup_fault(), None);
                 assert_eq!(renderer.stats(), stats);

@@ -314,7 +314,7 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
                 &input,
                 placement,
                 limits(),
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(scene.layout(), &input));
@@ -432,7 +432,7 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
                     }
                     text::LineOrientation::Vertical => unreachable!(),
                 };
-                assert_eq!(*shape, crate::Shape::rect(rect));
+                assert_eq!(*shape, crate::shape::Shape::rect(rect));
             }
         }
     }
@@ -448,7 +448,7 @@ fn scoped_scene_numeric_and_budget_failures_publish_no_prefix_and_keep_prior_pre
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let retained = accepted.scene().clone();
@@ -488,7 +488,7 @@ fn scoped_scene_numeric_and_budget_failures_publish_no_prefix_and_keep_prior_pre
             &input,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );

@@ -293,7 +293,7 @@ fn nested_box_edges_relocate_only_owned_ahem_ink_through_real_render() {
             layout,
             Transform::translation(3.0, 2.0).unwrap(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(scene.layout(), layout));

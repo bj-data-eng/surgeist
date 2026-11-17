@@ -5,12 +5,35 @@
 use super::convolution::{assert_pixel, bounds, image, renderer_and_surface};
 use super::morphology::{finite_scene, operation, render, source_scene};
 use crate::{
-    Color, ErrorCode, FilterColorSpace, FilterDomains, GpuFaultKind, Layer, MorphologyInput,
-    MorphologyOperator, MorphologySource, Options, Parameters, RenderAccountingOptions,
-    RenderAttemptStatus, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile,
-    RenderQuantity, RenderResource, RenderRoute, RenderWork, Renderer, ResourceCacheBudget,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Size, Surface,
+    ErrorCode,
+    accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus,
+    accounting::RenderLimits,
+    accounting::RenderPhase,
+    accounting::RenderPhaseFilter,
+    accounting::RenderProfile,
+    accounting::RenderQuantity,
+    accounting::RenderResource,
+    accounting::RenderWork,
+    error::GpuFaultKind,
+    error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation,
+    filter_domains::FilterDomains,
+    filter_model::FilterColorSpace,
+    geometry::Size,
     gpu_transaction::test_support::GraphSubmissionGateGuardForTest,
+    layer::Layer,
+    morphology::MorphologyInput,
+    morphology::MorphologyOperator,
+    morphology::MorphologySource,
+    paint::Color,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
+    scene::Scene,
+    stats::RenderRoute,
+    surface::Parameters,
+    surface::Surface,
     surface::{HeadlessResources, SurfaceBackend},
 };
 use std::{
@@ -36,7 +59,7 @@ fn scenes() -> (Scene, Scene) {
             source_scene(image(5, 1, rgba), domain),
             domains,
             effect,
-            crate::Layer::new(),
+            crate::layer::Layer::new(),
         )
     };
     (
@@ -282,7 +305,7 @@ fn public_morphology_first_terminal_fault_aborts_publication_and_retires_once() 
     );
     assert_eq!(
         first
-            .error(crate::RuntimeOperation::SurfaceRendering)
+            .error(crate::error::RuntimeOperation::SurfaceRendering)
             .runtime_capability_unavailable_diagnostic()
             .expect("first signal retains its terminal reason")
             .reason(),
@@ -429,7 +452,7 @@ fn sample_fixture(x: f64, y: f64) -> Scene {
     )
 }
 
-fn assert_sample_pixels(pixels: &crate::ImageBuffer) {
+fn assert_sample_pixels(pixels: &crate::image::ImageBuffer) {
     // Literal R2 maxima of [32,192,64,128,224], with finite exterior zero.
     for (x, red) in [192, 192, 224, 224, 224].into_iter().enumerate() {
         assert_pixel(pixels, x as u32, 0, [red, 0, 0, 255], 2);
@@ -826,7 +849,9 @@ fn public_morphology_float32_refusal_is_typed_and_bypassed_only_by_unused_extrem
 }
 
 fn bounded_morphology_peak_witness(periodic: bool, retention: ResourceCacheBudget) {
-    use crate::{EffectPrecision, EffectQualityPolicy, RenderGenerationScope};
+    use crate::{
+        accounting::RenderGenerationScope, renderer::EffectQualityPolicy, stats::EffectPrecision,
+    };
     let width = if periodic { 64 } else { 65 };
     let domain = bounds(width, 1);
     let alpha: Vec<u8> = (0..width).map(|x| (32 + (37 * x) % 224) as u8).collect();
@@ -1013,7 +1038,7 @@ fn physical_baseline(width: u32) -> Scene {
 fn physical_renderer(width: u32, retention: ResourceCacheBudget) -> (Renderer, Surface) {
     let mut renderer = pollster::block_on(Renderer::new(
         Options::default()
-            .with_effect_quality_policy(crate::EffectQualityPolicy::RequireHighPrecision)
+            .with_effect_quality_policy(crate::renderer::EffectQualityPolicy::RequireHighPrecision)
             .with_resource_cache_budget(retention)
             .with_accounting(
                 RenderAccountingOptions::new()
@@ -1028,7 +1053,7 @@ fn physical_renderer(width: u32, retention: ResourceCacheBudget) -> (Renderer, S
 }
 
 fn assert_physical_pixels(
-    pixels: &crate::ImageBuffer,
+    pixels: &crate::image::ImageBuffer,
     input: u32,
     output: u32,
     periodic: bool,
@@ -1072,7 +1097,8 @@ fn assert_provider_planes(
                 .effect_textures
                 .iter()
                 .filter(|entry| {
-                    entry.format == format && entry.extent == crate::PhysicalSize::new(width, 1)
+                    entry.format == format
+                        && entry.extent == crate::geometry::PhysicalSize::new(width, 1)
                 })
                 .collect();
             assert_eq!(
@@ -1184,10 +1210,12 @@ fn public_morphology_exact_physical_effects_limits_refuse_before_acquisition_and
             assert!(
                 matches!(
                     error.accounting_diagnostic(),
-                    Some(crate::RenderAccountingError::GenerationRefused {
-                        quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
-                        ..
-                    })
+                    Some(
+                        crate::accounting::RenderAccountingError::GenerationRefused {
+                            quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                            ..
+                        }
+                    )
                 ),
                 "{error:?}"
             );
@@ -1235,7 +1263,7 @@ fn public_morphology_exact_physical_effects_limits_refuse_before_acquisition_and
             drop(gate);
             assert_eq!(
                 renderer.stats().effect_precision,
-                Some(crate::EffectPrecision::High)
+                Some(crate::stats::EffectPrecision::High)
             );
             assert_eq!(
                 renderer
@@ -1339,7 +1367,7 @@ fn verify_physical_plane_budget(
     working: &[(u32, usize)],
     captures: &[(u32, usize)],
     exact: u64,
-) -> crate::ImageBuffer {
+) -> crate::image::ImageBuffer {
     let (mut renderer, mut surface) = physical_renderer(output, ResourceCacheBudget::DISABLED);
     let before = render(&mut renderer, &mut surface, &physical_baseline(output));
     let stats = renderer.stats();
@@ -1360,10 +1388,12 @@ fn verify_physical_plane_budget(
     assert!(
         matches!(
             error.accounting_diagnostic(),
-            Some(crate::RenderAccountingError::GenerationRefused {
-                quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
-                ..
-            })
+            Some(
+                crate::accounting::RenderAccountingError::GenerationRefused {
+                    quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                    ..
+                }
+            )
         ),
         "{error:?}"
     );
@@ -1408,7 +1438,7 @@ fn verify_physical_plane_budget(
     drop(gate);
     assert_eq!(
         renderer.stats().effect_precision,
-        Some(crate::EffectPrecision::High)
+        Some(crate::stats::EffectPrecision::High)
     );
     assert_eq!(
         renderer
@@ -1464,7 +1494,7 @@ fn physical_siblings(first: (u32, bool), second: (u32, bool), output: u32) -> Sc
 }
 
 fn assert_sibling_pixels(
-    pixels: &crate::ImageBuffer,
+    pixels: &crate::image::ImageBuffer,
     first: (u32, bool),
     second: (u32, bool),
     output: u32,
@@ -1577,14 +1607,14 @@ fn public_morphology_changed_radius_reuses_warm_capacity_without_level_backings(
     let generation = report.generation().unwrap().unwrap();
     assert_eq!(
         generation.scope_opening(
-            crate::RenderGenerationScope::Effects,
+            crate::accounting::RenderGenerationScope::Effects,
             RenderResource::GpuBytes
         ),
         5376
     );
     assert_eq!(
         generation.scope_opening(
-            crate::RenderGenerationScope::Effects,
+            crate::accounting::RenderGenerationScope::Effects,
             RenderResource::RegisteredCacheGpuBytes
         ),
         5376

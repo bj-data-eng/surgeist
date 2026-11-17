@@ -1,7 +1,7 @@
 //! Iterative value operations on authored layer sequences.
 
 use super::{Command, LayerCommands};
-use crate::Layer;
+use crate::layer::Layer;
 use std::{
     fmt::{self, Write},
     mem, slice,

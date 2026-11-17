@@ -1,14 +1,28 @@
 //! Descriptor-derived child/ancestor residency and actual preparation phase.
 use super::convolution::{assert_pixel, bounds};
 use crate::{
-    Color, FilterColorSpace, GaussianSource, Layer, Options, Parameters, Rect,
-    RenderAccountingError, RenderAccountingOptions, RenderGenerationScope as Scope, RenderProfile,
-    RenderQuantity, RenderResource, Renderer, ResourceCacheBudget, Scene, Size,
+    accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions,
+    accounting::RenderGenerationScope as Scope,
+    accounting::RenderProfile,
+    accounting::RenderQuantity,
+    accounting::RenderResource,
+    filter_model::FilterColorSpace,
+    gaussian::GaussianSource,
+    geometry::Rect,
+    geometry::Size,
     gpu_transaction::test_support::GraphSubmissionGateGuardForTest,
+    layer::Layer,
+    paint::Color,
     pass::{
         ParameterFamilyForTest as Family, ParameterProbeForTest, ParameterStageForTest as Stage,
     },
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
     resource::WorkingFormat,
+    scene::Scene,
+    surface::Parameters,
 };
 use std::{
     future::Future,
@@ -30,7 +44,11 @@ fn constant_scene() -> Scene {
         .unwrap();
     scene
 }
-fn render(renderer: &mut Renderer, surface: &mut crate::Surface, scene: &Scene) -> crate::Stats {
+fn render(
+    renderer: &mut Renderer,
+    surface: &mut crate::surface::Surface,
+    scene: &Scene,
+) -> crate::stats::Stats {
     pollster::block_on(renderer.render_with_exact_graph_working_format_for_test(
         surface,
         scene,
@@ -265,7 +283,7 @@ fn graph_parameters_use_exact_pass_external_and_combined_root_limits_with_cold_a
 
 #[test]
 fn graph_parameter_uploads_happen_once_in_gpu_prepare_across_profiles() {
-    use crate::{RenderPhase, RenderPhaseFilter, RenderWork};
+    use crate::{accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderWork};
     let scene = constant_scene();
     let mut totals = Vec::new();
     for profile in [
@@ -601,7 +619,9 @@ fn graph_parameter_backing_survives_scoped_gpu_failure_without_publishing_and_re
 
 #[test]
 fn partial_parameter_upload_refusals_dispose_only_the_completed_ready_buffers() {
-    use crate::{RenderLimits, RenderRefusalReason, RenderWork};
+    use crate::{
+        accounting::RenderLimits, accounting::RenderRefusalReason, accounting::RenderWork,
+    };
     // This constant route has no source upload. The ordered pass requests first
     // acquire Gaussian256, then the Layer's spatial48/composite128, then Present48.
     // Caps end after the listed real descriptors. The first cap permits the
@@ -728,11 +748,13 @@ fn partial_parameter_upload_refusals_dispose_only_the_completed_ready_buffers() 
 #[test]
 fn presented_graph_keeps_actual_parameters_through_submission_and_accounting_ready() {
     use crate::{
-        Format, PhysicalSize, SurfaceOptions,
         backend::{
             display_free_presented_surface_for_test, presented_observation_handle_for_test,
             take_last_presented_texture_for_test,
         },
+        geometry::PhysicalSize,
+        surface::Format,
+        surface::SurfaceOptions,
     };
     for cancel in [false, true] {
         let mut renderer = pollster::block_on(Renderer::new(

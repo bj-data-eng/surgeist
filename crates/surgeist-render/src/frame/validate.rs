@@ -199,8 +199,14 @@ fn validate_convolution_metadata(
                         || descriptor.device_extent.width != width
                         || descriptor.device_extent.height != height
                         || descriptor.logical_bounds.rect()
-                            != crate::Rect::new(0.0, 0.0, f64::from(width), f64::from(height))
-                        || descriptor.texel_center_mapping.origin != crate::Point::new(0.0, 0.0)
+                            != crate::geometry::Rect::new(
+                                0.0,
+                                0.0,
+                                f64::from(width),
+                                f64::from(height),
+                            )
+                        || descriptor.texel_center_mapping.origin
+                            != crate::geometry::Point::new(0.0, 0.0)
                         || descriptor.texel_center_mapping.raster_scale.get() != 1.0
                     {
                         return Err(GraphValidationError::InvalidPassResultRole);
@@ -783,7 +789,7 @@ fn validate_vello_span_metadata(graph: &GpuRenderGraph, account: &Account) -> Gr
                 Ok(resource.id == capture)
             })?
             .ok_or(GraphValidationError::UnknownResource(capture))?;
-            if span.parent_to_surface != crate::Transform::identity()
+            if span.parent_to_surface != crate::geometry::Transform::identity()
                 || source.descriptor.texel_center_mapping.raster_scale
                     != root.descriptor.texel_center_mapping.raster_scale
             {
@@ -1335,7 +1341,7 @@ fn validate_native_shadow_metadata(
                 .filter(|p| p.pass == offset_pass)
                 .ok_or(GraphValidationError::InvalidPassArity)?;
             let filter = entry.facts.source().filter();
-            let domains = crate::FilterDomains::try_new(
+            let domains = crate::filter_domains::FilterDomains::try_new(
                 filter,
                 filter,
                 super::gaussian::result_domain(entry.facts.source()),
@@ -1746,8 +1752,10 @@ mod displacement_footprint_tests {
     use super::*;
     use crate::frame::{FrameContext, FramePlan};
     use crate::{
-        Antialiasing, Capabilities, Color, DisplacementInput, DisplacementSource, FilterColorSpace,
-        Layer, Rect, RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext, capability::Capabilities,
+        displacement::DisplacementInput, displacement::DisplacementSource,
+        filter_model::FilterColorSpace, geometry::Rect, geometry::Size, layer::Layer, paint::Color,
+        renderer::Antialiasing, scene::Scene,
     };
 
     #[test]
@@ -1761,13 +1769,13 @@ mod displacement_footprint_tests {
         ] {
             let filter = Rect::new(x, 0.0, 6.0, 2.0);
             let output = Rect::new(x + 2.0, 0.0, 2.0, 2.0);
-            let operation = crate::prepare_displacement(
+            let operation = crate::displacement::prepare_displacement(
                 DisplacementInput::new().with_scale(scale),
                 FilterColorSpace::Srgb,
                 &mut preparation,
             )
             .unwrap();
-            let map = crate::prepare_native_displacement_map(
+            let map = crate::displacement::prepare_native_displacement_map(
                 Size::new(0.0, 0.0),
                 std::sync::Arc::from([]),
                 filter,
@@ -1842,9 +1850,11 @@ mod repeated_proof_edge_tests {
     };
     use crate::frame::{FrameContext, FramePlan, forced_base_graph_for_test};
     use crate::{
-        Antialiasing, BackdropCaptureBounds, BackdropFilterInput, Capabilities, Color,
-        FilterAmount, FilterList, FilterOp, Layer, Rect, RenderAccountingError, RenderQuantity,
-        RenderResource, Scene, Size,
+        accounting::RenderAccountingError, accounting::RenderQuantity, accounting::RenderResource,
+        capability::Capabilities, geometry::Rect, geometry::Size, layer::Layer, paint::Color,
+        renderer::Antialiasing, scene::Scene, style::filter::BackdropCaptureBounds,
+        style::filter::BackdropFilterInput, style::filter::FilterAmount, style::filter::FilterList,
+        style::filter::FilterOp,
     };
 
     fn graph(backdrop: bool) -> crate::accounting::OwnedBox<GpuRenderGraph> {
@@ -1956,7 +1966,7 @@ mod repeated_proof_edge_tests {
                     let refusal = report.refusal().unwrap();
                     assert_eq!(
                         refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
                     );
                     assert_eq!((refusal.current, refusal.amount), (0, 1));
                 }

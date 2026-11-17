@@ -1,10 +1,19 @@
 //! Real display-free acquired-owner characterization, independent of frame execution.
 use super::*;
 use crate::{
-    Options, RenderAccountingError, RenderAccountingOptions, RenderLimits, RenderPhase,
-    RenderProfile, RenderQuantity, RenderRefusalReason, RenderResource, RenderWork, Renderer,
+    accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions,
+    accounting::RenderLimits,
+    accounting::RenderPhase,
+    accounting::RenderProfile,
+    accounting::RenderQuantity,
+    accounting::RenderRefusalReason,
+    accounting::RenderResource,
+    accounting::RenderWork,
     accounting::{FrameFixture, RendererCpu},
     backend::configured_display_free_presented_surface_for_test,
+    renderer::Options,
+    renderer::Renderer,
 };
 use std::{sync::mpsc, time::Duration};
 

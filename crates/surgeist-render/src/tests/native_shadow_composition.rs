@@ -3,9 +3,11 @@
 use super::convolution::{assert_pixel, bounds, image, pixel, renderer_and_surface};
 use super::native_shadow::{operation, render};
 use crate::{
-    BlendMode, Color, DropShadowInput, DropShadowSource, FilterColorSpace, FilterDomains,
-    ImageBuffer, Layer, LayerComposition, Parameters, PorterDuffOperator as Pd, Rect,
-    ResolvedLayerAlphaMask, Scene, Shape, Transform, resource::WorkingFormat,
+    filter_domains::FilterDomains, filter_model::FilterColorSpace, geometry::Rect,
+    geometry::Transform, image::ImageBuffer, layer::BlendMode, layer::Layer,
+    layer::LayerComposition, layer::PorterDuffOperator as Pd, layer::ResolvedLayerAlphaMask,
+    native_shadow::DropShadowInput, native_shadow::DropShadowSource, paint::Color,
+    resource::WorkingFormat, scene::Scene, shape::Shape, surface::Parameters,
 };
 
 fn zero_blur() -> DropShadowInput {
@@ -399,8 +401,8 @@ fn public_native_shadow_unrepresentable_existing_capture_lattice_refuses_before_
     // rebasing shader coordinates. 2^40 cannot fit even though final A cancels.
     assert!(matches!(
         error.gaussian_diagnostic(),
-        Some(crate::GaussianPreparationError::Numeric {
-            phase: crate::GaussianNumericPhase::GridMapping,
+        Some(crate::gaussian::GaussianPreparationError::Numeric {
+            phase: crate::gaussian::GaussianNumericPhase::GridMapping,
             ..
         })
     ));

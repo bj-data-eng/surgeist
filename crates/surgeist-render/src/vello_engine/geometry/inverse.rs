@@ -509,7 +509,10 @@ pub(crate) fn qualify_inverse(transform: &QualifiedTransform, account: &Account)
 mod tests {
     use super::*;
     use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
-    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits,
+    };
     use kurbo::Affine;
 
     fn qualified(source: Affine) -> QualifiedTransform {

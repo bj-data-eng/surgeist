@@ -6,11 +6,13 @@ use super::{
     filter_grid::{self as grid, FilterGridMapping, FilterGridOwner, PeriodCapture},
 };
 use crate::{
-    Color, PreparedDropShadow, Transform,
     accounting::{Account, SharedValue},
     error::Result,
     filter_source::FilterSourceDescriptor,
+    geometry::Transform,
     native_shadow::DropShadowForeground,
+    native_shadow::PreparedDropShadow,
+    paint::Color,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,10 +87,10 @@ impl NativeShadowMapping {
     ) -> Result<Self> {
         for spatial in [Some(target), original].into_iter().flatten() {
             for size in grid::extent(spatial) {
-                account.work(crate::RenderWork::CoordinateVisits, 1)?;
+                account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
                 if size > 8_388_608 {
-                    return Err(crate::DropShadowPreparationError::Numeric {
-                        phase: crate::DropShadowNumericPhase::GridIndex,
+                    return Err(crate::native_shadow::DropShadowPreparationError::Numeric {
+                        phase: crate::native_shadow::DropShadowNumericPhase::GridIndex,
                         value: f64::from(size),
                     }
                     .into());
@@ -201,7 +203,7 @@ impl NativeShadowMapping {
                 Transform::identity(),
                 FilterGridOwner::Gaussian,
             )?;
-            let offset = operation.offset(crate::FilterDomains::try_new(
+            let offset = operation.offset(crate::filter_domains::FilterDomains::try_new(
                 filter,
                 filter,
                 grid::result_domain(source),
@@ -262,12 +264,12 @@ impl NativeShadowPassFacts {
 }
 fn merge_error(error: crate::Error) -> crate::Error {
     match error.gaussian_diagnostic() {
-        Some(crate::GaussianPreparationError::Numeric { phase, value }) => {
-            crate::DropShadowPreparationError::Numeric {
-                phase: if *phase == crate::GaussianNumericPhase::GridIndex {
-                    crate::DropShadowNumericPhase::GridIndex
+        Some(crate::gaussian::GaussianPreparationError::Numeric { phase, value }) => {
+            crate::native_shadow::DropShadowPreparationError::Numeric {
+                phase: if *phase == crate::gaussian::GaussianNumericPhase::GridIndex {
+                    crate::native_shadow::DropShadowNumericPhase::GridIndex
                 } else {
-                    crate::DropShadowNumericPhase::MergeMapping
+                    crate::native_shadow::DropShadowNumericPhase::MergeMapping
                 },
                 value: *value,
             }
@@ -278,8 +280,8 @@ fn merge_error(error: crate::Error) -> crate::Error {
 }
 
 fn numeric(value: f64) -> crate::Error {
-    crate::DropShadowPreparationError::Numeric {
-        phase: crate::DropShadowNumericPhase::MergeMapping,
+    crate::native_shadow::DropShadowPreparationError::Numeric {
+        phase: crate::native_shadow::DropShadowNumericPhase::MergeMapping,
         value,
     }
     .into()
@@ -289,14 +291,20 @@ fn numeric(value: f64) -> crate::Error {
 mod tests {
     use super::*;
     use crate::{
-        DropShadowInput, DropShadowSource, FilterColorSpace, FilterDomains, Layer,
-        RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext,
+        filter_domains::FilterDomains,
+        filter_model::FilterColorSpace,
         frame::{FramePlan, GaussianChannels, GaussianPurpose, GaussianStage, OffsetPurpose},
+        geometry::Size,
+        layer::Layer,
+        native_shadow::DropShadowInput,
+        native_shadow::DropShadowSource,
         renderer::Antialiasing,
+        scene::Scene,
     };
 
     fn operation(sigma: f64, dx: f64) -> PreparedDropShadow {
-        crate::prepare_drop_shadow(
+        crate::native_shadow::prepare_drop_shadow(
             DropShadowInput::new()
                 .with_standard_deviations(sigma, 0.0)
                 .with_dx(dx)
@@ -306,7 +314,7 @@ mod tests {
         )
         .unwrap()
     }
-    fn content(rect: crate::Rect) -> Scene {
+    fn content(rect: crate::geometry::Rect) -> Scene {
         let mut scene = Scene::new();
         scene.fill(rect, Color::BLACK);
         scene
@@ -321,7 +329,7 @@ mod tests {
         )
         .unwrap();
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &account)
+            .normalize(crate::capability::Capabilities::CURRENT, &account)
             .unwrap();
         match FramePlan::try_from_commands(commands, context, &account).unwrap() {
             FramePlan::GpuGraph(graph) => graph,
@@ -329,9 +337,9 @@ mod tests {
         }
     }
     fn finite_scene(sigma: f64, dx: f64) -> Scene {
-        let f = crate::Rect::new(0.0, 0.0, 8.0, 1.0);
-        let d = crate::Rect::new(0.5, 0.0, 1.0, 1.0);
-        let p = crate::Rect::new(2.5, 0.0, 2.0, 1.0);
+        let f = crate::geometry::Rect::new(0.0, 0.0, 8.0, 1.0);
+        let d = crate::geometry::Rect::new(0.5, 0.0, 1.0, 1.0);
+        let p = crate::geometry::Rect::new(2.5, 0.0, 2.0, 1.0);
         let mut scene = Scene::new();
         scene
             .drop_shadow_layer(
@@ -353,7 +361,7 @@ mod tests {
             assert_eq!(pass.facts.channels(), GaussianChannels::Alpha);
             assert_eq!(
                 pass.facts.source().result(),
-                crate::Rect::new(0.0, 0.0, 8.0, 1.0)
+                crate::geometry::Rect::new(0.0, 0.0, 8.0, 1.0)
             );
         }
         assert!(
@@ -374,14 +382,14 @@ mod tests {
         assert_eq!(original.releasable_after, Some(merge.pass));
         assert_eq!(
             original.descriptor.logical_bounds.rect(),
-            crate::Rect::new(0.5, 0.0, 1.0, 1.0)
+            crate::geometry::Rect::new(0.5, 0.0, 1.0, 1.0)
         );
         assert!(graph.composites.last().unwrap().filter_footprint.is_some());
         graph.lowering_view(&Account::for_test()).unwrap();
     }
     #[test]
     fn constant_alpha_resolves_finitely_before_offset_and_original_uses_descriptor() {
-        let f = crate::Rect::new(0.0, 0.0, 2.0, 1.0);
+        let f = crate::geometry::Rect::new(0.0, 0.0, 2.0, 1.0);
         let mut scene = Scene::new();
         scene
             .drop_shadow_layer(
@@ -409,8 +417,8 @@ mod tests {
     }
     #[test]
     fn fractional_period_original_shares_the_actual_unequal_density_canvas() {
-        let t = crate::Rect::new(0.25, 0.0, 2.5, 1.25);
-        let f = crate::Rect::new(0.0, 0.0, 8.0, 2.0);
+        let t = crate::geometry::Rect::new(0.25, 0.0, 2.5, 1.25);
+        let f = crate::geometry::Rect::new(0.0, 0.0, 8.0, 2.0);
         let mut scene = Scene::new();
         scene
             .drop_shadow_layer(
@@ -431,8 +439,8 @@ mod tests {
     }
     #[test]
     fn transparent_flood_skips_shadow_work_and_keeps_original_merge() {
-        let f = crate::Rect::new(0.0, 0.0, 2.0, 1.0);
-        let admitted = crate::prepare_drop_shadow(
+        let f = crate::geometry::Rect::new(0.0, 0.0, 2.0, 1.0);
+        let admitted = crate::native_shadow::prepare_drop_shadow(
             DropShadowInput::new()
                 .with_standard_deviation(f64::MAX)
                 .with_flood_opacity(0.0),

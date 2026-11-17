@@ -1,19 +1,26 @@
 use crate::accounting::SharedValue;
 use crate::{
-    BackendErrorCode, Color, Error, Format, PhysicalSize, Point, Rect, Result, Transform,
+    Error, Result,
     command::{RenderClip, RenderCommands},
+    error::BackendErrorCode,
     filter::{RuntimeFilterAmount, RuntimeFilterAngle, RuntimeUnitFilterAmount},
     frame::{
         CompositeSourceSpace, GraphLoweringGeneration, GraphLoweringPassId, GraphLoweringResourceId,
     },
+    geometry::PhysicalSize,
+    geometry::Point,
+    geometry::Rect,
+    geometry::Transform,
     image::ResolvedMaskUploadDescriptor,
     layer::LayerComposition,
+    paint::Color,
     renderer::Antialiasing,
     resource::{GaussianKernelKey, WorkingFormat},
     shader::{
         BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderMaskSamplingKey, ShaderModuleKey,
         ShaderTextureFormatKey,
     },
+    surface::Format,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

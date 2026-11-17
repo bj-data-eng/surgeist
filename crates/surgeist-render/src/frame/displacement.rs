@@ -9,13 +9,20 @@ use super::{
     filter_grid::{self as grid, FilterGridMapping, FilterGridOwner, PeriodCapture},
 };
 use crate::{
-    Color, DisplacementChannel, DisplacementNumericPhase, DisplacementPreparationError,
-    FilterColorSpace, Point, PreparedDisplacement, Rect, Transform,
     accounting::{Account, RenderWork, SharedValue},
+    displacement::DisplacementChannel,
+    displacement::DisplacementNumericPhase,
+    displacement::DisplacementPreparationError,
     displacement::NormalizedDisplacementForeground,
+    displacement::PreparedDisplacement,
     error::Result,
+    filter_model::FilterColorSpace,
     filter_source::FilterSourceDescriptor,
+    geometry::Point,
+    geometry::Rect,
+    geometry::Transform,
     image::RawImageUploadDescriptor,
+    paint::Color,
 };
 use surgeist_color::{Color as IntrinsicColor, ColorSpace, Finite, PredefinedColorSpace};
 
@@ -789,8 +796,9 @@ fn map_records(
 mod tests {
     use super::*;
     use crate::{
-        DisplacementInput, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
-        RenderLimits, RenderPhase, prepare_displacement,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderLimits, accounting::RenderPhase,
+        displacement::DisplacementInput, displacement::prepare_displacement,
     };
 
     fn operation(
@@ -1176,8 +1184,9 @@ mod tests {
         let foreground = NormalizedDisplacementForeground {
             operation: operation(0.0, [DisplacementChannel::A; 2], FilterColorSpace::Srgb),
             source: FilterSourceDescriptor::Finite {
-                domains: crate::FilterDomains::try_new(source, filter, output).unwrap(),
-                edge: crate::FilterEdgeMode::None,
+                domains: crate::filter_domains::FilterDomains::try_new(source, filter, output)
+                    .unwrap(),
+                edge: crate::filter_model::FilterEdgeMode::None,
             },
             map: crate::displacement::NormalizedDisplacementMap::Bypass,
         };

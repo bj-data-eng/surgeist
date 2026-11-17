@@ -124,11 +124,11 @@ fn zero_sized_logical_length_overflow_refuses_before_write() {
         let mut values = AccountedVec::from_parts(vec![(); usize::MAX], hold)?;
         assert!(matches!(
             failure(values.append_slot()).glyph_preparation_diagnostic(),
-            Some(crate::GlyphPreparationError::CapacityOverflow)
+            Some(crate::text::GlyphPreparationError::CapacityOverflow)
         ));
         assert!(matches!(
             failure(values.insert_slot(0)).glyph_preparation_diagnostic(),
-            Some(crate::GlyphPreparationError::CapacityOverflow)
+            Some(crate::text::GlyphPreparationError::CapacityOverflow)
         ));
         values.copy_slot(&[])?.write();
         assert_eq!(values.len(), usize::MAX);
@@ -187,7 +187,8 @@ fn one_short_relocation_cap_preserves_a_real_accepted_prefix_and_all_old_values(
         let error = failure(refused.grow(1)); // requests two more moves; total3 > cap2
         assert_eq!(refused.as_slice(), [8, 9]);
         assert_eq!(refused.capacity(), capacity);
-        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
+            error.accounting_diagnostic()
         else {
             panic!("original relocation refusal")
         };
@@ -233,11 +234,11 @@ fn callback_failure_precedes_central_relocation_and_preserves_its_exact_domain()
         let capacity = values.capacity();
         let error = failure(values.grow_with(1, |count| {
             assert_eq!(count, 2);
-            Err(crate::GlyphPreparationError::CapacityOverflow.into())
+            Err(crate::text::GlyphPreparationError::CapacityOverflow.into())
         }));
         assert!(matches!(
             error.glyph_preparation_diagnostic(),
-            Some(crate::GlyphPreparationError::CapacityOverflow)
+            Some(crate::text::GlyphPreparationError::CapacityOverflow)
         ));
         assert_eq!(values.as_slice(), [3, 4]);
         assert_eq!(values.capacity(), capacity);
@@ -303,11 +304,11 @@ fn producer_keeps_owner_intact_and_original_callback_failure_then_retries() {
     let admitted = values.capacity() as u64;
     let error = failure(values.with_producer(2, |output| {
         output.push(7);
-        Err::<(), _>(crate::GlyphPreparationError::CapacityOverflow.into())
+        Err::<(), _>(crate::text::GlyphPreparationError::CapacityOverflow.into())
     }));
     assert!(matches!(
         error.glyph_preparation_diagnostic(),
-        Some(crate::GlyphPreparationError::CapacityOverflow)
+        Some(crate::text::GlyphPreparationError::CapacityOverflow)
     ));
     assert_eq!(values.as_slice(), [7]);
     assert_eq!(
@@ -389,13 +390,13 @@ fn renderer_relocation_is_cpu_lifetime_work_not_forward_frame_work() {
         .unwrap();
     assert_eq!(
         limits.validate(RenderAttemptKind::Frame),
-        Err(crate::RenderAccountingError::InvalidLimit(
+        Err(crate::accounting::RenderAccountingError::InvalidLimit(
             RenderWork::StorageRelocations
         ))
     );
     assert_eq!(
         limits.validate(RenderAttemptKind::Readback),
-        Err(crate::RenderAccountingError::InvalidLimit(
+        Err(crate::accounting::RenderAccountingError::InvalidLimit(
             RenderWork::StorageRelocations
         ))
     );

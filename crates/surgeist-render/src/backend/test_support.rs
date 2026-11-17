@@ -14,8 +14,7 @@ use super::{
 };
 use crate::accounting::Account;
 use crate::{
-    Antialiasing, Attachment, EffectQualityPolicy, ErrorCode, FilterList, Format, Options,
-    Parameters, PhysicalSize, Surface, SurfaceOptions,
+    ErrorCode,
     accounting::{Generation, GenerationClass, GpuObjectKind, OwnedGpu},
     capability::EffectPrecisionCapabilities,
     command::OffscreenBounds,
@@ -23,6 +22,7 @@ use crate::{
         BackendErrorCode, DeviceLossReason, Error, GpuFaultKind, Result,
         RuntimeCapabilityUnavailable, RuntimeOperation,
     },
+    geometry::PhysicalSize,
     gpu_transaction::{
         GpuOperationStage, GraphOutputCommit, GraphSubmissionPayload, InternalVelloPayload,
         test_support::{
@@ -39,6 +39,9 @@ use crate::{
         GraphExternalOutputView, LayerCompositeCacheRequestsForTest, LoweredGraphPlan,
         PreparedGraph, SpatialFilterPreparableGraph,
     },
+    renderer::Antialiasing,
+    renderer::EffectQualityPolicy,
+    renderer::Options,
     renderer::ResourceCacheBudget,
     resource::{
         ManagerIdentity, ResourceAccountingFault, ResourceManager,
@@ -48,6 +51,12 @@ use crate::{
         ColorFilterOperationBufferLimits, CompositePassKeyRefs, CorePassKeyRefs, DevicePassCache,
         DevicePassCacheCountsForTest, ProvisionalDevicePassCacheUpdate,
     },
+    style::filter::FilterList,
+    surface::Attachment,
+    surface::Format,
+    surface::Parameters,
+    surface::Surface,
+    surface::SurfaceOptions,
     surface::{HeadlessPublication, HeadlessResources, RendererIdentity, SurfaceBackend},
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloPass, PreparedVelloPass, TransactionEncodingState,
@@ -55,7 +64,10 @@ use crate::{
     },
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]
-use crate::{BlendMode, Extend, ImageQuality, LayerComposition, Point, Rect};
+use crate::{
+    geometry::Point, geometry::Rect, image::Extend, image::ImageQuality, layer::BlendMode,
+    layer::LayerComposition,
+};
 
 /// Test-owned exact graph ingress for real production and fixture preparation stages.
 #[must_use = "an exact test surface graph must enter its GPU transaction"]
@@ -507,8 +519,8 @@ use std::{
 
 #[cfg(feature = "render-window")]
 use crate::{
-    Renderer,
     gpu_transaction::GpuOperationTransaction,
+    renderer::Renderer,
     surface::{
         DisplayFreePresentedSurfaceObservationForTest,
         DisplayFreePresentedSurfaceObservationHandleForTest, PendingPresentedConfiguration,
@@ -713,7 +725,7 @@ pub(crate) fn configured_display_free_presented_surface_for_test(
     let mut surface = display_free_presented_surface_for_test(
         renderer,
         SurfaceOptions {
-            size: crate::Size::new(2.0, 2.0),
+            size: crate::geometry::Size::new(2.0, 2.0),
             ..SurfaceOptions::default()
         },
     );
@@ -743,7 +755,7 @@ pub(crate) fn configured_display_free_presented_surface_on_device_for_test(
     let mut surface = display_free_presented_surface_on_device_for_test(
         renderer,
         SurfaceOptions {
-            size: crate::Size::new(2.0, 2.0),
+            size: crate::geometry::Size::new(2.0, 2.0),
             ..SurfaceOptions::default()
         },
         device_identity,
@@ -1375,12 +1387,12 @@ impl Backend {
     pub(crate) fn set_device_gpu_byte_limit_for_test(
         &mut self,
         identity: DeviceSlotIdentity,
-        scope: crate::RenderGenerationScope,
+        scope: crate::accounting::RenderGenerationScope,
         limit: u64,
     ) -> Result<()> {
         let ready = self
             .ready_device_state_borrow_for_test(identity)
-            .ok_or(crate::RenderAccountingError::Invariant)?;
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
         ready
             .generation_for_test()
             .set_gpu_byte_limit_for_test(scope, limit)

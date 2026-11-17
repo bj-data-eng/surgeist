@@ -1,18 +1,59 @@
 use std::sync::Arc;
 
 use crate::{
-    Antialiasing, BackdropCaptureBounds, BackdropFilterInput, BlendMode, BorderEdges, BorderSide,
-    BorderStyle, Capabilities, ClipInput, Color, DeviceLossReason, Error, ErrorCode, Extend,
-    FilterAmount, FilterAngle, FilterBlur, FilterDropShadow, FilterList, FilterOp, FontData,
-    FontRef, Image, ImageBuffer, ImageFit, ImageQuality, Layer, Options, Parameters, PhysicalSize,
-    Point, Rect, RenderSurfaceAvailability, Renderer, ResolvedLayerAlphaMask,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Shape, Size, Stats, Stroke,
-    Surface, TextGlyph, TextPaint, TextRun, TextRunBounds, Transform, UnitFilterAmount,
+    Error, ErrorCode,
     backend::DeviceSignal,
+    capability::Capabilities,
     command,
+    error::DeviceLossReason,
+    error::RenderSurfaceAvailability,
+    error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation,
     filter::BlurPolicy,
+    geometry::PhysicalSize,
+    geometry::Point,
+    geometry::Rect,
+    geometry::Size,
+    geometry::Transform,
+    image::Extend,
+    image::Image,
+    image::ImageBuffer,
+    image::ImageFit,
+    image::ImageQuality,
+    layer::BlendMode,
+    layer::Layer,
+    layer::ResolvedLayerAlphaMask,
+    paint::Color,
     reference::{self, PremultipliedRgba8, ReferencePremultipliedRgba8Buffer},
+    renderer::Antialiasing,
+    renderer::Options,
+    renderer::Renderer,
     resource::{ResourceCacheKey, WorkingFormat},
+    scene::Scene,
+    shape::Shape,
+    shape::Stroke,
+    stats::Stats,
+    style::clip::ClipInput,
+    style::decoration::BorderEdges,
+    style::decoration::BorderSide,
+    style::decoration::BorderStyle,
+    style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput,
+    style::filter::FilterAmount,
+    style::filter::FilterAngle,
+    style::filter::FilterBlur,
+    style::filter::FilterDropShadow,
+    style::filter::FilterList,
+    style::filter::FilterOp,
+    style::filter::UnitFilterAmount,
+    surface::Parameters,
+    surface::Surface,
+    text::FontData,
+    text::FontRef,
+    text::TextGlyph,
+    text::TextPaint,
+    text::TextRun,
+    text::TextRunBounds,
     texture::EffectTextureDescriptor,
     vello_engine::{
         PreparedVelloPass, RasterParameters,
@@ -288,19 +329,24 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
     let masked =
         Layer::new().with_resolved_alpha_mask(opaque_planning_mask(PhysicalSize::new(4, 4)));
     let convolution_bounds = Rect::new(8.0, 0.0, 2.0, 2.0);
-    let convolution = crate::prepare_convolution(
-        crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
-        crate::FilterDomains::try_new(convolution_bounds, convolution_bounds, convolution_bounds)
-            .unwrap(),
-        crate::FilterColorSpace::Srgb,
-        &mut crate::RenderAccountingContext::default(),
+    let convolution = crate::convolution::prepare_convolution(
+        crate::convolution::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+        crate::filter_domains::FilterDomains::try_new(
+            convolution_bounds,
+            convolution_bounds,
+            convolution_bounds,
+        )
+        .unwrap(),
+        crate::filter_model::FilterColorSpace::Srgb,
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let offset_bounds = Rect::new(10.0, 0.0, 2.0, 2.0);
-    let offset = crate::prepare_offset(
-        crate::OffsetInput::new().with_dx(0.5),
-        crate::FilterDomains::try_new(offset_bounds, offset_bounds, offset_bounds).unwrap(),
-        &mut crate::RenderAccountingContext::default(),
+    let offset = crate::offset::prepare_offset(
+        crate::offset::OffsetInput::new().with_dx(0.5),
+        crate::filter_domains::FilterDomains::try_new(offset_bounds, offset_bounds, offset_bounds)
+            .unwrap(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let mut scene = Scene::new();
@@ -327,63 +373,72 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
     let gaussian_bounds = Rect::new(12.0, 0.0, 2.0, 2.0);
     let mut gaussian_source = Scene::new();
     gaussian_source.fill(gaussian_bounds, Color::BLACK);
-    let gaussian = crate::prepare_gaussian(
-        crate::GaussianInput::new().with_standard_deviation(0.5),
-        crate::FilterColorSpace::Srgb,
-        &mut crate::RenderAccountingContext::default(),
+    let gaussian = crate::gaussian::prepare_gaussian(
+        crate::gaussian::GaussianInput::new().with_standard_deviation(0.5),
+        crate::filter_model::FilterColorSpace::Srgb,
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     scene
         .gaussian_layer(
             Layer::new(),
             gaussian,
-            crate::GaussianSource::finite(
+            crate::gaussian::GaussianSource::finite(
                 gaussian_source,
-                crate::FilterDomains::try_new(gaussian_bounds, gaussian_bounds, gaussian_bounds)
-                    .unwrap(),
+                crate::filter_domains::FilterDomains::try_new(
+                    gaussian_bounds,
+                    gaussian_bounds,
+                    gaussian_bounds,
+                )
+                .unwrap(),
             ),
         )
         .unwrap();
     let shadow_bounds = Rect::new(14.0, 0.0, 2.0, 2.0);
     let mut shadow_source = Scene::new();
     shadow_source.fill(shadow_bounds, Color::BLACK);
-    let shadow = crate::prepare_drop_shadow(
-        crate::DropShadowInput::new()
+    let shadow = crate::native_shadow::prepare_drop_shadow(
+        crate::native_shadow::DropShadowInput::new()
             .with_dx(0.0)
             .with_dy(0.0)
             .with_standard_deviation(0.5),
-        crate::FilterColorSpace::Srgb,
-        &mut crate::RenderAccountingContext::default(),
+        crate::filter_model::FilterColorSpace::Srgb,
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     scene
         .drop_shadow_layer(
             Layer::new(),
             shadow,
-            crate::DropShadowSource::finite(
+            crate::native_shadow::DropShadowSource::finite(
                 shadow_source,
-                crate::FilterDomains::try_new(shadow_bounds, shadow_bounds, shadow_bounds).unwrap(),
+                crate::filter_domains::FilterDomains::try_new(
+                    shadow_bounds,
+                    shadow_bounds,
+                    shadow_bounds,
+                )
+                .unwrap(),
             ),
         )
         .unwrap();
     let morphology_bounds = Rect::new(0.0, 8.0, 5.0, 1.0);
     let mut morphology_source = Scene::new();
     morphology_source.fill(morphology_bounds, Color::BLACK);
-    let morphology = crate::prepare_morphology(
-        crate::MorphologyInput::new()
-            .with_operator(crate::MorphologyOperator::Dilate)
+    let morphology = crate::morphology::prepare_morphology(
+        crate::morphology::MorphologyInput::new()
+            .with_operator(crate::morphology::MorphologyOperator::Dilate)
             .with_radii(1.0, 1.0),
-        crate::FilterColorSpace::Srgb,
-        &mut crate::RenderAccountingContext::default(),
+        crate::filter_model::FilterColorSpace::Srgb,
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     scene
         .morphology_layer(
             Layer::new(),
             morphology,
-            crate::MorphologySource::finite(
+            crate::morphology::MorphologySource::finite(
                 morphology_source,
-                crate::FilterDomains::try_new(
+                crate::filter_domains::FilterDomains::try_new(
                     morphology_bounds,
                     morphology_bounds,
                     morphology_bounds,
@@ -395,26 +450,26 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
     let displacement_bounds = Rect::new(6.0, 8.0, 2.0, 1.0);
     let mut displacement_source = Scene::new();
     displacement_source.fill(displacement_bounds, Color::BLACK);
-    let displacement = crate::prepare_displacement(
-        crate::DisplacementInput::new().with_scale(2.0),
-        crate::FilterColorSpace::Srgb,
-        &mut crate::RenderAccountingContext::default(),
+    let displacement = crate::displacement::prepare_displacement(
+        crate::displacement::DisplacementInput::new().with_scale(2.0),
+        crate::filter_model::FilterColorSpace::Srgb,
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
-    let displacement_map = crate::prepare_native_displacement_map(
+    let displacement_map = crate::displacement::prepare_native_displacement_map(
         Size::new(1.0, 1.0),
         std::sync::Arc::<[u8]>::from([128, 128, 128, 128]),
         displacement_bounds,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     scene
         .displacement_layer(
             Layer::new(),
             displacement,
-            crate::DisplacementSource::finite(
+            crate::displacement::DisplacementSource::finite(
                 displacement_source,
-                crate::FilterDomains::try_new(
+                crate::filter_domains::FilterDomains::try_new(
                     displacement_bounds,
                     displacement_bounds,
                     displacement_bounds,
@@ -609,7 +664,7 @@ pub(super) fn bounded_backdrop_integration_fixture_for_test() -> (
         .unwrap();
     let invert_pipeline = FilterList::try_ops(vec![FilterOp::invert(invert)])
         .unwrap()
-        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+        .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
         .unwrap()
         .unwrap();
     let filtered = parent
@@ -715,12 +770,12 @@ pub(super) fn spatial_filter_mixed_filter_fixture_for_test()
     let opacity = UnitFilterAmount::try_new(0.8).unwrap();
     let invert_pipeline = FilterList::try_ops(vec![FilterOp::invert(invert)])
         .unwrap()
-        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+        .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
         .unwrap()
         .unwrap();
     let opacity_pipeline = FilterList::try_ops(vec![FilterOp::opacity(opacity)])
         .unwrap()
-        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+        .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
         .unwrap()
         .unwrap();
     let expected = source
@@ -1072,9 +1127,9 @@ pub(super) fn graph_supported_working_formats_for_test(
 
 /// The fixture constructs the same owned CPU and native initialization path as Renderer.
 pub(super) fn backend_with_budget_for_test(
-    budget: crate::ResourceCacheBudget,
+    budget: crate::renderer::ResourceCacheBudget,
 ) -> crate::backend::Backend {
-    let accounting = crate::RenderAccountingOptions::default();
+    let accounting = crate::accounting::RenderAccountingOptions::default();
     let cpu = crate::accounting::RendererCpu::new(accounting).expect("fixture CPU initialization");
     crate::backend::Backend::new(budget, cpu, accounting).expect("fixture backend initialization")
 }
@@ -1096,8 +1151,11 @@ pub(super) fn assert_options_equal_for_test(actual: Options, expected: Options) 
         expected.accounting().profile()
     );
     match (actual.accounting().clock(), expected.accounting().clock()) {
-        (crate::RenderClock::Platform, crate::RenderClock::Platform) => {}
-        (crate::RenderClock::Host(actual), crate::RenderClock::Host(expected)) => {
+        (crate::accounting::RenderClock::Platform, crate::accounting::RenderClock::Platform) => {}
+        (
+            crate::accounting::RenderClock::Host(actual),
+            crate::accounting::RenderClock::Host(expected),
+        ) => {
             assert!(
                 std::ptr::fn_addr_eq(actual, expected),
                 "renderer clock changed"

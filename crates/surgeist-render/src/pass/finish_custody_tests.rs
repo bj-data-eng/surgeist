@@ -2,19 +2,33 @@
 //! Observations retain no cloned graph GPU handles.
 use super::*;
 use crate::{
-    Antialiasing, Capabilities, Color, EffectQualityPolicy, FilterColorSpace, FilterDomains,
-    Format, Layer, MorphologyInput, MorphologyOperator, MorphologySource, PhysicalSize, Rect,
-    RenderAccountingContext, ResourceCacheBudget, Scene, Size,
+    accounting::RenderAccountingContext,
     accounting::{
         Account, FrameFixture, Generation, GenerationClass, GpuObjectKind, RenderAccountingError,
         RenderAccountingOptions, RenderCpuScope, RenderLimits, RenderQuantity, RenderRefusalReason,
         RenderResource, RenderWork, RendererCpu,
     },
     backend::Backend,
+    capability::Capabilities,
+    filter_domains::FilterDomains,
+    filter_model::FilterColorSpace,
     frame::{FrameContext, FramePlan},
+    geometry::PhysicalSize,
+    geometry::Rect,
+    geometry::Size,
+    layer::Layer,
+    morphology::MorphologyInput,
+    morphology::MorphologyOperator,
+    morphology::MorphologySource,
+    paint::Color,
     pass::LoweredGraphPlan,
+    renderer::Antialiasing,
+    renderer::EffectQualityPolicy,
+    renderer::ResourceCacheBudget,
     resource::ResourceManager,
+    scene::Scene,
     shader::DevicePassCache,
+    surface::Format,
 };
 
 fn physical_bytes(generation: &Generation) -> [u64; 3] {
@@ -69,7 +83,7 @@ fn exercise_failure(failure: u8) {
     input.fill(bounds, Color::BLACK);
     let mut scene = Scene::new();
     if failure < 3 {
-        let operation = crate::prepare_morphology(
+        let operation = crate::morphology::prepare_morphology(
             MorphologyInput::new()
                 .with_operator(MorphologyOperator::Dilate)
                 .with_radius(1.0),
@@ -89,13 +103,13 @@ fn exercise_failure(failure: u8) {
             .unwrap();
     } else {
         let mut context = RenderAccountingContext::default();
-        let operation = crate::prepare_displacement(
-            crate::DisplacementInput::new().with_scale(2.0),
+        let operation = crate::displacement::prepare_displacement(
+            crate::displacement::DisplacementInput::new().with_scale(2.0),
             FilterColorSpace::Srgb,
             &mut context,
         )
         .unwrap();
-        let map = crate::prepare_native_displacement_map(
+        let map = crate::displacement::prepare_native_displacement_map(
             Size::new(1.0, 1.0),
             std::sync::Arc::from([255, 0, 0, 255]),
             bounds,
@@ -106,7 +120,7 @@ fn exercise_failure(failure: u8) {
             .displacement_layer(
                 Layer::new(),
                 operation,
-                crate::DisplacementSource::finite(
+                crate::displacement::DisplacementSource::finite(
                     input,
                     FilterDomains::try_new(bounds, bounds, bounds).unwrap(),
                 ),

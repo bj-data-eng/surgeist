@@ -12,6 +12,26 @@ use super::{SurfaceDiagnosticOperation, SurfaceIoOperation};
 ))]
 use crate::surface::SurfaceBackend;
 use crate::{
+    Error, ErrorCode, Result, accounting::RenderGenerationScope,
+    capability::AvailableRuntimeCapabilities, capability::EffectPrecisionCapabilities,
+    error::BackendErrorCode, error::DeviceLossReason, error::GpuFaultKind,
+    error::RuntimeCapabilityUnavailable, error::RuntimeOperation, error::UnsupportedPrimitive,
+    geometry::PhysicalSize, geometry::Point, geometry::Size, geometry::Transform,
+    image::ImageBuffer, paint::Color, renderer::Antialiasing, renderer::EffectQualityPolicy,
+    scene::Scene, stats::RenderRoute, stats::Stats, style::filter::FilterList, surface::Format,
+    surface::Parameters, surface::Surface,
+};
+#[cfg(feature = "render-window")]
+use crate::{
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus, accounting::RenderClock, accounting::RenderDeviceSnapshot,
+    accounting::RenderLimits, accounting::RenderPhase, accounting::RenderProfile,
+    accounting::RenderQuantity, accounting::RenderRefusalReason, accounting::RenderResource,
+    accounting::RenderStandaloneReport, accounting::RenderWork, renderer::Options,
+    surface::Attachment, surface::SurfaceOptions,
+};
+use crate::{
     accounting::{Account, GenerationClass, GpuObjectKind},
     backend::*,
     command::RenderCommands,
@@ -20,7 +40,6 @@ use crate::{
     image::ImageContentIdentity,
     pass::{ExecutableGraphDispatchEligibility, ExecutableGraphWorkingFormatRequest},
     resource::{ResourceManagerObservationForTest, WorkingFormat},
-    *,
 };
 #[cfg(feature = "render-window")]
 use crate::{geometry::physical_size, validation::validate_surface_options};
@@ -543,11 +562,11 @@ impl Renderer {
                 let backend = renderer
                     .backend
                     .as_mut()
-                    .ok_or(crate::RenderAccountingError::Invariant)?;
+                    .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
                 attempt.attach_generation(backend.generation(device_identity)?)?;
                 account
                     .async_phase(
-                        crate::RenderPhase::Readback,
+                        crate::accounting::RenderPhase::Readback,
                         crate::readback::read_texture_rgba(
                             backend,
                             device_identity,
@@ -1551,7 +1570,7 @@ impl Renderer {
                     graph,
                     output_extent,
                     captures,
-                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                } = account.phase(crate::accounting::RenderPhase::FramePrepare, || {
                     renderer.prepare_forced_base_graph_for_test(
                         surface,
                         scene,
@@ -1601,7 +1620,7 @@ impl Renderer {
         reconfigure_outdated: bool,
     ) -> Result<SurfaceFrameCommit> {
         let frame = account
-            .async_phase(crate::RenderPhase::Render, async {
+            .async_phase(crate::accounting::RenderPhase::Render, async {
                 let backend = self
                     .backend
                     .as_mut()
@@ -1757,7 +1776,7 @@ impl Renderer {
                     graph,
                     output_extent,
                     source_spatial,
-                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                } = account.phase(crate::accounting::RenderPhase::FramePrepare, || {
                     renderer.prepare_color_filter_fixture_for_test(
                         surface,
                         scene,
@@ -1886,7 +1905,7 @@ impl Renderer {
                     output_extent,
                     source_spatial,
                     result_spatial,
-                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                } = account.phase(crate::accounting::RenderPhase::FramePrepare, || {
                     renderer.prepare_spatial_filter_fixture_for_test(
                         surface,
                         scene,
@@ -1998,7 +2017,7 @@ impl Renderer {
                     output_extent,
                     parent_spatial,
                     capture_spatial,
-                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                } = account.phase(crate::accounting::RenderPhase::FramePrepare, || {
                     renderer.prepare_bounded_backdrop_fixture_for_test(
                         surface,
                         scene,

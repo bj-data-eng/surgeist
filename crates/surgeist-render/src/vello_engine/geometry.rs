@@ -7,7 +7,7 @@
 //! exact-f64 raster contract. Local retention follows PathEncoder's predicate;
 //! composed points cover both the fused flatten and unfused transform forms.
 use crate::accounting::{Account, RenderWork};
-use crate::{GeometryRealizationError as Reason, Result};
+use crate::{Result, error::GeometryRealizationError as Reason};
 use kurbo::{Affine, PathEl, Point, Rect, Stroke};
 use vello_encoding::Transform;
 
@@ -1409,8 +1409,8 @@ mod tests {
     fn rounded_decimal_contour_and_small_single_axis_residual_keep_native_streams() {
         use kurbo::Shape;
         let rounded = crate::command::kurbo_rounded_rect(
-            crate::Rect::try_new(2.1, 2.1, 27.8, 11.8).unwrap(),
-            crate::Radii::try_all(2.3).unwrap(),
+            crate::geometry::Rect::try_new(2.1, 2.1, 27.8, 11.8).unwrap(),
+            crate::geometry::Radii::try_all(2.3).unwrap(),
         );
         let elements = rounded.path_elements(0.1).collect::<Vec<_>>();
         for fill in [true, false] {

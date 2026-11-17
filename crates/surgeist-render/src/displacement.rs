@@ -6,8 +6,9 @@ use crate::filter_source::FilterSourceDescriptor;
 use crate::image::RawImageUploadDescriptor;
 use crate::number_text::Number;
 use crate::{
-    Color, FilterColorSpace, FilterDomains, GaussianPreparationError, GaussianSource, Rect, Result,
-    Scene, Size,
+    Result, filter_domains::FilterDomains, filter_model::FilterColorSpace,
+    gaussian::GaussianPreparationError, gaussian::GaussianSource, geometry::Rect, geometry::Size,
+    paint::Color, scene::Scene,
 };
 use std::sync::Arc;
 
@@ -496,9 +497,11 @@ mod tests {
     use crate::layer::LayerFilter;
     use crate::scene::Command;
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, Capabilities, ErrorCode, FilterList, Layer,
-        PrimitiveFamily, PrimitiveOperation, RenderAccountingOptions, RenderAttemptStatus,
-        RenderLimits, RenderResource, UnsupportedPrimitive,
+        ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderLimits, accounting::RenderResource, capability::Capabilities,
+        error::PrimitiveFamily, error::PrimitiveOperation, error::UnsupportedPrimitive,
+        layer::Layer, style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterList,
     };
 
     fn domains() -> FilterDomains {
@@ -989,8 +992,8 @@ mod tests {
         let child = ink();
         let expected_children = child.clone();
         let layer = Layer::new().with_filter_list(
-            FilterList::try_ops(vec![crate::FilterOp::opacity(
-                crate::UnitFilterAmount::try_new(0.5).unwrap(),
+            FilterList::try_ops(vec![crate::style::filter::FilterOp::opacity(
+                crate::style::filter::UnitFilterAmount::try_new(0.5).unwrap(),
             )])
             .unwrap(),
         );
@@ -1031,8 +1034,8 @@ mod tests {
         let backdrop = Layer::new()
             .try_backdrop_filter(
                 BackdropFilterInput::try_new(
-                    FilterList::try_ops(vec![crate::FilterOp::blur(
-                        crate::FilterBlur::try_new(0.0).unwrap(),
+                    FilterList::try_ops(vec![crate::style::filter::FilterOp::blur(
+                        crate::style::filter::FilterBlur::try_new(0.0).unwrap(),
                     )])
                     .unwrap(),
                     BackdropCaptureBounds::try_new(domains().filter()).unwrap(),
@@ -1232,14 +1235,15 @@ mod tests {
 
     #[test]
     fn raw_map_capability_refusal_identifies_the_native_operation() {
-        let diagnostic = crate::RuntimeCapabilityUnavailable::displacement_map_format_unavailable();
+        let diagnostic =
+            crate::error::RuntimeCapabilityUnavailable::displacement_map_format_unavailable();
         assert_eq!(
             diagnostic.operation(),
-            crate::RuntimeOperation::DisplacementRendering
+            crate::error::RuntimeOperation::DisplacementRendering
         );
         assert_eq!(
             diagnostic.reason(),
-            crate::RuntimeCapabilityUnavailableReason::DisplacementMapFormatUnavailable
+            crate::error::RuntimeCapabilityUnavailableReason::DisplacementMapFormatUnavailable
         );
         let error = crate::Error::runtime_capability_unavailable(diagnostic);
         assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);

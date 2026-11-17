@@ -2,9 +2,11 @@
 use super::convolution::{assert_pixel, bounds, image};
 use super::gaussian::{finite_scene, operation, render, sigma, source_scene};
 use crate::{
-    FilterColorSpace, FilterDomains, FilterEdgeMode, Layer, Options, Parameters,
-    RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderPhaseFilter, RenderProfile,
-    RenderQuantity, RenderWork, Renderer, ResourceCacheBudget, Scene, Size,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus, accounting::RenderLimits,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
+    accounting::RenderWork, filter_domains::FilterDomains, filter_model::FilterColorSpace,
+    filter_model::FilterEdgeMode, geometry::Size, layer::Layer, renderer::Options,
+    renderer::Renderer, renderer::ResourceCacheBudget, scene::Scene, surface::Parameters,
 };
 
 fn fixture(x: f64, y: f64) -> Scene {

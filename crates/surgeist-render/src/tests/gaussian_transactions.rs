@@ -5,10 +5,23 @@
 use super::convolution::{bounds, image};
 use super::gaussian::{finite_scene, operation, render, source_scene};
 use crate::{
-    ErrorCode, FilterColorSpace, FilterDomains, FilterEdgeMode, GpuFaultKind, Options, Parameters,
-    RenderAttemptStatus, RenderResource, RenderRoute, Renderer, ResourceCacheBudget,
-    RuntimeCapabilityUnavailableReason, Scene, Size, Surface,
+    ErrorCode,
+    accounting::RenderAttemptStatus,
+    accounting::RenderResource,
+    error::GpuFaultKind,
+    error::RuntimeCapabilityUnavailableReason,
+    filter_domains::FilterDomains,
+    filter_model::FilterColorSpace,
+    filter_model::FilterEdgeMode,
+    geometry::Size,
     gpu_transaction::test_support::GraphSubmissionGateGuardForTest,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
+    scene::Scene,
+    stats::RenderRoute,
+    surface::Parameters,
+    surface::Surface,
     surface::{HeadlessResources, SurfaceBackend},
 };
 use std::{
@@ -30,7 +43,7 @@ fn scenes() -> (Scene, Scene) {
             domains,
             FilterEdgeMode::Duplicate,
             effect,
-            crate::Layer::new(),
+            crate::layer::Layer::new(),
         )
     };
     (
@@ -276,7 +289,7 @@ fn public_gaussian_first_terminal_fault_aborts_publication_and_retires_once() {
     );
     assert_eq!(
         first
-            .error(crate::RuntimeOperation::SurfaceRendering)
+            .error(crate::error::RuntimeOperation::SurfaceRendering)
             .runtime_capability_unavailable_diagnostic()
             .expect("first signal retains its terminal reason")
             .reason(),

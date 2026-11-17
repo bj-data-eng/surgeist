@@ -1,7 +1,5 @@
 use super::super::{
-    Capabilities, CoordinateSpaceTag, Error, FillRule, FilledPath, Path, Point, PrimitiveFamily,
-    PrimitiveOperation, Radii, Rect, Result, Shape, Size, Transform, UnresolvedResource,
-    UnresolvedResourceKind, UnsupportedPrimitive,
+    Error, Result,
     shape::ShapeKind,
     validation::{validate_finite_f64, validate_path, validate_shape},
 };
@@ -9,6 +7,12 @@ use super::image::StyleResourceRef;
 use crate::accounting::{
     Account, DisposalCompletion, Hold, PreparationValue, RenderAccountingContext,
     RenderAttemptKind, RenderPhase, preparation_backing,
+};
+use crate::{
+    capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnresolvedResource, error::UnresolvedResourceKind, error::UnsupportedPrimitive,
+    geometry::CoordinateSpaceTag, geometry::Point, geometry::Radii, geometry::Rect, geometry::Size,
+    geometry::Transform, shape::FillRule, shape::FilledPath, shape::Path, shape::Shape,
 };
 use kurbo::Shape as KurboShape;
 
@@ -523,7 +527,9 @@ fn finite_clip_rect(x: f64, y: f64, width: f64, height: f64) -> Result<Rect> {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
-    use crate::{RenderAccountingOptions, RenderLimits, RenderWork};
+    use crate::{
+        accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderWork,
+    };
 
     #[test]
     fn allocating_path_normalization_preserves_geometry_and_measures_each_walk() {
@@ -581,7 +587,10 @@ mod accounting_tests {
     #[test]
     fn filter_planning_discard_preserves_the_literal_path_work_and_releases_both_vectors() {
         use crate::accounting::{FrameFixture, RendererCpu};
-        use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+        use crate::{
+            style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+            style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
+        };
         let mut path = Path::new();
         path.move_to(Point::new(1.0, 2.0))
             .line_to(Point::new(3.0, 4.0))
@@ -607,7 +616,7 @@ mod accounting_tests {
                 .snapshot()
                 .unwrap()
                 .usage()
-                .live(crate::RenderResource::RetainedCpuBytes);
+                .live(crate::accounting::RenderResource::RetainedCpuBytes);
             let (result, _, report, fault) = FrameFixture::new(&cpu, options)
                 .run_sync(|attempt| {
                     let result = filter
@@ -616,7 +625,7 @@ mod accounting_tests {
                         result.as_ref().unwrap();
                     } else {
                         let error = result.as_ref().unwrap_err();
-                        let Some(crate::RenderAccountingError::Refused(refusal)) =
+                        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
                             error.accounting_diagnostic()
                         else {
                             panic!("expected the ninth path visit to refuse")
@@ -635,14 +644,14 @@ mod accounting_tests {
                         cpu.snapshot()
                             .unwrap()
                             .usage()
-                            .live(crate::RenderResource::RetainedCpuBytes),
+                            .live(crate::accounting::RenderResource::RetainedCpuBytes),
                         opening
                     );
                     assert_eq!(
                         cpu.snapshot()
                             .unwrap()
                             .usage()
-                            .live(crate::RenderResource::ScratchCpuBytes),
+                            .live(crate::accounting::RenderResource::ScratchCpuBytes),
                         0
                     );
                     assert_eq!(filter.clip().unwrap().filled_path().unwrap().path(), &path);
@@ -655,9 +664,9 @@ mod accounting_tests {
             assert_eq!(
                 report.status(),
                 if limit == 9 {
-                    crate::RenderAttemptStatus::Succeeded
+                    crate::accounting::RenderAttemptStatus::Succeeded
                 } else {
-                    crate::RenderAttemptStatus::Refused
+                    crate::accounting::RenderAttemptStatus::Refused
                 }
             );
             assert_eq!(fault, None);
@@ -668,8 +677,9 @@ mod accounting_tests {
         use super::*;
         use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{
-            ErrorCode, RenderAccountingError, RenderCpuScope, RenderProfile, RenderQuantity,
-            RenderRefusalReason, RenderResource,
+            ErrorCode, accounting::RenderAccountingError, accounting::RenderCpuScope,
+            accounting::RenderProfile, accounting::RenderQuantity, accounting::RenderRefusalReason,
+            accounting::RenderResource,
         };
 
         #[test]

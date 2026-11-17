@@ -5,8 +5,10 @@ use super::{
     gradient_with_stops, hint_program,
 };
 use crate::{
-    Error, GradientRealizationError as Refusal, PhysicalSize, Result,
+    Error, Result,
     accounting::{Account, AccountedVec, RenderWork},
+    error::GradientRealizationError as Refusal,
+    geometry::PhysicalSize,
     paint::{OrdinaryGeometry, OrdinaryGradient},
     vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates},
 };
@@ -601,7 +603,7 @@ pub(super) fn prepare(
 /// The dependency carrier owns only actual colours and source occurrence order.
 /// Its uniform offsets cannot be confused with the semantic programme controls.
 pub(super) fn horizontal_carrier_stops(
-    supplied: &[crate::GradientStop],
+    supplied: &[crate::paint::GradientStop],
     account: &Account,
 ) -> Result<AccountedVec<peniko::ColorStop>> {
     let mut carrier = account.temporary(supplied.len())?;
@@ -785,7 +787,7 @@ fn prepare_horizontal_distance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Color, Gradient, GradientStop, Point};
+    use crate::{geometry::Point, paint::Color, paint::Gradient, paint::GradientStop};
 
     fn ordinary_field(gradient: &Gradient) -> OrdinaryGradient<'_> {
         let crate::paint::GradientPreparation::Ordinary(field) = gradient.preparation() else {
@@ -930,7 +932,10 @@ mod tests {
     #[test]
     fn directed_cutoff_admits_exact_executed_actions_and_preserves_a_refused_prefix() {
         use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
-        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        use crate::{
+            accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+            accounting::RenderLimits,
+        };
         let value = f64::from(f32::from_bits(1));
         let mut context = RenderAccountingContext::default();
         context
@@ -976,7 +981,10 @@ mod tests {
     #[test]
     fn scaled_affine_refusal_preserves_accounting_during_an_accepted_composition_prefix() {
         use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
-        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        use crate::{
+            accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+            accounting::RenderLimits,
+        };
         let fixture = Account::for_test();
         let z = Scaled::new(0., &fixture).unwrap();
         let one = Scaled::new(1., &fixture).unwrap();
@@ -1116,7 +1124,10 @@ mod tests {
     #[test]
     fn negative_radial_solid_decision_accounts_its_executed_comparison() {
         use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
-        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        use crate::{
+            accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+            accounting::RenderLimits,
+        };
         let gradient = Gradient::try_radial(
             Point::new(0., 0.),
             1.,
@@ -1178,7 +1189,10 @@ mod tests {
     #[test]
     fn adjacent_stop_qualification_counts_only_executed_float_predicates() {
         use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
-        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        use crate::{
+            accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+            accounting::RenderLimits,
+        };
         for (position, offset, previous, actions) in [
             (0.0, 0.0, None, 1),
             (0.0, 0.0, Some((0.0, 0.0)), 2),
@@ -1251,7 +1265,10 @@ mod tests {
     #[test]
     fn radial_radius_narrowing_admits_casts_and_each_executed_native_check() {
         use crate::accounting::{RenderAttemptKind, RenderPhase};
-        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        use crate::{
+            accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+            accounting::RenderLimits,
+        };
         let reference = field::RadialReference {
             start: 0.,
             end: 1.,
@@ -1310,7 +1327,10 @@ mod tests {
     #[test]
     fn degenerate_line_decision_admits_range_equality_and_both_point_components() {
         use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
-        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        use crate::{
+            accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+            accounting::RenderLimits,
+        };
         let gradient = Gradient::try_linear(
             Point::new(2., 3.),
             Point::new(2., 3.),

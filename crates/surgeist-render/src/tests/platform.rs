@@ -1,13 +1,17 @@
 use crate::{
-    Attachment, Capabilities, ErrorCode, Format, Options, Parameters, PrimitiveFamily,
-    PrimitiveOperation, Renderer, Scene, Size, SurfaceOptions, UnsupportedPrimitive,
+    ErrorCode, capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnsupportedPrimitive, geometry::Size, renderer::Options, renderer::Renderer,
+    scene::Scene, surface::Attachment, surface::Format, surface::Parameters,
+    surface::SurfaceOptions,
 };
 
 #[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
 #[test]
 fn render_window_public_displacement_executes_through_renderer_and_presented_surface() {
     use super::displacement::{active, finite_scene, native_map, source_scene};
-    use crate::{DisplacementChannel as Channel, FilterDomains, Layer};
+    use crate::{
+        displacement::DisplacementChannel as Channel, filter_domains::FilterDomains, layer::Layer,
+    };
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let size = PhysicalSize::new(4, 1);
     let mut surface = display_free_presented_surface_for_test(
@@ -59,18 +63,27 @@ fn render_window_public_displacement_executes_through_renderer_and_presented_sur
 }
 
 #[cfg(not(all(feature = "render-web", target_arch = "wasm32")))]
-use crate::WebCanvas;
+use crate::surface::WebCanvas;
 
 #[cfg(feature = "render-window")]
 use crate::{
-    BlendMode, Color, EffectQualityPolicy, Extend, ImageQuality, PhysicalSize, Point, Rect,
-    RenderRoute, RuntimeCapabilityUnavailableReason, RuntimeOperation,
     backend::{
         configured_display_free_presented_surface_for_test,
         display_free_presented_surface_for_test, presented_observation_handle_for_test,
         require_presented_device_identity_for_test, take_last_presented_texture_for_test,
     },
+    error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation,
+    geometry::PhysicalSize,
+    geometry::Point,
+    geometry::Rect,
+    image::Extend,
+    image::ImageQuality,
+    layer::BlendMode,
+    paint::Color,
+    renderer::EffectQualityPolicy,
     resource::WorkingFormat,
+    stats::RenderRoute,
 };
 
 #[cfg(feature = "render-window")]
@@ -501,8 +514,9 @@ fn render_window_smoke_executes_masked_and_blended_graph_frames() {
 #[test]
 fn render_window_public_gaussian_executes_through_renderer_and_presented_surface() {
     use crate::{
-        FilterColorSpace, FilterDomains, GaussianInput, GaussianSource, ImageFit, Layer,
-        RenderAccountingContext, prepare_gaussian,
+        accounting::RenderAccountingContext, filter_domains::FilterDomains,
+        filter_model::FilterColorSpace, gaussian::GaussianInput, gaussian::GaussianSource,
+        gaussian::prepare_gaussian, image::ImageFit, layer::Layer,
     };
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let size = PhysicalSize::new(9, 3);
@@ -576,8 +590,9 @@ fn render_window_public_gaussian_executes_through_renderer_and_presented_surface
 #[test]
 fn render_window_public_native_shadow_executes_through_renderer_and_presented_surface() {
     use crate::{
-        DropShadowInput, DropShadowSource, FilterColorSpace, FilterDomains, Layer,
-        RenderAccountingContext, prepare_drop_shadow,
+        accounting::RenderAccountingContext, filter_domains::FilterDomains,
+        filter_model::FilterColorSpace, layer::Layer, native_shadow::DropShadowInput,
+        native_shadow::DropShadowSource, native_shadow::prepare_drop_shadow,
     };
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let size = PhysicalSize::new(9, 3);
@@ -595,7 +610,7 @@ fn render_window_public_native_shadow_executes_through_renderer_and_presented_su
     input.image(
         super::convolution::image(1, 1, vec![0, 0, 255, 255]),
         Rect::new(2.0, 1.0, 1.0, 1.0),
-        crate::ImageFit::Stretch,
+        crate::image::ImageFit::Stretch,
     );
     let sigma = 1.0 / (2.0 * 2.0_f64.ln()).sqrt();
     let operation = prepare_drop_shadow(
@@ -650,8 +665,10 @@ fn render_window_public_native_shadow_executes_through_renderer_and_presented_su
 #[test]
 fn render_window_public_morphology_executes_through_renderer_and_presented_surface() {
     use crate::{
-        FilterColorSpace, FilterDomains, Layer, MorphologyInput, MorphologyOperator,
-        MorphologySource, RenderAccountingContext, prepare_morphology,
+        accounting::RenderAccountingContext, filter_domains::FilterDomains,
+        filter_model::FilterColorSpace, layer::Layer, morphology::MorphologyInput,
+        morphology::MorphologyOperator, morphology::MorphologySource,
+        morphology::prepare_morphology,
     };
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let size = PhysicalSize::new(9, 3);
@@ -679,7 +696,7 @@ fn render_window_public_morphology_executes_through_renderer_and_presented_surfa
                 .collect(),
         ),
         domain,
-        crate::ImageFit::Stretch,
+        crate::image::ImageFit::Stretch,
     );
     let operation = prepare_morphology(
         MorphologyInput::new()

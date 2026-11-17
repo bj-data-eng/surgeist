@@ -13,11 +13,16 @@ use super::{
 };
 use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates};
 use crate::{
-    Color, Error, GradientStop, PhysicalSize, Point, RenderAccountingError, RepeatingGradient,
-    Result,
+    Error, Result,
+    accounting::RenderAccountingError,
     accounting::{Account, RenderPhase, RenderWork},
     color_reduction::{PremultipliedSum, premultiplied},
+    geometry::PhysicalSize,
+    geometry::Point,
+    paint::Color,
     paint::GradientGeometry,
+    paint::GradientStop,
+    paint::RepeatingGradient,
 };
 
 enum RepeatingStops<'a> {
@@ -208,7 +213,7 @@ fn horizontal_phase(first: f64, span: f64, account: &Account) -> Result<f32> {
     let native = scalar(account, || phase as f32)?;
     // Compare the remainder, not the potentially already-underflowed quotient.
     if scalar(account, || remainder != 0.0)? && scalar(account, || native == 0.0)? {
-        return Err(crate::GradientRealizationError::InsufficientNativeCapacity.into());
+        return Err(crate::error::GradientRealizationError::InsufficientNativeCapacity.into());
     }
     Ok(native)
 }
@@ -231,7 +236,7 @@ fn prepare_horizontal_distance(
         .map_err(ordinary_gradient::geometry_error)?;
     let period = linear_device_period(period_device, account)?;
     if !scalar(account, || period.is_finite())? {
-        return Err(crate::GradientRealizationError::UnrepresentableGeometry.into());
+        return Err(crate::error::GradientRealizationError::UnrepresentableGeometry.into());
     }
     if scalar(account, || period == 0.0)? {
         return solid_average(stops, Average::Uniform, account);
@@ -499,8 +504,10 @@ fn average(stops: &MultipleStops<'_>, rule: Average, account: &Account) -> Resul
 mod tests {
     use super::*;
     use crate::{
-        ErrorCode, Point, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-        RenderAttemptKind, RenderLimits, RenderQuantity, RenderResource,
+        ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderResource,
+        geometry::Point,
     };
 
     fn prepare(
@@ -1215,7 +1222,7 @@ mod tests {
 
     #[test]
     fn prepared_radial_glyph_preserves_phase_refusal_and_hint_mapping() {
-        use crate::{GradientHint, GradientRealizationError};
+        use crate::{error::GradientRealizationError, paint::GradientHint};
 
         let center = f64::from(1_u32 << 28);
         let output = kurbo::Affine::translate((-center, 0.0));
@@ -1269,7 +1276,10 @@ mod tests {
 
     #[test]
     fn prepared_repeating_radial_glyph_accepts_exact_cancellation_with_stored_radii() {
-        use crate::{GradientHint, RenderClock, RenderProfile, RenderRefusalReason};
+        use crate::{
+            accounting::RenderClock, accounting::RenderProfile, accounting::RenderRefusalReason,
+            paint::GradientHint,
+        };
         use std::time::Duration;
 
         let center = f64::from(1_u32 << 28);
@@ -1482,7 +1492,7 @@ mod tests {
 
     #[test]
     fn repeating_average_keeps_its_exact_scalar_and_stop_prefixes() {
-        use crate::RenderRefusalReason;
+        use crate::accounting::RenderRefusalReason;
 
         let uniform = linear(vec![
             stop(7.0, color(1.0, 0.0, 0.0, 1.0)),
@@ -1619,7 +1629,7 @@ mod tests {
     }
     #[test]
     fn repeating_geometry_dispatch_preserves_the_first_accounting_refusal() {
-        use crate::RenderRefusalReason;
+        use crate::accounting::RenderRefusalReason;
 
         let stops = [stop(1.0, Color::BLACK), stop(5.0, Color::TRANSPARENT)];
         let cases = [
@@ -1729,7 +1739,7 @@ mod tests {
         let error = horizontal_phase(f64::from_bits(1), 4.0, &account).unwrap_err();
         assert_eq!(
             error.gradient_realization_diagnostic(),
-            Some(&crate::GradientRealizationError::InsufficientNativeCapacity)
+            Some(&crate::error::GradientRealizationError::InsufficientNativeCapacity)
         );
     }
 

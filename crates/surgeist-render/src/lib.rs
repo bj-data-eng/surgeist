@@ -90,7 +90,6 @@ pub use accounting::{
     RenderResourceFields, RenderResourceTable, RenderStandaloneReport, RenderUsage, RenderWork,
     RenderWorkFields, RenderWorkTable,
 };
-pub(crate) use error::BackendErrorCode;
 
 pub use capability::{
     AvailableRuntimeCapabilities, BackgroundAttachmentCoordinatePolicy, BoxDecorationCapabilities,

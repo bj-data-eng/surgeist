@@ -1,12 +1,16 @@
 use super::super::{
-    Capabilities, Color, Error, Point, PrimitiveFamily, PrimitiveOperation, Rect, Result, Shadow,
-    ShadowKind, UnsupportedPrimitive,
+    Error, Result,
     paint::PaintKind,
     validation::{validate_color, validate_finite_f64, validate_point},
 };
 use super::{clip::ClipInput, image::ResolvedImageResource};
 use crate::accounting::{
     Account, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+};
+use crate::{
+    capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnsupportedPrimitive, geometry::Point, geometry::Rect, layer::Shadow, layer::ShadowKind,
+    paint::Color,
 };
 
 const MAX_FILTER_BLUR_RADIUS: f64 = 256.0;
@@ -82,9 +86,9 @@ impl FilterList {
     /// Returns `Ok(None)` for [`Self::none`] and `Ok(Some(_))` when every
     /// operation is a color operation. A blur returns
     /// the `Filters` /
-    /// [`crate::PrimitiveOperation::GpuBlurFilterExecution`] identity, and a
+    /// [`crate::error::PrimitiveOperation::GpuBlurFilterExecution`] identity, and a
     /// drop shadow returns `Filters` /
-    /// [`crate::PrimitiveOperation::GpuDropShadowFilterExecution`]. Retrieve
+    /// [`crate::error::PrimitiveOperation::GpuDropShadowFilterExecution`]. Retrieve
     /// either typed identity through [`Error::unsupported_primitive`].
     ///
     /// The attempt admits actual result capacity before projection and records
@@ -191,7 +195,7 @@ impl ColorFilterOp {
 ///
 /// This model is currently diagnostic-only at the image-paint boundary:
 /// [`Self::ensure_supported`] reports
-/// [`crate::PrimitiveOperation::FilteredImagePaint`] for
+/// [`crate::error::PrimitiveOperation::FilteredImagePaint`] for
 /// [`Capabilities::CURRENT`]. It does not imply image-filter execution.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FilteredImagePaint {
@@ -319,7 +323,7 @@ impl BackdropFilterInput {
     /// This constructor never returns `Ok`: after rejecting a `none` list or an
     /// unsupported clip as applicable, it returns
     /// [`crate::ErrorCode::UnsupportedPrimitive`] carrying `Compositing` /
-    /// [`crate::PrimitiveOperation::RootBackdropPolicy`].
+    /// [`crate::error::PrimitiveOperation::RootBackdropPolicy`].
     pub fn try_root_backdrop(filters: FilterList, clip: Option<ClipInput>) -> Result<Self> {
         validate_backdrop_filter_list(&filters)?;
         validate_backdrop_clip(clip.as_ref())?;
@@ -352,9 +356,9 @@ impl BackdropFilterInput {
     /// Checks the two semantic capabilities required by bounded backdrop filtering.
     ///
     /// The check first requires `OffscreenPipeline` /
-    /// [`crate::PrimitiveOperation::BoundedBackdropCapture`], then
+    /// [`crate::error::PrimitiveOperation::BoundedBackdropCapture`], then
     /// `OffscreenPipeline` /
-    /// [`crate::PrimitiveOperation::BoundedBackdropFilterExecution`], returning
+    /// [`crate::error::PrimitiveOperation::BoundedBackdropFilterExecution`], returning
     /// the first unavailable operation as an `UnsupportedPrimitive` error. Both
     /// operations are supported by [`Capabilities::CURRENT`].
     pub fn ensure_supported(&self, capabilities: Capabilities) -> Result<()> {
@@ -430,10 +434,10 @@ impl FilterDropShadow {
     /// Converts a broad authored shadow into the executable filter form.
     ///
     /// An inset shadow returns the `Shadows` /
-    /// [`crate::PrimitiveOperation::InsetBoxShadow`] unsupported diagnostic. A
+    /// [`crate::error::PrimitiveOperation::InsetBoxShadow`] unsupported diagnostic. A
     /// nonzero spread returns [`crate::ErrorCode::InvalidInput`] for `filter
     /// drop-shadow spread`. Gradient or image paint returns the `PaintSources`
-    /// / [`crate::PrimitiveOperation::NonSolidShadowPaint`] unsupported
+    /// / [`crate::error::PrimitiveOperation::NonSolidShadowPaint`] unsupported
     /// diagnostic, and blur outside `0..=256` returns its filter-blur input
     /// diagnostic.
     pub fn try_from_shadow(shadow: Shadow) -> Result<Self> {
@@ -753,8 +757,8 @@ mod normalization_custody_tests {
     use super::*;
     use crate::accounting::{FrameFixture, RendererCpu};
     use crate::{
-        FillRule, FilledPath, Path, RenderAccountingOptions, RenderCpuScope, RenderProfile,
-        RenderResource,
+        accounting::RenderAccountingOptions, accounting::RenderCpuScope, accounting::RenderProfile,
+        accounting::RenderResource, shape::FillRule, shape::FilledPath, shape::Path,
     };
 
     #[test]

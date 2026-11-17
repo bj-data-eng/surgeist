@@ -40,7 +40,7 @@ number!(f64);
 number!(f32);
 
 /// A rectangle as `x, y, width by height`, each number printed through [`Number`].
-pub(crate) struct RectText(pub(crate) crate::Rect);
+pub(crate) struct RectText(pub(crate) crate::geometry::Rect);
 
 impl fmt::Display for RectText {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -56,7 +56,7 @@ impl fmt::Display for RectText {
 }
 
 /// A size as `width by height`, each number printed through [`Number`].
-pub(crate) struct SizeText(pub(crate) crate::Size);
+pub(crate) struct SizeText(pub(crate) crate::geometry::Size);
 
 impl fmt::Display for SizeText {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -137,9 +137,9 @@ mod tests {
     #[test]
     fn a_rectangle_a_size_and_coefficients_print_every_number_through_the_form() {
         use super::{CoefficientsText, RectText, SizeText};
-        let rect = crate::Rect::try_new(1.5, -2.0, 1e300, 0.000001).unwrap();
+        let rect = crate::geometry::Rect::try_new(1.5, -2.0, 1e300, 0.000001).unwrap();
         assert_eq!(RectText(rect).to_string(), "x 1.5, y -2, 1e300 by 1e-6");
-        let size = crate::Size::try_new(f64::MAX, 0.25).unwrap();
+        let size = crate::geometry::Size::try_new(f64::MAX, 0.25).unwrap();
         assert_eq!(SizeText(size).to_string(), "1.7976931348623157e308 by 0.25");
         assert_eq!(
             CoefficientsText([1.0, 0.0, 0.0, 1.0, f64::MIN_POSITIVE, -3.5]).to_string(),

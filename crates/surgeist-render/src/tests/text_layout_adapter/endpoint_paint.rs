@@ -3,7 +3,9 @@
 //! integer translation invariance, not observed raster-count snapshots.
 
 use super::*;
-use crate::{Options, Parameters, RenderRoute, Renderer, Size};
+use crate::{
+    geometry::Size, renderer::Options, renderer::Renderer, stats::RenderRoute, surface::Parameters,
+};
 use skrifa::MetadataProvider;
 use std::sync::Arc;
 
@@ -362,7 +364,7 @@ fn positive_inline_endpoint_displaces_only_the_second_real_ahem_cell_without_pai
             layout,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         let mut glyphs = Vec::new();

@@ -228,7 +228,7 @@ impl PreparedGraph<'_> {
                 RenderWork::ScheduledDisplacementAddressReads,
                 cells
                     .checked_mul(2)
-                    .ok_or(crate::RenderAccountingError::Invariant)?,
+                    .ok_or(crate::accounting::RenderAccountingError::Invariant)?,
             )?;
             account.work_u64(RenderWork::ScheduledDisplacementSourceSamples, cells)?;
             if !work.map_is_zero() {
@@ -236,7 +236,7 @@ impl PreparedGraph<'_> {
                     RenderWork::ScheduledDisplacementMapRecordReads,
                     cells
                         .checked_mul(2)
-                        .ok_or(crate::RenderAccountingError::Invariant)?,
+                        .ok_or(crate::accounting::RenderAccountingError::Invariant)?,
                 )?;
                 account.work_u64(RenderWork::ScheduledDisplacementMapSamples, cells)?;
             }

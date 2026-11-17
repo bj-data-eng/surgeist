@@ -1,10 +1,11 @@
 use super::{
-    Point, Radii, Rect, Result, Size,
+    Result,
     validation::{
         validate_finite_f64, validate_non_negative_f64, validate_path, validate_point,
         validate_positive_f64, validate_radii, validate_rect, validate_size,
     },
 };
+use crate::{geometry::Point, geometry::Radii, geometry::Rect, geometry::Size};
 
 /// A renderer-facing logical-space shape selecting one member of a fixed, finite set of geometry kinds.
 ///

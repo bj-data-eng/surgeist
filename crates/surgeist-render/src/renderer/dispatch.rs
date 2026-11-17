@@ -28,19 +28,28 @@ use crate::error::{SurfaceDiagnosticOperation, SurfaceIoOperation};
 ))]
 use crate::surface::SurfaceBackend;
 use crate::{
-    BackendErrorCode, Error, ErrorCode, Format, Parameters, PrimitiveFamily, PrimitiveOperation,
-    RenderRoute, Result, RuntimeCapabilityUnavailable, RuntimeOperation, Scene, Surface,
-    UnsupportedPrimitive,
+    Error, ErrorCode, Result,
     backend::{
         DeviceCapabilities, DeviceSlotIdentity, SurfaceFrameCommit, render_internal_vello_surface,
     },
     command::RenderCommands,
     encode::encode_vello_scene,
+    error::BackendErrorCode,
+    error::PrimitiveFamily,
+    error::PrimitiveOperation,
+    error::RuntimeCapabilityUnavailable,
+    error::RuntimeOperation,
+    error::UnsupportedPrimitive,
     frame::{
         FrameContext, FramePlan, GpuRenderGraph, GraphLoweringCompositeKind, GraphLoweringPassKind,
     },
     gpu_transaction::GpuOperationStage,
     pass::{ExecutableGraphDispatchEligibility, ExecutableGraphWorkingFormatRequest},
+    scene::Scene,
+    stats::RenderRoute,
+    surface::Format,
+    surface::Parameters,
+    surface::Surface,
     vello_engine::scene::VelloScene,
 };
 

@@ -174,7 +174,7 @@ impl PreparedGraph<'_> {
         };
         let samples = scheduled_region_texels(region)
             .checked_mul(original_samples + u64::from(map.has_shifted_alpha()))
-            .ok_or(crate::RenderAccountingError::Invariant)?;
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
         account.work_u64(RenderWork::ScheduledShadowSamples, samples)?;
         encode_spatial_filter_full_target_pass(
             encoder,

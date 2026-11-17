@@ -4,7 +4,7 @@ use crate::accounting::{
     RenderGenerationScope, RenderProfile, RendererCpu,
 };
 use crate::resource::{ResourceManager, ResourceManagerObservationForTest};
-use crate::{ErrorCode, ResourceCacheBudget};
+use crate::{ErrorCode, renderer::ResourceCacheBudget};
 use std::time::Duration;
 use surgeist_ledger::Dimension;
 

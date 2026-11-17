@@ -207,7 +207,7 @@ impl PreparedGraph<'_> {
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
         let samples = scheduled_region_texels(region)
             .checked_mul(work.sample_opportunities())
-            .ok_or(crate::RenderAccountingError::Invariant)?;
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
         account.work_batch([(RenderWork::ScheduledMorphologySamples, samples)])?;
         encode_spatial_filter_full_target_pass(
             encoder,

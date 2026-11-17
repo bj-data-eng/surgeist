@@ -1,11 +1,17 @@
 use super::*;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::{Color, Options, Parameters, Rect, Renderer, Scene, Size};
+use crate::{
+    geometry::Rect, geometry::Size, paint::Color, renderer::Options, renderer::Renderer,
+    scene::Scene, surface::Parameters,
+};
 
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn basic_composition_profiles_preserve_work_pixels_and_optional_timing() {
-    use crate::{BlendMode, Layer, LayerComposition, PorterDuffOperator, RenderRoute};
+    use crate::{
+        layer::BlendMode, layer::Layer, layer::LayerComposition, layer::PorterDuffOperator,
+        stats::RenderRoute,
+    };
 
     let mut observed_work = None;
     let mut observed_pixels = None;
@@ -82,7 +88,9 @@ fn basic_composition_profiles_preserve_work_pixels_and_optional_timing() {
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn refused_destructive_composition_preserves_publication_and_allows_fresh_retry() {
-    use crate::{BlendMode, Layer, LayerComposition, PorterDuffOperator};
+    use crate::{
+        layer::BlendMode, layer::Layer, layer::LayerComposition, layer::PorterDuffOperator,
+    };
 
     // The baseline direct frame needs no closed-graph composition draw. Refuse
     // the first such draw of the destructive frame before queue submission.
@@ -400,7 +408,7 @@ fn mandatory_finalization_fault_does_not_replace_an_earlier_backend_cause() {
         .run_sync(|_| {
             cpu.at(RenderCpuScope::FrameBacking).note_fault(first);
             Err::<(), _>(Error::new(
-                crate::BackendErrorCode::RenderFailed,
+                crate::error::BackendErrorCode::RenderFailed,
                 "original backend failure",
             ))
         })

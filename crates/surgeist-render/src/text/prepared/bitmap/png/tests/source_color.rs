@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
-    RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderLimits,
-    RenderPhaseFilter, RenderProfile, RenderQuantity,
+    accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderClock, accounting::RenderLimits,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
 };
 use surgeist_ledger::Dimension;
 
@@ -416,11 +417,11 @@ fn color_work_and_numeric_workspace_refusal_release_unpublished_pixels_and_retry
     let (origin, setup) = report
         .events()
         .find_map(|event| match event {
-            crate::RenderEvent::Change {
+            crate::accounting::RenderEvent::Change {
                 phase,
                 quantity: RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
                 amount,
-                kind: crate::RenderChangeKind::Acquire,
+                kind: crate::accounting::RenderChangeKind::Acquire,
                 ..
             } => Some((phase, amount)),
             _ => None,
@@ -515,7 +516,7 @@ fn color_work_and_numeric_workspace_refusal_release_unpublished_pixels_and_retry
         let refusals: Vec<_> = attempt
             .events()
             .filter_map(|event| match event {
-                crate::RenderEvent::Refused { phase, .. } => Some(phase),
+                crate::accounting::RenderEvent::Refused { phase, .. } => Some(phase),
                 _ => None,
             })
             .collect();

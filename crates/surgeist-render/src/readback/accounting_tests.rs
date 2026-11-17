@@ -20,8 +20,12 @@ fn shared_constructor_and_submission_limits_refuse_before_the_actual_native_call
             let options = RenderAccountingOptions::new()
                 .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap());
             let cpu = RendererCpu::new(options).unwrap();
-            let mut backend =
-                Backend::new(crate::ResourceCacheBudget::DISABLED, cpu.clone(), options).unwrap();
+            let mut backend = Backend::new(
+                crate::renderer::ResourceCacheBudget::DISABLED,
+                cpu.clone(),
+                options,
+            )
+            .unwrap();
             let identity = backend
                 .select_device(None)
                 .await
@@ -39,7 +43,7 @@ fn shared_constructor_and_submission_limits_refuse_before_the_actual_native_call
                     device,
                     &generation,
                     size,
-                    crate::Format::Rgba8,
+                    crate::surface::Format::Rgba8,
                     None,
                 )
                 .unwrap()

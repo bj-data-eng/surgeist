@@ -1,9 +1,11 @@
 use super::convolution::{assert_pixel, bounds, image};
 use super::offset::{image_scene, operation, render};
 use crate::{
-    ImageRendering, OffsetInput, Options, Parameters, RenderAccountingOptions, RenderAttemptStatus,
-    RenderLimits, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderWork, Renderer,
-    ResourceCacheBudget, Scene, Size,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus, accounting::RenderLimits,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
+    accounting::RenderWork, geometry::Size, image::ImageRendering, offset::OffsetInput,
+    renderer::Options, renderer::Renderer, renderer::ResourceCacheBudget, scene::Scene,
+    surface::Parameters,
 };
 
 fn fixture(dx: f64, hint: ImageRendering) -> Scene {

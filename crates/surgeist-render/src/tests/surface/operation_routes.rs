@@ -1,12 +1,13 @@
 use super::*;
 use crate::{
-    RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderPhase, RenderProfile,
-    RenderResource, RenderWork,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus, accounting::RenderClock,
+    accounting::RenderPhase, accounting::RenderProfile, accounting::RenderResource,
+    accounting::RenderWork,
 };
 #[cfg(feature = "render-window")]
 use crate::{
-    SurfaceIdentityMismatchKind,
     backend::{DeviceSlotIdentity, presented_configuration_count_for_test},
+    error::SurfaceIdentityMismatchKind,
     surface::DisplayFreePresentedSurfaceObservationForTest,
 };
 use surgeist_ledger::Dimension;

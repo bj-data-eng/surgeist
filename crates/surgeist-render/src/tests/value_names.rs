@@ -2,7 +2,7 @@
 
 #[test]
 fn values_in_messages_have_written_names() {
-    use crate::{BlendMode, CoordinateSpaceId, CoordinateSpaceKind};
+    use crate::{geometry::CoordinateSpaceId, geometry::CoordinateSpaceKind, layer::BlendMode};
     for (mode, name) in [
         (BlendMode::Normal, "normal"),
         (BlendMode::Multiply, "multiply"),
@@ -36,8 +36,8 @@ fn values_in_messages_have_written_names() {
         assert_eq!(kind.label(), name);
     }
     for (format, name) in [
-        (crate::Format::Rgba8, "RGBA8"),
-        (crate::Format::Bgra8, "BGRA8"),
+        (crate::surface::Format::Rgba8, "RGBA8"),
+        (crate::surface::Format::Bgra8, "BGRA8"),
     ] {
         assert_eq!(format.label(), name);
     }

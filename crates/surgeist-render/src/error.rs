@@ -1,6 +1,6 @@
 use std::{error, fmt, sync::OnceLock};
 
-use crate::{EffectQualityPolicy, Format, PhysicalSize};
+use crate::{geometry::PhysicalSize, renderer::EffectQualityPolicy, surface::Format};
 
 /// Result type returned by fallible rendering contracts.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -30,7 +30,7 @@ enum ErrorPayload {
 /// allocating an error context. Only explicit message observation fills the cache.
 #[derive(Debug)]
 struct AccountingFailure {
-    diagnostic: crate::RenderAccountingError,
+    diagnostic: crate::accounting::RenderAccountingError,
     message: OnceLock<String>,
 }
 
@@ -46,26 +46,26 @@ struct ErrorContext {
     runtime_capability_unavailable: Option<RuntimeCapabilityUnavailable>,
     preparation: Option<PreparationDiagnostic>,
     #[cfg(feature = "render-text")]
-    text_layout: Option<crate::TextLayoutError>,
+    text_layout: Option<crate::text_layout::TextLayoutError>,
     #[cfg(feature = "render-text")]
-    leader_pattern: Option<crate::LeaderPatternError>,
+    leader_pattern: Option<crate::text_layout::LeaderPatternError>,
 }
 
 #[derive(Debug)]
 enum PreparationDiagnostic {
-    Convolution(crate::ConvolutionPreparationError),
-    Offset(crate::OffsetPreparationError),
-    Gaussian(crate::GaussianPreparationError),
-    Morphology(crate::MorphologyPreparationError),
-    Displacement(crate::DisplacementPreparationError),
-    DropShadow(crate::DropShadowPreparationError),
-    Glyph(crate::GlyphPreparationError),
-    Accounting(crate::RenderAccountingError),
+    Convolution(crate::convolution::ConvolutionPreparationError),
+    Offset(crate::offset::OffsetPreparationError),
+    Gaussian(crate::gaussian::GaussianPreparationError),
+    Morphology(crate::morphology::MorphologyPreparationError),
+    Displacement(crate::displacement::DisplacementPreparationError),
+    DropShadow(crate::native_shadow::DropShadowPreparationError),
+    Glyph(crate::text::GlyphPreparationError),
+    Accounting(crate::accounting::RenderAccountingError),
     GeometryRealization(GeometryRealizationError),
     GradientRealization(GradientRealizationError),
     GradientHint(GradientHintError),
     #[cfg(feature = "render-paint")]
-    PaintGradient(crate::PaintGradientError),
+    PaintGradient(crate::paint_gradient::PaintGradientError),
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -189,7 +189,7 @@ impl Error {
     }
 
     /// This constructor and the public From conversion retain only fixed data.
-    pub(crate) const fn accounting(diagnostic: crate::RenderAccountingError) -> Self {
+    pub(crate) const fn accounting(diagnostic: crate::accounting::RenderAccountingError) -> Self {
         Self {
             payload: ErrorPayload::Accounting(AccountingFailure {
                 diagnostic,
@@ -199,7 +199,7 @@ impl Error {
     }
 
     /// General accounting setup/admission diagnostic, when present.
-    pub fn accounting_diagnostic(&self) -> Option<crate::RenderAccountingError> {
+    pub fn accounting_diagnostic(&self) -> Option<crate::accounting::RenderAccountingError> {
         match &self.payload {
             ErrorPayload::Accounting(failure) => Some(failure.diagnostic),
             ErrorPayload::Context(context) => match context.preparation {
@@ -212,7 +212,7 @@ impl Error {
     /// Reports a standalone Text-layout admission refusal with preserved item causes.
     #[cfg(feature = "render-text")]
     #[must_use]
-    pub fn text_layout_diagnostic(&self) -> Option<&crate::TextLayoutError> {
+    pub fn text_layout_diagnostic(&self) -> Option<&crate::text_layout::TextLayoutError> {
         match &self.payload {
             ErrorPayload::Accounting(_) => None,
             ErrorPayload::Context(context) => context.text_layout.as_ref(),
@@ -222,7 +222,7 @@ impl Error {
     /// Preserved failure at an actual finalized leader run.
     #[cfg(feature = "render-text")]
     #[must_use]
-    pub fn leader_pattern_diagnostic(&self) -> Option<&crate::LeaderPatternError> {
+    pub fn leader_pattern_diagnostic(&self) -> Option<&crate::text_layout::LeaderPatternError> {
         match &self.payload {
             ErrorPayload::Accounting(_) => None,
             ErrorPayload::Context(context) => context.leader_pattern.as_ref(),
@@ -446,7 +446,9 @@ impl Error {
 
     /// Returns a semantic headless glyph-preparation refusal, when present.
     #[must_use]
-    pub const fn glyph_preparation_diagnostic(&self) -> Option<&crate::GlyphPreparationError> {
+    pub const fn glyph_preparation_diagnostic(
+        &self,
+    ) -> Option<&crate::text::GlyphPreparationError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::Glyph(error)) => Some(error),
@@ -458,7 +460,9 @@ impl Error {
 
     /// Returns the typed native drop-shadow diagnostic, when present.
     #[must_use]
-    pub const fn drop_shadow_diagnostic(&self) -> Option<&crate::DropShadowPreparationError> {
+    pub const fn drop_shadow_diagnostic(
+        &self,
+    ) -> Option<&crate::native_shadow::DropShadowPreparationError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::DropShadow(error)) => Some(error),
@@ -470,7 +474,7 @@ impl Error {
 
     /// Returns the typed native Gaussian diagnostic, if present.
     #[must_use]
-    pub const fn gaussian_diagnostic(&self) -> Option<&crate::GaussianPreparationError> {
+    pub const fn gaussian_diagnostic(&self) -> Option<&crate::gaussian::GaussianPreparationError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::Gaussian(error)) => Some(error),
@@ -482,7 +486,9 @@ impl Error {
 
     /// Returns the typed native displacement diagnostic, if present.
     #[must_use]
-    pub const fn displacement_diagnostic(&self) -> Option<&crate::DisplacementPreparationError> {
+    pub const fn displacement_diagnostic(
+        &self,
+    ) -> Option<&crate::displacement::DisplacementPreparationError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::Displacement(error)) => Some(error),
@@ -494,7 +500,9 @@ impl Error {
 
     /// Returns the typed native morphology diagnostic, if present.
     #[must_use]
-    pub const fn morphology_diagnostic(&self) -> Option<&crate::MorphologyPreparationError> {
+    pub const fn morphology_diagnostic(
+        &self,
+    ) -> Option<&crate::morphology::MorphologyPreparationError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::Morphology(error)) => Some(error),
@@ -506,7 +514,9 @@ impl Error {
 
     /// Returns a typed resolved convolution refusal, when applicable.
     #[must_use]
-    pub const fn convolution_diagnostic(&self) -> Option<&crate::ConvolutionPreparationError> {
+    pub const fn convolution_diagnostic(
+        &self,
+    ) -> Option<&crate::convolution::ConvolutionPreparationError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::Convolution(error)) => Some(error),
@@ -518,7 +528,7 @@ impl Error {
 
     /// Returns a typed native offset preparation or frame qualification refusal.
     #[must_use]
-    pub const fn offset_diagnostic(&self) -> Option<&crate::OffsetPreparationError> {
+    pub const fn offset_diagnostic(&self) -> Option<&crate::offset::OffsetPreparationError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::Offset(error)) => Some(error),
@@ -567,7 +577,9 @@ impl Error {
     /// Returns a native Paint-gradient consumer diagnostic, when present.
     #[cfg(feature = "render-paint")]
     #[must_use]
-    pub const fn paint_gradient_diagnostic(&self) -> Option<&crate::PaintGradientError> {
+    pub const fn paint_gradient_diagnostic(
+        &self,
+    ) -> Option<&crate::paint_gradient::PaintGradientError> {
         match &self.payload {
             ErrorPayload::Context(context) => match &context.preparation {
                 Some(PreparationDiagnostic::PaintGradient(error)) => Some(error),
@@ -625,14 +637,14 @@ impl Error {
     }
 }
 
-impl From<crate::RenderAccountingError> for Error {
-    fn from(value: crate::RenderAccountingError) -> Self {
+impl From<crate::accounting::RenderAccountingError> for Error {
+    fn from(value: crate::accounting::RenderAccountingError) -> Self {
         Self::accounting(value)
     }
 }
 
-impl From<crate::GlyphPreparationError> for Error {
-    fn from(value: crate::GlyphPreparationError) -> Self {
+impl From<crate::text::GlyphPreparationError> for Error {
+    fn from(value: crate::text::GlyphPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::GlyphPreparation,
             message: chain(&value),
@@ -651,8 +663,8 @@ impl From<crate::GlyphPreparationError> for Error {
     }
 }
 
-impl From<crate::ConvolutionPreparationError> for Error {
-    fn from(value: crate::ConvolutionPreparationError) -> Self {
+impl From<crate::convolution::ConvolutionPreparationError> for Error {
+    fn from(value: crate::convolution::ConvolutionPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
             message: chain(&value),
@@ -671,8 +683,8 @@ impl From<crate::ConvolutionPreparationError> for Error {
     }
 }
 
-impl From<crate::DropShadowPreparationError> for Error {
-    fn from(value: crate::DropShadowPreparationError) -> Self {
+impl From<crate::native_shadow::DropShadowPreparationError> for Error {
+    fn from(value: crate::native_shadow::DropShadowPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
             message: chain(&value),
@@ -691,8 +703,8 @@ impl From<crate::DropShadowPreparationError> for Error {
     }
 }
 
-impl From<crate::GaussianPreparationError> for Error {
-    fn from(value: crate::GaussianPreparationError) -> Self {
+impl From<crate::gaussian::GaussianPreparationError> for Error {
+    fn from(value: crate::gaussian::GaussianPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
             message: chain(&value),
@@ -711,8 +723,8 @@ impl From<crate::GaussianPreparationError> for Error {
     }
 }
 
-impl From<crate::DisplacementPreparationError> for Error {
-    fn from(value: crate::DisplacementPreparationError) -> Self {
+impl From<crate::displacement::DisplacementPreparationError> for Error {
+    fn from(value: crate::displacement::DisplacementPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
             message: chain(&value),
@@ -731,8 +743,8 @@ impl From<crate::DisplacementPreparationError> for Error {
     }
 }
 
-impl From<crate::MorphologyPreparationError> for Error {
-    fn from(value: crate::MorphologyPreparationError) -> Self {
+impl From<crate::morphology::MorphologyPreparationError> for Error {
+    fn from(value: crate::morphology::MorphologyPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
             message: chain(&value),
@@ -751,8 +763,8 @@ impl From<crate::MorphologyPreparationError> for Error {
     }
 }
 
-impl From<crate::OffsetPreparationError> for Error {
-    fn from(value: crate::OffsetPreparationError) -> Self {
+impl From<crate::offset::OffsetPreparationError> for Error {
+    fn from(value: crate::offset::OffsetPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
             message: chain(&value),
@@ -945,7 +957,7 @@ impl From<GradientRealizationError> for Error {
 /// A valid gradient cannot be represented in the current native context.
 ///
 /// These refusals describe field realization, not invalid authored CSS. Named
-/// accounting and resource limits continue to use [`crate::RenderAccountingError`].
+/// accounting and resource limits continue to use [`crate::accounting::RenderAccountingError`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GradientRealizationError {
     /// A required linear comparison or interpolation field has no direction.
@@ -968,8 +980,8 @@ pub enum GradientRealizationError {
 }
 
 #[cfg(feature = "render-paint")]
-impl From<crate::PaintGradientError> for Error {
-    fn from(value: crate::PaintGradientError) -> Self {
+impl From<crate::paint_gradient::PaintGradientError> for Error {
+    fn from(value: crate::paint_gradient::PaintGradientError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::PaintGradient,
             message: chain(&value),
@@ -989,8 +1001,8 @@ impl From<crate::PaintGradientError> for Error {
 }
 
 #[cfg(feature = "render-text")]
-impl From<crate::TextLayoutError> for Error {
-    fn from(value: crate::TextLayoutError) -> Self {
+impl From<crate::text_layout::TextLayoutError> for Error {
+    fn from(value: crate::text_layout::TextLayoutError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::TextLayout,
             message: chain(&value),
@@ -1008,8 +1020,8 @@ impl From<crate::TextLayoutError> for Error {
 }
 
 #[cfg(feature = "render-text")]
-impl From<crate::LeaderPatternError> for Error {
-    fn from(value: crate::LeaderPatternError) -> Self {
+impl From<crate::text_layout::LeaderPatternError> for Error {
+    fn from(value: crate::text_layout::LeaderPatternError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::LeaderPattern,
             message: chain(&value),
@@ -2124,7 +2136,7 @@ mod geometry_error_tests {
         assert_eq!(error.code(), ErrorCode::GradientRealization);
         assert_eq!(error.gradient_realization_diagnostic(), Some(&gradient));
         assert!(error.geometry_realization_diagnostic().is_none());
-        let accounting = crate::RenderAccountingError::Invariant;
+        let accounting = crate::accounting::RenderAccountingError::Invariant;
         let error = Error::from(accounting);
         assert_eq!(error.code(), ErrorCode::Accounting);
         assert_eq!(error.accounting_diagnostic(), Some(accounting));

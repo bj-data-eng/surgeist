@@ -2,9 +2,10 @@
 //! expectations below are derived from covered premultiplied source cells.
 use super::convolution::{assert_pixel, bounds, image, pixel, renderer_and_surface};
 use crate::{
-    Color, FilterDomains, Image, ImageBuffer, ImageFit, ImageRendering, Layer, OffsetInput,
-    Parameters, PreparedOffset, Rect, RenderAccountingContext, Renderer, Scene, Surface, Transform,
-    prepare_offset,
+    accounting::RenderAccountingContext, filter_domains::FilterDomains, geometry::Rect,
+    geometry::Transform, image::Image, image::ImageBuffer, image::ImageFit, image::ImageRendering,
+    layer::Layer, offset::OffsetInput, offset::PreparedOffset, offset::prepare_offset,
+    paint::Color, renderer::Renderer, scene::Scene, surface::Parameters, surface::Surface,
 };
 
 pub(super) fn operation(
@@ -66,7 +67,10 @@ fn public_offset_default_and_signed_integer_translation_preserve_every_hint() {
                 &mut surface,
                 &image_scene(input.clone(), source, effect),
             );
-            assert_eq!(renderer.stats().route, Some(crate::RenderRoute::GpuGraph));
+            assert_eq!(
+                renderer.stats().route,
+                Some(crate::stats::RenderRoute::GpuGraph)
+            );
             for y in 0..3 {
                 for x in 0..5 {
                     let index = i64::from(x) - 1 - dx as i64;
@@ -84,7 +88,7 @@ fn public_offset_default_and_signed_integer_translation_preserve_every_hint() {
 
 #[test]
 fn public_offset_fractional_logical_displacement_copies_an_aligned_device_lattice() {
-    use crate::{Options, Size};
+    use crate::{geometry::Size, renderer::Options};
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(2.0, 0.5), 2.0)).unwrap();
@@ -331,7 +335,7 @@ fn public_offset_moves_nested_vectors_inside_the_complete_outer_affine() {
 
 #[test]
 fn public_offset_fractional_image_plane_follows_full_affine_inverse() {
-    use crate::ImageQuality;
+    use crate::image::ImageQuality;
     let (mut renderer, mut surface) = renderer_and_surface(24, 24);
     let domain = bounds(8, 8);
     let pixels = (0..8)
@@ -421,8 +425,8 @@ fn public_offset_tiny_nonzero_inverse_map_refuses_without_replacing_publication(
     .unwrap_err();
     assert!(matches!(
         error.offset_diagnostic(),
-        Some(crate::OffsetPreparationError::Numeric {
-            phase: crate::OffsetNumericPhase::GridMapping,
+        Some(crate::offset::OffsetPreparationError::Numeric {
+            phase: crate::offset::OffsetNumericPhase::GridMapping,
             ..
         })
     ));
@@ -443,7 +447,10 @@ fn public_offset_tiny_nonzero_inverse_map_refuses_without_replacing_publication(
 
 #[test]
 fn public_offset_translates_same_layer_backdrop_after_restoring_input_lattice() {
-    use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+    use crate::{
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
+    };
     let (mut renderer, mut surface) = renderer_and_surface(6, 1);
     let full = bounds(6, 1);
     let source = Rect::new(1.0, 0.0, 2.0, 1.0);
@@ -474,7 +481,9 @@ fn public_offset_translates_same_layer_backdrop_after_restoring_input_lattice() 
 #[test]
 fn public_offset_noninteger_density_restores_negative_backdrop_lattice_before_translation() {
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp, Options, Size,
+        geometry::Size, renderer::Options, style::filter::BackdropCaptureBounds,
+        style::filter::BackdropFilterInput, style::filter::FilterBlur, style::filter::FilterList,
+        style::filter::FilterOp,
     };
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
@@ -513,14 +522,14 @@ fn public_offset_noninteger_density_restores_negative_backdrop_lattice_before_tr
         .attempt()
         .unwrap()
         .usage()
-        .work(crate::RenderWork::ScheduledOffsetSamples);
+        .work(crate::accounting::RenderWork::ScheduledOffsetSamples);
     // D4x3 raw cells + O6x3 cells×4 bilinear opportunities =84.
     assert_eq!(samples, 84);
 }
 
 #[test]
 fn public_offset_empty_domains_and_huge_disjoint_translation_preserve_transparent_composition() {
-    use crate::{BlendMode, LayerComposition, PorterDuffOperator};
+    use crate::{layer::BlendMode, layer::LayerComposition, layer::PorterDuffOperator};
     let (mut renderer, mut surface) = renderer_and_surface(3, 1);
     let full = bounds(3, 1);
     for (source, result, dx) in [
@@ -550,7 +559,7 @@ fn public_offset_empty_domains_and_huge_disjoint_translation_preserve_transparen
 
 #[test]
 fn public_offset_outer_clip_mask_and_opacity_keep_their_unshifted_frames() {
-    use crate::{ResolvedLayerAlphaMask, Shape};
+    use crate::{layer::ResolvedLayerAlphaMask, shape::Shape};
     let (mut renderer, mut surface) = renderer_and_surface(6, 1);
     let full = bounds(6, 1);
     let source = Rect::new(0.0, 0.0, 4.0, 1.0);
@@ -590,7 +599,8 @@ fn public_offset_outer_clip_mask_and_opacity_keep_their_unshifted_frames() {
 #[test]
 fn public_offset_empty_input_or_output_excludes_even_a_huge_backdrop_capture() {
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, FilterList, FilterOp, UnitFilterAmount,
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterList, style::filter::FilterOp, style::filter::UnitFilterAmount,
     };
     let (mut renderer, mut surface) = renderer_and_surface(3, 1);
     let full = bounds(3, 1);
@@ -630,7 +640,7 @@ fn public_offset_empty_input_or_output_excludes_even_a_huge_backdrop_capture() {
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::ScheduledOffsetSamples),
+                .work(crate::accounting::RenderWork::ScheduledOffsetSamples),
             0
         );
     }

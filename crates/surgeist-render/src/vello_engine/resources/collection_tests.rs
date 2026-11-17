@@ -93,7 +93,7 @@ fn frame_identities(leases: &[VelloResourceLease]) -> Vec<crate::resource::Frame
 
 #[test]
 fn real_lease_collections_preserve_backing_and_close_every_owning_phase() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0.clone();
     let signal = renderer.default_device_signal_for_test().unwrap();
     for profile in profiles() {
@@ -118,7 +118,7 @@ fn real_lease_collections_preserve_backing_and_close_every_owning_phase() {
             ] {
                 let cpu = RendererCpu::new(options).unwrap();
                 let manager = ResourceManager::with_generation(
-                    crate::ResourceCacheBudget::DEFAULT,
+                    crate::renderer::ResourceCacheBudget::DEFAULT,
                     Generation::new(options).unwrap(),
                     cpu.at(RenderCpuScope::DeviceBacking),
                 );
@@ -224,7 +224,7 @@ fn real_lease_collections_preserve_backing_and_close_every_owning_phase() {
                                             finish_vello_resources_without_submission_for_test(
                                                 transaction,
                                                 pending,
-                                                crate::RuntimeOperation::EffectRendering,
+                                                crate::error::RuntimeOperation::EffectRendering,
                                             ),
                                         )
                                         .unwrap();
@@ -289,7 +289,7 @@ fn real_lease_collections_preserve_backing_and_close_every_owning_phase() {
 
 #[test]
 fn pending_collection_readiness_refusal_keeps_first_fault_and_closes_all_frames() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0;
     let account = Account::for_test();
     for ready_first in [false, true] {
@@ -334,14 +334,14 @@ fn pending_collection_readiness_refusal_keeps_first_fault_and_closes_all_frames(
 
 #[test]
 fn single_pending_backing_refusal_closes_its_real_empty_frame() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0;
     let account = Account::for_test();
     let options =
         RenderAccountingOptions::new().with_limits(RenderLimits::new().with_scratch_bytes(1));
     let cpu = RendererCpu::new(options).unwrap();
     let manager = ResourceManager::with_generation(
-        crate::ResourceCacheBudget::DEFAULT,
+        crate::renderer::ResourceCacheBudget::DEFAULT,
         Generation::new(options).unwrap(),
         cpu.at(RenderCpuScope::DeviceBacking),
     );
@@ -356,9 +356,9 @@ fn single_pending_backing_refusal_closes_its_real_empty_frame() {
     };
     assert!(matches!(
         error.accounting_diagnostic(),
-        Some(crate::RenderAccountingError::CpuRefused {
-            quantity: crate::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
-            reason: crate::RenderRefusalReason::Limit { limit: 1 },
+        Some(crate::accounting::RenderAccountingError::CpuRefused {
+            quantity: crate::accounting::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+            reason: crate::accounting::RenderRefusalReason::Limit { limit: 1 },
             ..
         })
     ));

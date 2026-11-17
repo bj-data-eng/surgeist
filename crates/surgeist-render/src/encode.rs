@@ -7,12 +7,33 @@ use super::{
     geometry::{expand_rect, offset_radii},
     paint::PaintKind,
     vello_engine::scene::{RoundedRectBlur, SceneDraws, VelloScene},
-    *,
 };
 use crate::accounting::{Account, AccountedVec, DisposalCompletion, Hold, RenderPhase, RenderWork};
 use crate::vello_engine::geometry::{action as coordinate_action, affine_product};
 use crate::vello_engine::gradient_endpoints::{
     GradientProgram, GradientSampling, PadEndpoints, SceneBrush,
+};
+use crate::{
+    Error, ErrorCode, Result, accounting::RenderResource, error::BackendErrorCode,
+    error::GradientRealizationError, geometry::CoordinateSpaceTag, geometry::PhysicalSize,
+    geometry::Point, geometry::Radii, geometry::Rect, geometry::Size, geometry::Transform,
+    image::Image, image::ImageFit, image::ImageRendering, layer::BlendMode,
+    layer::LayerComposition, paint::Color, paint::Gradient, paint::Paint, shape::FillRule,
+    text::FontRef, text::TextGlyph, text::TextPaint, text::TextRun, text::TextRunBounds,
+};
+#[cfg(test)]
+use crate::{
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind, accounting::RenderLimits,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
+    accounting::RenderRefusalReason, capability::Capabilities, layer::Layer, paint::GradientStop,
+    scene::Scene, shape::Shape, shape::Stroke,
+};
+#[cfg(test)]
+use crate::{
+    accounting::RenderAttemptStatus, accounting::RenderCpuScope, accounting::RenderEvent,
+    layer::PorterDuffOperator, style::clip::ClipInput, text::FontData, text::GlyphRunLimits,
+    text::GlyphSynthesis, text::TextInstance,
 };
 
 mod gradient_field;
@@ -2508,7 +2529,10 @@ mod paint_visit_tests {
                 .unwrap()
                 .into_parts();
             assert!(result.is_err());
-            assert_eq!(report.status(), crate::RenderAttemptStatus::Refused);
+            assert_eq!(
+                report.status(),
+                crate::accounting::RenderAttemptStatus::Refused
+            );
             assert_eq!(fault, None);
         }
 
@@ -2528,7 +2552,7 @@ mod paint_visit_tests {
                         let mut font = FontRef::new(1).named(name);
                         if with_data {
                             font = font.with_data(
-                                crate::FontData::try_from_bytes(
+                                crate::text::FontData::try_from_bytes(
                                     include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf")
                                         .to_vec(),
                                     0,
@@ -2582,9 +2606,11 @@ mod paint_visit_tests {
                 assert_eq!(
                     report.status(),
                     if with_data {
-                        crate::RenderAttemptStatus::Succeeded
+                        crate::accounting::RenderAttemptStatus::Succeeded
                     } else {
-                        crate::RenderAttemptStatus::Failed(crate::ErrorCode::InvalidInput)
+                        crate::accounting::RenderAttemptStatus::Failed(
+                            crate::ErrorCode::InvalidInput,
+                        )
                     }
                 );
                 assert_eq!(fault, None);

@@ -44,7 +44,7 @@ fn shared_fixture<T>(values: Vec<T>) -> SharedValue<Vec<T>> {
     let account = Account::for_test();
     let hold = account
         .acquire(
-            crate::RenderResource::RetainedCpuBytes,
+            crate::accounting::RenderResource::RetainedCpuBytes,
             std::mem::size_of::<T>() * values.capacity(),
         )
         .expect("fixture backing");
@@ -58,7 +58,7 @@ fn fixture_resource_format(
     account: &Account,
 ) -> Result<Option<RuntimeResourceFormat>> {
     for resource in resources {
-        account.work(crate::RenderWork::ResourceProbes, 1)?;
+        account.work(crate::accounting::RenderWork::ResourceProbes, 1)?;
         if resource.id == id {
             return Ok(Some(resource.format));
         }
@@ -108,7 +108,7 @@ use std::{
 };
 
 use super::super::{
-    BackendErrorCode, Color, Error, Format, PhysicalSize, Transform,
+    Error,
     encode::encode_vello_clip_coverage_scene,
     filter::RuntimeFilterAmount,
     frame::{GpuRenderGraph, GraphLoweringImportView},
@@ -123,12 +123,18 @@ use super::super::{
     },
     vello_engine::PendingVelloResourceCommit,
 };
+use crate::{
+    error::BackendErrorCode, geometry::PhysicalSize, geometry::Transform, paint::Color,
+    surface::Format,
+};
 
 #[cfg(test)]
 use super::super::texture::EffectTextureRole;
 
 #[cfg(test)]
-use super::super::{Point, Rect, command::RenderClip, command::RenderCommands};
+use super::super::{command::RenderClip, command::RenderCommands};
+#[cfg(test)]
+use crate::{geometry::Point, geometry::Rect};
 
 #[cfg(test)]
 use super::super::frame::GraphLoweringView;
@@ -571,9 +577,9 @@ pub(crate) fn composition_executable_graph_observation_for_test(
 
 #[cfg(test)]
 pub(crate) fn color_filter_executable_graph_observation_for_test(
-    color_filters: Vec<super::super::FilterList>,
-    blur_filters: Vec<super::super::FilterList>,
-    shadow_filters: Vec<super::super::FilterList>,
+    color_filters: Vec<crate::style::filter::FilterList>,
+    blur_filters: Vec<crate::style::filter::FilterList>,
+    shadow_filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -591,7 +597,7 @@ pub(crate) fn color_filter_executable_graph_observation_for_test(
 
 #[cfg(test)]
 pub(crate) fn color_filter_graph_observation_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -601,8 +607,8 @@ pub(crate) fn color_filter_graph_observation_for_test(
 
 #[cfg(test)]
 pub(crate) fn mixed_color_unsupported_diagnostic_observation_for_test(
-    color_filters: Vec<super::super::FilterList>,
-    mixed_filters: Vec<super::super::FilterList>,
+    color_filters: Vec<crate::style::filter::FilterList>,
+    mixed_filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -619,7 +625,7 @@ pub(crate) fn mixed_color_unsupported_diagnostic_observation_for_test(
 
 #[cfg(test)]
 pub(crate) fn spatial_filter_executable_graph_observation_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -630,7 +636,7 @@ pub(crate) fn spatial_filter_executable_graph_observation_for_test(
 
 #[cfg(test)]
 pub(crate) fn spatial_filter_graph_observation_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -688,7 +694,7 @@ pub(crate) async fn copy_backdrop_cache_realization_observation_for_test(
         WorkingFormat::ReducedPrecision,
     )?;
     let rejected_cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -759,9 +765,9 @@ pub(crate) fn color_filter_operation_bytes_observation_for_test(
 pub(crate) fn color_filter_operation_buffer_limit_observation_for_test()
 -> ColorFilterOperationBufferLimitObservationForTest {
     let account = Account::for_test();
-    let resources = ResourceManager::new(super::super::ResourceCacheBudget::DISABLED);
+    let resources = ResourceManager::new(crate::renderer::ResourceCacheBudget::DISABLED);
     let cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -841,7 +847,7 @@ pub(crate) async fn color_filter_cache_realization_observation_for_test(
         WorkingFormat::ReducedPrecision,
     )?;
     let mut cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -916,7 +922,7 @@ async fn realize_copy_backdrop_requests(
 ) -> Result<CopyBackdropCacheRealizationObservationForTest> {
     let account = Account::for_test();
     let mut cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -980,7 +986,7 @@ pub(crate) fn color_filter_layout_observation_for_test(
 
 #[cfg(test)]
 pub(crate) fn blur_layout_observation_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -991,7 +997,7 @@ pub(crate) fn blur_layout_observation_for_test(
 #[cfg(test)]
 pub(crate) async fn blur_cache_realization_observation_for_test(
     device: &wgpu::Device,
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -1014,7 +1020,7 @@ pub(crate) async fn blur_cache_realization_observation_for_test(
         WorkingFormat::ReducedPrecision,
     )?;
     let mut cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -1068,7 +1074,7 @@ pub(crate) async fn blur_cache_realization_observation_for_test(
 #[cfg(test)]
 pub(crate) async fn backdrop_blur_cache_realization_observation_for_test(
     device: &wgpu::Device,
-    ordinary_filters: Vec<super::super::FilterList>,
+    ordinary_filters: Vec<crate::style::filter::FilterList>,
     ordinary_commands: RenderCommands,
     backdrop_commands: RenderCommands,
     context: FrameContext,
@@ -1107,7 +1113,7 @@ pub(crate) async fn backdrop_blur_cache_realization_observation_for_test(
             .all(|backdrop| ordinary.shader() != backdrop.shader())
     });
     let mut cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -1179,7 +1185,7 @@ pub(crate) fn backdrop_filter_chain_observation_for_test(
 
 #[cfg(test)]
 pub(crate) fn drop_shadow_layout_observation_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -1190,7 +1196,7 @@ pub(crate) fn drop_shadow_layout_observation_for_test(
 #[cfg(test)]
 pub(crate) async fn drop_shadow_cache_realization_observation_for_test(
     device: &wgpu::Device,
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -1213,7 +1219,7 @@ pub(crate) async fn drop_shadow_cache_realization_observation_for_test(
         WorkingFormat::ReducedPrecision,
     )?;
     let mut cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -1568,7 +1574,8 @@ pub(crate) fn layer_composite_cache_requests_for_test(
                 unreachable!("the cloned composition layer-composite kind must remain a layer")
             };
             let mut normal_parameters = **parameters;
-            normal_parameters.composition = crate::LayerComposition::from_blend(BlendMode::Normal);
+            normal_parameters.composition =
+                crate::layer::LayerComposition::from_blend(BlendMode::Normal);
             *parameters = SharedValue::new(normal_parameters, &account.storage())?;
             let Some(keys) = runtime_pass_cache_keys(
                 &normal_kind,
@@ -1771,7 +1778,7 @@ fn copy_backdrop_layout_facts(
 
 #[cfg(test)]
 fn blur_cache_requests_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -1965,7 +1972,7 @@ fn backdrop_blur_layout_observation(
 
 #[cfg(test)]
 fn blur_layout_observation(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -2048,7 +2055,7 @@ struct DropShadowCacheRequestsForTest {
 
 #[cfg(test)]
 fn drop_shadow_cache_requests_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -2113,7 +2120,7 @@ fn set_unique_drop_shadow_cache_keys(
 
 #[cfg(test)]
 fn drop_shadow_layout_observation(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -3050,7 +3057,7 @@ impl ColorFilterPreparableGraph {
 
     pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
         for resource in &self.closed.lowered.resources {
-            account.work(crate::RenderWork::ResourceProbes, 1)?;
+            account.work(crate::accounting::RenderWork::ResourceProbes, 1)?;
             if resource.id == self.closed.lowered.root_working_image {
                 return Ok(resource.spatial.device_extent);
             }
@@ -3844,7 +3851,7 @@ fn composition_rejects_malformed_graph_facts(
 
 #[cfg(test)]
 fn lower_authored_color_filter_graph_for_test(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     working_format: WorkingFormat,
@@ -3868,9 +3875,9 @@ fn lower_authored_color_filter_graph_for_test(
 
 #[cfg(test)]
 fn color_filter_executable_graph_observation(
-    color_filters: Vec<super::super::FilterList>,
-    blur_filters: Vec<super::super::FilterList>,
-    shadow_filters: Vec<super::super::FilterList>,
+    color_filters: Vec<crate::style::filter::FilterList>,
+    blur_filters: Vec<crate::style::filter::FilterList>,
+    shadow_filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -4052,7 +4059,7 @@ fn color_filter_spatial_observation(
 
 #[cfg(test)]
 fn color_filter_graph_observation(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -4156,8 +4163,8 @@ fn color_filter_graph_observation(
 
 #[cfg(test)]
 fn mixed_color_unsupported_diagnostic_observation(
-    color_filters: Vec<super::super::FilterList>,
-    mixed_filters: Vec<super::super::FilterList>,
+    color_filters: Vec<crate::style::filter::FilterList>,
+    mixed_filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -4192,14 +4199,14 @@ fn mixed_color_unsupported_diagnostic_observation(
     .ok()??;
     Some(MixedColorUnsupportedDiagnosticObservationForTest {
         pure_color_retains_gpu_color_diagnostic: color_diagnostic
-            == super::super::UnsupportedPrimitive::new(
-                super::super::PrimitiveFamily::Filters,
-                super::super::PrimitiveOperation::GpuColorFilterExecution,
+            == crate::error::UnsupportedPrimitive::new(
+                crate::error::PrimitiveFamily::Filters,
+                crate::error::PrimitiveOperation::GpuColorFilterExecution,
             ),
         color_then_blur_reports_gpu_blur_diagnostic: mixed_diagnostic
-            == super::super::UnsupportedPrimitive::new(
-                super::super::PrimitiveFamily::Filters,
-                super::super::PrimitiveOperation::GpuBlurFilterExecution,
+            == crate::error::UnsupportedPrimitive::new(
+                crate::error::PrimitiveFamily::Filters,
+                crate::error::PrimitiveOperation::GpuBlurFilterExecution,
             ),
         mixed_graph_stays_outside_color_filter_preparation: close_fixture_graph(
             mixed_lowered,
@@ -4212,7 +4219,7 @@ fn mixed_color_unsupported_diagnostic_observation(
 
 #[cfg(test)]
 fn spatial_filter_executable_graph_observation(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -4241,9 +4248,9 @@ fn spatial_filter_executable_graph_observation(
             .stale_generation_for_test()?,
     );
     let malformed = spatial_filter_malformed_plan_observation(&lowered, stale_dependency)?;
-    let resources = ResourceManager::new(super::super::ResourceCacheBudget::DISABLED);
+    let resources = ResourceManager::new(crate::renderer::ResourceCacheBudget::DISABLED);
     let cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -4271,7 +4278,7 @@ fn spatial_filter_executable_graph_observation(
 
 #[cfg(test)]
 fn spatial_filter_accepts_all_formats(
-    filters: &[super::super::FilterList],
+    filters: &[crate::style::filter::FilterList],
     commands: &RenderCommands,
     context: FrameContext,
     capabilities: &DeviceCapabilities,
@@ -4541,7 +4548,7 @@ fn spatial_filter_plan_is_closed(lowered: LoweredGraphPlan) -> bool {
 
 #[cfg(test)]
 fn spatial_filter_graph_observation(
-    filters: Vec<super::super::FilterList>,
+    filters: Vec<crate::style::filter::FilterList>,
     commands: RenderCommands,
     context: FrameContext,
     capabilities: DeviceCapabilities,
@@ -4604,9 +4611,9 @@ fn backdrop_executable_graph_observation(
         }
     }
     let lowered = selected?;
-    let resources = ResourceManager::new(super::super::ResourceCacheBudget::DISABLED);
+    let resources = ResourceManager::new(crate::renderer::ResourceCacheBudget::DISABLED);
     let cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
         account.cpu().expect("fixture CPU").clone(),
     );
@@ -5318,7 +5325,7 @@ fn observe_layer_composition(
     layer: &ExecutableLayerCompositionFacts,
     lowered: &LoweredGraphPlan,
     resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
-    observed_mask_ids: &mut Vec<super::super::ImageId>,
+    observed_mask_ids: &mut Vec<crate::image::ImageId>,
 ) -> Option<LayerCompositionObservationForTest> {
     let RuntimeCompositeKind::Layer {
         transform,
@@ -5433,10 +5440,10 @@ fn composition_clear_observation(
 #[cfg(test)]
 fn resolved_mask_image_ids_inner_to_outer(
     commands: &[super::super::command::RenderCommand],
-) -> Vec<super::super::ImageId> {
+) -> Vec<crate::image::ImageId> {
     fn collect(
         commands: &[super::super::command::RenderCommand],
-        image_ids: &mut Vec<super::super::ImageId>,
+        image_ids: &mut Vec<crate::image::ImageId>,
     ) {
         for command in commands {
             let super::super::command::RenderCommand::Layer { layer, children } = command else {
@@ -5491,7 +5498,7 @@ fn base_graph_rejects_every_other_pass_kind_and_composite_payload(plan: &Lowered
         Transform::identity(),
         crate::frame::CompositeSourceSpace::LayerLocal,
         1.0,
-        crate::LayerComposition::from_blend(BlendMode::Normal),
+        crate::layer::LayerComposition::from_blend(BlendMode::Normal),
         false,
         None,
         None,
@@ -5705,7 +5712,7 @@ fn bounded_capture_transform_observation(
 
     for raster_scale in scales {
         let context = FrameContext::try_new(
-            super::super::Size::new(64.0, 64.0),
+            crate::geometry::Size::new(64.0, 64.0),
             raster_scale,
             antialiasing,
             Color::TRANSPARENT,
@@ -6541,7 +6548,7 @@ pub(crate) struct RuntimeLoweringObservationForTest {
 #[cfg(test)]
 pub(crate) fn runtime_lowering_observation_for_test(
     commands: RenderCommands,
-    surface_size: super::super::Size,
+    surface_size: crate::geometry::Size,
     surface_scale: f64,
     antialiasing: Antialiasing,
     base_color: Color,
@@ -6751,9 +6758,9 @@ fn runtime_semantic_pass_facts_are_exact(plan: &LoweredGraphPlan) -> bool {
     }) && plan.passes.iter().any(|pass| {
         matches!(&pass.kind, RuntimePassKind::Morphology(work)
             if work.stage() == crate::frame::MorphologyStage::Prepare
-                && work.operation().operator() == crate::MorphologyOperator::Dilate
+                && work.operation().operator() == crate::morphology::MorphologyOperator::Dilate
                 && work.operation().radii() == Some([1.0; 2])
-                && work.operation().color_space() == crate::FilterColorSpace::Srgb)
+                && work.operation().color_space() == crate::filter_model::FilterColorSpace::Srgb)
     })
 }
 
@@ -7021,10 +7028,10 @@ fn lowering_faults_are_rejected(graph: &GpuRenderGraph, capabilities: &DeviceCap
 /// Measures only the real proof/handoff stimulus; all immutable fixture inputs
 /// are constructed before this fresh participant starts.
 pub(super) fn measure_proof_work<T>(
-    work: crate::RenderWork,
+    work: crate::accounting::RenderWork,
     limit: u64,
     run: impl FnOnce(&Account) -> Result<T>,
-) -> (Result<T>, crate::RenderFrameReport) {
+) -> (Result<T>, crate::accounting::RenderFrameReport) {
     use crate::accounting::{FrameFixture, RenderAccountingOptions, RenderLimits, RendererCpu};
     let options = RenderAccountingOptions::new()
         .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap());
@@ -7037,18 +7044,23 @@ pub(super) fn measure_proof_work<T>(
     (result, report)
 }
 
-pub(super) fn lower_filter_proof_fixture(filters: Vec<crate::FilterList>) -> LoweredGraphPlan {
+pub(super) fn lower_filter_proof_fixture(
+    filters: Vec<crate::style::filter::FilterList>,
+) -> LoweredGraphPlan {
     let account = Account::for_test();
-    let mut scene = crate::Scene::new();
-    scene.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), crate::Color::BLACK);
+    let mut scene = crate::scene::Scene::new();
+    scene.fill(
+        crate::geometry::Rect::new(0.0, 0.0, 1.0, 1.0),
+        crate::paint::Color::BLACK,
+    );
     let commands = scene
-        .normalize(crate::Capabilities::CURRENT, &account)
+        .normalize(crate::capability::Capabilities::CURRENT, &account)
         .unwrap();
     let context = FrameContext::try_new(
-        crate::Size::new(4.0, 4.0),
+        crate::geometry::Size::new(4.0, 4.0),
         1.0,
         Antialiasing::Area,
-        crate::Color::TRANSPARENT,
+        crate::paint::Color::TRANSPARENT,
     )
     .unwrap();
     let graph =
@@ -7056,7 +7068,7 @@ pub(super) fn lower_filter_proof_fixture(filters: Vec<crate::FilterList>) -> Low
     LoweredGraphPlan::try_lower_validated_graph(
         &graph,
         WorkingFormat::HighPrecision,
-        crate::Format::Rgba8,
+        crate::surface::Format::Rgba8,
         &DeviceCapabilities::from_test_facts(true, true, 4096),
         &account,
     )
@@ -7069,34 +7081,41 @@ pub(super) fn lower_capture_proof_fixture(
     capabilities: &DeviceCapabilities,
 ) -> LoweredGraphPlan {
     let account = Account::for_test();
-    let bounds = crate::Rect::new(0.0, 0.0, 2.0, 2.0);
-    let image = crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255; 4]).unwrap();
-    let mask = crate::ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
-    let mut scene = crate::Scene::new();
+    let bounds = crate::geometry::Rect::new(0.0, 0.0, 2.0, 2.0);
+    let image =
+        crate::image::Image::from_rgba(crate::geometry::Size::new(1.0, 1.0), vec![255; 4]).unwrap();
+    let mask = crate::layer::ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
+    let mut scene = crate::scene::Scene::new();
     for _ in 0..count {
-        let mut layer = crate::Layer::new().with_resolved_alpha_mask(mask.clone());
+        let mut layer = crate::layer::Layer::new().with_resolved_alpha_mask(mask.clone());
         if clipped {
             layer = layer.try_clip(bounds.into()).unwrap();
         }
-        let append = |scene: &mut crate::Scene| {
+        let append = |scene: &mut crate::scene::Scene| {
             scene.layer(layer, |child| {
-                child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), crate::Color::BLACK);
+                child.fill(
+                    crate::geometry::Rect::new(0.0, 0.0, 1.0, 1.0),
+                    crate::paint::Color::BLACK,
+                );
             });
         };
         if clipped {
-            scene.layer(crate::Layer::new().try_clip(bounds.into()).unwrap(), append);
+            scene.layer(
+                crate::layer::Layer::new().try_clip(bounds.into()).unwrap(),
+                append,
+            );
         } else {
             append(&mut scene);
         }
     }
     let commands = scene
-        .normalize(crate::Capabilities::CURRENT, &account)
+        .normalize(crate::capability::Capabilities::CURRENT, &account)
         .unwrap();
     let context = FrameContext::try_new(
-        crate::Size::new(4.0, 4.0),
+        crate::geometry::Size::new(4.0, 4.0),
         1.0,
         Antialiasing::Area,
-        crate::Color::TRANSPARENT,
+        crate::paint::Color::TRANSPARENT,
     )
     .unwrap();
     let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, &account).unwrap()
@@ -7109,7 +7128,7 @@ pub(super) fn lower_capture_proof_fixture(
     LoweredGraphPlan::try_lower_validated_graph(
         &graph,
         format,
-        crate::Format::Rgba8,
+        crate::surface::Format::Rgba8,
         capabilities,
         &account,
     )

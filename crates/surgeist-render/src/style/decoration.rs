@@ -1,6 +1,5 @@
 use super::super::{
-    Capabilities, Error, Paint, PrimitiveFamily, PrimitiveOperation, Radii, Rect, Result,
-    UnsupportedPrimitive,
+    Error, Result,
     geometry::validate_rect_maxima,
     validation::{validate_finite_f64, validate_non_negative_f64, validate_paint},
 };
@@ -8,6 +7,10 @@ use super::background::StyleCustody;
 use super::image::{BackgroundAreas, BackgroundClipGeometry, validate_background_rect};
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+};
+use crate::{
+    capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnsupportedPrimitive, geometry::Radii, geometry::Rect, paint::Paint,
 };
 
 /// One authored border edge with a style, logical-pixel width, and paint.
@@ -39,19 +42,19 @@ pub enum BorderStyle {
     /// Selects a normalized three-band double border.
     Double,
     /// Selects a groove border, which currently produces a
-    /// [`crate::PrimitiveOperation::BorderGrooveStyle`] unsupported diagnostic
+    /// [`crate::error::PrimitiveOperation::BorderGrooveStyle`] unsupported diagnostic
     /// during normalization.
     Groove,
     /// Selects a ridge border, which currently produces a
-    /// [`crate::PrimitiveOperation::BorderRidgeStyle`] unsupported diagnostic
+    /// [`crate::error::PrimitiveOperation::BorderRidgeStyle`] unsupported diagnostic
     /// during normalization.
     Ridge,
     /// Selects an inset border, which currently produces a
-    /// [`crate::PrimitiveOperation::BorderInsetStyle`] unsupported diagnostic
+    /// [`crate::error::PrimitiveOperation::BorderInsetStyle`] unsupported diagnostic
     /// during normalization.
     Inset,
     /// Selects an outset border, which currently produces a
-    /// [`crate::PrimitiveOperation::BorderOutsetStyle`] unsupported diagnostic
+    /// [`crate::error::PrimitiveOperation::BorderOutsetStyle`] unsupported diagnostic
     /// during normalization.
     Outset,
 }
@@ -171,11 +174,11 @@ pub enum OutlineStyle {
     /// Selects a dotted normalized outline.
     Dotted,
     /// Selects a double outline, which currently produces a
-    /// [`crate::PrimitiveOperation::OutlineDoubleStyle`] unsupported diagnostic
+    /// [`crate::error::PrimitiveOperation::OutlineDoubleStyle`] unsupported diagnostic
     /// during normalization.
     Double,
     /// Selects an automatic outline, which currently produces a
-    /// [`crate::PrimitiveOperation::OutlineAutoStyle`] unsupported diagnostic
+    /// [`crate::error::PrimitiveOperation::OutlineAutoStyle`] unsupported diagnostic
     /// during normalization.
     Auto,
 }
@@ -407,7 +410,7 @@ impl BoxDecorationInput {
     /// `None`, `Hidden`, and zero-width borders, plus `None` and zero-width
     /// outlines, emit no command. Groove, ridge, inset, and outset borders and
     /// double or automatic outlines return their exact `BoxDecorations`
-    /// [`crate::UnsupportedPrimitive`] diagnostic. An outline offset returns
+    /// [`crate::error::UnsupportedPrimitive`] diagnostic. An outline offset returns
     /// [`crate::ErrorCode::InvalidInput`] if the resulting target rectangle has
     /// non-finite components or derived maxima, or non-positive extent. The current
     /// normalization is context-free; `capabilities` is reserved input and does
@@ -956,7 +959,7 @@ fn corner_scale(available: f64, requested: f64) -> f64 {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
-    use crate::Color;
+    use crate::paint::Color;
 
     #[test]
     fn suppressed_edges_emit_nothing_and_four_solid_edges_emit_four_commands() {

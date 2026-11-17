@@ -168,11 +168,11 @@ impl PreparedGraph<'_> {
         if let ConvolutionStage::Accumulate { tap_count, .. } = operation.stage() {
             let opportunities = scheduled_region_texels(region)
                 .checked_mul(u64::from(tap_count))
-                .ok_or(crate::RenderAccountingError::Invariant)?;
+                .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
             account.work(
                 RenderWork::ScheduledConvolutionTaps,
                 usize::try_from(opportunities)
-                    .map_err(|_| crate::RenderAccountingError::Invariant)?,
+                    .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?,
             )?;
         }
         encode_spatial_filter_full_target_pass(

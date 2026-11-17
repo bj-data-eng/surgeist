@@ -4,10 +4,22 @@
 
 use super::convolution::{bounds, image, image_scene, operation, render};
 use crate::{
-    ConvolutionInput, ErrorCode, FilterColorSpace, GpuFaultKind, Options, Parameters,
-    RenderAttemptStatus, RenderResource, RenderRoute, Renderer, ResourceCacheBudget,
-    RuntimeCapabilityUnavailableReason, Scene, Size, Surface,
+    ErrorCode,
+    accounting::RenderAttemptStatus,
+    accounting::RenderResource,
+    convolution::ConvolutionInput,
+    error::GpuFaultKind,
+    error::RuntimeCapabilityUnavailableReason,
+    filter_model::FilterColorSpace,
+    geometry::Size,
     gpu_transaction::test_support::GraphSubmissionGateGuardForTest,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
+    scene::Scene,
+    stats::RenderRoute,
+    surface::Parameters,
+    surface::Surface,
     surface::{HeadlessResources, SurfaceBackend},
 };
 use std::{
@@ -277,7 +289,7 @@ fn public_convolution_first_terminal_fault_aborts_publication_and_retires_once()
     );
     assert_eq!(
         first
-            .error(crate::RuntimeOperation::SurfaceRendering)
+            .error(crate::error::RuntimeOperation::SurfaceRendering)
             .runtime_capability_unavailable_diagnostic()
             .expect("first signal retains its terminal reason")
             .reason(),

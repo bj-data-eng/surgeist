@@ -25,18 +25,36 @@ use super::{
     geometry::physical_size,
     surface::{HeadlessResources, RendererIdentity, SurfaceBackend},
     validation::*,
-    *,
 };
 use crate::accounting::{
     ImageHistory, RenderAttemptKind, RenderCpuSnapshot, RenderDeviceSnapshot, RenderFrameReport,
     RenderFrameReportRef, RenderReadbackReport, RenderReadbackReportRef, RendererCpu,
 };
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+use crate::error::RenderSurfaceAvailability;
+use crate::{
+    Error, Result, accounting::RenderAccountingOptions, capability::Capabilities,
+    capability::RuntimeCapabilities, error::BackendErrorCode, error::RuntimeCapabilityUnavailable,
+    error::RuntimeCapabilityUnavailableReason, error::RuntimeOperation,
+    error::SurfaceIdentityMismatchKind, geometry::Size, image::ImageBuffer, scene::Scene,
+    stats::Stats, surface::Attachment, surface::Format, surface::Parameters, surface::Surface,
+    surface::SurfaceOptions, surface::WebCanvas,
+};
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use crate::{accounting::RenderAttemptStatus, geometry::Rect, paint::Color};
+#[cfg(not(all(feature = "render-web", target_arch = "wasm32")))]
+use crate::{error::PrimitiveFamily, error::PrimitiveOperation, error::UnsupportedPrimitive};
+#[cfg(test)]
+use crate::{frame, pass};
 
 /// GPU-only renderer and owner of device-scoped resources and frame transactions.
 ///
-/// Effect-free scenes select [`RenderRoute::DirectVello`]. Scenes requiring the
+/// Effect-free scenes select [`RenderRoute::DirectVello`](crate::stats::RenderRoute::DirectVello). Scenes requiring the
 /// implemented resolved-alpha-mask, composition, or bounded-backdrop subset
-/// select [`RenderRoute::GpuGraph`]. Both routes encode into one
+/// select [`RenderRoute::GpuGraph`](crate::stats::RenderRoute::GpuGraph). Both routes encode into one
 /// transaction-owned submission. The renderer never retries pixels on a CPU
 /// path and never performs implicit readback.
 pub struct Renderer {

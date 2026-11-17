@@ -1,14 +1,21 @@
 //! Accounted consumer of authentic native Paint geometry and used positions.
 
 use crate::{
-    Color, Gradient, GradientHint, GradientStop, Point, RenderAccountingContext, RenderResource,
-    RepeatingGradient, Result,
+    Result,
+    accounting::RenderAccountingContext,
+    accounting::RenderResource,
     accounting::{
         Account, AccountedVec, Hold, PreparationValue, RenderAttemptKind, RenderPhase, RenderWork,
     },
     color_reduction::{PremultipliedSum, premultiplied},
+    geometry::Point,
     number_text::Number,
+    paint::Color,
+    paint::Gradient,
     paint::GradientGeometry,
+    paint::GradientHint,
+    paint::GradientStop,
+    paint::RepeatingGradient,
 };
 use std::mem::size_of;
 use surgeist_paint::gradient_stops::{GradientStops, UsedGradientItem};
@@ -486,7 +493,10 @@ fn convert_position(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{RenderAccountingOptions, RenderLimits, RenderProfile, paint::GradientKind};
+    use crate::{
+        accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderProfile,
+        paint::GradientKind,
+    };
     use std::cell::Cell;
     use surgeist_ledger::ProfileMode;
     use surgeist_paint::accounting::{PaintLimits, PaintOptions};
@@ -734,13 +744,14 @@ mod tests {
         let error =
             prepare_radial_gradient(&zero_width_geometry(8.0, 0.0, 8.0), &used, &mut context)
                 .unwrap_err();
-        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
+            error.accounting_diagnostic()
         else {
             panic!("named scalar refusal")
         };
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Work(RenderWork::CoordinateVisits)
+            crate::accounting::RenderQuantity::Work(RenderWork::CoordinateVisits)
         );
         assert_eq!(refusal.current(), 7);
         assert_eq!(refusal.amount(), 1);
@@ -947,7 +958,7 @@ mod tests {
                 RenderLimits::new()
                     .with_work_limit(RenderWork::CoordinateVisits, 71)
                     .unwrap(),
-                crate::RenderQuantity::Work(RenderWork::CoordinateVisits),
+                crate::accounting::RenderQuantity::Work(RenderWork::CoordinateVisits),
                 71,
                 71,
                 1,
@@ -959,7 +970,7 @@ mod tests {
                 RenderLimits::new()
                     .with_work_limit(RenderWork::GradientStopVisits, 2)
                     .unwrap(),
-                crate::RenderQuantity::Work(RenderWork::GradientStopVisits),
+                crate::accounting::RenderQuantity::Work(RenderWork::GradientStopVisits),
                 2,
                 2,
                 1,
@@ -971,7 +982,7 @@ mod tests {
                 RenderLimits::new()
                     .with_work_limit(RenderWork::PaintVisits, 1)
                     .unwrap(),
-                crate::RenderQuantity::Work(RenderWork::PaintVisits),
+                crate::accounting::RenderQuantity::Work(RenderWork::PaintVisits),
                 1,
                 1,
                 1,
@@ -981,7 +992,7 @@ mod tests {
             ),
             (
                 RenderLimits::new().with_retained_bytes((size_of::<Color>() - 1) as u64),
-                crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                crate::accounting::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
                 (size_of::<Color>() - 1) as u64,
                 0,
                 size_of::<Color>() as u64,
@@ -1004,7 +1015,7 @@ mod tests {
                     .with_profile(profile),
             );
             let error = prepare_zero_height_gradient_color(&colors, &mut context).unwrap_err();
-            let Some(crate::RenderAccountingError::Refused(refusal)) =
+            let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
                 error.accounting_diagnostic()
             else {
                 panic!("expected the named original admission refusal")
@@ -1015,11 +1026,14 @@ mod tests {
             assert_eq!(refusal.amount(), amount);
             assert_eq!(
                 refusal.reason(),
-                crate::RenderRefusalReason::Limit { limit }
+                crate::accounting::RenderRefusalReason::Limit { limit }
             );
             assert!(error.paint_gradient_diagnostic().is_none());
             let report = context.last_attempt().unwrap().attempt().unwrap();
-            assert_eq!(report.status(), crate::RenderAttemptStatus::Refused);
+            assert_eq!(
+                report.status(),
+                crate::accounting::RenderAttemptStatus::Refused
+            );
             assert_eq!(report.refusal(), Some(refusal));
             assert_eq!(
                 report.usage().work(RenderWork::CoordinateVisits),
@@ -1233,7 +1247,10 @@ mod tests {
 
     #[test]
     fn repeating_span_failure_releases_fixed_output_before_its_actual_stop_backing() {
-        use crate::{RenderChangeKind, RenderEvent, RenderPhaseFilter, RenderQuantity};
+        use crate::{
+            accounting::RenderChangeKind, accounting::RenderEvent, accounting::RenderPhaseFilter,
+            accounting::RenderQuantity,
+        };
 
         let source = source(-f64::MAX, f64::MAX);
         let stops = resolve_gradient_stops(1.0, &source, options())
@@ -1405,7 +1422,7 @@ mod tests {
         assert_eq!(report.refusal().unwrap().phase(), RenderPhase::Attempt);
         assert_eq!(
             report.refusal().unwrap().quantity(),
-            crate::RenderQuantity::Work(RenderWork::PaintVisits)
+            crate::accounting::RenderQuantity::Work(RenderWork::PaintVisits)
         );
         assert_eq!(
             report

@@ -1,7 +1,7 @@
 //! Qualifies the locked Kurbo dash initializer before entering its opaque work.
 
 use crate::accounting::{Account, AccountedVec, RenderWork};
-use crate::{GeometryRealizationError, Result};
+use crate::{Result, error::GeometryRealizationError};
 
 use super::bounded;
 
@@ -120,7 +120,7 @@ impl<'a> QualifiedDash<'a> {
 mod tests {
     use super::*;
     use crate::accounting::{RenderAttemptKind, RenderPhase};
-    use crate::{ErrorCode, RenderAccountingContext, RenderResource};
+    use crate::{ErrorCode, accounting::RenderAccountingContext, accounting::RenderResource};
     use kurbo::PathEl::{LineTo, MoveTo};
 
     fn style(offset: f64, intervals: &[f64]) -> kurbo::Stroke {
@@ -279,8 +279,8 @@ mod tests {
         const ACTIONS: u64 = 25;
         let style = style(0.0, &[2.0, 1.0]);
         let mut context = RenderAccountingContext::new(
-            crate::RenderAccountingOptions::new().with_limits(
-                crate::RenderLimits::new()
+            crate::accounting::RenderAccountingOptions::new().with_limits(
+                crate::accounting::RenderLimits::new()
                     .with_work_limit(RenderWork::CoordinateVisits, ACTIONS - 1)
                     .unwrap(),
             ),
@@ -291,17 +291,18 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(error.code(), ErrorCode::Accounting);
-        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
+            error.accounting_diagnostic()
         else {
             panic!("expected the actual scalar admission refusal");
         };
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Work(RenderWork::CoordinateVisits)
+            crate::accounting::RenderQuantity::Work(RenderWork::CoordinateVisits)
         );
         assert_eq!(
             refusal.reason(),
-            crate::RenderRefusalReason::Limit { limit: ACTIONS - 1 }
+            crate::accounting::RenderRefusalReason::Limit { limit: ACTIONS - 1 }
         );
         assert_eq!(refusal.current(), ACTIONS - 1);
         assert_eq!(refusal.amount(), 1);

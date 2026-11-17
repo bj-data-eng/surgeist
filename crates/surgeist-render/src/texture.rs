@@ -1,4 +1,5 @@
-use super::{Error, Format, PhysicalSize, Result, resource::WorkingFormat};
+use super::{Error, Result, resource::WorkingFormat};
+use crate::{geometry::PhysicalSize, surface::Format};
 
 /// The name of a texture format in a message. Formats this crate never selects share one name.
 pub(crate) const fn texture_format_label(format: wgpu::TextureFormat) -> &'static str {

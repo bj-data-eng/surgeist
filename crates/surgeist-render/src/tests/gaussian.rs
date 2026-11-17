@@ -2,9 +2,12 @@
 //! exp(-k² ln2), independently of the production kernel generator.
 use super::convolution::{assert_pixel, bounds, image, pixel, renderer_and_surface};
 use crate::{
-    Color, FilterColorSpace, FilterDomains, FilterEdgeMode, GaussianInput, GaussianSource, Image,
-    ImageBuffer, ImageFit, Layer, Parameters, PreparedGaussian, Rect, RenderAccountingContext,
-    Renderer, Scene, Surface, Transform, prepare_gaussian,
+    accounting::RenderAccountingContext, filter_domains::FilterDomains,
+    filter_model::FilterColorSpace, filter_model::FilterEdgeMode, gaussian::GaussianInput,
+    gaussian::GaussianSource, gaussian::PreparedGaussian, gaussian::prepare_gaussian,
+    geometry::Rect, geometry::Transform, image::Image, image::ImageBuffer, image::ImageFit,
+    layer::Layer, paint::Color, renderer::Renderer, scene::Scene, surface::Parameters,
+    surface::Surface,
 };
 
 pub(super) fn operation(x: f64, y: f64, color: FilterColorSpace) -> PreparedGaussian {
@@ -214,7 +217,10 @@ fn public_gaussian_zero_negative_and_signed_zero_preserve_numeric_input_without_
             assert_pixel(&output, x, y, [0; 4], 1);
         }
         let usage = renderer.last_attempt().unwrap().attempt().unwrap().usage();
-        assert_eq!(usage.work(crate::RenderWork::KernelSampleVisits), 0);
+        assert_eq!(
+            usage.work(crate::accounting::RenderWork::KernelSampleVisits),
+            0
+        );
     }
 }
 
@@ -330,7 +336,7 @@ fn public_gaussian_constant_infinite_precedence_avoids_finite_edge_darkening() {
                     .attempt()
                     .unwrap()
                     .usage()
-                    .work(crate::RenderWork::KernelSampleVisits),
+                    .work(crate::accounting::RenderWork::KernelSampleVisits),
                 0
             );
         }
@@ -390,7 +396,7 @@ fn public_gaussian_fractional_period_wraps_actual_texel_canvas_without_a_global_
 
 #[test]
 fn public_gaussian_periodic_scope_restores_nonunit_root_and_following_siblings() {
-    use crate::{OffsetInput, Options, Size, prepare_offset};
+    use crate::{geometry::Size, offset::OffsetInput, offset::prepare_offset, renderer::Options};
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(10.0, 5.0), 1.5)).unwrap();
@@ -543,7 +549,7 @@ fn public_gaussian_two_axes_and_multibatch_keep_one_filter_color_conversion() {
 
 #[test]
 fn public_gaussian_empty_finite_input_clears_only_its_nonpreserving_output_footprint() {
-    use crate::{BlendMode, LayerComposition, PorterDuffOperator};
+    use crate::{layer::BlendMode, layer::LayerComposition, layer::PorterDuffOperator};
     let (mut renderer, mut surface) = renderer_and_surface(5, 1);
     let full = bounds(5, 1);
     for source in [
@@ -587,7 +593,7 @@ fn public_gaussian_empty_finite_input_clears_only_its_nonpreserving_output_footp
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::KernelSampleVisits),
+                .work(crate::accounting::RenderWork::KernelSampleVisits),
             0
         );
     }
@@ -648,7 +654,7 @@ fn public_gaussian_full_outer_affines_preserve_local_vector_domains() {
 
 #[test]
 fn public_gaussian_outer_clip_mask_and_opacity_stay_after_filtering() {
-    use crate::{ResolvedLayerAlphaMask, Shape};
+    use crate::{layer::ResolvedLayerAlphaMask, shape::Shape};
     let (mut renderer, mut surface) = renderer_and_surface(6, 1);
     let full = bounds(6, 1);
     let mask = ResolvedLayerAlphaMask::try_new(
@@ -686,7 +692,10 @@ fn public_gaussian_outer_clip_mask_and_opacity_stay_after_filtering() {
 
 #[test]
 fn public_gaussian_backdrop_only_source_restores_original_finite_lattice() {
-    use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+    use crate::{
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
+    };
     let (mut renderer, mut surface) = renderer_and_surface(6, 1);
     let full = bounds(6, 1);
     let source = Rect::new(1.0, 0.0, 2.0, 1.0);
@@ -723,7 +732,8 @@ fn public_gaussian_backdrop_only_source_restores_original_finite_lattice() {
 #[test]
 fn public_gaussian_empty_input_or_output_excludes_unused_backdrop_and_kernel_work() {
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, FilterList, FilterOp, UnitFilterAmount,
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterList, style::filter::FilterOp, style::filter::UnitFilterAmount,
     };
     let (mut renderer, mut surface) = renderer_and_surface(3, 1);
     let full = bounds(3, 1);
@@ -762,7 +772,7 @@ fn public_gaussian_empty_input_or_output_excludes_unused_backdrop_and_kernel_wor
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::KernelSampleVisits),
+                .work(crate::accounting::RenderWork::KernelSampleVisits),
             0
         );
     }
@@ -837,8 +847,8 @@ fn public_gaussian_reachable_huge_sigma_refuses_atomically_and_valid_scene_retri
     assert!(
         matches!(
             error.gaussian_diagnostic(),
-            Some(crate::GaussianPreparationError::Numeric {
-                phase: crate::GaussianNumericPhase::KernelExtent,
+            Some(crate::gaussian::GaussianPreparationError::Numeric {
+                phase: crate::gaussian::GaussianNumericPhase::KernelExtent,
                 ..
             })
         ),
@@ -855,7 +865,8 @@ fn public_gaussian_reachable_huge_sigma_refuses_atomically_and_valid_scene_retri
 #[test]
 fn public_gaussian_fractional_output_bounds_destructive_operators_without_double_coverage() {
     use crate::{
-        BlendMode, LayerComposition, PorterDuffOperator as Pd, ResolvedLayerAlphaMask, Shape,
+        layer::BlendMode, layer::LayerComposition, layer::PorterDuffOperator as Pd,
+        layer::ResolvedLayerAlphaMask, shape::Shape,
     };
     let (mut renderer, mut surface) = renderer_and_surface(4, 1);
     let full = bounds(4, 1);
@@ -964,7 +975,7 @@ fn public_gaussian_fractional_output_bounds_destructive_operators_without_double
 
 #[test]
 fn public_gaussian_fractional_empty_copy_preserves_exterior_and_singular_copy_is_empty() {
-    use crate::{BlendMode, LayerComposition, PorterDuffOperator};
+    use crate::{layer::BlendMode, layer::LayerComposition, layer::PorterDuffOperator};
     let (mut renderer, mut surface) = renderer_and_surface(4, 1);
     let full = bounds(4, 1);
     let output = Rect::new(0.5, 0.0, 2.0, 1.0);
@@ -1009,7 +1020,7 @@ fn public_gaussian_fractional_empty_copy_preserves_exterior_and_singular_copy_is
 
 #[test]
 fn public_gaussian_active_float32_refusal_keeps_constant_and_identity_routes_executable() {
-    use crate::{RuntimeCapabilityUnavailableReason, RuntimeOperation};
+    use crate::{error::RuntimeCapabilityUnavailableReason, error::RuntimeOperation};
     let (mut renderer, mut surface) = renderer_and_surface(3, 1);
     let full = bounds(3, 1);
     let available = renderer
@@ -1068,7 +1079,7 @@ fn public_gaussian_active_float32_refusal_keeps_constant_and_identity_routes_exe
 
 #[test]
 fn public_gaussian_plus_replaces_copy_and_uses_source_attenuation_without_pd_correction() {
-    use crate::{BlendMode, LayerComposition, PorterDuffOperator};
+    use crate::{layer::BlendMode, layer::LayerComposition, layer::PorterDuffOperator};
     let (mut renderer, mut surface) = renderer_and_surface(4, 1);
     let full = bounds(4, 1);
     let output = Rect::new(0.5, 0.0, 2.0, 1.0);
@@ -1104,7 +1115,7 @@ fn public_gaussian_plus_replaces_copy_and_uses_source_attenuation_without_pd_cor
 
 #[test]
 fn public_gaussian_fractional_copy_reconstructs_coverage_through_the_full_affine() {
-    use crate::{BlendMode, LayerComposition, PorterDuffOperator};
+    use crate::{layer::BlendMode, layer::LayerComposition, layer::PorterDuffOperator};
     let (mut renderer, mut surface) = renderer_and_surface(10, 7);
     let full = bounds(10, 7);
     let result = Rect::new(0.25, 0.25, 3.0, 2.0);

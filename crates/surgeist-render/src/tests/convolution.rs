@@ -1,10 +1,14 @@
 //! Independent fixtures through the public admitted-convolution receiver and real GPU readback.
 //! Readback pixels are straight RGBA8; comments distinguish premultiplied equations.
 use crate::{
-    Color, ConvolutionInput, FilterAmount, FilterColorSpace, FilterDomains, FilterEdgeMode,
-    FilterList, FilterOp, Image, ImageBuffer, ImageFit, ImageQuality, Layer, Options, Parameters,
-    PreparedConvolution, Rect, RenderAccountingContext, RenderRoute, Renderer,
-    ResolvedLayerAlphaMask, Scene, Size, Surface, prepare_convolution,
+    accounting::RenderAccountingContext, convolution::ConvolutionInput,
+    convolution::PreparedConvolution, convolution::prepare_convolution,
+    filter_domains::FilterDomains, filter_model::FilterColorSpace, filter_model::FilterEdgeMode,
+    geometry::Rect, geometry::Size, image::Image, image::ImageBuffer, image::ImageFit,
+    image::ImageQuality, layer::Layer, layer::ResolvedLayerAlphaMask, paint::Color,
+    renderer::Options, renderer::Renderer, scene::Scene, stats::RenderRoute,
+    style::filter::FilterAmount, style::filter::FilterList, style::filter::FilterOp,
+    surface::Parameters, surface::Surface,
 };
 
 pub(super) fn bounds(width: u32, height: u32) -> Rect {
@@ -113,7 +117,7 @@ fn translated_nested_opacity_capture_preserves_an_authored_local_clip() {
             Layer::new()
                 .try_opacity(0.5)
                 .unwrap()
-                .try_clip(crate::Shape::rect(Rect::new(2.0, 2.0, 1.0, 1.0)))
+                .try_clip(crate::shape::Shape::rect(Rect::new(2.0, 2.0, 1.0, 1.0)))
                 .unwrap(),
             |nested| {
                 nested.fill(source, Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap());

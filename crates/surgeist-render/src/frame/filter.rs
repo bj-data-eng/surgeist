@@ -7,7 +7,7 @@ use super::{
 };
 use crate::accounting::{Account, RenderPhase, RenderWork, SharedValue};
 #[cfg(test)]
-use crate::style::FilterList;
+use crate::style::filter::FilterList;
 use crate::{
     command::NormalizedLayer,
     error::{Error, Result},
@@ -16,7 +16,7 @@ use crate::{
         CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS,
     },
     geometry::{Point, Transform},
-    style::{FilterBlur, FilterDropShadow, FilterOp, FilterOpKind},
+    style::{filter::FilterBlur, filter::FilterDropShadow, filter::FilterOp, filter::FilterOpKind},
 };
 
 impl FrameContext {
@@ -368,7 +368,7 @@ impl InclusiveFilterKernelSupport {
 }
 
 #[cfg(test)]
-use crate::{filter::ColorClampBoundary, geometry::Rect, style::ColorFilterOp};
+use crate::{filter::ColorClampBoundary, geometry::Rect, style::filter::ColorFilterOp};
 
 #[cfg(test)]
 #[derive(Clone, Debug, PartialEq)]

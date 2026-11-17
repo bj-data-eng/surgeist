@@ -1,13 +1,14 @@
 use super::{
-    Error, Rect, Result,
+    Error, Result,
     style::{
-        ColorFilterOp, FilterAmount, FilterAngle, FilterBlur, FilterDropShadow, FilterOp,
-        FilterOpKind, UnitFilterAmount,
+        filter::ColorFilterOp, filter::FilterAmount, filter::FilterAngle, filter::FilterBlur,
+        filter::FilterDropShadow, filter::FilterOp, filter::FilterOpKind, filter::UnitFilterAmount,
     },
 };
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
+use crate::geometry::Rect;
 #[cfg(test)]
-use crate::style::FilterList;
+use crate::style::filter::FilterList;
 
 pub(crate) const CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS: f64 = 2.5;
 #[cfg(test)]
@@ -941,7 +942,7 @@ mod accounting_tests {
     use super::*;
     use crate::{
         accounting::{FrameFixture, RenderAccountingOptions, RendererCpu},
-        style::FilterOp,
+        style::filter::FilterOp,
     };
 
     #[test]

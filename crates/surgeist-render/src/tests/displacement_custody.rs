@@ -2,14 +2,28 @@
 use super::convolution::{assert_pixel, bounds};
 use super::displacement::{active, native_map};
 use crate::{
-    Color, DisplacementChannel as Channel, DisplacementSource, Layer, Options, Parameters, Rect,
-    RenderAccountingError, RenderAccountingOptions, RenderGenerationScope, RenderProfile,
-    RenderQuantity, RenderResource, Renderer, ResourceCacheBudget, Scene, Size,
+    accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions,
+    accounting::RenderGenerationScope,
+    accounting::RenderProfile,
+    accounting::RenderQuantity,
+    accounting::RenderResource,
+    displacement::DisplacementChannel as Channel,
+    displacement::DisplacementSource,
+    geometry::Rect,
+    geometry::Size,
     gpu_transaction::test_support::{
         GraphBeforeSubmissionGateGuardForTest, GraphSubmissionGateGuardForTest,
     },
+    layer::Layer,
+    paint::Color,
     pass::{DisplacementUniformProbeForTest, DisplacementUniformStageForTest},
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
     resource::{DisplacementResourceDescriptorForTest, WorkingFormat},
+    scene::Scene,
+    surface::Parameters,
 };
 use std::{
     future::Future,
@@ -208,7 +222,7 @@ fn public_displacement_exact_backing_and_uniforms_survive_both_submission_bounda
                     format,
                     usage,
                 } => {
-                    assert_eq!(extent, crate::PhysicalSize::new(1, 1));
+                    assert_eq!(extent, crate::geometry::PhysicalSize::new(1, 1));
                     assert_eq!(format, wgpu::TextureFormat::Rgba8Unorm);
                     assert!(usage.contains(
                         wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST
@@ -472,8 +486,8 @@ fn public_displacement_cancel_disposes_native_commands_before_the_same_retained_
 #[test]
 fn public_displacement_partial_raw_table_and_record_upload_refusals_release_their_actual_leases() {
     use crate::{
-        RenderAttemptStatus, RenderLimits, RenderRefusalReason, RenderWork,
-        pass::DisplacementAcquiredReadRoleForTest as Role,
+        accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderRefusalReason,
+        accounting::RenderWork, pass::DisplacementAcquiredReadRoleForTest as Role,
     };
     let scene = scene();
     // The two actual pass uniforms upload256 bytes each. The three concrete

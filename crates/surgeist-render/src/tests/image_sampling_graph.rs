@@ -3,9 +3,13 @@
 use std::sync::Arc;
 
 use crate::{
-    BackdropCaptureBounds, BackdropFilterInput, ClipInput, Color, FilterList, FilterOp, Image,
-    ImageBuffer, ImageFit, ImageRendering, Layer, Options, Paint, Parameters, Point, Rect,
-    RenderRoute, Renderer, ResolvedLayerAlphaMask, Scene, Shape, Size, Transform, UnitFilterAmount,
+    geometry::Point, geometry::Rect, geometry::Size, geometry::Transform, image::Image,
+    image::ImageBuffer, image::ImageFit, image::ImageRendering, layer::Layer,
+    layer::ResolvedLayerAlphaMask, paint::Color, paint::Paint, renderer::Options,
+    renderer::Renderer, scene::Scene, shape::Shape, stats::RenderRoute, style::clip::ClipInput,
+    style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+    style::filter::FilterList, style::filter::FilterOp, style::filter::UnitFilterAmount,
+    surface::Parameters,
 };
 
 fn color(rgba: [u8; 4]) -> Color {
@@ -339,7 +343,10 @@ fn graph_backdrop_filters_only_its_clip_before_crisp_foreground_and_later_siblin
 #[test]
 fn graph_image_and_nonconstant_mask_preserve_large_origin_texel_phase() {
     use super::convolution::{assert_pixel, image, renderer_and_surface};
-    use crate::{ImageFit, Layer, Rect, ResolvedLayerAlphaMask, Scene, Transform};
+    use crate::{
+        geometry::Rect, geometry::Transform, image::ImageFit, layer::Layer,
+        layer::ResolvedLayerAlphaMask, scene::Scene,
+    };
     let (mut renderer, mut surface) = renderer_and_surface(2, 1);
     let domain = Rect::try_new(100_000_000.0, 0.0, 2.0, 1.0).unwrap();
     for alpha in [255_u8, 128] {

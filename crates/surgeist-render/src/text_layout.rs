@@ -15,9 +15,22 @@ use surgeist_font::ResourceId;
 use surgeist_text::{Brush, Layout, RunView};
 
 use crate::{
-    Color, Error, FontData, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint,
-    PreparedGlyphRun, Result, Scene, Shape, TextGlyph, TextInstance, TextPaint, Transform,
+    Error, Result,
+    geometry::Transform,
+    layer::Layer,
+    paint::Color,
+    paint::Paint,
     scene::Command,
+    scene::Scene,
+    shape::Shape,
+    text::FontData,
+    text::GlyphRunLimits,
+    text::GlyphSynthesis,
+    text::NormalizedCoordinate,
+    text::PreparedGlyphRun,
+    text::TextGlyph,
+    text::TextInstance,
+    text::TextPaint,
     text::{qualify_preparation_bounds, qualify_preparation_placement},
 };
 
@@ -555,8 +568,8 @@ fn run_transform(run: &RunView<'_>, placement: Transform) -> Result<Transform> {
     transform.then(placement)
 }
 
-fn decoration_rect(rect: surgeist_text::Rect) -> Result<crate::Rect> {
-    crate::Rect::try_new(
+fn decoration_rect(rect: surgeist_text::Rect) -> Result<crate::geometry::Rect> {
+    crate::geometry::Rect::try_new(
         rect.origin.x,
         rect.origin.y,
         rect.size.width,

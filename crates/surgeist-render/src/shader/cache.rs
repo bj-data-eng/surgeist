@@ -2020,8 +2020,8 @@ impl ProvisionalDropShadowColorizePassObjects<'_> {
 mod accounting_tests {
     use super::*;
     use crate::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
-        RenderLimits,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderAttemptStatus, accounting::RenderLimits,
     };
 
     struct CheckedCorePassFixture {
@@ -2037,13 +2037,19 @@ mod accounting_tests {
         fn new() -> Self {
             use crate::backend::{Backend, DeviceCapabilities};
             use crate::{
-                Antialiasing, Capabilities, Color, EffectQualityPolicy, Format, Rect, Scene, Size,
+                capability::Capabilities, geometry::Rect, geometry::Size, paint::Color,
+                renderer::Antialiasing, renderer::EffectQualityPolicy, scene::Scene,
+                surface::Format,
             };
 
             let options = RenderAccountingOptions::new();
             let cpu = crate::accounting::RendererCpu::new(options).unwrap();
-            let mut backend =
-                Backend::new(crate::ResourceCacheBudget::DISABLED, cpu.clone(), options).unwrap();
+            let mut backend = Backend::new(
+                crate::renderer::ResourceCacheBudget::DISABLED,
+                cpu.clone(),
+                options,
+            )
+            .unwrap();
             let identity = pollster::block_on(backend.select_device(None))
                 .unwrap()
                 .unwrap();
@@ -2096,7 +2102,7 @@ mod accounting_tests {
                 backend,
                 identity,
                 generation,
-                cpu: cpu.at(crate::RenderCpuScope::DeviceBacking),
+                cpu: cpu.at(crate::accounting::RenderCpuScope::DeviceBacking),
                 renderer_cpu: cpu,
                 keys,
             }
@@ -2107,7 +2113,7 @@ mod accounting_tests {
         }
 
         fn checked<T>(&mut self, realize: impl FnOnce(&wgpu::Device, &Account) -> Result<T>) -> T {
-            let operation = crate::RuntimeOperation::EffectRendering;
+            let operation = crate::error::RuntimeOperation::EffectRendering;
             let transaction = self
                 .backend
                 .begin_gpu_operation(
@@ -2231,7 +2237,10 @@ mod accounting_tests {
     #[test]
     fn pass_cache_destination_capacity_refusal_keeps_update_for_retry() {
         use crate::accounting::RendererCpu;
-        use crate::{RenderAccountingError, RenderCpuScope, RenderQuantity, RenderRefusalReason};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderCpuScope,
+            accounting::RenderQuantity, accounting::RenderRefusalReason,
+        };
 
         let mut fixture = CheckedCorePassFixture::new();
         let native_opening = fixture.live_objects();
@@ -2311,7 +2320,10 @@ mod accounting_tests {
     #[test]
     fn pass_cache_index_growth_preserves_old_entries_on_refusal() {
         use crate::accounting::RendererCpu;
-        use crate::{RenderAccountingError, RenderCpuScope, RenderQuantity};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderCpuScope,
+            accounting::RenderQuantity,
+        };
 
         let actual_capacity = |count| {
             let mut map = HashMap::<usize, usize>::new();
@@ -2380,7 +2392,10 @@ mod accounting_tests {
     #[test]
     fn pass_cache_first_record_refusal_precedes_native_creation() {
         use crate::accounting::RendererCpu;
-        use crate::{RenderAccountingError, RenderCpuScope, RenderQuantity};
+        use crate::{
+            accounting::RenderAccountingError, accounting::RenderCpuScope,
+            accounting::RenderQuantity,
+        };
 
         let mut fixture = CheckedCorePassFixture::new();
         let native_opening = fixture.live_objects();
@@ -2438,17 +2453,17 @@ mod accounting_tests {
     fn measure_readiness(
         limit: u64,
         run: impl FnOnce(&Account) -> Result<()>,
-    ) -> (Result<()>, crate::RenderStandaloneReport) {
+    ) -> (Result<()>, crate::accounting::RenderStandaloneReport) {
         let limits = RenderLimits::new()
             .with_work_limit(RenderWork::ResourceProbes, limit)
             .unwrap();
         let options = RenderAccountingOptions::new()
             .with_limits(limits)
-            .with_profile(crate::RenderProfile::Summary { timing: false });
+            .with_profile(crate::accounting::RenderProfile::Summary { timing: false });
         let mut context = RenderAccountingContext::new(options);
         let result = context.run(
             RenderAttemptKind::Frame,
-            crate::RenderPhase::GpuPrepare,
+            crate::accounting::RenderPhase::GpuPrepare,
             run,
         );
         let report = context.take_last_attempt().unwrap();
@@ -2456,12 +2471,12 @@ mod accounting_tests {
         (result, report)
     }
 
-    fn assert_readiness_work(report: &crate::RenderStandaloneReport, probes: u64) {
+    fn assert_readiness_work(report: &crate::accounting::RenderStandaloneReport, probes: u64) {
         let attempt = report.attempt().unwrap();
         assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), probes);
         assert_eq!(
             attempt
-                .phase_usage(crate::RenderPhase::GpuPrepare)
+                .phase_usage(crate::accounting::RenderPhase::GpuPrepare)
                 .work(RenderWork::ResourceProbes),
             probes
         );
@@ -2475,7 +2490,8 @@ mod accounting_tests {
     #[test]
     fn checked_pass_cache_readiness_preserves_probe_rounds_and_reserved_capacity() {
         use crate::{
-            ErrorCode, RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusalReason,
+            ErrorCode, accounting::RenderAccountingError, accounting::RenderPhase,
+            accounting::RenderQuantity, accounting::RenderRefusalReason,
         };
 
         let mut fixture = CheckedCorePassFixture::new();
@@ -2598,7 +2614,7 @@ mod accounting_tests {
     ) -> (
         ProvisionalDevicePassCacheUpdate,
         Error,
-        crate::RenderStandaloneReport,
+        crate::accounting::RenderStandaloneReport,
     ) {
         let mut rejected = None;
         let (result, report) = measure_readiness(limit, |account| {
@@ -2689,7 +2705,7 @@ mod accounting_tests {
             );
             let result = context.run(
                 RenderAttemptKind::Frame,
-                crate::RenderPhase::GpuPrepare,
+                crate::accounting::RenderPhase::GpuPrepare,
                 |account| {
                     assert!(contains(&first, &1, account)?);
                     assert_eq!(lookup_pair(&first, &second, &1, account)?, Some(&"first"));

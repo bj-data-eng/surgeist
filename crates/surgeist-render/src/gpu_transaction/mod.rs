@@ -25,9 +25,10 @@ pub(crate) use readback::ReadbackSubmission;
 pub(crate) use vello::{InternalVelloPayload, VelloResourceCommitProof};
 
 use super::{
-    BackendErrorCode, Error, GpuFaultKind, Result, RuntimeOperation,
+    Error, Result,
     backend::{DeviceSignal, DeviceTerminalSignal},
 };
+use crate::{error::BackendErrorCode, error::GpuFaultKind, error::RuntimeOperation};
 
 use std::sync::Arc;
 

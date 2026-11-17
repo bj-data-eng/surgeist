@@ -1,7 +1,8 @@
 use super::GpuOperationTransaction;
 use crate::accounting::{Account, RenderPhase};
 use crate::{
-    Result, RuntimeOperation,
+    Result,
+    error::RuntimeOperation,
     vello_engine::{DirectVelloLogicalPass, PendingVelloResourceCommit},
 };
 

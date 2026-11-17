@@ -5,14 +5,23 @@ use super::{
     straight_rgba8_image_to_premultiplied_rgba8_reference,
 };
 use crate::{
-    Color, Error, FilterList, FilteredImagePaint, Image, ImageBuffer, PhysicalSize, Point, Rect,
-    Result,
+    Error, Result,
     filter::{
         BlurPolicy, DevicePixelConversionPolicy, FilterClipBounds, FilterOutset, FilterRegionPlan,
         FilterSourceBounds, TransparentEdgeSamplingPolicy,
     },
+    geometry::PhysicalSize,
+    geometry::Point,
+    geometry::Rect,
+    image::Image,
+    image::ImageBuffer,
     image::validate_image_buffer_rgba_len,
-    style::{ColorFilterOp, FilterBlur, FilterDropShadow, FilterOpKind},
+    paint::Color,
+    style::filter::FilterList,
+    style::filter::FilteredImagePaint,
+    style::{
+        filter::ColorFilterOp, filter::FilterBlur, filter::FilterDropShadow, filter::FilterOpKind,
+    },
 };
 use std::sync::Arc;
 

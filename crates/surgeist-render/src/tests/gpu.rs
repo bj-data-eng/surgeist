@@ -5,20 +5,7 @@ use crate::backend::{
     CompositionPreparedGpuVectorsForTest,
 };
 use crate::{
-    Antialiasing, AvailableRuntimeCapabilities, BackdropCaptureBounds, BackdropFilterInput,
-    BackgroundBlendList, BackgroundBlendMode, BlendMode, Capabilities, ClipInput, Color,
-    DeviceLossReason, EffectPrecision, EffectPrecisionCapabilities, EffectQualityPolicy, Error,
-    ErrorCode, Extend, Filter, FilterAmount, FilterAngle, FilterBlur, FilterCapabilities,
-    FilterDropShadow, FilterList, FilterOp, FilteredImagePaint, Format, GpuFaultKind, Image,
-    ImageBuffer, ImageFit, ImageId, ImageQuality, InvalidValue, Layer, MaskClipCapabilities,
-    MaskCompositeMode, MaskInput, MaskLayer, MaskLayerStack, MaskMode,
-    OffscreenPipelineCapabilities, Options, Paint, Parameters, PhysicalSize, Point,
-    PrimitiveFamily, PrimitiveOperation, Radii, Rect, RenderRoute, RenderSurfaceAvailability,
-    Renderer, ResolvedImageResource, ResolvedLayerAlphaMask, ResourceCacheBudget, Result,
-    RuntimeCapabilities, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Shadow,
-    Shape, Size, Stats, Surface, SurfaceResourceState, TextGlyph, TextPaint, TextRun,
-    TextRunBounds, Transform, UnitFilterAmount, UnresolvedResource, UnresolvedResourceKind,
-    UnsupportedPrimitive,
+    Error, ErrorCode, Result,
     backend::{
         Backend, CustomSpineEncodingObservationForTest, DeviceCapabilities, DeviceSignal,
         DeviceSlotIdentity, DeviceTerminalSignal, OffscreenLocalSceneRenderRequest,
@@ -26,27 +13,101 @@ use crate::{
         offscreen_local_scene_texture_descriptor,
         render_internal_vello_local_scene_to_offscreen_texture,
     },
+    capability::AvailableRuntimeCapabilities,
+    capability::Capabilities,
+    capability::EffectPrecisionCapabilities,
+    capability::FilterCapabilities,
+    capability::MaskClipCapabilities,
+    capability::OffscreenPipelineCapabilities,
+    capability::RuntimeCapabilities,
     command,
     encode::image_data,
+    error::DeviceLossReason,
+    error::GpuFaultKind,
+    error::InvalidValue,
+    error::PrimitiveFamily,
+    error::PrimitiveOperation,
+    error::RenderSurfaceAvailability,
+    error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation,
+    error::UnresolvedResource,
+    error::UnresolvedResourceKind,
+    error::UnsupportedPrimitive,
     filter::{
         BlurPolicy, BlurRadiusInterpretation, KernelSupportRadius, LargeBlurRadiusPolicy,
         TransparentEdgeSamplingPolicy,
     },
     frame::{FrameContext, FramePlanResultObservation, frame_plan_result_observation_for_test},
+    geometry::PhysicalSize,
+    geometry::Point,
+    geometry::Radii,
+    geometry::Rect,
+    geometry::Size,
+    geometry::Transform,
+    image::Extend,
+    image::Image,
+    image::ImageBuffer,
+    image::ImageFit,
+    image::ImageId,
+    image::ImageQuality,
     image::{ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey},
+    layer::BlendMode,
+    layer::Filter,
+    layer::Layer,
+    layer::ResolvedLayerAlphaMask,
+    layer::Shadow,
+    paint::Color,
+    paint::Paint,
     pass::pass_spatial_uniform_bytes_for_test,
     reference::{
         self, CompiledColorFilterPipeline, MaterializedDropShadowOffsetQuantizationPolicy,
         MaterializedImageFilterStep, PremultipliedRgba8, ReferencePremultipliedRgba8Buffer,
     },
+    renderer::Antialiasing,
+    renderer::EffectQualityPolicy,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
     resource::{
         AllocationGeneration, GaussianKernelBufferLimits, GaussianKernelKey, GaussianKernelPlan,
         GaussianKernelSamplingForm, ResourceAccountingFault, ResourceCacheKey, ResourceIdentity,
         ResourceManager, ResourceRetentionOutcome, WorkingFormat,
     },
+    scene::Scene,
     shader::device_pass_cache_owns_exact_key_spaces_for_test,
-    style::{ColorFilterOp, ColorFilterPipeline},
+    shape::Shape,
+    stats::EffectPrecision,
+    stats::RenderRoute,
+    stats::Stats,
+    style::background::BackgroundBlendList,
+    style::background::BackgroundBlendMode,
+    style::clip::ClipInput,
+    style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput,
+    style::filter::FilterAmount,
+    style::filter::FilterAngle,
+    style::filter::FilterBlur,
+    style::filter::FilterDropShadow,
+    style::filter::FilterList,
+    style::filter::FilterOp,
+    style::filter::FilteredImagePaint,
+    style::filter::UnitFilterAmount,
+    style::image::ResolvedImageResource,
+    style::mask::MaskCompositeMode,
+    style::mask::MaskInput,
+    style::mask::MaskLayer,
+    style::mask::MaskLayerStack,
+    style::mask::MaskMode,
+    style::{ColorFilterPipeline, filter::ColorFilterOp},
+    surface::Format,
+    surface::Parameters,
+    surface::Surface,
+    surface::SurfaceResourceState,
     surface::{HeadlessResources, SurfaceBackend},
+    text::TextGlyph,
+    text::TextPaint,
+    text::TextRun,
+    text::TextRunBounds,
     texture::{
         EffectTextureDescriptor, EffectTextureRole, TextureDescriptor, TextureUsageIntent,
         headless_texture_descriptor,
@@ -103,7 +164,7 @@ fn image_from_buffer(buffer: ImageBuffer) -> Image {
 
 fn color_filter_pipeline<const N: usize>(ops: [ColorFilterOp; N]) -> ColorFilterPipeline {
     color_filter_list(ops)
-        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+        .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
         .unwrap()
         .unwrap()
 }
@@ -2564,7 +2625,7 @@ fn color_filter_reference_straight_pixels_for_test(
     )
     .expect("the color-filter oracle operations must form one authored filter");
     let pipeline = filter
-        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+        .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
         .expect("the color-filter oracle fixture contains only color functions")
         .expect("the color-filter oracle fixture contains one nonempty color run");
     match working_format {
@@ -3363,84 +3424,84 @@ fn blend_shaders_match_independent_known_vectors() {
     let parent = [0.2, 0.6, 0.32, 0.8];
     let vectors = [
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Normal),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Normal),
             clip_alpha: None,
             source,
             parent,
             opacity: 1.25,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Multiply),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Multiply),
             clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Screen),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Screen),
             clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Overlay),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Overlay),
             clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Darken),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Darken),
             clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Lighten),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Lighten),
             clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Plus),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Plus),
             clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Plus),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Plus),
             clip_alpha: None,
             source: [0.8, 0.2, 0.7, 0.8],
             parent: [0.6, 0.9, 0.4, 0.9],
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Multiply),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Multiply),
             clip_alpha: None,
             source: [0.0; 4],
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Screen),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Screen),
             clip_alpha: None,
             source,
             parent: [0.0; 4],
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Overlay),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Overlay),
             clip_alpha: None,
             source: [0.0; 4],
             parent: [0.0; 4],
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(BlendMode::Normal),
+            composition: crate::layer::LayerComposition::from_blend(BlendMode::Normal),
             clip_alpha: None,
             source,
             parent,
@@ -4600,7 +4661,8 @@ fn assert_foreground_backdrop_group_pixels(filters: FilterList) {
 #[test]
 fn foreground_backdrop_kernel_refusal_preserves_publication_and_allows_retry() {
     use crate::{
-        RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderQuantity, RenderWork,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderWork,
     };
 
     let limits = RenderLimits::new()
@@ -4687,7 +4749,9 @@ fn backdrop_zero_blur_is_captured_before_the_same_layer_foreground_filter() {
 }
 
 fn assert_zero_blur_backdrop_pixels(foreground: FilterList, expected: [[u8; 4]; 5]) {
-    use crate::{RenderAccountingOptions, RenderLimits, RenderWork};
+    use crate::{
+        accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderWork,
+    };
 
     let limits = RenderLimits::new()
         .with_work_limit(RenderWork::KernelSampleVisits, 0)
@@ -5295,7 +5359,10 @@ fn foreground_filter_list_can_follow_a_backdrop_chain_starting_with_drop_shadow(
 
 #[test]
 fn foreground_filter_list_ledger_refusal_keeps_the_published_frame() {
-    use crate::{RenderAccountingOptions, RenderLimits, RenderQuantity, RenderWork};
+    use crate::{
+        accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderQuantity,
+        accounting::RenderWork,
+    };
 
     let options = Options::default().with_accounting(
         RenderAccountingOptions::new().with_limits(
@@ -5371,8 +5438,8 @@ fn foreground_layer_blur_filters_group_before_clip_mask_and_opacity() {
         report
             .attempt()
             .unwrap()
-            .phase_usage(crate::RenderPhase::Kernel)
-            .work(crate::RenderWork::KernelSampleVisits)
+            .phase_usage(crate::accounting::RenderPhase::Kernel)
+            .work(crate::accounting::RenderWork::KernelSampleVisits)
             > 0
     );
     // An opaque impulse stays opaque when composited with itself. For sigma 1,
@@ -5535,7 +5602,10 @@ fn foreground_layer_blur_uses_identity_when_device_sigma_underflows() {
 
 #[test]
 fn foreground_layer_blur_kernel_limit_preserves_frame_and_zero_sigma_needs_no_kernel() {
-    use crate::{RenderAccountingOptions, RenderLimits, RenderPhase, RenderQuantity, RenderWork};
+    use crate::{
+        accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderQuantity, accounting::RenderWork,
+    };
 
     let limits = RenderLimits::new()
         .with_work_limit(RenderWork::KernelSampleVisits, 0)
@@ -7117,7 +7187,7 @@ fn materialized_color_filter_fusion_matches_reference_bytes() {
         ColorFilterOp::Saturate(FilterAmount::try_new(1.5).unwrap()),
     ]);
     let pipeline = filters
-        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+        .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
         .unwrap()
         .expect("color-only filters should produce an executable color pipeline");
     let compiled = CompiledColorFilterPipeline::try_from_pipeline(&pipeline).unwrap();
@@ -8671,7 +8741,7 @@ fn texture_lifecycle_accounting_is_separate_from_image_cache_stats() {
         .fill(Rect::new(0.0, 0.0, 1.0, 1.0), Paint::image(image.clone()))
         .fill(Rect::new(1.0, 0.0, 1.0, 1.0), Paint::image(image));
     let image_stats = scene
-        .inspect(&mut crate::RenderAccountingContext::default())
+        .inspect(&mut crate::accounting::RenderAccountingContext::default())
         .unwrap();
 
     let (key, byte_len) = modeled_effect_texture_for_test(PhysicalSize::new(4, 4));
@@ -11940,7 +12010,7 @@ fn renderer_public_dispatch_validates_direct_and_masked_composition_routes() {
 
 #[test]
 fn gpu_resolved_mask_stack_keeps_coverage_at_fractional_output_edge() {
-    use crate::{ResolvedMaskLayer, ResolvedMaskSource};
+    use crate::{layer::ResolvedMaskLayer, layer::ResolvedMaskSource};
 
     let image = Image::from_rgba(Size::new(1.0, 1.0), vec![255; 4]).unwrap();
     let mask = ResolvedLayerAlphaMask::try_new(image, Rect::new(0.5, 0.0, 0.5, 1.0)).unwrap();
@@ -11967,7 +12037,7 @@ fn gpu_resolved_mask_stack_keeps_coverage_at_fractional_output_edge() {
 
 #[test]
 fn gpu_resolved_mask_stack_keeps_coverage_at_shared_samples() {
-    use crate::{ResolvedMaskLayer, ResolvedMaskSource};
+    use crate::{layer::ResolvedMaskLayer, layer::ResolvedMaskSource};
 
     let size = Size::new(1.0, 1.0);
     let image = Image::from_rgba(size, vec![255; 4]).unwrap();
@@ -12013,7 +12083,7 @@ fn gpu_resolved_mask_stack_keeps_coverage_at_shared_samples() {
 
 #[test]
 fn gpu_resolved_mask_stack_preserves_fractional_mask_sampling() {
-    use crate::{ResolvedMaskLayer, ResolvedMaskSource};
+    use crate::{layer::ResolvedMaskLayer, layer::ResolvedMaskSource};
 
     let size = Size::new(1.0, 1.0);
     let bounds = Rect::new(0.25, 0.0, 0.5, 1.0);
@@ -12042,7 +12112,8 @@ fn gpu_resolved_mask_stack_preserves_fractional_mask_sampling() {
 #[test]
 fn gpu_resolved_mask_stack_composites_coverage_bottom_up_in_isolation() {
     use crate::{
-        MaskLuminanceSpace, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
+        layer::MaskLuminanceSpace, layer::ResolvedLayerLuminanceMask, layer::ResolvedMaskLayer,
+        layer::ResolvedMaskSource,
     };
     use MaskCompositeMode::{Add, Exclude, Intersect, Subtract};
 
@@ -12162,7 +12233,7 @@ fn gpu_resolved_mask_stack_composites_coverage_bottom_up_in_isolation() {
 
 #[test]
 fn gpu_luminance_mask_uses_selected_transfer_and_straight_rgba() {
-    use crate::{MaskLuminanceSpace, ResolvedLayerLuminanceMask};
+    use crate::{layer::MaskLuminanceSpace, layer::ResolvedLayerLuminanceMask};
 
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let size = Size::new(6.0, 1.0);

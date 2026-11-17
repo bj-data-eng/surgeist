@@ -140,8 +140,8 @@ impl GaussianKernelGeometry {
 }
 
 fn native_geometry_error(value: f64) -> Error {
-    crate::GaussianPreparationError::Numeric {
-        phase: crate::GaussianNumericPhase::KernelExtent,
+    crate::gaussian::GaussianPreparationError::Numeric {
+        phase: crate::gaussian::GaussianNumericPhase::KernelExtent,
         value,
     }
     .into()
@@ -703,12 +703,15 @@ mod tests {
                 .unwrap()
                 .into_parts();
             let error = result.unwrap_err();
-            let Some(crate::RenderAccountingError::Refused(refusal)) =
+            let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
                 error.accounting_diagnostic()
             else {
                 panic!("expected central work-budget refusal");
             };
-            assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(work));
+            assert_eq!(
+                refusal.quantity(),
+                crate::accounting::RenderQuantity::Work(work)
+            );
             assert_eq!(refusal.current(), 0);
             assert_eq!(fault, None);
             let usage = report.attempt().unwrap().usage();
@@ -752,8 +755,8 @@ mod tests {
             .unwrap_err();
             assert!(matches!(
                 error.gaussian_diagnostic(),
-                Some(crate::GaussianPreparationError::Numeric {
-                    phase: crate::GaussianNumericPhase::KernelExtent,
+                Some(crate::gaussian::GaussianPreparationError::Numeric {
+                    phase: crate::gaussian::GaussianNumericPhase::KernelExtent,
                     ..
                 })
             ));
@@ -900,14 +903,17 @@ mod tests {
                                     Err(error) => {
                                         assert_eq!(limit, exact - 1);
                                         let diagnostic = error.accounting_diagnostic();
-                                        let Some(crate::RenderAccountingError::Refused(refusal)) =
-                                            diagnostic
+                                        let Some(
+                                            crate::accounting::RenderAccountingError::Refused(
+                                                refusal,
+                                            ),
+                                        ) = diagnostic
                                         else {
                                             panic!("last sample must refuse");
                                         };
                                         assert_eq!(
                                             refusal.quantity(),
-                                            crate::RenderQuantity::Work(work)
+                                            crate::accounting::RenderQuantity::Work(work)
                                         );
                                         let amount = if work == RenderWork::SerializedBytes {
                                             8
@@ -1038,10 +1044,10 @@ mod tests {
                         .with_work_limit(RenderWork::KernelSampleVisits, limit)
                         .unwrap(),
                 );
-                let mut context = crate::RenderAccountingContext::new(options);
+                let mut context = crate::accounting::RenderAccountingContext::new(options);
                 let result = context.run(
-                    crate::RenderAttemptKind::Frame,
-                    crate::RenderPhase::Kernel,
+                    crate::accounting::RenderAttemptKind::Frame,
+                    crate::accounting::RenderPhase::Kernel,
                     |account| left.matches_in(right, account),
                 );
                 let report = context.last_attempt().unwrap().attempt().unwrap();
@@ -1050,14 +1056,14 @@ mod tests {
                 if limit == visits {
                     assert_eq!(result.unwrap(), expected);
                 } else {
-                    let Some(crate::RenderAccountingError::Refused(refusal)) =
+                    let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
                         result.unwrap_err().accounting_diagnostic()
                     else {
                         panic!("the next sample record must refuse");
                     };
                     assert_eq!(
                         refusal.quantity(),
-                        crate::RenderQuantity::Work(RenderWork::KernelSampleVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::KernelSampleVisits)
                     );
                     assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
                 }
@@ -1087,7 +1093,10 @@ mod tests {
             result.unwrap();
             assert_eq!(fault, None);
             let attempt = report.attempt().unwrap();
-            assert_eq!(attempt.status(), crate::RenderAttemptStatus::Succeeded);
+            assert_eq!(
+                attempt.status(),
+                crate::accounting::RenderAttemptStatus::Succeeded
+            );
             assert_eq!(attempt.usage().work(RenderWork::KernelSampleVisits), 3);
             assert_eq!(attempt.usage().work(RenderWork::SerializedBytes), 8);
         }
@@ -1163,12 +1172,15 @@ mod tests {
             .into_parts();
         assert!(matches!(
             result.unwrap_err().accounting_diagnostic(),
-            Some(crate::RenderAccountingError::Refused(_))
+            Some(crate::accounting::RenderAccountingError::Refused(_))
         ));
-        assert_eq!(report.status(), crate::RenderAttemptStatus::Refused);
+        assert_eq!(
+            report.status(),
+            crate::accounting::RenderAttemptStatus::Refused
+        );
         assert_eq!(
             report.attempt().unwrap().status(),
-            crate::RenderAttemptStatus::Refused
+            crate::accounting::RenderAttemptStatus::Refused
         );
         assert_eq!(fault, None);
         assert_eq!(
@@ -1201,10 +1213,13 @@ mod tests {
             .unwrap()
             .into_parts();
         result.unwrap();
-        assert_eq!(report.status(), crate::RenderAttemptStatus::Succeeded);
+        assert_eq!(
+            report.status(),
+            crate::accounting::RenderAttemptStatus::Succeeded
+        );
         assert_eq!(
             report.attempt().unwrap().status(),
-            crate::RenderAttemptStatus::Succeeded
+            crate::accounting::RenderAttemptStatus::Succeeded
         );
         assert_eq!(fault, None);
         assert_eq!(

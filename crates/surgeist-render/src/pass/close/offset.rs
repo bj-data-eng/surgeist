@@ -1,8 +1,9 @@
 //! Closure proof for one offset sample and its optional aligned raw rebase.
 use super::*;
 use crate::{
-    ImageRendering, Rect,
     frame::{GraphLoweringOffset, OffsetSampling, OffsetStage},
+    geometry::Rect,
+    image::ImageRendering,
 };
 
 struct Chain {
@@ -411,10 +412,16 @@ pub(super) fn intersection(a: Rect, b: Rect) -> Rect {
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, FilterDomains, Layer, OffsetInput, RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext,
         backend::DeviceCapabilities,
+        capability::Capabilities,
+        filter_domains::FilterDomains,
         frame::{FrameContext, FramePlan},
-        prepare_offset,
+        geometry::Size,
+        layer::Layer,
+        offset::OffsetInput,
+        offset::prepare_offset,
+        scene::Scene,
     };
 
     fn lower(dx: f64, rendering: ImageRendering, backdrop: bool) -> LoweredGraphPlan {
@@ -427,15 +434,17 @@ mod tests {
         )
         .unwrap();
         let layer = if backdrop {
-            let filter = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
-                crate::FilterBlur::try_new(0.0).unwrap(),
-            )])
+            let filter = crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::blur(
+                    crate::style::filter::FilterBlur::try_new(0.0).unwrap(),
+                ),
+            ])
             .unwrap();
             Layer::new()
                 .try_backdrop_filter(
-                    crate::BackdropFilterInput::try_new(
+                    crate::style::filter::BackdropFilterInput::try_new(
                         filter,
-                        crate::BackdropCaptureBounds::try_new(f).unwrap(),
+                        crate::style::filter::BackdropCaptureBounds::try_new(f).unwrap(),
                         None,
                     )
                     .unwrap(),
