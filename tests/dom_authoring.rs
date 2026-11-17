@@ -12,9 +12,8 @@ fn attributes(snapshot: &DomSnapshot, node: NodeId) -> Vec<(String, String)> {
     snapshot
         .node(node)
         .unwrap()
-        .as_element()
-        .unwrap()
         .attributes()
+        .unwrap()
         .iter()
         .map(|attribute| {
             (
