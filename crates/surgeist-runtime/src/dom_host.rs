@@ -158,7 +158,42 @@ pub enum RuntimeDomHostError {
 }
 impl fmt::Display for RuntimeDomHostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Runtime DOM host operation rejected: {self:?}")
+        match self {
+            Self::UnsupportedDomains(_) => f.write_str(
+                "the Runtime has no producer for the requested external domain configuration",
+            ),
+            Self::ForeignRuntime => {
+                f.write_str("the DOM host adapter belongs to another Runtime instance")
+            }
+            Self::Surface(_) => {
+                f.write_str("the source surface failed validation for the DOM host operation")
+            }
+            Self::Host(_) => f.write_str("the canonical DOM host validation refused the operation"),
+            Self::BindingDomBasisMismatch { .. } => f.write_str(
+                "the supplied DOM basis differs from the basis admitted by bind or rebind",
+            ),
+            Self::DomSubject { .. } => f.write_str(
+                "an association names a DOM node that is not a valid element of the bound document",
+            ),
+            Self::MissingAssociation(_) => {
+                f.write_str("a registered source element has no canonical DOM association")
+            }
+            Self::DuplicateSurfaceElement(_) => {
+                f.write_str("a source element reference occurs more than once in the associations")
+            }
+            Self::DuplicateDomElement(_) => {
+                f.write_str("a canonical DOM element occurs more than once in the associations")
+            }
+            Self::AssociationCapacity { limit, required } => write!(
+                f,
+                "the association allocation needs capacity {required} but the limit is {limit}"
+            ),
+            Self::ValidationWork { limit, required } => write!(
+                f,
+                "validation would need {required} work credits but the limit is {limit}"
+            ),
+            Self::RepresentationExhausted => f.write_str("validation work accounting overflowed"),
+        }
     }
 }
 impl std::error::Error for RuntimeDomHostError {
@@ -167,7 +202,15 @@ impl std::error::Error for RuntimeDomHostError {
             Self::Surface(error) => Some(error),
             Self::Host(error) => Some(error),
             Self::DomSubject { error, .. } => Some(error),
-            _ => None,
+            Self::UnsupportedDomains(_)
+            | Self::ForeignRuntime
+            | Self::BindingDomBasisMismatch { .. }
+            | Self::MissingAssociation(_)
+            | Self::DuplicateSurfaceElement(_)
+            | Self::DuplicateDomElement(_)
+            | Self::AssociationCapacity { .. }
+            | Self::ValidationWork { .. }
+            | Self::RepresentationExhausted => None,
         }
     }
 }

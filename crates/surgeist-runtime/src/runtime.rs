@@ -105,6 +105,15 @@ impl<Input> ServiceInput<Input> {
     }
 }
 
+/// The lane name as printed in the messages of the lane errors.
+const fn lane_name(lane: RuntimeLane) -> &'static str {
+    match lane {
+        RuntimeLane::Ui => "Ui",
+        RuntimeLane::Task => "Task",
+        RuntimeLane::Service => "Service",
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Details of an input rejected before it can enter a runtime lane.
 pub struct RuntimeInputError {
@@ -134,8 +143,8 @@ impl fmt::Display for RuntimeInputError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "runtime input has invalid provenance for {:?} lane",
-            self.lane
+            "runtime input has invalid provenance for {} lane",
+            lane_name(self.lane)
         )
     }
 }
@@ -288,8 +297,9 @@ impl<T> fmt::Display for RuntimeQueueError<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "runtime {:?} queue overflow at capacity {}",
-            self.lane, self.capacity
+            "runtime {} queue overflow at capacity {}",
+            lane_name(self.lane),
+            self.capacity
         )
     }
 }
@@ -1577,8 +1587,9 @@ impl fmt::Display for RuntimeDrainError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "runtime drain {:?} transaction failed: {}",
-            self.lane, self.source
+            "runtime drain {} transaction failed: {}",
+            lane_name(self.lane),
+            self.source
         )
     }
 }

@@ -417,11 +417,17 @@ impl ProvenanceError {
 
 impl fmt::Display for ProvenanceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "surface attachment {:?} rejected for {:?}: existing {:?}, attempted {:?}",
-            self.code, self.origin, self.existing_surface, self.attempted_surface
-        )
+        formatter.write_str(match self.code {
+            ProvenanceErrorCode::SurfaceAlreadyAttached => {
+                "surface attachment rejected: the task origin already has a different surface attached"
+            }
+            ProvenanceErrorCode::SurfaceOverwriteUnsupported => {
+                "surface attachment rejected: a UI, adapter or window origin cannot be attached to a different surface"
+            }
+            ProvenanceErrorCode::SurfaceUnsupportedOrigin => {
+                "surface attachment rejected: a system or service origin cannot carry a surface attachment"
+            }
+        })
     }
 }
 

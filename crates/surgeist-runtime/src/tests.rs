@@ -3987,6 +3987,12 @@ fn runtime_overflow_requeues_the_exact_input_and_returns_prior_work() {
     assert_eq!(error.provenance(), &trigger);
     assert_eq!(error.surface(), Some(surface));
     assert_eq!(error.source(), VersionError::Overflow);
+    // The drain error has no public constructor or route (its causes are counters
+    // that cannot overflow), so its text is pinned here.
+    assert_eq!(
+        error.to_string(),
+        "runtime drain Ui transaction failed: version overflow"
+    );
     assert_eq!(error.partial_report().drained_inputs(), 1);
     assert_eq!(runtime.state(), &CounterState::default());
     runtime
