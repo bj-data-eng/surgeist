@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_dom::{DomHostedGlobalId, DomHostedSourceId};
+use surgeist_dom::hosted::{DomHostedGlobalId, DomHostedSourceId};
 
 /// Independent flags accepted by the Event constructor.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -53,11 +53,11 @@ pub enum DomEventTimestampUnavailable {
     /// The event has no available authenticated creation clock.
     NoAuthenticatedClock,
     /// The original authenticated clock refused its one firing observation.
-    Provider(surgeist_dom::DomSourceEventClockFailure),
+    Provider(surgeist_dom::event::DomSourceEventClockFailure),
 }
 impl std::fmt::Display for DomEventTimestampUnavailable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use surgeist_dom::DomSourceEventClockFailure as Failure;
+        use surgeist_dom::event::DomSourceEventClockFailure as Failure;
         f.write_str(match self {
             Self::NoAuthenticatedClock => "authenticated Event creation clock unavailable",
             Self::Provider(Failure::Unavailable) => "original Event creation clock unavailable",

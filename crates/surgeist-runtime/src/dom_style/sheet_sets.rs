@@ -337,7 +337,7 @@ pub(super) fn prepare_added_sheet_sets_with<E: From<DomStyleRuntimeError>>(
 /// Runtime's current-bank storage budget.
 #[derive(Clone, Debug)]
 pub struct DomStyleSheetSetObservation {
-    stamp: surgeist_dom::DomStamp,
+    stamp: surgeist_dom::identity::DomStamp,
     document: NodeId,
     revision: u64,
     cssom_revision: surgeist_cssom::CssomRevision,
@@ -346,7 +346,7 @@ pub struct DomStyleSheetSetObservation {
 }
 impl DomStyleSheetSetObservation {
     pub(super) fn from_state(
-        stamp: surgeist_dom::DomStamp,
+        stamp: surgeist_dom::identity::DomStamp,
         document: NodeId,
         state: &State,
         cssom_revision: surgeist_cssom::CssomRevision,
@@ -364,14 +364,14 @@ impl DomStyleSheetSetObservation {
     // names/revision are already final; these are the authentic joined bases.
     pub(super) fn finish_publication(
         &mut self,
-        stamp: surgeist_dom::DomStamp,
+        stamp: surgeist_dom::identity::DomStamp,
         cssom_revision: surgeist_cssom::CssomRevision,
     ) {
         self.stamp = stamp;
         self.cssom_revision = cssom_revision;
     }
     /// Canonical observation or actual joined publication basis.
-    pub fn stamp(&self) -> surgeist_dom::DomStamp {
+    pub fn stamp(&self) -> surgeist_dom::identity::DomStamp {
         self.stamp
     }
     /// Exact Document root generation; a ShadowRoot never grants this state.
@@ -424,7 +424,7 @@ pub(super) enum Action {
 }
 struct Prepared {
     document: NodeId,
-    stamp: surgeist_dom::DomStamp,
+    stamp: surgeist_dom::identity::DomStamp,
     revision: u64,
     owner: std::rc::Rc<DomStyleCssomRoot>,
     next: State,
@@ -440,7 +440,7 @@ impl StyleState {
         self.step(cancel)?;
         if !matches!(
             snapshot.node(document)?.kind(),
-            surgeist_dom::DomNodeKind::Document(_)
+            surgeist_dom::tree::DomNodeKind::Document(_)
         ) {
             return Err(DomStyleRuntimeError::SheetSetDocumentRequired { root: document });
         }

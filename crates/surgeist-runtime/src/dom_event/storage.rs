@@ -3,7 +3,7 @@ use std::cell::Cell;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use surgeist_dom::{DomError, DomEventPayloadRetention, DomOwnerId};
+use surgeist_dom::{DomError, event::DomEventPayloadRetention, identity::DomOwnerId};
 
 /// Finite shared storage and cumulative work for a session's Event objects.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

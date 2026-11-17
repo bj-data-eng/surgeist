@@ -42,7 +42,7 @@ pub(super) use reports::{GuestExceptionReports, ViolationQueue};
 use surgeist_bindings_js::{
     Exception, NativeObjectToken, ObjectPrototype, RetainedCallbackObject, Root, Value,
 };
-use surgeist_dom::{DomNodeRetirementLimits, DomSourceLimits};
+use surgeist_dom::{edit::DomNodeRetirementLimits, source::DomSourceLimits};
 
 /// Guest adapter limits in addition to the original registry and Hosted limits.
 #[derive(Clone, Copy, Debug)]
@@ -89,9 +89,9 @@ pub enum DocumentGuestEventError {
     /// The next listener requires a different host route.
     HostRouteUnavailable,
     /// The original Source operation blocked synchronous completion.
-    SourcePending(surgeist_dom::DomSourceOperationId),
+    SourcePending(surgeist_dom::source::DomSourceOperationId),
     /// The original hosted operation blocked synchronous completion.
-    HostedPending(surgeist_dom::DomHostedOperationId),
+    HostedPending(surgeist_dom::hosted::DomHostedOperationId),
 }
 
 impl fmt::Display for DocumentGuestEventError {
@@ -335,7 +335,7 @@ pub struct DocumentGuestListenerException {
 #[derive(Debug)]
 pub struct DocumentGuestConstructorException {
     /// Exact canonical definition selected by the factory.
-    pub definition: surgeist_dom::DomRegistryDefinitionId,
+    pub definition: surgeist_dom::custom_element::DomRegistryDefinitionId,
     /// The selected constructor object's associated Realm.
     pub realm: RealmId,
     /// Original thrown value or the exception from native result validation.
@@ -361,9 +361,9 @@ pub enum DocumentGuestCustomElementCallback {
 #[derive(Debug)]
 pub struct DocumentGuestCustomElementCallbackException {
     /// Exact definition associated with the callback.
-    pub definition: surgeist_dom::DomRegistryDefinitionId,
+    pub definition: surgeist_dom::custom_element::DomRegistryDefinitionId,
     /// Original element receiver.
-    pub receiver: surgeist_dom::NodeId,
+    pub receiver: surgeist_dom::identity::NodeId,
     /// The callback that threw.
     pub callback: DocumentGuestCustomElementCallback,
     /// The callback object’s associated realm.
@@ -441,13 +441,13 @@ impl From<DocumentGuestEventError> for DocumentGuestEventDispatchFailure {
 /// A retained verification decision for the original native attribute write.
 pub(super) struct PendingAttribute {
     realm: RealmId,
-    request: surgeist_dom::DomSourceAttributeVerificationRequest,
+    request: surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest,
     reply: AttributeReply,
-    parent: Option<surgeist_dom::DomSourceAttributeVerificationRequest>,
+    parent: Option<surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest>,
     interrupted_parent: Option<Box<Self>>,
     _header: GuestBacking,
     reaction_failure: Option<HostFailureSlot<DocumentGuestEventError, GuestBacking>>,
-    shadow_reactions: Option<surgeist_dom::DomSynchronousReactionQueue>,
+    shadow_reactions: Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>,
 }
 
 enum AttributeReply {
@@ -650,7 +650,11 @@ impl GuestEvents {
         process: &mut Process,
         realm: &Realm,
         dom_exception_limits: DomExceptionLimits,
-        origin: (DomHostedGlobalId, DocumentId, surgeist_dom::DomRegistryId),
+        origin: (
+            DomHostedGlobalId,
+            DocumentId,
+            surgeist_dom::custom_element::DomRegistryId,
+        ),
         admission: OriginAdmission,
         conversion_host: preparation::NativeConversionHost,
     ) -> Result<(), DocumentScriptError> {

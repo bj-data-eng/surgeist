@@ -2,7 +2,20 @@
 use super::super::meta::{cancel, is_disabled, native_session, observe};
 use super::super::*;
 use std::sync::Arc;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits},
+    document::DomNativeInputPlatform,
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomParsedDocumentEnvironment, DomParsedHtmlAssociationAdmissionError,
+        DomParsedHtmlAssociationLimits, DomParsedHtmlInstallLimits, DomParsedHtmlInstallation,
+        meta::DomParsedHtmlMetaError,
+    },
+    limits::DomResource,
+    source::{DomSourceEdit, DomSourceRequest},
+    style::DomStyleCssomRoot,
+};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseReport,
@@ -528,7 +541,7 @@ fn removed_original_meta_still_executes_its_retained_occurrence_without_a_live_s
             .document(document)
             .unwrap()
             .focused_area_designation(),
-        surgeist_dom::DomFocusedAreaDesignation::KnownNull
+        surgeist_dom::focus::DomFocusedAreaDesignation::KnownNull
     );
     let mut batch = DomBatch::new();
     batch.detach(meta);

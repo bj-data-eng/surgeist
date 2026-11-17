@@ -3,7 +3,7 @@
 use super::*;
 use character_data::copy_native_data;
 use surgeist_bindings_js::conversion::types::DOM_STRING;
-use surgeist_dom::{DomNodeOrString, DomSourceEdit};
+use surgeist_dom::{edit::DomNodeOrString, source::DomSourceEdit};
 
 #[derive(Clone, Copy)]
 pub(super) enum Receiver {

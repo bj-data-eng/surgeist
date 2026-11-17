@@ -1,7 +1,9 @@
 //! Execute the next authentic original Style prefix without changing async custody.
 use super::admission::{Custody, Steps, current_storage};
 use super::*;
-use surgeist_dom::{DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorError};
+use surgeist_dom::installation::style::{
+    DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorError,
+};
 
 /// The actual Session or original successor refused before joint publication.
 #[derive(Debug)]

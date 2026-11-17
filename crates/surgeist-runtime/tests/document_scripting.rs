@@ -13,7 +13,26 @@ use surgeist_css::{
     serialization::{CssSerializationError, CssomIdentifierLimits},
     source::CssUtf16InputLimits,
 };
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits},
+    edit::{CreatedNode, DomNodeRetirementLimits},
+    event::{DomDispatchCustodyLimits, DomSourceEventRequest},
+    hosted::{DomHostedError, DomHostedLimits, DomHostedRecordLimits, DomHostedResource},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    script::{
+        DomDocumentScriptingObservation, DomSourceScriptRequest, DomSourceScriptStep,
+        DomSvgScriptOrigin,
+    },
+    source::{
+        DomSourceCleanupCause, DomSourceEdit, DomSourceLimits, DomSourceOperationId,
+        DomSourcePhase, DomSourceRequest,
+    },
+    task::DomElementTaskSourceKind,
+    tree::DomNodeKind,
+    url::{DomSourceUrlRequest, DomSourceUrlStage},
+};
 use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
@@ -90,7 +109,8 @@ fn native_dom() -> Dom {
             1024,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_ranges(8)

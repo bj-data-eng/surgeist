@@ -3,7 +3,7 @@
 use super::*;
 use crate::{DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntimeError};
 use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
-use surgeist_dom::{DomSourceEdit, DomSourceStatus};
+use surgeist_dom::source::{DomSourceEdit, DomSourceStatus};
 
 mod clone;
 mod comparison;
@@ -21,12 +21,12 @@ enum Method {
 
 pub(super) struct GuestTreeDrive {
     pub(super) progress: Result<DomSourceDriveProgress, DomSourceDriveError>,
-    pub(super) parent: Option<surgeist_dom::DomSourceOperationId>,
+    pub(super) parent: Option<surgeist_dom::source::DomSourceOperationId>,
     pub(super) pending: Option<DomSourceStatus>,
 }
 
 impl GuestTreeDrive {
-    pub(super) fn terminal_output(&self) -> Option<surgeist_dom::DomSourceOutput> {
+    pub(super) fn terminal_output(&self) -> Option<surgeist_dom::source::DomSourceOutput> {
         match &self.progress {
             Ok(DomSourceDriveProgress::Complete(done)) => done.output(),
             _ => None,
@@ -119,7 +119,7 @@ impl Capture {
         (owner, events): (&NativeOwner, &GuestEvents),
         realm: RealmId,
         edit: DomSourceEdit,
-        output: &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
+        output: &mut surgeist_dom::edit::DomSourceNodeOutputWatch<'_>,
     ) -> Result<GuestTreeDrive, DocumentGuestEventError> {
         let limits = events.limits.source_edits;
         let event = owner.active_event_request();
@@ -297,7 +297,7 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        edit: impl Into<surgeist_dom::DomSourceInput<Backing>>,
+        edit: impl Into<surgeist_dom::source::DomSourceInput<Backing>>,
         completion: Completion<'scope>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let drive =
@@ -317,7 +317,7 @@ impl Capture {
         owner: &NativeOwner,
         events: &GuestEvents,
         realm: RealmId,
-        edit: impl Into<surgeist_dom::DomSourceInput<Backing>>,
+        edit: impl Into<surgeist_dom::source::DomSourceInput<Backing>>,
     ) -> Result<GuestTreeDrive, DocumentGuestEventError> {
         let limits = events.limits.source_edits;
         let cancel = &owner.cancellation;
@@ -358,12 +358,12 @@ impl Capture {
         events: &GuestEvents,
         result: Result<DomSourceDriveProgress, DomSourceDriveError>,
         (parent, pending): (
-            Option<surgeist_dom::DomSourceOperationId>,
+            Option<surgeist_dom::source::DomSourceOperationId>,
             Option<DomSourceStatus>,
         ),
         complete: impl FnOnce(
             &mut Scope<'scope>,
-            &surgeist_dom::DomSourceCompletion,
+            &surgeist_dom::source::DomSourceCompletion,
         ) -> Result<Completion<'scope>, DocumentGuestEventError>,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let attachment = owner
@@ -401,7 +401,7 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        failure: surgeist_dom::DomSourceFailure,
+        failure: surgeist_dom::source::DomSourceFailure,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let (operation, error, _) = failure.into_parts();
         let Some(name) = tree_exception(&error) else {
@@ -492,7 +492,7 @@ impl DocumentScriptHost {
                 matches!(
                     result,
                     Ok(DomSourceDriveProgress::InlineSource {
-                        source: surgeist_dom::DomSourceProgress::Failed(_),
+                        source: surgeist_dom::source::DomSourceProgress::Failed(_),
                         ..
                     })
                 ),
@@ -536,7 +536,7 @@ impl DocumentScriptHost {
                 events.limits.source_edits,
                 &mut crate::DomSourceServices {
                     meta: Some(
-                        surgeist_dom::DomMetaAtomicLimits::new(
+                        surgeist_dom::meta::DomMetaAtomicLimits::new(
                             16_000_000, 1_000_000, 1_000_000, 128,
                         )
                         .unwrap(),
@@ -551,7 +551,7 @@ impl DocumentScriptHost {
             };
             assert!(matches!(
                 outcome.source(),
-                surgeist_dom::DomSourceProgress::Complete(_)
+                surgeist_dom::source::DomSourceProgress::Complete(_)
             ));
             assert_eq!(outcome.preferences().len(), 1);
             assert_eq!(

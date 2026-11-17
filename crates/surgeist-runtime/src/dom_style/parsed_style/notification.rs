@@ -2,8 +2,11 @@
 use super::admission::{Custody, Steps, current_storage};
 use super::*;
 use surgeist_dom::{
-    DomParsedHtmlStyleNotificationDisposition as Disposition, DomParsedHtmlStyleNotificationError,
-    DomStyleAssociationId,
+    installation::style::{
+        DomParsedHtmlStyleNotificationDisposition as Disposition,
+        DomParsedHtmlStyleNotificationError,
+    },
+    style::DomStyleAssociationId,
 };
 use surgeist_html::elements::style::HtmlStyleNotificationCursor;
 

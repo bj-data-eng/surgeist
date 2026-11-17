@@ -1,7 +1,7 @@
 //! One original Meta occurrence through the existing stylesheet-set owner.
 use super::admission::{Custody, Steps, current_storage};
 use super::*;
-use surgeist_dom::{
+use surgeist_dom::installation::meta::{
     DomParsedHtmlMetaOccurrenceCompletion, DomParsedHtmlMetaOccurrenceError,
     DomParsedHtmlMetaOccurrencePreparation,
 };
@@ -262,7 +262,7 @@ impl DomStyleRuntime {
             .sheet_sets
             .state_mut()
             .expect("qualified actual Document preference owner");
-        let surviving = surgeist_dom::DomParsedHtmlAssociationRuntimeUsage::new(
+        let surviving = surgeist_dom::installation::DomParsedHtmlAssociationRuntimeUsage::new(
             surviving.bytes,
             surviving.units,
             1,

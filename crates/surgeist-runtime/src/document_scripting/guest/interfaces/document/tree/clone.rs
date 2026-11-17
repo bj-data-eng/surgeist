@@ -3,7 +3,7 @@ use surgeist_bindings_js::{
     conversion::declarations::{document_import_node_0_options, node_clone_node_0_subtree},
     declarations::ImportNodeArgument,
 };
-use surgeist_dom::DomSourceOutput;
+use surgeist_dom::source::DomSourceOutput;
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,

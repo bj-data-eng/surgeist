@@ -1,5 +1,8 @@
 use super::*;
-use surgeist_dom::{DomProcessingInstructionAttributeEdit as Edit, DomSourceEdit, DomSourceOutput};
+use surgeist_dom::{
+    edit::DomProcessingInstructionAttributeEdit as Edit,
+    source::{DomSourceEdit, DomSourceOutput},
+};
 
 #[derive(Clone, Copy)]
 enum Method {
@@ -215,8 +218,8 @@ impl Capture {
 }
 
 fn instruction(
-    node: surgeist_dom::DomNode<'_>,
-) -> Result<&surgeist_dom::DomProcessingInstruction, DocumentGuestEventError> {
+    node: surgeist_dom::tree::DomNode<'_>,
+) -> Result<&surgeist_dom::tree::DomProcessingInstruction, DocumentGuestEventError> {
     match node.kind() {
         DomNodeKind::ProcessingInstruction(instruction) => Ok(instruction),
         _ => Err(DocumentScriptNativeError::ProjectionCustody.into()),

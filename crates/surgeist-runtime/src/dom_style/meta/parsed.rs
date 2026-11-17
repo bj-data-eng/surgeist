@@ -7,7 +7,7 @@ pub enum DomStyleParsedMetaError {
     /// The actual Runtime owner, phase or finite admission refused.
     Runtime(DomStyleRuntimeError),
     /// Original parsed association qualification or producer preparation refused.
-    Meta(surgeist_dom::DomParsedHtmlMetaError),
+    Meta(surgeist_dom::installation::meta::DomParsedHtmlMetaError),
 }
 impl std::fmt::Display for DomStyleParsedMetaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,13 +30,15 @@ impl From<DomStyleRuntimeError> for DomStyleParsedMetaError {
         Self::Runtime(error)
     }
 }
-impl From<surgeist_dom::DomParsedHtmlMetaError> for DomStyleParsedMetaError {
-    fn from(error: surgeist_dom::DomParsedHtmlMetaError) -> Self {
+impl From<surgeist_dom::installation::meta::DomParsedHtmlMetaError> for DomStyleParsedMetaError {
+    fn from(error: surgeist_dom::installation::meta::DomParsedHtmlMetaError) -> Self {
         Self::Meta(error)
     }
 }
-impl From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> for DomStyleParsedMetaError {
-    fn from(error: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self {
+impl From<surgeist_dom::installation::DomParsedHtmlAssociationAdmissionError>
+    for DomStyleParsedMetaError
+{
+    fn from(error: surgeist_dom::installation::DomParsedHtmlAssociationAdmissionError) -> Self {
         Self::Meta(error.into())
     }
 }
@@ -46,7 +48,7 @@ pub enum DomStyleParsedAdmissionError {
     /// Runtime owner setup or finite discovery refused.
     Runtime(DomStyleRuntimeError),
     /// Original whole-contribution classification or admission refused.
-    Association(surgeist_dom::DomParsedHtmlAssociationAdmissionError),
+    Association(surgeist_dom::installation::DomParsedHtmlAssociationAdmissionError),
 }
 impl std::fmt::Display for DomStyleParsedAdmissionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -69,8 +71,10 @@ impl From<DomStyleRuntimeError> for DomStyleParsedAdmissionError {
         Self::Runtime(error)
     }
 }
-impl From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> for DomStyleParsedAdmissionError {
-    fn from(error: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self {
+impl From<surgeist_dom::installation::DomParsedHtmlAssociationAdmissionError>
+    for DomStyleParsedAdmissionError
+{
+    fn from(error: surgeist_dom::installation::DomParsedHtmlAssociationAdmissionError) -> Self {
         Self::Association(error)
     }
 }
@@ -80,7 +84,7 @@ pub enum DomStyleParsedInstallError {
     /// The actual Session's phase or finite admission refused.
     Runtime(DomStyleRuntimeError),
     /// The immutable report or destination structural owner refused.
-    Installation(surgeist_dom::DomParsedHtmlInstallError),
+    Installation(surgeist_dom::installation::DomParsedHtmlInstallError),
 }
 impl std::fmt::Display for DomStyleParsedInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -103,8 +107,8 @@ impl From<DomStyleRuntimeError> for DomStyleParsedInstallError {
         Self::Runtime(error)
     }
 }
-impl From<surgeist_dom::DomParsedHtmlInstallError> for DomStyleParsedInstallError {
-    fn from(error: surgeist_dom::DomParsedHtmlInstallError) -> Self {
+impl From<surgeist_dom::installation::DomParsedHtmlInstallError> for DomStyleParsedInstallError {
+    fn from(error: surgeist_dom::installation::DomParsedHtmlInstallError) -> Self {
         Self::Installation(error)
     }
 }
@@ -134,7 +138,7 @@ impl DomStyleParsedMetaPreference {
 /// Authentic whole-contribution acknowledgement and producer/name evidence.
 #[must_use]
 pub struct DomStyleParsedMetaOutcome {
-    completion: surgeist_dom::DomParsedHtmlMetaCompletion,
+    completion: surgeist_dom::installation::meta::DomParsedHtmlMetaCompletion,
     preferences: Vec<DomStyleParsedMetaPreference>,
 }
 impl std::fmt::Debug for DomStyleParsedMetaOutcome {
@@ -149,7 +153,7 @@ impl std::fmt::Debug for DomStyleParsedMetaOutcome {
 }
 impl DomStyleParsedMetaOutcome {
     /// Actual canonical acknowledgement, not a structural-installation receipt.
-    pub fn completion(&self) -> &surgeist_dom::DomParsedHtmlMetaCompletion {
+    pub fn completion(&self) -> &surgeist_dom::installation::meta::DomParsedHtmlMetaCompletion {
         &self.completion
     }
     /// Every original preferred-name operation in causal order, including no-ops.
@@ -160,7 +164,7 @@ impl DomStyleParsedMetaOutcome {
     pub fn into_parts(
         self,
     ) -> (
-        surgeist_dom::DomParsedHtmlMetaCompletion,
+        surgeist_dom::installation::meta::DomParsedHtmlMetaCompletion,
         Vec<DomStyleParsedMetaPreference>,
     ) {
         (self.completion, self.preferences)
@@ -178,21 +182,21 @@ impl ParsedSteps<'_> {
     }
     fn prefix(
         &self,
-        hold: &surgeist_dom::DomParsedHtmlMetaRuntimeHold<'_>,
+        hold: &surgeist_dom::installation::meta::DomParsedHtmlMetaRuntimeHold<'_>,
     ) -> Result<(), DomStyleRuntimeError> {
         hold.step(self.cancel)?;
         self.runtime()
     }
     fn joined(
         &self,
-        preparation: &surgeist_dom::DomParsedHtmlMetaPreparation<'_, '_, '_>,
+        preparation: &surgeist_dom::installation::meta::DomParsedHtmlMetaPreparation<'_, '_, '_>,
     ) -> Result<(), DomStyleRuntimeError> {
         preparation.step(self.cancel)?;
         self.runtime()
     }
     fn same(
         &self,
-        preparation: &surgeist_dom::DomParsedHtmlMetaPreparation<'_, '_, '_>,
+        preparation: &surgeist_dom::installation::meta::DomParsedHtmlMetaPreparation<'_, '_, '_>,
         left: &[u16],
         right: &[u16],
     ) -> Result<bool, DomStyleRuntimeError> {
@@ -211,7 +215,7 @@ impl ParsedSteps<'_> {
 }
 fn storage(
     state: &StyleState,
-    hold: &mut surgeist_dom::DomParsedHtmlMetaRuntimeHold<'_>,
+    hold: &mut surgeist_dom::installation::meta::DomParsedHtmlMetaRuntimeHold<'_>,
     backing: &Backing,
     steps: &ParsedSteps<'_>,
 ) -> Result<usize, DomStyleRuntimeError> {
@@ -231,7 +235,7 @@ fn storage(
                     .checked_add(live_bytes)
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 hold.admit_runtime(
-                    surgeist_dom::DomParsedHtmlAssociationRuntimeUsage::new(
+                    surgeist_dom::installation::DomParsedHtmlAssociationRuntimeUsage::new(
                         bytes,
                         backing.units,
                         backing.outputs,
@@ -287,18 +291,23 @@ fn storage(
 impl Backing {
     fn parsed_usage(
         &self,
-    ) -> Result<surgeist_dom::DomParsedHtmlAssociationRuntimeUsage, DomStyleRuntimeError> {
-        Ok(surgeist_dom::DomParsedHtmlAssociationRuntimeUsage::new(
-            self.bytes - self.dom_shared_bytes,
-            self.units - self.dom_shared_units,
-            self.outputs,
-        )?)
+    ) -> Result<
+        surgeist_dom::installation::DomParsedHtmlAssociationRuntimeUsage,
+        DomStyleRuntimeError,
+    > {
+        Ok(
+            surgeist_dom::installation::DomParsedHtmlAssociationRuntimeUsage::new(
+                self.bytes - self.dom_shared_bytes,
+                self.units - self.dom_shared_units,
+                self.outputs,
+            )?,
+        )
     }
     fn reserve_initial<T>(
         &mut self,
         values: &mut Vec<T>,
         count: usize,
-        hold: &mut surgeist_dom::DomParsedHtmlMetaRuntimeHold<'_>,
+        hold: &mut surgeist_dom::installation::meta::DomParsedHtmlMetaRuntimeHold<'_>,
         steps: &ParsedSteps<'_>,
     ) -> Result<(), DomStyleRuntimeError> {
         let requested = count
@@ -327,7 +336,11 @@ impl Backing {
         &mut self,
         values: &mut Vec<T>,
         count: usize,
-        preparation: &mut surgeist_dom::DomParsedHtmlMetaPreparation<'_, '_, '_>,
+        preparation: &mut surgeist_dom::installation::meta::DomParsedHtmlMetaPreparation<
+            '_,
+            '_,
+            '_,
+        >,
         steps: &ParsedSteps<'_>,
     ) -> Result<(), DomStyleRuntimeError> {
         let requested = count
@@ -365,8 +378,8 @@ impl DomStyleRuntime {
     pub fn consume_parsed_meta(
         &self,
         dom: &mut DomEventDom<'_>,
-        contribution: surgeist_dom::DomParsedHtmlAssociationId,
-        limits: surgeist_dom::DomParsedHtmlAssociationLimits,
+        contribution: surgeist_dom::installation::DomParsedHtmlAssociationId,
+        limits: surgeist_dom::installation::DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<DomStyleParsedMetaOutcome, DomStyleParsedMetaError> {
         let owner = self.original()?;
@@ -431,7 +444,8 @@ impl DomStyleRuntime {
         }
         steps.prefix(&hold)?;
         let mut preparation = hold.prepare(&references, cancel).map_err(|error| {
-            if let surgeist_dom::DomParsedHtmlMetaError::MissingOwner { root } = &error
+            if let surgeist_dom::installation::meta::DomParsedHtmlMetaError::MissingOwner { root } =
+                &error
                 && let Err(reason) = state.require_bound_if_registered(*root, cancel)
             {
                 return DomStyleParsedMetaError::Runtime(reason);
@@ -652,13 +666,15 @@ impl DomStyleRuntime {
 pub(in crate::dom_style) fn admit(
     dom: &mut Dom,
     limits: DomStyleRuntimeLimits,
-    processing: surgeist_dom::DomParsedHtmlAssociationLimits,
+    processing: surgeist_dom::installation::DomParsedHtmlAssociationLimits,
     cancel: &AtomicBool,
 ) -> Result<u64, DomStyleParsedAdmissionError> {
     let work = Cell::new(0);
     let mut ids = Vec::new();
     let fixed = size_of::<std::cell::RefCell<StyleState>>()
-        .checked_add(size_of::<Vec<surgeist_dom::DomParsedHtmlAssociationId>>())
+        .checked_add(size_of::<
+            Vec<surgeist_dom::installation::DomParsedHtmlAssociationId>,
+        >())
         .ok_or(DomStyleRuntimeError::Admission)?;
     let check = |extra: usize| {
         if fixed
@@ -686,10 +702,14 @@ pub(in crate::dom_style) fn admit(
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 let old = ids
                     .capacity()
-                    .checked_mul(size_of::<surgeist_dom::DomParsedHtmlAssociationId>())
+                    .checked_mul(size_of::<
+                        surgeist_dom::installation::DomParsedHtmlAssociationId,
+                    >())
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 let requested = count
-                    .checked_mul(size_of::<surgeist_dom::DomParsedHtmlAssociationId>())
+                    .checked_mul(size_of::<
+                        surgeist_dom::installation::DomParsedHtmlAssociationId,
+                    >())
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 check(
                     old.checked_add(requested)
@@ -705,7 +725,9 @@ pub(in crate::dom_style) fn admit(
                     .map_err(|_| DomStyleRuntimeError::Admission)?;
                 let actual = replacement
                     .capacity()
-                    .checked_mul(size_of::<surgeist_dom::DomParsedHtmlAssociationId>())
+                    .checked_mul(size_of::<
+                        surgeist_dom::installation::DomParsedHtmlAssociationId,
+                    >())
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 check(
                     old.checked_add(actual)
@@ -731,7 +753,8 @@ impl DomSession {
     /// callers choose their read budget. This lends no execution authority.
     pub fn pending_parsed_html_associations(
         &self,
-    ) -> impl Iterator<Item = surgeist_dom::DomParsedHtmlPendingAssociations<'_>> {
+    ) -> impl Iterator<Item = surgeist_dom::installation::DomParsedHtmlPendingAssociations<'_>>
+    {
         self.dom.pending_parsed_html_associations()
     }
     fn prepare_parsed_install(&mut self, cancel: &AtomicBool) -> Result<(), DomStyleRuntimeError> {
@@ -747,12 +770,13 @@ impl DomSession {
     /// Session. This separate operation performs no CSSOM/preference execution.
     pub fn install_parsed_html_document(
         &mut self,
-        basis: surgeist_dom::DomStamp,
+        basis: surgeist_dom::identity::DomStamp,
         report: Arc<surgeist_html_parser::HtmlParseReport>,
-        environment: surgeist_dom::DomParsedDocumentEnvironment,
-        limits: surgeist_dom::DomParsedHtmlInstallLimits,
+        environment: surgeist_dom::installation::DomParsedDocumentEnvironment,
+        limits: surgeist_dom::installation::DomParsedHtmlInstallLimits,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomParsedHtmlInstallation, DomStyleParsedInstallError> {
+    ) -> Result<surgeist_dom::installation::DomParsedHtmlInstallation, DomStyleParsedInstallError>
+    {
         self.prepare_parsed_install(cancel)?;
         Ok(self
             .dom
@@ -764,10 +788,11 @@ impl DomSession {
     pub fn install_parsed_html_fragment(
         &mut self,
         report: Arc<surgeist_html_parser::HtmlParseReport>,
-        capture: &surgeist_dom::DomHtmlCapture,
-        limits: surgeist_dom::DomParsedHtmlInstallLimits,
+        capture: &surgeist_dom::capture::DomHtmlCapture,
+        limits: surgeist_dom::installation::DomParsedHtmlInstallLimits,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomParsedHtmlInstallation, DomStyleParsedInstallError> {
+    ) -> Result<surgeist_dom::installation::DomParsedHtmlInstallation, DomStyleParsedInstallError>
+    {
         self.prepare_parsed_install(cancel)?;
         Ok(self
             .dom

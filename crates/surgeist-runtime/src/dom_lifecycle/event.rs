@@ -4,8 +4,10 @@ use crate::dom_event::{
     DomEventTimestampUnavailable, DomStandaloneEventTarget, NativeDomEvent,
 };
 use surgeist_dom::{
-    DocumentId, DomError, DomSourceEventClockFailure, DomSourceEventFiring, DomSourceEventTime,
-    DomSourceLease, DomSourceProgress,
+    DomError,
+    event::{DomSourceEventClockFailure, DomSourceEventFiring, DomSourceEventTime},
+    identity::DocumentId,
+    source::{DomSourceLease, DomSourceProgress},
 };
 
 /// Private one-use proof of this constructor's current Global and clock join.
@@ -132,7 +134,7 @@ impl HostedEventClock {
         &self,
         dom: &DomEventDom<'_>,
         global: DomHostedGlobalId,
-        origin: surgeist_dom::DomHostedMoment,
+        origin: surgeist_dom::hosted::DomHostedMoment,
         cancel: &AtomicBool,
     ) -> Result<Result<EventCreation, DomEventTimestampUnavailable>, DomHostedRuntimeError> {
         let owner = self

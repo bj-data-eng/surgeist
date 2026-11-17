@@ -5,7 +5,28 @@ use super::consumption::{envelope, report};
 use super::style_decision::{installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending, ready};
 use surgeist_css::source::CssUtf16Resource;
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+        DomParsedHtmlAssociationLimits, DomParsedHtmlHistoricalDocument, DomParsedHtmlInstallation,
+        meta::DomParsedHtmlMetaOccurrenceError,
+        style::{
+            DomParsedHtmlContributionCompletion, DomParsedHtmlFrontierError,
+            DomParsedHtmlStyleError, DomParsedHtmlStyleInlinePolicyObservation,
+            DomParsedHtmlStyleInlinePolicyRequest, DomParsedHtmlStyleNotificationRequirement,
+            DomParsedHtmlStylePhase, DomParsedHtmlStyleQualification,
+            DomParsedHtmlStyleRenderingProgress, DomParsedHtmlStyleSheetError,
+            DomParsedHtmlStyleSubjectError, DomParsedHtmlStyleSuccessorRemoval,
+            DomParsedHtmlSynchronousEnd, DomParsedHtmlTerminalError,
+        },
+    },
+    limits::DomResource,
+    source::DomSourceEdit,
+    style::{DomStyleSheet, DomStyleSheetAvailability},
+};
 use surgeist_html::values::DocumentString;
 use surgeist_html::{
     elements::style::HtmlStyleTrigger,

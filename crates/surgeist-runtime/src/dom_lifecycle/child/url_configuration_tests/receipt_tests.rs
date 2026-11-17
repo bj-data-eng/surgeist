@@ -2,8 +2,9 @@
 //! No request, identity, policy phase or positive policy value is fabricated.
 use super::*;
 use surgeist_dom::{
-    DomHostedPolicyPublication, DomPermissionsPolicyValue, DomResource, DomSourceUrlObservation,
-    DomSourceUrlOrigin, DomSourceUrlRequest,
+    hosted::{DomHostedPolicyPublication, DomPermissionsPolicyValue},
+    limits::DomResource,
+    url::{DomSourceUrlObservation, DomSourceUrlOrigin, DomSourceUrlRequest},
 };
 use surgeist_html::values::DocumentString;
 use surgeist_html::values::Namespace;
@@ -13,7 +14,7 @@ struct Pending {
     session: DomSession,
     hosted: HostedRuntime,
     child: DomHostedChildRequest,
-    iframe: surgeist_dom::NodeId,
+    iframe: surgeist_dom::identity::NodeId,
     revision: HtmlBaseFactsRevision,
 }
 
@@ -336,7 +337,7 @@ fn foreign_policy_request_issuer_and_publication_preserve_both_real_candidates()
         assert!(matches!(
             state_a.source.seal_permissions_policy(
                 request_b,
-                surgeist_dom::DomInitialPermissionsPolicy::new(
+                surgeist_dom::hosted::DomInitialPermissionsPolicy::new(
                     DomPermissionsPolicyValue::Enabled,
                     DomPermissionsPolicyValue::Disabled
                 ),

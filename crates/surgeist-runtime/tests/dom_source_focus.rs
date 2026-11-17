@@ -7,7 +7,20 @@
     target_os = "ios"
 ))]
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    dialog::DomSourceDialogRequest,
+    event::{DomDispatchCustodyLimits, DomSourceEventRequest},
+    focus::DomSourceDialogFocusingRequest,
+    hosted::{
+        DomHostedError, DomHostedGlobalId, DomHostedHostId, DomHostedLimits, DomHostedRecordLimits,
+    },
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOperationId, DomSourcePhase, DomSourceRequest,
+    },
+};
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogFocusingAction};
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
@@ -31,7 +44,8 @@ fn session() -> DomSession {
                 2048,
                 64,
                 8_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_dispatch_custody(
@@ -290,7 +304,10 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_
     assert_eq!(after.relevant_global(subject).unwrap(), None);
     let task = session
         .element_task_execution()
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     assert!(task.dialog_toggle().unwrap().queue_association().is_none());
@@ -303,7 +320,10 @@ fn native_explicit_headless_scope_remembers_authentic_none_then_waits_at_dialog_
     assert_eq!(
         session
             .element_task_execution()
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap(),
         Some(task)
     );
@@ -348,7 +368,10 @@ fn original_hosted_headless_scope_establishes_watcher_then_remembers_none() {
     );
     let task = session
         .element_task_execution()
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap()
         .dialog_toggle()
@@ -545,7 +568,10 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
         assert_eq!(
             session
                 .element_task_execution()
-                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+                .pending_task(
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                    0
+                )
                 .unwrap()
                 .unwrap()
                 .dialog_toggle()

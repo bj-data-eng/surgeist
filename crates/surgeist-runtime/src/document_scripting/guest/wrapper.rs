@@ -5,7 +5,7 @@ pub(super) enum GuestReceiver {
     Projected(Rc<NativeObject<GuestTargetProjection>>),
     Window(DomHostedGlobalId),
     Node {
-        node: surgeist_dom::NodeId,
+        node: surgeist_dom::identity::NodeId,
         lifetime: Option<Rc<interfaces::NodeLifetime>>,
     },
 }

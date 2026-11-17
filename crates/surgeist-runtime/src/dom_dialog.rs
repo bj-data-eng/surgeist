@@ -16,9 +16,14 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use surgeist_dom::{
-    Dom, DomError, DomOwnerId, DomSourceEventDispatchPermit, DomSourceEventExecutor,
-    DomSourceEventId, DomSourceEventOutcome, DomSourceEventPublication, DomSourceEventRequest,
-    DomSourceEventRetention, DomSourceLimits,
+    Dom, DomError,
+    event::{
+        DomSourceEventDispatchPermit, DomSourceEventExecutor, DomSourceEventId,
+        DomSourceEventOutcome, DomSourceEventPublication, DomSourceEventRequest,
+        DomSourceEventRetention,
+    },
+    identity::DomOwnerId,
+    source::DomSourceLimits,
 };
 
 /// Finite persistent custody and cumulative actual work of this adapter.
@@ -276,7 +281,7 @@ impl State {
             next: None,
             request: request.clone(),
             event: match request.kind() {
-                surgeist_dom::DomSourceEventKind::BeforeToggle => {
+                surgeist_dom::event::DomSourceEventKind::BeforeToggle => {
                     let payload = request
                         .toggle_event()
                         .ok_or(DomSourceEventRuntimeError::Protocol)?;
@@ -289,7 +294,7 @@ impl State {
                         backing,
                     )
                 }
-                surgeist_dom::DomSourceEventKind::Toggle => {
+                surgeist_dom::event::DomSourceEventKind::Toggle => {
                     let payload = request
                         .toggle_event()
                         .ok_or(DomSourceEventRuntimeError::Protocol)?;
@@ -301,13 +306,13 @@ impl State {
                         backing,
                     )
                 }
-                surgeist_dom::DomSourceEventKind::Cancel => NativeDomEvent::dialog_cancel(
+                surgeist_dom::event::DomSourceEventKind::Cancel => NativeDomEvent::dialog_cancel(
                     request.subject(),
                     request.cancelable(),
                     creation,
                     backing,
                 ),
-                surgeist_dom::DomSourceEventKind::Close => NativeDomEvent::dialog_close(
+                surgeist_dom::event::DomSourceEventKind::Close => NativeDomEvent::dialog_close(
                     request.subject(),
                     Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
                     backing,
@@ -400,10 +405,12 @@ impl SourceEventRuntime {
     pub(crate) fn seal_style_dispatch(
         &self,
         dom: &DomEventDom<'_>,
-        token: &mut surgeist_dom::DomStyleNotificationToken,
+        token: &mut surgeist_dom::style::DomStyleNotificationToken,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomParsedHtmlStyleDeliveryPublication, DomSourceEventRuntimeError>
-    {
+    ) -> Result<
+        surgeist_dom::installation::style::DomParsedHtmlStyleDeliveryPublication,
+        DomSourceEventRuntimeError,
+    > {
         let owner = self
             .state
             .upgrade()
@@ -425,7 +432,7 @@ impl SourceEventRuntime {
         request: &DomSourceEventRequest,
         permit: &mut Option<DomSourceEventDispatchPermit>,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomSourceEventDispatchGuard, DomSourceEventRuntimeError> {
+    ) -> Result<surgeist_dom::event::DomSourceEventDispatchGuard, DomSourceEventRuntimeError> {
         let original = self
             .state
             .upgrade()
@@ -708,12 +715,18 @@ impl SourceEventRuntime {
             if receipt.original_target().node() != Some(request.subject())
                 || receipt.native_cause()
                     != Some(match request.kind() {
-                        surgeist_dom::DomSourceEventKind::BeforeToggle => {
+                        surgeist_dom::event::DomSourceEventKind::BeforeToggle => {
                             NativeEventCause::DialogBeforeToggle
                         }
-                        surgeist_dom::DomSourceEventKind::Toggle => NativeEventCause::DialogToggle,
-                        surgeist_dom::DomSourceEventKind::Close => NativeEventCause::DialogClose,
-                        surgeist_dom::DomSourceEventKind::Cancel => NativeEventCause::DialogCancel,
+                        surgeist_dom::event::DomSourceEventKind::Toggle => {
+                            NativeEventCause::DialogToggle
+                        }
+                        surgeist_dom::event::DomSourceEventKind::Close => {
+                            NativeEventCause::DialogClose
+                        }
+                        surgeist_dom::event::DomSourceEventKind::Cancel => {
+                            NativeEventCause::DialogCancel
+                        }
                     })
             {
                 return Err(DomSourceEventRuntimeError::Protocol);
@@ -771,8 +784,10 @@ mod payload_tests {
         DomEventRegistryLimits, DomEventResource,
     };
     use surgeist_dom::{
-        DomBatch, DomDispatchCustodyLimits, DomLimits, DomSourceEdit, DomSourcePhase,
-        DomSourceProgress, DomSourceRequest,
+        DomBatch,
+        event::DomDispatchCustodyLimits,
+        limits::DomLimits,
+        source::{DomSourceEdit, DomSourcePhase, DomSourceProgress, DomSourceRequest},
     };
     use surgeist_html::values::Namespace;
 
@@ -810,8 +825,10 @@ mod payload_tests {
                     128,
                     32,
                     4_000_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
                 .with_dispatch_custody(

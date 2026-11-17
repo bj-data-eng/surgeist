@@ -22,8 +22,9 @@ fn observed_beforetoggle_child_meta_completes_and_preserves_the_canceled_parent_
             &cancel(),
         )
         .unwrap();
-    let source_limits =
-        surgeist_dom::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 4);
+    let source_limits = surgeist_dom::source::DomSourceLimits::new(
+        16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 4,
+    );
     let parent = container(&session, document);
     let mut batch = DomBatch::new();
     let dialog = batch.create_element_ns(document, Namespace::html(), "dialog");
@@ -35,8 +36,8 @@ fn observed_beforetoggle_child_meta_completes_and_preserves_the_canceled_parent_
         source: crate::DomSourceRuntime,
         meta: NodeId,
         parent: NodeId,
-        limits: surgeist_dom::DomSourceLimits,
-        operation: surgeist_dom::DomSourceOperationId,
+        limits: surgeist_dom::source::DomSourceLimits,
+        operation: surgeist_dom::source::DomSourceOperationId,
         outcome: Option<DomStyleMetaSourceOutcome>,
     }
     let mut listeners = DomEventDispatcher::new(DomEventRegistryLimits {

@@ -2,7 +2,8 @@
 //! The canonical Source phase and graph remain the sole algorithm cursor/data.
 use super::*;
 use surgeist_dom::{
-    DomHostedChildPreparation, DomHostedChildRequest, DomHostedPreparedChild, DomSourceOperationId,
+    hosted::child::{DomHostedChildPreparation, DomHostedChildRequest, DomHostedPreparedChild},
+    source::DomSourceOperationId,
 };
 
 pub(super) struct Creation {
@@ -46,7 +47,7 @@ impl HostedState {
     pub(super) fn child_creation(
         &mut self,
         request: &DomHostedChildRequest,
-        lease: &surgeist_dom::DomSourceLease<'_>,
+        lease: &surgeist_dom::source::DomSourceLease<'_>,
         cancel: &AtomicBool,
     ) -> Result<usize, DomHostedRuntimeError> {
         for index in 0..self.children.len() {
@@ -105,7 +106,7 @@ impl HostedState {
 impl HostedRuntime {
     pub(super) fn prepare_source_child(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         request: &DomHostedChildRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
@@ -192,8 +193,8 @@ impl HostedRuntime {
     pub(super) fn execute_child(
         &self,
         child_request: &DomHostedChildRequest,
-        request: &surgeist_dom::DomHostedExecutionRequest,
-        lease: &surgeist_dom::DomSourceLease<'_>,
+        request: &surgeist_dom::hosted::DomHostedExecutionRequest,
+        lease: &surgeist_dom::source::DomSourceLease<'_>,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -334,7 +335,7 @@ impl HostedRuntime {
     pub(super) fn activate_child(
         &self,
         child_request: &DomHostedChildRequest,
-        request: &surgeist_dom::DomHostedMakeActiveRequest,
+        request: &surgeist_dom::hosted::DomHostedMakeActiveRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -371,7 +372,7 @@ impl HostedRuntime {
     pub(super) fn finish_loading_child(
         &self,
         child_request: &DomHostedChildRequest,
-        request: &surgeist_dom::DomHostedFinishLoadingRequest,
+        request: &surgeist_dom::hosted::DomHostedFinishLoadingRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -431,7 +432,7 @@ impl HostedRuntime {
     pub(super) fn initialize_child_entry(
         &self,
         child_request: &DomHostedChildRequest,
-        request: &surgeist_dom::DomHostedEntryRequest,
+        request: &surgeist_dom::hosted::history::DomHostedEntryRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -488,7 +489,7 @@ impl HostedRuntime {
 
     pub(super) fn accept_child_publication(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         request: &DomHostedChildRequest,
         policy: bool,
         cancel: &AtomicBool,
@@ -531,13 +532,13 @@ impl HostedRuntime {
 
 pub(crate) enum SourceProgress {
     Serviced,
-    Url(surgeist_dom::DomSourceUrlStage),
+    Url(surgeist_dom::url::DomSourceUrlStage),
 }
 
 impl HostedRuntime {
     fn policy_decision(
         &self,
-        request: &surgeist_dom::DomHostedPolicyRequest,
+        request: &surgeist_dom::hosted::DomHostedPolicyRequest,
         declared_matches: Option<bool>,
         cancel: &AtomicBool,
     ) -> Result<policy::Decision, DomHostedRuntimeError> {
@@ -552,8 +553,8 @@ impl HostedRuntime {
     fn seal_child_policy(
         &self,
         child_request: &DomHostedChildRequest,
-        request: &surgeist_dom::DomHostedPolicyRequest,
-        inherited: surgeist_dom::DomInitialPermissionsPolicy,
+        request: &surgeist_dom::hosted::DomHostedPolicyRequest,
+        inherited: surgeist_dom::hosted::DomInitialPermissionsPolicy,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -576,7 +577,7 @@ impl HostedRuntime {
 
     fn sandbox_declared_matches(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         child: &DomHostedChildRequest,
         cancel: &AtomicBool,
     ) -> Result<bool, DomHostedRuntimeError> {
@@ -588,7 +589,7 @@ impl HostedRuntime {
         let origin = lease
             .declared_sandbox_origin(child, &mut state.source, cancel)
             .map_err(DomHostedRuntimeError::Dom)?;
-        let surgeist_dom::DomHostedChildStep::PermissionsPolicy(policy) = lease
+        let surgeist_dom::hosted::child::DomHostedChildStep::PermissionsPolicy(policy) = lease
             .hosted_child_step(child)
             .map_err(DomHostedRuntimeError::Dom)?
         else {
@@ -599,11 +600,11 @@ impl HostedRuntime {
 
     fn qualify_child_url_configuration(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         child: &DomHostedChildRequest,
         expected: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         cancel: &AtomicBool,
-    ) -> Result<Option<surgeist_dom::DomSourceUrlStage>, DomHostedRuntimeError> {
+    ) -> Result<Option<surgeist_dom::url::DomSourceUrlStage>, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -623,12 +624,14 @@ impl HostedRuntime {
 
     pub(crate) fn service_source_child(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         child: &DomHostedChildRequest,
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         cancel: &AtomicBool,
     ) -> Result<SourceProgress, DomHostedRuntimeError> {
-        use surgeist_dom::{DomHostedChildStep as Step, DomSourceUrlStage as UrlStage};
+        use surgeist_dom::{
+            hosted::child::DomHostedChildStep as Step, url::DomSourceUrlStage as UrlStage,
+        };
         let mut declared_matches = None;
         loop {
             // Qualify before either a retained response or its sealed policy
@@ -722,10 +725,10 @@ impl HostedRuntime {
                                     .origin()
                                     .ok_or(DomHostedRuntimeError::Protocol)?
                                 {
-                                    surgeist_dom::DomSourceUrlOrigin::Opaque(origin) => {
+                                    surgeist_dom::url::DomSourceUrlOrigin::Opaque(origin) => {
                                         origin == request.target_origin()
                                     }
-                                    surgeist_dom::DomSourceUrlOrigin::UnequalToTarget => false,
+                                    surgeist_dom::url::DomSourceUrlOrigin::UnequalToTarget => false,
                                 },
                             });
                             continue;
@@ -765,9 +768,9 @@ impl HostedRuntime {
 impl HostedRuntime {
     fn queue_child_history(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         child: &DomHostedChildRequest,
-        operation: surgeist_dom::DomHostedOperationId,
+        operation: surgeist_dom::hosted::DomHostedOperationId,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -858,7 +861,7 @@ impl HostedRuntime {
             return Err(DomHostedRuntimeError::Protocol);
         }
         if row.publication.is_none() {
-            let surgeist_dom::DomHostedChildStep::QueueHistory(request) = lease
+            let surgeist_dom::hosted::child::DomHostedChildStep::QueueHistory(request) = lease
                 .hosted_child_step(child)
                 .map_err(DomHostedRuntimeError::Dom)?
             else {
@@ -900,7 +903,7 @@ impl HostedRuntime {
 impl HostedRuntime {
     pub(crate) fn admit_url_observation(
         &self,
-        request: &surgeist_dom::DomSourceUrlRequest,
+        request: &surgeist_dom::url::DomSourceUrlRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -919,9 +922,9 @@ impl HostedRuntime {
 impl HostedRuntime {
     fn queue_child_removal(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         child: &DomHostedChildRequest,
-        operation: surgeist_dom::DomHostedOperationId,
+        operation: surgeist_dom::hosted::DomHostedOperationId,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -1012,7 +1015,7 @@ impl HostedRuntime {
             return Err(DomHostedRuntimeError::Protocol);
         }
         if row.removal.is_none() {
-            let surgeist_dom::DomHostedChildStep::Removal(request) = lease
+            let surgeist_dom::hosted::child::DomHostedChildStep::Removal(request) = lease
                 .hosted_child_step(child)
                 .map_err(DomHostedRuntimeError::Dom)?
             else {
@@ -1051,8 +1054,11 @@ mod url_configuration_tests {
         DomSourceServices, DomSourceUnavailable, DomSourceUrlService, DomStyleRuntimeLimits,
     };
     use surgeist_dom::{
-        DomBatch, DomError, DomHostedChildStep, DomHostedRecordLimits, DomLimits, DomSourceEdit,
-        DomSourceLimits, DomSourceRequest, DomSourceUrlStage,
+        DomBatch, DomError,
+        hosted::{DomHostedRecordLimits, child::DomHostedChildStep},
+        limits::DomLimits,
+        source::{DomSourceEdit, DomSourceLimits, DomSourceRequest},
+        url::DomSourceUrlStage,
     };
     use surgeist_html::values::Namespace;
     use surgeist_html_semantics::{
@@ -1094,8 +1100,10 @@ mod url_configuration_tests {
                     512,
                     32,
                     4_000_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )
@@ -1366,7 +1374,7 @@ mod url_configuration_tests {
             assert_eq!(row.sample, Some(sample));
         }
         let mut calls = Vec::new();
-        let mut observe = |request: &surgeist_dom::DomSourceUrlRequest, _: &AtomicBool| {
+        let mut observe = |request: &surgeist_dom::url::DomSourceUrlRequest, _: &AtomicBool| {
             calls.push((request.stage(), request.revision().clone()));
             Ok(None)
         };
@@ -1446,7 +1454,7 @@ mod url_configuration_tests {
                     .initial_permissions_policy()
                     .unwrap()
                     .inherited_fullscreen(),
-                surgeist_dom::DomPermissionsPolicyValue::Enabled
+                surgeist_dom::hosted::DomPermissionsPolicyValue::Enabled
             );
         }
         assert_eq!(
@@ -1492,7 +1500,7 @@ mod url_configuration_tests {
 impl HostedRuntime {
     fn prepare_child_window(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         child: &DomHostedChildRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
@@ -1500,7 +1508,7 @@ impl HostedRuntime {
             .hosted_child_step(child)
             .map_err(DomHostedRuntimeError::Dom)?
         {
-            surgeist_dom::DomHostedChildStep::NativeExecution(request) => (
+            surgeist_dom::hosted::child::DomHostedChildStep::NativeExecution(request) => (
                 request
                     .parent_global()
                     .ok_or(DomHostedRuntimeError::Protocol)?,

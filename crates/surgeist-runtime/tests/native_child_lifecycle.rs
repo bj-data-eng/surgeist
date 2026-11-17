@@ -11,7 +11,18 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    custom_element::DomRegistryBinding,
+    hosted::{
+        DomHostedGlobalId, DomHostedLimits, DomHostedNavigableId, DomHostedOperationId,
+        DomHostedRecordLimits, history::DomHostedEntryId,
+    },
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits},
+    style::DomStyleSource,
+};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_runtime::*;
 
@@ -28,11 +39,12 @@ fn session() -> DomSession {
             1024,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
-            surgeist_dom::DomDispatchCustodyLimits::new(
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
                 64, 4096, 16_000_000, 16_000_000, 4_000_000,
             )
             .unwrap(),
@@ -393,7 +405,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
         );
         let progress = DomElementTaskRuntime::run_next(
             &mut dom,
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
             crate::DomElementTaskRunLimits {
@@ -404,7 +416,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
                     callbacks: 128,
                     work: 100_000,
                 },
-                source: surgeist_dom::DomSourceLimits::new(
+                source: surgeist_dom::source::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
                 ),
             },
@@ -430,7 +442,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -1832,7 +1844,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
         );
         let progress = DomElementTaskRuntime::run_next(
             &mut dom,
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
             crate::DomElementTaskRunLimits {
@@ -1843,7 +1855,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
                     callbacks: 128,
                     work: 100_000,
                 },
-                source: surgeist_dom::DomSourceLimits::new(
+                source: surgeist_dom::source::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
                 ),
             },
@@ -1914,7 +1926,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );

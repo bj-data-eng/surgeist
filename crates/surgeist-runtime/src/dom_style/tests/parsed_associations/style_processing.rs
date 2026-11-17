@@ -4,7 +4,16 @@ use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomError,
+    identity::{DocumentId, DomStamp},
+    installation::{
+        DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits,
+        style::{DomParsedHtmlStylePhase, DomParsedHtmlStyleQualification},
+    },
+    limits::DomResource,
+    source::DomSourceEdit,
+};
 use surgeist_html::values::Namespace;
 
 fn qualification(

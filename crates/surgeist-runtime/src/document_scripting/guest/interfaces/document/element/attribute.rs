@@ -18,9 +18,16 @@ use surgeist_bindings_js::{
     dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DomAttrId, DomAttributeAttachment, DomSourceAttributeAttachmentOutput, DomSourceAttributeSink,
-    DomSourceAttributeVerificationOutcome, DomSourceAttributeVerificationRequest, DomSourceEdit,
-    DomSourceLease, DomSourceLimits, DomSourceOutput, DomSourceRequest, DomSourceStatus,
+    identity::DomAttrId,
+    source::{
+        DomSourceEdit, DomSourceLease, DomSourceLimits, DomSourceOutput, DomSourceRequest,
+        DomSourceStatus,
+        attribute::{
+            DomSourceAttributeAttachmentOutput, DomSourceAttributeSink,
+            DomSourceAttributeVerificationOutcome, DomSourceAttributeVerificationRequest,
+        },
+    },
+    tree::DomAttributeAttachment,
 };
 use surgeist_html::values::Namespace;
 
@@ -495,7 +502,7 @@ impl DocumentScriptHost {
         &mut self,
         permit: &DocumentScriptPermit,
         edit: DomSourceEdit,
-    ) -> surgeist_dom::DomSourceOperationId {
+    ) -> surgeist_dom::source::DomSourceOperationId {
         let owner = self.native.clone();
         let events = self.guest_events().unwrap();
         let capture = Capture {
@@ -595,7 +602,7 @@ impl StoppedDocumentScriptHost {
 
 type ResumedAttribute = (
     Result<DomSourceDriveProgress, DomSourceDriveError>,
-    Option<surgeist_dom::DomSynchronousReactionQueue>,
+    Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>,
     Option<Error>,
     Option<super::super::ReactionFailureSlot>,
 );
@@ -809,7 +816,7 @@ impl PendingAttribute {
 
 fn resume_attribute_source(
     owner: &NativeOwner,
-    operation: surgeist_dom::DomSourceOperationId,
+    operation: surgeist_dom::source::DomSourceOperationId,
     limits: DomSourceLimits,
     realm: Option<RealmId>,
 ) -> Result<NativeAttributeProgress, DocumentGuestEventError> {
@@ -944,7 +951,7 @@ impl Drop for ActiveAttribute<'_> {
 
 fn with_attribute_lease<T>(
     owner: &NativeOwner,
-    limits: surgeist_dom::DomSourceLimits,
+    limits: surgeist_dom::source::DomSourceLimits,
     request: DomSourceAttributeVerificationRequest,
     cancel: &AtomicBool,
     action: impl FnOnce(&mut DomSourceLease<'_>) -> Result<T, DocumentGuestEventError>,

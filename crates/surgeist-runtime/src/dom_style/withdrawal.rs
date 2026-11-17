@@ -1,7 +1,10 @@
 //! Qualified execution-resource withdrawal, preserving the original root history.
 use super::*;
 use crate::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime};
-use surgeist_dom::{DocumentId, DomHostedOperationId, DomHostedStyleRootWithdrawal};
+use surgeist_dom::{
+    hosted::{DomHostedOperationId, sheet::DomHostedStyleRootWithdrawal},
+    identity::DocumentId,
+};
 use surgeist_html::values::DocumentString;
 
 /// Refusal retains both actual owners and the same destruction task.
@@ -47,7 +50,7 @@ pub struct DomStyleRootWithdrawal {
     history: Option<sheet_sets::State>,
     invocation: DomHostedOperationId,
     lower: DomHostedStyleRootWithdrawal,
-    _retention: surgeist_dom::DomHostedRuntimeRetention,
+    _retention: surgeist_dom::hosted::DomHostedRuntimeRetention,
 }
 impl std::fmt::Debug for DomStyleRootWithdrawal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

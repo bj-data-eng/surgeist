@@ -7,7 +7,7 @@ use surgeist_bindings_js::conversion::{
         html_slot_element_assigned_elements_0_options, html_slot_element_assigned_nodes_0_options,
     },
 };
-use surgeist_dom::{DomNode, DomSlotQueryLimits, DomSnapshot, DomSourceEdit};
+use surgeist_dom::{DomSnapshot, shadow::DomSlotQueryLimits, source::DomSourceEdit, tree::DomNode};
 
 const SLOT_REQUIRED: &[u16] = &ascii(b"HTMLSlotElement required");
 const NAME: &[reflection::Member] = &[(

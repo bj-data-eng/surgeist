@@ -1,5 +1,7 @@
 use super::*;
-use surgeist_dom::{DocumentId, DomEventRecipientTarget, DomHostedGlobalId};
+use surgeist_dom::{
+    event::DomEventRecipientTarget, hosted::DomHostedGlobalId, identity::DocumentId,
+};
 
 /// One actual endpoint in the native EventTarget registry.
 #[derive(Clone, Debug, Eq, PartialEq)]

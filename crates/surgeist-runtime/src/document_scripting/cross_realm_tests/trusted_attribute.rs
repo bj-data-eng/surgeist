@@ -49,7 +49,7 @@ pub(super) fn live_attribute_delivery_refusal_stops_the_original_heap() {
 fn parked_live_attribute_write() -> (
     DocumentScriptHost,
     DocumentScriptPermit,
-    surgeist_dom::DomSourceOperationId,
+    surgeist_dom::source::DomSourceOperationId,
 ) {
     use super::super::guest::tests::attach_public_nodes;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -129,7 +129,7 @@ pub(super) fn guest_verification_without_callback_retains_the_native_continuatio
         .unwrap();
     assert_eq!(
         parked.phase(),
-        surgeist_dom::DomSourcePhase::ScriptPreparation
+        surgeist_dom::source::DomSourcePhase::ScriptPreparation
     );
     let progress = host
         .resume_pending_attribute_write(&permit, SOURCE)
@@ -430,7 +430,7 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
 
 pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
     use crate::{DomSourceDriveError, DomSourceRuntimeError};
-    use surgeist_dom::{DomResource, DomSourceMetaCspError, DomSourcePhase};
+    use surgeist_dom::{limits::DomResource, meta::DomSourceMetaCspError, source::DomSourcePhase};
 
     let cancel = Arc::new(AtomicBool::new(false));
     let limits = |units| scripting_dom_limits(units, 0).with_meta_processing_work(1_000_000);
@@ -558,7 +558,7 @@ pub(super) fn guest_meta_retry_preserves_accepted_first_policy() {
 
 pub(super) fn guest_meta_without_processor_preserves_original_source() {
     use crate::{DomSourceDriveError, DomSourceRuntimeError};
-    use surgeist_dom::{DomSourceMetaCspError, DomSourcePhase};
+    use surgeist_dom::{meta::DomSourceMetaCspError, source::DomSourcePhase};
 
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
@@ -665,7 +665,7 @@ pub(super) fn guest_meta_without_processor_preserves_original_source() {
 
 pub(super) fn guest_tree_edits_deliver_original_meta_policies() {
     use crate::trusted_types_csp::PolicyDelivery;
-    use surgeist_dom::DomDocumentCspState;
+    use surgeist_dom::meta::DomDocumentCspState;
 
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
@@ -786,7 +786,7 @@ fn nested_meta_refusal_preserves_original_parent(
     element: NodeId,
 ) {
     use crate::{DomSourceDriveError, DomSourceRuntimeError};
-    use surgeist_dom::{DomSourceMetaCspError, DomSourcePhase};
+    use surgeist_dom::{meta::DomSourceMetaCspError, source::DomSourcePhase};
 
     let cancel = host.native.cancellation.clone();
     let meta = host
@@ -884,7 +884,7 @@ use crate::trusted_types_csp::{AttributePolicies, AttributePolicyError, PolicyFa
 use std::convert::Infallible;
 use surgeist_bindings_js::conversion::{ConversionAccount, ResourceTable, WorkTable};
 use surgeist_bindings_js::{TrustedPolicyCallback, TrustedTypeKind};
-use surgeist_dom::{DomSourceAttributeVerificationOutcome, DomSourceProgress};
+use surgeist_dom::source::{DomSourceProgress, attribute::DomSourceAttributeVerificationOutcome};
 use surgeist_html::security::csp::{
     HtmlCspError, HtmlCspLayout, HtmlCspProcessorProfile, HtmlCspStorage, HtmlMetaCspOutcome,
     HtmlMetaCspProcessor, HtmlMetaCspRequest,
@@ -921,7 +921,7 @@ impl HtmlMetaCspProcessor for StopAfterCspPreparation<'_> {
 pub(super) fn hosted_meta_source_publishes_ordered_csp_for_the_registered_attribute_verifier() {
     use crate::trusted_types_csp::{PolicyDelivery, PolicyProcessor};
     use crate::{DomSourceDriveProgress, DomSourceServices, DomSourceUnavailable};
-    use surgeist_dom::{DomDocumentCspState, DomSourceMetaCspError};
+    use surgeist_dom::meta::{DomDocumentCspState, DomSourceMetaCspError};
 
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session_with_dom_limits(&cancel, 0, 0, |limits| {
@@ -1778,7 +1778,7 @@ fn early_conversion_cancellation_abandons_without_replay(
     mut host: DocumentScriptHost,
     permit: DocumentScriptPermit,
     cancel: &Arc<AtomicBool>,
-    element: surgeist_dom::NodeId,
+    element: surgeist_dom::identity::NodeId,
 ) {
     let calls = Rc::new(Cell::new(0));
     let result = host.in_document(&permit, |scope| {
@@ -1851,7 +1851,7 @@ fn assert_csp_event_counts(
 fn attach_attribute_recovery_fixture(
     session: DomSession,
     target: DomHostedTopLevel,
-    element: surgeist_dom::NodeId,
+    element: surgeist_dom::identity::NodeId,
     cancel: &Arc<AtomicBool>,
     source_work: u64,
 ) -> (DocumentScriptHost, DocumentScriptPermit) {
@@ -1902,7 +1902,7 @@ fn complete_guest_attribute(
         Result<crate::DomSourceDriveProgress, crate::DomSourceDriveError>,
         DocumentGuestEventError,
     >,
-) -> surgeist_dom::DomSourceCompletion {
+) -> surgeist_dom::source::DomSourceCompletion {
     let progress = progress.unwrap().unwrap();
     let crate::DomSourceDriveProgress::Complete(completion) = progress else {
         panic!("expected original attribute completion, got {progress:?}");

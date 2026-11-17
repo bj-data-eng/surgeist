@@ -9,7 +9,7 @@ use surgeist_bindings_js::{
     Arguments, Callback, Completion, Error, FunctionMetadata, Primitive, PropertyDescriptor,
     PropertyKey, Scope, ValueKind,
 };
-use surgeist_dom::{DomHostedError, DomHostedRuntimeRetention};
+use surgeist_dom::hosted::{DomHostedError, DomHostedRuntimeRetention};
 use surgeist_html_semantics::HtmlScriptingStatus;
 
 use super::{DocumentScriptNativeError, DocumentScriptPermit, NativeOwner, refuse};

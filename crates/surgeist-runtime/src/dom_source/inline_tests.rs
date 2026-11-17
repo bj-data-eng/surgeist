@@ -2,9 +2,13 @@
 use super::*;
 use crate::{DomSession, DomSessionLimits, DomStyleRuntimeLimits};
 use surgeist_dom::{
-    Dom, DomBatch, DomHostedLimits, DomHostedRecordLimits, DomInlineStyleInputs,
-    DomInlineStyleLimits, DomInlineStyleProfile, DomInlineStyleRequestLimits,
-    DomInlineStyleSourceContext, DomLimits,
+    Dom, DomBatch,
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    limits::DomLimits,
+    style::inline::{
+        DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
+        DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
+    },
 };
 use surgeist_html::values::Namespace;
 
@@ -18,7 +22,8 @@ fn session() -> DomSession {
             0,
             8,
             100_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -75,7 +80,7 @@ pub(crate) fn requests() -> DomInlineStyleRequestLimits {
 }
 pub(crate) fn inline_parser(
     snapshot: &surgeist_dom::DomSnapshot,
-    document: surgeist_dom::DocumentId,
+    document: surgeist_dom::identity::DocumentId,
 ) -> surgeist_css::CssParserContext {
     use surgeist_css::CssParserMode;
     use surgeist_html::construction::HtmlDocumentMode;
@@ -89,8 +94,8 @@ pub(crate) fn inline_parser(
 
 pub(crate) fn bind(
     session: &mut DomSession,
-    element: surgeist_dom::NodeId,
-    document: surgeist_dom::DocumentId,
+    element: surgeist_dom::identity::NodeId,
+    document: surgeist_dom::identity::DocumentId,
 ) -> (
     surgeist_cssom::CssStyleProperties,
     DomInlineStyleSourceContext,
@@ -261,7 +266,10 @@ fn compound_terminal_refusal_resumes_the_original_runtime_invocation_after_cance
         )))
     ));
     let status = session.dom().pending_source_edit().unwrap();
-    assert_eq!(status.phase(), surgeist_dom::DomSourcePhase::PendingCleanup);
+    assert_eq!(
+        status.phase(),
+        surgeist_dom::source::DomSourcePhase::PendingCleanup
+    );
     assert!(!status.has_published());
     let operation = status.operation();
     let interrupted = AtomicBool::new(true);
@@ -370,8 +378,10 @@ fn compound_failure_preserves_paired_inline_adoption_publication_through_native_
             limits(),
             &mut DomSourceServices {
                 meta: Some(
-                    surgeist_dom::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128)
-                        .unwrap(),
+                    surgeist_dom::meta::DomMetaAtomicLimits::new(
+                        16_000_000, 1_000_000, 1_000_000, 128,
+                    )
+                    .unwrap(),
                 ),
                 execution_scope: None,
                 style_policy: &mut |_| panic!("no Style request"),
@@ -627,7 +637,7 @@ fn bound_retirement_returns_original_pair_and_releases_runtime_source_owner() {
         publication
             .dom()
             .changes()
-            .contains(&surgeist_dom::DomChange::Destroyed(element))
+            .contains(&surgeist_dom::edit::DomChange::Destroyed(element))
     );
     let surgeist_cssom::CssomPublication::Changed(summary) = publication.inline().publication()
     else {

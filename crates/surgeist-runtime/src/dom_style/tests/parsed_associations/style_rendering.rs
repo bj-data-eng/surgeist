@@ -3,7 +3,21 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomError,
+    edit::DomChange,
+    installation::{
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+        DomParsedHtmlAssociationLimits,
+        style::{
+            DomParsedHtmlStyleError, DomParsedHtmlStylePhase, DomParsedHtmlStyleQualification,
+            DomParsedHtmlStyleRenderingProgress, DomParsedHtmlStyleRenderingRequirement,
+        },
+    },
+    limits::DomResource,
+    source::DomSourceEdit,
+    tree::DomNodeKind,
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn request(

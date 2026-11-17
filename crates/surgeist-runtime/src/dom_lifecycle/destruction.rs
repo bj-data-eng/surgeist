@@ -3,9 +3,12 @@
 //! original Runtime owns native registration, loop/task and checkpoint custody.
 mod style_root;
 use super::*;
-use surgeist_dom::{
-    DomHostedDestructionInvocation, DomHostedDestructionLease, DomHostedDestructionPublication,
-    DomHostedDestructionStep, DomHostedOperationId,
+use surgeist_dom::hosted::{
+    DomHostedOperationId,
+    destruction::{
+        DomHostedDestructionInvocation, DomHostedDestructionLease, DomHostedDestructionPublication,
+        DomHostedDestructionStep,
+    },
 };
 
 pub(super) struct State {
@@ -50,7 +53,7 @@ pub(super) struct Invocation {
 struct Info {
     operation: DomHostedOperationId,
     cleanup: DomHostedOperationId,
-    document: surgeist_dom::DocumentId,
+    document: surgeist_dom::identity::DocumentId,
     global: DomHostedGlobalId,
     navigable: DomHostedNavigableId,
     traversable: DomHostedNavigableId,
@@ -510,11 +513,13 @@ impl HostedState {
         &mut self,
         h: usize,
         t: usize,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         global: DomHostedGlobalId,
         cancel: &AtomicBool,
-    ) -> Result<Option<surgeist_dom::DomHostedDocumentDestructionProof>, DomHostedRuntimeError>
-    {
+    ) -> Result<
+        Option<surgeist_dom::hosted::destruction::DomHostedDocumentDestructionProof>,
+        DomHostedRuntimeError,
+    > {
         let Self {
             hosts,
             work,
@@ -540,7 +545,7 @@ impl HostedState {
         &mut self,
         dom: &mut DomEventDom<'_>,
         traversable: DomHostedNavigableId,
-        required_document: Option<surgeist_dom::DocumentId>,
+        required_document: Option<surgeist_dom::identity::DocumentId>,
         cancel: &AtomicBool,
     ) -> Result<Option<DomHostedTaskProgress>, DomHostedRuntimeError> {
         let snapshot = dom.snapshot();
@@ -1171,9 +1176,9 @@ fn manipulation_error(
 /// One actual Document/Global generation's cleanup evidence. A reserved row is
 /// not a completion: only the canonical cleanup issuer can fill its proof.
 pub(super) struct Completion {
-    pub document: surgeist_dom::DocumentId,
+    pub document: surgeist_dom::identity::DocumentId,
     pub global: DomHostedGlobalId,
-    pub proof: Option<surgeist_dom::DomHostedDocumentDestructionProof>,
+    pub proof: Option<surgeist_dom::hosted::destruction::DomHostedDocumentDestructionProof>,
 }
 
 impl HostedState {
@@ -1181,7 +1186,7 @@ impl HostedState {
         &mut self,
         h: usize,
         t: usize,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         global: DomHostedGlobalId,
         cancel: &AtomicBool,
     ) -> Result<usize, DomHostedRuntimeError> {
@@ -1341,7 +1346,7 @@ fn retire_native_top(
     host: &mut records::Host,
     index: usize,
     global: DomHostedGlobalId,
-    operation: surgeist_dom::DomHostedOperationId,
+    operation: surgeist_dom::hosted::DomHostedOperationId,
     navigable: DomHostedNavigableId,
 ) {
     let composition = &mut host.top_levels[index];
@@ -1451,8 +1456,11 @@ mod completion_retention_tests {
         DomSourceServices, DomStyleRuntimeLimits,
     };
     use surgeist_dom::{
-        Dom, DomBatch, DomHostedLimits, DomHostedRecordLimits, DomLimits, DomSourceEdit,
-        DomSourceLimits, NodeId,
+        Dom, DomBatch,
+        hosted::{DomHostedLimits, DomHostedRecordLimits},
+        identity::NodeId,
+        limits::DomLimits,
+        source::{DomSourceEdit, DomSourceLimits},
     };
     use surgeist_html::values::Namespace;
 
@@ -1468,8 +1476,10 @@ mod completion_retention_tests {
                     512,
                     32,
                     4_000_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )

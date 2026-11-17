@@ -1,7 +1,7 @@
 //! Canonical ordinary DocumentFragment creation and projection custody.
 
 use super::*;
-use surgeist_dom::DomDetachedNodeCreation;
+use surgeist_dom::edit::DomDetachedNodeCreation;
 
 pub(super) const FRAGMENT: &[u16] = &ascii(b"DocumentFragment");
 const CREATE_FRAGMENT: &[u16] = &ascii(b"createDocumentFragment");

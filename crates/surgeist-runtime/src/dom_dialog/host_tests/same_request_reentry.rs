@@ -108,7 +108,7 @@ fn attempt(storage_bytes: usize, repeat_request: bool) -> bool {
     assert_eq!(pending.operation(), request.operation());
     assert_eq!(
         pending.phase(),
-        surgeist_dom::DomSourcePhase::EventReceiptAccepted
+        surgeist_dom::source::DomSourcePhase::EventReceiptAccepted
     );
     canceled_tail(&mut source, &mut session, &request);
     assert!(session.dom().pending_source_edit().is_none());

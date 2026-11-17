@@ -36,13 +36,17 @@ fn exhausted_source_filter_work_can_be_raised_without_replacing_the_owner() {
     assert!(Rc::ptr_eq(&runtime.state().unwrap(), &owner));
 }
 
-fn source_limits() -> surgeist_dom::DomSourceLimits {
-    surgeist_dom::DomSourceLimits::new(16_000_000, 1_000_000, 4_000_000, 64, 4096, 4096, 4)
+fn source_limits() -> surgeist_dom::source::DomSourceLimits {
+    surgeist_dom::source::DomSourceLimits::new(16_000_000, 1_000_000, 4_000_000, 64, 4096, 4096, 4)
 }
 fn close_queue(
     final_notification: bool,
-) -> (DomSession, NodeId, surgeist_dom::DomSourceDialogRequest) {
-    use surgeist_dom::{DomSourceEdit, DomSourceProgress, DomSourceRequest};
+) -> (
+    DomSession,
+    NodeId,
+    surgeist_dom::dialog::DomSourceDialogRequest,
+) {
+    use surgeist_dom::source::{DomSourceEdit, DomSourceProgress, DomSourceRequest};
     let (mut session, document, _, _) = fixture();
     let mut batch = DomBatch::new();
     let dialog = batch.create_element_ns(document, Namespace::html(), "dialog");
@@ -149,7 +153,7 @@ fn never_hosted_dialog_tasks_deliver_with_unavailable_creation_timing() {
             .unwrap();
         assert!(matches!(
             lease.advance(&cancel()).unwrap(),
-            surgeist_dom::DomSourceProgress::Complete(_)
+            surgeist_dom::source::DomSourceProgress::Complete(_)
         ));
     }
     let mut context = context(&mut session);
@@ -242,16 +246,16 @@ fn close_reserves_two_original_task_serials_before_its_first_queue_effect() {
             );
         } else {
             outcome.unwrap();
-            let surgeist_dom::DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Dialog(
-                close,
-            )) = lease.advance(&cancel()).unwrap()
+            let surgeist_dom::source::DomSourceProgress::Request(
+                surgeist_dom::source::DomSourceRequest::Dialog(close),
+            ) = lease.advance(&cancel()).unwrap()
             else {
                 panic!("actual final Close queue")
             };
             runtime.queue_dialog(&mut lease, &close, &cancel()).unwrap();
             assert!(matches!(
                 lease.advance(&cancel()).unwrap(),
-                surgeist_dom::DomSourceProgress::Complete(_)
+                surgeist_dom::source::DomSourceProgress::Complete(_)
             ));
             let state = owner.borrow();
             assert_eq!(state.next, u64::MAX);
@@ -274,8 +278,8 @@ fn final_candidate_peak() -> usize {
     // real Intake owner. Dialog tasks do not append a Details tracker record.
     size_of::<RefCell<ElementTaskState>>()
         + size_of::<TaskPayloadCounterTarget>()
-        + size_of::<surgeist_dom::DomElementTaskSource>()
-        + surgeist_dom::DomElementTaskSource::binding_payload_bytes()
+        + size_of::<surgeist_dom::task::DomElementTaskSource>()
+        + surgeist_dom::task::DomElementTaskSource::binding_payload_bytes()
         + size_of::<Intake>()
         + size_of::<Task>()
         + size_of::<Tracker>()
@@ -383,7 +387,7 @@ fn final_close_queue_exact_overlap_refusal_and_affine_retry_preserve_toggle_trac
             );
             assert!(matches!(
                 lease.advance(&cancel()).unwrap(),
-                surgeist_dom::DomSourceProgress::Complete(_)
+                surgeist_dom::source::DomSourceProgress::Complete(_)
             ));
         }
         // The exact policy above covers queue formation and its affine

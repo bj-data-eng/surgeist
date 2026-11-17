@@ -8,7 +8,7 @@ use surgeist_bindings_js::{
     conversion::{Argument, Converted, Type, declarations},
     dom_exception::DomExceptionName,
 };
-use surgeist_dom::DomDetachedNodeCreation;
+use surgeist_dom::edit::DomDetachedNodeCreation;
 
 pub(super) fn constructor(
     capture: CaptureFunding<'_>,

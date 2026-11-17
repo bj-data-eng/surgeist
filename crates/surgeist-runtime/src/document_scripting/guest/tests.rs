@@ -3,7 +3,7 @@ use super::*;
 pub(in crate::document_scripting) fn projected_node_id<'scope>(
     scope: &mut Scope<'scope>,
     value: &Value<'scope>,
-) -> Result<surgeist_dom::NodeId, Error> {
+) -> Result<surgeist_dom::identity::NodeId, Error> {
     Ok(scope
         .native_object::<interfaces::GuestNodeProjection>(value)?
         .unwrap()
@@ -348,7 +348,7 @@ pub(in crate::document_scripting) fn direct_registered_constructors_create_canon
     let contents = snapshot.node(template.contents().unwrap()).unwrap();
     assert!(matches!(
         contents.kind(),
-        surgeist_dom::DomNodeKind::DocumentFragment
+        surgeist_dom::tree::DomNodeKind::DocumentFragment
     ));
     assert_ne!(
         contents.owner_document(),
@@ -799,7 +799,7 @@ pub(in crate::document_scripting) fn failed_tree_edit_precedes_nested_host_refus
 
 fn prepare_failed_tree_edit(
     host: &mut DocumentScriptHost,
-) -> (DocumentScriptPermit, surgeist_dom::DomSourceEdit) {
+) -> (DocumentScriptPermit, surgeist_dom::source::DomSourceEdit) {
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
         scope
@@ -827,7 +827,7 @@ fn prepare_failed_tree_edit(
         .document_element()
         .unwrap();
     let receiver = *snapshot.node(root).unwrap().children().last().unwrap();
-    let edit = surgeist_dom::DomSourceEdit::append(
+    let edit = surgeist_dom::source::DomSourceEdit::append(
         document.node(),
         vec![
             receiver.into(),
@@ -839,7 +839,7 @@ fn prepare_failed_tree_edit(
 
 pub(in crate::document_scripting) fn custom_element_reacts_to_an_inline_joined_failure() {
     use crate::dom_source::inline_tests::{bind, inline_parser, requests};
-    use surgeist_dom::{DomInlineStyleProfile, DomInlineStyleSourceContext};
+    use surgeist_dom::style::inline::{DomInlineStyleProfile, DomInlineStyleSourceContext};
 
     let mut host = public_node_host(20_000, 200_000);
     let (permit, _) = prepare_failed_tree_edit(&mut host);
@@ -886,7 +886,7 @@ pub(in crate::document_scripting) fn custom_element_reacts_to_an_inline_joined_f
             .collect();
         DomInlineStyleSourceContext::new(session.snapshot().stamp(), profiles).unwrap()
     };
-    let edit = surgeist_dom::DomSourceEdit::append(
+    let edit = surgeist_dom::source::DomSourceEdit::append(
         destination.node(),
         vec![
             receiver.into(),
@@ -1028,7 +1028,7 @@ pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate
     );
     assert_eq!(
         element.custom_element_definition(),
-        surgeist_dom::DomElementDefinition::Null
+        surgeist_dom::custom_element::DomElementDefinition::Null
     );
     let constructor = host
         .take_guest_constructor_exception(&permit)
@@ -1286,7 +1286,7 @@ pub(in crate::document_scripting) fn registry_definition_preserves_guest_identit
         failure.cause::<DocumentGuestEventError>(),
         Some(DocumentGuestEventError::Document(
             DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
-                crate::DomHostedRuntimeError::Dom(surgeist_dom::DomHostedError::Dom(
+                crate::DomHostedRuntimeError::Dom(surgeist_dom::hosted::DomHostedError::Dom(
                     DomError::SourceWorkLimit { limit: 0 }
                 ))
             ))
@@ -1437,7 +1437,7 @@ pub(in crate::document_scripting) fn document_factories_execute_the_reached_cust
         .unwrap();
     assert_eq!(
         pending.phase(),
-        surgeist_dom::DomSourcePhase::CustomElementConstruction
+        surgeist_dom::source::DomSourcePhase::CustomElementConstruction
     );
     drop(events);
     let registration = Rc::downgrade(&host.engine.as_ref().unwrap().registration);
@@ -1781,7 +1781,7 @@ pub(in crate::document_scripting) fn refuse_next_source_node_validation(host: &D
 pub(in crate::document_scripting) fn expose_public_node_for_source_test(
     host: &mut DocumentScriptHost,
     permit: &DocumentScriptPermit,
-    node: surgeist_dom::NodeId,
+    node: surgeist_dom::identity::NodeId,
     name: &str,
 ) {
     let events = host.guest_events().unwrap();
@@ -2609,7 +2609,7 @@ pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_re
         .find(|id| {
             matches!(
                 snapshot.node(*id).unwrap().kind(),
-                surgeist_dom::DomNodeKind::DocumentFragment
+                surgeist_dom::tree::DomNodeKind::DocumentFragment
             )
         })
         .unwrap();
@@ -2702,7 +2702,7 @@ pub(in crate::document_scripting) fn character_data_source_refusal_preserves_nat
         .find(|id| {
             matches!(
                 before.node(*id).unwrap().kind(),
-                surgeist_dom::DomNodeKind::Text(data) if data.code_units() == original.as_slice()
+                surgeist_dom::tree::DomNodeKind::Text(data) if data.code_units() == original.as_slice()
             )
         })
         .unwrap();

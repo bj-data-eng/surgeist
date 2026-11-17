@@ -479,7 +479,7 @@ fn attached_registry_runs_the_original_dialog_toggle_and_close_tasks() {
             };
             assert_eq!(
                 request.kind(),
-                surgeist_dom::DomSourceEventKind::BeforeToggle
+                surgeist_dom::event::DomSourceEventKind::BeforeToggle
             );
             assert!(!request.cancelable());
             request
@@ -524,7 +524,7 @@ fn attached_registry_runs_the_original_dialog_toggle_and_close_tasks() {
         DomElementTaskProgress::Complete {
             task,
             receipt,
-            dialog_toggle_disposition: Some(surgeist_dom::DomDialogToggleTaskDisposition::TrackerCleared),
+            dialog_toggle_disposition: Some(surgeist_dom::dialog::DomDialogToggleTaskDisposition::TrackerCleared),
             displaced_owner: None,
         } if task.id() == toggle.id() && receipt.callbacks() == 1 && receipt.failures().is_empty()
     ));

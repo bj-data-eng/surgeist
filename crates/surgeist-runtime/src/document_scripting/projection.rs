@@ -3,8 +3,10 @@
 use super::*;
 use surgeist_bindings_js::ManagedObject;
 use surgeist_dom::{
-    Dom, DomNodeRetirementInbox, DomNodeRetirementWatch, DomSourceEventPayloadRetention,
-    DomSourceEventRequest, NodeId,
+    Dom,
+    edit::{DomNodeRetirementInbox, DomNodeRetirementWatch},
+    event::{DomSourceEventPayloadRetention, DomSourceEventRequest},
+    identity::NodeId,
 };
 
 #[derive(Default)]

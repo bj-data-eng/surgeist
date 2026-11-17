@@ -3,9 +3,13 @@
 use crate::{Runtime, SurfaceElementRef, SurfaceError, SurfaceRef, UiSurface, WindowId};
 use std::{fmt, sync::Arc};
 use surgeist_dom::{
-    DomDocument, DomDocumentStamp, DomError, DomHostCapture, DomHostChangeCoverage, DomHostDomains,
-    DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher, DomHostStamp, NodeId,
-    Observed,
+    DomError,
+    capture::{
+        DomHostCapture, DomHostChangeCoverage, DomHostDomains, DomHostError, DomHostObservations,
+        DomHostPublication, DomHostPublisher, DomHostStamp, Observed,
+    },
+    identity::{DomDocumentStamp, NodeId},
+    tree::DomDocument,
 };
 
 /// Finite admission for actual variable-size surface-to-DOM associations.

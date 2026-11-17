@@ -8,7 +8,17 @@
 ))]
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    edit::DomChange,
+    form::select::{DomSelectTaskCancellationReason, DomSelectTaskOutcome},
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    limits::{DomLimits, DomResource},
+    shadow::DomSlotQueryLimits,
+    source::{DomSourceLimits, DomSourceRequest},
+    style::{DomStyleAction, DomStyleInlineCspObservation, DomStyleSource},
+    task::{DomNativeCheckpoint, DomNativeCheckpointLimits},
+};
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
 
@@ -70,7 +80,8 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 128,
                 16,
                 1_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_select_processing(32, 4_000_000, 10_000_000)
@@ -164,8 +175,10 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                     32,
                     8,
                     100_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )
@@ -378,11 +391,12 @@ fn runtime_live_select_completion_returns_its_actual_source_progress() {
 #[test]
 fn finite_meta_permission_preserves_real_select_completion_without_meta() {
     live_select_completion(Some(
-        surgeist_dom::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap(),
+        surgeist_dom::meta::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128)
+            .unwrap(),
     ));
 }
 
-fn live_select_completion(meta: Option<surgeist_dom::DomMetaAtomicLimits>) {
+fn live_select_completion(meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>) {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(
@@ -393,7 +407,8 @@ fn live_select_completion(meta: Option<surgeist_dom::DomMetaAtomicLimits>) {
             64,
             8,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_select_processing(8, 4_000_000, 10_000_000)
@@ -472,11 +487,12 @@ fn runtime_live_select_copy_resumes_the_same_real_style_csp_request_once() {
 #[test]
 fn finite_meta_permission_preserves_select_style_request_and_resume() {
     live_select_copy(Some(
-        surgeist_dom::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap(),
+        surgeist_dom::meta::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128)
+            .unwrap(),
     ));
 }
 
-fn live_select_copy(meta: Option<surgeist_dom::DomMetaAtomicLimits>) {
+fn live_select_copy(meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>) {
     let cancel = AtomicBool::new(false);
     let source_limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
     let checkpoint = DomNativeCheckpointLimits::new(
@@ -494,7 +510,8 @@ fn live_select_copy(meta: Option<surgeist_dom::DomMetaAtomicLimits>) {
             0,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_select_processing(32, 4_000_000, 10_000_000)

@@ -1,7 +1,7 @@
 //! The original traversable's FIFO execution custody. Canonical DOM alone owns
 //! Nav/Entry/DocumentState, attached and retained history collections and steps.
 use super::*;
-use surgeist_dom::{DomHostedOperationId, DomHostedQueuedHistory};
+use surgeist_dom::hosted::{DomHostedOperationId, history::DomHostedQueuedHistory};
 
 pub(super) struct Traversal {
     pub traversable: Option<DomHostedNavigableId>,
@@ -22,8 +22,8 @@ pub(super) struct Queued {
     pub operation: DomHostedOperationId,
     pub initiating_loop: Rc<RefCell<records::WindowLoop>>,
     pub continuation: Option<DomHostedQueuedHistory>,
-    pub publication: Option<surgeist_dom::DomHostedChildHistoryPublication>,
-    pub removal: Option<surgeist_dom::DomHostedChildRemovalPublication>,
+    pub publication: Option<surgeist_dom::hosted::history::DomHostedChildHistoryPublication>,
+    pub removal: Option<surgeist_dom::hosted::child::DomHostedChildRemovalPublication>,
 }
 
 pub(super) fn reserve_traversal(
@@ -87,11 +87,11 @@ pub(super) fn reserve_traversal(
 pub(super) struct Job {
     pub operation: DomHostedOperationId,
     pub occurrence: u64,
-    pub document: surgeist_dom::DocumentId,
+    pub document: surgeist_dom::identity::DocumentId,
     pub global: DomHostedGlobalId,
 }
 impl Job {
-    fn from_request(request: &surgeist_dom::DomHostedHistoryJobRequest) -> Self {
+    fn from_request(request: &surgeist_dom::hosted::history::DomHostedHistoryJobRequest) -> Self {
         Self {
             operation: request.operation(),
             occurrence: request.occurrence(),
@@ -286,10 +286,10 @@ impl HostedRuntime {
                 .resume_queued_history(source, continuation, cancel)
                 .map_err(DomHostedRuntimeError::Dom)?
             {
-                surgeist_dom::DomHostedHistoryStep::Job(request) => {
+                surgeist_dom::hosted::history::DomHostedHistoryStep::Job(request) => {
                     Some(Job::from_request(request))
                 }
-                surgeist_dom::DomHostedHistoryStep::Complete => None,
+                surgeist_dom::hosted::history::DomHostedHistoryStep::Complete => None,
             }
         };
         let Some(job) = job else {
@@ -493,7 +493,7 @@ impl HostedRuntime {
                 .continuation
                 .as_mut()
                 .ok_or(DomHostedRuntimeError::Protocol)?;
-            let surgeist_dom::DomHostedHistoryStep::Job(request) = dom
+            let surgeist_dom::hosted::history::DomHostedHistoryStep::Job(request) = dom
                 .raw_mut()
                 .resume_queued_history(source, continuation, cancel)
                 .map_err(DomHostedRuntimeError::Dom)?

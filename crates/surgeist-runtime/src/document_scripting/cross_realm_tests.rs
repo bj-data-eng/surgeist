@@ -55,8 +55,12 @@ use crate::{
 use surgeist_bindings_js::{Root, Value, ValueKind};
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_dom::{
-    Dom, DomBatch, DomDispatchCustodyLimits, DomHostedLimits, DomHostedRecordLimits, DomLimits,
-    DomNameLimits, DomSourceEdit, DomSourceEventRequest, DomSourceLimits, DomSourceRequest, NodeId,
+    Dom, DomBatch,
+    event::{DomDispatchCustodyLimits, DomSourceEventRequest},
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    identity::NodeId,
+    limits::{DomLimits, DomNameLimits},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceRequest},
 };
 use surgeist_html::values::Namespace;
 
@@ -1516,7 +1520,7 @@ fn attached_beforetoggle_uses_the_original_toggle_event() {
             };
             assert_eq!(
                 request.kind(),
-                surgeist_dom::DomSourceEventKind::BeforeToggle
+                surgeist_dom::event::DomSourceEventKind::BeforeToggle
             );
             let toggle = request.toggle_event().unwrap();
             assert_eq!(
@@ -1613,7 +1617,10 @@ fn start_attached_cancel(
         else {
             panic!("actual requestClose must reach native Cancel: {progress:?}");
         };
-        assert_eq!(request.kind(), surgeist_dom::DomSourceEventKind::Cancel);
+        assert_eq!(
+            request.kind(),
+            surgeist_dom::event::DomSourceEventKind::Cancel
+        );
         request
     })
     .unwrap()

@@ -5,7 +5,24 @@ use super::consumption::{envelope, report};
 use super::style_decision::{empty_policy, installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending};
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomCommit, DomError,
+    edit::DomChange,
+    installation::{
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationLimits,
+        DomParsedHtmlInstallation,
+        style::{
+            DomParsedHtmlStyleError, DomParsedHtmlStyleInlinePolicyObservation,
+            DomParsedHtmlStyleNotificationRequirement, DomParsedHtmlStylePhase,
+            DomParsedHtmlStyleQualification, DomParsedHtmlStyleRenderingProgress,
+            DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorError,
+            DomParsedHtmlStyleSuccessorRemoval,
+        },
+    },
+    limits::DomResource,
+    source::{DomSourceEdit, DomSourceRequest},
+    style::{DomStyleCssomRoot, DomStyleSheet},
+};
 use surgeist_html::elements::style::HtmlStyleTrigger;
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{

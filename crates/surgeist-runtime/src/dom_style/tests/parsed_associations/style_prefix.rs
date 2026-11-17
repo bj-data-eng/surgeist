@@ -3,7 +3,22 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::{envelope, environment, installation, parsing, report};
 use std::sync::Arc;
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomError,
+    capture::DomHtmlCaptureLimits,
+    installation::{
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+        DomParsedHtmlAssociationLimits, DomParsedHtmlHistoricalDocument, DomParsedHtmlInstallError,
+        DomParsedHtmlInstallation,
+        style::{
+            DomParsedHtmlStyleError, DomParsedHtmlStyleInitialPolicyRequest,
+            DomParsedHtmlStylePhase,
+        },
+    },
+    limits::DomResource,
+    source::{DomSourceEdit, DomSourceRequest},
+    tree::DomNodeKind,
+};
 use surgeist_html::security::csp::{HtmlCspAssociation, HtmlCspOwner};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseReport, HtmlSource};

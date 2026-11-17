@@ -1,7 +1,9 @@
 //! Start the next authentic original subject, preserving existing async owners.
 use super::admission::{Custody, Steps, current_storage};
 use super::*;
-use surgeist_dom::{DomParsedHtmlStyleSubjectCompletion, DomParsedHtmlStyleSubjectError};
+use surgeist_dom::installation::style::{
+    DomParsedHtmlStyleSubjectCompletion, DomParsedHtmlStyleSubjectError,
+};
 
 /// The real Runtime owner or original subject transition refused.
 #[derive(Debug)]

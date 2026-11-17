@@ -18,9 +18,9 @@ fn backing() -> Backing {
             units: usize::MAX,
             outputs: usize::MAX,
             resources: [
-                surgeist_dom::DomResource::MetaAtomicRetainedBytes,
-                surgeist_dom::DomResource::MetaAtomicRetainedUnits,
-                surgeist_dom::DomResource::MetaAtomicOutputs,
+                surgeist_dom::limits::DomResource::MetaAtomicRetainedBytes,
+                surgeist_dom::limits::DomResource::MetaAtomicRetainedUnits,
+                surgeist_dom::limits::DomResource::MetaAtomicOutputs,
             ],
         },
     }

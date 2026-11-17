@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     DomHostedDestructionQueued, DomHostedRuntimeError, DomHostedTaskProgress, HostedRuntime,
 };
-use surgeist_dom::{DomHostedError, DomMetaAtomicLimits, DomStyleSheet};
+use surgeist_dom::{hosted::DomHostedError, meta::DomMetaAtomicLimits, style::DomStyleSheet};
 use surgeist_html::values::DocumentString;
 use surgeist_html::values::Namespace;
 
@@ -348,7 +348,8 @@ fn constructed_owner_services_real_style_and_withdraws_after_hosted_retirement()
     );
 }
 fn frame_bytes() -> usize {
-    (size_of::<DomStyleRootWithdrawal>() - size_of::<surgeist_dom::DomHostedStyleRootWithdrawal>())
+    (size_of::<DomStyleRootWithdrawal>()
+        - size_of::<surgeist_dom::hosted::sheet::DomHostedStyleRootWithdrawal>())
         + size_of::<std::rc::Rc<DomStyleCssomRoot>>()
         + 2 * size_of::<RootResource>()
 }

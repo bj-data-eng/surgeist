@@ -48,7 +48,7 @@ fn construct_after_shadow_retirement(root_limit: usize) {
     let host = create.create_element_ns(document, Namespace::html(), "div");
     let shadow = create.attach_shadow(
         &host,
-        surgeist_dom::DomShadowRootInit::new(
+        surgeist_dom::shadow::DomShadowRootInit::new(
             surgeist_html::construction::HtmlShadowRootMode::Closed,
         ),
     );
@@ -102,7 +102,7 @@ fn construct_after_shadow_retirement(root_limit: usize) {
         destroyed
             .changes()
             .changes()
-            .contains(&surgeist_dom::DomChange::Destroyed(shadow))
+            .contains(&surgeist_dom::edit::DomChange::Destroyed(shadow))
     );
     let retired = session.snapshot();
     assert!(matches!(retired.node(shadow), Err(DomError::StaleNode)));
@@ -147,7 +147,7 @@ fn construct_after_shadow_retirement(root_limit: usize) {
         matches!(
             refused,
             Err(DomConstructedSheetError::Construction(
-                surgeist_dom::DomHostedSheetConstructionError::Cssom(
+                surgeist_dom::hosted::sheet::DomHostedSheetConstructionError::Cssom(
                     surgeist_cssom::CssomError::RevisionExhausted
                 )
             ))
@@ -302,8 +302,8 @@ fn fresh_and_joined_windows_use_one_real_store_and_the_current_native_fallback()
     assert!(matches!(
         refused,
         Err(DomConstructedSheetError::Construction(
-            surgeist_dom::DomHostedSheetConstructionError::Hosted(
-                surgeist_dom::DomHostedError::Dom(DomError::StyleReceiptMismatch)
+            surgeist_dom::hosted::sheet::DomHostedSheetConstructionError::Hosted(
+                surgeist_dom::hosted::DomHostedError::Dom(DomError::StyleReceiptMismatch)
             )
         ))
     ));
@@ -345,7 +345,7 @@ fn runtime_only_owner_is_joined_and_unavailable_hosted_base_change_preserves_the
     assert!(
         matches!(
             refusal,
-            DomError::BaseFacts(surgeist_dom::DomBaseFactsError::Missing(
+            DomError::BaseFacts(surgeist_dom::url::DomBaseFactsError::Missing(
                 surgeist_html_semantics::HtmlBaseMissing::DocumentFacts
             ))
         ),
@@ -397,7 +397,7 @@ fn exact_style_root_bytes_and_late_cssom_refusal_leave_no_partial_owner() {
     let stamp = session.snapshot().stamp();
     let native_limits = session_limits(limits()).hosted;
     let mut native_short = native_limits;
-    native_short.canonical = surgeist_dom::DomHostedLimits::new(
+    native_short.canonical = surgeist_dom::hosted::DomHostedLimits::new(
         native_limits.canonical.records(),
         native_limits.canonical.retained_bytes(),
         2048,
@@ -418,9 +418,9 @@ fn exact_style_root_bytes_and_late_cssom_refusal_leave_no_partial_owner() {
         matches!(
             refused,
             Err(DomConstructedSheetError::Construction(
-                surgeist_dom::DomHostedSheetConstructionError::Hosted(
-                    surgeist_dom::DomHostedError::Dom(DomError::ResourceLimit {
-                        resource: surgeist_dom::DomResource::SourceRetainedBytes,
+                surgeist_dom::hosted::sheet::DomHostedSheetConstructionError::Hosted(
+                    surgeist_dom::hosted::DomHostedError::Dom(DomError::ResourceLimit {
+                        resource: surgeist_dom::limits::DomResource::SourceRetainedBytes,
                         ..
                     })
                 )
@@ -456,8 +456,8 @@ fn exact_style_root_bytes_and_late_cssom_refusal_leave_no_partial_owner() {
     assert!(matches!(
         stopped,
         Err(DomConstructedSheetError::Construction(
-            surgeist_dom::DomHostedSheetConstructionError::Hosted(
-                surgeist_dom::DomHostedError::Dom(DomError::Cancelled)
+            surgeist_dom::hosted::sheet::DomHostedSheetConstructionError::Hosted(
+                surgeist_dom::hosted::DomHostedError::Dom(DomError::Cancelled)
             )
         ))
     ));
@@ -501,7 +501,7 @@ fn exact_style_root_bytes_and_late_cssom_refusal_leave_no_partial_owner() {
             &cancel
         ),
         Err(DomConstructedSheetError::Construction(
-            surgeist_dom::DomHostedSheetConstructionError::Cssom(
+            surgeist_dom::hosted::sheet::DomHostedSheetConstructionError::Cssom(
                 surgeist_cssom::CssomError::RevisionExhausted
             )
         ))

@@ -8,7 +8,28 @@ use crate::{
     DomSessionLimits, DomShutdownOutcome, DomShutdownReason, DomSourceDriveProgress,
     DomSourceEventRuntimeLimits, DomSourceServices, DomStyleRuntimeLimits,
 };
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    dialog::{
+        DomCloseWatcherId, DomSourceCloseWatcherRequest, DomSourceCloseWatcherStep,
+        DomSourceDialogRequest,
+    },
+    event::{DomDispatchCustodyLimits, DomSourceEventKind, DomSourceEventRequest},
+    hosted::{DomHostedError, DomHostedGlobalId, DomHostedLimits, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomNativeHtmlInstallLimits, DomNativeHtmlInstallTarget, DomSourceNativeHtmlInstallLimits,
+    },
+    limits::DomLimits,
+    shadow::DomShadowRootInit,
+    source::{
+        DomSourceCleanupCause, DomSourceCompletion, DomSourceEdit, DomSourceInvariantReason,
+        DomSourceLease, DomSourceLimits, DomSourceOperationId, DomSourcePhase, DomSourceProgress,
+        DomSourceRequest, DomSourceStoppedAction,
+    },
+    style::DomStyleSource,
+    task::DomElementTaskSourceKind,
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
@@ -65,7 +86,8 @@ fn hosted_queue_fixture() -> (DomSession, DomHostedTopLevel, NodeId) {
             128,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
@@ -191,8 +213,8 @@ fn actual_window_manager_shares_group_and_releases_each_removed_member_once() {
     );
     assert_eq!(
         attachment.output(),
-        Some(surgeist_dom::DomSourceOutput::AttributeAttachment(
-            surgeist_dom::DomAttributeAttachment::Appended(open)
+        Some(surgeist_dom::source::DomSourceOutput::AttributeAttachment(
+            surgeist_dom::tree::DomAttributeAttachment::Appended(open)
         ))
     );
     let first_id = session
@@ -233,7 +255,9 @@ fn actual_window_manager_shares_group_and_releases_each_removed_member_once() {
     );
     assert_eq!(
         removal.output(),
-        Some(surgeist_dom::DomSourceOutput::RemovedAttribute(open))
+        Some(surgeist_dom::source::DomSourceOutput::RemovedAttribute(
+            open
+        ))
     );
     assert_eq!(counts(&hosted), (1, 1, 1));
     apply(
@@ -1052,7 +1076,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             assert_eq!(
                 session
                     .element_task_execution()
-                    .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+                    .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
                     .unwrap(),
                 0
             );
@@ -1091,7 +1115,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
         assert_eq!(
             session
                 .element_task_execution()
-                .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+                .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
                 .unwrap(),
             1
         );
@@ -1120,7 +1144,10 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
         assert!(!status.cancellation_requested());
         let task = session
             .element_task_execution()
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap()
             .dialog_toggle()

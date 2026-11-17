@@ -14,9 +14,13 @@ use surgeist_bindings_js::{
 pub use surgeist_bindings_js::{css::CssNamespaceLimits, dom_exception::DomExceptionLimits};
 use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializationError};
 use surgeist_dom::{
-    DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
-    DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedGlobalId,
-    DomHostedRuntimeRetention, DomSnapshot,
+    DomError, DomSnapshot,
+    hosted::{DomHostedError, DomHostedGlobalId, DomHostedRuntimeRetention},
+    identity::DocumentId,
+    script::{
+        DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
+        DomDocumentScriptingObservation,
+    },
 };
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
@@ -75,7 +79,7 @@ pub enum DocumentScriptNativeError {
     CreationRealmAlreadyRegistered,
     /// This Global retains definitions whose original executable custody is
     /// absent from the new realm.
-    CustomElementRegistryCustodyUnavailable(surgeist_dom::DomRegistryId),
+    CustomElementRegistryCustodyUnavailable(surgeist_dom::custom_element::DomRegistryId),
     /// The guest binding budget refused installation in the creation realm.
     CreationRealmWorkLimit,
     /// A previously admitted projected node lost its managed pin record.
@@ -178,17 +182,19 @@ struct NativeOwner {
     attachment: OnceCell<Attachment>,
     session: RefCell<DomSession>,
     active_source: Cell<Option<source::ActiveSource>>,
-    active_attached_event: RefCell<Option<surgeist_dom::DomSourceEventRequest>>,
-    active_attribute: Cell<Option<surgeist_dom::DomSourceAttributeVerificationRequest>>,
+    active_attached_event: RefCell<Option<surgeist_dom::event::DomSourceEventRequest>>,
+    active_attribute:
+        Cell<Option<surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest>>,
     active_constructor: RefCell<Option<Rc<guest::ActiveConstructor>>>,
-    active_synchronous_reactions: Cell<Option<surgeist_dom::DomSynchronousReactionQueue>>,
+    active_synchronous_reactions:
+        Cell<Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>>,
     synchronous_shadow_reactions: Cell<bool>,
     scoped_shadow_queues: Cell<usize>,
     active_reaction_queue: RefCell<Option<Rc<guest::ActiveReactionQueue>>>,
     stopped_reaction_queues: RefCell<Option<Rc<guest::ActiveReactionQueue>>>,
     pending_constructor: RefCell<Option<Box<guest::PendingConstructor>>>,
     pending_attribute: RefCell<Option<Box<guest::PendingAttribute>>>,
-    pending_style: Cell<Option<(surgeist_dom::DomSourceOperationId, RealmId)>>,
+    pending_style: Cell<Option<(surgeist_dom::source::DomSourceOperationId, RealmId)>>,
     trusted_types_reports: RefCell<Option<Box<guest::ViolationQueue>>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
@@ -277,19 +283,19 @@ impl DomSession {
     /// Service the reached Meta request using this Session's selected processor.
     pub fn service_trusted_types_meta_csp(
         &mut self,
-        request: surgeist_dom::DomSourceMetaCspRequest,
-        limits: surgeist_dom::DomSourceLimits,
+        request: surgeist_dom::meta::DomSourceMetaCspRequest,
+        limits: surgeist_dom::source::DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomSourceRuntimeError> {
         let processor = self
             .trusted_types_csp
             .as_ref()
             .ok_or(DomSourceRuntimeError::MetaCsp(
-                surgeist_dom::DomSourceMetaCspError::PolicyUnavailable,
+                surgeist_dom::meta::DomSourceMetaCspError::PolicyUnavailable,
             ))?
             .clone();
         let mut processor = processor.processor.try_borrow_mut().map_err(|_| {
-            DomSourceRuntimeError::MetaCsp(surgeist_dom::DomSourceMetaCspError::IssuerBusy)
+            DomSourceRuntimeError::MetaCsp(surgeist_dom::meta::DomSourceMetaCspError::IssuerBusy)
         })?;
         self.source_execution().service_meta_csp(
             &mut self.dom(),
@@ -349,7 +355,7 @@ impl NativeOwner {
         &self,
     ) -> Result<
         Option<(
-            surgeist_dom::DomSourceCustomElementRequest,
+            surgeist_dom::custom_element::DomSourceCustomElementRequest,
             Rc<DomDocumentScriptRegistration>,
         )>,
         DocumentScriptNativeError,
@@ -363,10 +369,10 @@ impl NativeOwner {
 
     fn active_constructor_registration(
         &self,
-        current: Option<surgeist_dom::DomSourceStatus>,
+        current: Option<surgeist_dom::source::DomSourceStatus>,
     ) -> Result<
         Option<(
-            surgeist_dom::DomSourceCustomElementRequest,
+            surgeist_dom::custom_element::DomSourceCustomElementRequest,
             Rc<DomDocumentScriptRegistration>,
         )>,
         DocumentScriptNativeError,
@@ -387,7 +393,7 @@ impl NativeOwner {
         &self,
     ) -> Result<
         Option<(
-            surgeist_dom::DomSourceAttributeVerificationRequest,
+            surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest,
             Rc<DomDocumentScriptRegistration>,
         )>,
         DocumentScriptNativeError,
@@ -1318,9 +1324,9 @@ impl DocumentScriptHost {
     pub fn service_script_settings(
         &mut self,
         permit: &DocumentScriptPermit,
-        request: surgeist_dom::DomSourceScriptRequest,
-        limits: surgeist_dom::DomSourceLimits,
-    ) -> Result<Option<surgeist_dom::DomSourceScriptSettings>, DocumentScriptError> {
+        request: surgeist_dom::script::DomSourceScriptRequest,
+        limits: surgeist_dom::source::DomSourceLimits,
+    ) -> Result<Option<surgeist_dom::script::DomSourceScriptSettings>, DocumentScriptError> {
         self.check_permit(permit)?;
         let attachment = self.attachment()?;
         attachment.realm.check_owner_active()?;
@@ -1526,7 +1532,7 @@ impl StoppedDocumentScriptHost {
     /// native operation can resume. Original constructor work stays charged.
     pub fn raise_pending_custom_element_limits(
         &mut self,
-        limits: surgeist_dom::DomSourceLimits,
+        limits: surgeist_dom::source::DomSourceLimits,
     ) -> Result<(), DocumentScriptNativeError> {
         self.native.raise_stopped_constructor_limits(limits)
     }
@@ -1535,7 +1541,7 @@ impl StoppedDocumentScriptHost {
     /// This publishes only the original native result and runs no guest code.
     pub fn settle_pending_custom_element(
         &mut self,
-        limits: surgeist_dom::DomSourceLimits,
+        limits: surgeist_dom::source::DomSourceLimits,
     ) -> Result<(), DocumentGuestEventError> {
         self.native.settle_stopped_constructor(limits)
     }

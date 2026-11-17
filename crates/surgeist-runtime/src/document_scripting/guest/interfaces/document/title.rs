@@ -2,7 +2,7 @@
 
 use super::{element::HTML_NAMESPACE, text::TextBuffer, *};
 use surgeist_bindings_js::conversion::declarations::html_title_element_text_setter;
-use surgeist_dom::{DomNode, DomSourceEdit};
+use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,

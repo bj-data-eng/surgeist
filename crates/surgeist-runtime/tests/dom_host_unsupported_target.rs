@@ -1,7 +1,11 @@
 #![forbid(unsafe_code)]
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomHostDomains, DomHostObservations, DomLimits, Observed};
+use surgeist_dom::{
+    Dom, DomBatch,
+    capture::{DomHostDomains, DomHostObservations, Observed},
+    limits::DomLimits,
+};
 use surgeist_runtime::{
     ElementId, ElementPhase, ElementRegistration, RootId, Runtime, RuntimeDomHostError,
     SurfaceDomBindingLimits, SurfaceElementRef, SurfaceId, SurfaceRoot, UiSurface, WindowId,
@@ -19,7 +23,8 @@ fn target_configuration_is_rejected_before_association_admission_without_changin
             0,
             4,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

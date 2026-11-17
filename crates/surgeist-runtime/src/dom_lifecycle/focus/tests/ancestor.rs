@@ -5,7 +5,7 @@ use crate::{
     DomSourceRuntimeError,
 };
 use std::error::Error;
-use surgeist_dom::DomSourceEventRequest;
+use surgeist_dom::event::DomSourceEventRequest;
 type Failure = Box<dyn Error>;
 struct Child {
     source: DomSourceRuntime,

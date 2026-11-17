@@ -9,7 +9,7 @@ use surgeist_bindings_js::{
     NativeObject, TrustedPolicyCallback, TrustedTypeKind, ValueKind,
     conversion::{Converted, types},
 };
-use surgeist_dom::DomDocumentCspState;
+use surgeist_dom::meta::DomDocumentCspState;
 use surgeist_html::values::DocumentString;
 
 struct Factory {

@@ -1,7 +1,7 @@
 //! A real cross-Document Source command retains an earlier Style receipt.
 use super::*;
 use surgeist_cssom::{CssomDeclarationSupport, CssomError, CssomLimits, CssomPublication};
-use surgeist_dom::{
+use surgeist_dom::style::inline::{
     DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile, DomInlineStyleRequestLimits,
     DomInlineStyleSourceContext,
 };
@@ -219,7 +219,7 @@ fn prior_document_style_receipt_and_new_document_meta_share_the_real_inline_sour
     );
     assert!(matches!(
         session.dom().raw().capture_inline_style(subtree),
-        Err(surgeist_dom::DomInlineStyleError::Dom(
+        Err(surgeist_dom::style::inline::DomInlineStyleError::Dom(
             DomError::IncompleteSourceOperation
         ))
     ));
@@ -409,7 +409,7 @@ fn late_sheet_revision_failure_keeps_the_joined_meta_tree_names_and_inline_origi
         )
         .unwrap_err();
     assert!(
-        matches!(error, crate::DomSourceDriveError::Meta(DomStyleMetaError::Meta(surgeist_dom::DomMetaAtomicError::Cssom {root, error: CssomError::RevisionExhausted})) if root == document)
+        matches!(error, crate::DomSourceDriveError::Meta(DomStyleMetaError::Meta(surgeist_dom::meta::DomMetaAtomicError::Cssom {root, error: CssomError::RevisionExhausted})) if root == document)
     );
     assert_eq!(session.snapshot().stamp(), canonical.stamp());
     assert_eq!(session.snapshot().node(subject).unwrap().parent(), None);

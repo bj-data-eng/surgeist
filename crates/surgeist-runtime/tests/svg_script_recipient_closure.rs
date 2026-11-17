@@ -4,8 +4,11 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomError, DomEventRecipientLimits, DomLimits, DomNameLimits,
-    DomResource, DomSnapshot, DomSvgScriptOrigin, DomUsage, NodeId,
+    Dom, DomBatch, DomError, DomSnapshot,
+    event::DomEventRecipientLimits,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource, DomUsage},
+    script::DomSvgScriptOrigin,
 };
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},

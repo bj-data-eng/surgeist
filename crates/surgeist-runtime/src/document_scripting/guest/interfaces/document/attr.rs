@@ -2,7 +2,7 @@
 
 use super::*;
 use character_data::copy_native_data;
-use surgeist_dom::DomSourceEdit;
+use surgeist_dom::source::DomSourceEdit;
 
 const ATTR: &[u16] = &ascii(b"Attr");
 

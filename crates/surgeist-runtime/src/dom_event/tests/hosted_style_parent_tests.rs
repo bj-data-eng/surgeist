@@ -15,7 +15,7 @@ use crate::{
     DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomSession, DomSessionLimits,
     DomStyleRuntimeLimits,
 };
-use surgeist_dom::{DomHostedLimits, DomHostedRecordLimits};
+use surgeist_dom::hosted::{DomHostedLimits, DomHostedRecordLimits};
 
 #[derive(Debug, Eq, PartialEq)]
 struct Recorded {
@@ -50,15 +50,18 @@ pub(in crate::dom_event) fn hosted_session() -> DomSession {
                 256,
                 32,
                 4_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_event_recipients(
-                surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
-                    .unwrap(),
+                surgeist_dom::event::DomEventRecipientLimits::new(
+                    64, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
             )
             .with_dispatch_custody(
-                surgeist_dom::DomDispatchCustodyLimits::new(
+                surgeist_dom::event::DomDispatchCustodyLimits::new(
                     64, 4096, 16_000_000, 16_000_000, 4_000_000,
                 )
                 .unwrap(),

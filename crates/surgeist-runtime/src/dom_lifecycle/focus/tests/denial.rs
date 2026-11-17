@@ -459,7 +459,10 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
         let queue = case
             .session
             .element_task_execution()
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap();
         {
             let mut dom = case.session.dom();
@@ -582,7 +585,10 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
         assert_eq!(
             case.session
                 .element_task_execution()
-                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+                .pending_task(
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                    0
+                )
                 .unwrap(),
             queue
         );
@@ -621,7 +627,10 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
         assert_eq!(
             case.session
                 .element_task_execution()
-                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+                .pending_task(
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                    0
+                )
                 .unwrap(),
             queue
         );

@@ -7,7 +7,10 @@ use crate::{
     DomSourceDriveError, DomSourceDriveProgress, DomSourceUnavailable, DomStyleRuntimeError,
     DomStyleUnavailable,
 };
-use surgeist_dom::{DomSourceLimits, DomSourceRequest, DomStyleInlineCspObservation};
+use surgeist_dom::{
+    source::{DomSourceLimits, DomSourceRequest},
+    style::DomStyleInlineCspObservation,
+};
 use surgeist_html::{accounting::HtmlChargedError, security::csp::HtmlCspError};
 
 #[derive(Clone, Copy)]
@@ -20,8 +23,8 @@ struct PreparedStylePolicy {
     observation: DomStyleInlineCspObservation,
     reports: Vec<ViolationReport<ViolationBacking>>,
     origin: Option<ViolationOrigin>,
-    _report_bank: Option<surgeist_dom::DomStyleCspRetention>,
-    observation_backing: Option<surgeist_dom::DomStyleCspRetention>,
+    _report_bank: Option<surgeist_dom::style::DomStyleCspRetention>,
+    observation_backing: Option<surgeist_dom::style::DomStyleCspRetention>,
 }
 
 impl NativeOwner {
@@ -39,7 +42,7 @@ impl NativeOwner {
         result: &mut Result<DomSourceDriveProgress, DomSourceDriveError>,
         limits: DomSourceLimits,
         realm: RealmId,
-        output: &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
+        output: &mut surgeist_dom::edit::DomSourceNodeOutputWatch<'_>,
     ) {
         self.finish_style_with(
             result,
@@ -125,7 +128,7 @@ impl NativeOwner {
         limits: DomSourceLimits,
         delivery: StyleReportDelivery,
         mut resume: impl FnMut(
-            surgeist_dom::DomSourceOperationId,
+            surgeist_dom::source::DomSourceOperationId,
         ) -> Result<
             Result<DomSourceDriveProgress, DomSourceDriveError>,
             DomStyleRuntimeError,
@@ -231,7 +234,7 @@ impl NativeOwner {
 
     fn evaluate_guest_style(
         &self,
-        request: &surgeist_dom::DomStyleRequest,
+        request: &surgeist_dom::style::DomStyleRequest,
         delivery: StyleReportDelivery,
     ) -> Result<Result<PreparedStylePolicy, DomStyleUnavailable>, DomStyleRuntimeError> {
         let cancel = &self.cancellation;
@@ -246,7 +249,7 @@ impl NativeOwner {
         step()?;
         if matches!(
             csp,
-            surgeist_dom::DomDocumentCspState::ConstructorInitialEmpty
+            surgeist_dom::meta::DomDocumentCspState::ConstructorInitialEmpty
         ) {
             return Ok(Ok(PreparedStylePolicy {
                 observation: DomStyleInlineCspObservation::complete_empty(input, 0),
@@ -413,7 +416,7 @@ impl NativeOwner {
 
     fn drive_pending_style(
         &self,
-        operation: surgeist_dom::DomSourceOperationId,
+        operation: surgeist_dom::source::DomSourceOperationId,
         limits: DomSourceLimits,
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DomStyleRuntimeError> {
         let mut session = self
@@ -447,9 +450,9 @@ impl DocumentScriptHost {
     pub(in crate::document_scripting) fn park_live_style_edit_fixture(
         &mut self,
         permit: &DocumentScriptPermit,
-        edit: surgeist_dom::DomSourceEdit,
+        edit: surgeist_dom::source::DomSourceEdit,
         limits: DomSourceLimits,
-    ) -> surgeist_dom::DomSourceOperationId {
+    ) -> surgeist_dom::source::DomSourceOperationId {
         let owner = self.native.clone();
         self.in_document(permit, |scope| {
             let mut session = owner.session.borrow_mut();
@@ -486,7 +489,7 @@ impl DocumentScriptHost {
     pub fn resume_pending_style_edit(
         &mut self,
         permit: &DocumentScriptPermit,
-        operation: surgeist_dom::DomSourceOperationId,
+        operation: surgeist_dom::source::DomSourceOperationId,
         limits: DomSourceLimits,
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentGuestEventError> {
         self.check_permit(permit)?;
@@ -507,7 +510,7 @@ impl StoppedDocumentScriptHost {
     /// synchronous effects complete. Retired reports have no delivery owner.
     pub fn settle_pending_style_edit(
         &mut self,
-        operation: surgeist_dom::DomSourceOperationId,
+        operation: surgeist_dom::source::DomSourceOperationId,
         limits: DomSourceLimits,
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>
     {
@@ -518,7 +521,7 @@ impl StoppedDocumentScriptHost {
 impl NativeOwner {
     fn resume_style(
         &self,
-        operation: surgeist_dom::DomSourceOperationId,
+        operation: surgeist_dom::source::DomSourceOperationId,
         limits: DomSourceLimits,
         live: bool,
     ) -> Result<Result<DomSourceDriveProgress, DomSourceDriveError>, DocumentScriptNativeError>

@@ -2,7 +2,16 @@
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::CssomStore;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    event::{DomDispatchCustodyLimits, DomEventRecipientLimits},
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    script::DomSvgScriptOrigin,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceRequest},
+    style::{DomStyleCssomRoot, DomStyleInlineCspObservation, DomStyleSource},
+};
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
 

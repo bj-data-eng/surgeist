@@ -17,11 +17,18 @@ use crate::dom_style::{
 use crate::element_tasks::{DomElementTaskRuntime, DomElementTaskRuntimeError};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DomError, DomNativeCheckpointLimits, DomNativeHtmlInstallError, DomNativeHtmlInstallTarget,
-    DomSelectCompletionStart, DomSelectTask, DomSelectTaskCompletion, DomSourceAdvance,
-    DomSourceCompletion, DomSourceEdit, DomSourceLease, DomSourceLimits,
-    DomSourceNativeHtmlInstallLimits, DomSourceOperationId, DomSourceProgress, DomSourceRequest,
-    DomStyleInlineCspObservation, DomStyleSource,
+    DomError,
+    event::DomSourceAdvance,
+    form::select::{DomSelectCompletionStart, DomSelectTask, DomSelectTaskCompletion},
+    installation::{
+        DomNativeHtmlInstallError, DomNativeHtmlInstallTarget, DomSourceNativeHtmlInstallLimits,
+    },
+    source::{
+        DomSourceCompletion, DomSourceEdit, DomSourceLease, DomSourceLimits, DomSourceOperationId,
+        DomSourceProgress, DomSourceRequest,
+    },
+    style::{DomStyleInlineCspObservation, DomStyleSource},
+    task::DomNativeCheckpointLimits,
 };
 
 /// Borrowed services for the reached requests of one actual Source operation.
@@ -29,7 +36,7 @@ use surgeist_dom::{
 pub struct DomSourceServices<'a> {
     /// Explicit finite native Meta composition permission for this advance.
     /// None preserves unavailable behavior and cannot discharge pending Meta.
-    pub meta: Option<surgeist_dom::DomMetaAtomicLimits>,
+    pub meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>,
     /// Optional exact Session/Host permission, bound only at fresh Source entry.
     pub execution_scope: Option<&'a crate::DomSourceExecutionScope>,
     /// Actual CSP observation supplier; absence remains an unavailable policy.
@@ -40,7 +47,7 @@ pub struct DomSourceServices<'a> {
 
 /// A reached URL response: `Ok(None)` is unavailable; `Err` refuses the step.
 pub type DomSourceUrlObservationResult =
-    Result<Option<surgeist_dom::DomSourceUrlObservation>, DomHostedRuntimeError>;
+    Result<Option<surgeist_dom::url::DomSourceUrlObservation>, DomHostedRuntimeError>;
 
 /// A URL observer and its independently selected influencing configuration.
 /// The driver releases all canonical and Runtime borrows before observation.
@@ -49,7 +56,7 @@ pub struct DomSourceUrlService<'a> {
     pub revision: &'a surgeist_html_semantics::HtmlBaseFactsRevision,
     /// Observes the issued inputs; None is unavailable, never URL parse failure.
     pub observe: &'a mut dyn FnMut(
-        &surgeist_dom::DomSourceUrlRequest,
+        &surgeist_dom::url::DomSourceUrlRequest,
         &AtomicBool,
     ) -> DomSourceUrlObservationResult,
 }
@@ -72,17 +79,17 @@ pub enum DomSourceUnavailable {
     /// The exact child focusing action still lacks a qualified service.
     DialogFocusing(surgeist_html::elements::dialog::HtmlDialogFocusingAction),
     /// Exact unsupported fact in an original called focus-delegate traversal.
-    FocusDelegate(surgeist_dom::DomSourceFocusDelegateStep),
+    FocusDelegate(surgeist_dom::focus::DomSourceFocusDelegateStep),
     /// The original designMode invocation needs this exact qualified service.
-    DesignMode(surgeist_dom::DomSourceDesignModeStep),
+    DesignMode(surgeist_dom::range::DomSourceDesignModeStep),
     /// The exact autofocus insertion action still lacks a qualified service.
     AutofocusInsertion(surgeist_html::focus::HtmlAutofocusInsertionAction),
     /// The original Style owner needs this precise external input or resource.
     Style(DomStyleUnavailable),
     /// The original HTML Script preparation awaits this precise service.
-    Script(surgeist_dom::DomSourceScriptStep),
+    Script(surgeist_dom::script::DomSourceScriptStep),
     /// A reached URL stage has no qualified observation yet.
-    Url(surgeist_dom::DomSourceUrlStage),
+    Url(surgeist_dom::url::DomSourceUrlStage),
 }
 
 /// The requested operation returned, or its exact next request remains parked.
@@ -91,14 +98,14 @@ pub enum DomSourceDriveProgress {
     /// The one command or named feature operation completed its mandatory hooks.
     Complete(DomSourceCompletion),
     /// The compound algorithm published its accepted effects and original error.
-    Failed(surgeist_dom::DomSourceFailure),
+    Failed(surgeist_dom::source::DomSourceFailure),
     /// Original Source progress returned with its actual inline publication.
     /// Requests are unserviced; terminal outcomes retain their original result.
     InlineSource {
         /// The exact unserviced request or completed original operation.
         source: DomSourceProgress,
         /// Original paired DOM and CSSOM publication evidence.
-        publication: surgeist_dom::DomInlineStyleSourcePublication,
+        publication: surgeist_dom::style::inline::DomInlineStyleSourcePublication,
     },
     /// Authentic joined Meta publication; no later service has run.
     /// Complete/Failed retain the original terminal; Request remains unserviced.
@@ -108,7 +115,7 @@ pub enum DomSourceDriveProgress {
         /// The original operation whose mandatory continuation remains live.
         operation: DomSourceOperationId,
         /// Evidence committed before the actual Runtime row became runnable.
-        publication: surgeist_dom::DomInlineStyleSourcePublication,
+        publication: surgeist_dom::style::inline::DomInlineStyleSourcePublication,
     },
     /// Original canonical custody remains live for this unacknowledged request.
     Pending {
@@ -189,7 +196,7 @@ pub enum DomSourceRuntimeError {
     /// The durable Source event adapter refused admission or execution.
     SourceEvent(DomSourceEventRuntimeError),
     /// The inline producer refused the still-unpublished canonical segment.
-    Inline(surgeist_dom::DomInlineStyleError),
+    Inline(surgeist_dom::style::inline::DomInlineStyleError),
     /// Canonical Source validation or finite admission refused the operation.
     Dom(DomError),
     /// The original Style resource or processing owner refused its step.
@@ -201,7 +208,9 @@ pub enum DomSourceRuntimeError {
     /// The named native installation refused its actual input or target.
     NativeInstallation(DomNativeHtmlInstallError),
     /// The processor or original Source controller refused a reached CSP pragma.
-    MetaCsp(surgeist_dom::DomSourceMetaCspError<crate::trusted_types_csp::PolicyListCapacity>),
+    MetaCsp(
+        surgeist_dom::meta::DomSourceMetaCspError<crate::trusted_types_csp::PolicyListCapacity>,
+    ),
 }
 impl std::fmt::Display for DomSourceRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -249,15 +258,15 @@ pub(crate) type InlineResolver<'a> = dyn FnMut(
 /// Controller limits remain separate; the callback belongs to each execution.
 pub struct DomSourceInlineStyleEdit {
     edit: DomSourceEdit,
-    context: surgeist_dom::DomInlineStyleSourceContext,
-    limits: surgeist_dom::DomInlineStyleRequestLimits,
+    context: surgeist_dom::style::inline::DomInlineStyleSourceContext,
+    limits: surgeist_dom::style::inline::DomInlineStyleRequestLimits,
 }
 impl DomSourceInlineStyleEdit {
     /// Qualify one edit with its explicit profiles and producer request limits.
     pub fn new(
         edit: DomSourceEdit,
-        context: surgeist_dom::DomInlineStyleSourceContext,
-        limits: surgeist_dom::DomInlineStyleRequestLimits,
+        context: surgeist_dom::style::inline::DomInlineStyleSourceContext,
+        limits: surgeist_dom::style::inline::DomInlineStyleRequestLimits,
     ) -> Self {
         Self {
             edit,
@@ -321,7 +330,7 @@ impl DomSourceRuntime {
     pub fn service_meta_csp(
         &self,
         dom: &mut DomEventDom<'_>,
-        request: surgeist_dom::DomSourceMetaCspRequest,
+        request: surgeist_dom::meta::DomSourceMetaCspRequest,
         processor: &mut crate::trusted_types_csp::PolicyProcessor,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
@@ -337,7 +346,7 @@ impl DomSourceRuntime {
     pub fn service_event<C>(
         &self,
         dom: &mut DomEventDom<'_>,
-        request: &surgeist_dom::DomSourceEventRequest,
+        request: &surgeist_dom::event::DomSourceEventRequest,
         dispatcher: &mut DomEventDispatcher<C>,
         context: &mut C,
         limits: DomSourceEventServiceLimits,
@@ -352,7 +361,7 @@ impl DomSourceRuntime {
     pub(crate) fn service_attached_event(
         &self,
         dom: &mut DomEventDom<'_>,
-        request: &surgeist_dom::DomSourceEventRequest,
+        request: &surgeist_dom::event::DomSourceEventRequest,
         dispatcher: &mut DomEventDispatcher<()>,
         (limits, usage): (
             DomSourceEventServiceLimits,
@@ -381,7 +390,7 @@ impl DomSourceRuntime {
     pub fn raise_event_limits(
         &self,
         dom: &mut DomEventDom<'_>,
-        request: &surgeist_dom::DomSourceEventRequest,
+        request: &surgeist_dom::event::DomSourceEventRequest,
         limits: DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomSourceRuntimeError> {
@@ -432,7 +441,7 @@ impl DomSourceRuntime {
     pub fn apply<Backing>(
         &mut self,
         dom: &mut DomEventDom<'_>,
-        input: impl Into<surgeist_dom::DomSourceInput<Backing>>,
+        input: impl Into<surgeist_dom::source::DomSourceInput<Backing>>,
         limits: DomSourceLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
@@ -807,7 +816,7 @@ impl DomSourceRuntime {
         dom: &mut DomEventDom<'_>,
         command: Result<DomSourceEdit, DomSourceOperationId>,
         limits: DomSourceLimits,
-        output: &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
+        output: &mut surgeist_dom::edit::DomSourceNodeOutputWatch<'_>,
         cancel: &AtomicBool,
     ) -> (
         Result<DomSourceDriveProgress, DomSourceDriveError>,
@@ -815,7 +824,7 @@ impl DomSourceRuntime {
     ) {
         let prior_operation = dom
             .pending_source_edit()
-            .map(surgeist_dom::DomSourceStatus::operation);
+            .map(surgeist_dom::source::DomSourceStatus::operation);
         let guard = match self.prepare(dom, cancel) {
             Ok(guard) => guard,
             Err(error) => return (Err(error.into()), prior_operation),
@@ -855,7 +864,7 @@ impl DomSourceRuntime {
         &self,
         guard: &StyleSourceGuard,
         lease: &mut DomSourceLease<'_>,
-        meta: Option<surgeist_dom::DomMetaAtomicLimits>,
+        meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>,
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
@@ -870,11 +879,11 @@ impl DomSourceRuntime {
         &self,
         guard: &StyleSourceGuard,
         lease: &mut DomSourceLease<'_>,
-        meta: Option<surgeist_dom::DomMetaAtomicLimits>,
+        meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>,
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         (resolver, mut node_output_watch): (
             &mut Option<&mut InlineResolver<'_>>,
-            Option<&mut surgeist_dom::DomSourceNodeOutputWatch<'_>>,
+            Option<&mut surgeist_dom::edit::DomSourceNodeOutputWatch<'_>>,
         ),
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
@@ -893,7 +902,7 @@ impl DomSourceRuntime {
                         lease,
                         resolver.as_deref_mut(),
                         limits,
-                        surgeist_dom::DomSourceEventClockMode::Hosted,
+                        surgeist_dom::event::DomSourceEventClockMode::Hosted,
                         cancel,
                     )
                     .map(|advanced| match advanced {
@@ -1012,7 +1021,7 @@ impl DomSourceRuntime {
                         .hosted
                         .service_focus(
                             lease,
-                            &surgeist_dom::DomFocusRequest::RememberDialog(request.clone()),
+                            &surgeist_dom::focus::DomFocusRequest::RememberDialog(request.clone()),
                             cancel,
                         )
                         .map_err(DomSourceRuntimeError::Hosted)?
@@ -1032,7 +1041,7 @@ impl DomSourceRuntime {
                             .hosted
                             .service_focus(
                                 lease,
-                                &surgeist_dom::DomFocusRequest::AllowDialog(request.clone()),
+                                &surgeist_dom::focus::DomFocusRequest::AllowDialog(request.clone()),
                                 cancel,
                             )
                             .map_err(DomSourceRuntimeError::Hosted)?
@@ -1100,7 +1109,7 @@ impl DomSourceRuntime {
                             .hosted
                             .service_focus(
                                 lease,
-                                &surgeist_dom::DomFocusRequest::AllowAutofocusInsertion(
+                                &surgeist_dom::focus::DomFocusRequest::AllowAutofocusInsertion(
                                     request.clone(),
                                 ),
                                 cancel,
@@ -1156,11 +1165,11 @@ enum Advanced {
     Source(
         (
             DomSourceProgress,
-            Option<surgeist_dom::DomInlineStyleSourcePublication>,
+            Option<surgeist_dom::style::inline::DomInlineStyleSourcePublication>,
         ),
     ),
     Meta(crate::DomStyleMetaSourceOutcome),
-    EventFiring(surgeist_dom::DomSourceEventFiring),
+    EventFiring(surgeist_dom::event::DomSourceEventFiring),
 }
 
 struct DriveRoot<'a> {
@@ -1324,7 +1333,12 @@ impl DomSourceRuntime {
 mod tests {
     use super::*;
     use crate::{DomSession, DomSessionLimits, DomStyleRuntimeLimits};
-    use surgeist_dom::{Dom, DomHostedLimits, DomHostedRecordLimits, DomLimits, DomSourceOutput};
+    use surgeist_dom::{
+        Dom,
+        hosted::{DomHostedLimits, DomHostedRecordLimits},
+        limits::DomLimits,
+        source::DomSourceOutput,
+    };
 
     #[test]
     fn each_requested_creation_returns_its_actual_scalar_without_cross_operation_tickets() {
@@ -1338,7 +1352,8 @@ mod tests {
                 0,
                 8,
                 100_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

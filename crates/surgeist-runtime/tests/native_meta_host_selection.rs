@@ -8,7 +8,12 @@
 ))]
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch,
+    capture::{DomHostDomains, DomHostObservations, Observed},
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    limits::DomLimits,
+};
 use surgeist_html::attributes::HtmlReferrerPolicy;
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
@@ -64,7 +69,8 @@ fn native_meta_history_and_empty_theme_scans_preserve_runtime_selection_associat
             32,
             8,
             262144,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_meta_processing_work(1_000_000),

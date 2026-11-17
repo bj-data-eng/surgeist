@@ -1,10 +1,13 @@
 //! Original Style preparation and decisions; retained inputs and transitions belong to DOM/HTML.
 use super::*;
-use surgeist_dom::{
-    DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits, DomParsedHtmlStyleError,
-    DomParsedHtmlStyleInitialPolicyRequest, DomParsedHtmlStyleInlinePolicyObservation,
-    DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleQualification,
-    DomParsedHtmlStyleRenderingProgress,
+use surgeist_dom::installation::{
+    DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits,
+    style::{
+        DomParsedHtmlStyleError, DomParsedHtmlStyleInitialPolicyRequest,
+        DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStylePhase,
+        DomParsedHtmlStylePrefixView, DomParsedHtmlStyleQualification,
+        DomParsedHtmlStyleRenderingProgress,
+    },
 };
 use surgeist_html::security::csp::HtmlCspAssociation;
 mod admission;
@@ -98,8 +101,8 @@ impl DomStyleRuntime {
         };
         let mut custody = Custody {
             bytes: size_of::<DomParsedHtmlStyleRenderingProgress>()
-                + size_of::<Option<surgeist_dom::DomParsedHtmlStyleNotificationContinuation>>(),
-            shared: size_of::<surgeist_dom::DomParsedHtmlStyleNotificationContinuation>(),
+                + size_of::<Option<surgeist_dom::installation::style::DomParsedHtmlStyleNotificationContinuation>>(),
+            shared: size_of::<surgeist_dom::installation::style::DomParsedHtmlStyleNotificationContinuation>(),
             units: 0,
             current: 0,
             maximum: state.limits.storage_bytes,
@@ -131,7 +134,9 @@ impl DomStyleRuntime {
         };
         Ok(hold.process_rendering(
             qualification,
-            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(&mut record.continuation),
+            surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Transfer(
+                &mut record.continuation,
+            ),
             cancel,
         )?)
     }

@@ -5,12 +5,17 @@ use super::*;
 /// Returned bytes are additional retained backing relative to `retained`.
 pub(super) fn ensure_cluster(
     group: &mut records::Group,
-    origin: &surgeist_dom::DomOpaqueOrigin,
+    origin: &surgeist_dom::document::DomOpaqueOrigin,
     retained: usize,
     limits: DomHostedRuntimeLimits,
     work: &mut u64,
     cancel: &AtomicBool,
-    retain: impl FnMut(usize) -> Result<surgeist_dom::DomHostedRuntimeRetention, surgeist_dom::DomError>,
+    retain: impl FnMut(
+        usize,
+    ) -> Result<
+        surgeist_dom::hosted::DomHostedRuntimeRetention,
+        surgeist_dom::DomError,
+    >,
 ) -> Result<(usize, usize), DomHostedRuntimeError> {
     if let Some(index) = find_cluster(group, origin, work, limits.work, cancel, || Ok(()))? {
         return Ok((index, 0));
@@ -21,15 +26,17 @@ pub(super) fn ensure_cluster(
 /// Form the actual missing agent after the original lookup found no match.
 pub(super) fn form_cluster(
     group: &mut records::Group,
-    origin: &surgeist_dom::DomOpaqueOrigin,
+    origin: &surgeist_dom::document::DomOpaqueOrigin,
     retained: usize,
     limits: DomHostedRuntimeLimits,
     work: &mut u64,
     cancel: &AtomicBool,
     mut retain: impl FnMut(
         usize,
-    )
-        -> Result<surgeist_dom::DomHostedRuntimeRetention, surgeist_dom::DomError>,
+    ) -> Result<
+        surgeist_dom::hosted::DomHostedRuntimeRetention,
+        surgeist_dom::DomError,
+    >,
 ) -> Result<(usize, usize), DomHostedRuntimeError> {
     let header = retain(super::watcher::WindowBank::header_bytes())
         .map_err(|error| DomHostedRuntimeError::Dom(DomHostedError::Dom(error)))?;
@@ -168,7 +175,7 @@ impl HostedState {
     pub(super) fn capture_cross_site(
         &mut self,
         dom: &DomEventDom<'_>,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         cancel: &AtomicBool,
     ) -> Result<bool, DomHostedRuntimeError> {
         let snapshot = dom.snapshot();
@@ -246,11 +253,11 @@ impl HostedState {
                     .checked_add(1)
                     .ok_or(DomHostedRuntimeError::Admission)?;
                 let requested = required
-                    .checked_mul(size_of::<surgeist_dom::DocumentId>())
+                    .checked_mul(size_of::<surgeist_dom::identity::DocumentId>())
                     .ok_or(DomHostedRuntimeError::Admission)?;
                 let old = descendants
                     .capacity()
-                    .checked_mul(size_of::<surgeist_dom::DocumentId>())
+                    .checked_mul(size_of::<surgeist_dom::identity::DocumentId>())
                     .ok_or(DomHostedRuntimeError::Admission)?;
                 let retained = self.retained_bytes(cancel)?;
                 let peak = old
@@ -271,7 +278,7 @@ impl HostedState {
                     .map_err(|_| DomHostedRuntimeError::Admission)?;
                 let actual = next
                     .capacity()
-                    .checked_mul(size_of::<surgeist_dom::DocumentId>())
+                    .checked_mul(size_of::<surgeist_dom::identity::DocumentId>())
                     .ok_or(DomHostedRuntimeError::Admission)?;
                 let peak = old
                     .checked_add(actual)
@@ -295,7 +302,7 @@ impl HostedState {
 
 pub(super) fn find_cluster(
     group: &records::Group,
-    origin: &surgeist_dom::DomOpaqueOrigin,
+    origin: &surgeist_dom::document::DomOpaqueOrigin,
     work: &mut u64,
     limit: u64,
     cancel: &AtomicBool,

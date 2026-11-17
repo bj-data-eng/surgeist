@@ -6,7 +6,7 @@ use surgeist_bindings_js::{
     declarations::{ShadowRootMode, SlotAssignmentMode},
     dom_exception::DomExceptionName,
 };
-use surgeist_dom::DomShadowRootInit;
+use surgeist_dom::shadow::DomShadowRootInit;
 use surgeist_html::construction::{
     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
@@ -214,7 +214,7 @@ impl Capture {
                             host,
                             native,
                             events.limits.source_edits,
-                            Some(surgeist_dom::DomShadowReactionRoute::new(
+                            Some(surgeist_dom::custom_element::DomShadowReactionRoute::new(
                                 &registration,
                                 enclosing_queue,
                                 &mut has_callback,
@@ -262,11 +262,13 @@ impl Capture {
                                     native,
                                     (inbox, key),
                                     (events.limits.source_edits, events.limits.node_retirement),
-                                    Some(surgeist_dom::DomShadowReactionRoute::new(
-                                        &registration,
-                                        enclosing_queue,
-                                        &mut has_callback,
-                                    )),
+                                    Some(
+                                        surgeist_dom::custom_element::DomShadowReactionRoute::new(
+                                            &registration,
+                                            enclosing_queue,
+                                            &mut has_callback,
+                                        ),
+                                    ),
                                     &owner.cancellation,
                                 )?;
                             reactions = published_reactions;

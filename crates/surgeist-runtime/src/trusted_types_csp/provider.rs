@@ -2,7 +2,7 @@
 
 use super::{Policy, PolicyDelivery};
 use std::{error::Error, fmt, mem::size_of, sync::Arc};
-use surgeist_dom::DomDocumentCspState;
+use surgeist_dom::meta::DomDocumentCspState;
 use surgeist_html::{
     security::csp::{
         HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspError,

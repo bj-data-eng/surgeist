@@ -4,7 +4,16 @@ use std::sync::atomic::AtomicBool;
 use surgeist_css::rule::CssRule;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::{CssomEditGuard, CssomSnapshot, CssomStore};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    event::{DomDispatchCustodyLimits, DomEventRecipientLimits},
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    shadow::DomShadowRootInit,
+    source::{DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceRequest},
+    style::{DomStyleCssomRoot, DomStyleInlineCspObservation, DomStyleSheet, DomStyleSource},
+};
 use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 use surgeist_runtime::*;
 
@@ -83,15 +92,18 @@ fn fixture() -> (DomSession, Context, DocumentId, NodeId, DocumentId, NodeId) {
             1024,
             32,
             2_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_event_recipients(
-            surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
-                .unwrap(),
+            surgeist_dom::event::DomEventRecipientLimits::new(
+                64, 16_000_000, 16_000_000, 4_000_000,
+            )
+            .unwrap(),
         )
         .with_dispatch_custody(
-            surgeist_dom::DomDispatchCustodyLimits::new(
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
                 64, 4096, 16_000_000, 16_000_000, 4_000_000,
             )
             .unwrap(),

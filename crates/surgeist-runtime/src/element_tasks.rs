@@ -20,10 +20,11 @@ use std::mem::size_of;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "document-scripting")]
-use surgeist_dom::DomSourceEventRequest;
+use surgeist_dom::event::DomSourceEventRequest;
 use surgeist_dom::{
-    DomDetailsToggleIntention, DomDetailsToggleTransfer, DomError, DomOwnerId, DomRevision,
-    DomSnapshot,
+    DomError, DomSnapshot,
+    details::{DomDetailsToggleIntention, DomDetailsToggleTransfer},
+    identity::{DomOwnerId, DomRevision},
 };
 use surgeist_html::elements::details::{HtmlDetailsState, HtmlDetailsToggleEvent};
 
@@ -43,15 +44,15 @@ pub struct DomElementTaskRunLimits {
     /// Actual shared event path/listener/callback work.
     pub dispatch: DomEventDispatchLimits,
     /// Original queued-task Source observation, rebase and mandatory cleanup.
-    pub source: surgeist_dom::DomSourceLimits,
+    pub source: surgeist_dom::source::DomSourceLimits,
 }
-pub use surgeist_dom::{DomElementTaskId, DomElementTaskSourceKind};
+pub use surgeist_dom::task::{DomElementTaskId, DomElementTaskSourceKind};
 /// One pending source task's immutable queued payload.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomDetailsTask {
     id: DomElementTaskId,
     event: HtmlDetailsToggleEvent,
-    association: Option<surgeist_dom::DomElementTaskAssociation>,
+    association: Option<surgeist_dom::task::DomElementTaskAssociation>,
 }
 impl DomDetailsTask {
     /// Exact execution identity.
@@ -64,7 +65,7 @@ impl DomDetailsTask {
     }
     /// Original task Document/Global captured when the source queued the event.
     /// Adoption changes the dispatch path, not this execution association.
-    pub fn queue_association(self) -> Option<surgeist_dom::DomElementTaskAssociation> {
+    pub fn queue_association(self) -> Option<surgeist_dom::task::DomElementTaskAssociation> {
         self.association
     }
 }
@@ -74,9 +75,9 @@ pub enum DomElementTask {
     /// A Details transition.
     DetailsToggle(DomDetailsTask),
     /// A Dialog transition published by its original Source cursor.
-    DialogToggle(surgeist_dom::DomDialogToggleTaskInfo),
+    DialogToggle(surgeist_dom::dialog::DomDialogToggleTaskInfo),
     /// A noncoalesced plain close notification on the user-interaction source.
-    DialogClose(surgeist_dom::DomDialogCloseTaskInfo),
+    DialogClose(surgeist_dom::dialog::DomDialogCloseTaskInfo),
 }
 impl DomElementTask {
     /// The HTML task source intrinsic to this payload.
@@ -89,7 +90,7 @@ impl DomElementTask {
         }
     }
     /// The plain close notification payload, when this is a Close task.
-    pub fn dialog_close(self) -> Option<surgeist_dom::DomDialogCloseTaskInfo> {
+    pub fn dialog_close(self) -> Option<surgeist_dom::dialog::DomDialogCloseTaskInfo> {
         if let Self::DialogClose(task) = self {
             Some(task)
         } else {
@@ -105,7 +106,7 @@ impl DomElementTask {
         }
     }
     /// Original relevant Global and its associated Document.
-    pub fn queue_association(self) -> Option<surgeist_dom::DomElementTaskAssociation> {
+    pub fn queue_association(self) -> Option<surgeist_dom::task::DomElementTaskAssociation> {
         match self {
             Self::DetailsToggle(task) => task.queue_association(),
             Self::DialogToggle(task) => task.queue_association(),
@@ -121,7 +122,7 @@ impl DomElementTask {
         }
     }
     /// The Dialog payload, when this is a Dialog task.
-    pub fn dialog_toggle(self) -> Option<surgeist_dom::DomDialogToggleTaskInfo> {
+    pub fn dialog_toggle(self) -> Option<surgeist_dom::dialog::DomDialogToggleTaskInfo> {
         if let Self::DialogToggle(task) = self {
             Some(task)
         } else {
@@ -215,7 +216,7 @@ pub enum DomElementTaskProgress {
         /// Actual shared-dispatch delivery and listener failure evidence.
         receipt: DomEventDispatchReceipt,
         /// Source-produced post-dispatch Dialog Toggle cleanup, when applicable.
-        dialog_toggle_disposition: Option<surgeist_dom::DomDialogToggleTaskDisposition>,
+        dialog_toggle_disposition: Option<surgeist_dom::dialog::DomDialogToggleTaskDisposition>,
         /// Original bank when a callback replaced the context's coordinator.
         /// Retains other queued work even if the callback dropped its old handle.
         displaced_owner: Option<DomElementTaskRuntime>,
@@ -244,13 +245,13 @@ pub trait DomElementTaskEventContext {
 /// transferred out of the State header. No execution capability is retained.
 struct TaskPayloadCounterTarget {
     bytes: Cell<usize>,
-    _retained: surgeist_dom::DomElementTaskRetention,
+    _retained: surgeist_dom::task::DomElementTaskRetention,
 }
 
 #[derive(Clone)]
 struct TaskPayloadCounter(Option<Rc<TaskPayloadCounterTarget>>);
 impl TaskPayloadCounter {
-    fn funded(retained: surgeist_dom::DomElementTaskRetention) -> Self {
+    fn funded(retained: surgeist_dom::task::DomElementTaskRetention) -> Self {
         Self(Some(Rc::new(TaskPayloadCounterTarget {
             bytes: Cell::new(size_of::<TaskPayloadCounterTarget>()),
             _retained: retained,
@@ -297,7 +298,7 @@ pub(crate) struct TaskPayload {
     live: TaskPayloadCounter,
     full: usize,
     source: usize,
-    retained: surgeist_dom::DomElementTaskRetention,
+    retained: surgeist_dom::task::DomElementTaskRetention,
 }
 impl fmt::Debug for TaskPayload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -312,7 +313,7 @@ impl TaskPayload {
         live: TaskPayloadCounter,
         full: usize,
         source: usize,
-        retained: surgeist_dom::DomElementTaskRetention,
+        retained: surgeist_dom::task::DomElementTaskRetention,
     ) -> Result<Self, DomElementTaskRuntimeError> {
         live.add(full)?;
         Ok(Self {
@@ -391,14 +392,14 @@ struct Task {
     event: Option<EventInvocationOwner>,
     receipt: Option<DomEventDispatchReceipt>,
     running: bool,
-    dialog: Option<surgeist_dom::DomDialogTask>,
-    publication: Option<surgeist_dom::DomDialogTaskQueuePublication>,
-    task_operation: Option<surgeist_dom::DomSourceOperationId>,
-    request: Option<surgeist_dom::DomSourceEventRequest>,
-    permit: Option<surgeist_dom::DomSourceEventDispatchPermit>,
-    event_publication: Option<surgeist_dom::DomSourceEventPublication>,
+    dialog: Option<surgeist_dom::dialog::DomDialogTask>,
+    publication: Option<surgeist_dom::dialog::DomDialogTaskQueuePublication>,
+    task_operation: Option<surgeist_dom::source::DomSourceOperationId>,
+    request: Option<surgeist_dom::event::DomSourceEventRequest>,
+    permit: Option<surgeist_dom::event::DomSourceEventDispatchPermit>,
+    event_publication: Option<surgeist_dom::event::DomSourceEventPublication>,
     event_accepted: bool,
-    dialog_toggle_disposition: Option<surgeist_dom::DomDialogToggleTaskDisposition>,
+    dialog_toggle_disposition: Option<surgeist_dom::dialog::DomDialogToggleTaskDisposition>,
 }
 impl Task {
     fn has_started(&self) -> bool {
@@ -427,21 +428,21 @@ struct Intake {
     trackers: Vec<Tracker>,
     output: Vec<Task>,
     next: u64,
-    output_retained: surgeist_dom::DomElementTaskRetention,
-    trackers_retained: surgeist_dom::DomElementTaskRetention,
-    scratch_retained: surgeist_dom::DomElementTaskRetention,
+    output_retained: surgeist_dom::task::DomElementTaskRetention,
+    trackers_retained: surgeist_dom::task::DomElementTaskRetention,
+    scratch_retained: surgeist_dom::task::DomElementTaskRetention,
 }
 enum TaskAdmission<'a, 'dom> {
     Idle(&'a mut DomEventDom<'dom>),
-    Source(&'a mut surgeist_dom::DomSourceLease<'dom>),
+    Source(&'a mut surgeist_dom::source::DomSourceLease<'dom>),
 }
 impl TaskAdmission<'_, '_> {
     fn retain(
         &mut self,
-        source: &surgeist_dom::DomElementTaskSource,
+        source: &surgeist_dom::task::DomElementTaskSource,
         bytes: usize,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomElementTaskRetention, DomElementTaskRuntimeError> {
+    ) -> Result<surgeist_dom::task::DomElementTaskRetention, DomElementTaskRuntimeError> {
         match self {
             Self::Idle(dom) => source.retain_payload(dom.raw_mut(), bytes, cancel),
             Self::Source(lease) => lease.retain_element_task_payload(source, bytes, cancel),
@@ -501,7 +502,7 @@ impl ElementTaskOwner {
             .retain_payload(
                 dom,
                 size_of::<RefCell<ElementTaskState>>()
-                    + size_of::<surgeist_dom::DomElementTaskSource>()
+                    + size_of::<surgeist_dom::task::DomElementTaskSource>()
                     + counter_bytes,
                 &cancel,
             )
@@ -547,10 +548,10 @@ struct ElementTaskState {
     work: u64,
     last_transfer: Option<DomRevision>,
     hosted: Option<crate::dom_lifecycle::HostedRuntime>,
-    source: Option<Rc<surgeist_dom::DomElementTaskSource>>,
-    tasks_retained: Option<surgeist_dom::DomElementTaskRetention>,
-    trackers_retained: Option<surgeist_dom::DomElementTaskRetention>,
-    owner_retained: Option<surgeist_dom::DomElementTaskRetention>,
+    source: Option<Rc<surgeist_dom::task::DomElementTaskSource>>,
+    tasks_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
+    trackers_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
+    owner_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
     payload_bytes: TaskPayloadCounter,
     events: Option<crate::dom_dialog::SourceEventRuntime>,
 }
@@ -674,7 +675,7 @@ impl DomElementTaskRuntime {
     pub(crate) fn ingest_source(
         &self,
         dom: &mut DomEventDom<'_>,
-        issuer: &surgeist_dom::DomHostedSource,
+        issuer: &surgeist_dom::hosted::DomHostedSource,
         cancel: &AtomicBool,
     ) -> Result<usize, DomElementTaskRuntimeError> {
         let owner = self.state()?;
@@ -705,8 +706,8 @@ impl DomElementTaskRuntime {
 
     pub(crate) fn queue_dialog(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
-        request: &surgeist_dom::DomSourceDialogRequest,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
+        request: &surgeist_dom::dialog::DomSourceDialogRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomElementTaskRuntimeError> {
         let owner = self.state()?;
@@ -775,8 +776,8 @@ impl DomElementTaskRuntime {
 impl ElementTaskState {
     fn publish_dialog_queue(
         &mut self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
-        request: &surgeist_dom::DomSourceDialogRequest,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
+        request: &surgeist_dom::dialog::DomSourceDialogRequest,
         cancel: &AtomicBool,
     ) -> Result<usize, DomElementTaskRuntimeError> {
         let source = self
@@ -841,8 +842,12 @@ impl ElementTaskState {
         }
         intake.plan.push(Plan {
             value: match queue.task() {
-                surgeist_dom::DomDialogTaskInfo::Toggle(info) => DomElementTask::DialogToggle(info),
-                surgeist_dom::DomDialogTaskInfo::Close(info) => DomElementTask::DialogClose(info),
+                surgeist_dom::dialog::DomDialogTaskInfo::Toggle(info) => {
+                    DomElementTask::DialogToggle(info)
+                }
+                surgeist_dom::dialog::DomDialogTaskInfo::Close(info) => {
+                    DomElementTask::DialogClose(info)
+                }
             },
             started: false,
         });
@@ -878,9 +883,9 @@ impl ElementTaskState {
     }
     fn header_bytes() -> Result<usize, DomElementTaskRuntimeError> {
         size_of::<RefCell<Self>>()
-            .checked_add(size_of::<surgeist_dom::DomElementTaskSource>())
+            .checked_add(size_of::<surgeist_dom::task::DomElementTaskSource>())
             .and_then(|bytes| {
-                bytes.checked_add(surgeist_dom::DomElementTaskSource::binding_payload_bytes())
+                bytes.checked_add(surgeist_dom::task::DomElementTaskSource::binding_payload_bytes())
             })
             .ok_or(DomElementTaskRuntimeError::IdentityExhausted)
     }
@@ -1214,7 +1219,7 @@ enum PreparedEvent {
     Delivered,
     Dispatch(
         EventDispatchObservation,
-        Option<surgeist_dom::DomSourceEventDispatchGuard>,
+        Option<surgeist_dom::event::DomSourceEventDispatchGuard>,
         DispatchFunding,
     ),
 }
@@ -1281,12 +1286,12 @@ impl ElementTaskState {
                 .advance(cancel)
                 .map_err(DomElementTaskRuntimeError::Dom)?
             {
-                surgeist_dom::DomSourceProgress::Request(
-                    surgeist_dom::DomSourceRequest::Event(request),
+                surgeist_dom::source::DomSourceProgress::Request(
+                    surgeist_dom::source::DomSourceRequest::Event(request),
                 ) if matches!(
                     request.kind(),
-                    surgeist_dom::DomSourceEventKind::Toggle
-                        | surgeist_dom::DomSourceEventKind::Close
+                    surgeist_dom::event::DomSourceEventKind::Toggle
+                        | surgeist_dom::event::DomSourceEventKind::Close
                 ) =>
                 {
                     request
@@ -1398,7 +1403,7 @@ impl ElementTaskState {
         &mut self,
         dom: &mut DomEventDom<'_>,
         id: DomElementTaskId,
-        limits: surgeist_dom::DomSourceLimits,
+        limits: surgeist_dom::source::DomSourceLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomElementTaskRuntimeError> {
         let source = self
@@ -1444,7 +1449,7 @@ impl ElementTaskState {
             .advance(cancel)
             .map_err(DomElementTaskRuntimeError::Dom)?
         {
-            surgeist_dom::DomSourceProgress::Complete(completion) => {
+            surgeist_dom::source::DomSourceProgress::Complete(completion) => {
                 let disposition = completion.dialog_toggle_disposition();
                 if completion.operation() != operation
                     || match task.value {
@@ -1858,7 +1863,7 @@ impl DomElementTaskRuntime {
     pub(crate) fn cancel_document(
         &self,
         dom: &DomEventDom<'_>,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         cancel: &AtomicBool,
     ) -> Result<bool, DomElementTaskRuntimeError> {
         let owner = self.state()?;

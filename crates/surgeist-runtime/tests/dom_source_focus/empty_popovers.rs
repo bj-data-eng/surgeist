@@ -69,13 +69,16 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     let task = session
         .element_task_execution()
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     let dialog_task = task
@@ -143,14 +146,17 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
             .element_task_execution()
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap(),
         Some(task)
     );

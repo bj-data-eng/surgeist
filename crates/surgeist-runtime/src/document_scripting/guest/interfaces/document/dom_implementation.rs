@@ -6,7 +6,10 @@ use character_data::copy_native_data;
 use surgeist_bindings_js::{
     NativeProjectionPrototype, ValueKind, conversion::declarations, dom_exception::DomExceptionName,
 };
-use surgeist_dom::{DomDetachedNodeCreation, DomSourceEdit, DomSourceOutput, DomSourceStatus};
+use surgeist_dom::{
+    edit::DomDetachedNodeCreation,
+    source::{DomSourceEdit, DomSourceOutput, DomSourceStatus},
+};
 use surgeist_html::values::Namespace;
 
 const INTERFACE: &[u16] = &ascii(b"DOMImplementation");

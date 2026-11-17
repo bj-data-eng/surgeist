@@ -5,7 +5,20 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    event::{DomDispatchCustodyLimits, DomSourceEventRequest},
+    hosted::{DomHostedError, DomHostedGlobalId, DomHostedLimits, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomNativeHtmlInstallLimits, DomNativeHtmlInstallTarget, DomSourceNativeHtmlInstallLimits,
+    },
+    limits::{DomLimits, DomResource},
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOperationId, DomSourcePhase, DomSourceRequest,
+    },
+    style::DomStyleSource,
+};
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
@@ -81,7 +94,8 @@ fn fixture_pair(limits: DomSessionLimits) -> (DomSession, NodeId, NodeId) {
             128,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
@@ -557,13 +571,16 @@ fn show_publishes_open_and_retains_queued_task(
     assert_eq!(
         context
             .owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     let task = context
         .owner
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     let dialog = task.dialog_toggle().expect("the actual Show toggle task");
@@ -595,14 +612,17 @@ fn show_publishes_open_and_retains_queued_task(
     assert_eq!(
         context
             .owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         context
             .owner
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap(),
         Some(task)
     );
@@ -624,7 +644,7 @@ fn show_publishes_open_and_retains_queued_task(
     assert!(matches!(
         DomElementTaskRuntime::run_next(
             &mut session.dom(),
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut listeners,
             &mut context,
             DomElementTaskRunLimits {
@@ -642,7 +662,10 @@ fn show_publishes_open_and_retains_queued_task(
     assert_eq!(
         context
             .owner
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap(),
         Some(task)
     );
@@ -915,7 +938,8 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_reme
             128,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
@@ -1125,7 +1149,8 @@ fn hosted_queue_fixture() -> (DomSession, DomHostedTopLevel, NodeId) {
             128,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
@@ -1280,7 +1305,7 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -1320,7 +1345,7 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -1390,7 +1415,10 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
     );
     let original_a = context
         .owner
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     assert!(matches!(original_a, DomElementTask::DetailsToggle(_)));
@@ -1465,7 +1493,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
     assert_eq!(
         context
             .owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         3
     );
@@ -1474,7 +1502,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
             context
                 .owner
                 .pending_task(
-                    surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
                     index,
                 )
                 .unwrap()
@@ -1535,7 +1563,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
     assert!(matches!(
         DomElementTaskRuntime::run_next(
             &mut session.dom(),
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut listeners,
             &mut context,
             DomElementTaskRunLimits {
@@ -1558,7 +1586,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
     assert_eq!(
         context
             .owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         3
     );
@@ -1567,7 +1595,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
             .map(|index| context
                 .owner
                 .pending_task(
-                    surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
                     index
                 )
                 .unwrap()
@@ -1703,12 +1731,15 @@ fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption
     let owner = session.element_task_execution();
     assert_eq!(
         owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     let task = owner
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap()
         .dialog_toggle()
@@ -1940,7 +1971,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
     // Its actual operation and observations have closed before queue intake.
     assert_eq!(
         owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -1984,17 +2015,23 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
     }
     assert_eq!(
         owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         2
     );
     let pending = [
         owner
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap(),
         owner
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                1,
+            )
             .unwrap()
             .unwrap(),
     ];
@@ -2084,18 +2121,24 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
     assert_eq!(after_raise.phase(), DomSourcePhase::DialogService);
     assert_eq!(
         owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         2
     );
     assert_eq!(
         [
             owner
-                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+                .pending_task(
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                    0
+                )
                 .unwrap()
                 .unwrap(),
             owner
-                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 1)
+                .pending_task(
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                    1
+                )
                 .unwrap()
                 .unwrap()
         ],
@@ -2296,7 +2339,8 @@ fn explicit_job_zero_refuses_before_dispatch_and_constructor_work_refusal_return
             0,
             8,
             100_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -3415,7 +3459,7 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -3539,7 +3583,7 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -3664,7 +3708,7 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );

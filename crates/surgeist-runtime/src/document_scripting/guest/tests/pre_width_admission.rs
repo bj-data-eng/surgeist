@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_dom::{DomBatch, DomSourceEdit, NodeId};
+use surgeist_dom::{DomBatch, identity::NodeId, source::DomSourceEdit};
 use surgeist_html::values::Namespace;
 
 struct Fixture {
@@ -396,7 +396,7 @@ fn numeric_queries_consume_the_enclosing_attribute_source() {
     };
     let mut source = session.source_execution();
     let crate::DomSourceDriveProgress::Pending {
-        request: surgeist_dom::DomSourceRequest::MetaCsp(request),
+        request: surgeist_dom::source::DomSourceRequest::MetaCsp(request),
         ..
     } = source
         .apply(
@@ -506,7 +506,7 @@ fn numeric_queries_consume_the_enclosing_attribute_source() {
                     &cancel,
                 )
                 .unwrap();
-            let surgeist_dom::DomSourceProgress::Complete(completion) =
+            let surgeist_dom::source::DomSourceProgress::Complete(completion) =
                 lease.advance(&cancel).unwrap()
             else {
                 panic!("the original cancelled verifier must settle its own native tail");

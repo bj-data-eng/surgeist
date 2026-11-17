@@ -8,8 +8,12 @@ use super::clock;
 use crate::element_tasks::DomElementTaskId;
 use std::{cell::RefCell, rc::Rc};
 use surgeist_dom::{
-    DocumentId, DomHostedBrowsingContextId, DomHostedGlobalId, DomHostedHostId,
-    DomHostedNavigableId, DomHostedOperationId, DomOpaqueOrigin,
+    document::DomOpaqueOrigin,
+    hosted::{
+        DomHostedBrowsingContextId, DomHostedGlobalId, DomHostedHostId, DomHostedNavigableId,
+        DomHostedOperationId,
+    },
+    identity::DocumentId,
 };
 
 pub(super) struct Host {
@@ -100,7 +104,7 @@ pub(super) struct Top {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CurrentTask {
     ElementTask {
-        source: surgeist_dom::DomElementTaskSourceKind,
+        source: surgeist_dom::task::DomElementTaskSourceKind,
         task: DomElementTaskId,
         document: DocumentId,
     },
@@ -177,5 +181,5 @@ pub(super) struct HistoryTask {
     pub occurrence: u64,
     pub document: DocumentId,
     pub global: DomHostedGlobalId,
-    pub receipt: Option<surgeist_dom::DomHostedHistoryJobReceipt>,
+    pub receipt: Option<surgeist_dom::hosted::history::DomHostedHistoryJobReceipt>,
 }

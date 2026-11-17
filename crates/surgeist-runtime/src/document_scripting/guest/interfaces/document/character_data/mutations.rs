@@ -14,7 +14,7 @@ use surgeist_bindings_js::conversion::{
     },
 };
 use surgeist_bindings_js::{IntegerValue, dom_exception::DomExceptionName};
-use surgeist_dom::{DomSourceEdit, DomSourceStatus};
+use surgeist_dom::source::{DomSourceEdit, DomSourceStatus};
 
 #[derive(Clone, Copy)]
 enum Operation {

@@ -1,6 +1,10 @@
 //! An original Details counter may survive its disposed task owner.
 use super::*;
-use surgeist_dom::{DomResource, DomSourceEdit, DomSourceEventRequest, DomSourceLimits};
+use surgeist_dom::{
+    event::DomSourceEventRequest,
+    limits::DomResource,
+    source::{DomSourceEdit, DomSourceLimits},
+};
 
 // Source setup retains the original materializations and their registry paths.
 // Give that setup headroom before measuring the counter's exact released body.
@@ -49,12 +53,15 @@ fn disposed_details_owner_counter_backing_remains_in_runtime_and_source_custody(
             512,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
-            surgeist_dom::DomDispatchCustodyLimits::new(64, 4096, 1_000_000, 1_000_000, 100_000)
-                .unwrap(),
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
+                64, 4096, 1_000_000, 1_000_000, 100_000,
+            )
+            .unwrap(),
         )
         .with_details_toggle_intentions(8)
         .unwrap(),
@@ -86,8 +93,8 @@ fn disposed_details_owner_counter_backing_remains_in_runtime_and_source_custody(
     let hosted = crate::dom_lifecycle::HostedOwner::new(
         &mut dom,
         DomHostedRuntimeLimits {
-            canonical: surgeist_dom::DomHostedLimits::new(
-                surgeist_dom::DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+            canonical: surgeist_dom::hosted::DomHostedLimits::new(
+                surgeist_dom::hosted::DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
                 16_000_000,
                 16_000_000,
                 1_000_000,
@@ -199,9 +206,9 @@ fn disposed_details_owner_counter_backing_remains_in_runtime_and_source_custody(
         let mut lease = dom
             .begin_source_edit(DomSourceEdit::show_dialog(dialog), source_limits, &cancel())
             .unwrap();
-        let surgeist_dom::DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Event(
-            request,
-        )) = lease.advance(&cancel()).unwrap()
+        let surgeist_dom::source::DomSourceProgress::Request(
+            surgeist_dom::source::DomSourceRequest::Event(request),
+        ) = lease.advance(&cancel()).unwrap()
         else {
             panic!("actual Show parks at its original event")
         };

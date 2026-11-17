@@ -5,7 +5,7 @@ use super::{
     *,
 };
 use surgeist_bindings_js::ValueKind;
-use surgeist_dom::DomSourceEdit;
+use surgeist_dom::source::DomSourceEdit;
 
 const MOVE_BEFORE: &[u16] = &ascii(b"moveBefore");
 
