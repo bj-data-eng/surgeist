@@ -211,11 +211,87 @@ pub enum DomParsedHtmlInstallError {
 impl std::fmt::Display for DomParsedHtmlInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnreadableSource { subject, cause } => write!(
-                f,
-                "completed HTML installation rejected: source node {subject:?} holds a reference its result does not resolve: {cause:?}"
+            Self::Target(_) => {
+                f.write_str("the destination refused the completed HTML installation")
+            }
+            Self::StaleDestination { .. } => {
+                f.write_str("the destination store changed since the supplied stamp")
+            }
+            Self::NotCompletedOrdinaryReport => f.write_str(
+                "the report is not a completed ordinary-document report of the supported profile",
             ),
-            _ => write!(f, "completed HTML installation rejected: {self:?}"),
+            Self::NotCompletedFragmentReport => f.write_str(
+                "the report is not a completed fragment report of the supported profile",
+            ),
+            Self::UnresolvedReport(_) => {
+                f.write_str("the report is defective, so it was not installed")
+            }
+            Self::ForeignContext => {
+                f.write_str("the report's context does not belong to the supplied HTML capture")
+            }
+            Self::CurrentPolicyUnavailable => f.write_str(
+                "the current Document facts cannot qualify the report's original URL, encoding or policy observations",
+            ),
+            Self::CspProtocol(_) => f.write_str(
+                "the HTML Content Security Policy protocol rejected the report's policy association",
+            ),
+            Self::CspIssuerBusy => f.write_str("the Document policy issuer is already borrowed"),
+            Self::CapturedStateUnavailable => f.write_str(
+                "the report's captured historical state is unavailable in the destination",
+            ),
+            Self::EnvironmentMismatch => f.write_str(
+                "the supplied environment differs from the report's original Document facts",
+            ),
+            Self::MissingMetadata { .. } => f.write_str(
+                "the report holds no metadata that installation requires for a source node",
+            ),
+            Self::UnsupportedState { .. } => f.write_str(
+                "a source node holds state that completed HTML installation does not support",
+            ),
+            Self::FamilyStateUnavailable { .. } => {
+                f.write_str("the original element family state of a source node is unavailable")
+            }
+            Self::BaseStateUnavailable { .. } => {
+                f.write_str("the original state of a Base element is unavailable")
+            }
+            Self::MetaStateUnavailable { .. } => {
+                f.write_str("the original Meta state of a Document is unavailable")
+            }
+            Self::AssociationCaptureUnavailable { .. } => f.write_str(
+                "the original pending association capture of a Document is unavailable",
+            ),
+            Self::HyperlinkUnavailable { .. } => {
+                f.write_str("the original URL observation of a hyperlink is unavailable")
+            }
+            Self::ImageActivityUnavailable { .. } => {
+                f.write_str("the original update activity of an image is unavailable")
+            }
+            Self::DialogStateUnavailable { .. } => f.write_str(
+                "the report holds an original Dialog operation that was never fulfilled",
+            ),
+            Self::SourceLookup { .. } => f.write_str(
+                "a source node identity does not belong to the report's HTML result",
+            ),
+            Self::UnreadableSource { .. } => {
+                f.write_str("a source node holds a reference that its result does not resolve")
+            }
+            Self::ResourceLimit { resource, limit } => {
+                f.write_str("completed HTML installation exceeded its ")?;
+                f.write_str(match resource {
+                    DomParsedHtmlInstallResource::MappedNodes => "mapped-node",
+                    DomParsedHtmlInstallResource::Work => "adapter work",
+                    DomParsedHtmlInstallResource::ScratchBytes => "scratch byte",
+                    DomParsedHtmlInstallResource::HistoricalBytes => "historical byte",
+                })?;
+                write!(f, " allowance of {limit}")
+            }
+            Self::Cancelled => f.write_str("the completed HTML installation was cancelled"),
+            Self::AllocationFailed => {
+                f.write_str("an allocation required by the completed HTML installation failed")
+            }
+            Self::RepresentationExhausted => {
+                f.write_str("the completed HTML installation exhausted a checked representation")
+            }
         }
     }
 }
