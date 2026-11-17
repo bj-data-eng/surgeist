@@ -1,7 +1,8 @@
 //! DOM3071 createElementNS and HTML877d HTMLTemplateElement native creation.
 //! This admission oracle uses only the already callable public DOM surface.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[test]
 fn native_html_template_creation_publishes_an_actual_element() {

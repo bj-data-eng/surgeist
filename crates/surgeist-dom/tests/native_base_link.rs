@@ -1,6 +1,7 @@
 //! DOM3071 namespace construction and HTML877d Base/Link initialization.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn native_metadata_element(local: &str) {
     let mut dom = Dom::new(

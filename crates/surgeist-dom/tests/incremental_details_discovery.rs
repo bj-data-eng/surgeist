@@ -2,6 +2,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::details::HtmlDetailsState::{Closed, Open};
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[test]
 fn exact_details_names_stay_root_scoped_and_failed_renaming_restores_the_group() {

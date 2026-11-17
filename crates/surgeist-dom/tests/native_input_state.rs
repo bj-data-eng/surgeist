@@ -8,6 +8,10 @@ use surgeist_html::{
         HtmlInputNoneDirectionSupport as NoneDirection, HtmlInputSelectionDirection as Direction,
     },
 };
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 #[path = "support/input_processing.rs"]
 mod processing_envelope;

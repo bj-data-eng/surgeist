@@ -307,14 +307,21 @@ mod tests {
         let mut dom = Dom::new(limits).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let root = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let root =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&root, &document, None);
         if slotted {
             let shadow = setup.attach_shadow(
                 &root,
-                crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+                crate::DomShadowRootInit::new(
+                    surgeist_html::construction::HtmlShadowRootMode::Open,
+                ),
             );
-            let slot = setup.create_element_ns(&document, crate::Namespace::html(), "slot");
+            let slot = setup.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "slot",
+            );
             setup.insert_before(&slot, &shadow, None);
         }
         let commit = dom.apply(setup, &cancel).unwrap();

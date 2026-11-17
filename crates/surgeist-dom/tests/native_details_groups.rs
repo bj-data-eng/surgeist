@@ -4,6 +4,10 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 
 fn dom() -> Dom {
     Dom::new(

@@ -1,5 +1,6 @@
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomChange, DomError, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomChange, DomError, DomLimits};
+use surgeist_html::values::Namespace;
 
 fn dom() -> Dom {
     Dom::new(

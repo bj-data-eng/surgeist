@@ -1,6 +1,7 @@
 //! HTML877d Img's inactive prefix and exact-generation native retirement.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 use surgeist_html::{
     construction::{HtmlConstructionLimits, HtmlFragment},
     elements::image::{HtmlImageUpdateFlags, HtmlImgFreshRequestState},

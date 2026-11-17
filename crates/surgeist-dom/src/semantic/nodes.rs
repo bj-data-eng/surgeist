@@ -446,7 +446,8 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     use super::*;
-    use crate::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits, DomNameLimits, Namespace};
+    use crate::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits, DomNameLimits};
+    use surgeist_html::values::Namespace;
 
     struct Item(NodeId);
     impl Keyed for Item {

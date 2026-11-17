@@ -3,8 +3,9 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomError, DomHostDomains, DomHostError, DomHostObservations,
     DomHostPublisher, DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits,
-    DomHtmlCaptureResource, DomLimits, DomSnapshot, Namespace, NodeId, Observed,
+    DomHtmlCaptureResource, DomLimits, DomSnapshot, NodeId, Observed,
 };
+use surgeist_html::values::Namespace;
 use surgeist_html::{
     security::nonce::{HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp},
     values::{DocumentString, HtmlValueInterpreter},
@@ -276,7 +277,9 @@ fn common_html_nonce_and_custom_state_come_from_current_slots_including_imported
     assert_eq!(value.is_value(), &HtmlCapturedIsValue::Absent);
     assert_eq!(
         value.custom_element_state(),
-        HtmlCapturedCustomElementState::Known(surgeist_dom::HtmlCustomElementState::Undefined)
+        HtmlCapturedCustomElementState::Known(
+            surgeist_html::elements::native::HtmlCustomElementState::Undefined
+        )
     );
     assert_eq!(
         value.cryptographic_nonce(),

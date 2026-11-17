@@ -5,10 +5,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits,
-    DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
-    DomStyleInlineCspObservation, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits, DomSourceEdit,
+    DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
+    DomStyleInlineCspObservation, NodeId,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn owner() -> Dom {
     Dom::new(

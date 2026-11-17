@@ -10,8 +10,9 @@ use surgeist_css::color::controlled::{
     CssColorActionLayout, CssColorParse, CssColorParseOutcome, CssColorSlot, CssColorTransform,
     CssUsedColorCheckpoint,
 };
-use surgeist_dom::{DocumentString, DomError};
+use surgeist_dom::DomError;
 use surgeist_html::elements::input::HtmlInputColorSerialization;
+use surgeist_html::values::DocumentString;
 
 fn extent(count: usize, width: usize) -> Result<usize, &'static str> {
     count

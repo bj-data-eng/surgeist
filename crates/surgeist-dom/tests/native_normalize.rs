@@ -1,6 +1,10 @@
 //! DOM3071 normalize: descendant-only traversal, stable Text and Range transfers.
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

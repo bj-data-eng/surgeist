@@ -2,7 +2,8 @@
 //! actual family state before canonical publication. These constructor tests use
 //! only the existing DOM API; family-specific readback belongs to later tests.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 

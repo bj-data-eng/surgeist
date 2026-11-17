@@ -2,6 +2,10 @@
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
 use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
+use surgeist_html::{
     parsing::HtmlParserScriptingMode, security::nonce::HtmlBrowsingContextPresence,
 };
 use surgeist_html_parser::{

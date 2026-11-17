@@ -1,6 +1,8 @@
 //! Qualified A/Area set-URL through actual native attribute and tree owners.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::DocumentString;
+use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 use surgeist_html_semantics::*;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

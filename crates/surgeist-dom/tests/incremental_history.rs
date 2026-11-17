@@ -3,9 +3,10 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomAttrId, DomBatch, DomChange, DomChanges, DomHistoryError,
-    DomLimits, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress, NodeId,
+    DocumentId, Dom, DomAttrId, DomBatch, DomChange, DomChanges, DomHistoryError, DomLimits,
+    DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress, NodeId,
 };
+use surgeist_html::values::DocumentString;
 
 const SOURCE_WORK: u64 = 20_000;
 const LARGE_HISTORY: usize = 32_768;

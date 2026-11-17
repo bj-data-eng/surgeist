@@ -4,6 +4,7 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
 
 fn limits() -> DomLimits {

@@ -1,6 +1,7 @@
 //! Literal HTML877d Select-family outcomes on the real canonical owner.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

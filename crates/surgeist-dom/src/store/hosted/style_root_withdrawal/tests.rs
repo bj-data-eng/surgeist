@@ -1129,7 +1129,7 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
             .unwrap(),
         Some(global)
     );
-    let proposed = crate::DocumentString::from_utf16(vec![0xd800, 0, 0x61]);
+    let proposed = surgeist_html::values::DocumentString::from_utf16(vec![0xd800, 0, 0x61]);
     let mut lease = dom
         .begin_source_edit(
             DomSourceEdit::set_attribute(element, "onclick", proposed.clone()),
@@ -1322,7 +1322,7 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         .retain_attribute_verification_payload(request, &registration, 8, 4, &cancel)
         .unwrap();
     drop(report);
-    let verified = crate::DocumentString::from_utf16(vec![0xdc00, 0x62]);
+    let verified = surgeist_html::values::DocumentString::from_utf16(vec![0xdc00, 0x62]);
     assert_eq!(
         lease
             .attribute_verification_policy(request, &registration, &cancel)
@@ -1454,7 +1454,7 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
     ));
     drop(nested);
     drop(scope);
-    let detached_value = crate::DocumentString::from_utf16(vec![0x63, 0xd800]);
+    let detached_value = surgeist_html::values::DocumentString::from_utf16(vec![0x63, 0xd800]);
     let mut reply = Some(DomSourceAttributeVerificationOutcome::Value(
         detached_value.clone(),
     ));
@@ -1540,7 +1540,7 @@ fn registered_attribute_verification_precedes_attr_writes_and_attachment_guards(
         .get_attribute_node(&"onclick".into())
         .unwrap()
         .id();
-    let verified = crate::DocumentString::from_utf16(vec![0xd800, 0, 0x62]);
+    let verified = surgeist_html::values::DocumentString::from_utf16(vec![0xd800, 0, 0x62]);
 
     for (edit, receiver, input, output) in [
         (

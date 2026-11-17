@@ -6,9 +6,9 @@ use surgeist_dom::{
     DomError, DomLimits, DomNameLimits, DomNativeCheckpoint, DomNativeCheckpointLimits,
     DomNodeIteratorFilter, DomNodeIteratorProgress, DomResource, DomSelectCompletionStart,
     DomSelectTask, DomSelectTaskCancellationReason, DomSelectTaskOutcome, DomShadowRootInit,
-    DomSlotQueryLimits, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress,
-    HtmlShadowRootMode, Namespace, NodeId,
+    DomSlotQueryLimits, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress, NodeId,
 };
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 
 struct Tree {
     dom: Dom,
@@ -449,7 +449,7 @@ fn task(dom: &mut Dom, cancel: &AtomicBool) -> DomSelectTask {
     task
 }
 
-fn text(snapshot: &DomSnapshot, target: NodeId) -> surgeist_dom::DocumentString {
+fn text(snapshot: &DomSnapshot, target: NodeId) -> surgeist_html::values::DocumentString {
     let [text] = snapshot.node(target).unwrap().children() else {
         panic!("one Text child");
     };

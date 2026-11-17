@@ -5,9 +5,9 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomCommit, DomError, DomLimits, DomNameAtom,
-    DomSnapshot, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomCommit, DomError, DomLimits, DomNameAtom, DomSnapshot, NodeId,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn units(value: &[u16]) -> DocumentString {
     DocumentString::from_utf16(value.to_vec())

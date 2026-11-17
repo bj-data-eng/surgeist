@@ -238,7 +238,8 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     use super::*;
-    use crate::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits, DomNameLimits, Namespace};
+    use crate::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits, DomNameLimits};
+    use surgeist_html::values::Namespace;
 
     /// `count` distinct node identities from a real store.
     fn nodes(count: usize) -> Vec<NodeId> {

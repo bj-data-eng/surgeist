@@ -5,6 +5,7 @@ use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_css::{CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

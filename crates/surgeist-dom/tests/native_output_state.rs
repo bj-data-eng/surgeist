@@ -1,6 +1,10 @@
 //! Literal HTML877d Output state and DOM3071 tree outcomes.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 
 fn limits() -> DomLimits {

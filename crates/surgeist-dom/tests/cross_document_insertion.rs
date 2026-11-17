@@ -1,6 +1,7 @@
 use std::sync::atomic::AtomicBool;
 
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomError, DomLimits};
+use surgeist_dom::{Dom, DomBatch, DomError, DomLimits};
+use surgeist_html::values::DocumentString;
 
 // Selected DOM insert adopts each inserted node into the parent's document.
 // Adoption changes node-document, not canonical store identity. A fragment

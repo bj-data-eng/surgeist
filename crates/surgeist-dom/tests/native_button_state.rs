@@ -5,6 +5,10 @@ use surgeist_html::{
     attributes::HtmlFormMethod, elements::form::HtmlNativeFormAssociationKind,
     values::HtmlValueInterpreter,
 };
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 use surgeist_html_semantics::*;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

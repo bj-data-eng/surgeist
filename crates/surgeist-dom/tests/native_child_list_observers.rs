@@ -5,9 +5,9 @@ use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChildListObservationLimits, DomChildListObserverId,
     DomChildListRecord, DomError, DomLimits, DomNameLimits, DomNativeCheckpoint,
     DomNativeCheckpointLimits, DomResource, DomShadowRootInit, DomSlotQueryLimits, DomSourceEdit,
-    DomSourceLimits, DomSourceProgress, DomSourceRequest, DomStyleInlineCspObservation,
-    HtmlShadowRootMode, Namespace, NodeId,
+    DomSourceLimits, DomSourceProgress, DomSourceRequest, DomStyleInlineCspObservation, NodeId,
 };
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 
 struct Tree {
     dom: Dom,

@@ -1,6 +1,7 @@
 //! Existing public DOM constructor boundary; HTML877d native Script creation.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 

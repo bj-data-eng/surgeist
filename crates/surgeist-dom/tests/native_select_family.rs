@@ -1,6 +1,7 @@
 //! DOM3071 createElementNS and HTML877d native Select-family initialization.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn native_element(local_name: &str) {
     let mut dom = Dom::new(

@@ -14,6 +14,8 @@ mod pending_associations;
 mod meta_csp;
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
+use surgeist_html::construction::HtmlShadowRootMode;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html::{construction::HtmlDocumentMode, elements::native::HtmlCustomElementState};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,

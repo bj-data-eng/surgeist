@@ -3,9 +3,13 @@
 //! family initialization and independent absent-browsing-context semantics.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomDocumentClass, DomError,
+    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomDocumentClass, DomError,
     DomHtmlCaptureLimits, DomLimits, DomNodeKind, DomRegistryBinding, DomResource,
-    DomShadowRootInit, DomSnapshot, HtmlDocumentMode, HtmlShadowRootMode, Namespace, NodeId,
+    DomShadowRootInit, DomSnapshot, NodeId,
+};
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlShadowRootMode},
+    values::{DocumentString, Namespace},
 };
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 const SVG: &str = "http://www.w3.org/2000/svg";

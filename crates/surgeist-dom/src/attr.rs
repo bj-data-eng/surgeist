@@ -1,7 +1,5 @@
-use crate::{
-    DocumentId, DocumentString, DomAttrId, DomAttribute, DomError, DomNode, DomQualifiedName,
-    Namespace, NodeId,
-};
+use crate::{DocumentId, DomAttrId, DomAttribute, DomError, DomNode, DomQualifiedName, NodeId};
+use surgeist_html::values::{DocumentString, Namespace};
 
 /// Result of a canonical native Attr attachment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

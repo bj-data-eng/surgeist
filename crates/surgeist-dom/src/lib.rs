@@ -69,7 +69,8 @@
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
-//! use surgeist_dom::{Dom, DomBatch, DomLimits, Namespace};
+//! use surgeist_dom::{Dom, DomBatch, DomLimits};
+//! use surgeist_html::values::Namespace;
 //! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
 //! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
@@ -87,8 +88,10 @@
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
-//! use surgeist_dom::{Dom, DomBatch, DomLimits, DomSlotQueryLimits, Namespace,
+//! use surgeist_dom::{Dom, DomBatch, DomLimits, DomSlotQueryLimits};
+//! use surgeist_html::construction::{
 //!     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+//! use surgeist_html::values::Namespace;
 //! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
 //! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 64, 32, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
@@ -322,13 +325,6 @@ pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits,
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
     DomNodeRetirementWatch, DomResource, DomUsage, DomWatchedNode,
-};
-pub use surgeist_html::{
-    construction::{
-        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-    },
-    elements::native::HtmlCustomElementState,
-    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 pub use svg_script::{DomSvgScript, DomSvgScriptOrigin};
 pub use template::{DomTemplate, DomTemplateDocumentRole, DomTemplatePatch};

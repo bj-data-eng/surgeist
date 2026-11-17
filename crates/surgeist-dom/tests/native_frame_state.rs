@@ -1,9 +1,12 @@
 //! HTML877d Frame null child-content, source guards and canonical lifecycle.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomError, DomHistoryError, DomLimits,
-    DomResource, DomSnapshot, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-    Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomError, DomHistoryError, DomLimits, DomResource,
+    DomSnapshot, NodeId,
+};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{DocumentString, Namespace},
 };
 use surgeist_html::{
     elements::frame::HtmlChildNavigablePresence, security::nonce::HtmlBrowsingContextPresence,

@@ -6,6 +6,10 @@ use surgeist_html::construction::{
     HtmlNodeKind,
 };
 use surgeist_html::elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn authoring() -> HtmlConstructionLimits {
     HtmlConstructionLimits::new(1024, 2048, 1024, 131072, 512)

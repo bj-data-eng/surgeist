@@ -1154,7 +1154,7 @@ impl Dom {
         document: Key,
         (name, saved_is, definition): (
             crate::DomQualifiedName,
-            Option<crate::DocumentString>,
+            Option<surgeist_html::values::DocumentString>,
             crate::DomRegistryDefinitionId,
         ),
         (inbox, key, limits): (

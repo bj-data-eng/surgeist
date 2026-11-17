@@ -5,11 +5,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit,
+    DocumentId, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit,
     DomDesignModeRangeDisposition, DomError, DomLimits, DomRangeId, DomSnapshot,
     DomSourceCompletion, DomSourceDesignModeStep, DomSourceEdit, DomSourceLimits, DomSourcePhase,
-    DomSourceProgress, DomSourceRequest, Namespace, NodeId,
+    DomSourceProgress, DomSourceRequest, NodeId,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn limits() -> DomLimits {
     DomLimits::new(

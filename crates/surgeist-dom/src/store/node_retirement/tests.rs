@@ -35,8 +35,9 @@ fn bytes(dom: &Dom) -> usize {
 
 #[test]
 fn prepared_detached_element_publishes_only_after_projection_and_watch_admission() {
-    use crate::{DomElementCreationName, DomElementCreationOptions, DomSourceLimits, Namespace};
+    use crate::{DomElementCreationName, DomElementCreationOptions, DomSourceLimits};
     use std::cell::Cell;
+    use surgeist_html::values::Namespace;
 
     struct Projection<'a>(&'a Cell<usize>);
     impl Drop for Projection<'_> {
@@ -228,7 +229,8 @@ fn source_detached_creation_and_watch_publish_together() {
 
 #[test]
 fn source_shadow_creation_admits_the_watch_before_publication() {
-    use crate::{DomShadowRootInit, DomSourceLimits, HtmlShadowRootMode};
+    use crate::{DomShadowRootInit, DomSourceLimits};
+    use surgeist_html::construction::HtmlShadowRootMode;
     use surgeist_html::values::Namespace;
 
     let cancel = AtomicBool::new(false);
@@ -300,7 +302,8 @@ fn source_shadow_creation_admits_the_watch_before_publication() {
 
 #[test]
 fn source_shadow_host_validation_charges_the_complete_native_name_scan() {
-    use crate::{DomShadowRootInit, DomSourceLimits, HtmlShadowRootMode};
+    use crate::{DomShadowRootInit, DomSourceLimits};
+    use surgeist_html::construction::HtmlShadowRootMode;
     use surgeist_html::values::Namespace;
 
     let cancel = AtomicBool::new(false);

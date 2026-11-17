@@ -1,8 +1,12 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomElementDefinition, DomError,
-    DomLimits, DomRegistryBinding, DomResource, HtmlCustomElementState, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomElementDefinition, DomError, DomLimits,
+    DomRegistryBinding, DomResource, NodeId,
+};
+use surgeist_html::{
+    elements::native::HtmlCustomElementState,
+    values::{DocumentString, Namespace},
 };
 
 fn dom() -> Dom {

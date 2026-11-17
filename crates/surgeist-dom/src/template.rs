@@ -78,7 +78,8 @@ impl<K: Copy> TemplateDocument<K> {
 ///
 /// ```
 /// use std::sync::atomic::AtomicBool;
-/// use surgeist_dom::{Dom, DomBatch, DomLimits, Namespace};
+/// use surgeist_dom::{Dom, DomBatch, DomLimits};
+/// use surgeist_html::values::Namespace;
 /// let cancel = AtomicBool::new(false);
 /// let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 8, 16384, surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap())?)?;
 /// let mut batch = DomBatch::new();
