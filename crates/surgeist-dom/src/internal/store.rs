@@ -1,0 +1,4788 @@
+use std::{
+    mem::size_of,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
+};
+
+use crate::internal::batch::{
+    AttachedAttribute, AttachedShadowRoot, AttributeSetterMode, BatchIdentity, Command, Creation,
+    RemovedAttribute,
+};
+use crate::internal::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
+use crate::{
+    internal::batch::CreatedNode, internal::batch::DomBatch, internal::batch::NodeOperand,
+    internal::element::DomElement, internal::identity::DocumentId, internal::identity::DomOwnerId,
+    internal::identity::DomRevision, internal::identity::DomStamp, internal::identity::NodeId,
+    internal::node_values::DomDocumentType, internal::node_values::DomProcessingInstruction,
+    internal::snapshot::DomNodeKind, internal::snapshot::DomSnapshot,
+};
+use surgeist_html::values::DocumentString;
+
+mod attributes;
+mod autofocus;
+pub(crate) mod bank;
+mod base;
+pub(crate) mod block_custody;
+#[cfg(test)]
+mod block_custody_tests;
+pub(crate) mod canonical;
+mod changes;
+mod child_list;
+#[cfg(test)]
+use changes::full_difference;
+use changes::{same_auxiliary, sparse_difference};
+pub use child_list::DomChildListNotification;
+mod children;
+#[cfg(test)]
+pub(crate) mod compact_tests;
+mod control;
+mod csp;
+pub(crate) mod custody;
+pub(crate) use custody::{MaterializationId, Usage as MaterializationUsage};
+mod compound;
+mod design_mode;
+mod details;
+mod dialog;
+mod dispatch;
+mod document;
+mod element_tasks;
+#[cfg(test)]
+pub(crate) mod empty_sequence_observation;
+pub(crate) mod event;
+mod focus;
+mod form;
+mod fullscreen;
+mod history;
+pub(crate) mod hosted;
+mod html_credits;
+mod hyperlink;
+mod text;
+use history::HistoryEntry;
+mod image;
+mod import;
+mod inline_style;
+pub use hosted::constructed_sheet::{
+    DomHostedSheetConstruction, DomHostedSheetConstructionError,
+    DomHostedSheetConstructionPublished,
+};
+pub use hosted::style_root_withdrawal::{
+    DomHostedStyleRootWithdrawal, DomHostedStyleRootWithdrawalPreparation,
+    DomHostedStyleRootWithdrawalPublished,
+};
+pub use inline_style::feedback::DomInlineStyleOperation;
+mod input;
+mod input_processing;
+mod installation;
+mod meta;
+pub(crate) mod meta_atomic;
+mod method;
+mod name_registry;
+mod navigable;
+mod node_iterator;
+mod node_retirement;
+pub use node_iterator::DomNodeIteratorFilterRequest;
+pub use node_retirement::{
+    DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
+    DomNodeRetirementWatch, DomWatchedNode,
+};
+#[cfg(test)]
+mod error_text_tests;
+#[cfg(test)]
+mod oracle_tests;
+mod output;
+pub(crate) mod parsed_installation;
+pub(crate) mod payload;
+pub(crate) mod pending_associations;
+mod range;
+mod reflected;
+pub(crate) mod registry;
+#[cfg(test)]
+pub(crate) mod scale_metrics;
+#[cfg(test)]
+mod scale_tests;
+mod script;
+mod select;
+mod shadow;
+mod shared;
+mod slot;
+pub(crate) mod source;
+pub(crate) mod style;
+mod style_custody;
+#[cfg(test)]
+mod style_custody_tests;
+mod svg_script;
+mod template;
+mod textarea;
+mod transaction;
+#[cfg(test)]
+pub(crate) use transaction::CopyObservation;
+mod text_custody_ingress;
+mod tree;
+mod view_transition;
+use crate::internal::view_transition::*;
+pub(crate) use bank::owned::{EmptyPath, OwnedBank};
+pub(crate) use bank::{Bank, Iter as BankIter};
+pub(crate) use shared::SharedVec;
+pub(crate) use source::AllocationIds as KeyAliases;
+pub(crate) use source::formation::{SourceRetention, SourceStorage, SourceWorkIdentity};
+use view_transition::DraftTransitions;
+pub(crate) use view_transition::TransitionMembership;
+
+/// Configured capacity whose admission would be exceeded.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomResource {
+    ParsedAssociationBytes,
+    ParsedAssociationUnits,
+    ParsedAssociationProcessingRetainedBytes,
+    ParsedAssociationProcessingRetainedUnits,
+    ParsedAssociationProcessingOutputs,
+    ParsedAssociationProcessingWork,
+    /// Caller-owned finite header traversal during notification cleanup.
+    ParsedAssociationDispatchWork,
+    FullscreenExits,
+    FullscreenEvents,
+    Ranges,
+    NodeIterators,
+    ChildListObservers,
+    ChildListRegistrations,
+    ChildListRecords,
+    ChildListRecordReferences,
+    ManagedNodes,
+    SlotReferences,
+    AutofocusCandidates,
+    SlotAssignmentInputs,
+    SlotQueryOutput,
+    SlotQueryScratch,
+    StringCodeUnits,
+    Commands,
+    HistoryEntries,
+    HistoryBytes,
+    ViewTransitions,
+    ViewTransitionRecords,
+    ViewTransitionPseudos,
+    ViewTransitionCaptureBytes,
+    InputProcessingScratch,
+    SelectScratch,
+    SelectTasks,
+    DetailsToggleIntentions,
+    DetailsToggleOutput,
+    BaseObservations,
+    ImageUpdateCancellations,
+    EncodingUrlObservations,
+    /// Registered dispatch-custody index capacity.
+    DispatchCustodyScopes,
+    /// Actual simultaneously retained target references.
+    DispatchCustodyReferences,
+    /// Actual custody scope and weak-index payload.
+    DispatchCustodyRetainedBytes,
+    /// Temporary registration and retirement-publication banks.
+    DispatchCustodyScratch,
+    /// Live positive Load/Error recipient capabilities across all registries.
+    EventRecipients,
+    /// Actual recipient owner, endpoint index, buckets and lease occurrences.
+    EventRecipientRetainedBytes,
+    /// Temporary recipient index and topology-query storage.
+    EventRecipientScratch,
+    /// Recipient admission and reached topology/index query work.
+    EventRecipientWork,
+    /// Maximum inline binding count.
+    InlineStyleBindings,
+    /// Original DOM custody union during inline formation.
+    InlineStyleStorage,
+    /// Temporary inline membership/preparation storage.
+    InlineStyleScratch,
+    /// Inline operation and sparse qualification work.
+    InlineStyleWork,
+    /// Canonical custody union at ordinary node-retirement admission.
+    NodeRetirementCanonicalBytes,
+    SourceRetainedBytes,
+    SourceRetainedUnits,
+    /// Directly owned name records, index capacity and operation receipts.
+    NameRetainedBytes,
+    /// Committed live/dead and pending distinct name entries.
+    NameEntries,
+    /// Cumulative name work within its ordinary or Source operation.
+    NameWork,
+    /// Simultaneously retained or reserved temporary name storage.
+    NameScratch,
+    MetaAtomicRetainedBytes,
+    MetaAtomicRetainedUnits,
+    MetaAtomicOutputs,
+    MetaColorSchemeRetainedBytes,
+    MetaThemeColorScratch,
+}
+
+/// Typed edit/readback failure. Atomic batch failures publish no state or
+/// identity; composed source failures retain their already-published phases
+/// and mandatory continuation for recovery.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum DomError {
+    /// A completed parse report holds a reference to a record its own tables
+    /// cannot resolve, so the operation that read it is refused.
+    ParsedReportUnresolved(surgeist_html_parser::HtmlParseUnresolvedReference),
+    /// Original parsed association history must be admitted before a native
+    /// association-changing operation may cross this exact Document.
+    ParsedAssociationPending {
+        document: DocumentId,
+        pending: crate::internal::parsed_installation::DomParsedHtmlAssociationId,
+    },
+    /// No authenticated executed synchronous frontier is available for this
+    /// original parsed notification. Whole-history Pending is not this guard.
+    ParsedAssociationSynchronousPending {
+        pending: crate::internal::parsed_installation::DomParsedHtmlAssociationId,
+    },
+    /// The original parsed processing guard was authentically poisoned.
+    ParsedAssociationProcessingPoisoned {
+        pending: crate::internal::parsed_installation::DomParsedHtmlAssociationId,
+    },
+    /// The explicit ordinary inline operation lacks a reached profile.
+    InlineStyleProfileMissing {
+        element: NodeId,
+    },
+    /// Several rows name the same reached Element/Document qualification.
+    InlineStyleProfileConflict {
+        element: NodeId,
+    },
+    /// A reached bound change needs an inline synchronization operation.
+    InlineStyleContextRequired {
+        element: NodeId,
+        change: crate::internal::inline_style::DomInlineStyleChange,
+    },
+    /// An original inline feedback effect must complete before affected work.
+    InlineStyleOperationPending {
+        element: NodeId,
+    },
+    StaleFullscreenExit,
+    FullscreenExitHandoffRequired,
+    FullscreenExitAssertionFailed {
+        document: DocumentId,
+    },
+    FullscreenExitCompositionUnsupported {
+        document: DocumentId,
+        fact: crate::internal::fullscreen::DomFullscreenExitFact,
+    },
+    FullscreenExitDocumentRetired {
+        invocation: crate::internal::fullscreen::DomFullscreenExitId,
+        document: DocumentId,
+        step: crate::internal::fullscreen::DomFullscreenExitStep,
+    },
+    FullscreenModelUnavailable {
+        step: crate::internal::fullscreen::DomFullscreenModelStep,
+    },
+    TopLayerAdoptionUnavailable {
+        subject: Option<NodeId>,
+        old_document: Option<DocumentId>,
+    },
+    StaleRange,
+    StaleNodeIterator,
+    StaleChildListObserver,
+    ChildListPublicationUnavailable,
+    ChildListDeliveryActive,
+    ChildListWorkLimit {
+        limit: u64,
+    },
+    NodeIteratorFilterActive,
+    NodeIteratorPublicationUnavailable,
+    NodeIteratorWorkLimit {
+        limit: u64,
+    },
+    RangeAssociationIneligible,
+    RangePublicationUnavailable,
+    /// A reached operation needs a current live hosted owner association.
+    HostedSourceUnavailable,
+    DocumentConstructor(crate::internal::hosted::DomDocumentConstructorError),
+    HostedCompositionRequired,
+    /// A custody capability, target, or occurrence does not match this owner.
+    InvalidDispatchCustody,
+    /// A live listener-registry owner is already associated with this DOM.
+    EventRegistryAlreadyBound,
+    /// The supplied association is not this DOM's current registry owner.
+    InvalidEventRegistry,
+    /// The finite independent custody-processing allowance was exhausted.
+    DispatchCustodyWorkLimit {
+        limit: u64,
+    },
+    /// A raise-only Source policy call attempted to reduce an allowance.
+    SourceLimitReduction,
+    /// This parsed contribution's one consuming preparation has sealed its
+    /// prefix, either while outstanding or after it closed.
+    ParsedAssociationOperationPending {
+        pending: crate::internal::parsed_installation::DomParsedHtmlAssociationId,
+    },
+    InvalidSourceEvent,
+    SourceInvariantFailed {
+        operation: crate::internal::source::DomSourceOperationId,
+        failure: crate::internal::source::DomSourceInvariantFailure,
+    },
+    SourceReceiverRetired {
+        operation: crate::internal::source::DomSourceOperationId,
+        subject: NodeId,
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
+    },
+    SourceCloseWatcherReceiverRetired {
+        operation: crate::internal::source::DomSourceOperationId,
+        subject: NodeId,
+        action: surgeist_html::elements::dialog::HtmlCloseWatcherRequestAction,
+    },
+    CloseWatcherProtocol(surgeist_html::elements::dialog::HtmlCloseWatcherRequestError),
+    SourceEventExecutorUnavailable,
+    /// A reached attribute verification has no authentic node-document Global.
+    SourceAttributeGlobalUnavailable,
+    /// A reached attribute verification has no qualified executor.
+    SourceAttributeExecutorUnavailable,
+    /// The exact registered verifier rejected the proposed value.
+    SourceAttributeVerificationRejected,
+    /// The exact registered verifier retained an abrupt guest outcome.
+    SourceAttributeVerificationAbrupt,
+    DialogInvalidState,
+    NeedsEventfulOperation {
+        subject: Option<NodeId>,
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
+    },
+    SourceNestedOperationLimit {
+        limit: usize,
+    },
+    SourceUrlInputsMismatch,
+    SourceUrlUnavailable,
+    ForeignOwner,
+    StaleNode,
+    NodeRetirementAlreadyWatched,
+    /// Ordinary watch or inbox preparation exceeded its work allowance.
+    NodeRetirementWorkLimit {
+        limit: u64,
+    },
+    ForeignBatch,
+    UnavailableCreation,
+    WrongNodeKind,
+    WrongDocument,
+    HierarchyRequest,
+    /// An adjacent insertion position matched none of the four standard names.
+    InvalidAdjacentPosition,
+    InvalidCharacter,
+    Namespace,
+    /// HTML Script preparation requires a live settings observation.
+    ScriptPreparationRequired,
+    /// A staged HTML Meta insertion requires its CSP processor.
+    MetaCspProcessingRequired,
+    NotSupported,
+    NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass),
+    NonceInapplicable,
+    TemplateContentsUnavailable,
+    MarqueeInapplicable,
+    DialogInapplicable,
+    DialogDocumentStateUnavailable,
+    AutofocusDocumentStateUnavailable,
+    AutofocusInsertionUnavailable {
+        action: surgeist_html::focus::HtmlAutofocusInsertionAction,
+    },
+    AutofocusInsertionProtocol(surgeist_html::focus::HtmlAutofocusInsertionError),
+    DesignModeProcessingUnavailable {
+        step: crate::internal::source::DomSourceDesignModeStep,
+    },
+    DesignModeProtocol(surgeist_html::elements::native::HtmlDesignModeError),
+    DialogFocusingUnavailable {
+        action: surgeist_html::elements::dialog::HtmlDialogFocusingAction,
+    },
+    DialogFocusingProtocol(surgeist_html::elements::dialog::HtmlDialogFocusingError),
+    FocusDelegateProtocol(surgeist_html::focus::HtmlFocusDelegateError),
+    /// The reached HTML removing step cannot compare this Element with its
+    /// node-Document's unavailable focused-area designation. Identities are
+    /// present only when the actual Draft keys have been published; `None`
+    /// denotes unpublished identity, not an absent subject or Document.
+    FocusedAreaDesignationUnavailable {
+        subject: Option<NodeId>,
+        document: Option<DocumentId>,
+    },
+    AutofocusDelegateProtocol(surgeist_html::focus::HtmlAutofocusDelegateError),
+    TopLayerAlreadyActive {
+        subject: NodeId,
+        document: DocumentId,
+    },
+    DialogProcessingUnavailable {
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
+    },
+    DialogProtocol(surgeist_html::elements::dialog::HtmlDialogCursorError),
+    CustomValidityInapplicable,
+    ButtonInapplicable,
+    InputInapplicable,
+    TextareaInapplicable,
+    OutputInapplicable,
+    OutputProtocol(surgeist_html::elements::form::HtmlOutputCursorError),
+    TextareaReadWorkLimit {
+        limit: u64,
+    },
+    InputFilenameInvalidState,
+    InputProcessingProtocol,
+    InputProcessingWorkLimit {
+        limit: u64,
+    },
+    InputNumeric(surgeist_html::bounded::numeric::HtmlRangeNumericError),
+    InputColorUnavailable(surgeist_css::color::CssColorUnavailable),
+    InputColorUnsupported(surgeist_css::color::CssColorUnsupported),
+    InputColorFacts(surgeist_css::color::CssColorFactDefect),
+    StyleCompositionRequired(surgeist_html::elements::style::HtmlStyleUpdateAction),
+    StyleOwnerAttributesCompositionRequired,
+    StyleDisabledCompositionRequired,
+    StyleProcessingUnavailable,
+    Meta(crate::internal::meta::DomMetaError),
+    StyleProtocol,
+    SvgScriptProcessingUnavailable,
+    SourceOperationPending,
+    IncompleteSourceOperation,
+    InvalidSourceOperation,
+    SourcePublicationLimit,
+    SourceOutputLimit,
+    SourceIdentityLimit,
+    StyleReceiptMismatch,
+    StyleFactsMismatch,
+    StyleCssomRootBusy,
+    StyleCssomRootPoisoned,
+    SourceWorkLimit {
+        limit: u64,
+    },
+    SelectInapplicable,
+    OptionInapplicable,
+    SelectProtocol,
+    SelectValueQueriesUnconfigured,
+    SelectCapture(surgeist_html_semantics::HtmlCaptureError),
+    SelectElementValues(surgeist_html_semantics::HtmlCaptureElementError<std::convert::Infallible>),
+    SelectSemantic(surgeist_html_semantics::HtmlSemanticFailure),
+    InvalidSelectSemanticLimit {
+        resource: surgeist_html_semantics::HtmlSemanticResource,
+        limit: usize,
+        used: usize,
+    },
+    LinkProcessingUnavailable,
+    ImageProcessingUnavailable,
+    MediaResourceEffectUnavailable(surgeist_html::elements::media::HtmlMediaResourceEffect),
+    MediaRemovalStableStateUnavailable,
+    ImageUpdateExhausted,
+    HyperlinkProcessingUnavailable,
+    EncodingUrlFacts(crate::internal::hyperlink::DomEncodingUrlFactsError),
+    EncodingUrlWorkLimit {
+        limit: u64,
+    },
+    BaseFacts(crate::internal::base::DomBaseFactsError),
+    BaseWorkLimit {
+        limit: u64,
+    },
+    SelectWorkLimit {
+        limit: u64,
+    },
+    InvalidNativeTask,
+    SlotInapplicable,
+    NonceEnvironmentUnavailable(surgeist_html::security::nonce::HtmlNonceMissing),
+    NotFound,
+    InUseAttribute,
+    InvalidDestruction,
+    /// The original live script attachment must settle a routed reaction
+    /// before its native receiver can be retired.
+    CustomElementReactionPending(NodeId),
+    IndexSize,
+    Cancelled,
+    ResourceLimit {
+        resource: DomResource,
+        limit: usize,
+    },
+    /// A cumulative operation-work allowance, independent of address width.
+    WorkLimit {
+        resource: DomResource,
+        limit: u64,
+    },
+    InvalidLimit(DomResource),
+    AllocationFailed,
+    RepresentationExhausted,
+    /// An HTML operation broke its accounting contract with this adapter. Either it charged a
+    /// change that the DOM's work owner does not admit (a resource change, a gauge record or a
+    /// dimension with no credit rate, since the DOM charges only work), or the ledger of an HTML
+    /// crate reported any `HtmlAccountingFault` other than a failed allocation, which is
+    /// `AllocationFailed`. Release underflow, foreign scope, spent scope bound and ledger defect
+    /// are examples.
+    HtmlChargeProtocol,
+    /// The processing-instruction pseudo-attribute driver and its cursor disagree about the
+    /// committed names or the cursor's own replies. A driver that answers only what the cursor asks
+    /// cannot produce it.
+    PseudoAttributeCursor(surgeist_html::bounded::lexical::HtmlPiPseudoAttributeError),
+    OwnerIdentityExhausted,
+    RevisionExhausted,
+    ViewTransitionsUninitialized,
+    ViewTransitionRevisionMismatch,
+    StaleViewTransition,
+    StaleViewTransitionRecord,
+    StaleViewTransitionPseudo,
+    InvalidViewTransitionState,
+    DuplicateViewTransitionName,
+    ViewTransitionOriginUnavailable,
+    ViewTransitionCssom(DomViewTransitionCssomError),
+    ViewTransitionCaptureWorkLimit {
+        limit: u64,
+    },
+}
+impl std::fmt::Display for DomError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParsedReportUnresolved(..) => f.write_str("a completed parse report holds a reference that its own tables cannot resolve"),
+            Self::ParsedAssociationPending { .. } => f.write_str("parsed association history must be admitted before this operation can cross the Document"),
+            Self::ParsedAssociationSynchronousPending { .. } => f.write_str("no authenticated executed synchronous frontier is available for the parsed notification"),
+            Self::ParsedAssociationProcessingPoisoned { .. } => f.write_str("the parsed association processing guard was poisoned by an earlier failure"),
+            Self::InlineStyleProfileMissing { .. } => f.write_str("the inline style operation has no profile for the Element"),
+            Self::InlineStyleProfileConflict { .. } => f.write_str("several inline style profiles name the same Element and Document qualification"),
+            Self::InlineStyleContextRequired { .. } => f.write_str("a bound inline style change needs an inline style synchronization operation"),
+            Self::InlineStyleOperationPending { .. } => f.write_str("an inline style feedback effect must complete before the affected operation"),
+            Self::StaleFullscreenExit => f.write_str("the fullscreen exit invocation is stale"),
+            Self::FullscreenExitHandoffRequired => f.write_str("a pending fullscreen exit must be handed off to its scheduling owner first"),
+            Self::FullscreenExitAssertionFailed { .. } => f.write_str("an assertion of the fullscreen exit algorithm failed"),
+            Self::FullscreenExitCompositionUnsupported { .. } => f.write_str("the fullscreen exit cannot be composed with the Document's current state"),
+            Self::FullscreenExitDocumentRetired { .. } => f.write_str("the Document of the fullscreen exit invocation was retired"),
+            Self::FullscreenModelUnavailable { .. } => f.write_str("the fullscreen model cannot proceed at this step"),
+            Self::TopLayerAdoptionUnavailable { .. } => f.write_str("top-layer state cannot be adopted into the receiving Document"),
+            Self::StaleRange => f.write_str("the Range is stale"),
+            Self::StaleNodeIterator => f.write_str("the NodeIterator is stale"),
+            Self::StaleChildListObserver => f.write_str("the child-list observer is stale"),
+            Self::ChildListPublicationUnavailable => f.write_str("the child-list observation publication is unavailable"),
+            Self::ChildListDeliveryActive => f.write_str("child-list observation delivery is already active"),
+            Self::ChildListWorkLimit { limit } => write!(f, "child-list observation exhausted its work allowance of {limit}"),
+            Self::NodeIteratorFilterActive => f.write_str("the NodeIterator filter is already running"),
+            Self::NodeIteratorPublicationUnavailable => f.write_str("the NodeIterator publication is unavailable"),
+            Self::NodeIteratorWorkLimit { limit } => write!(f, "NodeIterator traversal exhausted its work allowance of {limit}"),
+            Self::RangeAssociationIneligible => f.write_str("the Range is not rooted in the Document it would be associated with"),
+            Self::RangePublicationUnavailable => f.write_str("a Range has boundaries that are invalid at publication"),
+            Self::HostedSourceUnavailable => f.write_str("the hosted source, association or registry the operation needs is unavailable or no longer current"),
+            Self::DocumentConstructor(..) => f.write_str("the Document constructor refused the request"),
+            Self::HostedCompositionRequired => f.write_str("the operation must be composed with its hosted owner"),
+            Self::InvalidDispatchCustody => f.write_str("the dispatch custody, target or occurrence is not valid here"),
+            Self::EventRegistryAlreadyBound => f.write_str("a live listener-registry owner is already associated with this DOM"),
+            Self::InvalidEventRegistry => f.write_str("the supplied association is not this DOM's current listener-registry owner"),
+            Self::DispatchCustodyWorkLimit { limit } => write!(f, "dispatch custody processing exhausted its work allowance of {limit}"),
+            Self::SourceLimitReduction => f.write_str("a Source policy call tried to reduce an allowance, which may only be raised"),
+            Self::ParsedAssociationOperationPending { .. } => f.write_str("this parsed contribution's consuming operation is outstanding or has sealed its prefix"),
+            Self::InvalidSourceEvent => f.write_str("the Source event, its executor or its custody is not valid for the retained operation at this stage"),
+            Self::SourceInvariantFailed { .. } => f.write_str("a Source operation assertion failed"),
+            Self::SourceReceiverRetired { .. } => f.write_str("the receiver of the Source dialog action was retired before the action completed"),
+            Self::SourceCloseWatcherReceiverRetired { .. } => f.write_str("the receiver of the Source close-watcher request was retired before the action completed"),
+            Self::CloseWatcherProtocol(..) => f.write_str("the close-watcher request protocol was violated"),
+            Self::SourceEventExecutorUnavailable => f.write_str("no live event executor is available for this Source operation"),
+            Self::SourceAttributeGlobalUnavailable => f.write_str("attribute verification has no authentic node-document Global"),
+            Self::SourceAttributeExecutorUnavailable => f.write_str("attribute verification has no qualified executor"),
+            Self::SourceAttributeVerificationRejected => f.write_str("the registered verifier rejected the proposed attribute value"),
+            Self::SourceAttributeVerificationAbrupt => f.write_str("the registered verifier retained an abrupt guest outcome"),
+            Self::DialogInvalidState => f.write_str("the Dialog is in a state that does not allow this operation"),
+            Self::NeedsEventfulOperation { .. } => f.write_str("the Dialog action fires events and needs an eventful Source operation"),
+            Self::SourceNestedOperationLimit { limit } => write!(f, "nested Source operations exceeded their allowance of {limit}"),
+            Self::SourceUrlInputsMismatch => f.write_str("the Source URL request or observation does not match the pending stage's inputs"),
+            Self::SourceUrlUnavailable => f.write_str("the facts or observation the Source URL stage needs are unavailable"),
+            Self::ForeignOwner => f.write_str("the identity, basis or capability belongs to a different DOM owner"),
+            Self::StaleNode => f.write_str("the referenced node, registry or retained fact is stale or unavailable"),
+            Self::NodeRetirementAlreadyWatched => f.write_str("the node is already watched for retirement"),
+            Self::NodeRetirementWorkLimit { limit } => write!(f, "node-retirement watch preparation exhausted its work allowance of {limit}"),
+            Self::ForeignBatch => f.write_str("the ticket, operand or context belongs to a different batch"),
+            Self::UnavailableCreation => f.write_str("a creation requested by this edit has no published result"),
+            Self::WrongNodeKind => f.write_str("the node is not of the kind the operation requires"),
+            Self::WrongDocument => f.write_str("the node is not the expected Document or belongs to a different Document"),
+            Self::HierarchyRequest => f.write_str("the node hierarchy does not allow this edit or position"),
+            Self::InvalidAdjacentPosition => f.write_str("the adjacent insertion position is not beforebegin, afterbegin, beforeend or afterend"),
+            Self::InvalidCharacter => f.write_str("the name or value contains a character or sequence that is not allowed"),
+            Self::Namespace => f.write_str("the qualified name and namespace are inconsistent"),
+            Self::ScriptPreparationRequired => f.write_str("HTML Script preparation requires a live settings observation"),
+            Self::MetaCspProcessingRequired => f.write_str("a staged HTML Meta insertion requires its Content Security Policy processor"),
+            Self::NotSupported => f.write_str("the operation is not supported here"),
+            Self::NativeInitializationRequired(..) => f.write_str("creating this Element requires a native initialization that this operation cannot perform"),
+            Self::NonceInapplicable => f.write_str("the Element has no nonce"),
+            Self::TemplateContentsUnavailable => f.write_str("the Template element's contents are unavailable"),
+            Self::MarqueeInapplicable => f.write_str("the Element is not a Marquee"),
+            Self::DialogInapplicable => f.write_str("the Element is not a Dialog or has no Dialog state"),
+            Self::DialogDocumentStateUnavailable => f.write_str("the Document's dialog and top-layer state is unavailable"),
+            Self::AutofocusDocumentStateUnavailable => f.write_str("the Document has no autofocus state"),
+            Self::AutofocusInsertionUnavailable { .. } => f.write_str("the autofocus insertion step needs a service that is unavailable"),
+            Self::AutofocusInsertionProtocol(..) => f.write_str("the autofocus insertion protocol was violated"),
+            Self::DesignModeProcessingUnavailable { .. } => f.write_str("designMode processing cannot proceed at this step"),
+            Self::DesignModeProtocol(..) => f.write_str("the designMode protocol was violated"),
+            Self::DialogFocusingUnavailable { .. } => f.write_str("the Dialog focusing step needs a service that is unavailable"),
+            Self::DialogFocusingProtocol(..) => f.write_str("the Dialog focusing protocol was violated"),
+            Self::FocusDelegateProtocol(..) => f.write_str("the focus-delegate protocol was violated"),
+            Self::FocusedAreaDesignationUnavailable { .. } => f.write_str("the removing step cannot compare the Element with its Document's unavailable focused-area designation"),
+            Self::AutofocusDelegateProtocol(..) => f.write_str("the autofocus-delegate protocol was violated"),
+            Self::TopLayerAlreadyActive { .. } => f.write_str("the Element is already in the top layer of its Document"),
+            Self::DialogProcessingUnavailable { .. } => f.write_str("the Dialog action cannot be processed at this point"),
+            Self::DialogProtocol(..) => f.write_str("the Dialog protocol was violated"),
+            Self::CustomValidityInapplicable => f.write_str("the node has no custom validity state"),
+            Self::ButtonInapplicable => f.write_str("the node has no such reflected element target"),
+            Self::InputInapplicable => f.write_str("the node is not an Input element"),
+            Self::TextareaInapplicable => f.write_str("the node is not a Textarea element"),
+            Self::OutputInapplicable => f.write_str("the node is not an Output element"),
+            Self::OutputProtocol(..) => f.write_str("the Output protocol was violated"),
+            Self::TextareaReadWorkLimit { limit } => write!(f, "reading the Textarea exhausted its work allowance of {limit}"),
+            Self::InputFilenameInvalidState => f.write_str("a file Input accepts only an empty string as its value"),
+            Self::InputProcessingProtocol => f.write_str("the Input processing protocol was violated"),
+            Self::InputProcessingWorkLimit { limit } => write!(f, "Input processing exhausted its work allowance of {limit}"),
+            Self::InputNumeric(..) => f.write_str("Input numeric processing failed"),
+            Self::InputColorUnavailable(..) => f.write_str("the Input color is unavailable"),
+            Self::InputColorUnsupported(..) => f.write_str("the Input color is not supported"),
+            Self::InputColorFacts(..) => f.write_str("the Input color facts are defective"),
+            Self::StyleCompositionRequired(..) => f.write_str("this Style update must be composed with its Style owner"),
+            Self::StyleOwnerAttributesCompositionRequired => f.write_str("a Style owner attribute change must be composed with its Style owner"),
+            Self::StyleDisabledCompositionRequired => f.write_str("a Style disabled change must be composed with its Style owner"),
+            Self::StyleProcessingUnavailable => f.write_str("Style processing is unavailable for this operation"),
+            Self::Meta(..) => f.write_str("native Meta processing refused the operation"),
+            Self::StyleProtocol => f.write_str("the Style processing protocol was violated"),
+            Self::SvgScriptProcessingUnavailable => f.write_str("SVG Script processing is unavailable for this operation"),
+            Self::SourceOperationPending => f.write_str("a Source operation, callback or hold is still pending"),
+            Self::IncompleteSourceOperation => f.write_str("a Source operation or its recorded inputs are incomplete and must finish first"),
+            Self::InvalidSourceOperation => f.write_str("the request, the retained operation or other retained state is not in the condition this operation requires"),
+            Self::SourcePublicationLimit => f.write_str("the Source operation exhausted its publication allowance"),
+            Self::SourceOutputLimit => f.write_str("the Source operation exhausted its output allowance"),
+            Self::SourceIdentityLimit => f.write_str("the Source operation exhausted its identity allowance"),
+            Self::StyleReceiptMismatch => f.write_str("the Style receipt does not match the retained state"),
+            Self::StyleFactsMismatch => f.write_str("the supplied Style facts do not match the original request"),
+            Self::StyleCssomRootBusy => f.write_str("the Style CSSOM root is busy"),
+            Self::StyleCssomRootPoisoned => f.write_str("the Style CSSOM root was poisoned by an earlier failure"),
+            Self::SourceWorkLimit { limit } => write!(f, "the Source operation exhausted its work allowance of {limit}"),
+            Self::SelectInapplicable => f.write_str("the Element is not a Select"),
+            Self::OptionInapplicable => f.write_str("the Element is not an Option"),
+            Self::SelectProtocol => f.write_str("the Select processing or family discovery protocol was violated"),
+            Self::SelectValueQueriesUnconfigured => f.write_str("Select value queries were not configured"),
+            Self::SelectCapture(..) => f.write_str("capturing the Select semantics failed"),
+            Self::SelectElementValues(..) => f.write_str("reading the Select element values failed"),
+            Self::SelectSemantic(..) => f.write_str("Select semantic evaluation failed"),
+            Self::InvalidSelectSemanticLimit { limit, used, .. } => write!(
+                f,
+                "the Select semantic allowance cannot be lowered to {limit} because {used} is already in use"
+            ),
+            Self::LinkProcessingUnavailable => f.write_str("Link processing is unavailable for this operation"),
+            Self::ImageProcessingUnavailable => f.write_str("image processing is unavailable for this operation"),
+            Self::MediaResourceEffectUnavailable(..) => f.write_str("the media resource effect needs a service that is unavailable"),
+            Self::MediaRemovalStableStateUnavailable => f.write_str("the stable-state step of media removal is unavailable"),
+            Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
+            Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
+            Self::EncodingUrlFacts(..) => f.write_str("the encoding and URL facts were refused"),
+            Self::EncodingUrlWorkLimit { limit } => write!(f, "encoding and URL processing exhausted its work allowance of {limit}"),
+            Self::BaseFacts(..) => f.write_str("the base URL facts were refused"),
+            Self::BaseWorkLimit { limit } => write!(f, "base URL processing exhausted its work allowance of {limit}"),
+            Self::SelectWorkLimit { limit } => write!(f, "Select processing exhausted its work allowance of {limit}"),
+            Self::InvalidNativeTask => f.write_str("the native task is not valid for this operation in its current state"),
+            Self::SlotInapplicable => f.write_str("the node is not a Slot"),
+            Self::NonceEnvironmentUnavailable(..) => f.write_str("the nonce environment is unavailable"),
+            Self::NotFound => f.write_str("the requested node or relation was not found"),
+            Self::InUseAttribute => f.write_str("the Attr is already in use by another Element"),
+            Self::InvalidDestruction => f.write_str("the node is attached or is a Document or ShadowRoot, so it cannot be destroyed directly"),
+            Self::CustomElementReactionPending(..) => f.write_str("a routed custom element reaction must settle before the receiver can be retired"),
+            Self::IndexSize => f.write_str("the index is out of range"),
+            Self::Cancelled => f.write_str("the operation was cancelled"),
+            Self::ResourceLimit { resource, limit } => write!(
+                f,
+                "the configured limit of {limit} for {} would be exceeded",
+                resource_text(*resource)
+            ),
+            Self::WorkLimit { resource, limit } => write!(
+                f,
+                "the allowance of {limit} for {} was exhausted",
+                resource_text(*resource)
+            ),
+            Self::InvalidLimit(..) => f.write_str("a configured limit is invalid"),
+            Self::AllocationFailed => f.write_str("memory allocation failed"),
+            Self::RepresentationExhausted => f.write_str("a length, count or internal state cannot be represented"),
+            Self::HtmlChargeProtocol => f.write_str("an HTML operation broke its accounting contract with the DOM"),
+            Self::PseudoAttributeCursor(..) => f.write_str("the processing-instruction pseudo-attribute driver and its cursor disagree"),
+            Self::OwnerIdentityExhausted => f.write_str("no DOM owner identities remain"),
+            Self::RevisionExhausted => f.write_str("the revision counter cannot advance far enough for this operation"),
+            Self::ViewTransitionsUninitialized => f.write_str("view transitions were not initialized for the Document"),
+            Self::ViewTransitionRevisionMismatch => f.write_str("the view transition state was captured at a different revision"),
+            Self::StaleViewTransition => f.write_str("the view transition is stale"),
+            Self::StaleViewTransitionRecord => f.write_str("the view transition record is stale"),
+            Self::StaleViewTransitionPseudo => f.write_str("the view transition pseudo-element does not exist or is stale"),
+            Self::InvalidViewTransitionState => f.write_str("the view transition is in a state that does not allow this operation"),
+            Self::DuplicateViewTransitionName => f.write_str("another view transition already uses this name"),
+            Self::ViewTransitionOriginUnavailable => f.write_str("the origin needed by the view transition is unavailable"),
+            Self::ViewTransitionCssom(..) => f.write_str("the view transition CSSOM association was refused"),
+            Self::ViewTransitionCaptureWorkLimit { limit } => write!(f, "view transition capture exhausted its work allowance of {limit}"),
+        }
+    }
+}
+/// The configured capacity a `DomResource` names, as a noun phrase for a message.
+const fn resource_text(resource: DomResource) -> &'static str {
+    match resource {
+        DomResource::ParsedAssociationBytes => "retained parsed association bytes",
+        DomResource::ParsedAssociationUnits => "retained parsed association code units",
+        DomResource::ParsedAssociationProcessingRetainedBytes => {
+            "retained parsed association processing bytes"
+        }
+        DomResource::ParsedAssociationProcessingRetainedUnits => {
+            "retained parsed association processing units"
+        }
+        DomResource::ParsedAssociationProcessingOutputs => "parsed association processing outputs",
+        DomResource::ParsedAssociationProcessingWork => "parsed association processing work",
+        DomResource::ParsedAssociationDispatchWork => {
+            "parsed association dispatch header traversal"
+        }
+        DomResource::FullscreenExits => "fullscreen exit invocations",
+        DomResource::FullscreenEvents => "fullscreen events",
+        DomResource::Ranges => "ranges",
+        DomResource::NodeIterators => "node iterators",
+        DomResource::ChildListObservers => "child-list observers",
+        DomResource::ChildListRegistrations => "child-list registrations",
+        DomResource::ChildListRecords => "child-list records",
+        DomResource::ChildListRecordReferences => "child-list record references",
+        DomResource::ManagedNodes => "managed nodes",
+        DomResource::SlotReferences => "slot references",
+        DomResource::AutofocusCandidates => "autofocus candidates",
+        DomResource::SlotAssignmentInputs => "slot assignment inputs",
+        DomResource::SlotQueryOutput => "slot query output",
+        DomResource::SlotQueryScratch => "slot query scratch storage",
+        DomResource::StringCodeUnits => "string code units",
+        DomResource::Commands => "batch commands",
+        DomResource::HistoryEntries => "change history entries",
+        DomResource::HistoryBytes => "change history bytes",
+        DomResource::ViewTransitions => "view transitions",
+        DomResource::ViewTransitionRecords => "view transition records",
+        DomResource::ViewTransitionPseudos => "view transition pseudo-elements",
+        DomResource::ViewTransitionCaptureBytes => "view transition capture bytes",
+        DomResource::InputProcessingScratch => "Input processing scratch storage",
+        DomResource::SelectScratch => "Select scratch storage",
+        DomResource::SelectTasks => "Select tasks",
+        DomResource::DetailsToggleIntentions => "Details toggle intentions",
+        DomResource::DetailsToggleOutput => "Details toggle output",
+        DomResource::BaseObservations => "base URL observations",
+        DomResource::ImageUpdateCancellations => "image update cancellations",
+        DomResource::EncodingUrlObservations => "encoding and URL observations",
+        DomResource::DispatchCustodyScopes => "dispatch custody scopes",
+        DomResource::DispatchCustodyReferences => "dispatch custody target references",
+        DomResource::DispatchCustodyRetainedBytes => "dispatch custody retained bytes",
+        DomResource::DispatchCustodyScratch => "dispatch custody scratch storage",
+        DomResource::EventRecipients => "event recipient capabilities",
+        DomResource::EventRecipientRetainedBytes => "event recipient retained bytes",
+        DomResource::EventRecipientScratch => "event recipient scratch storage",
+        DomResource::EventRecipientWork => "event recipient work",
+        DomResource::InlineStyleBindings => "inline style bindings",
+        DomResource::InlineStyleStorage => "inline style storage",
+        DomResource::InlineStyleScratch => "inline style scratch storage",
+        DomResource::InlineStyleWork => "inline style work",
+        DomResource::NodeRetirementCanonicalBytes => "canonical bytes at node-retirement admission",
+        DomResource::SourceRetainedBytes => "Source retained bytes",
+        DomResource::SourceRetainedUnits => "Source retained code units",
+        DomResource::NameRetainedBytes => "name retained bytes",
+        DomResource::NameEntries => "name entries",
+        DomResource::NameWork => "name work",
+        DomResource::NameScratch => "name scratch storage",
+        DomResource::MetaAtomicRetainedBytes => "Meta composition retained bytes",
+        DomResource::MetaAtomicRetainedUnits => "Meta composition retained code units",
+        DomResource::MetaAtomicOutputs => "Meta composition outputs",
+        DomResource::MetaColorSchemeRetainedBytes => "Meta color-scheme retained bytes",
+        DomResource::MetaThemeColorScratch => "Meta theme-color scratch storage",
+    }
+}
+impl std::error::Error for DomError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ParsedReportUnresolved(error) => Some(error),
+            Self::DocumentConstructor(error) => Some(error),
+            Self::CloseWatcherProtocol(error) => Some(error),
+            Self::AutofocusInsertionProtocol(error) => Some(error),
+            Self::DesignModeProtocol(error) => Some(error),
+            Self::DialogFocusingProtocol(error) => Some(error),
+            Self::FocusDelegateProtocol(error) => Some(error),
+            Self::AutofocusDelegateProtocol(error) => Some(error),
+            Self::DialogProtocol(error) => Some(error),
+            Self::OutputProtocol(error) => Some(error),
+            Self::InputNumeric(error) => Some(error),
+            Self::Meta(error) => Some(error),
+            Self::SelectCapture(error) => Some(error),
+            Self::SelectElementValues(error) => Some(error),
+            Self::SelectSemantic(error) => Some(error),
+            Self::EncodingUrlFacts(error) => Some(error),
+            Self::BaseFacts(error) => Some(error),
+            Self::PseudoAttributeCursor(error) => Some(error),
+            Self::ViewTransitionCssom(error) => Some(error),
+            Self::ParsedAssociationPending { .. }
+            | Self::ParsedAssociationSynchronousPending { .. }
+            | Self::ParsedAssociationProcessingPoisoned { .. }
+            | Self::InlineStyleProfileMissing { .. }
+            | Self::InlineStyleProfileConflict { .. }
+            | Self::InlineStyleContextRequired { .. }
+            | Self::InlineStyleOperationPending { .. }
+            | Self::StaleFullscreenExit
+            | Self::FullscreenExitHandoffRequired
+            | Self::FullscreenExitAssertionFailed { .. }
+            | Self::FullscreenExitCompositionUnsupported { .. }
+            | Self::FullscreenExitDocumentRetired { .. }
+            | Self::FullscreenModelUnavailable { .. }
+            | Self::TopLayerAdoptionUnavailable { .. }
+            | Self::StaleRange
+            | Self::StaleNodeIterator
+            | Self::StaleChildListObserver
+            | Self::ChildListPublicationUnavailable
+            | Self::ChildListDeliveryActive
+            | Self::ChildListWorkLimit { .. }
+            | Self::NodeIteratorFilterActive
+            | Self::NodeIteratorPublicationUnavailable
+            | Self::NodeIteratorWorkLimit { .. }
+            | Self::RangeAssociationIneligible
+            | Self::RangePublicationUnavailable
+            | Self::HostedSourceUnavailable
+            | Self::HostedCompositionRequired
+            | Self::InvalidDispatchCustody
+            | Self::EventRegistryAlreadyBound
+            | Self::InvalidEventRegistry
+            | Self::DispatchCustodyWorkLimit { .. }
+            | Self::SourceLimitReduction
+            | Self::ParsedAssociationOperationPending { .. }
+            | Self::InvalidSourceEvent
+            | Self::SourceInvariantFailed { .. }
+            | Self::SourceReceiverRetired { .. }
+            | Self::SourceCloseWatcherReceiverRetired { .. }
+            | Self::SourceEventExecutorUnavailable
+            | Self::SourceAttributeGlobalUnavailable
+            | Self::SourceAttributeExecutorUnavailable
+            | Self::SourceAttributeVerificationRejected
+            | Self::SourceAttributeVerificationAbrupt
+            | Self::DialogInvalidState
+            | Self::NeedsEventfulOperation { .. }
+            | Self::SourceNestedOperationLimit { .. }
+            | Self::SourceUrlInputsMismatch
+            | Self::SourceUrlUnavailable
+            | Self::ForeignOwner
+            | Self::StaleNode
+            | Self::NodeRetirementAlreadyWatched
+            | Self::NodeRetirementWorkLimit { .. }
+            | Self::ForeignBatch
+            | Self::UnavailableCreation
+            | Self::WrongNodeKind
+            | Self::WrongDocument
+            | Self::HierarchyRequest
+            | Self::InvalidAdjacentPosition
+            | Self::InvalidCharacter
+            | Self::Namespace
+            | Self::ScriptPreparationRequired
+            | Self::MetaCspProcessingRequired
+            | Self::NotSupported
+            | Self::NativeInitializationRequired(..)
+            | Self::NonceInapplicable
+            | Self::TemplateContentsUnavailable
+            | Self::MarqueeInapplicable
+            | Self::DialogInapplicable
+            | Self::DialogDocumentStateUnavailable
+            | Self::AutofocusDocumentStateUnavailable
+            | Self::AutofocusInsertionUnavailable { .. }
+            | Self::DesignModeProcessingUnavailable { .. }
+            | Self::DialogFocusingUnavailable { .. }
+            | Self::FocusedAreaDesignationUnavailable { .. }
+            | Self::TopLayerAlreadyActive { .. }
+            | Self::DialogProcessingUnavailable { .. }
+            | Self::CustomValidityInapplicable
+            | Self::ButtonInapplicable
+            | Self::InputInapplicable
+            | Self::TextareaInapplicable
+            | Self::OutputInapplicable
+            | Self::TextareaReadWorkLimit { .. }
+            | Self::InputFilenameInvalidState
+            | Self::InputProcessingProtocol
+            | Self::InputProcessingWorkLimit { .. }
+            | Self::InputColorUnavailable(..)
+            | Self::InputColorUnsupported(..)
+            | Self::InputColorFacts(..)
+            | Self::StyleCompositionRequired(..)
+            | Self::StyleOwnerAttributesCompositionRequired
+            | Self::StyleDisabledCompositionRequired
+            | Self::StyleProcessingUnavailable
+            | Self::StyleProtocol
+            | Self::SvgScriptProcessingUnavailable
+            | Self::SourceOperationPending
+            | Self::IncompleteSourceOperation
+            | Self::InvalidSourceOperation
+            | Self::SourcePublicationLimit
+            | Self::SourceOutputLimit
+            | Self::SourceIdentityLimit
+            | Self::StyleReceiptMismatch
+            | Self::StyleFactsMismatch
+            | Self::StyleCssomRootBusy
+            | Self::StyleCssomRootPoisoned
+            | Self::SourceWorkLimit { .. }
+            | Self::SelectInapplicable
+            | Self::OptionInapplicable
+            | Self::SelectProtocol
+            | Self::SelectValueQueriesUnconfigured
+            | Self::InvalidSelectSemanticLimit { .. }
+            | Self::LinkProcessingUnavailable
+            | Self::ImageProcessingUnavailable
+            | Self::MediaResourceEffectUnavailable(..)
+            | Self::MediaRemovalStableStateUnavailable
+            | Self::ImageUpdateExhausted
+            | Self::HyperlinkProcessingUnavailable
+            | Self::EncodingUrlWorkLimit { .. }
+            | Self::BaseWorkLimit { .. }
+            | Self::SelectWorkLimit { .. }
+            | Self::InvalidNativeTask
+            | Self::SlotInapplicable
+            | Self::NonceEnvironmentUnavailable(..)
+            | Self::NotFound
+            | Self::InUseAttribute
+            | Self::InvalidDestruction
+            | Self::CustomElementReactionPending(..)
+            | Self::IndexSize
+            | Self::Cancelled
+            | Self::ResourceLimit { .. }
+            | Self::WorkLimit { .. }
+            | Self::InvalidLimit(..)
+            | Self::AllocationFailed
+            | Self::RepresentationExhausted
+            | Self::HtmlChargeProtocol
+            | Self::OwnerIdentityExhausted
+            | Self::RevisionExhausted
+            | Self::ViewTransitionsUninitialized
+            | Self::ViewTransitionRevisionMismatch
+            | Self::StaleViewTransition
+            | Self::StaleViewTransitionRecord
+            | Self::StaleViewTransitionPseudo
+            | Self::InvalidViewTransitionState
+            | Self::DuplicateViewTransitionName
+            | Self::ViewTransitionOriginUnavailable
+            | Self::ViewTransitionCaptureWorkLimit { .. } => None,
+        }
+    }
+}
+impl DomError {
+    /// The outcome of an accounting fault of an HTML crate: a ledger that cannot allocate is an
+    /// allocation failure, and every other fault breaks the HTML operation's accounting contract.
+    pub(crate) fn from_accounting_fault(
+        fault: surgeist_html::accounting::HtmlAccountingFault,
+    ) -> Self {
+        match fault {
+            surgeist_html::accounting::HtmlAccountingFault::Allocation => Self::AllocationFailed,
+            _ => Self::HtmlChargeProtocol,
+        }
+    }
+}
+
+/// Explicit finite admission policy. No hidden or unlimited default is selected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomLimits {
+    names: crate::internal::name_limits::DomNameLimits,
+    parsed_association_bytes: usize,
+    parsed_association_units: usize,
+    fullscreen_exits: usize,
+    fullscreen_events: usize,
+    ranges: usize,
+    node_iterators: usize,
+    child_list_observation: crate::internal::child_list::DomChildListObservationLimits,
+    dispatch_custody: crate::internal::dispatch::DomDispatchCustodyLimits,
+    event_recipients: crate::internal::event::DomEventRecipientLimits,
+    nodes: usize,
+    units: usize,
+    commands: usize,
+    slot_references: usize,
+    autofocus_candidates: usize,
+    slot_assignment_inputs: usize,
+    history_entries: usize,
+    history_bytes: usize,
+    transitions: usize,
+    records: usize,
+    pseudos: usize,
+    input_scratch: usize,
+    input_work: u64,
+    details_intentions: usize,
+    base_observations: usize,
+    base_work: u64,
+    encoding_url_observations: usize,
+    encoding_url_work: u64,
+    meta_work: u64,
+    meta_theme_scratch: usize,
+    meta_color_scheme: Option<surgeist_css::source::CssUtf16PropertyValueLimits>,
+    meta_color_scheme_bytes: usize,
+    select_tasks: usize,
+    select_scratch: usize,
+    select_work: u64,
+    select_value_queries: Option<(
+        surgeist_html_semantics::HtmlCaptureLimits,
+        surgeist_html_semantics::HtmlSemanticLimits,
+    )>,
+}
+impl DomLimits {
+    /// Finite canonical pending-report backing, destination maps and index
+    /// allowances. The constructor selects 64 MiB and 16 Mi UTF-16 units;
+    /// zero explicitly disables retaining association obligations. General
+    /// canonical custody/control administration retains its Source admission.
+    pub fn with_parsed_associations(
+        mut self,
+        bytes: usize,
+        utf16_units: usize,
+    ) -> Result<Self, DomError> {
+        if bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::ParsedAssociationBytes));
+        }
+        if utf16_units > isize::MAX as usize / size_of::<u16>() {
+            return Err(DomError::InvalidLimit(DomResource::ParsedAssociationUnits));
+        }
+        self.parsed_association_bytes = bytes;
+        self.parsed_association_units = utf16_units;
+        Ok(self)
+    }
+    pub fn parsed_association_bytes(self) -> usize {
+        self.parsed_association_bytes
+    }
+    pub fn parsed_association_utf16_units(self) -> usize {
+        self.parsed_association_units
+    }
+
+    pub fn with_fullscreen_exits(mut self, count: usize) -> Result<Self, DomError> {
+        if count > isize::MAX as usize / size_of::<fullscreen::exit::Invocation>() {
+            return Err(DomError::InvalidLimit(DomResource::FullscreenExits));
+        }
+        self.fullscreen_exits = count;
+        Ok(self)
+    }
+    pub fn with_fullscreen_events(mut self, count: usize) -> Result<Self, DomError> {
+        if count
+            > isize::MAX as usize / size_of::<crate::internal::fullscreen::DomFullscreenEvent>()
+        {
+            return Err(DomError::InvalidLimit(DomResource::FullscreenEvents));
+        }
+        self.fullscreen_events = count;
+        Ok(self)
+    }
+    pub const fn fullscreen_exits(self) -> usize {
+        self.fullscreen_exits
+    }
+    pub const fn fullscreen_events(self) -> usize {
+        self.fullscreen_events
+    }
+    /// Maximum retained Range slots, including vacant slots and exhausted generations.
+    pub fn with_ranges(mut self, ranges: usize) -> Result<Self, DomError> {
+        if ranges
+            > isize::MAX as usize
+                / size_of::<crate::internal::range::Slot<Key>>()
+                    .max(size_of::<crate::internal::range::Slot<NodeId>>())
+        {
+            return Err(DomError::InvalidLimit(DomResource::Ranges));
+        }
+        self.ranges = ranges;
+        Ok(self)
+    }
+    pub fn ranges(self) -> usize {
+        self.ranges
+    }
+    /// Maximum retained iterator slots, including vacant slots.
+    pub fn with_node_iterators(mut self, slots: usize) -> Self {
+        self.node_iterators = slots;
+        self
+    }
+    pub fn node_iterators(self) -> usize {
+        self.node_iterators
+    }
+    pub fn with_child_list_observation(
+        mut self,
+        limits: crate::internal::child_list::DomChildListObservationLimits,
+    ) -> Self {
+        self.child_list_observation = limits;
+        self
+    }
+    pub fn child_list_observation(self) -> crate::DomChildListObservationLimits {
+        self.child_list_observation
+    }
+    /// Aggregate installed candidate references across all Document histories.
+    /// Native empty state needs no allowance; each growing insertion does.
+    pub fn with_autofocus_candidates(mut self, candidates: usize) -> Result<Self, DomError> {
+        if candidates > isize::MAX as usize / size_of::<NodeId>().max(size_of::<Key>()) {
+            return Err(DomError::InvalidLimit(DomResource::AutofocusCandidates));
+        }
+        self.autofocus_candidates = candidates;
+        Ok(self)
+    }
+    pub fn autofocus_candidates(self) -> usize {
+        self.autofocus_candidates
+    }
+
+    /// Select explicit finite dispatch-custody allowances; the default is disabled.
+    pub fn with_dispatch_custody(
+        mut self,
+        limits: crate::internal::dispatch::DomDispatchCustodyLimits,
+    ) -> Self {
+        self.dispatch_custody = limits;
+        self
+    }
+    /// Current independent dispatch-custody allowances.
+    pub fn dispatch_custody(self) -> crate::DomDispatchCustodyLimits {
+        self.dispatch_custody
+    }
+    /// Finite positive Load/Error recipient ownership; unused owners allocate nothing.
+    pub fn with_event_recipients(
+        mut self,
+        limits: crate::internal::event::DomEventRecipientLimits,
+    ) -> Self {
+        self.event_recipients = limits;
+        self
+    }
+    /// Current independent positive recipient capability policy.
+    pub fn event_recipients(self) -> crate::DomEventRecipientLimits {
+        self.event_recipients
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Every independent owner allowance is explicit at construction; required name admission must not acquire an implicit policy"
+    )]
+    pub fn new(
+        nodes: usize,
+        units: usize,
+        commands: usize,
+        slot_references: usize,
+        slot_assignment_inputs: usize,
+        history_entries: usize,
+        history_bytes: usize,
+        names: crate::internal::name_limits::DomNameLimits,
+    ) -> Result<Self, DomError> {
+        for (value, resource, width) in [
+            (nodes, DomResource::ManagedNodes, size_of::<Slot>()),
+            (
+                slot_references,
+                DomResource::SlotReferences,
+                size_of::<NodeId>(),
+            ),
+            (
+                slot_assignment_inputs,
+                DomResource::SlotAssignmentInputs,
+                size_of::<NodeOperand>(),
+            ),
+            (units, DomResource::StringCodeUnits, size_of::<u16>()),
+            (commands, DomResource::Commands, size_of::<Command>()),
+            (
+                history_entries,
+                DomResource::HistoryEntries,
+                size_of::<HistoryEntry>(),
+            ),
+            (history_bytes, DomResource::HistoryBytes, 1),
+        ] {
+            if value > isize::MAX as usize / width {
+                return Err(DomError::InvalidLimit(resource));
+            }
+        }
+        Ok(Self {
+            names,
+            parsed_association_bytes: 64 * 1024 * 1024,
+            parsed_association_units: 16 * 1024 * 1024,
+            fullscreen_exits: 0,
+            fullscreen_events: 0,
+            ranges: 0,
+            node_iterators: 0,
+            child_list_observation:
+                crate::internal::child_list::DomChildListObservationLimits::default(),
+            dispatch_custody: crate::internal::dispatch::DomDispatchCustodyLimits::default(),
+            event_recipients: crate::internal::event::DomEventRecipientLimits::default(),
+            nodes,
+            units,
+            commands,
+            slot_references,
+            autofocus_candidates: 0,
+            slot_assignment_inputs,
+            history_entries,
+            history_bytes,
+            transitions: 0,
+            records: 0,
+            pseudos: 0,
+            input_scratch: 0,
+            input_work: 0,
+            details_intentions: 0,
+            base_observations: 0,
+            base_work: 0,
+            encoding_url_observations: 0,
+            encoding_url_work: 0,
+            meta_work: 0,
+            meta_theme_scratch: 0,
+            meta_color_scheme: None,
+            meta_color_scheme_bytes: 0,
+            select_tasks: 0,
+            select_scratch: 0,
+            select_work: 0,
+            select_value_queries: None,
+        })
+    }
+    /// Explicit finite VT admission; the unconfigured feature has zero capacity.
+    pub fn with_view_transitions(
+        mut self,
+        transitions: usize,
+        records: usize,
+        pseudos: usize,
+    ) -> Result<Self, DomError> {
+        for (value, resource, width) in [
+            (
+                transitions,
+                DomResource::ViewTransitions,
+                size_of::<Transition>(),
+            ),
+            (
+                records,
+                DomResource::ViewTransitionRecords,
+                size_of::<Record>(),
+            ),
+            (
+                pseudos,
+                DomResource::ViewTransitionPseudos,
+                size_of::<bool>(),
+            ),
+        ] {
+            if value > isize::MAX as usize / width {
+                return Err(DomError::InvalidLimit(resource));
+            }
+        }
+        self.transitions = transitions;
+        self.records = records;
+        self.pseudos = pseudos;
+        Ok(self)
+    }
+    pub fn view_transitions(self) -> usize {
+        self.transitions
+    }
+    /// Reached variable numeric/CSS processing only: peak logical transient
+    /// bytes and cumulative work for one whole private batch. Unconfigured is0.
+    pub fn with_input_processing(
+        mut self,
+        scratch_bytes: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if scratch_bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::InputProcessingScratch));
+        }
+        self.input_scratch = scratch_bytes;
+        self.input_work = work;
+        Ok(self)
+    }
+    pub fn input_processing_scratch_bytes(self) -> usize {
+        self.input_scratch
+    }
+    pub fn input_processing_work(self) -> u64 {
+        self.input_work
+    }
+    /// Reached Select-family effects use independent finite pending, scratch and work bounds.
+    pub fn with_select_processing(
+        mut self,
+        pending_updates: usize,
+        scratch_bytes: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if pending_updates > isize::MAX as usize / size_of::<select::Task<NodeId>>() {
+            return Err(DomError::InvalidLimit(DomResource::SelectTasks));
+        }
+        if scratch_bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::SelectScratch));
+        }
+        self.select_tasks = pending_updates;
+        self.select_scratch = scratch_bytes;
+        self.select_work = work;
+        Ok(self)
+    }
+    /// Admission for reached Select value setters. Capture retention is bounded
+    /// separately for each sequential Option capture. Semantic work and allocated
+    /// bytes are cumulative across all queries in one private batch; other
+    /// semantic limits apply to each query. DOM adapter/effect storage and work
+    /// remain governed by `with_select_processing`.
+    pub fn with_select_value_queries(
+        mut self,
+        capture: surgeist_html_semantics::HtmlCaptureLimits,
+        semantics: surgeist_html_semantics::HtmlSemanticLimits,
+    ) -> Self {
+        self.select_value_queries = Some((capture, semantics));
+        self
+    }
+    /// Aggregate actual observation capacity and cumulative native Base work.
+    /// Immutable fact strings and frozen URL serializations also consume the
+    /// canonical string-unit limit. Stackless scans need no traversal bank.
+    pub fn with_base_processing(
+        mut self,
+        observation_records: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if observation_records
+            > isize::MAX as usize / size_of::<surgeist_html_semantics::HtmlBaseParseObservation>()
+        {
+            return Err(DomError::InvalidLimit(DomResource::BaseObservations));
+        }
+        self.base_observations = observation_records;
+        self.base_work = work;
+        Ok(self)
+    }
+    pub fn base_observation_records(self) -> usize {
+        self.base_observations
+    }
+    pub fn base_work(self) -> u64 {
+        self.base_work
+    }
+    /// Aggregate retained href-observation capacity and cumulative qualified
+    /// lookup/binding work. Cache/input UTF16 extents use canonical string units.
+    /// Absent href and namespace/equality skips need no parse admission.
+    pub fn with_encoding_url_processing(
+        mut self,
+        observation_records: usize,
+        work: u64,
+    ) -> Result<Self, DomError> {
+        if observation_records
+            > isize::MAX as usize
+                / size_of::<surgeist_html_semantics::HtmlEncodingUrlParseObservation>()
+        {
+            return Err(DomError::InvalidLimit(DomResource::EncodingUrlObservations));
+        }
+        self.encoding_url_observations = observation_records;
+        self.encoding_url_work = work;
+        Ok(self)
+    }
+    pub fn encoding_url_observation_records(self) -> usize {
+        self.encoding_url_observations
+    }
+    pub fn encoding_url_work(self) -> u64 {
+        self.encoding_url_work
+    }
+    /// Cumulative Meta work, retained through synchronous source suspension.
+    pub const fn with_meta_processing_work(mut self, work: u64) -> Self {
+        self.meta_work = work;
+        self
+    }
+    /// Actual simultaneous banks/registers of one theme-color parse.
+    pub fn with_meta_theme_color_scratch_bytes(mut self, bytes: usize) -> Result<Self, DomError> {
+        if bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::MetaThemeColorScratch));
+        }
+        self.meta_theme_scratch = bytes;
+        Ok(self)
+    }
+    pub const fn meta_theme_color_scratch_bytes(self) -> usize {
+        self.meta_theme_scratch
+    }
+    /// Finite CSS-owned UTF16 preparation, work, live-byte and retained-byte
+    /// allowance for the `color-scheme` value; unconfigured is unavailable. The
+    /// component syntax limits come from the `CssParser` that DOM constructs for
+    /// the parse, not from this allowance.
+    pub const fn with_meta_color_scheme_limits(
+        mut self,
+        limits: surgeist_css::source::CssUtf16PropertyValueLimits,
+    ) -> Self {
+        self.meta_color_scheme = Some(limits);
+        self
+    }
+    pub const fn meta_color_scheme_limits(
+        self,
+    ) -> Option<surgeist_css::source::CssUtf16PropertyValueLimits> {
+        self.meta_color_scheme
+    }
+    /// Aggregate installed CSS report/source backing across all Documents.
+    pub fn with_meta_color_scheme_retained_bytes(mut self, bytes: usize) -> Result<Self, DomError> {
+        if bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(
+                DomResource::MetaColorSchemeRetainedBytes,
+            ));
+        }
+        self.meta_color_scheme_bytes = bytes;
+        Ok(self)
+    }
+    pub const fn meta_color_scheme_retained_bytes(self) -> usize {
+        self.meta_color_scheme_bytes
+    }
+    /// Retained raw Details transitions, including staged cancellation evidence.
+    /// Scans use canonical node/string/command bounds and per-step cancellation.
+    pub fn with_details_toggle_intentions(mut self, max_pending: usize) -> Result<Self, DomError> {
+        let width = size_of::<crate::internal::details::DomDetailsToggleIntention>()
+            .max(size_of::<details::Pending<Key>>())
+            .max(size_of::<details::Pending<NodeId>>());
+        if max_pending > isize::MAX as usize / width {
+            return Err(DomError::InvalidLimit(DomResource::DetailsToggleIntentions));
+        }
+        self.details_intentions = max_pending;
+        Ok(self)
+    }
+    pub fn details_toggle_intentions(self) -> usize {
+        self.details_intentions
+    }
+    pub fn pending_select_updates(self) -> usize {
+        self.select_tasks
+    }
+    pub fn select_scratch_bytes(self) -> usize {
+        self.select_scratch
+    }
+    pub fn select_work(self) -> u64 {
+        self.select_work
+    }
+    pub fn view_transition_records(self) -> usize {
+        self.records
+    }
+    pub fn view_transition_pseudos(self) -> usize {
+        self.pseudos
+    }
+    /// Required persistent and operation admission for exact owner names.
+    pub const fn names(self) -> crate::DomNameLimits {
+        self.names
+    }
+    pub fn managed_nodes(self) -> usize {
+        self.nodes
+    }
+    pub fn string_code_units(self) -> usize {
+        self.units
+    }
+    pub fn slot_references(self) -> usize {
+        self.slot_references
+    }
+    pub fn slot_assignment_inputs(self) -> usize {
+        self.slot_assignment_inputs
+    }
+    pub fn commands_per_batch(self) -> usize {
+        self.commands
+    }
+    pub fn history_entries(self) -> usize {
+        self.history_entries
+    }
+    /// Retained entry records plus exact change-array payload bytes. Allocator
+    /// bookkeeping and caller-held reports/snapshots are outside this budget.
+    pub fn history_bytes(self) -> usize {
+        self.history_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomUsage {
+    parsed_association_bytes: usize,
+    parsed_association_units: usize,
+    ranges: usize,
+    node_iterators: usize,
+    meta_color_scheme_bytes: usize,
+    autofocus_candidates: usize,
+    slot_references: usize,
+    nodes: usize,
+    units: usize,
+    history_entries: usize,
+    history_bytes: usize,
+    transitions: usize,
+    records: usize,
+    pseudos: usize,
+}
+impl DomUsage {
+    pub fn parsed_association_bytes(self) -> usize {
+        self.parsed_association_bytes
+    }
+    pub fn parsed_association_utf16_units(self) -> usize {
+        self.parsed_association_units
+    }
+
+    pub fn ranges(self) -> usize {
+        self.ranges
+    }
+    pub fn node_iterators(self) -> usize {
+        self.node_iterators
+    }
+    pub const fn meta_color_scheme_retained_bytes(self) -> usize {
+        self.meta_color_scheme_bytes
+    }
+    pub fn autofocus_candidates(self) -> usize {
+        self.autofocus_candidates
+    }
+    pub fn slot_references(self) -> usize {
+        self.slot_references
+    }
+    pub fn view_transitions(self) -> usize {
+        self.transitions
+    }
+    pub fn view_transition_records(self) -> usize {
+        self.records
+    }
+    pub fn view_transition_pseudos(self) -> usize {
+        self.pseudos
+    }
+    pub fn managed_nodes(self) -> usize {
+        self.nodes
+    }
+    pub fn string_code_units(self) -> usize {
+        self.units
+    }
+    pub fn history_entries(self) -> usize {
+        self.history_entries
+    }
+    pub fn history_bytes(self) -> usize {
+        self.history_bytes
+    }
+}
+
+/// Complete changed domains for this surface. Created/destroyed nodes cover
+/// their entire state. Children includes derived Element-sibling/index changes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomChange {
+    RegistryCreated(crate::internal::registry::DomRegistryId),
+    RegistryDefinitionAdded(crate::internal::registry::DomRegistryDefinitionId),
+    RangeCreated(crate::internal::range::DomRangeId),
+    NodeIteratorCreated(crate::internal::node_iterator::DomNodeIteratorId),
+    NodeIteratorReference(crate::internal::node_iterator::DomNodeIteratorId),
+    NodeIteratorRetired(crate::internal::node_iterator::DomNodeIteratorId),
+    ChildListObservation,
+    RangeBoundary(crate::internal::range::DomRangeId),
+    RangeRetired(crate::internal::range::DomRangeId),
+    DocumentActiveRange(DocumentId),
+    DocumentDesignMode(DocumentId),
+    SourceOperation,
+    HostedOperationState {
+        operation: crate::internal::hosted::DomHostedOperationId,
+        complete: bool,
+    },
+    ImageUpdateCancelled {
+        update: crate::internal::image::DomImageUpdateId,
+        flags: surgeist_html::elements::image::HtmlImageUpdateFlags,
+        reason: crate::internal::image::DomImageUpdateCancellationReason,
+    },
+    /// Template contents ownership or a Document's appropriate-owner cache changed.
+    TemplateRelations,
+    /// Recompute Document-scoped URL/base-dependent facts and consumers.
+    DocumentBase(DocumentId),
+    DocumentMeta(DocumentId),
+    DocumentInteractiveState(DocumentId),
+    /// Raw-derived fullscreen, simple-document or keyboard-lock facts changed.
+    DocumentFullscreenState(DocumentId),
+    DocumentFullscreenEvents(DocumentId),
+    DocumentAutofocusState(DocumentId),
+    DocumentRenderBlocking(DocumentId),
+    DocumentEncodingUrlFacts(DocumentId),
+    SlotManual(NodeId),
+    SlotAssignedNodes(NodeId),
+    ManualAssignment(NodeId),
+    StoredAssignedSlot(NodeId),
+    /// Conservatively recompute current slot/flattened/flat projections.
+    SlotQueries,
+    IntrinsicTasks,
+    DetailsToggleIntentions,
+    DetailsToggleIntentionCancelled {
+        operation: crate::internal::details::DomDetailsToggleIntentionId,
+        target: NodeId,
+        old: surgeist_html::elements::details::HtmlDetailsState,
+        new: surgeist_html::elements::details::HtmlDetailsState,
+        reason: crate::internal::details::DomDetailsToggleCancellationReason,
+    },
+    SelectTaskCancelled {
+        operation: crate::internal::select::DomNativeTaskId,
+        select: NodeId,
+        reason: crate::internal::select::DomSelectTaskCancellationReason,
+    },
+    SelectedcontentTaskCancelled {
+        operation: crate::internal::select::DomNativeTaskId,
+        select: NodeId,
+        target: NodeId,
+        reason: crate::internal::select::DomSelectTaskCancellationReason,
+    },
+    /// Native destruction canceled this exact-generation pending recipient.
+    SlotSignalCancelled {
+        slot: NodeId,
+        reason: crate::internal::slot::DomSlotSignalCancellationReason,
+    },
+    Created(NodeId),
+    Destroyed(NodeId),
+    Data(NodeId),
+    AttrValue(crate::internal::identity::DomAttrId),
+    AttrOwner(crate::internal::identity::DomAttrId),
+    Attributes(NodeId),
+    ElementState(NodeId),
+    NodeDocument(NodeId),
+    Parent(NodeId),
+    Children(NodeId),
+    /// The Element's canonical hosted-root link changed, including closed roots.
+    ShadowRoot(NodeId),
+    /// Conservatively recompute all shadow/tree-scope/connectedness relations
+    /// from the new snapshot. Parent/Children remain ordinary-tree facts.
+    ShadowRelations,
+    ViewTransitionDocument(DocumentId),
+    /// Complete transition state/topology invalidation, including pseudo flags.
+    ViewTransition(DomViewTransitionId),
+    ViewTransitionRecord(DomViewTransitionRecordId),
+    ViewTransitionCaptured(DomViewTransitionSubject),
+}
+
+#[derive(Clone, Debug)]
+pub struct DomChanges {
+    from: DomStamp,
+    to: DomStamp,
+    changes: Arc<[DomChange]>,
+}
+impl DomChanges {
+    pub fn from(&self) -> DomStamp {
+        self.from
+    }
+    pub fn to(&self) -> DomStamp {
+        self.to
+    }
+    pub fn changes(&self) -> &[DomChange] {
+        &self.changes
+    }
+}
+
+/// Complete interval unavailable; a consumer must recompute from a snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DomHistoryError {
+    ForeignOwner,
+    FutureRevision,
+    FullRecomputeRequired { available_from: DomRevision },
+    AllocationFailed,
+}
+impl std::fmt::Display for DomHistoryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ForeignOwner => f.write_str("the baseline stamp belongs to a different DOM owner"),
+            Self::FutureRevision => {
+                f.write_str("the baseline stamp is newer than the current revision")
+            }
+            Self::FullRecomputeRequired { .. } => f.write_str(
+                "the retained history no longer reaches back to the baseline; recompute from a snapshot",
+            ),
+            Self::AllocationFailed => {
+                f.write_str("memory allocation failed while collecting the change records")
+            }
+        }
+    }
+}
+impl std::error::Error for DomHistoryError {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeOutputKind {
+    AdjacentElement(Option<NodeId>),
+    Node,
+    Document,
+    RemovedAttribute,
+    AttributeAttachment(AttachmentKind),
+    ElementAttributePresent(bool),
+    ProcessingInstructionAttributePresent(bool),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AttachmentKind {
+    Appended,
+    Unchanged,
+    Replaced,
+}
+
+impl AttachmentKind {
+    fn published(self, node: NodeId) -> crate::DomAttributeAttachment {
+        use crate::internal::attr::DomAttributeAttachment;
+        let id = crate::internal::identity::DomAttrId(node);
+        match self {
+            Self::Appended => DomAttributeAttachment::Appended(id),
+            Self::Unchanged => DomAttributeAttachment::Unchanged(id),
+            Self::Replaced => DomAttributeAttachment::Replaced(id),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeTicket {
+    AdjacentElement(Key, Option<NodeId>),
+    Node(Key),
+    RemovedAttribute(Key),
+    AttributeAttachment(Key, AttachmentKind),
+    ElementAttributePresent(Key, bool),
+    ProcessingInstructionAttributePresent(Key, bool),
+}
+
+impl NodeTicket {
+    fn key(self) -> Key {
+        match self {
+            Self::AdjacentElement(key, _)
+            | Self::Node(key)
+            | Self::RemovedAttribute(key)
+            | Self::AttributeAttachment(key, _)
+            | Self::ElementAttributePresent(key, _)
+            | Self::ProcessingInstructionAttributePresent(key, _) => key,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DomCommit {
+    created_ranges: Vec<Option<crate::internal::range::DomRangeId>>,
+    owner: Arc<BatchIdentity>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
+    transition_ids: Vec<Option<DomViewTransitionId>>,
+    record_ids: Vec<Option<DomViewTransitionRecordId>>,
+    changes: DomChanges,
+}
+pub(in crate::internal::store) struct CommittedPublication {
+    pub commit: DomCommit,
+    pub committed: transaction::PublicationCommitted,
+}
+impl DomCommit {
+    pub fn created_range(
+        &self,
+        ticket: &crate::internal::range::CreatedRange,
+    ) -> Result<Option<crate::internal::range::DomRangeId>, DomError> {
+        if !Arc::ptr_eq(&self.owner, &ticket.owner) {
+            return Err(DomError::ForeignBatch);
+        }
+        self.created_ranges
+            .get(ticket.index)
+            .copied()
+            .ok_or(DomError::UnavailableCreation)
+    }
+    pub(crate) fn source_output(&self) -> Option<crate::internal::source::DomSourceOutput> {
+        if let Some(Some(range)) = self.created_ranges.first() {
+            return Some(crate::internal::source::DomSourceOutput::Range(*range));
+        }
+        if let Some(Some(node)) = self.node_outputs.first() {
+            return Some(match self.node_output_kinds.first()? {
+                NodeOutputKind::AdjacentElement(element) => {
+                    crate::internal::source::DomSourceOutput::AdjacentElement(*element)
+                }
+                NodeOutputKind::Document => {
+                    crate::internal::source::DomSourceOutput::Document(DocumentId(*node))
+                }
+                NodeOutputKind::Node => crate::internal::source::DomSourceOutput::Node(*node),
+                NodeOutputKind::RemovedAttribute => {
+                    crate::internal::source::DomSourceOutput::RemovedAttribute(
+                        crate::internal::identity::DomAttrId(*node),
+                    )
+                }
+                NodeOutputKind::AttributeAttachment(kind) => {
+                    crate::internal::source::DomSourceOutput::AttributeAttachment(
+                        kind.published(*node),
+                    )
+                }
+                NodeOutputKind::ElementAttributePresent(present) => {
+                    crate::internal::source::DomSourceOutput::ElementAttributePresent(*present)
+                }
+                NodeOutputKind::ProcessingInstructionAttributePresent(present) => {
+                    crate::internal::source::DomSourceOutput::ProcessingInstructionAttributePresent(
+                        *present,
+                    )
+                }
+            });
+        }
+        if let Some(Some(id)) = self.transition_ids.first() {
+            return Some(crate::internal::source::DomSourceOutput::ViewTransition(
+                *id,
+            ));
+        }
+        self.record_ids
+            .first()
+            .copied()
+            .flatten()
+            .map(crate::internal::source::DomSourceOutput::ViewTransitionRecord)
+    }
+    pub fn view_transition(
+        &self,
+        ticket: &CreatedViewTransition,
+    ) -> Result<Option<DomViewTransitionId>, DomError> {
+        if !Arc::ptr_eq(&ticket.owner, &self.owner) {
+            return Err(DomError::ForeignBatch);
+        }
+        self.transition_ids
+            .get(ticket.index)
+            .copied()
+            .ok_or(DomError::UnavailableCreation)
+    }
+    pub fn view_transition_record(
+        &self,
+        ticket: &CreatedViewTransitionRecord,
+    ) -> Result<Option<DomViewTransitionRecordId>, DomError> {
+        if !Arc::ptr_eq(&ticket.owner, &self.owner) {
+            return Err(DomError::ForeignBatch);
+        }
+        self.record_ids
+            .get(ticket.index)
+            .copied()
+            .ok_or(DomError::UnavailableCreation)
+    }
+    pub fn changes(&self) -> &DomChanges {
+        &self.changes
+    }
+    /// None means the batch destroyed its own unpublished creation.
+    pub fn created(&self, ticket: &CreatedNode) -> Result<Option<NodeId>, DomError> {
+        resolve_created_node(&self.owner, &self.node_outputs, ticket)
+    }
+    /// Return the attached root if it survives this batch's final publication.
+    pub fn attached_shadow_root(
+        &self,
+        ticket: &AttachedShadowRoot,
+    ) -> Result<Option<NodeId>, DomError> {
+        resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)
+    }
+    /// Return the exact Attr removed by this batch, even if a later command retired it.
+    pub fn removed_attribute(
+        &self,
+        ticket: &RemovedAttribute,
+    ) -> Result<crate::internal::identity::DomAttrId, DomError> {
+        let id = resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)?
+            .ok_or(DomError::UnavailableCreation)?;
+        if self.node_output_kinds.get(ticket.index) != Some(&NodeOutputKind::RemovedAttribute) {
+            return Err(DomError::WrongNodeKind);
+        }
+        Ok(crate::internal::identity::DomAttrId(id))
+    }
+    /// Resolve this batch's exact native attachment result.
+    pub fn attribute_attachment(
+        &self,
+        ticket: &AttachedAttribute,
+    ) -> Result<crate::internal::attr::DomAttributeAttachment, DomError> {
+        let id = resolve_node_output(&self.owner, &self.node_outputs, &ticket.owner, ticket.index)?
+            .ok_or(DomError::UnavailableCreation)?;
+        let Some(NodeOutputKind::AttributeAttachment(kind)) =
+            self.node_output_kinds.get(ticket.index)
+        else {
+            return Err(DomError::WrongNodeKind);
+        };
+        Ok(kind.published(id))
+    }
+    pub fn document(&self, ticket: &CreatedNode) -> Result<DocumentId, DomError> {
+        let id = self.created(ticket)?.ok_or(DomError::UnavailableCreation)?;
+        if self.node_output_kinds.get(ticket.index) != Some(&NodeOutputKind::Document) {
+            return Err(DomError::WrongNodeKind);
+        }
+        Ok(DocumentId(id))
+    }
+}
+
+fn resolve_created_node(
+    owner: &Arc<BatchIdentity>,
+    created: &[Option<NodeId>],
+    ticket: &CreatedNode,
+) -> Result<Option<NodeId>, DomError> {
+    resolve_node_output(owner, created, &ticket.owner, ticket.index)
+}
+
+fn resolve_node_output(
+    owner: &Arc<BatchIdentity>,
+    nodes: &[Option<NodeId>],
+    ticket_owner: &Arc<BatchIdentity>,
+    index: usize,
+) -> Result<Option<NodeId>, DomError> {
+    if !Arc::ptr_eq(ticket_owner, owner) {
+        return Err(DomError::ForeignBatch);
+    }
+    nodes
+        .get(index)
+        .copied()
+        .ok_or(DomError::UnavailableCreation)
+}
+
+pub(crate) use canonical::Node;
+
+/// An owned ingress operand, consumed into one exact-kind staged owner. Public
+/// observation views never double as a storage or construction representation.
+#[derive(Clone, Debug, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "This transient ingress value is consumed into kind-sized payloads; boxing Document would add allocation and custody solely for constructor transport"
+)]
+pub(in crate::internal::store) enum NewNode {
+    Document(DomDocumentMetadata),
+    Element(DomElement),
+    Attr(crate::internal::name::DomAttribute),
+    DocumentFragment,
+    ShadowRoot(crate::internal::shadow::DomShadowRootState),
+    Text(DocumentString),
+    Comment(DocumentString),
+    ProcessingInstruction(crate::internal::node_values::DomProcessingInstruction),
+    DocumentType(crate::internal::node_values::DomDocumentType),
+}
+
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, PartialEq)]
+pub(crate) struct Slot {
+    pub(crate) generation: u64,
+    retired: bool,
+    pub(crate) node: Option<Node>,
+}
+#[derive(Debug)]
+pub(crate) struct State {
+    identity: custody::MaterializationId,
+    counts: transaction::Counts,
+    inbound: transaction::inbound::InboundIndex,
+    controls: transaction::controls::ControlIndex,
+    slot_index: transaction::slot_index::SlotIndex,
+    family_index: transaction::family_discovery::FamilyIndex,
+    role_facts: transaction::role_facts::Index,
+    container_index: hosted::containers::ContainerIndex,
+    range_dependencies: transaction::ranges::RangeDependencies,
+    signal_targets: transaction::queues::CanonicalTargets,
+    native_targets: transaction::queues::CanonicalTargets,
+    details_targets: transaction::queues::CanonicalTargets,
+    pub(crate) ranges: bank::Bank<crate::internal::range::Slot<NodeId>>,
+    node_iterators: node_iterator::Iterators,
+    child_lists: Option<Arc<child_list::Published>>,
+    pub(crate) incomplete_source: Option<crate::internal::source::DomSourceOperationId>,
+    pub(crate) incomplete_hosted: Option<crate::internal::hosted::DomHostedOperationId>,
+    pub(crate) slots: bank::Bank<Slot>,
+    pub(crate) registries: Option<Arc<registry::Bank>>,
+    pub(crate) hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
+    pub(crate) hosted_history: Option<Arc<hosted::history::Graph>>,
+    pub(crate) view_transitions: ViewTransitions,
+    pub(crate) signal_slots: SharedVec<NodeId>,
+    pub(crate) notification_queued: bool,
+    native_tasks: SharedVec<select::Task<NodeId>>,
+    next_task: u64,
+    pub(crate) details_intentions: SharedVec<crate::internal::details::DomDetailsToggleIntention>,
+    next_details_intention: u64,
+    nodes: usize,
+    units: usize,
+}
+impl PartialEq for State {
+    fn eq(&self, other: &Self) -> bool {
+        self.ranges == other.ranges
+            && self.node_iterators == other.node_iterators
+            && self.child_lists == other.child_lists
+            && self.incomplete_source == other.incomplete_source
+            && self.incomplete_hosted == other.incomplete_hosted
+            && self.slots == other.slots
+            && self.registries == other.registries
+            && self.hosted_globals == other.hosted_globals
+            && self.hosted_history == other.hosted_history
+            && self.view_transitions == other.view_transitions
+            && self.signal_slots == other.signal_slots
+            && self.notification_queued == other.notification_queued
+            && self.native_tasks == other.native_tasks
+            && self.next_task == other.next_task
+            && self.details_intentions == other.details_intentions
+            && self.next_details_intention == other.next_details_intention
+            && self.nodes == other.nodes
+            && self.units == other.units
+    }
+}
+impl State {
+    pub(crate) fn ordinary_child_position_with<E: From<DomError>>(
+        &self,
+        id: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(NodeId, usize)>, E> {
+        let Some(position) = self.slot_index.position_with(Key::Existing(id), step)? else {
+            return Ok(None);
+        };
+        let Key::Existing(parent) = position.parent else {
+            return Err(DomError::NotFound.into());
+        };
+        Ok(Some((parent, position.ordinal)))
+    }
+    pub(crate) fn node(&self, owner: DomOwnerId, id: NodeId) -> Result<&Node, DomError> {
+        self.node_with(owner, id, &mut || Ok(()))
+    }
+
+    pub(crate) fn node_with<E: From<DomError>>(
+        &self,
+        owner: DomOwnerId,
+        id: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<&Node, E> {
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            scale_metrics::record(scale_metrics::Event::CanonicalRecordRead);
+        }
+
+        if id.owner != owner {
+            return Err(DomError::ForeignOwner.into());
+        }
+        self.slots
+            .get_with(id.slot, step)?
+            .filter(|s| s.generation == id.generation)
+            .and_then(|s| s.node.as_ref())
+            .ok_or_else(|| DomError::StaleNode.into())
+    }
+}
+
+/// Exclusive canonical mutation owner. Snapshots never borrow its mutable state.
+/// The whole owner is Send, including an exact parked source tail and retained
+/// mutable CSSOM custody. Moving it does not replay or rebind that operation.
+/// Shared mutation and Sync are not supplied by this exclusive-owner contract.
+pub struct Dom {
+    child_list_turn: Option<Box<child_list::Turn>>,
+    script_registration: Option<crate::internal::hosted::CanonicalScriptRegistration>,
+    fullscreen_exits: fullscreen::custody::Invocations,
+    next_fullscreen_exit: u64,
+    element_tasks: Option<std::sync::Weak<crate::internal::element_tasks::Binding>>,
+    dispatch_custody: dispatch::CustodyBank,
+    node_retirements: Option<Arc<node_retirement::Index>>,
+    event_recipients: Option<Arc<event::Owner>>,
+    event_registry: Option<crate::internal::event::RegistryObservation>,
+    owner: DomOwnerId,
+    revision: DomRevision,
+    limits: DomLimits,
+    state: Arc<State>,
+    state_custody: transaction::StateCustody,
+    custody_registry: bank::CustodyRegistry,
+    names: name_registry::Registry,
+    history: history::History,
+    document_environment: crate::internal::document::DomDocumentEnvironment,
+    active_task: std::sync::Weak<crate::internal::select::Authorization>,
+    source_operation: Option<Box<source::operation::Operation>>,
+    next_source_operation: u64,
+    pub(in crate::internal::store) source_parents: Vec<Box<source::operation::Operation>>,
+    source_event_executor: Option<std::sync::Weak<crate::internal::source::event::ExecutorBinding>>,
+    inline_styles: Option<Box<inline_style::Owner>>,
+    style_cssom_roots: style_custody::Bank,
+    pending_associations: pending_associations::Bank,
+    hosted_source: Option<crate::internal::hosted::SourceObservation>,
+    next_hosted_source: u64,
+    details_transferred: bool,
+    hosted_operations: hosted::operations::Operations,
+    hosted_revisions: u64,
+    csp_owner: custody::Held<std::cell::RefCell<surgeist_html::security::csp::HtmlCspOwner>>,
+    _custody_administration: custody::Debit,
+}
+impl Dom {
+    pub fn new(limits: DomLimits) -> Result<Self, DomError> {
+        Self::with_native_input_platform(
+            limits,
+            crate::internal::document::DomNativeInputPlatform::headless(),
+        )
+    }
+    /// Constructs one immutable native platform; `new` selects the named
+    /// headless Supported/Supported profile. Image acquisition is disabled.
+    pub fn with_native_input_platform(
+        limits: DomLimits,
+        input: crate::internal::document::DomNativeInputPlatform,
+    ) -> Result<Self, DomError> {
+        let ledger = custody::Ledger::default();
+        let administration = ledger.retain(custody::Ledger::administration_usage(), |_| Ok(()))?;
+        let registry = bank::CustodyRegistry::new(&ledger, |_| Ok(()))?;
+        let csp_owner = csp::owner(&ledger)?;
+        let state = State {
+            identity: custody::MaterializationId::fresh()?,
+            counts: transaction::Counts::default(),
+            inbound: transaction::inbound::InboundIndex::default(),
+            controls: transaction::controls::ControlIndex::default(),
+            slot_index: transaction::slot_index::SlotIndex::default(),
+            family_index: transaction::family_discovery::FamilyIndex::default(),
+            role_facts: transaction::role_facts::Index::default(),
+            container_index: hosted::containers::ContainerIndex::default(),
+            range_dependencies: transaction::ranges::RangeDependencies::default(),
+            signal_targets: transaction::queues::CanonicalTargets::default(),
+            native_targets: transaction::queues::CanonicalTargets::default(),
+            details_targets: transaction::queues::CanonicalTargets::default(),
+            ranges: bank::Bank::default(),
+            node_iterators: node_iterator::Iterators::default(),
+            child_lists: None,
+            incomplete_source: None,
+            incomplete_hosted: None,
+            slots: bank::Bank::default(),
+            registries: None,
+            hosted_globals: None,
+            hosted_history: None,
+            view_transitions: ViewTransitions::new(),
+            signal_slots: SharedVec::default(),
+            notification_queued: false,
+            native_tasks: SharedVec::default(),
+            next_task: 0,
+            details_intentions: SharedVec::default(),
+            next_details_intention: 0,
+            nodes: 0,
+            units: 0,
+        };
+        let state_custody = transaction::StateCustody::initial(&state, &registry, |_| Ok(()))?;
+        let owner = DomOwnerId::allocate()?;
+        let names = name_registry::Registry::new(
+            owner,
+            &registry,
+            limits.names(),
+            &mut name_registry::Admission {
+                global: &mut |_| Ok(()),
+                step: &mut || Ok(()),
+            },
+        )?;
+        Ok(Self {
+            child_list_turn: None,
+            style_cssom_roots: style_custody::Bank::new(&registry),
+            pending_associations: pending_associations::Bank::new(&registry),
+            fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
+            next_fullscreen_exit: 1,
+            dispatch_custody: dispatch::CustodyBank::default(),
+            node_retirements: None,
+            event_recipients: None,
+            event_registry: None,
+            inline_styles: None,
+            element_tasks: None,
+            owner,
+            names,
+            csp_owner,
+            revision: DomRevision(0),
+            limits,
+            state: Arc::new(state),
+            state_custody,
+            custody_registry: registry,
+            _custody_administration: administration,
+            active_task: std::sync::Weak::new(),
+            source_operation: None,
+            next_source_operation: 0,
+            source_parents: Vec::new(),
+            source_event_executor: None,
+            hosted_source: None,
+            next_hosted_source: 0,
+            details_transferred: false,
+            hosted_operations: hosted::operations::Operations::default(),
+            hosted_revisions: 0,
+            history: history::History::new(),
+            document_environment: crate::internal::document::DomDocumentEnvironment::new(input),
+            script_registration: None,
+        })
+    }
+    pub fn owner(&self) -> DomOwnerId {
+        self.owner
+    }
+    pub fn revision(&self) -> DomRevision {
+        self.revision
+    }
+    pub fn limits(&self) -> DomLimits {
+        self.limits
+    }
+    pub fn usage(&self) -> DomUsage {
+        let (transitions, records, pseudos) = self.state.view_transitions.usage();
+        DomUsage {
+            parsed_association_bytes: self.pending_associations.usage().bytes(),
+            parsed_association_units: self.pending_associations.usage().units(),
+            ranges: self
+                .state
+                .ranges
+                .values()
+                .filter(|slot| slot.record.is_some())
+                .count(),
+            node_iterators: self.state.node_iterators.live_slots(),
+            meta_color_scheme_bytes: self
+                .state
+                .slots
+                .values()
+                .filter_map(|slot| slot.node.as_ref())
+                .map(|node| match node.kind() {
+                    DomNodeKind::Document(metadata) => metadata.meta_color_scheme_bytes(),
+                    _ => 0,
+                })
+                .sum(),
+            autofocus_candidates: self
+                .state
+                .slots
+                .values()
+                .filter_map(|s| s.node.as_ref())
+                .map(|n| match n.autofocus_document() {
+                    Some(canonical::AutofocusView::Known { candidates, .. }) => candidates.len(),
+                    _ => 0,
+                })
+                .sum(),
+            slot_references: self.state.slot_reference_count(),
+            transitions,
+            records,
+            pseudos,
+            nodes: self.state.nodes,
+            units: self.state.units,
+            history_entries: self.history.entries(),
+            history_bytes: self.history.bytes(),
+        }
+    }
+    pub fn snapshot(&self) -> DomSnapshot {
+        DomSnapshot {
+            source_tail: self
+                .source_operation
+                .as_ref()
+                .filter(|operation| operation.has_event_tail())
+                .map(|operation| operation.id()),
+            owner: self.owner,
+            revision: self.revision,
+            state: self.state.clone(),
+            script_registration: self.active_script_registration(),
+        }
+    }
+    /// Live bounds cannot fall below admitted state. Smaller history bounds
+    /// discard coverage explicitly, without changing semantic revision.
+    /// Retained callback observations must settle before these bounds can change.
+    pub fn set_limits(&mut self, limits: DomLimits) -> Result<(), DomError> {
+        // This legacy policy controller supports the original single staged
+        // Source recovery. Refuse callback observations before
+        // traversing canonical banks without the observing owners' Work.
+        if !self.source_parents.is_empty()
+            || self
+                .source_operation
+                .as_ref()
+                .is_some_and(|operation| operation.is_observing_callback())
+        {
+            return Err(DomError::SourceOperationPending);
+        }
+        self.pending_associations.admit(limits)?;
+        self.names.admit_limits(limits.names())?;
+        if let Some(owner) = &self.event_recipients {
+            owner.admit_limits(limits.event_recipients())?;
+        }
+        admit(self.state.ranges.len(), limits.ranges, DomResource::Ranges)?;
+        admit(
+            self.state.node_iterators.retained_slots(),
+            limits.node_iterators,
+            DomResource::NodeIterators,
+        )?;
+        if let Some(child_lists) = &self.state.child_lists {
+            child_lists.admit(limits.child_list_observation)?;
+        }
+        admit(
+            self.fullscreen_exits.len(),
+            limits.fullscreen_exits,
+            DomResource::FullscreenExits,
+        )?;
+        let events = self
+            .state
+            .slots
+            .values()
+            .filter_map(|slot| slot.node.as_ref())
+            .try_fold(0usize, |count, node| {
+                count
+                    .checked_add(node.fullscreen_events().len())
+                    .ok_or(DomError::RepresentationExhausted)
+            })?;
+        admit(
+            events,
+            limits.fullscreen_events,
+            DomResource::FullscreenEvents,
+        )?;
+        if let Some(op) = &self.source_operation {
+            op.admit_dom_limits(limits)?;
+        }
+        for parent in &self.source_parents {
+            parent.admit_dom_limits(limits)?;
+        }
+        let mut encoding_url_records = 0usize;
+        let mut records = 0usize;
+        for slot in &self.state.slots {
+            if let Some(node) = &slot.node {
+                encoding_url_records = encoding_url_records
+                    .checked_add(
+                        node.encoding_url_document()
+                            .and_then(|document| document.facts)
+                            .map_or(0, |facts| facts.formation_usage().record_capacity()),
+                    )
+                    .ok_or(DomError::RepresentationExhausted)?;
+                records = records
+                    .checked_add(node.base_document().map_or(0, |document| {
+                        document
+                            .facts
+                            .as_ref()
+                            .map_or(0, |facts| facts.formation_usage().record_capacity())
+                    }))
+                    .ok_or(DomError::RepresentationExhausted)?;
+            }
+        }
+        admit(
+            records,
+            limits.base_observations,
+            DomResource::BaseObservations,
+        )?;
+        admit(
+            encoding_url_records,
+            limits.encoding_url_observations,
+            DomResource::EncodingUrlObservations,
+        )?;
+        admit(
+            self.state.slot_reference_count(),
+            limits.slot_references,
+            DomResource::SlotReferences,
+        )?;
+        admit(
+            self.usage().autofocus_candidates(),
+            limits.autofocus_candidates,
+            DomResource::AutofocusCandidates,
+        )?;
+        admit(self.state.nodes, limits.nodes, DomResource::ManagedNodes)?;
+        admit(self.state.units, limits.units, DomResource::StringCodeUnits)?;
+        admit(
+            self.usage().meta_color_scheme_retained_bytes(),
+            limits.meta_color_scheme_bytes,
+            DomResource::MetaColorSchemeRetainedBytes,
+        )?;
+        let (transitions, records, pseudos) = self.state.view_transitions.usage();
+        admit(
+            transitions,
+            limits.transitions,
+            DomResource::ViewTransitions,
+        )?;
+        admit(records, limits.records, DomResource::ViewTransitionRecords)?;
+        admit(pseudos, limits.pseudos, DomResource::ViewTransitionPseudos)?;
+        admit(
+            self.state
+                .native_tasks
+                .iter()
+                .filter(|t| matches!(t, select::Task::Update { .. }))
+                .count(),
+            limits.select_tasks,
+            DomResource::SelectTasks,
+        )?;
+        admit(
+            self.state.details_intentions.len(),
+            limits.details_intentions,
+            DomResource::DetailsToggleIntentions,
+        )?;
+        let cancel = AtomicBool::new(false);
+        let custody_formation = match &self.source_operation {
+            Some(op) if self.dispatch_custody.has_indexed_scopes() => {
+                match op.dispatch_limit_formation(&cancel)? {
+                    Some(formation) => Some(formation),
+                    None => self.source_observation_formation(&cancel)?,
+                }
+            }
+            _ => None,
+        };
+        self.dispatch_custody.admit_limits(
+            limits.dispatch_custody,
+            custody_formation.as_ref(),
+            &cancel,
+        )?;
+        if let Some(op) = &mut self.source_operation {
+            op.update_dom_limits(limits);
+        }
+        self.names.replace_limits(limits.names());
+        self.limits = limits;
+        self.trim_history();
+        Ok(())
+    }
+    pub fn apply(
+        &mut self,
+        batch: DomBatch,
+        cancelled: &AtomicBool,
+    ) -> Result<DomCommit, DomError> {
+        let result = (|| {
+            let prepared = self.prepare(batch, cancelled)?;
+            self.publish(prepared, cancelled)
+        })();
+        // Blocks that no string holds any more, whatever the outcome, give their charge back.
+        self.custody_registry.sweep_blocks();
+        #[cfg(test)]
+        self.observe_source_lifecycle();
+        result
+    }
+
+    fn edit_native_state<T>(
+        &mut self,
+        cancel: &AtomicBool,
+        edit: impl FnOnce(&mut Draft) -> Result<T, DomError>,
+    ) -> Result<T, DomError> {
+        self.require_source_entry(cancel)?;
+        check_cancel(cancel)?;
+        let batch = DomBatch::new();
+        let mut draft = if self.source_operation.is_some() {
+            self.source_observed_batch(batch.owner, &[], 0, cancel)?
+        } else {
+            Draft::new(self, batch.owner, cancel)?
+        };
+        let result = edit(&mut draft)?;
+        let mut prepared = draft.finish(self, cancel)?;
+        prepared.state.incomplete_source = self.state.incomplete_source;
+        self.publish(prepared, cancel)?;
+        Ok(result)
+    }
+    /// Canonical whole-batch input policy, before any command is resolved or
+    /// staged. Each caller supplies its actual cancellation/work admission.
+    fn admit_batch_inputs(
+        &self,
+        commands: &[Command],
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        admit(commands.len(), self.limits.commands, DomResource::Commands)?;
+        let mut incoming = 0usize;
+        for command in commands {
+            step()?;
+            if let Command::AssignSlot {
+                incoming: nodes, ..
+            } = command
+            {
+                incoming = incoming
+                    .checked_add(nodes.len())
+                    .ok_or(DomError::RepresentationExhausted)?;
+                admit(
+                    incoming,
+                    self.limits.slot_assignment_inputs,
+                    DomResource::SlotAssignmentInputs,
+                )?;
+            }
+        }
+        Ok(())
+    }
+    fn prepare(&self, batch: DomBatch, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
+        self.prepare_with_inline(batch, None, cancelled)
+    }
+    fn prepare_with_inline(
+        &self,
+        batch: DomBatch,
+        recording: Option<inline_style::recording::Recording>,
+        cancelled: &AtomicBool,
+    ) -> Result<Prepared, DomError> {
+        self.prepare_with_recordings(batch, recording, None, cancelled)
+            .map(|(prepared, _)| prepared)
+    }
+    fn prepare_with_recordings(
+        &self,
+        batch: DomBatch,
+        recording: Option<inline_style::recording::Recording>,
+        mut meta: Option<meta_atomic::Recording>,
+        cancelled: &AtomicBool,
+    ) -> Result<(Prepared, Option<meta_atomic::Recording>), DomError> {
+        self.require_source_entry(cancelled)?;
+        check_cancel(cancelled)?;
+        self.admit_batch_inputs(&batch.commands, || check_cancel(cancelled))?;
+        let mut draft = if self
+            .source_operation
+            .as_ref()
+            .is_some_and(|op| op.permits_reentry())
+        {
+            self.source_observed_batch(
+                batch.owner,
+                &batch.commands,
+                batch.commands.capacity(),
+                cancelled,
+            )?
+        } else {
+            Draft::new(self, batch.owner, cancelled)?
+        };
+        if let Some(meta) = &mut meta {
+            meta.attach(cancelled)?;
+        }
+        draft.meta_recording = meta;
+        draft.inline_recording = self.blocked_inline_recording().or(recording);
+        for command in batch.commands {
+            check_cancel(cancelled)?;
+            if let Err(error) = draft.apply(&command, self.limits, cancelled) {
+                if let DomError::DialogProcessingUnavailable { action } = error
+                    && let Some(pending) = draft
+                        .pending_dialog_hook()
+                        .filter(|pending| pending.action == action)
+                {
+                    return Err(DomError::NeedsEventfulOperation {
+                        subject: draft.published_id(pending.subject),
+                        action,
+                    });
+                }
+                return Err(error);
+            }
+        }
+        check_cancel(cancelled)?;
+        let meta = draft.meta_recording.take();
+        let mut prepared = draft.finish(self, cancelled)?;
+        // An ordinary callback batch does not complete its observing Source.
+        // Keep that owner's already-published marker and closing obligation;
+        // only its original Source publication can advance or clear the marker.
+        prepared.state.incomplete_source = self.state.incomplete_source;
+        Ok((prepared, meta))
+    }
+    fn publish(
+        &mut self,
+        prepared: Prepared,
+        cancelled: &AtomicBool,
+    ) -> Result<DomCommit, DomError> {
+        let publication = self.prepare_publication(prepared, cancelled)?;
+        Ok(self.publish_prepared(publication))
+    }
+    fn prepare_publication(
+        &mut self,
+        mut prepared: Prepared,
+        cancelled: &AtomicBool,
+    ) -> Result<PreparedPublication, DomError> {
+        check_cancel(cancelled)?;
+        let (inline_index, inline_retirement) =
+            self.prepare_inline_publication(&prepared, cancelled)?;
+        let usage = prepared.state.root_usage()?;
+        transaction::nodes::resize_debit(&mut prepared.root_debit, usage, |usage| match &prepared
+            .formation
+        {
+            Some(budget) => budget.admit_custody_usage(usage, cancelled),
+            None => check_cancel(cancelled),
+        })?;
+        let receipt = prepared
+            .root_debit
+            .share(|usage| match &prepared.formation {
+                Some(budget) => budget.admit_custody_usage(usage, cancelled),
+                None => check_cancel(cancelled),
+            })?;
+        let guarded = PreparedRoot {
+            value: prepared,
+            receipt,
+        };
+        let state_custody = transaction::StateCustody::from_parts_retained(
+            &guarded.value.state,
+            guarded.value.state_frontiers.clone(),
+            &self.custody_registry,
+            &guarded.receipt,
+            |usage| match &guarded.value.formation {
+                Some(budget) => budget.admit_custody_usage(usage, cancelled),
+                None => check_cancel(cancelled),
+            },
+        )?;
+        let changed = guarded.value.changed_from(&self.state);
+        let Prepared {
+            blocks,
+            inline_echo: _,
+            inline_positions: _,
+            inline_recording,
+            name_promotions,
+            formation,
+            state_frontiers: _,
+            root_debit: _,
+            semantic_changed: _,
+            iterator_state_changed,
+            signal_ack,
+            native_ack,
+            details_ack,
+            transition_ack,
+            _transition_outputs,
+            created_ranges,
+            retirements,
+            node_retirement_candidates,
+            state,
+            allocation_ids,
+            owner,
+            node_outputs,
+            node_output_kinds,
+            transition_ids,
+            record_ids,
+            changes,
+        } = guarded.value;
+        let revision = if changed {
+            let protected = self.source_reserved_closing(cancelled)?;
+            self.revision
+                .0
+                .checked_add(1)
+                .and_then(|next| next.checked_add(self.hosted_revisions))
+                .and_then(|next| next.checked_add(protected))
+                .ok_or(DomError::RevisionExhausted)?;
+            DomRevision(
+                self.revision
+                    .0
+                    .checked_add(1)
+                    .ok_or(DomError::RevisionExhausted)?,
+            )
+        } else {
+            self.revision
+        };
+        let from = DomStamp {
+            owner: self.owner,
+            revision: self.revision,
+        };
+        let to = DomStamp {
+            owner: self.owner,
+            revision,
+        };
+        if let Some(budget) = &formation {
+            // Vec -> Arc<[T]> allocates the destination while the admitted
+            // Vec backing is still live. State's inline fields likewise move
+            // into a new Arc allocation before the old canonical Arc retires.
+            budget.retain_bytes(
+                changes
+                    .len()
+                    .checked_mul(size_of::<DomChange>())
+                    .ok_or(DomError::RepresentationExhausted)?,
+                cancelled,
+            )?;
+        }
+        let old_changes_bytes = changes
+            .capacity()
+            .checked_mul(size_of::<DomChange>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        let changes: Arc<[DomChange]> = changes.into();
+        #[cfg(test)]
+        if scale_metrics::ENABLED && !changes.is_empty() {
+            let bytes = changes.len() * size_of::<DomChange>();
+            scale_metrics::record(scale_metrics::Event::StructuralAllocation { bytes });
+            scale_metrics::record(scale_metrics::Event::SequenceMaterialized { bytes });
+        }
+        if let Some(budget) = &formation {
+            budget.release_payload(source::storage::Payload {
+                bytes: old_changes_bytes,
+                units: 0,
+            });
+        }
+        let history_plan = self.history.prepare(
+            self,
+            &changes,
+            changed,
+            |usage| match &formation {
+                Some(budget) => budget.admit_custody_usage(usage, cancelled),
+                None => check_cancel(cancelled),
+            },
+            || source::formation::step(formation.as_ref(), cancelled),
+        )?;
+        let (state, state_custody) = if changed || iterator_state_changed {
+            let state = Arc::new(state);
+            #[cfg(test)]
+            if scale_metrics::ENABLED {
+                scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+                    bytes: size_of::<State>(),
+                });
+            }
+            (state, state_custody)
+        } else {
+            drop(state);
+            drop(state_custody);
+            (self.state.clone(), self.state_custody.clone())
+        };
+        let retired_authority = self.active_task.upgrade().filter(|auth| {
+            changes.iter().any(|change| {
+                let (operation, select, selectedcontent) = match *change {
+                    DomChange::SelectTaskCancelled {
+                        operation, select, ..
+                    } => (operation, select, None),
+                    DomChange::SelectedcontentTaskCancelled {
+                        operation,
+                        select,
+                        target,
+                        ..
+                    } => (operation, select, Some(target)),
+                    _ => return false,
+                };
+                operation == auth.id
+                    && select == auth.targets.select
+                    && selectedcontent == auth.targets.selectedcontent
+            })
+        });
+        let retirement_publication = self.dispatch_custody.prepare_publication(
+            &retirements,
+            to,
+            self.limits.dispatch_custody,
+            formation.as_ref(),
+            cancelled,
+        )?;
+        let node_retirement_publication = if node_retirement_candidates.is_empty() {
+            None
+        } else {
+            self.node_retirements.clone().map(|index| {
+                node_retirement::PublicationPlan::new(index, node_retirement_candidates)
+            })
+        };
+        // This independently held candidate is prepared last: its registry
+        // owns its actual peak, and this non-retaining gate includes all prior
+        // publication storage before the final fence.
+        let style_custody = self.style_cssom_roots.prepare_publication(
+            changes.iter().filter_map(|change| match change {
+                DomChange::Destroyed(id) => Some(*id),
+                _ => None,
+            }),
+            changes.iter().filter_map(|change| match change {
+                DomChange::NodeDocument(id) => Some((
+                    *id,
+                    state
+                        .node(self.owner, *id)
+                        .expect("NodeDocument change names a validated live candidate")
+                        .document(),
+                )),
+                _ => None,
+            }),
+            |extra| match &formation {
+                Some(budget) => budget.admit_custody_usage(extra, cancelled),
+                None => check_cancel(cancelled),
+            },
+            || source::formation::step(formation.as_ref(), cancelled),
+        )?;
+        // Last cancellation observation is the publication boundary. No user
+        // callbacks or external effects occur while prepared state is private.
+        check_cancel(cancelled)?;
+        Ok(PreparedPublication {
+            custom_element_reactions: None,
+            name_promotions,
+            state_custody,
+            allocation_ids,
+            signal_ack,
+            native_ack,
+            details_ack,
+            transition_ack,
+            _transition_outputs,
+            created_ranges,
+            state,
+            changed,
+            revision,
+            history_plan,
+            retirement_publication,
+            node_retirement_publication,
+            style_custody,
+            inline_index,
+            inline_retirement,
+            inline_recording,
+            retired_authority,
+            owner,
+            node_outputs,
+            node_output_kinds,
+            transition_ids,
+            record_ids,
+            from,
+            to,
+            changes,
+            _formation: formation,
+            blocks,
+        })
+    }
+    fn publish_prepared(&mut self, publication: PreparedPublication) -> DomCommit {
+        self.publish_prepared_with_proof(publication).commit
+    }
+    fn publish_prepared_with_proof(
+        &mut self,
+        publication: PreparedPublication,
+    ) -> CommittedPublication {
+        // The blocks the transaction listed stay listed: the nodes that borrow them are published.
+        publication.blocks.publish();
+        let (inline_index, inline_objects) = match self.inline_styles.as_mut() {
+            Some(owner) => (Some(&mut owner.index), Some(&mut owner.objects)),
+            None => (None, None),
+        };
+        let committed = PublicationFields {
+            state: &mut self.state,
+            state_custody: &mut self.state_custody,
+            style_cssom_roots: &mut self.style_cssom_roots,
+            revision: &mut self.revision,
+            history: &mut self.history,
+            active_task: &mut self.active_task,
+            inline_index,
+            inline_objects,
+        }
+        .publish(publication);
+        // Blocks that no string holds any more, such as those of the state this publication
+        // replaced, give their charge back whichever route published.
+        self.custody_registry.sweep_blocks();
+        committed
+    }
+    fn trim_history(&mut self) {
+        self.history.trim(self.limits);
+    }
+    /// Complete chronological change records, or an explicit recompute result.
+    pub fn changes_since(&self, baseline: DomStamp) -> Result<DomChanges, DomHistoryError> {
+        if baseline.owner != self.owner {
+            return Err(DomHistoryError::ForeignOwner);
+        }
+        if baseline.revision > self.revision {
+            return Err(DomHistoryError::FutureRevision);
+        }
+        let changes = self
+            .history
+            .changes_since(baseline.revision, self.revision)?;
+        Ok(DomChanges {
+            from: baseline,
+            to: DomStamp {
+                owner: self.owner,
+                revision: self.revision,
+            },
+            changes,
+        })
+    }
+}
+
+// One borrowed view of the existing infallible publication body. Feedback can
+// borrow the independent producer and its affine effect at the same fence.
+struct PublicationFields<'a> {
+    state: &'a mut Arc<State>,
+    state_custody: &'a mut transaction::StateCustody,
+    style_cssom_roots: &'a mut style_custody::Bank,
+    revision: &'a mut DomRevision,
+    history: &'a mut history::History,
+    active_task: &'a mut std::sync::Weak<crate::internal::select::Authorization>,
+    inline_index: Option<&'a mut inline_style::Index>,
+    inline_objects: Option<&'a mut Vec<inline_style::ObjectEntry>>,
+}
+impl PublicationFields<'_> {
+    fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
+        let PreparedPublication {
+            custom_element_reactions,
+            name_promotions,
+            state_custody,
+            allocation_ids: _,
+            signal_ack: _,
+            native_ack: _,
+            details_ack: _,
+            transition_ack: _,
+            _transition_outputs: _,
+            created_ranges,
+            state,
+            changed,
+            revision,
+            history_plan,
+            retirement_publication,
+            node_retirement_publication,
+            style_custody,
+            inline_index,
+            inline_retirement,
+            inline_recording: _,
+            retired_authority,
+            owner,
+            node_outputs,
+            node_output_kinds,
+            transition_ids,
+            record_ids,
+            from,
+            to,
+            changes,
+            _formation,
+            blocks: _,
+        } = publication;
+        if changed {
+            name_promotions.commit();
+            #[cfg(test)]
+            if scale_metrics::ENABLED {
+                scale_metrics::record(scale_metrics::Event::PublishedRoot);
+            }
+        }
+        if !Arc::ptr_eq(self.state, &state) {
+            *self.state = state;
+            *self.state_custody = state_custody;
+        }
+        if changed {
+            if let Some(plan) = inline_retirement {
+                plan.publish(
+                    self.inline_objects
+                        .as_deref_mut()
+                        .expect("prepared inline objects"),
+                );
+            }
+            if let Some(index) = inline_index {
+                *self
+                    .inline_index
+                    .as_deref_mut()
+                    .expect("prepared live inline owner") = index;
+            }
+            *self.revision = revision;
+            self.history.commit(history_plan);
+        }
+        // Mutable resource custody is independent of the tree revision. An
+        // authentic first Meta binding can accompany an unchanged final tree.
+        if let Some(style_custody) = style_custody {
+            *self.style_cssom_roots = style_custody;
+        }
+        retirement_publication.publish();
+        if let Some(insertions) = custom_element_reactions {
+            insertions.publish();
+        }
+        if let Some(plan) = node_retirement_publication {
+            plan.publish();
+        }
+        if let Some(auth) = retired_authority {
+            auth.destroy_if_pending();
+            *self.active_task = std::sync::Weak::new();
+        }
+        CommittedPublication {
+            committed: transaction::PublicationCommitted::at_fence(),
+            commit: DomCommit {
+                created_ranges,
+                owner,
+                node_outputs,
+                node_output_kinds,
+                transition_ids,
+                record_ids,
+                changes: DomChanges { from, to, changes },
+            },
+        }
+    }
+}
+
+pub(crate) fn admit(value: usize, limit: usize, resource: DomResource) -> Result<(), DomError> {
+    if value > limit {
+        Err(DomError::ResourceLimit { resource, limit })
+    } else {
+        Ok(())
+    }
+}
+pub(crate) fn check_cancel(cancelled: &AtomicBool) -> Result<(), DomError> {
+    if cancelled.load(Ordering::Acquire) {
+        Err(DomError::Cancelled)
+    } else {
+        Ok(())
+    }
+}
+pub(crate) fn reserve<T>(values: &mut Vec<T>, additional: usize) -> Result<(), DomError> {
+    #[cfg(test)]
+    let before = (values.capacity(), values.as_ptr(), values.len());
+    values
+        .try_reserve(additional)
+        .map_err(|_| DomError::AllocationFailed)?;
+    #[cfg(test)]
+    if scale_metrics::ENABLED && values.capacity() != before.0 {
+        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
+            bytes: values.capacity() * size_of::<T>(),
+        });
+        if values.as_ptr() != before.1 {
+            let mut moved = CopyObservation::default();
+            moved.extended::<T>(before.2);
+        }
+    }
+    Ok(())
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Key {
+    Existing(NodeId),
+    Created(usize),
+}
+use transaction::staged::DraftNode;
+
+struct Draft {
+    base: Arc<State>,
+    pending_scoped_documents:
+        Option<select::ScratchVec<(crate::internal::registry::DomRegistryId, Key)>>,
+    custom_element_reactions: Option<source::reactions::ReactionFacts>,
+    script_registration: Option<Arc<crate::internal::hosted::ScriptRegistration>>,
+    event_recipients: Option<Arc<event::Owner>>,
+    inline_membership: Option<inline_style::Membership>,
+    pending_associations: pending_associations::Bank,
+    meta_recording: Option<meta_atomic::Recording>,
+    meta_scope: Option<(
+        crate::internal::source::DomSourceOperationId,
+        crate::internal::store::source::operation::meta::SubjectScope,
+    )>,
+    inline_echo: Option<inline_style::feedback::Echo>,
+    inline_recording: Option<inline_style::recording::Recording>,
+    dom_limits: DomLimits,
+    base_custody: transaction::StateCustody,
+    input_captures: bank::Bank<source::input::InputEntry>,
+    input_captures_custody: bank::BankCustody<source::input::InputEntry>,
+    custody_registry: bank::CustodyRegistry,
+    /// The blocks this transaction listed in the registry, which it takes back unless it publishes.
+    blocks: Arc<block_custody::BlockAdoptions>,
+    journal: transaction::Journal<transaction::Undo>,
+    fullscreen_exit: Option<fullscreen::exit::Frame>,
+    // An actual published parallel invocation retains this same Work atom.
+    fullscreen_work_custody: Option<crate::internal::fullscreen::DomFullscreenExitId>,
+    ranges: transaction::ranges::Ranges,
+    node_iterators: node_iterator::DraftIterators,
+    child_lists: Option<Arc<child_list::Version>>,
+    range_tickets: Vec<crate::internal::range::DomRangeId>,
+    range_tickets_charge: custody::Debit,
+    owner: Arc<BatchIdentity>,
+    store: DomOwnerId,
+    registries: Option<Arc<registry::Bank>>,
+    hosted_globals: Option<Arc<hosted::GlobalDocumentIndex>>,
+    hosted_history: Option<Arc<hosted::history::Graph>>,
+    auxiliary: transaction::auxiliary::Auxiliary,
+    hosted_owner: Option<crate::internal::hosted::DomHostedOperationId>,
+    basis: DomStamp,
+    source_limits: Option<crate::internal::source::DomSourceLimits>,
+    // These ledgers are shared only by private temporaries of this exclusive
+    // owner. Relaxed numerical loads/stores need no publication ordering; Arc
+    // and atomics allow the complete parked owner to move between threads.
+    source_work: source::formation::WorkOwner,
+    source_ancestors: Option<Arc<crate::internal::source::callback::CallbackWork>>,
+    source_formation_bytes: Arc<AtomicUsize>,
+    source_temporary_units: Arc<AtomicUsize>,
+    source_other_bytes: usize,
+    source_other_units: usize,
+    source_invocation: u64,
+    source_headroom: Option<source::headroom::Scan>,
+    method: Option<method::Frame>,
+    dispatch_retirements: Vec<(NodeId, Key)>,
+    dispatch_retirements_charge: custody::Debit,
+    phase_map: Option<source::PhaseMap>,
+    base_work: std::cell::Cell<u64>,
+    base_work_limit: u64,
+    encoding_url_work: std::cell::Cell<u64>,
+    encoding_url_work_limit: u64,
+    meta_work: std::cell::Cell<u64>,
+    meta_work_limit: u64,
+    view_transitions: DraftTransitions,
+    signal_slots: transaction::queues::Signals,
+    notification_queued: bool,
+    cancelled_signals: transaction::queues::CancelledSignals,
+    native_tasks: transaction::queues::NativeTasks,
+    cancelled_selects: transaction::queues::CancelledSelects,
+    details_intentions: transaction::queues::Details,
+    cancelled_details: transaction::queues::CancelledDetails,
+    cancelled_images: Option<select::ScratchVec<image::Cancelled>>,
+    effects: Vec<select::EffectFrame>,
+    effects_charge: custody::Debit,
+    hosted_pending: Option<source::operation::hosted::ChildHook>,
+    effects_running: bool,
+    effect_floor: usize,
+    effect_bytes: usize,
+    effect_scoped: bool,
+    select_work: std::cell::Cell<u64>,
+    select_work_limit: u64,
+    select_scratch_limit: usize,
+    select_temporary_bytes: Arc<AtomicUsize>,
+    select_semantic_work: std::cell::Cell<usize>,
+    select_semantic_bytes: std::cell::Cell<usize>,
+    existing: bank::Bank<usize>,
+    existing_custody: bank::BankCustody<usize>,
+    records: Vec<Option<DraftNode>>,
+    records_charge: custody::Debit,
+    created: Vec<Option<DraftNode>>,
+    created_charge: custody::Debit,
+    created_dirty: bank::Bank<bool>,
+    created_dirty_custody: bank::BankCustody<bool>,
+    counts: transaction::Counts,
+    inbound: transaction::inbound::Inbound,
+    controls: transaction::controls::Controls,
+    slot_index: transaction::slot_index::Slots,
+    slot_names: transaction::slot_names::Names,
+    families: transaction::family_discovery::Families,
+    role_facts: transaction::role_facts::Roles,
+    containers: hosted::containers::Containers,
+    private_nodes: usize,
+    private_units: usize,
+    private_counts: transaction::Counts,
+    // Caller creation tickets exclude private allocations such as imported
+    // descendants. They must not be interpreted as allocation indices.
+    tickets: Vec<NodeTicket>,
+    tickets_charge: custody::Debit,
+    nodes: usize,
+    units: usize,
+    document_environment: crate::internal::document::DomDocumentEnvironment,
+    input_processing: input_processing::InputProcessing,
+    #[cfg(test)]
+    insertion_trace: Option<tree::InsertionTrace>,
+    #[cfg(test)]
+    svg_processing_trace: Option<svg_script::ProcessingTrace>,
+    source_mirrors: source::formation::SourceMirrors,
+    source_ancestor_custody: Option<Arc<source::formation::CallbackWorkCustody>>,
+    names: name_registry::Operation,
+    _header_custody: custody::Debit,
+}
+pub(crate) struct PreparedPublication {
+    custom_element_reactions: Option<source::reactions::Publication>,
+    created_ranges: Vec<Option<crate::internal::range::DomRangeId>>,
+    state: Arc<State>,
+    changed: bool,
+    revision: DomRevision,
+    history_plan: history::Plan,
+    retirement_publication: dispatch::PublicationPlan,
+    node_retirement_publication: Option<node_retirement::PublicationPlan>,
+    style_custody: Option<style_custody::Bank>,
+    inline_index: Option<inline_style::Index>,
+    inline_retirement: Option<inline_style::RetirementPlan>,
+    inline_recording: Option<inline_style::recording::Recording>,
+    retired_authority: Option<Arc<crate::internal::select::Authorization>>,
+    owner: Arc<BatchIdentity>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
+    transition_ids: Vec<Option<DomViewTransitionId>>,
+    record_ids: Vec<Option<DomViewTransitionRecordId>>,
+    from: DomStamp,
+    to: DomStamp,
+    changes: Arc<[DomChange]>,
+    state_custody: transaction::StateCustody,
+    allocation_ids: source::AllocationIds,
+    signal_ack: Option<transaction::queues::QueueAck<Key, NodeId>>,
+    native_ack: Option<transaction::queues::QueueAck<select::Pending, select::Task<NodeId>>>,
+    details_ack: Option<
+        transaction::queues::QueueAck<
+            details::Pending<Key>,
+            crate::internal::details::DomDetailsToggleIntention,
+        >,
+    >,
+    transition_ack: view_transition::TransitionAck,
+    _transition_outputs: custody::Debit,
+    _formation: Option<source::formation::Formation>,
+    name_promotions: name_registry::Promotions,
+    blocks: Arc<block_custody::BlockAdoptions>,
+}
+struct Prepared {
+    node_retirement_candidates: Vec<NodeId>,
+    inline_echo: Option<inline_style::feedback::Echo>,
+    state: State,
+    inline_positions: Option<transaction::slot_index::PositionChanges>,
+    inline_recording: Option<inline_style::recording::Recording>,
+    created_ranges: Vec<Option<crate::internal::range::DomRangeId>>,
+    retirements: Vec<dispatch::Retirement>,
+    owner: Arc<BatchIdentity>,
+    node_outputs: Vec<Option<NodeId>>,
+    node_output_kinds: Vec<NodeOutputKind>,
+    transition_ids: Vec<Option<DomViewTransitionId>>,
+    record_ids: Vec<Option<DomViewTransitionRecordId>>,
+    changes: Vec<DomChange>,
+    semantic_changed: bool,
+    iterator_state_changed: bool,
+    allocation_ids: source::AllocationIds,
+    signal_ack: Option<transaction::queues::QueueAck<Key, NodeId>>,
+    native_ack: Option<transaction::queues::QueueAck<select::Pending, select::Task<NodeId>>>,
+    details_ack: Option<
+        transaction::queues::QueueAck<
+            details::Pending<Key>,
+            crate::internal::details::DomDetailsToggleIntention,
+        >,
+    >,
+    transition_ack: view_transition::TransitionAck,
+    state_frontiers: transaction::StateFrontiers,
+    root_debit: custody::Debit,
+    _transition_outputs: custody::Debit,
+    formation: Option<source::formation::Formation>,
+    name_promotions: name_registry::Promotions,
+    blocks: Arc<block_custody::BlockAdoptions>,
+}
+
+struct PreparedRoot {
+    value: Prepared,
+    receipt: custody::SharedDebit,
+}
+
+impl Prepared {
+    fn changed_from(&self, before: &State) -> bool {
+        self.semantic_changed
+            || self.state.incomplete_source != before.incomplete_source
+            || self.state.incomplete_hosted != before.incomplete_hosted
+            || !same_auxiliary(&self.state.registries, &before.registries)
+            || !same_auxiliary(&self.state.hosted_globals, &before.hosted_globals)
+            || !same_auxiliary(&self.state.hosted_history, &before.hosted_history)
+    }
+}
+
+impl Draft {
+    pub(in crate::internal::store) fn source_work_custody(
+        &self,
+    ) -> source::formation::SourceWorkCustody {
+        self.source_work.source_custody()
+    }
+    pub(in crate::internal::store) fn source_ancestor_custody(
+        &self,
+    ) -> Option<Arc<source::formation::CallbackWorkCustody>> {
+        self.source_ancestor_custody.clone()
+    }
+    pub(in crate::internal::store) fn source_mirrors(&self) -> source::formation::SourceMirrors {
+        self.source_mirrors.clone()
+    }
+
+    pub(in crate::internal::store) fn custody_ledger(&self) -> &custody::Ledger {
+        self.custody_registry.ledger()
+    }
+
+    pub(in crate::internal::store) fn custody_registry(&self) -> &bank::CustodyRegistry {
+        &self.custody_registry
+    }
+
+    pub(in crate::internal::store) fn controlled_storage_usage(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<custody::Usage, DomError> {
+        self.source_step(cancel)?;
+        self.custody_registry.reconcile_releases();
+        Ok(self.custody_ledger().total())
+    }
+
+    pub(in crate::internal::store) fn prepare_undo_slots(
+        &self,
+        count: usize,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.journal
+            .prepare_slots(count, self.custody_ledger(), |usage| {
+                self.admit_custody_usage(usage, cancel)
+            })
+    }
+    pub(in crate::internal::store) fn prepare_undo(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.journal.prepare(self.custody_ledger(), |usage| {
+            self.admit_custody_usage(usage, cancel)
+        })
+    }
+
+    pub(in crate::internal::store) fn record_range_undo_prepared(
+        &self,
+        undo: transaction::ranges::RangeUndo,
+    ) {
+        self.journal.push_prepared(transaction::Undo::Range(undo));
+    }
+    pub(in crate::internal::store) fn record_transition_undo_prepared(
+        &self,
+        undo: view_transition::TransitionUndo,
+    ) {
+        self.journal
+            .push_prepared(transaction::Undo::Transition(undo));
+    }
+    pub(in crate::internal::store) fn record_inbound_undo_prepared(
+        &self,
+        undo: transaction::inbound::InboundUndo,
+    ) {
+        self.journal.push_prepared(transaction::Undo::Inbound(undo));
+    }
+    pub(in crate::internal::store) fn record_queue_undo_prepared(
+        &self,
+        undo: transaction::queues::QueueUndo,
+    ) {
+        self.journal.push_prepared(transaction::Undo::Queue(undo));
+    }
+    pub(in crate::internal::store) fn record_source_undo_prepared(
+        &self,
+        undo: source::ControlUndo,
+    ) {
+        self.journal.push_prepared(transaction::Undo::Source(undo));
+    }
+
+    pub(in crate::internal::store) fn journal_mark(
+        &mut self,
+        other_live_bytes: usize,
+        other_units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<transaction::JournalMark, DomError> {
+        let additional = custody::Usage::new(other_live_bytes, other_units);
+        self.journal.mark(self.custody_ledger(), |usage| {
+            self.admit_custody_usage(usage.checked_add(additional)?, cancel)
+        })
+    }
+
+    pub(in crate::internal::store) fn rollback_journal(&mut self, mark: transaction::JournalMark) {
+        let journal = self.journal.clone();
+        journal.rollback(mark, |undo| undo.restore(self));
+    }
+
+    fn initialize_native_element(
+        &mut self,
+        key: Key,
+        registry: Option<crate::internal::document::DomRegistryBinding>,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if registry != Some(crate::internal::document::DomRegistryBinding::Null) {
+            self.select_element_registry_with(key, registry, cancel)?;
+        }
+        self.initialize_native_element_features(key, limits, cancel)
+    }
+
+    fn initialize_native_element_features(
+        &mut self,
+        key: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.initialize_template_contents(key, limits, cancel)?;
+        if self.node(key)?.hyperlink().is_some() {
+            self.set_hyperlink_url(key, None, limits, cancel)?;
+        }
+        if self.node(key)?.image().is_some() {
+            self.start_image_update(
+                key,
+                surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false),
+                cancel,
+            )?;
+        }
+        if matches!(&self.node(key)?.kind(),transaction::KindRead::Element(element) if element.input_state().is_some())
+        {
+            self.initialize_input(key, limits, cancel)?;
+        }
+        Ok(())
+    }
+    fn new(dom: &Dom, owner: Arc<BatchIdentity>, cancelled: &AtomicBool) -> Result<Self, DomError> {
+        Self::new_formed(dom, owner, None, cancelled)
+    }
+    fn new_formed(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        initial: Option<&source::initial::Initial>,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Self::new_admitted(
+            dom,
+            owner,
+            initial.map_or(
+                source::initial::Admission::Ordinary,
+                source::initial::Admission::Source,
+            ),
+            cancelled,
+        )
+    }
+    fn new_parsed(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        parsed: &pending_associations::control::Admission,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Self::new_admitted(
+            dom,
+            owner,
+            source::initial::Admission::Parsed(parsed),
+            cancelled,
+        )
+    }
+    fn new_admitted(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        admission: source::initial::Admission<'_>,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let initial = match admission {
+            source::initial::Admission::Source(value) => Some(value),
+            _ => None,
+        };
+        let parsed = match admission {
+            source::initial::Admission::Parsed(value) => Some(value),
+            _ => None,
+        };
+        #[cfg(test)]
+        if scale_metrics::ENABLED {
+            scale_metrics::record(scale_metrics::Event::Entered(
+                scale_metrics::Domain::Transaction,
+            ));
+        }
+        let registry = dom.custody_registry.clone();
+        // A block whose last holder dropped since the last transaction is released before this
+        // transaction admits anything.
+        registry.sweep_blocks();
+        let ledger = registry.ledger();
+        let mut admit_initial = |usage: custody::Usage| {
+            admission.step(cancelled)?;
+            if let Some(parsed) = parsed {
+                return parsed.controlled_unpolled(usage);
+            }
+            if let Some(initial) = initial {
+                let total = usage.checked_add(initial.external_usage())?;
+                let limits = initial.limits();
+                admit(
+                    total.bytes(),
+                    limits.retained_bytes,
+                    DomResource::SourceRetainedBytes,
+                )?;
+                admit(
+                    total.units(),
+                    limits.retained_units,
+                    DomResource::SourceRetainedUnits,
+                )?;
+            }
+            Ok(())
+        };
+        let header = ledger.retain(
+            custody::Usage::new(size_of::<Draft>() + block_custody::BlockAdoptions::BYTES, 0),
+            &mut admit_initial,
+        )?;
+        let journal = transaction::Journal::new(ledger, &mut admit_initial)?;
+        #[cfg(test)]
+        journal.measure_payloads(transaction::Undo::journal_bytes);
+        let source_mirrors =
+            source::formation::SourceMirrors::allocate(&registry, &mut admit_initial)?;
+        let source_work = if let Some(parsed) = parsed {
+            source::formation::WorkOwner::Parsed(parsed.clone())
+        } else {
+            let (work, custody) = match initial {
+                Some(initial) => initial.source_work(&registry, &mut admit_initial)?,
+                None => source::formation::SourceWorkCustody::allocate(
+                    0,
+                    &registry,
+                    &mut admit_initial,
+                )?,
+            };
+            source::formation::WorkOwner::Source { work, custody }
+        };
+        // One original operation owns these resources outside semantic Restore.
+        // A resumed Source reuses its existing scope; a nested entry
+        // starts a child constrained by every active name-operation ancestor.
+        let names = match initial.and_then(source::initial::Initial::names) {
+            Some(names) => names.clone(),
+            None => {
+                let parent = dom
+                    .source_operation
+                    .as_ref()
+                    .or_else(|| dom.source_parents.last())
+                    .map(|operation| &operation.names);
+                dom.names.begin(
+                    parent,
+                    &mut name_registry::Admission {
+                        global: &mut admit_initial,
+                        step: &mut || admission.step(cancelled),
+                    },
+                )?
+            }
+        };
+        let existing = bank::Bank::default();
+        let existing_custody = bank::BankCustody::default();
+        let records_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let created_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let effects_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let range_tickets_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let tickets_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let dispatch_retirements_charge =
+            ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
+        let view_transitions =
+            DraftTransitions::capture(&dom.state.view_transitions, &dom.state_custody.transitions);
+        let signal_slots = transaction::queues::Signals::capture(
+            &dom.state.signal_slots,
+            dom.state.signal_slots.len(),
+            &dom.state.signal_targets,
+            &dom.state_custody.signal_targets,
+            &registry,
+            &mut admit_initial,
+        )?;
+        let native_tasks = transaction::queues::NativeTasks::capture(
+            &dom.state.native_tasks,
+            dom.state.counts.select_tasks,
+            &dom.state.native_targets,
+            &dom.state_custody.native_targets,
+            &registry,
+            &mut admit_initial,
+        )?;
+        let details_intentions = transaction::queues::Details::capture(
+            &dom.state.details_intentions,
+            dom.state.details_intentions.len(),
+            &dom.state.details_targets,
+            &dom.state_custody.details_targets,
+            &registry,
+            &mut admit_initial,
+        )?;
+        let cancelled_signals =
+            transaction::queues::CancelledSignals::empty(&registry, &mut admit_initial)?;
+        let cancelled_selects =
+            transaction::queues::CancelledSelects::empty(&registry, &mut admit_initial)?;
+        let cancelled_details =
+            transaction::queues::CancelledDetails::empty(&registry, &mut admit_initial)?;
+        let ranges = transaction::ranges::Ranges::new(&dom.state, &dom.state_custody);
+        let node_iterators = node_iterator::DraftIterators::new(&dom.state, &dom.state_custody);
+        Ok(Self {
+            base: dom.state.clone(),
+            event_recipients: dom.event_recipients.clone(),
+            inline_membership: dom.inline_membership(),
+            pending_associations: dom.pending_associations.clone(),
+            meta_recording: None,
+            meta_scope: None,
+            inline_recording: dom.blocked_inline_recording(),
+            inline_echo: None,
+            dom_limits: dom.limits,
+            base_custody: dom.state_custody.clone(),
+            input_captures: bank::Bank::default(),
+            input_captures_custody: bank::BankCustody::default(),
+            blocks: block_custody::BlockAdoptions::new(registry.clone()),
+            custody_registry: registry,
+            names,
+            journal,
+            _header_custody: header,
+            ranges,
+            node_iterators,
+            child_lists: None,
+            range_tickets: Vec::new(),
+            range_tickets_charge,
+            owner,
+            #[cfg(test)]
+            svg_processing_trace: None,
+            #[cfg(test)]
+            insertion_trace: None,
+            document_environment: dom.document_environment.clone(),
+            script_registration: dom.script_registration.as_ref().map(|slot| slot.0.clone()),
+            custom_element_reactions: None,
+            input_processing: input_processing::InputProcessing::new(
+                dom.limits.input_scratch,
+                dom.limits.input_work,
+            ),
+            store: dom.owner,
+            registries: dom.state.registries.clone(),
+            pending_scoped_documents: None,
+            hosted_globals: dom.state.hosted_globals.clone(),
+            hosted_history: dom.state.hosted_history.clone(),
+            auxiliary: dom.state_custody.auxiliary.clone(),
+            hosted_owner: None,
+            basis: DomStamp {
+                owner: dom.owner,
+                revision: dom.revision,
+            },
+            source_limits: initial.map(source::initial::Initial::limits),
+            source_work,
+            source_ancestor_custody: initial.and_then(source::initial::Initial::ancestor_custody),
+            source_ancestors: initial.and_then(|initial| initial.ancestors().cloned()),
+            source_formation_bytes: source_mirrors.bytes(),
+            source_temporary_units: source_mirrors.units(),
+            source_other_bytes: 0,
+            source_other_units: 0,
+            source_invocation: 0,
+            source_headroom: None,
+            method: None,
+            fullscreen_exit: None,
+            fullscreen_work_custody: None,
+            dispatch_retirements: Vec::new(),
+            dispatch_retirements_charge,
+            phase_map: None,
+            base_work: std::cell::Cell::new(0),
+            base_work_limit: dom.limits.base_work,
+            encoding_url_work: std::cell::Cell::new(0),
+            encoding_url_work_limit: dom.limits.encoding_url_work,
+            meta_work: std::cell::Cell::new(0),
+            meta_work_limit: dom.limits.meta_work,
+            view_transitions,
+            signal_slots,
+            notification_queued: dom.state.notification_queued,
+            cancelled_signals,
+            native_tasks,
+            cancelled_selects,
+            details_intentions,
+            cancelled_details,
+            cancelled_images: None,
+            effects: Vec::new(),
+            effects_charge,
+            hosted_pending: None,
+            effects_running: false,
+            effect_floor: 0,
+            effect_bytes: 0,
+            effect_scoped: false,
+            select_work: std::cell::Cell::new(0),
+            select_work_limit: dom.limits.select_work,
+            select_scratch_limit: dom.limits.select_scratch,
+            select_temporary_bytes: source_mirrors.temporary(),
+            source_mirrors,
+            select_semantic_work: std::cell::Cell::new(0),
+            select_semantic_bytes: std::cell::Cell::new(0),
+            existing,
+            existing_custody,
+            records: Vec::new(),
+            records_charge,
+            created_charge,
+            created_dirty: bank::Bank::default(),
+            created_dirty_custody: bank::BankCustody::default(),
+            counts: dom.state.counts,
+            inbound: transaction::inbound::Inbound::capture(
+                &dom.state.inbound,
+                &dom.state_custody.inbound,
+            ),
+            controls: transaction::controls::Controls::capture(
+                &dom.state.controls,
+                &dom.state_custody.controls,
+            ),
+            slot_index: transaction::slot_index::Slots::capture(
+                &dom.state.slot_index,
+                &dom.state_custody.slot_index,
+            ),
+            slot_names: transaction::slot_names::Names::capture(
+                &dom.state.slot_index.named,
+                &dom.state_custody.slot_index.named,
+            ),
+            families: transaction::family_discovery::Families::capture(
+                &dom.state.family_index,
+                &dom.state_custody.families,
+            ),
+            role_facts: transaction::role_facts::Roles::capture(
+                &dom.state.role_facts,
+                &dom.state_custody.role_facts,
+            ),
+            containers: hosted::containers::Containers::capture(
+                &dom.state.container_index,
+                &dom.state_custody.containers,
+            ),
+            private_nodes: 0,
+            private_units: 0,
+            private_counts: transaction::Counts::default(),
+            created: Vec::new(),
+            tickets: Vec::new(),
+            tickets_charge,
+            nodes: dom.state.nodes,
+            units: dom.state.units,
+        })
+    }
+    fn node(&self, key: Key) -> Result<transaction::NodeRead<'_>, DomError> {
+        let key = self.live_key(key);
+        let read = match key {
+            Key::Existing(id) => {
+                if let Some(index) = self.existing.get(id.slot) {
+                    return self.records[*index]
+                        .as_ref()
+                        .map(|n| self.alias_node_read(transaction::NodeRead::staged(n)))
+                        .ok_or(DomError::StaleNode);
+                }
+                self.base
+                    .node(self.store, id)
+                    .map(transaction::NodeRead::canonical)
+            }
+            Key::Created(index) => match self.created.get(index).and_then(Option::as_ref) {
+                Some(node) => Ok(transaction::NodeRead::staged(node)),
+                None if self.created_dirty.get(index).is_some() => Err(DomError::StaleNode),
+                None => self
+                    .phase_map
+                    .as_ref()
+                    .and_then(|m| m.ids.get(index))
+                    .ok_or(DomError::StaleNode)
+                    .and_then(|id| {
+                        self.base
+                            .node(self.store, id)
+                            .map(transaction::NodeRead::canonical)
+                    }),
+            },
+        }?;
+        Ok(self.alias_node_read(read))
+    }
+    fn alias_node_read<'a>(&'a self, read: transaction::NodeRead<'a>) -> transaction::NodeRead<'a> {
+        let read = read.in_draft(self);
+        match &self.phase_map {
+            Some(map) => read.aliases(&map.ids),
+            None => read,
+        }
+    }
+
+    #[cfg(test)]
+    fn existing_key(&self, slot: usize) -> Result<Key, DomError> {
+        let record = self.base.slots.get(slot).ok_or(DomError::StaleNode)?;
+        let key = Key::Existing(NodeId {
+            owner: self.store,
+            slot,
+            generation: record.generation,
+        });
+        self.node(key)?;
+        Ok(key)
+    }
+    fn resolve(&self, operand: NodeOperand) -> Result<Key, DomError> {
+        let key = match operand {
+            NodeOperand::Existing(id) => {
+                if id.owner != self.store {
+                    return Err(DomError::ForeignOwner);
+                }
+                if let Some(map) = &self.phase_map
+                    && let Some(index) = map.ids.original(id)
+                {
+                    let key = Key::Created(index);
+                    self.node(key)?;
+                    return Ok(key);
+                }
+                self.base.node(self.store, id)?;
+                Key::Existing(id)
+            }
+            NodeOperand::Created(CreatedNode { owner, index })
+            | NodeOperand::AttachedShadowRoot(AttachedShadowRoot { owner, index }) => {
+                if !Arc::ptr_eq(&self.owner, &owner) {
+                    return Err(DomError::ForeignBatch);
+                }
+                self.tickets
+                    .get(index)
+                    .copied()
+                    .map(NodeTicket::key)
+                    .filter(|key| self.node(*key).is_ok())
+                    .ok_or(DomError::UnavailableCreation)?
+            }
+        };
+        self.node(key)?;
+        Ok(key)
+    }
+    fn remove(
+        &mut self,
+        node: Key,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.remove_tree_child(node, false, limits, cancelled)
+    }
+    fn remove_tree_child(
+        &mut self,
+        node: Key,
+        suppress_record: bool,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if let Some(parent) = self.node(node)?.parent() {
+            self.range_pre_remove(node, parent, cancelled)?;
+            self.node_iterator_pre_remove(node, parent, cancelled)?;
+            let siblings = if !suppress_record && self.may_observe_child_list() {
+                let index = self.child_list_position(parent, node, cancelled)?;
+                let children = self.node(parent)?.children();
+                let previous = index
+                    .checked_sub(1)
+                    .and_then(|previous| children.get(previous));
+                let next = index.checked_add(1).and_then(|next| children.get(next));
+                Some((previous, next))
+            } else {
+                None
+            };
+            self.relations_retain(
+                parent,
+                transaction::RelationField::Children,
+                |child| child != node,
+                cancelled,
+            )?;
+            let mut fields = self.common_fields_mut(node, cancelled)?;
+            fields.parent = None;
+            fields.commit(cancelled)?;
+            self.slot_removal(node, parent, limits, cancelled)?;
+            self.push_effect(
+                select::Effect::Tree(tree::Frame::RemovedParent {
+                    parent,
+                    node,
+                    siblings,
+                }),
+                self.effect_scoped,
+                cancelled,
+            )?;
+            self.native_removing_steps(node, parent, limits, cancelled)?;
+        }
+        Ok(())
+    }
+    fn allocate(
+        &mut self,
+        kind: NewNode,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        self.allocate_formed(kind, document, limits, cancel, None)
+    }
+    pub(in crate::internal::store) fn allocate_element_formed(
+        &mut self,
+        formed: crate::internal::element::FormedElement,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+        formation: Option<source::formation::Formation>,
+    ) -> Result<Key, DomError> {
+        let crate::internal::element::FormedElement { value, children } = formed;
+        let result =
+            self.allocate_formed(NewNode::Element(value), document, limits, cancel, formation);
+        drop(children);
+        result
+    }
+    pub(in crate::internal::store) fn allocate_formed(
+        &mut self,
+        kind: NewNode,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+        formation: Option<source::formation::Formation>,
+    ) -> Result<Key, DomError> {
+        let retained_occurrence = formation.is_some();
+        let debit = match formation.and_then(source::formation::Formation::into_debit) {
+            Some(v) => v,
+            None => self
+                .custody_ledger()
+                .retain(custody::Usage::ZERO, |usage| {
+                    self.admit_custody_usage(usage, cancel)
+                })?,
+        };
+        self.allocate_retained(
+            custody::Held::new(kind, debit),
+            retained_occurrence,
+            document,
+            limits,
+            cancel,
+        )
+    }
+    pub(in crate::internal::store) fn allocate_charged(
+        &mut self,
+        kind: NewNode,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+        charge: Option<source::checkpoint::Charge>,
+    ) -> Result<Key, DomError> {
+        let retained_occurrence = charge.is_some();
+        let debit = match charge.and_then(source::checkpoint::Charge::into_debit) {
+            Some(v) => v,
+            None => self
+                .custody_ledger()
+                .retain(custody::Usage::ZERO, |usage| {
+                    self.admit_custody_usage(usage, cancel)
+                })?,
+        };
+        self.allocate_retained(
+            custody::Held::new(kind, debit),
+            retained_occurrence,
+            document,
+            limits,
+            cancel,
+        )
+    }
+    fn allocate_retained(
+        &mut self,
+        kind: custody::Held<NewNode>,
+        retained_occurrence: bool,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        let nodes = self
+            .nodes
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(nodes, limits.nodes, DomResource::ManagedNodes)?;
+        let units = self
+            .units
+            .checked_add(new_kind_units(kind.value())?)
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(units, limits.units, DomResource::StringCodeUnits)?;
+        self.reserve_created_arena(cancel)?;
+        self.source_admit(0, cancel)?;
+        let kind = self.admit_held_text(kind, retained_occurrence, cancel)?;
+        let key = Key::Created(self.created.len());
+        let relevant_global = match kind.value() {
+            NewNode::Document(metadata) => metadata
+                .document_environment()
+                .hosted
+                .as_ref()
+                .map(|a| a.global),
+            _ => self.node(document)?.relevant_global(),
+        };
+        let node = DraftNode::fresh(
+            kind,
+            retained_occurrence,
+            canonical::Common {
+                document,
+                relevant_global,
+                parent: None,
+            },
+            key,
+            self,
+            cancel,
+        )?;
+        let counts =
+            self.counts
+                .checked_add(transaction::Counts::node(transaction::NodeRead::staged(
+                    &node,
+                ))?)?;
+        self.admit_node_counts(counts, nodes, units, limits)?;
+        self.set_created_dirty(self.created.len(), true, cancel)?;
+        let undo = self.prepare_undo_slots(8, cancel)?;
+        let inbound =
+            self.prepare_inbound_node(key, transaction::NodeRead::staged(&node), true, cancel)?;
+        let controls =
+            self.prepare_control_created(key, transaction::NodeRead::staged(&node), cancel)?;
+        let slots = self.prepare_slot_created(key, transaction::NodeRead::staged(&node), cancel)?;
+        let node_read = transaction::NodeRead::staged(&node);
+        let order = slots
+            .as_ref()
+            .map_or_else(|| self.order_view(), |plan| plan.order(self))
+            .changed(key, node_read);
+        let discovery = self.prepare_discovery_node(
+            transaction::NodeChange {
+                key,
+                before: None,
+                after: Some(node_read),
+            },
+            order,
+            cancel,
+        )?;
+        self.commit_inbound(inbound);
+        if let Some(plan) = controls {
+            self.commit_control_plan(plan);
+        }
+        if let Some(plan) = slots {
+            self.commit_slot_plan(plan);
+        }
+        self.commit_discovery(discovery, undo);
+        let oldcounts = self.counts;
+        let oldnodes = self.nodes;
+        let oldunits = self.units;
+        self.created.push(Some(node));
+        #[cfg(test)]
+        {
+            let mut copied = transaction::CopyObservation::default();
+            copied.pushed::<Option<DraftNode>>();
+        }
+        self.counts = counts;
+        if undo {
+            self.journal.push_prepared(transaction::Undo::Created {
+                len: self.created.len() - 1,
+                counts: oldcounts,
+                nodes: oldnodes,
+                units: oldunits,
+            });
+        }
+        self.nodes = nodes;
+        self.units = units;
+        Ok(key)
+    }
+    fn register_ticket(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.register_node_ticket(NodeTicket::Node(key), cancel)
+    }
+    fn register_node_ticket(
+        &mut self,
+        ticket: NodeTicket,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let undo = self.prepare_undo_slots(2, cancel)?;
+        if let Some(next) = self.prepare_output_buffer(&self.tickets, 1, cancel)? {
+            let (values, debit) = next.into_parts();
+            let old = std::mem::replace(&mut self.tickets, values);
+            let debit = std::mem::replace(&mut self.tickets_charge, debit);
+            let before = custody::Held::new(old, debit);
+            if undo {
+                self.journal
+                    .push_prepared(transaction::Undo::TicketsCapacity(before));
+            }
+        }
+        let len = self.tickets.len();
+        self.source_step(cancel)?;
+        self.tickets.push(ticket);
+        #[cfg(test)]
+        {
+            let mut copied = transaction::CopyObservation::default();
+            copied.pushed::<NodeTicket>();
+        }
+        if undo {
+            self.journal
+                .push_prepared(transaction::Undo::TicketsLength(len));
+        }
+        Ok(())
+    }
+    fn apply(
+        &mut self,
+        command: &Command,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.apply_command(command, limits, cancelled, None)
+    }
+
+    fn apply_command(
+        &mut self,
+        command: &Command,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+        reached: Option<&mut Option<source::operation::custom_element::Creation>>,
+    ) -> Result<(), DomError> {
+        match command {
+            Command::Normalize(node) => {
+                let node = self.resolve(node.clone())?;
+                self.normalize(node, limits, cancelled)?;
+            }
+            Command::Compound(edit) => self.compound_edit(edit, limits, cancelled)?,
+            Command::SplitText { node, offset } => {
+                let node = self.resolve(node.clone())?;
+                self.split_text(node, *offset, limits, cancelled)?;
+            }
+            Command::ExitFullscreen { document } => {
+                let document = self.resolve(document.clone())?;
+                self.exit_fullscreen_boundary(document, true, cancelled)?;
+            }
+            Command::FullscreenElementModel { node } => {
+                let node = self.resolve(node.clone())?;
+                self.fullscreen_element_model(node, cancelled)?;
+            }
+            Command::UnfullscreenElementModel { node } => {
+                let node = self.resolve(node.clone())?;
+                self.unfullscreen_element_model(node, cancelled)?;
+            }
+            Command::UnfullscreenDocumentModel { document } => {
+                let document = self.resolve(document.clone())?;
+                self.unfullscreen_document_model(document, cancelled)?;
+            }
+            Command::SetDesignMode { document, value } => {
+                let document = self.resolve(document.clone())?;
+                self.design_mode_boundary(document, value, cancelled)?;
+            }
+            Command::CreateRange { document, ticket } => {
+                let document = self.resolve(document.clone())?;
+                self.create_range(document, *ticket, limits, cancelled)?;
+            }
+            Command::SetRangeStart {
+                range,
+                container,
+                offset,
+            }
+            | Command::SetRangeEnd {
+                range,
+                container,
+                offset,
+            } => {
+                let id = self.resolve_range(range)?;
+                let container = self.resolve(container.clone())?;
+                self.set_range_boundary(
+                    id,
+                    container,
+                    *offset,
+                    matches!(command, Command::SetRangeStart { .. }),
+                    cancelled,
+                )?;
+            }
+            Command::SetActiveRange { document, range } => {
+                let document = self.resolve(document.clone())?;
+                let range = range
+                    .as_ref()
+                    .map(|operand| self.resolve_range(operand))
+                    .transpose()?;
+                self.set_active_range(document, range, cancelled)?;
+            }
+            Command::RetireRange(range) => {
+                let range = self.resolve_range(range)?;
+                self.retire_range(range, cancelled)?;
+            }
+            Command::BindEncodingUrlFacts { basis, facts } => {
+                self.bind_encoding_url_facts(*basis, facts, limits, cancelled)?
+            }
+            Command::BindBaseFacts { basis, facts } => {
+                self.bind_base_facts(*basis, facts, limits, cancelled)?
+            }
+            Command::Select { node, edit } => {
+                let key = self.resolve(node.clone())?;
+                self.select_edit(key, edit, limits, cancelled)?;
+            }
+            Command::SetStyleDisabled { node, disabled } => {
+                let node = self.resolve(node.clone())?;
+                self.set_style_disabled(node, *disabled, limits, cancelled)?;
+            }
+            Command::Output { node, edit } => {
+                let node = self.resolve(node.clone())?;
+                self.output_edit(node, edit, limits, cancelled)?;
+            }
+            Command::SetTextareaValue { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_textarea_value(node, value, limits, cancelled)?;
+            }
+            Command::SetTextareaDefaultValue { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_textarea_default_value(node, value, limits, cancelled)?;
+            }
+            Command::ResetTextarea { node } => {
+                let node = self.resolve(node.clone())?;
+                self.reset_textarea(node, limits, cancelled)?;
+            }
+            Command::SetInputValue { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_input_value(node, value, limits, cancelled)?;
+            }
+            Command::SetInputChecked { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_input_checked(node, *value, cancelled)?;
+            }
+            Command::SetInputIndeterminate { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_input_indeterminate(node, *value, cancelled)?;
+            }
+            Command::ResetInput { node } => {
+                let node = self.resolve(node.clone())?;
+                self.reset_input(node, limits, cancelled)?;
+            }
+            Command::SetReflectedTarget { node, key, target } => {
+                let node = self.resolve(node.clone())?;
+                let target = target
+                    .as_ref()
+                    .map(|target| self.resolve(target.clone()))
+                    .transpose()?;
+                self.set_reflected_target(node, *key, target, limits, cancelled)?;
+            }
+            Command::AssignSlot { slot, incoming } => {
+                let slot = self.resolve(slot.clone())?;
+                self.assign_manual(slot, incoming, limits, cancelled)?;
+            }
+            Command::ConstructDocument(context) => {
+                let key = self.construct_document(context, limits, cancelled)?;
+                self.register_ticket(key, cancelled)?;
+            }
+            Command::CloneNode {
+                source,
+                subtree,
+                fallback,
+            } => {
+                let source = self.resolve(source.clone())?;
+                self.clone_node(source, *subtree, *fallback, limits, cancelled)?;
+            }
+            Command::ImportLiveNode {
+                source,
+                document,
+                subtree,
+                registry,
+                fallback,
+            } => {
+                let source = self.resolve((*source).into())?;
+                let document = self.resolve(document.node().into())?;
+                self.import_live_node(
+                    source,
+                    document,
+                    (*subtree, *registry, *fallback),
+                    limits,
+                    cancelled,
+                )?;
+            }
+            Command::CreateXmlDocument {
+                associated_document,
+                namespace,
+                qualified_name,
+                doctype,
+                fallback,
+            } => {
+                let associated_document = self.resolve(associated_document.clone())?;
+                self.create_xml_document(
+                    (associated_document, *fallback),
+                    namespace,
+                    qualified_name,
+                    doctype.as_ref(),
+                    limits,
+                    cancelled,
+                )?;
+            }
+            Command::CreateHtmlDocument {
+                associated_document,
+                title,
+                fallback,
+            } => {
+                let associated_document = self.resolve(associated_document.clone())?;
+                let key = self.create_html_document(
+                    associated_document,
+                    title.as_ref(),
+                    *fallback,
+                    limits,
+                    cancelled,
+                )?;
+                self.register_ticket(key, cancelled)?;
+            }
+            Command::AttachShadow { host, init } => {
+                let host = self.resolve(host.clone())?;
+                self.attach_shadow_command(host, *init, limits, cancelled)?;
+            }
+            Command::InitializeRegistry { root, registry } => {
+                self.apply_registry_subtree(
+                    self.resolve(root.clone())?,
+                    *registry,
+                    true,
+                    cancelled,
+                )?;
+            }
+            Command::UpgradeRegistry { root, registry } => {
+                self.apply_registry_subtree(
+                    self.resolve(root.clone())?,
+                    *registry,
+                    false,
+                    cancelled,
+                )?;
+            }
+            Command::ViewTransition { basis, edit } => {
+                self.apply_view_transition(*basis, edit, limits, cancelled)?
+            }
+            Command::Create { kind, document } => {
+                let key = Key::Created(self.created.len());
+                let document = if let Some(document) = document {
+                    let document = self.resolve(document.clone())?;
+                    if !matches!(
+                        self.node(document)?.kind(),
+                        transaction::KindRead::Document(_)
+                    ) {
+                        return Err(DomError::WrongNodeKind);
+                    }
+                    document
+                } else {
+                    key
+                };
+                let nodes = self
+                    .nodes
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                admit(nodes, limits.nodes, DomResource::ManagedNodes)?;
+                let raw_units = match &kind {
+                    Creation::Document => Some(NATIVE_DOCUMENT_STRING_UNITS),
+                    Creation::Fragment => Some(0),
+                    Creation::Element { name, .. } => match name {
+                        crate::internal::source::DomElementCreationName::Local(name) => {
+                            Some(name.len())
+                        }
+                        // The QName separator is not stored in prefix/local fields.
+                        crate::internal::source::DomElementCreationName::Qualified(
+                            namespace,
+                            name,
+                        ) => name
+                            .len()
+                            .saturating_sub(1)
+                            .checked_add(namespace.uri().map_or(0, DocumentString::len)),
+                    },
+                    Creation::Attr {
+                        namespace: None,
+                        name,
+                    } => Some(name.len()),
+                    Creation::Attr {
+                        namespace: Some(namespace),
+                        name,
+                    } => name
+                        .len()
+                        .saturating_sub(1)
+                        .checked_add(namespace.uri().map_or(0, DocumentString::len)),
+                    Creation::Text(data) | Creation::Comment(data) => Some(data.len()),
+                    Creation::ProcessingInstruction { target, data, .. } => {
+                        target.len().checked_add(data.len())
+                    }
+                    Creation::DocumentType {
+                        name,
+                        public_id,
+                        system_id,
+                        ..
+                    } => name
+                        .len()
+                        .checked_add(public_id.len())
+                        .and_then(|units| units.checked_add(system_id.len())),
+                }
+                .ok_or(DomError::RepresentationExhausted)?;
+                admit(
+                    self.units
+                        .checked_add(raw_units)
+                        .ok_or(DomError::RepresentationExhausted)?,
+                    limits.units,
+                    DomResource::StringCodeUnits,
+                )?;
+                #[cfg(test)]
+                let metadata_growth = if matches!(kind, Creation::Document) {
+                    source::formation::mutation_observation::before(
+                        self,
+                        source::formation::mutation_observation::Site::Metadata,
+                        cancelled,
+                    )?
+                } else {
+                    None
+                };
+                let metadata_formation = source::formation::Formation::new(self, cancelled)?;
+                if let Creation::Element {
+                    name,
+                    options,
+                    fallback,
+                } = kind
+                {
+                    let metadata = self.document_metadata(document)?;
+                    let (formed, selected) = if let Some(reached) = reached {
+                        let name = self.native_element_name(
+                            name,
+                            options,
+                            metadata,
+                            metadata_formation.as_ref(),
+                            cancelled,
+                        )?;
+                        let binding = options
+                            .registry
+                            .unwrap_or_else(|| metadata.custom_element_registry());
+                        if let Some(definition) = self.lookup_creation_definition(
+                            binding,
+                            &name,
+                            options.is.as_ref(),
+                            cancelled,
+                        )? {
+                            let document = DocumentId(
+                                self.published_id(document)
+                                    .ok_or(DomError::InvalidSourceOperation)?,
+                            );
+                            let name = self.form_element_name(
+                                name,
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?;
+                            *reached = Some(source::operation::custom_element::Creation {
+                                document,
+                                name,
+                                definition,
+                                global: self
+                                    .resolve_creation_global(
+                                        Key::Existing(document.node()),
+                                        *fallback,
+                                        cancelled,
+                                    )?
+                                    .ok_or(DomError::HostedSourceUnavailable)?,
+                            });
+                            return Ok(());
+                        }
+                        (
+                            self.form_native_element(
+                                name,
+                                options.is.as_ref(),
+                                metadata.document_environment(),
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?,
+                            Some(binding),
+                        )
+                    } else {
+                        (
+                            self.native_element(
+                                name,
+                                options,
+                                metadata,
+                                metadata_formation.as_ref(),
+                                cancelled,
+                            )?,
+                            None,
+                        )
+                    };
+                    let key = self.allocate_element_formed(
+                        formed,
+                        document,
+                        limits,
+                        cancelled,
+                        metadata_formation,
+                    )?;
+                    if self.node(key)?.relevant_global().is_none() && fallback.is_some() {
+                        let global =
+                            self.resolve_creation_global(document, *fallback, cancelled)?;
+                        self.establish_creation_global(key, global, cancelled)?;
+                    }
+                    if let Some(binding) = selected {
+                        self.establish_element_registry(key, binding, cancelled)?;
+                        self.initialize_native_element_features(key, limits, cancelled)?;
+                    } else {
+                        self.initialize_native_element(key, options.registry, limits, cancelled)?;
+                    }
+                    self.register_ticket(key, cancelled)?;
+                    return Ok(());
+                }
+                let global = match kind {
+                    Creation::DocumentType {
+                        fallback: Some(fallback),
+                        ..
+                    }
+                    | Creation::ProcessingInstruction {
+                        fallback: Some(fallback),
+                        ..
+                    } => self.resolve_creation_global(document, Some(*fallback), cancelled)?,
+                    _ => None,
+                };
+                let kind = match kind {
+                    Creation::Document => NewNode::Document(DomDocumentMetadata::native(
+                        self.document_environment.clone(),
+                        &mut |text| {
+                            source::formation::string(text, metadata_formation.as_ref(), cancelled)
+                        },
+                    )?),
+                    Creation::Fragment => NewNode::DocumentFragment,
+                    Creation::Attr { namespace, name } => NewNode::Attr(self.form_detached_attr(
+                        document,
+                        namespace.as_ref(),
+                        name,
+                        metadata_formation.as_ref(),
+                        cancelled,
+                    )?),
+                    Creation::Element { .. } => {
+                        unreachable!("Element was allocated through formed ingress")
+                    }
+                    Creation::Text(data) => NewNode::Text(source::formation::share_listed(
+                        data,
+                        metadata_formation.as_ref(),
+                        cancelled,
+                    )?),
+                    Creation::Comment(data) => NewNode::Comment(source::formation::share_listed(
+                        data,
+                        metadata_formation.as_ref(),
+                        cancelled,
+                    )?),
+                    Creation::ProcessingInstruction { target, data, .. } => {
+                        #[cfg(test)]
+                        let _source_observation = self
+                            .source_limits
+                            .filter(|_| crate::internal::node_values::source_observation::active())
+                            .map(|limits| {
+                                let ledger = self.custody_ledger().clone();
+                                let bytes = self.source_other_bytes;
+                                let units = self.source_other_units;
+                                crate::internal::node_values::source_observation::bind(
+                                    move || {
+                                        let live = ledger.total();
+                                        (bytes + live.bytes(), units + live.units())
+                                    },
+                                    limits.retained_bytes,
+                                    limits.retained_units,
+                                )
+                            });
+                        NewNode::ProcessingInstruction(DomProcessingInstruction::new(
+                            target,
+                            data,
+                            metadata_formation.as_ref(),
+                            cancelled,
+                        )?)
+                    }
+                    Creation::DocumentType {
+                        name,
+                        public_id,
+                        system_id,
+                        ..
+                    } => NewNode::DocumentType(DomDocumentType::new(
+                        name,
+                        public_id,
+                        system_id,
+                        metadata_formation.as_ref(),
+                        cancelled,
+                    )?),
+                };
+                #[cfg(test)]
+                if let Some(before) = metadata_growth {
+                    let payload = source::storage::new_kind(&kind, || self.source_step(cancelled))?;
+                    source::formation::mutation_observation::grew(Some(before), payload.bytes);
+                }
+                let key =
+                    self.allocate_formed(kind, document, limits, cancelled, metadata_formation)?;
+                self.establish_creation_global(key, global, cancelled)?;
+                self.initialize_native_element(key, None, limits, cancelled)?;
+                self.register_ticket(key, cancelled)?;
+            }
+            Command::Import {
+                snapshot,
+                source,
+                document,
+                subtree,
+            } => {
+                let document = self.resolve(document.clone())?;
+                if !matches!(
+                    self.node(document)?.kind(),
+                    transaction::KindRead::Document(_)
+                ) {
+                    return Err(DomError::WrongNodeKind);
+                }
+                let key =
+                    self.import_node(snapshot, *source, document, *subtree, limits, cancelled)?;
+                self.register_ticket(key, cancelled)?;
+            }
+            Command::Detach(node) => {
+                let node = self.resolve(node.clone())?;
+                self.remove(node, limits, cancelled)?;
+            }
+            Command::RemoveChild { parent, child } => {
+                self.source_step(cancelled)?;
+                let parent = self.resolve(parent.clone())?;
+                self.source_step(cancelled)?;
+                let child = self.resolve(child.clone())?;
+                self.source_step(cancelled)?;
+                if self.node(child)?.parent() != Some(parent) {
+                    return Err(DomError::NotFound);
+                }
+                self.remove(child, limits, cancelled)?;
+            }
+            Command::Adopt { node, document } => {
+                let node = self.resolve(node.clone())?;
+                let document = self.resolve(document.clone())?;
+                if !matches!(
+                    self.node(document)?.kind(),
+                    transaction::KindRead::Document(_)
+                ) {
+                    return Err(DomError::WrongNodeKind);
+                }
+                if matches!(self.node(node)?.kind(), transaction::KindRead::Document(_)) {
+                    return Err(DomError::NotSupported);
+                }
+                if matches!(
+                    self.node(node)?.kind(),
+                    transaction::KindRead::ShadowRoot(_)
+                ) {
+                    return Err(DomError::HierarchyRequest);
+                }
+                self.adopt(node, document, limits, cancelled)?;
+            }
+            Command::SetAttribute {
+                node,
+                namespace,
+                name,
+                value,
+                mode,
+            } => {
+                let node = self.resolve(node.clone())?;
+                match mode {
+                    AttributeSetterMode::Native => {
+                        self.set_attribute(
+                            node,
+                            namespace.as_ref(),
+                            name,
+                            value,
+                            limits,
+                            cancelled,
+                        )?;
+                    }
+                    AttributeSetterMode::Standard => {
+                        self.set_standard_attribute(
+                            node,
+                            namespace.as_ref(),
+                            name,
+                            value,
+                            limits,
+                            cancelled,
+                        )?;
+                    }
+                }
+            }
+            Command::SetCustomValidity { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_custom_validity(node, value, limits, cancelled)?;
+            }
+            Command::ToggleAttribute { node, name, force } => {
+                let node = self.resolve(node.clone())?;
+                self.toggle_attribute(node, name, *force, limits, cancelled)?;
+            }
+            Command::SetAttributeValue { attribute, value } => {
+                let attr = self.resolve(attribute.node().into())?;
+                self.set_existing_attr_value(attr, value, limits, cancelled)?;
+            }
+            Command::RequestCloseDialog { node, result } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_method_boundary(
+                    key,
+                    dialog::MethodInput::RequestClose(result.as_ref()),
+                    limits,
+                    cancelled,
+                )?;
+            }
+            Command::CloseDialog { node, result } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_method_boundary(
+                    key,
+                    dialog::MethodInput::Close(result.as_ref()),
+                    limits,
+                    cancelled,
+                )?;
+            }
+            Command::ShowModalDialog { node } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_method_boundary(
+                    key,
+                    dialog::MethodInput::ShowModal,
+                    limits,
+                    cancelled,
+                )?;
+            }
+            Command::ShowDialog { node } => {
+                let key = self.resolve(node.clone())?;
+                self.dialog_method_boundary(key, dialog::MethodInput::Show, limits, cancelled)?;
+            }
+            Command::SetDialogReturnValue { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_dialog_return_value(node, value, limits, cancelled)?;
+            }
+            Command::SetNonce { node, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_nonce(node, value, limits, cancelled)?;
+            }
+            Command::SetMarqueeRunning { node, running } => {
+                let node = self.resolve(node.clone())?;
+                let mut element = self.element_fields_mut(node, cancelled)?;
+                element.set_marquee_running(*running)?;
+                element.commit(cancelled)?;
+            }
+            Command::RemoveAttribute {
+                node,
+                namespace,
+                name,
+                return_identity,
+            } => {
+                let node = self.resolve(node.clone())?;
+                let removal = if *return_identity {
+                    attributes::AttributeRemoval::ReturnIdentity
+                } else {
+                    attributes::AttributeRemoval::IgnoreMissing
+                };
+                self.remove_attribute(node, namespace.as_ref(), name, removal, limits, cancelled)?;
+            }
+            Command::RemoveAttributeNode { node, attribute } => {
+                let node = self.resolve(node.clone())?;
+                let attr = self.resolve(attribute.node().into())?;
+                self.remove_attribute_node(node, attr, limits, cancelled)?;
+            }
+            Command::AttachAttribute {
+                node,
+                attribute,
+                mode,
+                output_registration: None,
+            } => {
+                let node = self.resolve(node.clone())?;
+                let attr = self.resolve(attribute.node().into())?;
+                self.attach_attribute(node, attr, *mode, limits, cancelled)?;
+            }
+            Command::AttachAttribute { .. } => return Err(DomError::InvalidSourceOperation),
+            Command::Destroy(node) => {
+                let node = self.resolve(node.clone())?;
+                if self.node(node)?.parent().is_some()
+                    || self.node(node)?.host().is_some()
+                    || self.node(node)?.attr_owner().is_some()
+                    || matches!(
+                        self.node(node)?.kind(),
+                        transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
+                    )
+                {
+                    return Err(DomError::InvalidDestruction);
+                }
+                let mut pending = self.effect_vec();
+                let mut closure = self.effect_vec();
+                self.select_reserve(&mut pending, 1, cancelled)?;
+                pending.push(node);
+                while !pending.is_empty() {
+                    self.source_step(cancelled)?;
+                    let key = pending.pop().expect("admitted destruction node");
+                    let current = self.node(key)?;
+                    let contents = self.owned_template_contents(key, cancelled)?;
+                    self.select_reserve(
+                        &mut pending,
+                        current.children().len()
+                            + current.attribute_ids().len()
+                            + usize::from(current.shadow_root().is_some())
+                            + usize::from(contents.is_some()),
+                        cancelled,
+                    )?;
+                    self.select_reserve(&mut closure, 1, cancelled)?;
+                    for child in current.children().iter().rev() {
+                        self.source_step(cancelled)?;
+                        pending.push(child);
+                    }
+                    for attribute in current.attribute_ids().iter().rev() {
+                        self.source_step(cancelled)?;
+                        pending.push(attribute);
+                    }
+                    pending.extend(current.shadow_root());
+                    pending.extend(contents);
+                    closure.push(key);
+                }
+                self.push_effect(
+                    select::Effect::Tree(tree::Frame::Destroy {
+                        closure,
+                        index: 0,
+                        stage: 0,
+                    }),
+                    self.effect_scoped,
+                    cancelled,
+                )?;
+                self.run_effects(limits, cancelled)?;
+            }
+            Command::ReplaceData {
+                node,
+                offset,
+                count,
+                data,
+            } => {
+                let node = self.resolve(node.clone())?;
+                self.replace_data(node, *offset, *count, data.code_units(), limits, cancelled)?;
+            }
+            Command::ProcessingInstructionAttribute { node, edit } => {
+                let node = self.resolve((*node).into())?;
+                self.edit_processing_instruction_attribute(node, edit, limits, cancelled)?;
+            }
+            Command::Insert {
+                node,
+                parent,
+                before,
+            } => {
+                let node = self.resolve(node.clone())?;
+                let parent = self.resolve(parent.clone())?;
+                let before = before
+                    .as_ref()
+                    .map(|id| self.resolve(id.clone()))
+                    .transpose()?;
+                self.pre_insert(node, parent, before, limits, cancelled)?;
+            }
+            Command::MoveBefore {
+                node,
+                parent,
+                before,
+            } => {
+                let node = self.resolve(node.clone())?;
+                let parent = self.resolve(parent.clone())?;
+                let before = before
+                    .as_ref()
+                    .map(|id| self.resolve(id.clone()))
+                    .transpose()?;
+                self.move_before(node, parent, before, limits, cancelled)?;
+            }
+            Command::ReplaceChild {
+                node,
+                parent,
+                child,
+            } => {
+                let node = self.resolve(node.clone())?;
+                let parent = self.resolve(parent.clone())?;
+                let child = self.resolve(child.clone())?;
+                self.replace_child(node, parent, child, limits, cancelled)?;
+            }
+        }
+        Ok(())
+    }
+    fn finish(&mut self, dom: &Dom, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
+        self.finish_with_mapping(dom, cancelled, std::iter::empty())
+            .map(|(prepared, _)| prepared)
+    }
+
+    fn finish_segment(&self, dom: &Dom, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
+        self.finish_sparse(dom, cancelled, std::iter::empty())
+            .map(|(prepared, _)| prepared)
+    }
+
+    fn finish_with_mapping(
+        &mut self,
+        dom: &Dom,
+        cancelled: &AtomicBool,
+        requested: impl ExactSizeIterator<Item = Key>,
+    ) -> Result<(Prepared, Vec<NodeId>), DomError> {
+        self.resolve_scoped_registry_documents(dom, cancelled)?;
+        self.finish_sparse(dom, cancelled, requested)
+    }
+}
+fn new_kind_units(kind: &NewNode) -> Result<usize, DomError> {
+    match kind {
+        NewNode::Document(v) => v.units().ok_or(DomError::RepresentationExhausted),
+        NewNode::Element(v) => v.units().ok_or(DomError::RepresentationExhausted),
+        NewNode::Attr(v) => v.logical_units().ok_or(DomError::RepresentationExhausted),
+        NewNode::Text(v) | NewNode::Comment(v) => Ok(v.len()),
+        NewNode::ProcessingInstruction(v) => v.units().ok_or(DomError::RepresentationExhausted),
+        NewNode::DocumentType(v) => v.units().ok_or(DomError::RepresentationExhausted),
+        NewNode::DocumentFragment | NewNode::ShadowRoot(_) => Ok(0),
+    }
+}
+
+impl Prepared {
+    pub(in crate::internal::store) fn set_hosted_history(
+        &mut self,
+        next: Option<Arc<hosted::history::Graph>>,
+        incoming: Option<source::formation::Formation>,
+        registry: &bank::CustodyRegistry,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let incoming = incoming.and_then(source::formation::Formation::into_debit);
+        let (next, custody) = match next {
+            Some(next) => {
+                let plan = transaction::auxiliary::prepare_history(
+                    next,
+                    incoming,
+                    registry,
+                    &mut |usage| match &self.formation {
+                        Some(budget) => budget.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                    &mut || source::formation::step(self.formation.as_ref(), cancel),
+                )?;
+                let (value, custody) = plan.into_parts();
+                (Some(value), Some(custody))
+            }
+            None => {
+                drop(incoming);
+                (None, None)
+            }
+        };
+        drop((
+            std::mem::replace(&mut self.state.hosted_history, next),
+            std::mem::replace(&mut self.state_frontiers.auxiliary.history, custody),
+        ));
+        Ok(())
+    }
+    pub(in crate::internal::store) fn set_hosted_globals(
+        &mut self,
+        next: Option<Arc<hosted::GlobalDocumentIndex>>,
+        incoming: Option<source::formation::Formation>,
+        registry: &bank::CustodyRegistry,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let incoming = incoming.and_then(source::formation::Formation::into_debit);
+        let (next, custody) = match next {
+            Some(next) => {
+                let plan = transaction::auxiliary::prepare_globals(
+                    next,
+                    incoming,
+                    registry,
+                    &mut |usage| match &self.formation {
+                        Some(budget) => budget.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                    &mut || source::formation::step(self.formation.as_ref(), cancel),
+                )?;
+                let (value, custody) = plan.into_parts();
+                (Some(value), Some(custody))
+            }
+            None => {
+                drop(incoming);
+                (None, None)
+            }
+        };
+        drop((
+            std::mem::replace(&mut self.state.hosted_globals, next),
+            std::mem::replace(&mut self.state_frontiers.auxiliary.globals, custody),
+        ));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn set_modal_fixture_state(
+    dom: &mut Dom,
+    document: DocumentId,
+    state: Option<crate::internal::dialog::DocumentInteractiveState<NodeId>>,
+    cancel: &AtomicBool,
+) -> Result<(), DomError> {
+    let mut draft = Draft::new(dom, Arc::new(BatchIdentity), cancel)?;
+    let key = draft.resolve(document.into())?;
+    let (metadata, lists) = match state {
+        None => (None, None),
+        Some(crate::internal::dialog::DocumentInteractiveState::Unavailable) => (
+            Some(crate::internal::dialog::DocumentInteractiveState::Unavailable),
+            None,
+        ),
+        Some(crate::internal::dialog::DocumentInteractiveState::Known {
+            open_dialogs,
+            top_layer,
+            pending_top_layer_removals,
+        }) => {
+            let convert = |values: Vec<NodeId>| -> Result<Vec<Key>, DomError> {
+                values
+                    .into_iter()
+                    .map(|id| draft.resolve(id.into()))
+                    .collect()
+            };
+            let open = convert(open_dialogs)?;
+            let top = convert(top_layer)?;
+            let pending = convert(pending_top_layer_removals)?;
+            (
+                Some(crate::internal::dialog::DocumentInteractiveState::native_closed()),
+                Some((open, top, pending)),
+            )
+        }
+    };
+    let mut fields = draft.interactive_document_mut(key, cancel)?;
+    *fields = metadata;
+    fields.commit(cancel)?;
+    if let Some((open, top, pending)) = lists {
+        draft.relations_replace(key, transaction::RelationField::OpenDialogs, open, cancel)?;
+        draft.relations_replace(key, transaction::RelationField::TopLayer, top, cancel)?;
+        draft.relations_replace(
+            key,
+            transaction::RelationField::PendingTopLayerRemovals,
+            pending,
+            cancel,
+        )?;
+    }
+    let prepared = draft.finish(dom, cancel)?;
+    dom.publish(prepared, cancel)?;
+    Ok(())
+}

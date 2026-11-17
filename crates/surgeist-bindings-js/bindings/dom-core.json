@@ -6323,66 +6323,66 @@
       "contract": "Select the first ordinary descendant whose nonempty DOM ID matches the exact argument, excluding the root and without piercing shadow trees.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nonelementparentnode",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": []
     },
     "DocumentOrShadowRoot.customElementRegistry/get": {
       "kind": "native",
       "adapter": "documentorshadowroot.customelementregistry.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "custom_element_registry"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "custom_element_registry"}],
       "requirements": []
     },
     "ParentNode.children/get": {
       "kind": "native",
       "adapter": "parentnode.children.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "element_children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
       "requirements": [],
       "result_view": "live"
     },
     "ParentNode.firstElementChild/get": {
       "kind": "native",
       "adapter": "parentnode.firstelementchild.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "element_children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
       "requirements": []
     },
     "ParentNode.lastElementChild/get": {
       "kind": "native",
       "adapter": "parentnode.lastelementchild.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "element_children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
       "requirements": []
     },
     "ParentNode.childElementCount/get": {
       "kind": "native",
       "adapter": "parentnode.childelementcount.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "element_children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
       "requirements": []
     },
     "ParentNode.prepend:0/call": {
       "kind": "native",
       "adapter": "parentnode.prepend.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "prepend"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "prepend"}],
       "requirements": []
     },
     "ParentNode.append:0/call": {
       "kind": "native",
       "adapter": "parentnode.append.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "append"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "append"}],
       "requirements": []
     },
     "ParentNode.replaceChildren:0/call": {
       "kind": "native",
       "adapter": "parentnode.replacechildren.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "replace_children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "replace_children"}],
       "requirements": []
     },
     "ParentNode.moveBefore:0/call": {
       "kind": "native",
       "adapter": "parentnode.movebefore.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "move_before"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "move_before"},
         {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/parent_node.rs", "symbol": "move_before"}
       ],
       "requirements": []
@@ -6417,43 +6417,43 @@
     "NonDocumentTypeChildNode.previousElementSibling/get": {
       "kind": "native",
       "adapter": "nondocumenttypechildnode.previouselementsibling.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "previous_element_sibling"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "previous_element_sibling"}],
       "requirements": []
     },
     "NonDocumentTypeChildNode.nextElementSibling/get": {
       "kind": "native",
       "adapter": "nondocumenttypechildnode.nextelementsibling.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "next_element_sibling"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "next_element_sibling"}],
       "requirements": []
     },
     "ChildNode.before:0/call": {
       "kind": "native",
       "adapter": "childnode.before.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "before"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "before"}],
       "requirements": []
     },
     "ChildNode.after:0/call": {
       "kind": "native",
       "adapter": "childnode.after.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "after"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "after"}],
       "requirements": []
     },
     "ChildNode.replaceWith:0/call": {
       "kind": "native",
       "adapter": "childnode.replacewith.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "replace_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "replace_with"}],
       "requirements": []
     },
     "ChildNode.remove:0/call": {
       "kind": "native",
       "adapter": "childnode.remove.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "detach"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "detach"}],
       "requirements": []
     },
     "Slottable.assignedSlot/get": {
       "kind": "native",
       "adapter": "slottable.assignedslot.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/slot/read.rs", "symbol": "assigned_slot_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/slot/read.rs", "symbol": "assigned_slot_with"}],
       "requirements": []
     },
     "NodeList.item:0/call": {
@@ -6462,7 +6462,7 @@
       "owner": "surgeist-bindings-js",
       "contract": "Implement NodeList.item as the declared indexed/named or length projection over its actual rooted selection. Reread current members for live selections; static query lists retain only their selected identities. Named HTMLCollection lookup uses exact ID or HTML-only name and empty key returns null.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodelist",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": []
     },
     "NodeList.length/get": {
@@ -6471,7 +6471,7 @@
       "owner": "surgeist-bindings-js",
       "contract": "Implement NodeList.length as the declared indexed/named or length projection over its actual rooted selection. Reread current members for live selections; static query lists retain only their selected identities. Named HTMLCollection lookup uses exact ID or HTML-only name and empty key returns null.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodelist",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": []
     },
     "HTMLCollection.length/get": {
@@ -6480,7 +6480,7 @@
       "owner": "surgeist-bindings-js",
       "contract": "Implement HTMLCollection.length as the declared indexed/named or length projection over its actual rooted selection. Reread current members for live selections; static query lists retain only their selected identities. Named HTMLCollection lookup uses exact ID or HTML-only name and empty key returns null.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-htmlcollection",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "element_children"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
       "requirements": []
     },
     "HTMLCollection.item:0/call": {
@@ -6489,7 +6489,7 @@
       "owner": "surgeist-bindings-js",
       "contract": "Implement HTMLCollection.item as the declared indexed/named or length projection over its actual rooted selection. Reread current members for live selections; static query lists retain only their selected identities. Named HTMLCollection lookup uses exact ID or HTML-only name and empty key returns null.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-htmlcollection",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "element_children"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
       "requirements": []
     },
     "HTMLCollection.namedItem:0/call": {
@@ -6498,98 +6498,98 @@
       "owner": "surgeist-bindings-js",
       "contract": "Implement HTMLCollection.namedItem as the declared indexed/named or length projection over its actual rooted selection. Reread current members for live selections; static query lists retain only their selected identities. Named HTMLCollection lookup uses exact ID or HTML-only name and empty key returns null.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-htmlcollection",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "element_children"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
       "requirements": []
     },
     "Node.nodeType/get": {
       "kind": "native",
       "adapter": "node.nodetype.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomNodeKind"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomNodeKind"}],
       "requirements": []
     },
     "Node.nodeName/get": {
       "kind": "native",
       "adapter": "node.nodename.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "node_name"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "node_name"}],
       "requirements": []
     },
     "Node.baseURI/get": {
       "kind": "native",
       "adapter": "node.baseuri.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/base.rs", "symbol": "document_base_url"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/base.rs", "symbol": "document_base_url"}],
       "requirements": []
     },
     "Node.isConnected/get": {
       "kind": "native",
       "adapter": "node.isconnected.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "is_connected"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "is_connected"}],
       "requirements": []
     },
     "Node.ownerDocument/get": {
       "kind": "native",
       "adapter": "node.ownerdocument.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "owner_document"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "owner_document"}],
       "requirements": []
     },
     "Node.getRootNode:0/call": {
       "kind": "native",
       "adapter": "node.getrootnode.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "shadow_including_root"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "shadow_including_root"}],
       "requirements": []
     },
     "Node.parentNode/get": {
       "kind": "native",
       "adapter": "node.parentnode.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "parent"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "parent"}],
       "requirements": []
     },
     "Node.parentElement/get": {
       "kind": "native",
       "adapter": "node.parentelement.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "parent_element"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "parent_element"}],
       "requirements": []
     },
     "Node.hasChildNodes:0/call": {
       "kind": "native",
       "adapter": "node.haschildnodes.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": []
     },
     "Node.childNodes/get": {
       "kind": "native",
       "adapter": "node.childnodes.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": [],
       "result_view": "live"
     },
     "Node.firstChild/get": {
       "kind": "native",
       "adapter": "node.firstchild.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": []
     },
     "Node.lastChild/get": {
       "kind": "native",
       "adapter": "node.lastchild.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": []
     },
     "Node.previousSibling/get": {
       "kind": "native",
       "adapter": "node.previoussibling.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "previous_sibling"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "previous_sibling"}],
       "requirements": []
     },
     "Node.nextSibling/get": {
       "kind": "native",
       "adapter": "node.nextsibling.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "next_sibling"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "next_sibling"}],
       "requirements": []
     },
     "Node.nodeValue/get": {
       "kind": "native",
       "adapter": "node.nodevalue.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "data"}],
       "requirements": [
         {
           "owner": "surgeist-dom",
@@ -6602,7 +6602,7 @@
     "Node.nodeValue/set": {
       "kind": "native",
       "adapter": "node.nodevalue.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_data"}],
       "requirements": [
         {
           "owner": "surgeist-dom",
@@ -6615,7 +6615,7 @@
     "Node.textContent/get": {
       "kind": "native",
       "adapter": "node.textcontent.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "data"}],
       "requirements": [
         {
           "owner": "surgeist-dom",
@@ -6628,7 +6628,7 @@
     "Node.textContent/set": {
       "kind": "native",
       "adapter": "node.textcontent.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": [
         {
           "owner": "surgeist-dom",
@@ -6655,8 +6655,8 @@
       "kind": "native",
       "adapter": "node.clonenode.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "clone_node_in_attachment"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "clone_node_in_attachment"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
       ],
       "requirements": []
     },
@@ -6666,7 +6666,7 @@
       "owner": "surgeist-dom",
       "contract": "Compare the source node-kind, name, value, attribute and ordered-child equality fields from current native observations; identity equality is a different operation.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/equality.rs", "symbol": "is_equal_node_with"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/equality.rs", "symbol": "is_equal_node_with"}],
       "requirements": []
     },
     "Node.isSameNode:0/call": {
@@ -6676,15 +6676,15 @@
       "contract": "Compare authentic owner-qualified native node identity, retaining the nullable other-node branch; mutable prototypes do not establish identity.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-node-issamenode",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "node_with"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/identity.rs", "symbol": "NodeId"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "node_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/identity.rs", "symbol": "NodeId"}
       ],
       "requirements": []
     },
     "Node.compareDocumentPosition:0/call": {
       "kind": "native",
       "adapter": "node.comparedocumentposition.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/position.rs", "symbol": "compare_document_position_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/position.rs", "symbol": "compare_document_position_with"}],
       "requirements": []
     },
     "Node.contains:0/call": {
@@ -6693,7 +6693,7 @@
       "owner": "surgeist-bindings-js",
       "contract": "Project ordinary inclusive ancestry from actual parent links and identity, preserving null and self cases and excluding shadow/Template host links.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-node-contains",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "contains_with"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "contains_with"}],
       "requirements": []
     },
     "Node.lookupPrefix:0/call": {
@@ -6702,7 +6702,7 @@
       "owner": "surgeist-dom",
       "contract": "Apply the source Element/Document/Attr/null node-kind dispatch and namespace-declaration lookup over ordinary ancestors and exact XMLNS attributes.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/namespace.rs", "symbol": "lookup_prefix_with"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/namespace.rs", "symbol": "lookup_prefix_with"}],
       "requirements": []
     },
     "Node.lookupNamespaceURI:0/call": {
@@ -6711,7 +6711,7 @@
       "owner": "surgeist-dom",
       "contract": "Apply the source node-kind dispatch, Element prefix/default namespace declaration lookup and ordinary ancestor rules with empty-prefix normalization.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/namespace.rs", "symbol": "lookup_namespace_uri_with"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/namespace.rs", "symbol": "lookup_namespace_uri_with"}],
       "requirements": []
     },
     "Node.isDefaultNamespace:0/call": {
@@ -6720,31 +6720,31 @@
       "owner": "surgeist-dom",
       "contract": "Compare the source-normalized namespace argument with the source namespace lookup result over exact canonical names/declarations.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-node",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot/namespace.rs", "symbol": "is_default_namespace_with"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/namespace.rs", "symbol": "is_default_namespace_with"}],
       "requirements": []
     },
     "Node.insertBefore:0/call": {
       "kind": "native",
       "adapter": "node.insertbefore.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "insert_before"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "insert_before"}],
       "requirements": []
     },
     "Node.appendChild:0/call": {
       "kind": "native",
       "adapter": "node.appendchild.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "insert_before"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "insert_before"}],
       "requirements": []
     },
     "Node.replaceChild:0/call": {
       "kind": "native",
       "adapter": "node.replacechild.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_child"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_child"}],
       "requirements": []
     },
     "Node.removeChild:0/call": {
       "kind": "native",
       "adapter": "node.removechild.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "detach"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "detach"}],
       "requirements": []
     },
     "Document.constructor:0/construct": {
@@ -6766,61 +6766,61 @@
       "owner": "surgeist-bindings-js",
       "contract": "Return the SameObject DOMImplementation wrapper associated with the actual canonical Document.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-node-implementation",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomDocument"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomDocument"}],
       "requirements": []
     },
     "Document.URL/get": {
       "kind": "native",
       "adapter": "document.url.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "url"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "url"}],
       "requirements": []
     },
     "Document.documentURI/get": {
       "kind": "native",
       "adapter": "document.documenturi.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "url"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "url"}],
       "requirements": []
     },
     "Document.compatMode/get": {
       "kind": "native",
       "adapter": "document.compatmode.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}],
       "requirements": []
     },
     "Document.characterSet/get": {
       "kind": "native",
       "adapter": "document.characterset.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "encoding"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}],
       "requirements": []
     },
     "Document.charset/get": {
       "kind": "native",
       "adapter": "document.charset.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "encoding"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}],
       "requirements": []
     },
     "Document.inputEncoding/get": {
       "kind": "native",
       "adapter": "document.inputencoding.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "encoding"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}],
       "requirements": []
     },
     "Document.contentType/get": {
       "kind": "native",
       "adapter": "document.contenttype.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "content_type"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "content_type"}],
       "requirements": []
     },
     "Document.doctype/get": {
       "kind": "native",
       "adapter": "document.doctype.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "children"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
       "requirements": []
     },
     "Document.documentElement/get": {
       "kind": "native",
       "adapter": "document.documentelement.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "document_element"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "document_element"}],
       "requirements": []
     },
     "Document.getElementsByTagName:0/call": {
@@ -6830,9 +6830,9 @@
       "contract": "Project live ordinary descendant Elements using source wildcard and HTML-document qualified-name casing rules; matching is not CSS selector execution.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -6844,9 +6844,9 @@
       "contract": "Project live ordinary descendant Elements by normalized namespace/local-name wildcards, preserving exact namespace and local-name identity.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -6858,9 +6858,9 @@
       "contract": "Project live ordinary descendant Elements containing all requested ASCII-whitespace-separated class tokens, with the actual document quirks-mode case rule.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -6869,7 +6869,7 @@
       "kind": "native",
       "adapter": "document.createelement.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"},
         {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs", "symbol": "create_element"}
       ],
       "requirements": [
@@ -6889,7 +6889,7 @@
       "kind": "native",
       "adapter": "document.createelementns.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/source/operation/synchronous_node.rs", "symbol": "create_detached_element_with_node_retirement_watch"},
         {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/ordinary.rs", "symbol": "create_element"}
       ],
       "requirements": [
@@ -6908,13 +6908,13 @@
     "Document.createDocumentFragment:0/call": {
       "kind": "native",
       "adapter": "document.createdocumentfragment.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_fragment"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_fragment"}],
       "requirements": []
     },
     "Document.createTextNode:0/call": {
       "kind": "native",
       "adapter": "document.createtextnode.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_text"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_text"}],
       "requirements": []
     },
     "Document.createCDATASection:0/call": {
@@ -6932,28 +6932,28 @@
     "Document.createComment:0/call": {
       "kind": "native",
       "adapter": "document.createcomment.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_comment"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_comment"}],
       "requirements": []
     },
     "Document.createProcessingInstruction:0/call": {
       "kind": "native",
       "adapter": "document.createprocessinginstruction.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_processing_instruction"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_processing_instruction"}],
       "requirements": []
     },
     "Document.importNode:0/call": {
       "kind": "native",
       "adapter": "document.importnode.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "import_live_node"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "import_live_node"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
       ],
       "requirements": []
     },
     "Document.adoptNode:0/call": {
       "kind": "native",
       "adapter": "document.adoptnode.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "adopt"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "adopt"}],
       "requirements": []
     },
     "Document.createAttribute:0/call": {
@@ -6998,7 +6998,7 @@
     "Document.createRange:0/call": {
       "kind": "native",
       "adapter": "document.createrange.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_range"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_range"}],
       "requirements": []
     },
     "Document.createNodeIterator:0/call": {
@@ -7028,19 +7028,19 @@
     "DOMImplementation.createDocumentType:0/call": {
       "kind": "native",
       "adapter": "domimplementation.createdocumenttype.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_document_type"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_document_type"}],
       "requirements": []
     },
     "DOMImplementation.createDocument:0/call": {
       "kind": "native",
       "adapter": "domimplementation.createdocument.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_xml_document"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_xml_document"}],
       "requirements": []
     },
     "DOMImplementation.createHTMLDocument:0/call": {
       "kind": "native",
       "adapter": "domimplementation.createhtmldocument.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_html_document"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_html_document"}],
       "requirements": []
     },
     "DOMImplementation.hasFeature:0/call": {
@@ -7055,25 +7055,25 @@
     "DocumentType.name/get": {
       "kind": "native",
       "adapter": "documenttype.name.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "name"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "name"}],
       "requirements": []
     },
     "DocumentType.publicId/get": {
       "kind": "native",
       "adapter": "documenttype.publicid.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "public_id"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "public_id"}],
       "requirements": []
     },
     "DocumentType.systemId/get": {
       "kind": "native",
       "adapter": "documenttype.systemid.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "system_id"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "system_id"}],
       "requirements": []
     },
     "DocumentFragment.constructor:0/construct": {
       "kind": "native",
       "adapter": "documentfragment.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_fragment"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_fragment"}],
       "requirements": [
         {
           "owner": "surgeist-runtime",
@@ -7086,7 +7086,7 @@
     "ShadowRoot.mode/get": {
       "kind": "native",
       "adapter": "shadowroot.mode.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomShadowRoot"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomShadowRoot"}],
       "requirements": [
         {
           "owner": "surgeist-bindings-js",
@@ -7099,7 +7099,7 @@
     "ShadowRoot.delegatesFocus/get": {
       "kind": "native",
       "adapter": "shadowroot.delegatesfocus.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomShadowRoot"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomShadowRoot"}],
       "requirements": [
         {
           "owner": "surgeist-bindings-js",
@@ -7112,7 +7112,7 @@
     "ShadowRoot.serializable/get": {
       "kind": "native",
       "adapter": "shadowroot.serializable.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomShadowRoot"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomShadowRoot"}],
       "requirements": [
         {
           "owner": "surgeist-bindings-js",
@@ -7125,7 +7125,7 @@
     "ShadowRoot.slotAssignment/get": {
       "kind": "native",
       "adapter": "shadowroot.slotassignment.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomShadowRoot"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomShadowRoot"}],
       "requirements": [
         {
           "owner": "surgeist-bindings-js",
@@ -7138,7 +7138,7 @@
     "ShadowRoot.clonable/get": {
       "kind": "native",
       "adapter": "shadowroot.clonable.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomShadowRoot"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomShadowRoot"}],
       "requirements": [
         {
           "owner": "surgeist-bindings-js",
@@ -7151,7 +7151,7 @@
     "ShadowRoot.host/get": {
       "kind": "native",
       "adapter": "shadowroot.host.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "DomShadowRoot"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "DomShadowRoot"}],
       "requirements": [
         {
           "owner": "surgeist-bindings-js",
@@ -7196,49 +7196,49 @@
     "Element.namespaceURI/get": {
       "kind": "native",
       "adapter": "element.namespaceuri.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/name.rs", "symbol": "namespace_uri"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/name.rs", "symbol": "namespace_uri"}],
       "requirements": []
     },
     "Element.prefix/get": {
       "kind": "native",
       "adapter": "element.prefix.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/name.rs", "symbol": "prefix"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/name.rs", "symbol": "prefix"}],
       "requirements": []
     },
     "Element.localName/get": {
       "kind": "native",
       "adapter": "element.localname.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/name.rs", "symbol": "local_name"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/name.rs", "symbol": "local_name"}],
       "requirements": []
     },
     "Element.tagName/get": {
       "kind": "native",
       "adapter": "element.tagname.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tag_name"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tag_name"}],
       "requirements": []
     },
     "Element.id/get": {
       "kind": "native",
       "adapter": "element.id.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "Element.id/set": {
       "kind": "native",
       "adapter": "element.id.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "Element.className/get": {
       "kind": "native",
       "adapter": "element.classname.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "Element.className/set": {
       "kind": "native",
       "adapter": "element.classname.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "Element.classList/get": {
@@ -7263,19 +7263,19 @@
     "Element.slot/get": {
       "kind": "native",
       "adapter": "element.slot.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "Element.slot/set": {
       "kind": "native",
       "adapter": "element.slot.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "Element.hasAttributes:0/call": {
       "kind": "native",
       "adapter": "element.hasattributes.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "is_empty"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "is_empty"}],
       "requirements": []
     },
     "Element.attributes/get": {
@@ -7295,62 +7295,62 @@
     "Element.getAttributeNames:0/call": {
       "kind": "native",
       "adapter": "element.getattributenames.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "visit_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "visit_with"}],
       "requirements": [],
       "result_view": "sequence"
     },
     "Element.getAttribute:0/call": {
       "kind": "native",
       "adapter": "element.getattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_named_item_with"}],
       "requirements": []
     },
     "Element.getAttributeNS:0/call": {
       "kind": "native",
       "adapter": "element.getattributens.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_ns_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_named_item_ns_with"}],
       "requirements": []
     },
     "Element.setAttribute:0/call": {
       "kind": "native",
       "adapter": "element.setattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}],
       "requirements": []
     },
     "Element.setAttributeNS:0/call": {
       "kind": "native",
       "adapter": "element.setattributens.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "Element.removeAttribute:0/call": {
       "kind": "native",
       "adapter": "element.removeattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}],
       "requirements": []
     },
     "Element.removeAttributeNS:0/call": {
       "kind": "native",
       "adapter": "element.removeattributens.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}],
       "requirements": []
     },
     "Element.toggleAttribute:0/call": {
       "kind": "native",
       "adapter": "element.toggleattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "toggle_attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "toggle_attribute"}],
       "requirements": []
     },
     "Element.hasAttribute:0/call": {
       "kind": "native",
       "adapter": "element.hasattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_named_item_with"}],
       "requirements": []
     },
     "Element.hasAttributeNS:0/call": {
       "kind": "native",
       "adapter": "element.hasattributens.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_named_item_ns_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_named_item_ns_with"}],
       "requirements": []
     },
     "Element.getAttributeNode:0/call": {
@@ -7421,19 +7421,19 @@
     "Element.attachShadow:0/call": {
       "kind": "native",
       "adapter": "element.attachshadow.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "attach_shadow"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "attach_shadow"}],
       "requirements": []
     },
     "Element.shadowRoot/get": {
       "kind": "native",
       "adapter": "element.shadowroot.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "shadow_root"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "shadow_root"}],
       "requirements": []
     },
     "Element.customElementRegistry/get": {
       "kind": "native",
       "adapter": "element.customelementregistry.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/element.rs", "symbol": "custom_element_registry"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/element.rs", "symbol": "custom_element_registry"}],
       "requirements": []
     },
     "Element.closest:0/call": {
@@ -7482,9 +7482,9 @@
       "contract": "Project live ordinary descendant Elements using source wildcard and HTML-document qualified-name casing rules; matching is not CSS selector execution.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -7496,9 +7496,9 @@
       "contract": "Project live ordinary descendant Elements by normalized namespace/local-name wildcards, preserving exact namespace and local-name identity.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -7510,9 +7510,9 @@
       "contract": "Project live ordinary descendant Elements containing all requested ASCII-whitespace-separated class tokens, with the actual document quirks-mode case rule.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -7520,13 +7520,13 @@
     "Element.insertAdjacentElement:0/call": {
       "kind": "native",
       "adapter": "element.insertadjacentelement.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "insert_adjacent_element"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "insert_adjacent_element"}],
       "requirements": []
     },
     "Element.insertAdjacentText:0/call": {
       "kind": "native",
       "adapter": "element.insertadjacenttext.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "insert_adjacent_text"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "insert_adjacent_text"}],
       "requirements": []
     },
     "NamedNodeMap.length/get": {
@@ -7740,19 +7740,19 @@
     "CharacterData.data/get": {
       "kind": "native",
       "adapter": "characterdata.data.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "data"}],
       "requirements": []
     },
     "CharacterData.data/set": {
       "kind": "native",
       "adapter": "characterdata.data.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_data"}],
       "requirements": []
     },
     "CharacterData.length/get": {
       "kind": "native",
       "adapter": "characterdata.length.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "data"}],
       "requirements": []
     },
     "CharacterData.substringData:0/call": {
@@ -7761,37 +7761,37 @@
       "owner": "surgeist-bindings-js",
       "contract": "Return the UTF-16 code-unit slice, throw IndexSize for an offset past length, and clamp the count to remaining units.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-characterdata-substringdata",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"}],
       "requirements": []
     },
     "CharacterData.appendData:0/call": {
       "kind": "native",
       "adapter": "characterdata.appenddata.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_data"}],
       "requirements": []
     },
     "CharacterData.insertData:0/call": {
       "kind": "native",
       "adapter": "characterdata.insertdata.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_data"}],
       "requirements": []
     },
     "CharacterData.deleteData:0/call": {
       "kind": "native",
       "adapter": "characterdata.deletedata.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_data"}],
       "requirements": []
     },
     "CharacterData.replaceData:0/call": {
       "kind": "native",
       "adapter": "characterdata.replacedata.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "replace_data"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "replace_data"}],
       "requirements": []
     },
     "Text.constructor:0/construct": {
       "kind": "native",
       "adapter": "text.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_text"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_text"}],
       "requirements": [
         {
           "owner": "surgeist-runtime",
@@ -7805,8 +7805,8 @@
       "kind": "native",
       "adapter": "text.splittext.call",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "split_text"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "split_text"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/source/operation.rs", "symbol": "advance_watching_node_for_runtime"}
       ],
       "requirements": []
     },
@@ -7816,13 +7816,13 @@
       "owner": "surgeist-bindings-js",
       "contract": "Concatenate the current contiguous ordinary Text siblings in source order, preserving UTF-16 and not including Comment data.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-text-wholetext",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "visit_contiguous_text_with"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "visit_contiguous_text_with"}],
       "requirements": []
     },
     "ProcessingInstruction.constructor:0/construct": {
       "kind": "native",
       "adapter": "processinginstruction.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_processing_instruction"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_processing_instruction"}],
       "requirements": [
         {
           "owner": "surgeist-runtime",
@@ -7835,26 +7835,26 @@
     "ProcessingInstruction.target/get": {
       "kind": "native",
       "adapter": "processinginstruction.target.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "target"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "target"}],
       "requirements": []
     },
     "ProcessingInstruction.hasAttributes:0/call": {
       "kind": "native",
       "adapter": "processinginstruction.hasattributes.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "attribute"}],
       "requirements": []
     },
     "ProcessingInstruction.getAttributeNames:0/call": {
       "kind": "native",
       "adapter": "processinginstruction.getattributenames.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "attribute"}],
       "requirements": [],
       "result_view": "sequence"
     },
     "ProcessingInstruction.getAttribute:0/call": {
       "kind": "native",
       "adapter": "processinginstruction.getattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "attribute"}],
       "requirements": []
     },
     "ProcessingInstruction.setAttribute:0/call": {
@@ -7896,13 +7896,13 @@
     "ProcessingInstruction.hasAttribute:0/call": {
       "kind": "native",
       "adapter": "processinginstruction.hasattribute.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/node_values.rs", "symbol": "attribute"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/node_values.rs", "symbol": "attribute"}],
       "requirements": []
     },
     "Comment.constructor:0/construct": {
       "kind": "native",
       "adapter": "comment.constructor.construct",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "create_comment"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_comment"}],
       "requirements": [
         {
           "owner": "surgeist-runtime",
@@ -8363,8 +8363,8 @@
       "contract": "The HTML Document named-property selection over the actual current supported names: return the source single element, live collection or child WindowProxy branch; apply Document LegacyOverrideBuiltIns visibility in the binding object, not a native pseudo-field.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-nameditem",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
       ],
       "requirements": [
         {
@@ -8378,7 +8378,7 @@
       "kind": "native",
       "adapter": "document.title.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {
           "owner": "surgeist-html-semantics",
           "path": "crates/surgeist-html-semantics/src/semantics.rs",
@@ -8411,7 +8411,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
@@ -8421,7 +8421,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -8443,7 +8443,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
@@ -8453,7 +8453,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
@@ -8470,12 +8470,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -8497,12 +8497,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -8512,12 +8512,12 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "replace_child"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "insert_before"
         },
         {
@@ -8534,12 +8534,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -8567,8 +8567,8 @@
       "contract": "Return the SameObject live Document collection selecting HTML img descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-images",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -8580,8 +8580,8 @@
       "contract": "Return the SameObject live Document collection selecting HTML embed descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-embeds",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -8593,8 +8593,8 @@
       "contract": "Return the SameObject live Document collection selecting the same live collection returned for embeds in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-plugins",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -8606,8 +8606,8 @@
       "contract": "Return the SameObject live Document collection selecting HTML a/area descendants with an href attribute in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-links",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -8619,8 +8619,8 @@
       "contract": "Return the SameObject live Document collection selecting HTML form descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-forms",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -8632,8 +8632,8 @@
       "contract": "Return the SameObject live Document collection selecting HTML script descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-scripts",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -8645,9 +8645,9 @@
       "contract": "Project the source live NodeList of matching HTML elements with an exact name attribute, independently of ID and CSS selector semantics.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-document-object",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "mode"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -8760,13 +8760,13 @@
     "Document.html.designMode/get": {
       "kind": "native",
       "adapter": "document.designmode.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/document.rs", "symbol": "design_mode_enabled"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "design_mode_enabled"}],
       "requirements": []
     },
     "Document.html.designMode/set": {
       "kind": "native",
       "adapter": "document.designmode.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_design_mode"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_design_mode"}],
       "requirements": []
     },
     "Document.html.execCommand:0/call": {
@@ -8904,8 +8904,8 @@
       "contract": "Compute activeElement from the focused area/chain with the source Document-or-ShadowRoot retargeting and fallback rules; ownerDocument or a generic remembered-focus slot is insufficient.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-documentorshadowroot-activeelement",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "focused_area_designation"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "shadow_host"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "focused_area_designation"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "shadow_host"}
       ],
       "requirements": [
         {
@@ -8934,8 +8934,8 @@
       "contract": "Reflect the null-namespace title content attribute as a DOMString: the getter uses empty for absence and the setter preserves the exact converted units through the canonical attribute writer; no new native slot is needed.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -8946,8 +8946,8 @@
       "contract": "Reflect the null-namespace title content attribute as a DOMString: the getter uses empty for absence and the setter preserves the exact converted units through the canonical attribute writer; no new native slot is needed.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -8958,8 +8958,8 @@
       "contract": "Reflect the null-namespace lang content attribute as a DOMString: the getter uses empty for absence and the setter preserves the exact converted units through the canonical attribute writer; no new native slot is needed.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -8970,8 +8970,8 @@
       "contract": "Reflect the null-namespace lang content attribute as a DOMString: the getter uses empty for absence and the setter preserves the exact converted units through the canonical attribute writer; no new native slot is needed.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -8979,7 +8979,7 @@
       "kind": "native",
       "adapter": "htmlelement.translate.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {
           "owner": "surgeist-html-semantics",
           "path": "crates/surgeist-html-semantics/src/semantics.rs",
@@ -8995,9 +8995,9 @@
       "contract": "Apply the translate IDL setter canonical spelling/value branch to its translate content attribute, using actual native set/remove hooks; its computed/inherited getter remains a separate native semantic query.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-translate",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9009,9 +9009,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dir",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlDir"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9023,9 +9023,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dir",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlDir"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9037,9 +9037,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-hidden",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlHidden"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9051,9 +9051,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-hidden",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlHidden"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9064,9 +9064,9 @@
       "contract": "Reflect null-namespace inert by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9077,9 +9077,9 @@
       "contract": "Reflect null-namespace inert by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9108,8 +9108,8 @@
       "contract": "Reflect the null-namespace accesskey content attribute as a DOMString: the getter uses empty for absence and the setter preserves the exact converted units through the canonical attribute writer; no new native slot is needed.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -9120,8 +9120,8 @@
       "contract": "Reflect the null-namespace accesskey content attribute as a DOMString: the getter uses empty for absence and the setter preserves the exact converted units through the canonical attribute writer; no new native slot is needed.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -9141,8 +9141,8 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-draggable",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlDraggable"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -9154,8 +9154,8 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-draggable",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlDraggable"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -9163,7 +9163,7 @@
       "kind": "native",
       "adapter": "htmlelement.spellcheck.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics.rs", "symbol": "Spellcheck"}
       ],
       "requirements": []
@@ -9175,9 +9175,9 @@
       "contract": "Apply the spellcheck IDL setter canonical spelling/value branch to its spellcheck content attribute, using actual native set/remove hooks; its computed/inherited getter remains a separate native semantic query.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-spellcheck",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9185,7 +9185,7 @@
       "kind": "native",
       "adapter": "htmlelement.writingsuggestions.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {
           "owner": "surgeist-html-semantics",
           "path": "crates/surgeist-html-semantics/src/semantics.rs",
@@ -9201,9 +9201,9 @@
       "contract": "Apply the writingSuggestions IDL setter canonical spelling/value branch to its writingsuggestions content attribute, using actual native set/remove hooks; its computed/inherited getter remains a separate native semantic query.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-writingsuggestions",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9211,7 +9211,7 @@
       "kind": "native",
       "adapter": "htmlelement.autocapitalize.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {
           "owner": "surgeist-html-semantics",
           "path": "crates/surgeist-html-semantics/src/semantics.rs",
@@ -9227,9 +9227,9 @@
       "contract": "Apply the autocapitalize IDL setter canonical spelling/value branch to its autocapitalize content attribute, using actual native set/remove hooks; its computed/inherited getter remains a separate native semantic query.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-autocapitalize",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9237,7 +9237,7 @@
       "kind": "native",
       "adapter": "htmlelement.autocorrect.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {
           "owner": "surgeist-html-semantics",
           "path": "crates/surgeist-html-semantics/src/semantics.rs",
@@ -9253,9 +9253,9 @@
       "contract": "Apply the autocorrect IDL setter canonical spelling/value branch to its autocorrect content attribute, using actual native set/remove hooks; its computed/inherited getter remains a separate native semantic query.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-autocorrect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9367,9 +9367,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-popover",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlPopover"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9381,9 +9381,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-popover",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlPopover"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9399,8 +9399,8 @@
           "path": "crates/surgeist-html/src/internal/values/interpretation.rs",
           "symbol": "nonnegative_integer"
         },
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -9416,8 +9416,8 @@
           "path": "crates/surgeist-html/src/internal/values/interpretation.rs",
           "symbol": "nonnegative_integer"
         },
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}
       ],
       "requirements": []
     },
@@ -9428,9 +9428,9 @@
       "contract": "Reflect null-namespace headingreset by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9441,9 +9441,9 @@
       "contract": "Reflect null-namespace headingreset by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9454,21 +9454,21 @@
       "contract": "Return the SameObject DOMStringMap view associated with this Element; its external family uses the source data-* name transformation, own-property hooks and native attribute writer rather than independent mutable values.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dataset",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/element.rs", "symbol": "attributes"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/element.rs", "symbol": "attributes"}
       ],
       "requirements": []
     },
     "HTMLOrSVGOrMathMLElement.nonce/get": {
       "kind": "native",
       "adapter": "htmlorsvgormathmlelement.nonce.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/element.rs", "symbol": "nonce"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/element.rs", "symbol": "nonce"}],
       "requirements": []
     },
     "HTMLOrSVGOrMathMLElement.nonce/set": {
       "kind": "native",
       "adapter": "htmlorsvgormathmlelement.nonce.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_nonce"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_nonce"}],
       "requirements": []
     },
     "HTMLOrSVGOrMathMLElement.autofocus/get": {
@@ -9478,9 +9478,9 @@
       "contract": "Reflect null-namespace autofocus by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9491,9 +9491,9 @@
       "contract": "Reflect null-namespace autofocus by content-attribute presence; true creates/preserves presence and false removes through the actual native attribute hooks.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#reflect",
       "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -9501,7 +9501,7 @@
       "kind": "native",
       "adapter": "htmlorsvgormathmlelement.tabindex.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics.rs", "symbol": "TabIndex"}
       ],
       "requirements": []
@@ -9512,7 +9512,7 @@
       "owner": "surgeist-html",
       "contract": "Reflect the converted long tabIndex setter as the source tabindex attribute spelling through the native attribute writer; getter processing uses the actual native TabIndex semantic query.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tabindex",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"}],
+      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"}],
       "requirements": []
     },
     "HTMLOrSVGOrMathMLElement.focus:0/call": {
@@ -9570,13 +9570,13 @@
     "HTMLTitleElement.text/get": {
       "kind": "native",
       "adapter": "htmltitleelement.text.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "visit_child_text_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "visit_child_text_with"}],
       "requirements": []
     },
     "HTMLTitleElement.text/set": {
       "kind": "native",
       "adapter": "htmltitleelement.text.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/compound.rs", "symbol": "set_text_content"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/compound.rs", "symbol": "set_text_content"}],
       "requirements": []
     },
     "HTMLBRElement.constructor:0/construct": {
@@ -9597,7 +9597,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9609,7 +9609,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9633,7 +9633,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9645,7 +9645,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9657,7 +9657,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9669,7 +9669,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9681,7 +9681,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9693,12 +9693,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -9710,7 +9710,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9722,7 +9722,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9734,7 +9734,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9746,7 +9746,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9770,7 +9770,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9782,7 +9782,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9806,7 +9806,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9818,7 +9818,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9842,7 +9842,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9854,7 +9854,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9878,7 +9878,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9890,12 +9890,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -9919,7 +9919,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9931,12 +9931,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -9960,7 +9960,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9972,7 +9972,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -9984,7 +9984,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -9996,7 +9996,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10008,7 +10008,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10020,7 +10020,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10032,7 +10032,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10044,7 +10044,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10068,7 +10068,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10080,7 +10080,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10104,7 +10104,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10116,7 +10116,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10140,7 +10140,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -10162,7 +10162,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10186,7 +10186,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -10208,7 +10208,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10220,7 +10220,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10232,7 +10232,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10256,7 +10256,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10268,7 +10268,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10280,7 +10280,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10292,12 +10292,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -10321,7 +10321,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10333,7 +10333,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10345,7 +10345,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10357,7 +10357,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10369,7 +10369,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10381,7 +10381,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10396,61 +10396,61 @@
     "HTMLMetaElement.name/get": {
       "kind": "native",
       "adapter": "htmlmetaelement.name.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "HTMLMetaElement.name/set": {
       "kind": "native",
       "adapter": "htmlmetaelement.name.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "HTMLMetaElement.httpEquiv/get": {
       "kind": "native",
       "adapter": "htmlmetaelement.httpequiv.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "HTMLMetaElement.httpEquiv/set": {
       "kind": "native",
       "adapter": "htmlmetaelement.httpequiv.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "HTMLMetaElement.content/get": {
       "kind": "native",
       "adapter": "htmlmetaelement.content.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "HTMLMetaElement.content/set": {
       "kind": "native",
       "adapter": "htmlmetaelement.content.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "HTMLMetaElement.media/get": {
       "kind": "native",
       "adapter": "htmlmetaelement.media.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "HTMLMetaElement.media/set": {
       "kind": "native",
       "adapter": "htmlmetaelement.media.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "HTMLMetaElement.obsolete.scheme/get": {
       "kind": "native",
       "adapter": "htmlmetaelement.scheme.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}],
       "requirements": []
     },
     "HTMLMetaElement.obsolete.scheme/set": {
       "kind": "native",
       "adapter": "htmlmetaelement.scheme.set",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}],
       "requirements": []
     },
     "HTMLSlotElement.constructor:0/construct": {
@@ -10471,7 +10471,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10483,7 +10483,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10495,12 +10495,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "path": "crates/surgeist-dom/src/internal/slot/read.rs",
           "symbol": "visit_assigned_nodes_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "path": "crates/surgeist-dom/src/internal/slot/read.rs",
           "symbol": "visit_flattened_slottables_with"
         }
       ],
@@ -10512,12 +10512,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "path": "crates/surgeist-dom/src/internal/slot/read.rs",
           "symbol": "visit_assigned_nodes_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/slot/read.rs",
+          "path": "crates/surgeist-dom/src/internal/slot/read.rs",
           "symbol": "visit_flattened_slottables_with"
         }
       ],
@@ -10529,7 +10529,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "assign_slot_with"
         }
       ],
@@ -10545,14 +10545,14 @@
       "kind": "native",
       "adapter": "htmltemplateelement.content.get",
       "result_view": "live",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/template.rs", "symbol": "content_fragment_with"}],
+      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/template.rs", "symbol": "content_fragment_with"}],
       "requirements": []
     },
     "HTMLTemplateElement.htmlFor/get": {
       "kind": "native",
       "adapter": "htmltemplateelement.htmlfor.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -10560,7 +10560,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.htmlfor.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },
@@ -10568,7 +10568,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootmode.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "template_shadow_root_mode_keyword_with"}
       ],
       "requirements": []
@@ -10577,7 +10577,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootmode.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },
@@ -10585,7 +10585,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootdelegatesfocus.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -10593,8 +10593,8 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootdelegatesfocus.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute_ns"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
       ],
       "requirements": []
     },
@@ -10602,7 +10602,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootserializable.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -10610,8 +10610,8 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootserializable.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute_ns"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
       ],
       "requirements": []
     },
@@ -10619,7 +10619,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootslotassignment.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/bounded/attributes.rs", "symbol": "template_shadow_root_slot_assignment_keyword_with"}
       ],
       "requirements": []
@@ -10628,7 +10628,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootslotassignment.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },
@@ -10636,7 +10636,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootclonable.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -10644,8 +10644,8 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootclonable.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute_ns"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
       ],
       "requirements": []
     },
@@ -10653,7 +10653,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootcustomelementregistry.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
       ],
       "requirements": []
     },
@@ -10661,7 +10661,7 @@
       "kind": "native",
       "adapter": "htmltemplateelement.shadowrootcustomelementregistry.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute_ns"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
       ],
       "requirements": []
     },
@@ -10685,9 +10685,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-contenteditable",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlContentEditable"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -10699,9 +10699,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-contenteditable",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlContentEditable"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -10713,9 +10713,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-enterkeyhint",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlEnterKeyHint"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -10727,9 +10727,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-enterkeyhint",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlEnterKeyHint"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -10737,7 +10737,7 @@
       "kind": "native",
       "adapter": "elementcontenteditable.iscontenteditable.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/semantic.rs", "symbol": "query"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
         {
           "owner": "surgeist-html-semantics",
           "path": "crates/surgeist-html-semantics/src/semantics.rs",
@@ -10754,9 +10754,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-inputmode",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlInputMode"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -10768,9 +10768,9 @@
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-inputmode",
       "inputs": [
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/attributes.rs", "symbol": "HtmlInputMode"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "set_attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/source.rs", "symbol": "remove_attribute"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute"}
       ],
       "requirements": []
     },
@@ -10862,7 +10862,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10874,12 +10874,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -10891,7 +10891,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -10913,7 +10913,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10925,7 +10925,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10937,7 +10937,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -10949,7 +10949,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -10961,12 +10961,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -10990,7 +10990,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -11002,12 +11002,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -11019,7 +11019,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -11031,7 +11031,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         }
       ],
@@ -11055,7 +11055,7 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         }
       ],
@@ -11067,12 +11067,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
         }
       ],
@@ -11084,12 +11084,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11104,7 +11104,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -11121,12 +11121,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11141,7 +11141,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
@@ -11158,12 +11158,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11178,7 +11178,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -11195,12 +11195,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11215,7 +11215,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
@@ -11232,12 +11232,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11252,7 +11252,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -11269,12 +11269,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11289,7 +11289,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
@@ -11306,12 +11306,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11326,7 +11326,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -11343,12 +11343,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11363,7 +11363,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {
@@ -11380,12 +11380,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11400,7 +11400,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/attr.rs",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
           "symbol": "get_null_namespace_attribute_with"
         },
         {
@@ -11417,12 +11417,12 @@
       "producers": [
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "document_element_with"
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/snapshot.rs",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
           "symbol": "children"
         },
         {
@@ -11437,7 +11437,7 @@
         },
         {
           "owner": "surgeist-dom",
-          "path": "crates/surgeist-dom/src/source.rs",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "set_attribute_ns"
         },
         {

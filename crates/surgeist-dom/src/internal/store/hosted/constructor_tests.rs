@@ -1,0 +1,636 @@
+//! Actual constructor formation and original policy/operation custody. No
+//! external agent, Global or completed hosted Document is fabricated here.
+use super::*;
+use crate::internal::document::{HostedDocumentInputData, HostedDocumentInputs};
+use surgeist_html::values::DocumentString;
+use surgeist_html_semantics::HtmlBaseUrlRecord;
+
+fn cancel() -> AtomicBool {
+    AtomicBool::new(false)
+}
+fn limits(bytes: usize, scratch: usize, work: u64) -> DomHostedLimits {
+    DomHostedLimits::new(
+        DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+        bytes,
+        scratch,
+        work,
+    )
+}
+fn prepared_top_level() -> (Dom, DomHostedSource, Option<DomHostedPreparedTopLevel>) {
+    let c = cancel();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            64,
+            0,
+            0,
+            16,
+            4_000_000,
+            crate::internal::name_limits::DomNameLimits::new(
+                16_777_216, 16_384, 4_000_000, 1_048_576,
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut source = dom
+        .register_hosted_source(limits(8_000_000, 8_000_000, 1_000_000), &c)
+        .unwrap();
+    let host = source.issue_host(&c).unwrap();
+    let mut prefix = Some(source.prepare_top_level(host, &c).unwrap());
+    let prepared = Some(source.seal_top_level(&mut prefix, &c).unwrap());
+    (dom, source, prepared)
+}
+
+#[test]
+fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() {
+    let c = cancel();
+    let (row_backing, issuer_scratch) = {
+        let (dom, source, prepared) = prepared_top_level();
+        let work = &prepared.as_ref().unwrap().preparation.work;
+        let credit = source.retain(size_of::<Operation>(), &c).unwrap();
+        let bank = dom
+            .hosted_operations
+            .prepare(
+                source.next_operation_slot(work, &c).unwrap(),
+                work,
+                &source,
+                0,
+                None,
+                operations::BodyCredit::Owned(credit),
+                operations::Projection::default(),
+                &c,
+            )
+            .unwrap();
+        (
+            bank.inspect_new_storage_bytes(),
+            source.next_operation_reservation_scratch_bytes_for_fixture(),
+        )
+    };
+    // PreparedRows owns empty paths inline and their raw allocations out of line.
+    // Both the final Operation and the issuer reservation coexist with those
+    // paths at distinct real stages; their larger stage sets the exact peak.
+    let exact = size_of::<operations::PreparedRows>()
+        + row_backing
+        + size_of::<Operation>().max(issuer_scratch);
+    for allowance in [exact, exact - 1] {
+        let (mut dom, mut source, mut prepared) = prepared_top_level();
+        let limits_before = source.limits();
+        source
+            .set_limits(
+                limits(
+                    limits_before.retained_bytes(),
+                    allowance,
+                    limits_before.work(),
+                ),
+                &c,
+            )
+            .unwrap();
+        let work = prepared.as_ref().unwrap().preparation.work.clone();
+        let prefix = std::ptr::from_ref(prepared.as_ref().unwrap());
+        let retained = used(&source);
+        let source_revision = source.revision().unwrap();
+        let canonical_revision = dom.revision;
+        let reserved = dom.hosted_revisions;
+        let spent = work.spent.load(Ordering::Relaxed);
+        match dom.begin_hosted_top_level(&mut source, &mut prepared, &c) {
+            Ok(lease) if allowance == exact => {
+                assert!(prepared.is_none());
+                assert_eq!(dom.hosted_operations.inspect_storage_bytes(), row_backing);
+                let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(&dom).unwrap()
+                else {
+                    panic!("actual Policy operation")
+                };
+                assert!(Arc::ptr_eq(&request.request.work, &work));
+                source
+                    .observe()
+                    .validate(
+                        lease.operation.source,
+                        Role::Operation,
+                        lease.operation.slot,
+                        lease.operation.generation,
+                    )
+                    .unwrap();
+                assert_eq!(dom.revision, canonical_revision);
+                assert_eq!(dom.hosted_revisions, reserved + 5);
+                eprintln!(
+                    "exact Policy installation succeeded: operation_header={}, prepared_header={}, row_backing={row_backing}, issuer_scratch={issuer_scratch}, exact={exact}",
+                    size_of::<Operation>(),
+                    size_of::<operations::PreparedRows>()
+                );
+            }
+            Err(DomHostedError::Limit {
+                resource: DomHostedResource::ScratchBytes,
+                limit,
+            }) if allowance < exact && limit == allowance => {
+                assert_eq!(std::ptr::from_ref(prepared.as_ref().unwrap()), prefix);
+                assert_eq!(used(&source), retained);
+                assert_eq!(source.revision().unwrap(), source_revision);
+                assert_eq!(dom.revision, canonical_revision);
+                assert_eq!(dom.hosted_revisions, reserved);
+            }
+            Ok(lease) => panic!(
+                "one-short final Policy payload admitted: operation={:?}, operation_header={}, prepared_header={}, row_backing={row_backing}, issuer_scratch={issuer_scratch}, exact={exact}",
+                lease.operation,
+                size_of::<Operation>(),
+                size_of::<operations::PreparedRows>()
+            ),
+            Err(error) => panic!(
+                "Policy installation returned an unrelated error at allowance {allowance}: {error:?}"
+            ),
+        }
+        assert!(work.spent.load(Ordering::Relaxed) > spent);
+    }
+}
+fn fixture() -> (
+    Dom,
+    DomHostedSource,
+    DomHostedCreationLease,
+    Option<DomHostedPolicyPublication>,
+) {
+    fixture_with(|_| {})
+}
+
+fn fixture_with(
+    before_hosting: impl FnOnce(&mut Dom),
+) -> (
+    Dom,
+    DomHostedSource,
+    DomHostedCreationLease,
+    Option<DomHostedPolicyPublication>,
+) {
+    let c = cancel();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            64,
+            0,
+            0,
+            16,
+            4_000_000,
+            crate::internal::name_limits::DomNameLimits::new(
+                16_777_216, 16_384, 4_000_000, 1_048_576,
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    before_hosting(&mut dom);
+    let mut source = dom
+        .register_hosted_source(limits(8_000_000, 8_000_000, 1_000_000), &c)
+        .unwrap();
+    let host = source.issue_host(&c).unwrap();
+    let mut prefix = Some(source.prepare_top_level(host, &c).unwrap());
+    let mut prepared = Some(source.seal_top_level(&mut prefix, &c).unwrap());
+    let lease = dom
+        .begin_hosted_top_level(&mut source, &mut prepared, &c)
+        .unwrap();
+    let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(&dom).unwrap() else {
+        panic!("policy")
+    };
+    let publication = source
+        .seal_permissions_policy(
+            request,
+            DomInitialPermissionsPolicy::new(
+                DomPermissionsPolicyValue::Enabled,
+                DomPermissionsPolicyValue::Enabled,
+            ),
+            &c,
+        )
+        .unwrap();
+    (dom, source, lease, Some(publication))
+}
+
+#[test]
+fn incomplete_hosted_construction_refuses_before_consuming_observer_checkpoint() {
+    let c = cancel();
+    let (mut dom, mut source, mut lease, mut policy) = fixture_with(|dom| {
+        let limits =
+            crate::internal::child_list::DomChildListObservationLimits::new(1, 4, 4, 16).unwrap();
+        dom.set_limits(dom.limits().with_child_list_observation(limits))
+            .unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let document = dom.apply(setup, &c).unwrap().document(&document).unwrap();
+        let observer = dom.create_child_list_observer(&c).unwrap();
+        dom.observe_child_list(observer, document.node(), false, &c)
+            .unwrap();
+        let mut append = DomBatch::new();
+        let comment = append.create_comment(document, "pending observer delivery");
+        append.insert_before(&comment, document, None);
+        dom.apply(append, &c).unwrap();
+    });
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut policy, &c)
+        .unwrap();
+    let DomHostedCreationStep::NativeExecution(request) = lease.step(&dom).unwrap() else {
+        panic!("actual native construction request");
+    };
+    let global = source.issue_global(request, &c).unwrap();
+    let mut publication = Some(
+        source
+            .seal_native_execution(request, global, 100, &c)
+            .unwrap(),
+    );
+    lease
+        .accept_publication(&mut dom, &mut source, &mut publication, &c)
+        .unwrap();
+    let before = dom.snapshot();
+    assert!(before.incomplete_hosted_operation().is_some());
+    assert_eq!(dom.pending_native_tasks(), 1);
+    let limits = crate::internal::select::DomNativeCheckpointLimits::new(
+        1_000_000,
+        1_000_000,
+        crate::internal::slot::DomSlotQueryLimits::new(16, 16).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        dom.native_checkpoint_step(limits, &c).unwrap_err(),
+        DomError::SourceOperationPending
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.pending_native_tasks(), 1);
+    assert!(dom.has_pending_child_lists());
+    assert!(dom.child_list_turn.is_none());
+}
+fn used(source: &DomHostedSource) -> usize {
+    source.limits().retained_bytes() - source.remaining_bytes().unwrap()
+}
+
+#[test]
+fn complete_policy_receipt_preserves_independent_values_and_atomic_constructor_custody() {
+    use DomPermissionsPolicyValue::{Disabled, Enabled};
+    // This tests the original trusted policy-publication/constructor boundary,
+    // not Runtime's policy evaluator or a completed Window/focusing service.
+    for (fullscreen, focus) in [
+        (Enabled, Enabled),
+        (Enabled, Disabled),
+        (Disabled, Enabled),
+        (Disabled, Disabled),
+    ] {
+        let (mut dom, mut source, mut lease, _) = fixture();
+        let policy = DomInitialPermissionsPolicy::new(fullscreen, focus);
+        assert_eq!(policy.inherited_fullscreen(), fullscreen);
+        assert_eq!(policy.inherited_focus_without_user_activation(), focus);
+        assert_eq!(policy.profile(), DomInitialPermissionsPolicyProfile::FullscreenAndFocusWithoutUserActivationSelfOpaqueInitial);
+        let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(&dom).unwrap() else {
+            panic!("original Policy phase");
+        };
+        assert_eq!(request.profile(), policy.profile());
+        let mut publication = Some(
+            source
+                .seal_permissions_policy(request, policy, &cancel())
+                .unwrap(),
+        );
+        let stamp = dom.snapshot().stamp();
+        let revision = source.revision().unwrap();
+        assert_eq!(dom.hosted_operation(lease.operation).unwrap().policy, None);
+        assert_eq!(
+            lease.accept_permissions_policy(
+                &mut dom,
+                &mut source,
+                &mut publication,
+                &AtomicBool::new(true)
+            ),
+            Err(DomHostedError::Dom(DomError::Cancelled))
+        );
+        assert_eq!(publication.as_ref().unwrap().policy, policy);
+        assert_eq!(dom.hosted_operation(lease.operation).unwrap().policy, None);
+        assert_eq!(source.revision().unwrap(), revision);
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        lease
+            .accept_permissions_policy(&mut dom, &mut source, &mut publication, &cancel())
+            .unwrap();
+        assert!(publication.is_none());
+        assert_eq!(
+            dom.hosted_operation(lease.operation).unwrap().policy,
+            Some(policy)
+        );
+        assert_eq!(
+            lease.accept_permissions_policy(&mut dom, &mut source, &mut publication, &cancel()),
+            Err(DomHostedError::WrongPhase)
+        );
+        let DomHostedCreationStep::NativeExecution(request) = lease.step(&dom).unwrap() else {
+            panic!("actual constructor phase");
+        };
+        let global = source.issue_global(request, &cancel()).unwrap();
+        let mut execution = Some(
+            source
+                .seal_native_execution(request, global, 100, &cancel())
+                .unwrap(),
+        );
+        lease
+            .accept_publication(&mut dom, &mut source, &mut execution, &cancel())
+            .unwrap();
+        let DomHostedCreationStep::MakeActive(request) = lease.step(&dom).unwrap() else {
+            panic!("constructed, not yet active Document");
+        };
+        let document = request.document();
+        assert_eq!(
+            dom.snapshot()
+                .document(document)
+                .unwrap()
+                .focused_area_designation(),
+            crate::internal::document::DomFocusedAreaDesignation::KnownNull
+        );
+        assert_eq!(
+            dom.snapshot()
+                .document(document)
+                .unwrap()
+                .metadata()
+                .initial_permissions_policy(),
+            Some(policy)
+        );
+        let staged = Draft::new(&dom, Arc::new(BatchIdentity), &cancel()).unwrap();
+        assert_eq!(
+            staged.document_fully_active(staged.resolve(document.into()).unwrap(), &cancel()),
+            Err(DomError::HostedSourceUnavailable)
+        );
+    }
+}
+
+#[test]
+fn foreign_complete_policy_receipt_cannot_partially_install_either_feature() {
+    let (mut dom, mut source, mut lease, mut original) = fixture();
+    let (_other_dom, _other_source, _other_lease, mut foreign) = fixture();
+    let stamp = dom.snapshot().stamp();
+    let revision = source.revision().unwrap();
+    assert_eq!(
+        lease.accept_permissions_policy(&mut dom, &mut source, &mut foreign, &cancel()),
+        Err(DomHostedError::WrongPhase)
+    );
+    assert!(foreign.is_some());
+    assert!(original.is_some());
+    assert_eq!(dom.hosted_operation(lease.operation).unwrap().policy, None);
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(source.revision().unwrap(), revision);
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut original, &cancel())
+        .unwrap();
+    assert!(original.is_none());
+    assert_eq!(
+        dom.hosted_operation(lease.operation).unwrap().policy,
+        Some(DomInitialPermissionsPolicy::new(
+            DomPermissionsPolicyValue::Enabled,
+            DomPermissionsPolicyValue::Enabled
+        ))
+    );
+}
+
+#[test]
+fn incomplete_and_expired_constructor_authority_never_substitutes_false_for_activity() {
+    // Exercise the canonical issuer/constructor boundary, not a claim that a
+    // Runtime Global or completed initial entry has been constructed. Every
+    // phase below is reached through the original request/publication owner.
+    let c = cancel();
+    let (mut dom, mut source, mut lease, mut policy) = fixture();
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut policy, &c)
+        .unwrap();
+    let DomHostedCreationStep::NativeExecution(request) = lease.step(&dom).unwrap() else {
+        panic!("actual constructor execution request")
+    };
+    let global = source.issue_global(request, &c).unwrap();
+    let mut execution = Some(
+        source
+            .seal_native_execution(request, global, 100, &c)
+            .unwrap(),
+    );
+    lease
+        .accept_publication(&mut dom, &mut source, &mut execution, &c)
+        .unwrap();
+    assert!(execution.is_none());
+    let DomHostedCreationStep::MakeActive(request) = lease.step(&dom).unwrap() else {
+        panic!("actual constructed Document awaiting make-active")
+    };
+    let document = request.document();
+    let draft = Draft::new(&dom, Arc::new(BatchIdentity), &c).unwrap();
+    let key = draft.resolve(document.into()).unwrap();
+    let metadata = draft.document_metadata(key).unwrap();
+    let origin = metadata.origin().clone();
+    let environment = metadata.document_environment();
+    let association = environment.hosted.as_ref().unwrap();
+    assert_eq!(association.global, global);
+    assert!(matches!(association.phase, DocumentPhase::Constructed));
+    assert!(association.validate_current().is_ok());
+    assert_eq!(
+        association.validate_live(),
+        Err(DomHostedError::IncompleteOperation)
+    );
+    assert_eq!(
+        draft.document_fully_active(key, &c),
+        Err(DomError::HostedSourceUnavailable)
+    );
+    assert_eq!(
+        dom.apply(DomBatch::new(), &c).unwrap_err(),
+        DomError::SourceOperationPending
+    );
+    let stamp = dom.snapshot().stamp();
+    drop(source);
+    assert_eq!(
+        association.validate_current(),
+        Err(DomHostedError::SourceExpired)
+    );
+    assert_eq!(
+        draft.document_fully_active(key, &c),
+        Err(DomError::HostedSourceUnavailable)
+    );
+    let retained = draft.document_metadata(key).unwrap();
+    assert_eq!(retained.origin(), &origin);
+    assert_eq!(
+        retained.document_environment().input_platform(),
+        environment.input_platform()
+    );
+    assert_eq!(
+        retained
+            .document_environment()
+            .hosted
+            .as_ref()
+            .unwrap()
+            .global,
+        global
+    );
+    assert_eq!(
+        dom.apply(DomBatch::new(), &c).unwrap_err(),
+        DomError::SourceOperationPending
+    );
+    assert_eq!(dom.snapshot().stamp(), stamp);
+}
+fn expected_payload() -> usize {
+    // The producer owns the record's private extent; the caller owns exactly
+    // this immutable payload header. No private URL layout is copied here.
+    let url = DocumentString::from_utf16(vec![97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107]);
+    size_of::<HostedDocumentInputData>()
+        + HtmlBaseUrlRecord::observed_storage_usage(&url)
+            .unwrap()
+            .retained_bytes()
+}
+#[test]
+fn hosted_constructor_requested_and_actual_byte_refusals_keep_policy_and_release_candidate() {
+    let (mut dom, mut source, mut lease, mut publication) = fixture();
+    let base = used(&source);
+    let policy_address = std::ptr::from_ref(publication.as_ref().unwrap());
+    let work = dom
+        .hosted_operation(lease.operation)
+        .unwrap()
+        .request()
+        .work
+        .clone();
+    let requested_string = size_of::<Vec<u16>>() + 11 * size_of::<u16>();
+    let requested = size_of::<HostedDocumentInputData>() + requested_string;
+    let actual = expected_payload();
+    assert!(actual > requested);
+    for allowance in [requested - 1, actual - 1] {
+        source
+            .set_limits(limits(base + allowance, 8_000_000, 1_000_000), &cancel())
+            .unwrap();
+        let revision = source.revision().unwrap();
+        let spent = work.spent.load(Ordering::Relaxed);
+        assert!(
+            matches!(lease.accept_permissions_policy(&mut dom,&mut source,&mut publication,&cancel()),
+            Err(DomHostedError::Limit { resource: DomHostedResource::RetainedBytes,limit }) if limit==base+allowance)
+        );
+        assert_eq!(used(&source), base);
+        assert_eq!(source.revision().unwrap(), revision);
+        assert!(work.spent.load(Ordering::Relaxed) > spent);
+        assert_eq!(
+            std::ptr::from_ref(publication.as_ref().unwrap()),
+            policy_address
+        );
+        assert!(matches!(
+            lease.step(&dom).unwrap(),
+            DomHostedCreationStep::PermissionsPolicy(_)
+        ));
+        assert!(Arc::ptr_eq(
+            &work,
+            &dom.hosted_operation(lease.operation)
+                .unwrap()
+                .request()
+                .work
+        ));
+    }
+    source
+        .set_limits(limits(base + actual, 8_000_000, 1_000_000), &cancel())
+        .unwrap();
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut publication, &cancel())
+        .unwrap();
+    assert!(publication.is_none());
+    assert_eq!(used(&source), base + actual);
+    let DomHostedCreationStep::NativeExecution(request) = lease.step(&dom).unwrap() else {
+        panic!("execution")
+    };
+    let url = request.creation_url().clone();
+    let encoding = request.base_document_facts().encoding().unwrap().clone();
+    assert_eq!(
+        url.serialization().code_units(),
+        [97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107]
+    );
+    assert_eq!(request.top_level_creation_url(), &url);
+    assert!(!request.base_document_facts().iframe_srcdoc());
+    assert!(matches!(
+        request.base_document_facts().about_base_url(),
+        surgeist_html_semantics::HtmlAboutBaseUrl::KnownNull
+    ));
+    assert_eq!(
+        request.opener_policy().value(),
+        surgeist_html::security::opener_policy::HtmlOpenerPolicyValue::UnsafeNone
+    );
+    assert_eq!(
+        request.opener_policy().report_only_value(),
+        surgeist_html::security::opener_policy::HtmlOpenerPolicyValue::UnsafeNone
+    );
+    assert!(request.opener_policy().reporting_endpoint().is_none());
+    assert!(
+        request
+            .opener_policy()
+            .report_only_reporting_endpoint()
+            .is_none()
+    );
+    let DomHostedCreationStep::NativeExecution(retry) = lease.step(&dom).unwrap() else {
+        panic!("same request")
+    };
+    assert_eq!(retry.creation_url(), &url);
+    assert_eq!(retry.base_document_facts().encoding(), Some(&encoding));
+    assert!(Arc::ptr_eq(&work, &retry.request.work));
+}
+#[test]
+fn hosted_constructor_cancellation_preserves_original_policy_and_work() {
+    let (mut dom, mut source, mut lease, mut publication) = fixture();
+    let bytes = used(&source);
+    let revision = source.revision().unwrap();
+    let work = dom
+        .hosted_operation(lease.operation)
+        .unwrap()
+        .request()
+        .work
+        .clone();
+    let spent = work.spent.load(Ordering::Relaxed);
+    let cancelled = AtomicBool::new(true);
+    assert_eq!(
+        lease.accept_permissions_policy(&mut dom, &mut source, &mut publication, &cancelled),
+        Err(DomHostedError::Dom(DomError::Cancelled))
+    );
+    assert!(publication.is_some());
+    assert_eq!(used(&source), bytes);
+    assert_eq!(source.revision().unwrap(), revision);
+    assert_eq!(work.spent.load(Ordering::Relaxed), spent);
+    assert!(matches!(
+        lease.step(&dom).unwrap(),
+        DomHostedCreationStep::PermissionsPolicy(_)
+    ));
+    lease
+        .accept_permissions_policy(&mut dom, &mut source, &mut publication, &cancel())
+        .unwrap();
+    assert!(publication.is_none());
+}
+#[test]
+fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph() {
+    let (dom, mut source, lease, _publication) = fixture();
+    let work = dom
+        .hosted_operation(lease.operation)
+        .unwrap()
+        .request()
+        .work
+        .clone();
+    let origin = dom
+        .hosted_operation(lease.operation)
+        .unwrap()
+        .origin
+        .clone();
+    let base = used(&source);
+    let scratch = size_of::<ConstructorFormation>() + expected_payload();
+    source
+        .set_limits(limits(8_000_000, scratch - 1, 1_000_000), &cancel())
+        .unwrap();
+    assert!(
+        matches!(HostedDocumentInputs::form(&source,&work,&origin,&cancel()),
+        Err(DomHostedError::Limit { resource: DomHostedResource::ScratchBytes,limit }) if limit==scratch-1)
+    );
+    assert_eq!(used(&source), base);
+    source
+        .set_limits(limits(8_000_000, scratch, 1_000_000), &cancel())
+        .unwrap();
+    let before = work.spent.load(Ordering::Relaxed);
+    let inputs = HostedDocumentInputs::form(&source, &work, &origin, &cancel()).unwrap();
+    let cost = work.spent.load(Ordering::Relaxed) - before;
+    assert_eq!(cost, 13); // entry + eleven literal UTF16 writes + observation
+    assert_eq!(used(&source), base + expected_payload());
+    drop(inputs);
+    assert_eq!(used(&source), base);
+    for allowance in 0..cost {
+        let before = work.spent.load(Ordering::Relaxed);
+        source
+            .set_limits(limits(8_000_000, scratch, before + allowance), &cancel())
+            .unwrap();
+        assert!(
+            matches!(HostedDocumentInputs::form(&source,&work,&origin,&cancel()),Err(DomHostedError::WorkLimit { limit }) if limit==before+allowance)
+        );
+        assert_eq!(used(&source), base);
+        assert_eq!(work.spent.load(Ordering::Relaxed), before + allowance);
+    }
+}

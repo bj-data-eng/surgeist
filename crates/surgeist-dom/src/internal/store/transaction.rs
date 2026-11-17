@@ -1,0 +1,384 @@
+//! Sparse transaction machinery. Canonical storage remains immutable; journal
+//! holders retain only values needed by live rollback marks.
+
+pub(in crate::internal::store) mod auxiliary;
+mod capture;
+pub(in crate::internal::store) mod controls;
+pub(in crate::internal::store) mod counted_relations;
+mod counts;
+mod discovery;
+pub(in crate::internal::store) mod exact_forest;
+pub(in crate::internal::store) mod family_discovery;
+mod feature_fields;
+mod fields;
+pub(in crate::internal::store) mod inbound;
+mod journal;
+pub(in crate::internal::store) mod names;
+mod native;
+pub(in crate::internal::store) mod nodes;
+pub(in crate::internal::store) mod ordered_members;
+mod projection;
+mod publication;
+pub(in crate::internal::store) mod queues;
+pub(in crate::internal::store) mod ranges;
+mod records;
+mod relation_capture;
+pub(in crate::internal::store) mod role_facts;
+mod sequence;
+pub(in crate::internal::store) mod slot_index;
+pub(in crate::internal::store) mod slot_names;
+pub(in crate::internal::store) mod staged;
+
+pub(in crate::internal::store) use capture::{StateCustody, StateFrontiers};
+pub(in crate::internal::store) use counts::Counts;
+pub(in crate::internal::store) use journal::{Journal, Mark, Observation as JournalObservation};
+pub(in crate::internal::store) use names::Names;
+#[cfg(test)]
+pub(in crate::internal::store) use records::NamesRead;
+pub(in crate::internal::store) use records::{
+    AttributeRead, AutofocusRead, ElementRead, InteractiveRead, KindRead, NodeRead,
+};
+#[cfg(test)]
+pub(crate) use sequence::CopyObservation;
+pub(in crate::internal::store) use sequence::{Sequence, SequenceUndo, SequenceView};
+
+use std::sync::Arc;
+
+use super::{DomStamp, State, bank, custody};
+
+#[derive(Clone, Copy)]
+pub(in crate::internal::store) struct NodeChange<'a> {
+    pub key: super::Key,
+    pub before: Option<NodeRead<'a>>,
+    pub after: Option<NodeRead<'a>>,
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::internal::store) struct RelationChange<'a> {
+    pub owner: super::Key,
+    pub field: RelationField,
+    pub before: SequenceView<'a, super::NodeId, super::Key>,
+    pub index: usize,
+    pub removed: usize,
+    pub added: &'a [super::Key],
+}
+
+/// Proof of the actual canonical publication fence. It contains no root,
+/// snapshot, debit or execution authority beyond that completed publication.
+#[derive(Debug)]
+pub(in crate::internal::store) struct PublicationCommitted {
+    _private: (),
+}
+
+impl PublicationCommitted {
+    pub(super) fn at_fence() -> Self {
+        Self { _private: () }
+    }
+}
+
+pub(in crate::internal::store) struct PreparedRebase {
+    pub(super) inline_recording: Option<super::inline_style::recording::Recording>,
+    pub(super) state: Arc<State>,
+    pub(super) custody: StateCustody,
+    pub(super) stamp: DomStamp,
+    pub(super) journal: journal::Commit<Undo>,
+    pub(super) ids: super::source::AllocationIds,
+    pub(super) signal_ack: Option<queues::QueueAck<super::Key, super::NodeId>>,
+    pub(super) native_ack:
+        Option<queues::QueueAck<super::select::Pending, super::select::Task<super::NodeId>>>,
+    pub(super) details_ack: Option<
+        queues::QueueAck<
+            super::details::Pending<super::Key>,
+            crate::internal::details::DomDetailsToggleIntention,
+        >,
+    >,
+    pub(super) transition_ack: super::view_transition::TransitionAck,
+}
+
+pub(in crate::internal::store) type JournalMark = Mark<Undo>;
+
+#[expect(
+    clippy::large_enum_variant,
+    reason = "The admitted journal backing owns inverse headers inline; boxing adds a fallible allocation and separate custody to each mandatory inverse"
+)]
+pub(in crate::internal::store) enum Undo {
+    Source(super::source::ControlUndo),
+    Image(super::image::Undo),
+    Controls(controls::ControlUndo),
+    Slots(slot_index::SlotUndo),
+    Inline(super::inline_style::recording::Recording),
+    SlotNames(slot_names::Undo),
+    Families(family_discovery::FamilyUndo),
+    Roles(role_facts::Undo),
+    Containers(super::hosted::containers::ContainerUndo),
+    TicketsLength(usize),
+    TicketsCapacity(custody::Held<Vec<super::NodeTicket>>),
+    RetirementsLength(usize),
+    RetirementsCapacity(custody::Held<Vec<(super::NodeId, super::Key)>>),
+    Range(ranges::RangeUndo),
+    NodeIterators(super::node_iterator::IteratorUndo),
+    ChildList(super::child_list::Undo),
+    Transition(super::view_transition::TransitionUndo),
+    Inbound(inbound::InboundUndo),
+    CreatedMaterialized {
+        index: usize,
+    },
+    CreatedDirty {
+        before: bank::Bank<bool>,
+        custody: bank::BankCustody<bool>,
+    },
+    Queue(queues::QueueUndo),
+    Privacy {
+        before: super::source::Privacy,
+        nodes: usize,
+        units: usize,
+        counts: Counts,
+    },
+    Retired {
+        key: super::Key,
+        old: super::DraftNode,
+        counts: Counts,
+        nodes: usize,
+        units: usize,
+        private_nodes: usize,
+        private_units: usize,
+        private_counts: Counts,
+    },
+    Created {
+        len: usize,
+        counts: Counts,
+        nodes: usize,
+        units: usize,
+    },
+    Selected {
+        key: super::Key,
+        old: fields::FieldUndo,
+        counts: Counts,
+        units: usize,
+        private_units: usize,
+        private_counts: Counts,
+    },
+    Relations {
+        key: super::Key,
+        field: RelationField,
+        inverse: SequenceUndo<super::NodeId, super::Key>,
+        counts: Counts,
+        private_counts: Counts,
+    },
+    FullscreenEvents {
+        key: super::Key,
+        inverse: SequenceUndo<
+            crate::internal::fullscreen::DomFullscreenEvent,
+            crate::internal::fullscreen::DomFullscreenEvent,
+        >,
+        counts: Counts,
+        private_counts: Counts,
+    },
+    Materialized {
+        before: bank::Bank<usize>,
+        custody: bank::BankCustody<usize>,
+        records: usize,
+    },
+    ArenaCapacity {
+        old: Vec<Option<super::DraftNode>>,
+        debit: custody::Debit,
+    },
+    CreatedCapacity {
+        old: Vec<Option<super::DraftNode>>,
+        debit: custody::Debit,
+    },
+}
+
+impl Undo {
+    pub(super) fn restore(self, draft: &mut super::Draft) {
+        match self {
+            Self::Source(undo) => undo.restore(draft),
+            Self::Image(undo) => undo.restore(draft),
+            Self::Controls(undo) => undo.restore(draft),
+            Self::Slots(undo) => undo.restore(draft),
+            Self::Inline(before) => draft.inline_recording = Some(before),
+            Self::SlotNames(undo) => undo.restore(&mut draft.slot_names),
+            Self::Families(undo) => undo.restore(&mut draft.families),
+            Self::Roles(undo) => undo.restore(&mut draft.role_facts),
+            Self::Containers(undo) => undo.restore(&mut draft.containers),
+            Self::NodeIterators(undo) => undo.restore(draft),
+            Self::ChildList(undo) => undo.restore(draft),
+            Self::TicketsLength(len) => draft.tickets.truncate(len),
+            Self::TicketsCapacity(before) => {
+                let (values, debit) = before.into_parts();
+                drop(std::mem::replace(&mut draft.tickets, values));
+                draft.tickets_charge = debit;
+            }
+            Self::RetirementsLength(len) => draft.dispatch_retirements.truncate(len),
+            Self::RetirementsCapacity(before) => {
+                let (values, debit) = before.into_parts();
+                drop(std::mem::replace(&mut draft.dispatch_retirements, values));
+                draft.dispatch_retirements_charge = debit;
+            }
+            Self::Range(undo) => undo.restore(draft),
+            Self::Transition(undo) => undo.restore(draft),
+            Self::Inbound(old) => {
+                draft.inbound = old;
+            }
+            Self::CreatedMaterialized { index } => {
+                draft.created[index] = None;
+            }
+            Self::CreatedDirty { before, custody } => {
+                draft.created_dirty = before;
+                draft.created_dirty_custody = custody;
+            }
+            Self::Queue(undo) => undo.restore(draft),
+            Self::Privacy {
+                before,
+                nodes,
+                units,
+                counts,
+            } => {
+                draft
+                    .phase_map
+                    .as_mut()
+                    .expect("Source privacy inverse")
+                    .private = before;
+                draft.private_nodes = nodes;
+                draft.private_units = units;
+                draft.private_counts = counts;
+            }
+            Self::Retired {
+                key,
+                old,
+                counts,
+                nodes,
+                units,
+                private_nodes,
+                private_units,
+                private_counts,
+            } => {
+                match key {
+                    super::Key::Existing(id) => {
+                        draft.records[*draft
+                            .existing
+                            .get(id.slot)
+                            .expect("retirement inverse index")] = Some(old)
+                    }
+                    super::Key::Created(index) => draft.created[index] = Some(old),
+                };
+                draft.counts = counts;
+                draft.nodes = nodes;
+                draft.units = units;
+                draft.private_nodes = private_nodes;
+                draft.private_units = private_units;
+                draft.private_counts = private_counts;
+            }
+            Self::Created {
+                len,
+                counts,
+                nodes,
+                units,
+            } => {
+                draft.created.truncate(len);
+                draft.counts = counts;
+                draft.nodes = nodes;
+                draft.units = units;
+            }
+            Self::Selected {
+                key,
+                old,
+                counts,
+                units,
+                private_units,
+                private_counts,
+            } => {
+                old.restore(draft.private_node_mut(key));
+                draft.counts = counts;
+                draft.units = units;
+                draft.private_units = private_units;
+                draft.private_counts = private_counts;
+            }
+            Self::Relations {
+                key,
+                field,
+                inverse,
+                counts,
+                private_counts,
+            } => {
+                draft
+                    .private_node_mut(key)
+                    .relation_mut(field)
+                    .restore(inverse);
+                draft.counts = counts;
+                draft.private_counts = private_counts;
+            }
+            Self::FullscreenEvents {
+                key,
+                inverse,
+                counts,
+                private_counts,
+            } => {
+                draft
+                    .private_node_mut(key)
+                    .fullscreen_sequence_mut()
+                    .restore(inverse);
+                draft.counts = counts;
+                draft.private_counts = private_counts;
+            }
+            Self::Materialized {
+                before,
+                custody,
+                records,
+            } => {
+                draft.records.truncate(records);
+                draft.existing = before;
+                draft.existing_custody = custody;
+            }
+            Self::ArenaCapacity { mut old, debit } => {
+                old.append(&mut draft.records);
+                draft.records = old;
+                draft.records_charge = debit;
+            }
+            Self::CreatedCapacity { mut old, debit } => {
+                old.append(&mut draft.created);
+                draft.created = old;
+                draft.created_charge = debit;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::internal::store) enum RelationField {
+    Children,
+    ManualNodes,
+    AssignedNodes,
+    RenderBlocking,
+    AutofocusCandidates,
+    OpenDialogs,
+    TopLayer,
+    PendingTopLayerRemovals,
+}
+
+#[cfg(test)]
+impl Undo {
+    pub(super) fn journal_bytes(&self) -> usize {
+        match self {
+            Self::Source(undo) => undo.journal_bytes(),
+            Self::Image(undo) => undo.journal_bytes(),
+            Self::Controls(undo) => undo.journal_bytes(),
+            Self::Slots(undo) => undo.journal_bytes(),
+            Self::Families(undo) => undo.journal_bytes(),
+            Self::Roles(_) | Self::Containers(_) | Self::SlotNames(_) => 0,
+            Self::Range(undo) => undo.journal_bytes(),
+            Self::Transition(undo) => undo.journal_bytes(),
+            Self::Queue(undo) => undo.journal_bytes(),
+            Self::TicketsCapacity(old) => old.debit().usage().bytes(),
+            Self::RetirementsCapacity(old) => old.debit().usage().bytes(),
+            Self::Selected { old, .. } => old.journal_bytes(),
+            Self::ArenaCapacity { debit, .. } | Self::CreatedCapacity { debit, .. } => {
+                debit.usage().bytes()
+            }
+            Self::Relations { inverse, .. } => inverse.journal_bytes(),
+            Self::FullscreenEvents { inverse, .. } => inverse.journal_bytes(),
+            Self::Retired { old, .. } => old.journal_bytes(),
+            _ => 0,
+        }
+    }
+}
