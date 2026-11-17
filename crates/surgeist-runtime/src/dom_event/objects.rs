@@ -57,16 +57,20 @@ pub enum DomEventTimestampUnavailable {
 }
 impl std::fmt::Display for DomEventTimestampUnavailable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use surgeist_dom::event::DomSourceEventClockFailure as Failure;
         f.write_str(match self {
             Self::NoAuthenticatedClock => "authenticated Event creation clock unavailable",
-            Self::Provider(Failure::Unavailable) => "original Event creation clock unavailable",
-            Self::Provider(Failure::Regressed) => "original Event creation clock regressed",
-            Self::Provider(Failure::Overflow) => "original Event creation clock overflowed",
+            Self::Provider(_) => "the original Event creation clock refused its firing observation",
         })
     }
 }
-impl std::error::Error for DomEventTimestampUnavailable {}
+impl std::error::Error for DomEventTimestampUnavailable {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NoAuthenticatedClock => None,
+            Self::Provider(failure) => Some(failure),
+        }
+    }
+}
 
 /// Event and EventTarget construction preserves the actual hosted or storage refusal.
 #[derive(Debug)]
