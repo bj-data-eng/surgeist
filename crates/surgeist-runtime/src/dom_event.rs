@@ -329,10 +329,10 @@ impl std::fmt::Display for DomEventDispatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Dom(_) => f.write_str(
-                "canonical identity or source validation refused the native DOM event dispatch",
+                "the canonical DOM refused the native DOM event dispatch",
             ),
             Self::Hosted(_) => f.write_str(
-                "the hosted source or Global association of the native DOM event could not be qualified",
+                "the hosted source or Global state refused the native DOM event dispatch",
             ),
             Self::Admission(resource) => write!(
                 f,
