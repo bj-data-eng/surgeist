@@ -559,7 +559,8 @@ sheet through the Source driver.
 
 Configure the shared element-task owner's aggregate count, storage and cumulative
 work through `DomSessionLimits::element_tasks`. Each `run_next` selects
-`DomElementTaskSourceKind::DomManipulation` or `UserInteraction` and receives
+`surgeist_dom::task::DomElementTaskSourceKind::DomManipulation` or
+`UserInteraction` and receives
 explicit `DomElementTaskRunLimits`: dispatcher limits bound event delivery, and
 Source limits bound canonical cleanup. Selection preserves FIFO within that
 source; physical bank order promises no ordering between sources. Filtering
