@@ -412,21 +412,17 @@ impl CssomBatch {
         };
         let rules = self.staged.list(&self.limits)?;
         let media = self.staged.media_list(inputs.media.clone(), &self.limits)?;
+        let mut adoption = self.staged.adoption(&self.limits);
         for rule in authored.rules() {
             if inputs.constructed && matches!(rule, CssRule::Import(_)) {
                 continue;
             }
-            let child = self.staged.adopt(
+            let child = adoption.adopt(
                 CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Sheet(id.clone()),
                 1,
-                &self.limits,
             )?;
-            self.staged
-                .lists
-                .get_mut(&rules)
-                .expect("new list")
-                .push(child);
+            adoption.push_child(&rules, child);
         }
         let namespaces = CssNamespaceContext::from_sheet(&authored);
         self.staged.sheets.insert(
@@ -779,15 +775,15 @@ impl CssomBatch {
             self.affect(CssomObjectId::Rule(id), &[CssomChange::Ancestry]);
         }
         let mut children = Vec::new();
+        let mut adoption = self.staged.adoption(&self.limits);
         for rule in authored.rules() {
             if matches!(rule, CssRule::Import(_)) {
                 continue;
             }
-            children.push(self.staged.adopt(
+            children.push(adoption.adopt(
                 CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Sheet(id.clone()),
                 1,
-                &self.limits,
             )?);
         }
         self.staged.lists.insert(list, children);

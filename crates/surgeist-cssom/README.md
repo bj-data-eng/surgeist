@@ -639,16 +639,21 @@ support decisions, atomic failures and owning captures after store drop.
 ## Benchmarks
 
 `benches/store_edits.rs` times, in a release build, creating a parsed sheet of
-100, 1 000 and 10 000 style rules in a store and committing it, and committing
-one `set_disabled` edit to a store that holds the sheet, over fewer rounds for
-the larger sizes. It prints the rounds, the median, minimum and maximum time of
-one call, the time per rule for creation, the input bytes, the rule count, which
-each creation checks against the committed snapshot, and, for the two smaller
-sizes, the smallest `max_objects`, `max_entries` and `max_string_bytes` at which
-creation still succeeds. The state census runs once per adopted rule, so
-creation grows faster than linearly; the table lists 100 000 rules as an
-estimate from the growth between the two largest measured sizes. The limits are
-raised so that every size is admitted.
+100, 1 000, 10 000 and 100 000 style rules in a store and committing it, and
+committing one `set_disabled` edit to a store that holds the sheet, over fewer
+rounds for the larger sizes. It prints the rounds, the median, minimum and
+maximum time of one call, the time per rule for creation, the input bytes, the
+rule count, which each creation checks against the committed snapshot, and, for
+the two smaller sizes, the smallest `max_objects`, `max_entries` and
+`max_string_bytes` at which creation still succeeds. The limits are raised so
+that every size is admitted.
+
+Adoption checks the limits after each adopted rule. The first check of an
+adoption is the census of the whole state; each later check extends that census
+with the objects the rule inserted, so creating a sheet costs time in proportion
+to its rules. The census of the whole state also runs once at the end of each
+operation and once at commit, so an edit costs time in proportion to the rules
+the store retains. The 100 000-rule creation holds about 1.7 GB while it runs.
 
 ```sh
 cargo bench --offline --locked -j 1 -p surgeist-cssom --bench store_edits

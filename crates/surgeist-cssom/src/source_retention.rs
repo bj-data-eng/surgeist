@@ -135,23 +135,25 @@ impl CssRetainedSources for CssomBlockData {
     }
 }
 impl State {
-    pub(crate) fn check_source_limits<'a>(
+    /// Walks the sources retained by this state, by every state its contexts
+    /// link and by the `displaced` media lists into one collector.
+    pub(crate) fn walk_sources<'a>(
         &self,
         limits: &CssomLimits,
         displaced: impl Iterator<Item = &'a CssMediaQueryList>,
-    ) -> Result<(), CssomError> {
+    ) -> Result<CssSourceRetention<'static>, CssomError> {
         let mut sources = CssSourceRetention::with_shared_original_utf16(
             limits.max_retained_source_bytes,
             limits.max_source_traversal_steps,
             limits.max_source_traversal_depth,
         );
         let result = (|| {
-            let mut pending = Vec::new();
+            let mut links = Links::new(limits.max_source_traversal_steps);
             sources.charge_step()?;
-            reserve(&mut pending, limits.max_source_traversal_steps)?;
-            pending.push((self, 0usize));
+            links.reserve()?;
+            links.pending.push((self, 0usize));
             let mut seen = Vec::<&State>::new();
-            while let Some((state, depth)) = pending.pop() {
+            while let Some((state, depth)) = links.pending.pop() {
                 sources.charge_step()?;
                 let mut duplicate = false;
                 for old in &seen {
@@ -167,74 +169,21 @@ impl State {
                 reserve(&mut seen, limits.max_source_traversal_steps)?;
                 seen.push(state);
                 sources.at_depth(depth, |sources| {
-                    enqueue(
-                        state.context.as_ref(),
-                        &mut pending,
-                        sources,
-                        depth,
-                        limits.max_source_traversal_steps,
-                    )?;
+                    links.enqueue(state.context.as_ref(), sources, depth)?;
                     for sheet in state.sheets.values() {
-                        sources.charge_step()?;
-                        sources.visit(sheet.authored.as_ref())?;
-                        sources.visit(sheet.diagnostics.as_slice())?;
-                        sources.visit(&sheet.inputs.media)?;
+                        walk_sheet(sources, sheet)?;
                     }
                     for rule in state.rules.values() {
-                        sources.charge_step()?;
-                        if let Some(context) = rule.selector_inputs.as_deref() {
-                            enqueue(
-                                context,
-                                &mut pending,
-                                sources,
-                                depth,
-                                limits.max_source_traversal_steps,
-                            )?;
-                        }
-                        sources.visit(rule.authored.as_ref())?;
-                        sources.visit(rule.data.as_ref())?;
-                        if let Some(origin) = &rule.insertion_origin {
-                            sources.visit(origin)?;
-                        }
-                        sources.visit(&rule.selector_input)?;
-                        sources.visit(rule.admission_diagnostics.as_slice())?;
+                        walk_rule(sources, &mut links, depth, rule)?;
                     }
                     for block in state.blocks.values() {
-                        sources.charge_step()?;
-                        if let Some(context) = block.inline_context() {
-                            enqueue(
-                                context.context(),
-                                &mut pending,
-                                sources,
-                                depth,
-                                limits.max_source_traversal_steps,
-                            )?;
-                        }
-                        sources.visit(block.data.as_ref())?;
-                        sources.visit(block.counter_edits.as_slice())?;
-                        if let Some(value) = &block.replacement_input {
-                            if let Some(source) = value.parse_source() {
-                                sources.source(source.source())?;
-                            }
-                            sources.visit(value.diagnostics())?;
-                        }
-                        if let Some(value) = &block.selected_font_face {
-                            sources.visit(value.as_ref())?;
-                        }
+                        walk_block(sources, &mut links, depth, block)?;
                     }
                     for media in state.media.values() {
-                        sources.charge_step()?;
-                        sources.visit(media)?;
+                        walk_media(sources, media)?;
                     }
                     for map in state.maps.values() {
-                        sources.charge_step()?;
-                        sources.visit(map.authored.as_slice())?;
-                        for entry in &map.entries {
-                            sources.charge_step()?;
-                            if let CssomFeatureValue::Authored(value) = &entry.value {
-                                sources.visit(value)?;
-                            }
-                        }
+                        walk_map(sources, map)?;
                     }
                     Ok(())
                 })?;
@@ -244,32 +193,138 @@ impl State {
             }
             Ok(())
         })();
-        result.map_err(|error: CssSourceRetentionError| {
-            assert!(
-                !error.is_caller_admission(),
-                "standalone Source collector has no caller admission predicate"
-            );
-            match error.exhausted_limit() {
-                Some(CssSourceRetentionResource::RetainedBytes) => CssomError::Limit {
-                    resource: "retained parse source bytes",
-                    maximum: limits.max_retained_source_bytes,
-                },
-                Some(CssSourceRetentionResource::Depth) => CssomError::Limit {
-                    resource: "retained source traversal depth",
-                    maximum: limits.max_source_traversal_depth,
-                },
-                // An allocation refusal or exhausted collector storage.
-                Some(CssSourceRetentionResource::Storage) | None => CssomError::Limit {
-                    resource: "retained source traversal storage",
-                    maximum: limits.max_source_traversal_steps,
-                },
-                Some(_) => CssomError::Limit {
-                    resource: "retained source traversal steps",
-                    maximum: limits.max_source_traversal_steps,
-                },
-            }
-        })
+        #[cfg(test)]
+        crate::state_limits::probe::steps(sources.steps());
+        result
+            .map(|()| sources)
+            .map_err(|error| source_refusal(error, limits))
     }
+}
+
+/// The resources of the refusals that report an exhausted source collector.
+const BYTES_RESOURCE: &str = "retained parse source bytes";
+const DEPTH_RESOURCE: &str = "retained source traversal depth";
+const STORAGE_RESOURCE: &str = "retained source traversal storage";
+const STEPS_RESOURCE: &str = "retained source traversal steps";
+
+/// The refusal that reports an exhausted source collector.
+pub(crate) fn source_refusal(error: CssSourceRetentionError, limits: &CssomLimits) -> CssomError {
+    assert!(
+        !error.is_caller_admission(),
+        "standalone Source collector has no caller admission predicate"
+    );
+    match error.exhausted_limit() {
+        Some(CssSourceRetentionResource::RetainedBytes) => CssomError::Limit {
+            resource: BYTES_RESOURCE,
+            maximum: limits.max_retained_source_bytes,
+        },
+        Some(CssSourceRetentionResource::Depth) => CssomError::Limit {
+            resource: DEPTH_RESOURCE,
+            maximum: limits.max_source_traversal_depth,
+        },
+        // An allocation refusal or exhausted collector storage.
+        Some(CssSourceRetentionResource::Storage) | None => CssomError::Limit {
+            resource: STORAGE_RESOURCE,
+            maximum: limits.max_source_traversal_steps,
+        },
+        Some(_) => CssomError::Limit {
+            resource: STEPS_RESOURCE,
+            maximum: limits.max_source_traversal_steps,
+        },
+    }
+}
+
+/// Whether `error` is one of the refusals [`source_refusal`] returns.
+#[cfg(test)]
+pub(crate) fn is_source_refusal(error: &CssomError) -> bool {
+    matches!(
+        error,
+        CssomError::Limit { resource, .. }
+            if [BYTES_RESOURCE, DEPTH_RESOURCE, STORAGE_RESOURCE, STEPS_RESOURCE].contains(resource)
+    )
+}
+
+/// Charges and visits the sources of one sheet record.
+pub(crate) fn walk_sheet(
+    sources: &mut CssSourceRetention,
+    sheet: &CssomSheet,
+) -> Result<(), CssSourceRetentionError> {
+    sources.charge_step()?;
+    sources.visit(sheet.authored.as_ref())?;
+    sources.visit(sheet.diagnostics.as_slice())?;
+    sources.visit(&sheet.inputs.media)
+}
+
+/// Charges and visits the sources of one rule record; the states its selector
+/// inputs link join `links`.
+pub(crate) fn walk_rule<'a>(
+    sources: &mut CssSourceRetention,
+    links: &mut Links<'a>,
+    depth: usize,
+    rule: &'a CssomRule,
+) -> Result<(), CssSourceRetentionError> {
+    sources.charge_step()?;
+    if let Some(context) = rule.selector_inputs.as_deref() {
+        links.enqueue(context, sources, depth)?;
+    }
+    sources.visit(rule.authored.as_ref())?;
+    sources.visit(rule.data.as_ref())?;
+    if let Some(origin) = &rule.insertion_origin {
+        sources.visit(origin)?;
+    }
+    sources.visit(&rule.selector_input)?;
+    sources.visit(rule.admission_diagnostics.as_slice())
+}
+
+/// Charges and visits the sources of one block record; the states its inline
+/// context links join `links`.
+pub(crate) fn walk_block<'a>(
+    sources: &mut CssSourceRetention,
+    links: &mut Links<'a>,
+    depth: usize,
+    block: &'a CssomBlock,
+) -> Result<(), CssSourceRetentionError> {
+    sources.charge_step()?;
+    if let Some(context) = block.inline_context() {
+        links.enqueue(context.context(), sources, depth)?;
+    }
+    sources.visit(block.data.as_ref())?;
+    sources.visit(block.counter_edits.as_slice())?;
+    if let Some(value) = &block.replacement_input {
+        if let Some(source) = value.parse_source() {
+            sources.source(source.source())?;
+        }
+        sources.visit(value.diagnostics())?;
+    }
+    if let Some(value) = &block.selected_font_face {
+        sources.visit(value.as_ref())?;
+    }
+    Ok(())
+}
+
+/// Charges and visits the sources of one media list.
+pub(crate) fn walk_media(
+    sources: &mut CssSourceRetention,
+    media: &CssMediaQueryList,
+) -> Result<(), CssSourceRetentionError> {
+    sources.charge_step()?;
+    sources.visit(media)
+}
+
+/// Charges and visits the sources of one feature map.
+pub(crate) fn walk_map(
+    sources: &mut CssSourceRetention,
+    map: &CssomFeatureMap,
+) -> Result<(), CssSourceRetentionError> {
+    sources.charge_step()?;
+    sources.visit(map.authored.as_slice())?;
+    for entry in &map.entries {
+        sources.charge_step()?;
+        if let CssomFeatureValue::Authored(value) = &entry.value {
+            sources.visit(value)?;
+        }
+    }
+    Ok(())
 }
 
 fn reserve<T>(values: &mut Vec<T>, maximum: usize) -> Result<(), CssSourceRetentionError> {
@@ -302,23 +357,40 @@ fn reserve<T>(values: &mut Vec<T>, maximum: usize) -> Result<(), CssSourceRetent
     Ok(())
 }
 
-fn enqueue<'a>(
-    context: &'a CssomContext,
-    pending: &mut Vec<(&'a State, usize)>,
-    sources: &mut CssSourceRetention,
-    depth: usize,
+/// The states, with their depth, that contexts met by a walk link and that the
+/// walk has still to visit.
+pub(crate) struct Links<'a> {
+    pending: Vec<(&'a State, usize)>,
     maximum: usize,
-) -> Result<(), CssSourceRetentionError> {
-    sources.charge_step()?;
-    for linked in &context.linked {
-        sources.charge_step()?;
-        reserve(pending, maximum)?;
-        pending.push((
-            linked.snapshot.state.as_ref(),
-            depth.checked_add(1).ok_or(CssSourceRetentionError::limit(
-                CssSourceRetentionResource::Depth,
-            ))?,
-        ));
+}
+impl<'a> Links<'a> {
+    pub(crate) const fn new(maximum: usize) -> Self {
+        Self {
+            pending: Vec::new(),
+            maximum,
+        }
     }
-    Ok(())
+    fn reserve(&mut self) -> Result<(), CssSourceRetentionError> {
+        reserve(&mut self.pending, self.maximum)
+    }
+    /// Charges the context and queues the state of each of its linked inputs one level deeper.
+    fn enqueue(
+        &mut self,
+        context: &'a CssomContext,
+        sources: &mut CssSourceRetention,
+        depth: usize,
+    ) -> Result<(), CssSourceRetentionError> {
+        sources.charge_step()?;
+        for linked in &context.linked {
+            sources.charge_step()?;
+            self.reserve()?;
+            self.pending.push((
+                linked.snapshot.state.as_ref(),
+                depth.checked_add(1).ok_or(CssSourceRetentionError::limit(
+                    CssSourceRetentionResource::Depth,
+                ))?,
+            ));
+        }
+        Ok(())
+    }
 }

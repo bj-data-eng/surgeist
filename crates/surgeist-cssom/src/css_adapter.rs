@@ -1,5 +1,8 @@
 //! CSS-owned checked syntax enters one live owner without text reconstruction.
 use crate::parser_resources::check_resource_diagnostics;
+#[cfg(test)]
+use crate::state_limits::probe;
+use crate::state_limits::{Census, Extension, Inserted};
 use crate::{model::State, *};
 use std::sync::atomic::Ordering;
 use surgeist_css::component::CssComponentValueLimits;
@@ -98,16 +101,150 @@ impl State {
         );
         Ok(id)
     }
+    /// Adopts rules into this state under `limits`; see [`Adoption`].
+    pub(crate) fn adoption<'a>(&'a mut self, limits: &'a CssomLimits) -> Adoption<'a> {
+        Adoption {
+            state: self,
+            limits,
+            census: None,
+            inserted: Inserted::default(),
+        }
+    }
+    /// Adopts one rule, with the rules it contains, into this state.
+    pub(crate) fn adopt(
+        &mut self,
+        authored: CssomAuthoredRule,
+        parent: CssomParent,
+        depth: usize,
+        limits: &CssomLimits,
+    ) -> Result<CssomRuleId, CssomError> {
+        self.adoption(limits).adopt(authored, parent, depth)
+    }
+}
+
+/// A run of rule adoptions into one staged state.
+///
+/// After each adopted rule the state is checked against the limits. The first
+/// check is the census of the whole state; it is kept as `census`. Each later
+/// check extends `census` by what the adoption inserted since the previous
+/// check, recorded in `inserted`, instead of walking the whole state again.
+///
+/// The census is exact because this value owns the only access to the state
+/// for its whole lifetime: the state is borrowed mutably and reachable only
+/// for reading, and every change adoption makes (a rule, block, media list or
+/// feature map inserted, a member appended to a rule list) goes through a
+/// method that records it. No other change to the state can happen between
+/// two checks, so `census` plus `inserted` always equals the whole state. A
+/// refusal drops `census`, so any later check starts from the whole state
+/// again. The value is not part of the state, is not cloned with it and is
+/// not reachable from a snapshot; it ends with the adoption.
+pub(crate) struct Adoption<'a> {
+    state: &'a mut State,
+    limits: &'a CssomLimits,
+    census: Option<Census>,
+    inserted: Inserted,
+}
+
+impl std::ops::Deref for Adoption<'_> {
+    type Target = State;
+    fn deref(&self) -> &State {
+        self.state
+    }
+}
+
+impl<'a> Adoption<'a> {
+    pub(crate) fn limits(&self) -> &'a CssomLimits {
+        self.limits
+    }
+    fn allocate(&mut self) -> Result<u64, CssomError> {
+        self.state.allocate(self.limits)
+    }
+    /// A new empty rule list; it has no entries to account for until a member is appended.
+    pub(crate) fn list(&mut self) -> Result<CssomRuleListId, CssomError> {
+        self.state.list(self.limits)
+    }
+    fn media_list(&mut self, value: CssMediaQueryList) -> Result<CssomMediaListId, CssomError> {
+        let id = self.state.media_list(value, self.limits)?;
+        self.inserted.media(id.clone());
+        Ok(id)
+    }
+    fn block_record(
+        &mut self,
+        data: CssomBlockData,
+        parent: Option<CssomRuleId>,
+        owner: Option<CssomInputVersion>,
+        flags: CssomBlockFlags,
+    ) -> Result<CssomBlockId, CssomError> {
+        let id = self
+            .state
+            .block_record(data, parent, owner, flags, self.limits)?;
+        self.inserted.block(id.clone());
+        Ok(id)
+    }
+    fn insert_rule(&mut self, id: CssomRuleId, rule: CssomRule) {
+        self.state.rules.insert(id.clone(), rule);
+        self.inserted.rule(id);
+    }
+    fn insert_map(&mut self, id: CssomFeatureMapId, map: CssomFeatureMap) {
+        self.state.maps.insert(id.clone(), map);
+        self.inserted.map(id);
+    }
+    /// Appends an adopted rule to the list of its parent.
+    pub(crate) fn push_child(&mut self, list: &CssomRuleListId, child: CssomRuleId) {
+        self.state
+            .lists
+            .get_mut(list)
+            .expect("new list")
+            .push(child);
+        self.inserted.member();
+    }
+    /// The census of the whole state as the adoption has left it.
+    fn whole_census(&self) -> Result<Census, CssomError> {
+        #[cfg(test)]
+        probe::whole_run();
+        Census::of(self.state, self.limits, std::iter::empty())
+    }
+    /// Refuses the state as the adoption has left it when it exceeds the limits.
+    fn check(&mut self) -> Result<(), CssomError> {
+        #[cfg(test)]
+        if probe::whole_state() {
+            return self.state.check_limits(self.limits);
+        }
+        let inserted = std::mem::take(&mut self.inserted);
+        let census = match self.census.take() {
+            Some(mut census) => {
+                let extended = census.extend(self.state, &inserted, self.limits);
+                #[cfg(test)]
+                if probe::cross_check() {
+                    census.assert_matches_whole_state(
+                        &extended,
+                        self.state,
+                        self.limits,
+                        probe::exact_steps(),
+                    );
+                }
+                match extended? {
+                    Extension::Applied => census,
+                    Extension::WholeStateNeeded => self.whole_census()?,
+                }
+            }
+            None => self.whole_census()?,
+        };
+        self.census = Some(census);
+        Ok(())
+    }
+}
+
+impl Adoption<'_> {
     fn ordinary_block(
         &mut self,
         declarations: &CssDeclarationList,
         parent: &CssomRuleId,
-        limits: &CssomLimits,
     ) -> Result<CssomBlockId, CssomError> {
-        check_declarations(declarations.iter(), limits)?;
+        check_declarations(declarations.iter(), self.limits)?;
         let selected = projection(CssSpecifiedDeclarationBlock::try_from_declarations(
             declarations,
-            limits.css,
+            self.limits.css,
         ))?;
         self.block_record(
             CssomBlockData::Properties {
@@ -118,7 +255,6 @@ impl State {
             Some(parent.clone()),
             None,
             CssomBlockFlags::default(),
-            limits,
         )
     }
     fn rule_children(
@@ -126,17 +262,15 @@ impl State {
         rules: &[CssRule],
         parent: &CssomRuleId,
         depth: usize,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleListId, CssomError> {
-        let list = self.list(limits)?;
+        let list = self.list()?;
         for rule in rules {
             let id = self.adopt(
                 CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Rule(parent.clone()),
                 depth + 1,
-                limits,
             )?;
-            self.lists.get_mut(&list).expect("new list").push(id);
+            self.push_child(&list, id);
         }
         Ok(list)
     }
@@ -145,26 +279,25 @@ impl State {
         authored: CssomAuthoredRule,
         parent: CssomParent,
         depth: usize,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleId, CssomError> {
-        if depth > limits.max_depth {
+        if depth > self.limits.max_depth {
             return Err(CssomError::Limit {
                 resource: "rule depth",
-                maximum: limits.max_depth,
+                maximum: self.limits.max_depth,
             });
         }
         let id = CssomRuleId {
             owner: self.owner.clone(),
-            serial: self.allocate(limits)?,
+            serial: self.allocate()?,
         };
         let data = match &authored {
-            CssomAuthoredRule::Rule(v) => self.rule_data(v, &id, depth, limits)?,
+            CssomAuthoredRule::Rule(v) => self.rule_data(v, &id, depth)?,
             CssomAuthoredRule::Keyframe(v) => {
-                check_declarations(v.declarations().iter().map(|v| v.source()), limits)?;
+                check_declarations(v.declarations().iter().map(|v| v.source()), self.limits)?;
                 let selected = projection(
                     CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
                         v.declarations(),
-                        limits.css,
+                        self.limits.css,
                     ),
                 )?;
                 let block = self.block_record(
@@ -176,7 +309,6 @@ impl State {
                     Some(id.clone()),
                     None,
                     CssomBlockFlags::default(),
-                    limits,
                 )?;
                 CssomRuleData::Keyframe {
                     selectors: v.selectors().clone(),
@@ -184,13 +316,14 @@ impl State {
                 }
             }
             CssomAuthoredRule::RawNestedDeclarations(v) => {
-                let block = self.ordinary_block(v, &id, limits)?;
+                let block = self.ordinary_block(v, &id)?;
                 CssomRuleData::NestedDeclarations { block }
             }
             CssomAuthoredRule::SupportsTestChild(v) => CssomRuleData::SupportsTestChild(v.clone()),
             CssomAuthoredRule::Margin(v) => {
-                check_declarations(v.declarations().properties().iter(), limits)?;
-                let selected = projection(v.declarations().try_specified_properties(limits.css))?;
+                check_declarations(v.declarations().properties().iter(), self.limits)?;
+                let selected =
+                    projection(v.declarations().try_specified_properties(self.limits.css))?;
                 let block = self.block_record(
                     CssomBlockData::Properties {
                         domain: CssomPropertyDomain::Margin,
@@ -200,7 +333,6 @@ impl State {
                     Some(id.clone()),
                     None,
                     CssomBlockFlags::default(),
-                    limits,
                 )?;
                 CssomRuleData::Margin {
                     name: v.name(),
@@ -208,7 +340,7 @@ impl State {
                 }
             }
         };
-        self.rules.insert(
+        self.insert_rule(
             id.clone(),
             CssomRule {
                 parent,
@@ -221,7 +353,7 @@ impl State {
                 admission_diagnostics: std::sync::Arc::new(Vec::new()),
             },
         );
-        self.check_limits(limits)?;
+        self.check()?;
         Ok(id)
     }
     fn page_data(
@@ -229,10 +361,9 @@ impl State {
         v: &CssPageRule,
         id: &CssomRuleId,
         depth: usize,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
-        check_declarations(v.declarations().properties().iter(), limits)?;
-        let selected = match v.declarations().try_specified(limits.css) {
+        check_declarations(v.declarations().properties().iter(), self.limits)?;
+        let selected = match v.declarations().try_specified(self.limits.css) {
             Ok(v) => CssomProjection::Available(v),
             Err(e) if e.is_resource_limit() => return Err(CssomError::Page(e)),
             Err(e) => CssomProjection::Unavailable(e),
@@ -245,17 +376,15 @@ impl State {
             Some(id.clone()),
             None,
             CssomBlockFlags::default(),
-            limits,
         )?;
-        let children = self.list(limits)?;
+        let children = self.list()?;
         for child in v.margin_rules() {
             let child = self.adopt(
                 CssomAuthoredRule::Margin(child.clone()),
                 CssomParent::Rule(id.clone()),
                 depth + 1,
-                limits,
             )?;
-            self.lists.get_mut(&children).expect("new list").push(child);
+            self.push_child(&children, child);
         }
         Ok(CssomRuleData::Page {
             selectors: v.selectors().clone(),
@@ -268,17 +397,15 @@ impl State {
         v: &CssKeyframesRule,
         id: &CssomRuleId,
         depth: usize,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
-        let children = self.list(limits)?;
+        let children = self.list()?;
         for child in v.blocks() {
             let child = self.adopt(
                 CssomAuthoredRule::Keyframe(child.clone()),
                 CssomParent::Rule(id.clone()),
                 depth + 1,
-                limits,
             )?;
-            self.lists.get_mut(&children).expect("new list").push(child);
+            self.push_child(&children, child);
         }
         Ok(CssomRuleData::Keyframes {
             name: v.name().clone(),
@@ -289,14 +416,12 @@ impl State {
         &mut self,
         v: &CssCounterStyleRule,
         id: &CssomRuleId,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         let block = self.block_record(
             CssomBlockData::CounterStyle(Box::new(v.descriptors().clone())),
             Some(id.clone()),
             None,
             CssomBlockFlags::default(),
-            limits,
         )?;
         Ok(CssomRuleData::CounterStyle {
             name: v.name().as_str().to_owned(),
@@ -307,22 +432,16 @@ impl State {
         &mut self,
         v: &CssFontFaceRule,
         id: &CssomRuleId,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         let block = self.block_record(
             CssomBlockData::FontFace(v.descriptors().clone()),
             Some(id.clone()),
             None,
             CssomBlockFlags::default(),
-            limits,
         )?;
         Ok(CssomRuleData::FontFace { block })
     }
-    fn features_data(
-        &mut self,
-        v: &CssFontFeatureValuesRule,
-        limits: &CssomLimits,
-    ) -> Result<CssomRuleData, CssomError> {
+    fn features_data(&mut self, v: &CssFontFeatureValuesRule) -> Result<CssomRuleData, CssomError> {
         let mut maps = Vec::new();
         for kind in [
             CssFontFeatureValueKind::Stylistic,
@@ -335,7 +454,7 @@ impl State {
         ] {
             let id = CssomFeatureMapId {
                 owner: self.owner.clone(),
-                serial: self.allocate(limits)?,
+                serial: self.allocate()?,
             };
             let mut map = CssomFeatureMap {
                 kind,
@@ -372,7 +491,7 @@ impl State {
                     }
                 }
             }
-            self.maps.insert(id.clone(), map);
+            self.insert_map(id.clone(), map);
             maps.push(id);
         }
         Ok(CssomRuleData::FontFeatureValues {
@@ -393,13 +512,12 @@ impl State {
         &mut self,
         authored: &CssRule,
         rule: &CssCustomMediaRule,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         let query = match rule.body() {
             CssCustomMediaBody::True => CssomCustomMediaQuery::Boolean(true),
             CssCustomMediaBody::False => CssomCustomMediaQuery::Boolean(false),
             CssCustomMediaBody::Media(list) => {
-                CssomCustomMediaQuery::MediaList(self.media_list(list.clone(), limits)?)
+                CssomCustomMediaQuery::MediaList(self.media_list(list.clone())?)
             }
             // A body this CSSOM does not know stays an opaque authored rule, as
             // any other rule it does not interpret does.
@@ -419,57 +537,56 @@ impl State {
         v: &CssRule,
         id: &CssomRuleId,
         depth: usize,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         Ok(match v {
             CssRule::SupportsCondition(v) => {
-                self.named_supports_data(v.name(), v.body(), id, depth, limits)?
+                self.named_supports_data(v.name(), v.body(), id, depth)?
             }
             CssRule::Style(v) => CssomRuleData::Style {
                 selectors: v.selectors().clone(),
-                block: self.ordinary_block(v.declarations(), id, limits)?,
-                children: self.rule_children(v.rules(), id, depth, limits)?,
+                block: self.ordinary_block(v.declarations(), id)?,
+                children: self.rule_children(v.rules(), id, depth)?,
             },
             CssRule::NestedDeclarations(v) => CssomRuleData::NestedDeclarations {
-                block: self.ordinary_block(v.declarations(), id, limits)?,
+                block: self.ordinary_block(v.declarations(), id)?,
             },
             CssRule::Media(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Media(self.media_list(v.query().clone(), limits)?),
-                children: self.rule_children(v.rules(), id, depth, limits)?,
+                prelude: CssomGroupPrelude::Media(self.media_list(v.query().clone())?),
+                children: self.rule_children(v.rules(), id, depth)?,
             },
             CssRule::Supports(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Supports(v.condition().clone()),
-                children: self.rule_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth)?,
             },
             CssRule::Container(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Container(v.prelude().clone()),
-                children: self.rule_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth)?,
             },
             CssRule::LayerBlock(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Layer(v.name().cloned()),
-                children: self.rule_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth)?,
             },
             CssRule::When(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::When(v.condition().clone()),
-                children: self.rule_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth)?,
             },
             CssRule::Else(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Else(v.condition().cloned()),
-                children: self.rule_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth)?,
             },
             CssRule::Scope(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Scope {
                     start: v.root().cloned(),
                     end: v.limit().cloned(),
                 },
-                children: self.rule_children(v.rules().rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules().rules(), id, depth)?,
             },
-            CssRule::Page(v) => self.page_data(v, id, depth, limits)?,
-            CssRule::Keyframes(v) => self.keyframes_data(v, id, depth, limits)?,
-            CssRule::CounterStyle(v) => self.counter_data(v, id, limits)?,
-            CssRule::FontFace(v) => self.font_data(v, id, limits)?,
-            CssRule::FontFeatureValues(v) => self.features_data(v, limits)?,
-            CssRule::CustomMedia(rule) => self.custom_media_data(v, rule, limits)?,
+            CssRule::Page(v) => self.page_data(v, id, depth)?,
+            CssRule::Keyframes(v) => self.keyframes_data(v, id, depth)?,
+            CssRule::CounterStyle(v) => self.counter_data(v, id)?,
+            CssRule::FontFace(v) => self.font_data(v, id)?,
+            CssRule::FontFeatureValues(v) => self.features_data(v)?,
+            CssRule::CustomMedia(rule) => self.custom_media_data(v, rule)?,
             CssRule::Import(v) => CssomRuleData::Import {
                 target: v.target().clone(),
                 layer: v.layer().cloned(),
@@ -479,7 +596,6 @@ impl State {
                     v.media()
                         .cloned()
                         .unwrap_or_else(|| CssMediaQueryList::new(Vec::new())),
-                    limits,
                 )?,
                 child_sheet: None,
                 resolved_location: None,
@@ -580,6 +696,53 @@ pub(crate) fn font_winners(entries: Vec<CssFontFaceDescriptor>) -> Vec<CssFontFa
         .collect::<Vec<_>>();
     winners.reverse();
     winners
+}
+
+#[cfg(test)]
+mod adoption_tests {
+    use super::*;
+
+    fn rule(source: &str) -> CssomAuthoredRule {
+        let (sheet, _) = CssParser::default().parse_sheet(source).into_parts();
+        CssomAuthoredRule::Rule(sheet.rules()[0].clone())
+    }
+
+    #[test]
+    fn a_refusal_drops_the_census_so_the_next_check_starts_from_the_whole_state() {
+        let store = CssomStore::new(Default::default(), Default::default()).unwrap();
+        let mut state = (*store.state).clone();
+        // The state, then a rule, its block and its children list fit; a second rule does not.
+        let limits = CssomLimits {
+            max_objects: 4,
+            ..Default::default()
+        };
+        let mut adoption = state.adoption(&limits);
+        adoption
+            .adopt(rule("a { color: red }"), CssomParent::Detached, 1)
+            .unwrap();
+        assert!(adoption.census.is_some());
+        let refusal = adoption
+            .adopt(rule("b { color: red }"), CssomParent::Detached, 1)
+            .unwrap_err();
+        assert!(matches!(
+            refusal,
+            CssomError::Limit {
+                resource: "objects",
+                maximum: 4
+            }
+        ));
+        assert!(adoption.census.is_none());
+        assert!(adoption.inserted.is_empty());
+        // Checking again measures the whole state, which still exceeds the limit.
+        assert!(matches!(
+            adoption.check(),
+            Err(CssomError::Limit {
+                resource: "objects",
+                maximum: 4
+            })
+        ));
+        assert!(adoption.census.is_none());
+    }
 }
 
 #[cfg(test)]

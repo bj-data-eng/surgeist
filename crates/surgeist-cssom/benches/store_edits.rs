@@ -11,13 +11,17 @@
 //! median, minimum and maximum time of one call, the time per rule for creation,
 //! the input bytes and the rules read back from the committed snapshot.
 //!
-//! `State::check_limits` walks the whole retained state once per adopted rule,
-//! so the cost of creation grows faster than linearly in N. A size whose
-//! creation would take longer than a few minutes per round has no rounds: the
-//! table prints an estimate from the growth between the two largest measured
-//! sizes, marked as an estimate. The census column gives the smallest value of
-//! three `CssomLimits` fields at which creation still succeeds, found by
-//! doubling and bisection where a probe is cheap enough, and `-` elsewhere.
+//! Adoption checks the limits after each adopted rule. The first check of an
+//! adoption is the census of the whole state; each later check extends that
+//! census with the objects the rule inserted, so creation costs time in
+//! proportion to N. The census of the whole state also runs once at the end of
+//! each operation and once at commit, so an edit costs time in proportion to the
+//! rules the store retains. The census column gives the smallest value of three
+//! `CssomLimits` fields at which creation still succeeds, found by doubling and
+//! bisection where a probe is cheap enough, and `-` elsewhere.
+//!
+//! The 100 000-rule creation holds about 1.7 GB while it runs, and the edit
+//! case keeps its own store of that size alive for the whole run.
 //! Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-cssom --bench store_edits`.
 
@@ -33,9 +37,8 @@ use surgeist_cssom::{
 /// Upper bound of every limit search.
 const SEARCH_CEILING: usize = 1 << 40;
 
-/// Sheet sizes in style rules, each with the rounds its cases run (none: an
-/// estimate), the commits one round of the edit case makes, and whether to
-/// derive the census limits.
+/// Sheet sizes in style rules, each with the rounds its cases run, the commits
+/// one round of the edit case makes, and whether to derive the census limits.
 const SIZES: [Size; 4] = [
     Size {
         rules: 100,
@@ -57,8 +60,8 @@ const SIZES: [Size; 4] = [
     },
     Size {
         rules: 100_000,
-        rounds: 0,
-        edits: 0,
+        rounds: 3,
+        edits: 3,
         probe: false,
     },
 ];
@@ -247,17 +250,11 @@ impl Case {
     }
 }
 
-/// The time at `rules` by the power law through two measured points.
-fn estimate(low: (usize, f64), high: (usize, f64), rules: usize) -> f64 {
-    let exponent = (high.1 / low.1).ln() / (high.0 as f64 / low.0 as f64).ln();
-    high.1 * (rules as f64 / high.0 as f64).powf(exponent)
-}
-
 fn main() {
     let mut cases = Vec::new();
     for size in SIZES {
         let text = sheet_text(size.rules);
-        let counted = if size.probe && size.rounds > 0 {
+        let counted = if size.probe {
             census(&text)
         } else {
             "-".to_owned()
@@ -265,7 +262,6 @@ fn main() {
         for kind in [Kind::Create, Kind::Edit] {
             let (label, store) = match kind {
                 Kind::Create => ("create_parsed_sheet + commit", None),
-                Kind::Edit if size.rounds == 0 => ("set_disabled + commit", None),
                 Kind::Edit => {
                     let mut store = new_store();
                     let sheet = create(&mut store, &text);
@@ -307,11 +303,6 @@ fn main() {
         }
     }
 
-    let median = |index: usize| {
-        let mut sorted = times[index].clone();
-        sorted.sort_by(f64::total_cmp);
-        sorted.get(sorted.len() / 2).copied()
-    };
     println!(
         "each round starts one case later; rounds per size and commits per edit round are set per size"
     );
@@ -327,41 +318,21 @@ fn main() {
             Kind::Create => sheet_text(case.size.rules).len().to_string(),
             Kind::Edit => "-".to_owned(),
         };
-        if let Some(time) = median(index) {
-            let mut sorted = times[index].clone();
-            sorted.sort_by(f64::total_cmp);
-            println!(
-                "{}\t{}\t{}\t{time:.0}\t{:.0}\t{:.0}\t{}\t{bytes}\t{}\t{}",
-                case.name,
-                sorted.len(),
-                case.calls(),
-                sorted[0],
-                sorted[sorted.len() - 1],
-                per_rule(time),
-                case.size.rules,
-                case.census,
-            );
+        let mut sorted = times[index].clone();
+        sorted.sort_by(f64::total_cmp);
+        let Some(&time) = sorted.get(sorted.len() / 2) else {
             continue;
-        }
-        // No rounds: estimate from the two largest measured sizes of this kind.
-        let measured: Vec<(usize, f64)> = cases
-            .iter()
-            .enumerate()
-            .filter(|(_, candidate)| {
-                std::mem::discriminant(&candidate.kind) == std::mem::discriminant(&case.kind)
-            })
-            .filter_map(|(other, candidate)| Some((candidate.size.rules, median(other)?)))
-            .collect();
-        let estimated = match measured.as_slice() {
-            [.., low, high] => {
-                let time = estimate(*low, *high, case.size.rules);
-                format!(
-                    "0\t-\t{time:.0} (estimate)\t-\t-\t{} (estimate)\t{bytes}\t-\t-",
-                    per_rule(time)
-                )
-            }
-            _ => "0\t-\t-\t-\t-\t-\t-\t-\t-".to_owned(),
         };
-        println!("{}\t{estimated}", case.name);
+        println!(
+            "{}\t{}\t{}\t{time:.0}\t{:.0}\t{:.0}\t{}\t{bytes}\t{}\t{}",
+            case.name,
+            sorted.len(),
+            case.calls(),
+            sorted[0],
+            sorted[sorted.len() - 1],
+            per_rule(time),
+            case.size.rules,
+            case.census,
+        );
     }
 }
