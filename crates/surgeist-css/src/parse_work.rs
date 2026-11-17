@@ -10,12 +10,13 @@
 //! A plain front does not collect, so a built document finds no record and
 //! adds nothing.
 //!
-//! The workers of the component constructors (`query/when.rs`,
+//! The workers of the condition and import constructors (`query/when.rs`,
 //! `query/supports/construction.rs`, `query/container/construction.rs` and
 //! `rule/imports.rs`) start threads of their own, which do not hand a record
-//! across. No parse front reaches them: their callers are the public
-//! `try_from_components` constructors and normalization. A front that came to
-//! collect across them would hand the record over as
+//! across. No accounted front reaches them. They are reached from the public
+//! constructors over component values, from the `@supports` and `@when`
+//! condition and declaration parsers over text, and from normalization. A
+//! front that came to collect across them would hand the record over as
 //! `parser::bounded_execution` does.
 
 use std::cell::Cell;

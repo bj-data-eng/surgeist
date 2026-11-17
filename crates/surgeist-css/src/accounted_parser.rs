@@ -61,8 +61,8 @@ use crate::{CssParseReport, CssParser};
 /// scope, or of a scope above it, refused it. The parse scope is charged
 /// before the input scope, so a refusal of the second charge leaves the
 /// first admitted. A front also returns the error when the ledger cannot
-/// open the phase, which only a defect of the host's operation causes; the
-/// input is then not parsed.
+/// open a phase, which only a defect of the host's operation causes; the
+/// grammar then does not run.
 ///
 /// ```
 /// use surgeist_css::accounting::{CssFront, CssHostScope, CssLimits, CssWork};
