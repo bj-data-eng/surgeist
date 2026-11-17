@@ -1773,7 +1773,7 @@ pub enum DomShutdownReason {
     /// An actual Details source intention has not reached its task owner.
     DetailsIntentions,
     /// An actual queued/running element task has not completed or been canceled.
-    DomElementTask(crate::element_tasks::DomElementTaskId),
+    DomElementTask(surgeist_dom::task::DomElementTaskId),
     /// Canonical hooks are not complete.
     SourceTail(DomSourceOperationId),
     /// Original installed parser association history has not been consumed.

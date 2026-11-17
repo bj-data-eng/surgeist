@@ -46,7 +46,7 @@ pub struct DomElementTaskRunLimits {
     /// Original queued-task Source observation, rebase and mandatory cleanup.
     pub source: surgeist_dom::source::DomSourceLimits,
 }
-pub use surgeist_dom::task::{DomElementTaskId, DomElementTaskSourceKind};
+use surgeist_dom::task::{DomElementTaskId, DomElementTaskSourceKind};
 /// One pending source task's immutable queued payload.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomDetailsTask {

@@ -1283,12 +1283,12 @@ mod tests {
             fn hosted_details_samples_once_when_its_funded_event_is_formed() {
                 use crate::{
                     DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
-                    DomElementTaskRuntime, DomElementTaskRuntimeError, DomElementTaskSourceKind,
-                    DomEventCallback, DomEventCreationObservation, DomEventDispatchLimits,
-                    DomEventDispatchOutcome, DomEventDispatcher, DomEventInit,
-                    DomEventListenerOptions, DomEventRegistryLimits, DomEventResource,
-                    DomEventType,
+                    DomElementTaskRuntime, DomElementTaskRuntimeError, DomEventCallback,
+                    DomEventCreationObservation, DomEventDispatchLimits, DomEventDispatchOutcome,
+                    DomEventDispatcher, DomEventInit, DomEventListenerOptions,
+                    DomEventRegistryLimits, DomEventResource, DomEventType,
                 };
+                use surgeist_dom::task::DomElementTaskSourceKind;
 
                 struct Context {
                     tasks: DomElementTaskRuntime,
@@ -1472,16 +1472,16 @@ mod tests {
                 use crate::{
                     DomElementTask, DomElementTaskEventContext, DomElementTaskProgress,
                     DomElementTaskRunLimits, DomElementTaskRuntime, DomElementTaskRuntimeError,
-                    DomElementTaskSourceKind, DomEventCallback, DomEventDispatchLimits,
-                    DomEventDispatchOutcome, DomEventDispatcher, DomEventInit,
-                    DomEventListenerOptions, DomEventRegistryLimits, DomEventResource,
-                    DomEventTimestampUnavailable, DomEventType, DomSourceEventRuntimeLimits,
-                    DomSourceEventServiceLimits, DomSourceEventServiceProgress,
-                    DomSourceUnavailable,
+                    DomEventCallback, DomEventDispatchLimits, DomEventDispatchOutcome,
+                    DomEventDispatcher, DomEventInit, DomEventListenerOptions,
+                    DomEventRegistryLimits, DomEventResource, DomEventTimestampUnavailable,
+                    DomEventType, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+                    DomSourceEventServiceProgress, DomSourceUnavailable,
                 };
                 use surgeist_dom::{
                     DomError,
                     event::{DomSourceEventClockFailure, DomSourceEventKind},
+                    task::DomElementTaskSourceKind,
                 };
                 use surgeist_html::values::Namespace;
 

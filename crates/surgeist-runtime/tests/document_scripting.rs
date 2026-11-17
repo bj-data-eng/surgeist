@@ -4,7 +4,8 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use surgeist_bindings_js::dom_exception::DomExceptionName;
+use surgeist_bindings_js::css::CssNamespaceLimits;
+use surgeist_bindings_js::dom_exception::{DomExceptionLimits, DomExceptionName};
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
 };

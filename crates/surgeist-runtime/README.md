@@ -240,8 +240,10 @@ three getters return the same WindowProxy and the `opener` getter returns
 `null`. The relation accessors qualify the receiving Window against the
 current native attachment. Assignments to `self`, `parent`, or a non-null
 `opener` replace the corresponding own property with the supplied guest value.
-`CSS.escape` preserves exact UTF-16 and uses `CssNamespaceLimits`.
-The `DOMException` constructor uses `DomExceptionLimits` for its DOMString
+`CSS.escape` preserves exact UTF-16 and uses
+`surgeist_bindings_js::css::CssNamespaceLimits`.
+The `DOMException` constructor uses
+`surgeist_bindings_js::dom_exception::DomExceptionLimits` for its DOMString
 conversions. A conflicting host hook name refuses attachment.
 The host-defined child-count callable reads the original Session's current DOM.
 Entry releases native loans before running guest code and leaves queued jobs for
