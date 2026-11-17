@@ -19,7 +19,7 @@ use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 /// Complete result and optional accepted-prefix report. A semantic/admission
 /// failure contains no partial plan; accepted work remains observable.
 #[derive(Debug)]
-pub struct PaintOutcome<'a> {
+pub struct StackingOutcome<'a> {
     pub result: Result<StackingPlan<'a>, PaintError>,
     pub report: Option<PaintReport>,
 }
@@ -109,11 +109,11 @@ pub fn plan_stacking(
     boxes: &[BoxFacts],
     root_box: BoxId,
     options: PaintOptions,
-) -> PaintOutcome<'_> {
+) -> StackingOutcome<'_> {
     let mut meter = match options.operation(OperationKind::Stacking) {
         Ok(meter) => meter,
         Err(error) => {
-            return PaintOutcome {
+            return StackingOutcome {
                 result: Err(error),
                 report: None,
             };
@@ -125,7 +125,7 @@ pub fn plan_stacking(
         Ok(scopes) => scopes,
         Err(error) => {
             let (result, report) = finish(meter, Err(error));
-            return PaintOutcome { result, report };
+            return StackingOutcome { result, report };
         }
     };
     let completion = match prepare(&mut meter, root, &scopes, boxes, root_box) {
@@ -138,7 +138,7 @@ pub fn plan_stacking(
         .map_err(setup_error)
         .and_then(|done| done);
     let (result, report) = finish(meter, result);
-    PaintOutcome { result, report }
+    StackingOutcome { result, report }
 }
 
 pub(crate) fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 7], PaintError> {

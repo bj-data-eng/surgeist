@@ -11,7 +11,7 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | `resolve_mask_border_in_area`, `MaskBorderPlan` | Plan coverage tiles and the opaque center for an admitted mask-border source and area. |
 | `BoxId`, `BoxFacts` | Rendering-box slots and explicit resolved topology/context facts. |
 | `ChildOrder`, `Participation`, `Position`, `ZIndex`, `ContextEffect` | Shared source/flex/grid traversal and actual-context classification facts. |
-| `plan_stacking`, `PaintOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
+| `plan_stacking`, `StackingOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
 | `BoxPaint`, `BoxPaintKind`, `FloatParticipation` | Same-slot resolved box categories and float participation. |
 | `TextSource`, `PaintLine`, `PaintFragment`, `BlockInInlinePlacement` | Logical sources and exact line/fragment occurrences with explicit promotion placement. |
 | `TextId`, `LineId`, `FragmentId`, `PrimitiveId` | Distinct request-local table slots, without global provenance. |
