@@ -94,7 +94,7 @@ fn variants_without_payload_state_their_condition() {
         ),
         (
             DomError::IncompleteSourceOperation,
-            "an incomplete Source operation must finish first",
+            "a Source operation or its recorded inputs are incomplete and must finish first",
         ),
         (
             DomError::ButtonInapplicable,
