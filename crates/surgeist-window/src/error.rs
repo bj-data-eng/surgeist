@@ -74,17 +74,11 @@ impl Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)?;
         if let Some(id) = self.id {
-            write!(
-                f,
-                "{:?} for window {}: {}",
-                self.code,
-                id.as_u64(),
-                self.message
-            )
-        } else {
-            write!(f, "{:?}: {}", self.code, self.message)
+            write!(f, " (window {})", id.as_u64())?;
         }
+        Ok(())
     }
 }
 
@@ -143,4 +137,31 @@ pub enum ErrorCode {
     AccessibilityAdapterFailed,
     /// A terminal native/backend failure that has no more specific public classification.
     UnknownNativeError,
+}
+
+impl fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InvalidRequest => "invalid request",
+            Self::DuplicateIdentity => "duplicate window identity",
+            Self::IdentityExhausted => "window identities exhausted",
+            Self::StaleWindow => "stale window",
+            Self::WindowClosing => "window is closing",
+            Self::EventLoopCreateFailed => "event loop creation failed",
+            Self::WindowCreateFailed => "window creation failed",
+            Self::HandleUnavailable => "window handle unavailable",
+            Self::ImeUnsupported => "input method request unsupported",
+            Self::ImeRequestFailed => "input method request failed",
+            Self::ClipboardUnavailable => "clipboard unavailable",
+            Self::ClipboardReadFailed => "clipboard read failed",
+            Self::ClipboardWriteFailed => "clipboard write failed",
+            Self::CursorRequestFailed => "cursor request failed",
+            Self::CommandFailed => "window command failed",
+            Self::CommandBatchFailed => "window command batch failed",
+            Self::OutstandingHandle => "native handle outstanding at event loop exit",
+            Self::UnsupportedFeature => "unsupported feature",
+            Self::AccessibilityAdapterFailed => "accessibility adapter failed",
+            Self::UnknownNativeError => "unknown native error",
+        })
+    }
 }
