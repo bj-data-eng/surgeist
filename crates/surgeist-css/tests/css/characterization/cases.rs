@@ -279,14 +279,17 @@ fn color_cases() -> Vec<Case> {
 
 /// The reference colours of the default ordinary limits, one per densest
 /// legitimate input found (`(slug, input)`). Each is as long as the default input length
-/// admits (1,021 units), and no shorter or differently built colour was found to need more
-/// of its counter per input unit.
+/// admits (1,021 or 1,023 units), and no shorter or differently built colour was found to
+/// need more of its counter per input unit.
 ///
 /// - `numerals-5e-45` is a list of the numeral that needs the most actions per input
 ///   unit, `5e-45` (one digit at the lower edge of the exact window), as the operands of
 ///   one `min()`. It sets the action reference.
 /// - `numerals-1e-46` is the same list of `1e-46`, the numeral that needs the most
 ///   algorithm records per input unit. It sets the algorithm-record reference.
+/// - `arithmetic` is a `min()` of one operand and multiplications of two ones (`1*1`), the
+///   shortest terms that need the most arithmetic and evaluation records per input unit on
+///   the authored path. It sets the arithmetic and evaluation references.
 fn dense_references() -> Vec<(&'static str, String)> {
     vec![
         (
@@ -296,6 +299,10 @@ fn dense_references() -> Vec<(&'static str, String)> {
         (
             "numerals-1e-46",
             format!("lab(0 min(1e-46{}) 0)", ",1e-46".repeat(167)),
+        ),
+        (
+            "arithmetic",
+            format!("lab(0 min(1{}) 0)", ",1*1".repeat(252)),
         ),
     ]
 }
