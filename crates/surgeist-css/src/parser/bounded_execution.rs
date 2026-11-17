@@ -83,14 +83,25 @@ fn execute<T: Send>(
             .stack_size(PARSER_STACK_BYTES);
         #[cfg(test)]
         let counters = work::current();
+        // An accounted call collects the documents this thread builds too.
+        let collecting = crate::parse_work::is_collecting();
         let parse = move || {
             #[cfg(test)]
             work::install(counters);
-            parse()
+            if collecting {
+                crate::parse_work::collect(parse)
+            } else {
+                (parse(), None)
+            }
         };
         match spawn_parser(scope, builder, parse) {
             Ok(thread) => match thread.join() {
-                Ok(value) => Ok(value),
+                Ok((value, collected)) => {
+                    if let Some(collected) = collected {
+                        crate::parse_work::add(collected);
+                    }
+                    Ok(value)
+                }
                 Err(panic) => std::panic::resume_unwind(panic),
             },
             Err(_) => Err(ParserThreadUnavailable {

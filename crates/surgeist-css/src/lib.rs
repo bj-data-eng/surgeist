@@ -423,6 +423,7 @@ pub mod serialization;
 pub mod source;
 pub mod values;
 
+mod parse_work;
 mod parser;
 mod parser_context;
 mod report;

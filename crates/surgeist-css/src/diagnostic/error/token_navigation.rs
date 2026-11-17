@@ -219,6 +219,7 @@ impl<'s> LexedText<'s> {
                     0,
                     DepthExcess::Fail,
                 )
+                .inspect(|document| crate::parse_work::note(document.metrics()))
                 .ok()
             })
             .as_ref()
