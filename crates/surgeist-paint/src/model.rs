@@ -220,7 +220,7 @@ impl fmt::Display for PaintError {
             ),
             Self::IncompatibleParticipation { box_id } => write!(
                 f,
-                "box {} has a participation that does not fit its place in the tree: a root must be ordinary, and a child must be ordinary under a source-order parent or out of flow, or a flex or grid item in flow under a matching parent",
+                "box {} has a participation that does not fit its place in the tree: a root must be ordinary; a child that is out of flow or under a source-order parent must be ordinary; an in-flow child of a flex or grid parent must be that parent's flex or grid item",
                 box_id.get()
             ),
             Self::CapacityOverflow => f.write_str("a storage size calculation overflowed"),
