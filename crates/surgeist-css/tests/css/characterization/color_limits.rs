@@ -140,31 +140,37 @@ fn quarter_limits(case: &Case) -> (CssColorOrdinaryLimits, CssAuthoredColorOrdin
 
 #[test]
 fn default_ceilings_are_the_documented_derivation() {
-    // The ceilings are fixed values, ceil(4 * reference * 1024 / units), from a
-    // reference requirement per counter: algorithm 1277 records in 19 units,
-    // arithmetic and evaluation 28 records in 33 units, actions 19,390,200 in 39
-    // units. Each reference is at least the requirement per unit of every corpus
-    // colour, so the ceilings keep large headroom over the corpus (the tests
-    // below check a quarter of them). The path allows one step per source unit.
+    // The ceilings are fixed values, ceil(4 * reference * 1024 / units), from the
+    // densest legitimate input found for each counter, at the default input length:
+    // - algorithm records: 29,096 in 1,021 units, `color.dense-numerals-1e-46`, a
+    //   `min()` list of `1e-46` (used path; the authored path needs 28,237);
+    // - actions: 1,913,935 in 1,021 units, `color.dense-numerals-5e-45`, a `min()`
+    //   list of `5e-45` (authored path; the used path needs 1,810,895);
+    // - arithmetic and evaluation records: 3,030 each in 1,023 units,
+    //   `color.dense-arithmetic`, a `min()` of one operand and `1*1` products
+    //   (authored path; the used path needs 1,769).
+    // Each reference is at least the requirement per unit of every corpus colour, so
+    // the ceilings keep large headroom over the corpus (the tests below check a
+    // quarter of them). The path allows one step per source unit.
     let ordinary = CssColorOrdinaryLimits::default();
     assert_eq!(
         ordinary,
         CssColorOrdinaryLimits {
             input_units: 1024,
-            algorithm_records: 275_295,
-            arithmetic_records: 3476,
-            evaluation_records: 3476,
-            actions: 2_036_468_185,
+            algorithm_records: 116_726,
+            arithmetic_records: 12_132,
+            evaluation_records: 12_132,
+            actions: 7_678_235,
         }
     );
     assert_eq!(
         CssAuthoredColorOrdinaryLimits::default(),
         CssAuthoredColorOrdinaryLimits {
-            algorithm_records: 275_295,
-            arithmetic_records: 3476,
-            evaluation_records: 3476,
+            algorithm_records: 116_726,
+            arithmetic_records: 12_132,
+            evaluation_records: 12_132,
             path_steps: 1024,
-            actions: 2_036_468_185,
+            actions: 7_678_235,
         }
     );
 }
@@ -332,4 +338,168 @@ fn a_requirement_above_a_quarter_of_a_ceiling_fails_the_headroom_test() {
         assert!(refused_with(short), "{input}: one record short is refused");
         assert!(!refused_with(required), "{input}: the requirement fits");
     }
+}
+
+/// The fronts that resolve an input under limits: the whole-colour used path and
+/// the authored path.
+const LIMIT_FRONTS: [&str; 2] = ["color.used.utf8.whole", "color.authored"];
+
+/// `lab(0 min(N,N,...) 0)` with `leaves` operands: 13 + 6 * `leaves` units for a 5-unit
+/// `N`.
+fn numeral_list(numeral: &str, leaves: usize) -> String {
+    format!(
+        "lab(0 min({numeral}{}) 0)",
+        format!(",{numeral}").repeat(leaves - 1)
+    )
+}
+
+/// `lab(0 min(1,1*1,1*1,...) 0)` with `groups` products: 15 + 4 * `groups` units.
+fn product_list(groups: usize) -> String {
+    format!("lab(0 min(1{}) 0)", ",1*1".repeat(groups))
+}
+
+/// Limits under which only one counter can refuse: the input length and every counter
+/// are lifted, then the counter `set_ordinary` and `set_authored` name is fixed.
+fn lifted_except(
+    set_ordinary: fn(&mut CssColorOrdinaryLimits, usize),
+    set_authored: fn(&mut CssAuthoredColorOrdinaryLimits, usize),
+    ceiling: usize,
+) -> (CssColorOrdinaryLimits, CssAuthoredColorOrdinaryLimits) {
+    let mut ordinary = CssColorOrdinaryLimits {
+        input_units: usize::MAX,
+        algorithm_records: usize::MAX,
+        arithmetic_records: usize::MAX,
+        evaluation_records: usize::MAX,
+        actions: usize::MAX,
+    };
+    let mut authored = CssAuthoredColorOrdinaryLimits {
+        algorithm_records: usize::MAX,
+        arithmetic_records: usize::MAX,
+        evaluation_records: usize::MAX,
+        path_steps: usize::MAX,
+        actions: usize::MAX,
+    };
+    set_ordinary(&mut ordinary, ceiling);
+    set_authored(&mut authored, ceiling);
+    (ordinary, authored)
+}
+
+/// The observation of `input` on `front` with one ceiling fixed, every other
+/// counter lifted.
+fn observe_with_ceiling(
+    front: &str,
+    input: &str,
+    set_ordinary: fn(&mut CssColorOrdinaryLimits, usize),
+    set_authored: fn(&mut CssAuthoredColorOrdinaryLimits, usize),
+    ceiling: usize,
+) -> Observation {
+    let (ordinary, authored) = lifted_except(set_ordinary, set_authored, ceiling);
+    observe_color_under(front, "absent", input, ordinary, authored)
+}
+
+/// On each front of `inputs` (`(front, above, below)`), `above` needs more of the counter
+/// than `ceiling` and is refused with `limit:{resource}`, and `below` needs less and
+/// resolves.
+fn assert_refused_above_resolves_below(
+    inputs: &[(&str, &str, &str)],
+    resource: &str,
+    set_ordinary: fn(&mut CssColorOrdinaryLimits, usize),
+    set_authored: fn(&mut CssAuthoredColorOrdinaryLimits, usize),
+    ceiling: usize,
+) {
+    for (front, above, below) in inputs {
+        let refused = observe_with_ceiling(front, above, set_ordinary, set_authored, ceiling);
+        assert_eq!(refused.shape, "err", "{front}: the longer input");
+        assert!(
+            refused.facts.contains(&format!("limit:{resource}")),
+            "{front}: {}",
+            refused.facts
+        );
+        let resolved = observe_with_ceiling(front, below, set_ordinary, set_authored, ceiling);
+        assert_eq!(resolved.shape, "used", "{front}: the shorter input");
+    }
+}
+
+#[test]
+fn a_numeral_list_needing_more_actions_than_the_default_is_refused_and_a_shorter_one_resolves() {
+    // A `min()` of `5e-45` needs about 1,790 actions per input unit on the used path and
+    // 1,900 on the authored path. 740 operands (4,453 units) need about 7.98M used and
+    // 8.45M authored, more than the 7,678,235 of the default; 650 operands (3,913 units)
+    // need about 7.02M used and 7.41M authored, less.
+    let (above, below) = (numeral_list("5e-45", 740), numeral_list("5e-45", 650));
+    assert_eq!((above.len(), below.len()), (4453, 3913));
+    let inputs = LIMIT_FRONTS.map(|front| (front, above.as_str(), below.as_str()));
+    assert_refused_above_resolves_below(
+        &inputs,
+        "actions",
+        |limits, value| limits.actions = value,
+        |limits, value| limits.actions = value,
+        CssColorOrdinaryLimits::default().actions,
+    );
+}
+
+#[test]
+fn a_numeral_list_needing_more_algorithm_records_than_the_default_is_refused_and_a_shorter_one_resolves()
+ {
+    // A `min()` of `1e-46` needs about 28.8 algorithm records per input unit on the used
+    // path and 28 on the authored path. 740 operands (4,453 units) need about 128.1k used
+    // and 124.7k authored, more than the 116,726 of the default; 650 operands (3,913 units)
+    // need about 112.8k used and 109.3k authored, less.
+    let (above, below) = (numeral_list("1e-46", 740), numeral_list("1e-46", 650));
+    assert_eq!((above.len(), below.len()), (4453, 3913));
+    let inputs = LIMIT_FRONTS.map(|front| (front, above.as_str(), below.as_str()));
+    assert_refused_above_resolves_below(
+        &inputs,
+        "algorithm-records",
+        |limits, value| limits.algorithm_records = value,
+        |limits, value| limits.algorithm_records = value,
+        CssColorOrdinaryLimits::default().algorithm_records,
+    );
+}
+
+#[test]
+fn a_product_list_needing_more_arithmetic_or_evaluation_records_than_the_default_is_refused_and_a_shorter_one_resolves()
+ {
+    // `min(1,1*1,...)` needs the same number of arithmetic and evaluation records: about
+    // 3 per input unit on the authored path and 1.75 on the used path. On the authored
+    // front 1,125 products (4,515 units) need 13,506 of each and 925 products (3,715
+    // units) need 11,106. On the used front 1,900 products (7,615 units) need 13,305 and
+    // 1,550 products (6,215 units) need 10,855. The default is 12,132 of each.
+    let (authored_above, authored_below) = (product_list(1125), product_list(925));
+    let (used_above, used_below) = (product_list(1900), product_list(1550));
+    assert_eq!(
+        (
+            authored_above.len(),
+            authored_below.len(),
+            used_above.len(),
+            used_below.len()
+        ),
+        (4515, 3715, 7615, 6215)
+    );
+    let inputs = [
+        (
+            "color.authored",
+            authored_above.as_str(),
+            authored_below.as_str(),
+        ),
+        (
+            "color.used.utf8.whole",
+            used_above.as_str(),
+            used_below.as_str(),
+        ),
+    ];
+    assert_refused_above_resolves_below(
+        &inputs,
+        "arithmetic-records",
+        |limits, value| limits.arithmetic_records = value,
+        |limits, value| limits.arithmetic_records = value,
+        CssColorOrdinaryLimits::default().arithmetic_records,
+    );
+    assert_refused_above_resolves_below(
+        &inputs,
+        "evaluation-records",
+        |limits, value| limits.evaluation_records = value,
+        |limits, value| limits.evaluation_records = value,
+        CssColorOrdinaryLimits::default().evaluation_records,
+    );
 }

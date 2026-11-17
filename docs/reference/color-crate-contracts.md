@@ -516,15 +516,18 @@ reached fact or capability failures are separate.
 `arithmetic_records`, `evaluation_records` and `actions`; every field value is
 valid, zero refuses, and a refusal is a `CssColorResolveError` with
 `exhausted_limit()`, never a standard color failure. `Default` admits 1,024
-input units and limits the records and actions to four times the worst
-requirement per unit of the characterization corpus's color cases, scaled to
-that length (275,295 algorithm records, 3,476 arithmetic records, 3,476
-evaluation records, 2,036,468,185 actions). The margin holds for the corpus,
-not for every input of that length, and the actions ceiling is a coarse work
-bound: many extreme literals such as `1e308` can need far more work than any
-corpus input before the refusal. Callers with longer inputs, more extreme
-literals or a tighter work budget pass explicit limits, raising the record and
-action ceilings together with `input_units`. The ordinary driver admits the input
+input units and limits the records and actions to four times the densest
+legitimate input found for each counter, scaled to that length (116,726
+algorithm records, 12,132 arithmetic records, 12,132 evaluation records,
+7,678,235 actions). The references are corpus colors of the characterization
+corpus: a `min()` list of `1e-46` (the most algorithm records per unit), a
+`min()` list of `5e-45` (the most actions per unit) and a `min()` of one operand
+and `1*1` products (the most arithmetic and evaluation records per unit).
+Numerals outside `[1e-46, 1e41)` are not searched and need little work. The
+margin holds for the corpus and the dense inputs found, not for every input of
+that length, and the actions ceiling is a coarse work bound. Callers with
+longer inputs or a tighter work budget pass explicit limits, raising the record
+and action ceilings together with `input_units`. The ordinary driver admits the input
 length, counts each serviced action once, admits each bank's required length
 before an append and reports a refused allocation. It creates no hidden
 controller and retires its banks before it returns.
