@@ -231,6 +231,14 @@ impl QueueError {
     }
 }
 
+impl core::fmt::Display for QueueError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl core::error::Error for QueueError {}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ProgressSlot {
     task_id: TaskId,

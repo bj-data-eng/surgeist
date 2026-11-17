@@ -150,6 +150,32 @@ impl TaskScopeError {
     }
 }
 
+impl core::fmt::Display for TaskScopeError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let namespace = &self.namespace;
+        let value = &self.value;
+        match self.kind {
+            TaskScopeErrorKind::EmptyNamespace => write!(
+                formatter,
+                "task scope namespace {namespace:?} is empty or only whitespace"
+            ),
+            TaskScopeErrorKind::EmptyValue => write!(
+                formatter,
+                "task scope value {value:?} for namespace {namespace:?} is empty or only whitespace"
+            ),
+            TaskScopeErrorKind::InvalidCharacter => write!(
+                formatter,
+                "task scope segment {namespace:?}:{value:?} contains an ASCII control character"
+            ),
+            TaskScopeErrorKind::ReservedNamespace => {
+                write!(formatter, "task scope namespace {namespace:?} is reserved")
+            }
+        }
+    }
+}
+
+impl core::error::Error for TaskScopeError {}
+
 #[cfg(test)]
 mod tests {
     use super::{TaskScope, TaskScopeErrorKind, TaskScopeSegment};

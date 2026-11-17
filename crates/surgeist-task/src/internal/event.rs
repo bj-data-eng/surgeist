@@ -95,6 +95,20 @@ impl PercentCompleteError {
     }
 }
 
+impl core::fmt::Display for PercentCompleteError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.kind {
+            PercentCompleteErrorKind::GreaterThanOneHundredPercent => write!(
+                formatter,
+                "{} basis points is more than 10000 basis points (100 percent)",
+                self.basis_points
+            ),
+        }
+    }
+}
+
+impl core::error::Error for PercentCompleteError {}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskOutputEvent<Output> {
     output: Output,

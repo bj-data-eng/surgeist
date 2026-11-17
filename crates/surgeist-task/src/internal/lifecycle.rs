@@ -286,6 +286,57 @@ impl TaskLifecycleError {
     }
 }
 
+impl core::fmt::Display for TaskLifecycleError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let task = self.task_id.as_u64();
+        let attempt = self.attempt_id.as_u64();
+        let status = status_label(self.status);
+        match self.kind {
+            TaskLifecycleErrorKind::StaleAttempt => write!(
+                formatter,
+                "attempt {attempt} is not the active attempt of task {task} (status: {status})"
+            ),
+            TaskLifecycleErrorKind::TerminalState => write!(
+                formatter,
+                "task {task} has reached terminal status {status}; attempt {attempt} cannot change it"
+            ),
+            TaskLifecycleErrorKind::NotRunning => write!(
+                formatter,
+                "attempt {attempt} of task {task} is not running (status: {status})"
+            ),
+            TaskLifecycleErrorKind::NotCancelling => write!(
+                formatter,
+                "task {task} is not cancelling, so attempt {attempt} cannot finish after cancellation (status: {status})"
+            ),
+            TaskLifecycleErrorKind::NonAdvancingAttempt => write!(
+                formatter,
+                "attempt {attempt} does not advance past the current attempt of task {task}"
+            ),
+            TaskLifecycleErrorKind::InvalidTransition => write!(
+                formatter,
+                "task {task} cannot make the requested transition from status {status} on attempt {attempt}"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for TaskLifecycleError {}
+
+const fn status_label(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Queued => "queued",
+        TaskStatus::Running => "running",
+        TaskStatus::Waiting => "waiting",
+        TaskStatus::Blocked => "blocked",
+        TaskStatus::Completed => "completed",
+        TaskStatus::Failed => "failed",
+        TaskStatus::Cancelling => "cancelling",
+        TaskStatus::Cancelled => "cancelled",
+        TaskStatus::FinishedAfterCancel => "finished after cancel",
+        TaskStatus::FailedToCancel => "failed to cancel",
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskSnapshot {
     id: TaskId,
@@ -330,7 +381,9 @@ impl TaskSnapshot {
 mod tests {
     use crate::internal::cancel::CancelReason;
     use crate::internal::id::{TaskAttemptId, TaskId, TaskKey};
-    use crate::internal::lifecycle::{TaskLifecycleErrorKind, TaskRecord, TaskStatus};
+    use crate::internal::lifecycle::{
+        TaskLifecycleError, TaskLifecycleErrorKind, TaskRecord, TaskStatus,
+    };
     use crate::internal::policy::TaskPolicy;
     use crate::internal::scope::TaskScope;
 
@@ -455,5 +508,20 @@ mod tests {
             other_key, 9,
         ));
         assert_eq!(record.observer_count(), 3);
+    }
+
+    #[test]
+    fn invalid_transition_error_names_task_attempt_and_status() {
+        let error = TaskLifecycleError {
+            kind: TaskLifecycleErrorKind::InvalidTransition,
+            task_id: TaskId::from_u64(4),
+            attempt_id: TaskAttemptId::from_u64(2),
+            status: TaskStatus::Waiting,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "task 4 cannot make the requested transition from status waiting on attempt 2"
+        );
     }
 }

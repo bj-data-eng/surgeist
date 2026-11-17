@@ -602,6 +602,32 @@ pub enum ExecutorErrorKind {
     SinkFailed,
 }
 
+impl core::fmt::Display for ExecutorError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let label = match self.kind {
+            ExecutorErrorKind::InvalidRequest => "invalid task spawn request",
+            ExecutorErrorKind::SpawnFailed => "task could not be spawned",
+            ExecutorErrorKind::CancellationFailed => "task could not be cancelled",
+            ExecutorErrorKind::JoinFailed => "task could not be joined",
+            ExecutorErrorKind::SinkFailed => "task event sink failed",
+        };
+        write!(formatter, "{label}: {}", self.message)?;
+        match (self.task_id, self.attempt_id) {
+            (Some(task_id), Some(attempt_id)) => write!(
+                formatter,
+                " (task {}, attempt {})",
+                task_id.as_u64(),
+                attempt_id.as_u64()
+            ),
+            (Some(task_id), None) => write!(formatter, " (task {})", task_id.as_u64()),
+            (None, Some(attempt_id)) => write!(formatter, " (attempt {})", attempt_id.as_u64()),
+            (None, None) => Ok(()),
+        }
+    }
+}
+
+impl core::error::Error for ExecutorError {}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskFailure {
     kind: TaskFailureKind,
@@ -654,6 +680,21 @@ pub enum TaskFailureKind {
     SinkFailed,
 }
 
+impl core::fmt::Display for TaskFailure {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let label = match self.kind {
+            TaskFailureKind::Cancelled => "task cancelled",
+            TaskFailureKind::Panicked => "task panicked",
+            TaskFailureKind::Failed => "task failed",
+            TaskFailureKind::InvalidInput => "task input is invalid",
+            TaskFailureKind::SinkFailed => "task event emission failed",
+        };
+        write!(formatter, "{label}: {}", self.message)
+    }
+}
+
+impl core::error::Error for TaskFailure {}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskEventSinkError {
     kind: TaskEventSinkErrorKind,
@@ -695,6 +736,19 @@ pub enum TaskEventSinkErrorKind {
     Overflow,
     SerializationFailed,
 }
+
+impl core::fmt::Display for TaskEventSinkError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let label = match self.kind {
+            TaskEventSinkErrorKind::Closed => "task event sink is closed",
+            TaskEventSinkErrorKind::Overflow => "task event sink overflowed",
+            TaskEventSinkErrorKind::SerializationFailed => "task event could not be serialized",
+        };
+        write!(formatter, "{label}: {}", self.message)
+    }
+}
+
+impl core::error::Error for TaskEventSinkError {}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ExecutorDrainReport {

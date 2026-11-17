@@ -76,6 +76,13 @@ impl<Input> TaskRegistration<Input> {
 pub struct TaskRegistrationError {
     kind: TaskRegistrationErrorKind,
     message: String,
+    source: Option<RegistrationSource>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RegistrationSource {
+    Id(TaskIdError),
+    Scope(TaskScopeError),
 }
 
 impl TaskRegistrationError {
@@ -84,6 +91,7 @@ impl TaskRegistrationError {
             TaskRegistrationErrorKind::InvalidName,
             format!("invalid task name {:?}: {:?}", error.value(), error.kind()),
         )
+        .with_source(RegistrationSource::Id(error))
     }
 
     pub fn invalid_key(error: TaskIdError) -> Self {
@@ -91,6 +99,7 @@ impl TaskRegistrationError {
             TaskRegistrationErrorKind::InvalidKey,
             format!("invalid task key {:?}: {:?}", error.value(), error.kind()),
         )
+        .with_source(RegistrationSource::Id(error))
     }
 
     pub fn invalid_scope(error: TaskScopeError) -> Self {
@@ -103,6 +112,7 @@ impl TaskRegistrationError {
                 error.kind()
             ),
         )
+        .with_source(RegistrationSource::Scope(error))
     }
 
     pub fn kind(&self) -> TaskRegistrationErrorKind {
@@ -117,6 +127,35 @@ impl TaskRegistrationError {
         Self {
             kind,
             message: message.into(),
+            source: None,
+        }
+    }
+
+    fn with_source(mut self, source: RegistrationSource) -> Self {
+        self.source = Some(source);
+        self
+    }
+}
+
+impl core::fmt::Display for TaskRegistrationError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.source.is_none() {
+            return formatter.write_str(&self.message);
+        }
+
+        formatter.write_str(match self.kind {
+            TaskRegistrationErrorKind::InvalidName => "invalid task name",
+            TaskRegistrationErrorKind::InvalidKey => "invalid task key",
+            TaskRegistrationErrorKind::InvalidScope => "invalid task scope",
+        })
+    }
+}
+
+impl core::error::Error for TaskRegistrationError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self.source.as_ref()? {
+            RegistrationSource::Id(error) => Some(error),
+            RegistrationSource::Scope(error) => Some(error),
         }
     }
 }
