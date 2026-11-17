@@ -6,15 +6,18 @@
 //! row, so a new variant cannot be added without a row and a message here.
 
 use std::error::Error;
-use surgeist_layout::SourceIndex;
-use surgeist_ledger::{ProfileMode, RefusalReason};
+use surgeist_layout::{Edges, PhysicalAxis, Point, Size, SourceIndex};
+use surgeist_ledger::{Defect, ProfileMode, RefusalReason};
 use surgeist_paint::{
-    AccountingFailure, BorderImageGeometryError, BoxCategoryError, BoxFacts, BoxId, BoxPaintKind,
-    BudgetRefusal, ChildOrder, ContentEntry, ContextEffect, FragmentId, FragmentOwner,
-    GradientGeometryError, GradientStopsError, LineId, PaintChange, PaintError, PaintInputError,
+    AccountingFailure, BorderImageGeometryError, BorderImageOutset, BorderImageRequest,
+    BorderImageSlice, BorderImageSource, BorderImageWidth, BoxCategoryError, BoxFacts, BoxId,
+    BoxPaintKind, BudgetRefusal, ChildOrder, ContentEntry, ContextEffect, FragmentId,
+    FragmentOwner, GradientGeometryError, GradientPositionComponent, GradientStopItem,
+    GradientStopsError, LineId, LinearGradientDirection, PaintChange, PaintError, PaintInputError,
     PaintLimits, PaintOptions, PaintPhase, Participation, Position, PrimitiveId,
-    RadialGradientError, ResourceKind, SourceChild, TextId, WorkKind, ZIndex,
-    ZeroHeightGradientError, plan_paint_order, plan_stacking,
+    RadialGradientError, RadialGradientSize, ResourceKind, SourceChild, TextId, WorkKind, ZIndex,
+    ZeroHeightGradientError, plan_paint_order, plan_stacking, resolve_border_image,
+    resolve_gradient_stops, resolve_linear_gradient, resolve_radial_gradient,
 };
 
 fn options() -> PaintOptions {
@@ -570,4 +573,612 @@ fn a_root_outside_the_box_table_is_reported_in_words_end_to_end() {
         error.to_string(),
         "the root box is not in the box table or is not the box without a parent"
     );
+}
+
+fn assert_error<E: Error + Send + Sync + 'static>() {}
+
+#[test]
+fn every_paint_error_type_is_a_sendable_standard_error() {
+    assert_error::<PaintError>();
+    assert_error::<PaintInputError>();
+    assert_error::<BoxCategoryError>();
+    assert_error::<BorderImageGeometryError>();
+    assert_error::<GradientGeometryError>();
+    assert_error::<GradientStopsError>();
+    assert_error::<RadialGradientError>();
+    assert_error::<ZeroHeightGradientError>();
+    assert_error::<AccountingFailure>();
+    assert_error::<BudgetRefusal>();
+    let boxed: Box<dyn Error + Send + Sync> = Box::new(PaintError::CapacityOverflow);
+    assert_eq!(boxed.to_string(), "a storage size calculation overflowed");
+}
+
+fn border_row(error: &BorderImageGeometryError) -> usize {
+    match error {
+        BorderImageGeometryError::InvalidBox => 0,
+        BorderImageGeometryError::InvalidBorderWidth => 1,
+        BorderImageGeometryError::InvalidSource => 2,
+        BorderImageGeometryError::InvalidSlice => 3,
+        BorderImageGeometryError::InvalidWidth => 4,
+        BorderImageGeometryError::InvalidOutset => 5,
+        BorderImageGeometryError::UnrepresentableGeometry => 6,
+    }
+}
+
+#[test]
+fn border_image_geometry_errors_name_the_invalid_input() {
+    use BorderImageGeometryError as E;
+    let table = [
+        (
+            E::InvalidBox,
+            "border image box origin must be finite and its size finite and nonnegative",
+        ),
+        (
+            E::InvalidBorderWidth,
+            "border image border widths must be finite and nonnegative",
+        ),
+        (
+            E::InvalidSource,
+            "border image source coordinate size must be finite and positive, and its natural size finite and nonnegative",
+        ),
+        (
+            E::InvalidSlice,
+            "border image slice values must be finite and nonnegative",
+        ),
+        (
+            E::InvalidWidth,
+            "border image width multiples must be finite and nonnegative",
+        ),
+        (
+            E::InvalidOutset,
+            "border image outset values must be finite and nonnegative",
+        ),
+        (
+            E::UnrepresentableGeometry,
+            "border image geometry cannot be represented in f64",
+        ),
+    ];
+    assert_table(&table, border_row, 7);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+fn gradient_row(error: &GradientGeometryError) -> usize {
+    match error {
+        GradientGeometryError::InvalidWidth => 0,
+        GradientGeometryError::InvalidHeight => 1,
+        GradientGeometryError::NonFiniteAngle => 2,
+        GradientGeometryError::UnrepresentableLine => 3,
+    }
+}
+
+#[test]
+fn linear_gradient_geometry_errors_name_the_invalid_input() {
+    use GradientGeometryError as E;
+    let table = [
+        (
+            E::InvalidWidth,
+            "gradient box width must be finite and nonnegative",
+        ),
+        (
+            E::InvalidHeight,
+            "gradient box height must be finite and nonnegative",
+        ),
+        (E::NonFiniteAngle, "gradient angle must be finite"),
+        (
+            E::UnrepresentableLine,
+            "gradient line cannot keep finite, positive-length geometry in f64",
+        ),
+    ];
+    assert_table(&table, gradient_row, 4);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+fn stops_row(error: &GradientStopsError) -> usize {
+    match error {
+        GradientStopsError::InvalidLineLength => 0,
+        GradientStopsError::EmptyList => 1,
+        GradientStopsError::EndpointHint { .. } => 2,
+        GradientStopsError::AdjacentHints { .. } => 3,
+        GradientStopsError::NonFiniteComponent { .. } => 4,
+        GradientStopsError::UnrepresentablePosition { .. } => 5,
+        GradientStopsError::UnrepresentableDistribution { .. } => 6,
+    }
+}
+
+#[test]
+fn gradient_stop_errors_name_the_item_and_position_at_fault() {
+    use GradientStopsError as E;
+    let table = [
+        (
+            E::InvalidLineLength,
+            "gradient line length must be finite and nonnegative",
+        ),
+        (E::EmptyList, "gradient stop list is empty"),
+        (
+            E::EndpointHint { source_index: 4 },
+            "gradient item 4 is a hint at the start or end of the list; the first and last items must be stops",
+        ),
+        (
+            E::AdjacentHints {
+                previous_source_index: 2,
+                source_index: 3,
+            },
+            "gradient items 2 and 3 are adjacent hints",
+        ),
+        (
+            E::NonFiniteComponent {
+                source_index: 5,
+                position_index: 1,
+                component: GradientPositionComponent::Length,
+            },
+            "the length of position 1 of gradient item 5 is not finite",
+        ),
+        (
+            E::NonFiniteComponent {
+                source_index: 5,
+                position_index: 0,
+                component: GradientPositionComponent::Fraction,
+            },
+            "the fraction of position 0 of gradient item 5 is not finite",
+        ),
+        (
+            E::UnrepresentablePosition {
+                source_index: 6,
+                position_index: 1,
+            },
+            "position 1 of gradient item 6 cannot be represented as a finite used position",
+        ),
+        (
+            E::UnrepresentableDistribution {
+                left_source_index: 1,
+                right_source_index: 7,
+            },
+            "positions between gradient items 1 and 7 cannot be distributed in f64",
+        ),
+    ];
+    assert_table(&table, stops_row, 7);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+fn radial_row(error: &RadialGradientError) -> usize {
+    match error {
+        RadialGradientError::InvalidWidth => 0,
+        RadialGradientError::InvalidHeight => 1,
+        RadialGradientError::NonFiniteCenter { .. } => 2,
+        RadialGradientError::InvalidCircleRadius => 3,
+        RadialGradientError::NonFiniteRadiusComponent { .. } => 4,
+        RadialGradientError::NegativeRadius { .. } => 5,
+        RadialGradientError::UnrepresentableGeometry => 6,
+    }
+}
+
+#[test]
+fn radial_gradient_errors_name_the_axis_and_component_at_fault() {
+    use RadialGradientError as E;
+    let table = [
+        (
+            E::InvalidWidth,
+            "radial gradient box width must be finite and nonnegative",
+        ),
+        (
+            E::InvalidHeight,
+            "radial gradient box height must be finite and nonnegative",
+        ),
+        (
+            E::NonFiniteCenter {
+                axis: PhysicalAxis::Horizontal,
+            },
+            "radial gradient center is not finite on the horizontal axis",
+        ),
+        (
+            E::NonFiniteCenter {
+                axis: PhysicalAxis::Vertical,
+            },
+            "radial gradient center is not finite on the vertical axis",
+        ),
+        (
+            E::InvalidCircleRadius,
+            "radial gradient circle radius must be finite and nonnegative",
+        ),
+        (
+            E::NonFiniteRadiusComponent {
+                axis: PhysicalAxis::Vertical,
+                component: GradientPositionComponent::Length,
+            },
+            "the length of the vertical radius is not finite",
+        ),
+        (
+            E::NonFiniteRadiusComponent {
+                axis: PhysicalAxis::Horizontal,
+                component: GradientPositionComponent::Fraction,
+            },
+            "the fraction of the horizontal radius is not finite",
+        ),
+        (
+            E::NegativeRadius {
+                axis: PhysicalAxis::Horizontal,
+            },
+            "radial gradient horizontal radius is negative",
+        ),
+        (
+            E::UnrepresentableGeometry,
+            "radial gradient geometry cannot be represented in f64",
+        ),
+    ];
+    assert_table(&table, radial_row, 7);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+fn zero_height_row(error: &ZeroHeightGradientError) -> usize {
+    match error {
+        ZeroHeightGradientError::ExpectedZeroHeight => 0,
+        ZeroHeightGradientError::UnrepresentableWeight { .. } => 1,
+    }
+}
+
+#[test]
+fn zero_height_gradient_errors_name_the_case_and_positions_at_fault() {
+    use ZeroHeightGradientError as E;
+    let table = [
+        (
+            E::ExpectedZeroHeight,
+            "gradient geometry is not the zero-height case",
+        ),
+        (
+            E::UnrepresentableWeight {
+                left_source_index: 2,
+                left_position_index: 1,
+                right_source_index: 4,
+                right_position_index: 0,
+            },
+            "the color weight between position 1 of gradient item 2 and position 0 of gradient item 4 cannot be represented",
+        ),
+    ];
+    assert_table(&table, zero_height_row, 2);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+fn category_row(error: &BoxCategoryError) -> usize {
+    match error {
+        BoxCategoryError::RootMustBeBlock => 0,
+        BoxCategoryError::FloatingRoot => 1,
+        BoxCategoryError::FloatingInline => 2,
+        BoxCategoryError::OutOfFlowInline => 3,
+        BoxCategoryError::InlineItem => 4,
+        BoxCategoryError::FloatingItem => 5,
+        BoxCategoryError::ReplacedHasChildren => 6,
+    }
+}
+
+#[test]
+fn box_category_errors_state_the_violated_category_rule() {
+    use BoxCategoryError as E;
+    let table = [
+        (
+            E::RootMustBeBlock,
+            "the root box must have a block category",
+        ),
+        (E::FloatingRoot, "the root box must not float"),
+        (
+            E::FloatingInline,
+            "a floating box must have a block category, not an inline one",
+        ),
+        (
+            E::OutOfFlowInline,
+            "an out-of-flow box must have a block category, not an inline one",
+        ),
+        (
+            E::InlineItem,
+            "a flex or grid item must have a block category, not an inline one",
+        ),
+        (E::FloatingItem, "a flex or grid item must not float"),
+        (
+            E::ReplacedHasChildren,
+            "a replaced box must not have children",
+        ),
+    ];
+    assert_table(&table, category_row, 7);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+fn accounting_row(error: &AccountingFailure) -> usize {
+    match error {
+        AccountingFailure::Allocation => 0,
+        AccountingFailure::IdentityExhausted => 1,
+        AccountingFailure::ForeignScope => 2,
+        AccountingFailure::ScopeLimit { .. } => 3,
+        AccountingFailure::TimingUnavailable => 4,
+        AccountingFailure::LedgerDefect(_) => 5,
+        AccountingFailure::Invariant => 6,
+    }
+}
+
+#[test]
+fn accounting_failures_describe_the_setup_or_invariant_failure() {
+    let table = [
+        (
+            AccountingFailure::Allocation,
+            "paint accounting could not reserve its storage",
+        ),
+        (
+            AccountingFailure::IdentityExhausted,
+            "paint accounting scope identities are exhausted",
+        ),
+        (
+            AccountingFailure::ForeignScope,
+            "an accounting scope belongs to a different operation",
+        ),
+        (
+            AccountingFailure::ScopeLimit { limit: 10 },
+            "paint accounting scope limit of 10 exceeded",
+        ),
+        (
+            AccountingFailure::TimingUnavailable,
+            "profile timing was requested but is unavailable",
+        ),
+        (
+            AccountingFailure::LedgerDefect(Defect::ScopeEntry),
+            "ledger invariant violated: scope identity names no scope entry",
+        ),
+        (
+            AccountingFailure::Invariant,
+            "paint accounting found an inconsistent internal state",
+        ),
+    ];
+    assert_table(&table, accounting_row, 7);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn budget_refusals_state_the_change_phases_item_and_reason() {
+    let work = |reason| BudgetRefusal {
+        origin: PaintPhase::SiblingOrder,
+        limiting_phase: PaintPhase::Operation,
+        item: 4,
+        change: PaintChange::Work {
+            kind: WorkKind::SiblingComparison,
+            amount: 3,
+        },
+        current: 5,
+        reason,
+    };
+    let acquire = BudgetRefusal {
+        origin: PaintPhase::Validate,
+        limiting_phase: PaintPhase::Validate,
+        item: 0,
+        change: PaintChange::Acquire {
+            kind: ResourceKind::ScratchBytes,
+            amount: 64,
+        },
+        current: 8,
+        reason: RefusalReason::Overflow,
+    };
+    let release = BudgetRefusal {
+        origin: PaintPhase::Cleanup,
+        limiting_phase: PaintPhase::Cleanup,
+        item: 1,
+        change: PaintChange::Release {
+            kind: ResourceKind::RetainedResultBytes,
+            amount: 16,
+        },
+        current: 0,
+        reason: RefusalReason::Underflow,
+    };
+    let cases = [
+        (
+            work(RefusalReason::Limit { limit: 6 }),
+            "3 sibling comparison work refused in the sibling_order phase by the operation phase at item 4 (usage 5): the limit is 6",
+        ),
+        (
+            acquire,
+            "acquiring 64 bytes of scratch storage refused in the validate phase by the validate phase at item 0 (usage 8): the total would overflow",
+        ),
+        (
+            release,
+            "releasing 16 bytes of retained result storage refused in the cleanup phase by the cleanup phase at item 1 (usage 0): the release exceeds the held amount",
+        ),
+    ];
+    for (refusal, expected) in &cases {
+        assert_eq!(refusal.to_string(), *expected);
+        assert!(refusal.source().is_none());
+    }
+}
+
+#[test]
+fn work_and_storage_labels_read_as_words() {
+    let label = |kind| {
+        BudgetRefusal {
+            origin: PaintPhase::Operation,
+            limiting_phase: PaintPhase::Operation,
+            item: 0,
+            change: PaintChange::Work { kind, amount: 1 },
+            current: 0,
+            reason: RefusalReason::Overflow,
+        }
+        .to_string()
+    };
+    let words = [
+        (WorkKind::BoxValidation, "box validation"),
+        (WorkKind::ParentEdge, "parent edge"),
+        (WorkKind::TopologyVisit, "topology visit"),
+        (WorkKind::SiblingComparison, "sibling comparison"),
+        (WorkKind::MembershipVisit, "membership visit"),
+        (WorkKind::ContextComparison, "context comparison"),
+        (WorkKind::OrderMove, "order move"),
+        (WorkKind::OutputRecord, "output record"),
+        (WorkKind::PaintValidation, "paint validation"),
+        (WorkKind::FragmentVisit, "fragment visit"),
+        (WorkKind::LineVisit, "line visit"),
+        (WorkKind::InlineMemberVisit, "inline member visit"),
+        (WorkKind::PrimitiveVisit, "primitive visit"),
+        (WorkKind::PaintScopeVisit, "paint scope visit"),
+        (WorkKind::PaintOrderComparison, "paint order comparison"),
+        (WorkKind::DecorationComparison, "decoration comparison"),
+        (WorkKind::GradientValidation, "gradient validation"),
+        (WorkKind::GradientDirection, "gradient direction"),
+        (WorkKind::GradientCoordinate, "gradient coordinate"),
+        (WorkKind::GradientStopVisit, "gradient stop visit"),
+        (WorkKind::BorderImageValidation, "border image validation"),
+        (WorkKind::BorderImageCoordinate, "border image coordinate"),
+    ];
+    assert_eq!(words.len(), WorkKind::ALL.len());
+    for (kind, word) in words {
+        assert!(
+            label(kind).starts_with(&format!("1 {word} work refused")),
+            "{kind:?}"
+        );
+    }
+}
+
+#[test]
+fn wrapping_errors_expose_the_wrapped_error_as_their_cause() {
+    let input = PaintInputError::BoxPaintCount {
+        boxes: 3,
+        box_paint: 2,
+    };
+    let error = PaintError::from(input.clone());
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&input));
+    assert!(
+        !error.to_string().contains("2 records"),
+        "cause text is not repeated"
+    );
+
+    let stops = GradientStopsError::AdjacentHints {
+        previous_source_index: 1,
+        source_index: 2,
+    };
+    let error = PaintError::from(stops);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&stops));
+
+    let radial = RadialGradientError::NegativeRadius {
+        axis: PhysicalAxis::Vertical,
+    };
+    let error = PaintError::from(radial);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&radial));
+
+    let zero = ZeroHeightGradientError::ExpectedZeroHeight;
+    let error = PaintError::from(zero);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&zero));
+
+    let gradient = GradientGeometryError::NonFiniteAngle;
+    let error = PaintError::Gradient(gradient);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&gradient));
+
+    let border = BorderImageGeometryError::InvalidSlice;
+    let error = PaintError::BorderImage(border);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&border));
+
+    let budget = refusal();
+    let error = PaintError::Budget(budget);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&budget));
+
+    let accounting = AccountingFailure::ScopeLimit { limit: 3 };
+    let error = PaintError::Accounting(accounting);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&accounting));
+
+    let category = BoxCategoryError::ReplacedHasChildren;
+    let error = PaintInputError::InvalidBoxCategory {
+        box_id: box_id(6),
+        reason: category,
+    };
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&category));
+}
+
+#[test]
+fn failed_operations_report_their_cause_chain_in_words() {
+    let negative = plan_nan_width();
+    assert_eq!(negative.to_string(), "linear gradient geometry is invalid");
+    assert_eq!(
+        negative.source().unwrap().to_string(),
+        "gradient box width must be finite and nonnegative"
+    );
+
+    let empty: [GradientStopItem<()>; 0] = [];
+    let error = resolve_gradient_stops(100.0, &empty, options())
+        .result
+        .unwrap_err();
+    assert_eq!(error.to_string(), "gradient stop list is invalid");
+    assert_eq!(
+        error.source().unwrap().to_string(),
+        "gradient stop list is empty"
+    );
+
+    let error = resolve_radial_gradient(
+        Size::new(10.0, 10.0),
+        None,
+        RadialGradientSize::CircleRadius(f64::NAN),
+        options(),
+    )
+    .result
+    .unwrap_err();
+    assert_eq!(error.to_string(), "radial gradient geometry is invalid");
+    assert_eq!(
+        error.source().unwrap().to_string(),
+        "radial gradient circle radius must be finite and nonnegative"
+    );
+
+    let request = BorderImageRequest {
+        border_origin: Point::new(0.0, 0.0),
+        border_size: Size::new(10.0, 10.0),
+        border_widths: Edges::all(1.0),
+        source: BorderImageSource {
+            coordinate_size: Size::new(10.0, 10.0),
+            natural_size: Size::new(None, None),
+        },
+        slices: Edges::all(BorderImageSlice::SourceUnits(-1.0)),
+        widths: Edges::all(BorderImageWidth::Auto),
+        outsets: Edges::all(BorderImageOutset::Length(0.0)),
+        fill_center: false,
+    };
+    let error = resolve_border_image(request, options()).result.unwrap_err();
+    assert_eq!(error.to_string(), "border image geometry is invalid");
+    assert_eq!(
+        error.source().unwrap().to_string(),
+        "border image slice values must be finite and nonnegative"
+    );
+}
+
+fn plan_nan_width() -> PaintError {
+    resolve_linear_gradient(
+        Size::new(f64::NAN, 10.0),
+        LinearGradientDirection::Bottom,
+        options(),
+    )
+    .result
+    .unwrap_err()
+}
+
+#[test]
+fn a_refused_budget_reports_the_refusal_as_the_cause() {
+    let limits = PaintLimits::unlimited().with_work_limit(WorkKind::GradientValidation, 0);
+    let error = resolve_linear_gradient(
+        Size::new(10.0, 10.0),
+        LinearGradientDirection::Bottom,
+        PaintOptions::new(limits, ProfileMode::Off),
+    )
+    .result
+    .unwrap_err();
+    assert_eq!(error.to_string(), "paint budget refused the operation");
+    let cause = error.source().unwrap();
+    assert!(
+        cause
+            .to_string()
+            .starts_with("1 gradient validation work refused in the "),
+        "{cause}"
+    );
+    assert!(cause.to_string().ends_with("the limit is 0"), "{cause}");
 }

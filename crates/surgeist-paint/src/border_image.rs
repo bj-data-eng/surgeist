@@ -2,7 +2,8 @@ use crate::{
     PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
     accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
-use std::cmp::Ordering;
+use core::error::Error;
+use std::{cmp::Ordering, fmt};
 use surgeist_layout::{Edges, LengthPercentageOf, Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
@@ -92,6 +93,24 @@ pub enum BorderImageGeometryError {
     InvalidOutset,
     UnrepresentableGeometry,
 }
+impl fmt::Display for BorderImageGeometryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InvalidBox => {
+                "border image box origin must be finite and its size finite and nonnegative"
+            }
+            Self::InvalidBorderWidth => "border image border widths must be finite and nonnegative",
+            Self::InvalidSource => {
+                "border image source coordinate size must be finite and positive, and its natural size finite and nonnegative"
+            }
+            Self::InvalidSlice => "border image slice values must be finite and nonnegative",
+            Self::InvalidWidth => "border image width multiples must be finite and nonnegative",
+            Self::InvalidOutset => "border image outset values must be finite and nonnegative",
+            Self::UnrepresentableGeometry => "border image geometry cannot be represented in f64",
+        })
+    }
+}
+impl Error for BorderImageGeometryError {}
 
 /// An admitted rectangle in source units or CSS pixels, as indicated by its accessor.
 #[derive(Clone, Copy, Debug, PartialEq)]

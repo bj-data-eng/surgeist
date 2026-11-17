@@ -2,6 +2,8 @@ use crate::{
     PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
     accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
+use core::error::Error;
+use std::fmt;
 use surgeist_layout::{Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
@@ -30,6 +32,19 @@ pub enum GradientGeometryError {
     NonFiniteAngle,
     UnrepresentableLine,
 }
+impl fmt::Display for GradientGeometryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InvalidWidth => "gradient box width must be finite and nonnegative",
+            Self::InvalidHeight => "gradient box height must be finite and nonnegative",
+            Self::NonFiniteAngle => "gradient angle must be finite",
+            Self::UnrepresentableLine => {
+                "gradient line cannot keep finite, positive-length geometry in f64"
+            }
+        })
+    }
+}
+impl Error for GradientGeometryError {}
 
 /// Validated, box-local directed line. Placement is a consumer transform.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -12,7 +12,8 @@ use crate::{
         validate_source,
     },
 };
-use std::mem::take;
+use core::error::Error;
+use std::{fmt, mem::take};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
 /// Selects the ordinary last-color or repeating average semantic case.
@@ -33,6 +34,25 @@ pub enum ZeroHeightGradientError {
         right_position_index: usize,
     },
 }
+impl fmt::Display for ZeroHeightGradientError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::ExpectedZeroHeight => {
+                f.write_str("gradient geometry is not the zero-height case")
+            }
+            Self::UnrepresentableWeight {
+                left_source_index,
+                left_position_index,
+                right_source_index,
+                right_position_index,
+            } => write!(
+                f,
+                "the color weight between position {left_position_index} of gradient item {left_source_index} and position {right_position_index} of gradient item {right_source_index} cannot be represented"
+            ),
+        }
+    }
+}
+impl Error for ZeroHeightGradientError {}
 impl From<ZeroHeightGradientError> for PaintError {
     fn from(value: ZeroHeightGradientError) -> Self {
         Self::ZeroHeightGradient(value)

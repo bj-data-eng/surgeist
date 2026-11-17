@@ -1,5 +1,6 @@
 use crate::PaintError;
-use std::{mem::size_of, time::Duration};
+use core::error::Error;
+use std::{fmt, mem::size_of, time::Duration};
 pub use surgeist_ledger::RefusalReason;
 use surgeist_ledger::{
     Change, Dimension, Error as LedgerError, Limits, Operation, Phase, ProfileMode, Report, Scope,
@@ -95,6 +96,33 @@ impl OperationKind {
 impl WorkKind {
     /// Every work kind, in declaration order.
     pub const ALL: &'static [Self] = <Self as Dimension>::ALL;
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::BoxValidation => "box validation",
+            Self::ParentEdge => "parent edge",
+            Self::TopologyVisit => "topology visit",
+            Self::SiblingComparison => "sibling comparison",
+            Self::MembershipVisit => "membership visit",
+            Self::ContextComparison => "context comparison",
+            Self::OrderMove => "order move",
+            Self::OutputRecord => "output record",
+            Self::PaintValidation => "paint validation",
+            Self::FragmentVisit => "fragment visit",
+            Self::LineVisit => "line visit",
+            Self::InlineMemberVisit => "inline member visit",
+            Self::PrimitiveVisit => "primitive visit",
+            Self::PaintScopeVisit => "paint scope visit",
+            Self::PaintOrderComparison => "paint order comparison",
+            Self::DecorationComparison => "decoration comparison",
+            Self::GradientValidation => "gradient validation",
+            Self::GradientDirection => "gradient direction",
+            Self::GradientCoordinate => "gradient coordinate",
+            Self::GradientStopVisit => "gradient stop visit",
+            Self::BorderImageValidation => "border image validation",
+            Self::BorderImageCoordinate => "border image coordinate",
+        }
+    }
 }
 
 dimensions! {
@@ -270,6 +298,61 @@ pub enum AccountingFailure {
     LedgerDefect(surgeist_ledger::Defect),
     Invariant,
 }
+struct ChangeText(PaintChange);
+impl fmt::Display for ChangeText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            PaintChange::Work { kind, amount } => write!(f, "{amount} {} work", kind.label()),
+            PaintChange::Acquire { kind, amount } => {
+                write!(f, "acquiring {amount} bytes of {}", kind.label())
+            }
+            PaintChange::Release { kind, amount } => {
+                write!(f, "releasing {amount} bytes of {}", kind.label())
+            }
+        }
+    }
+}
+impl fmt::Display for BudgetRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} refused in the {} phase by the {} phase at item {} (usage {}): ",
+            ChangeText(self.change),
+            self.origin.name(),
+            self.limiting_phase.name(),
+            self.item,
+            self.current
+        )?;
+        match self.reason {
+            RefusalReason::Overflow => f.write_str("the total would overflow"),
+            RefusalReason::Underflow => f.write_str("the release exceeds the held amount"),
+            RefusalReason::Limit { limit } => write!(f, "the limit is {limit}"),
+        }
+    }
+}
+impl Error for BudgetRefusal {}
+impl fmt::Display for AccountingFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Allocation => f.write_str("paint accounting could not reserve its storage"),
+            Self::IdentityExhausted => {
+                f.write_str("paint accounting scope identities are exhausted")
+            }
+            Self::ForeignScope => {
+                f.write_str("an accounting scope belongs to a different operation")
+            }
+            Self::ScopeLimit { limit } => {
+                write!(f, "paint accounting scope limit of {limit} exceeded")
+            }
+            Self::TimingUnavailable => {
+                f.write_str("profile timing was requested but is unavailable")
+            }
+            Self::LedgerDefect(defect) => write!(f, "ledger invariant violated: {defect}"),
+            Self::Invariant => f.write_str("paint accounting found an inconsistent internal state"),
+        }
+    }
+}
+impl Error for AccountingFailure {}
 fn invariant() -> PaintError {
     PaintError::Accounting(AccountingFailure::Invariant)
 }
@@ -774,6 +857,13 @@ pub(crate) fn finish<T>(
 impl ResourceKind {
     /// Every resource kind, in declaration order.
     pub const ALL: &'static [Self] = <Self as Dimension>::ALL;
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::ScratchBytes => "scratch storage",
+            Self::RetainedResultBytes => "retained result storage",
+        }
+    }
 }
 
 #[cfg(test)]

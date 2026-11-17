@@ -5,7 +5,8 @@ use crate::{
         setup_error,
     },
 };
-use std::mem::take;
+use core::error::Error;
+use std::{fmt, mem::take};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
 /// Raw, already-computed position contributions. A fraction of 1 means 100%.
@@ -69,6 +70,59 @@ pub enum GradientStopsError {
         right_source_index: usize,
     },
 }
+impl GradientPositionComponent {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Length => "length",
+            Self::Fraction => "fraction",
+        }
+    }
+}
+impl fmt::Display for GradientStopsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::InvalidLineLength => {
+                f.write_str("gradient line length must be finite and nonnegative")
+            }
+            Self::EmptyList => f.write_str("gradient stop list is empty"),
+            Self::EndpointHint { source_index } => write!(
+                f,
+                "gradient item {source_index} is a hint at the start or end of the list; the first and last items must be stops"
+            ),
+            Self::AdjacentHints {
+                previous_source_index,
+                source_index,
+            } => write!(
+                f,
+                "gradient items {previous_source_index} and {source_index} are adjacent hints"
+            ),
+            Self::NonFiniteComponent {
+                source_index,
+                position_index,
+                component,
+            } => write!(
+                f,
+                "the {} of position {position_index} of gradient item {source_index} is not finite",
+                component.label()
+            ),
+            Self::UnrepresentablePosition {
+                source_index,
+                position_index,
+            } => write!(
+                f,
+                "position {position_index} of gradient item {source_index} cannot be represented as a finite used position"
+            ),
+            Self::UnrepresentableDistribution {
+                left_source_index,
+                right_source_index,
+            } => write!(
+                f,
+                "positions between gradient items {left_source_index} and {right_source_index} cannot be distributed in f64"
+            ),
+        }
+    }
+}
+impl Error for GradientStopsError {}
 
 /// A resolved item view. Indices identify the exact borrowed native source list.
 /// Stop ordinals are 0 for omitted/one positions and 0/1 for two positions.
