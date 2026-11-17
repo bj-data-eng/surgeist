@@ -1372,7 +1372,7 @@ fn parsed_install_error_messages_state_the_refused_report() {
         ),
         row(
             E::RepresentationExhausted,
-            "the completed HTML installation exhausted a checked representation",
+            "the completed HTML installation met a count, size or position that its representation cannot hold",
             false,
         ),
     ];
