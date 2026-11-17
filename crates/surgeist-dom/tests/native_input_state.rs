@@ -1,6 +1,16 @@
 //! Literal HTML877d native Input state/hook expectations through the real owner.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    document::DomNativeInputPlatform,
+    edit::NodeOperand,
+    form::DomInputState,
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource, DomUsage},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+};
 use surgeist_html::{
     attributes::HtmlInputType as Type,
     elements::input::{
@@ -29,7 +39,7 @@ fn limits() -> DomLimits {
         512,
         32,
         1048576,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_input_processing(scratch, work)
@@ -791,7 +801,8 @@ fn reached_processing_limits_and_late_invalid_operations_are_atomic() {
             0,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -1132,7 +1143,8 @@ fn exact_current_string_capacity_and_non_input_commands_preserve_atomicity() {
                 0,
                 8,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

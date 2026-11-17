@@ -416,8 +416,11 @@ impl Recording {
     ) -> Result<usize, DomError> {
         let operand = |operand: &NodeOperand| match operand {
             NodeOperand::Existing(id) => Some(draft.live_key(Key::Existing(*id))),
-            NodeOperand::Created(crate::CreatedNode { index, .. })
-            | NodeOperand::AttachedShadowRoot(crate::AttachedShadowRoot { index, .. }) => draft
+            NodeOperand::Created(crate::internal::batch::CreatedNode { index, .. })
+            | NodeOperand::AttachedShadowRoot(crate::internal::batch::AttachedShadowRoot {
+                index,
+                ..
+            }) => draft
                 .tickets
                 .get(*index)
                 .map(|ticket| draft.live_key(ticket.key())),

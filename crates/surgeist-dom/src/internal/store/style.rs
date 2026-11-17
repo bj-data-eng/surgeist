@@ -24,7 +24,7 @@ pub(in crate::internal::store) enum Cursor {
     Complete,
 }
 impl Cursor {
-    pub(in crate::internal::store) fn action(self) -> crate::DomStyleAction {
+    pub(in crate::internal::store) fn action(self) -> crate::internal::style::DomStyleAction {
         match self {
             Self::Update(c) => crate::internal::style::DomStyleAction::Update(c.action()),
             Self::OwnerAttributes => crate::internal::style::DomStyleAction::OwnerAttributes,

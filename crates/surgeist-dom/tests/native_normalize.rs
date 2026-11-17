@@ -1,6 +1,15 @@
 //! DOM3071 normalize: descendant-only traversal, stable Text and Range transfers.
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::{DomChange, DomChildListObservationLimits},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    range::{DomActiveRangeState, DomRangeId},
+    shadow::DomShadowRootInit,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::{DomStyleInlineCspObservation, DomStyleRequest},
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace},

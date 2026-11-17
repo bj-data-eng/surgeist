@@ -1053,7 +1053,7 @@ fn family(
                 source.observation(&node.id(), c, |r| r.option_nearest_select())?,
                 node,
             )?;
-            NativeFamily::Option(crate::DomOptionState {
+            NativeFamily::Option(crate::internal::select::DomOptionState {
                 flags: required(
                     source.observation(&node.id(), c, |r| r.option_flags().copied())?,
                     node,
@@ -1069,12 +1069,12 @@ fn family(
         Requirement::FormAssociated(Form::Button) => NativeFamily::Button(formation.native(
             control_payload()?,
             source::storage::Payload::default(),
-            || Ok(crate::DomButtonState { control: control() }),
+            || Ok(crate::internal::button::DomButtonState { control: control() }),
         )?),
         Requirement::FormAssociated(Form::Fieldset) => NativeFamily::Fieldset(formation.native(
             control_payload()?,
             source::storage::Payload::default(),
-            || Ok(crate::DomFieldsetState { control: control() }),
+            || Ok(crate::internal::fieldset::DomFieldsetState { control: control() }),
         )?),
         Requirement::FormAssociated(Form::Output) => {
             let surgeist_html_parser::HtmlParseOutputOverride::Null = required(
@@ -1085,7 +1085,7 @@ fn family(
                 control_payload()?,
                 source::storage::Payload::default(),
                 || {
-                    Ok(crate::DomOutputState {
+                    Ok(crate::internal::output::DomOutputState {
                         control: control(),
                         default_override: None,
                     })
@@ -1101,7 +1101,7 @@ fn family(
                 control_payload()?,
                 source::storage::Payload::default(),
                 || {
-                    Ok(crate::DomSelectState {
+                    Ok(crate::internal::select::DomSelectState {
                         control: control(),
                         flags,
                     })
@@ -1124,7 +1124,7 @@ fn family(
                 extra,
                 source::storage::Payload::default(),
                 || {
-                    Ok(crate::DomTextareaState {
+                    Ok(crate::internal::textarea::DomTextareaState {
                         control: control(),
                         flags,
                         raw: raw.clone(),
@@ -1186,7 +1186,7 @@ fn family(
                 extra,
                 source::storage::Payload::default(),
                 || {
-                    Ok(crate::DomInputState {
+                    Ok(crate::internal::input::DomInputState {
                         control: control(),
                         flags,
                         current: raw.clone(),

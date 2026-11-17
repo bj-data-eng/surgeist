@@ -185,7 +185,7 @@ fn called_request_close_admits_exact_five_revisions_and_phases_before_its_first_
         };
         // Same explicit stored-watcher/caller-frame unit domain as the RED:
         // real issuer and canonical input, no native Window or manager reply.
-        let watcher = crate::DomCloseWatcherId {
+        let watcher = crate::internal::dialog::DomCloseWatcherId {
             operation: original,
             command: 0,
             occurrence: 0,

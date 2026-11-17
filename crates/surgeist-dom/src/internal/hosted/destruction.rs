@@ -31,7 +31,7 @@ impl DomHostedDestructionInvocationRequest {
         self.cleanup
             .expect("only a prepared invocation is publicly lent")
     }
-    pub fn document(&self) -> crate::DocumentId {
+    pub fn document(&self) -> crate::internal::identity::DocumentId {
         self.creation.document
     }
     pub fn global(&self) -> DomHostedGlobalId {

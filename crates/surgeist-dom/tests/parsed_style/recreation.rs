@@ -186,7 +186,7 @@ fn blocked_first_needs_no_creation_owner_and_later_exact_text_can_create_and_ren
         assert!(matches!(
             hold.process_rendering(
                 q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                 &flag()
             )
             .unwrap(),
@@ -386,7 +386,7 @@ fn created_first_recreates_distinct_association_and_old_notification_uses_old_sh
     assert!(matches!(
         hold.process_rendering(
             completion.qualification(),
-            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
             &flag()
         )
         .unwrap(),

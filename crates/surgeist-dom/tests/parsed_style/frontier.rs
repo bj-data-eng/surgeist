@@ -59,7 +59,7 @@ fn next_sheet(dom: &mut Dom, id: DomParsedHtmlAssociationId, root: &DomStyleCsso
     assert!(matches!(
         hold.process_rendering(
             &q,
-            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
             &flag()
         )
         .unwrap(),
@@ -180,7 +180,9 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
         .unwrap()
         .process_rendering(
             &value.q,
-            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(&mut value.notification),
+            surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Transfer(
+                &mut value.notification,
+            ),
             &flag(),
         )
         .unwrap();
@@ -248,7 +250,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
     assert!(matches!(
         value.dom.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            surgeist_dom::style::DomStyleNotificationDelivery::Parsed(&mut delivery),
             0,
             &flag()
         ),
@@ -294,7 +296,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
         "own end is insufficient for owner-wide dispatch"
     );
     assert!(
-        matches!(value.dom.finish_style_notification(&mut token,surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),1024,&flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==other)
+        matches!(value.dom.finish_style_notification(&mut token,surgeist_dom::style::DomStyleNotificationDelivery::Parsed(&mut delivery),1024,&flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==other)
     );
     recreation::no_sheet(&mut value.dom, other, envelope());
     let mut observation = Some(recreation::observed(&value.dom, other));
@@ -314,7 +316,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
     assert!(matches!(
         value.dom.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            surgeist_dom::style::DomStyleNotificationDelivery::Parsed(&mut delivery),
             2,
             &flag()
         ),
@@ -327,7 +329,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
         .dom
         .finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            surgeist_dom::style::DomStyleNotificationDelivery::Parsed(&mut delivery),
             3,
             &flag(),
         )
@@ -344,7 +346,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
     assert!(matches!(
         value.dom.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            surgeist_dom::style::DomStyleNotificationDelivery::Parsed(&mut delivery),
             1024,
             &flag()
         ),

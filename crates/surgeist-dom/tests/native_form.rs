@@ -1,7 +1,7 @@
 //! DOM3071 createElementNS and HTML877d HTMLFormElement initialization.
 //! Native Form construction includes its real scalar state and past names map.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_dom::{Dom, DomBatch, limits::DomLimits};
 use surgeist_html::values::{DocumentString, Namespace};
 
 #[test]
@@ -15,7 +15,8 @@ fn native_html_form_creation_publishes_an_actual_element() {
             0,
             4,
             4096,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

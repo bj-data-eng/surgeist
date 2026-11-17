@@ -2,8 +2,11 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    Dom, DomAttributeAttachment, DomBatch, DomError, DomLimits, DomNameLimits, DomNodeKind,
-    DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, NodeId,
+    Dom, DomBatch, DomError,
+    identity::NodeId,
+    limits::{DomLimits, DomNameLimits},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress},
+    tree::{DomAttributeAttachment, DomNodeKind},
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -24,7 +27,7 @@ fn policy() -> DomSourceLimits {
 
 #[test]
 fn qualified_toggle_admits_the_scalar_with_the_exact_ordered_mutation() {
-    use surgeist_dom::DomChange;
+    use surgeist_dom::edit::DomChange;
 
     let cancel = AtomicBool::new(false);
     let mut dom = owner();
@@ -544,8 +547,8 @@ fn remove_attribute_node_returns_the_exact_detached_identity_after_atomic_public
     assert_eq!(
         commit.changes().changes(),
         [
-            surgeist_dom::DomChange::Attributes(element),
-            surgeist_dom::DomChange::AttrOwner(attr),
+            surgeist_dom::edit::DomChange::Attributes(element),
+            surgeist_dom::edit::DomChange::AttrOwner(attr),
         ]
     );
     let now = dom.snapshot();
@@ -629,7 +632,9 @@ fn named_node_map_removal_resolves_each_current_qualified_or_expanded_name() {
     };
     assert_eq!(
         done.output(),
-        Some(surgeist_dom::DomSourceOutput::RemovedAttribute(namespaced))
+        Some(surgeist_dom::source::DomSourceOutput::RemovedAttribute(
+            namespaced
+        ))
     );
     drop(lease);
     let now = dom.snapshot();
@@ -761,7 +766,7 @@ fn named_node_map_lookup_admits_current_document_entries_and_compared_units() {
 
 #[test]
 fn native_attr_attachment_distinguishes_replace_unchanged_in_use_and_append() {
-    use surgeist_dom::{DomAttributeAttachment, DomSourceOutput};
+    use surgeist_dom::{source::DomSourceOutput, tree::DomAttributeAttachment};
 
     let cancel = AtomicBool::new(false);
     let mut dom = owner();
@@ -951,7 +956,7 @@ fn native_attr_source_replacement_runs_the_original_nonce_hook() {
     assert!(matches!(
         dom.apply(refused, &cancel),
         Err(DomError::ResourceLimit {
-            resource: surgeist_dom::DomResource::StringCodeUnits,
+            resource: surgeist_dom::limits::DomResource::StringCodeUnits,
             limit: EXACT_BEFORE,
         })
     ));
@@ -984,8 +989,8 @@ fn native_attr_source_replacement_runs_the_original_nonce_hook() {
     };
     assert_eq!(
         done.output(),
-        Some(surgeist_dom::DomSourceOutput::AttributeAttachment(
-            surgeist_dom::DomAttributeAttachment::Replaced(previous)
+        Some(surgeist_dom::source::DomSourceOutput::AttributeAttachment(
+            surgeist_dom::tree::DomAttributeAttachment::Replaced(previous)
         ))
     );
     drop(lease);
@@ -1166,13 +1171,13 @@ fn string_attribute_edits_keep_identity_prefix_and_order_until_removal() {
         commit
             .changes()
             .changes()
-            .contains(&surgeist_dom::DomChange::AttrValue(id))
+            .contains(&surgeist_dom::edit::DomChange::AttrValue(id))
     );
     assert!(
         commit
             .changes()
             .changes()
-            .contains(&surgeist_dom::DomChange::Attributes(element))
+            .contains(&surgeist_dom::edit::DomChange::Attributes(element))
     );
     let edited = dom.snapshot();
     let map = edited.node(element).unwrap().attributes().unwrap();

@@ -543,7 +543,7 @@ fn pending_association_native_meta_source_hold_refuses_before_missing_owner_and_
     let error = match hold.prepare(
         &[],
         None,
-        surgeist_dom::DomSourceEventClockMode::ContextFree,
+        surgeist_dom::event::DomSourceEventClockMode::ContextFree,
         &AtomicBool::new(false),
     ) {
         Err(error) => error,

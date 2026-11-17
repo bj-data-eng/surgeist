@@ -148,7 +148,7 @@ impl DomSourceLease<'_> {
         }
         op.draft.source_step(cancel)?;
         op.refresh_close_watcher_admission(cancel)?;
-        Ok(crate::DomCloseWatcherRequestPreparation {
+        Ok(crate::internal::source::DomCloseWatcherRequestPreparation {
             request: request.clone(),
             cursor: call.cursor,
         })
@@ -718,7 +718,7 @@ impl DomSourceLease<'_> {
         let retained = source.retain_runtime_payload(self.dom, bytes, cancel)?;
         drop(pending);
         drop(formation);
-        Ok(crate::DomCloseWatcherHistoryWindows {
+        Ok(crate::internal::source::DomCloseWatcherHistoryWindows {
             windows,
             navigable,
             _retained: retained,

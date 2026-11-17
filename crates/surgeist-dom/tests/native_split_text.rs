@@ -1,6 +1,17 @@
 //! DOM3071 split steps 1–9: exact UTF-16, fresh identity and special Range moves.
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::{DomChange, DomNodeRetirementLimits, DomSourceNodeOutputWatch},
+    event::DomSourceAdvance,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    range::DomRangeId,
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
+    },
+    style::{DomStyleInlineCspObservation, DomStyleRequest},
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {

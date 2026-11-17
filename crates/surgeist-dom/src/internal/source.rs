@@ -1,7 +1,11 @@
 //! One requested canonical edit and its retained source continuation.
 mod attribute;
 pub(crate) mod callback;
-pub use attribute::*;
+pub use attribute::{
+    DomSourceAttributeAttachmentOutput, DomSourceAttributeCallbackScope,
+    DomSourceAttributePayloadRetention, DomSourceAttributePolicyRead, DomSourceAttributeSink,
+    DomSourceAttributeVerificationOutcome, DomSourceAttributeVerificationRequest,
+};
 mod design_mode;
 pub(crate) mod event;
 pub use design_mode::{
@@ -24,7 +28,13 @@ use crate::{
     internal::identity::NodeId, internal::snapshot::DomDocumentStamp,
     internal::snapshot::DomSnapshot, internal::store::DomError, internal::style::DomStyleRequest,
 };
-pub use event::*;
+pub use event::{
+    DomSourceAdvance, DomSourceDialogRequest, DomSourceEventClockFailure, DomSourceEventClockMode,
+    DomSourceEventDispatchGuard, DomSourceEventDispatchPermit, DomSourceEventExecutor,
+    DomSourceEventFiring, DomSourceEventId, DomSourceEventKind, DomSourceEventOutcome,
+    DomSourceEventPayloadRetention, DomSourceEventPublication, DomSourceEventRequest,
+    DomSourceEventRetention, DomSourceEventTime, DomSourceToggleEvent,
+};
 use std::sync::Arc;
 use surgeist_css::values::view_transition::CssViewTransitionIdent;
 use surgeist_html::values::{DocumentString, Namespace};
@@ -213,15 +223,15 @@ impl DomSourceCustomElementRequest {
         self.operation
     }
 
-    pub const fn document(self) -> crate::DocumentId {
+    pub const fn document(self) -> crate::internal::identity::DocumentId {
         self.document
     }
 
-    pub const fn global(self) -> crate::DomHostedGlobalId {
+    pub const fn global(self) -> crate::internal::hosted::DomHostedGlobalId {
         self.global
     }
 
-    pub const fn definition(self) -> crate::DomRegistryDefinitionId {
+    pub const fn definition(self) -> crate::internal::registry::DomRegistryDefinitionId {
         self.definition
     }
 }
@@ -277,7 +287,7 @@ impl DomSourceScriptRequest {
     pub const fn operation(self) -> DomSourceOperationId {
         self.operation
     }
-    pub const fn basis(self) -> crate::DomStamp {
+    pub const fn basis(self) -> crate::internal::identity::DomStamp {
         self.basis
     }
     /// A private staged creation has no published Node identity yet.
@@ -492,7 +502,7 @@ impl DomSourceNativeHtmlInstallLimits {
     ) -> Self {
         Self { native, source }
     }
-    pub const fn native(self) -> crate::DomNativeHtmlInstallLimits {
+    pub const fn native(self) -> crate::internal::installation::DomNativeHtmlInstallLimits {
         self.native
     }
     pub const fn source(self) -> DomSourceLimits {

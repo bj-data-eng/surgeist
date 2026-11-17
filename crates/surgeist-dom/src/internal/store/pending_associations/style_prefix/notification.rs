@@ -484,7 +484,7 @@ impl std::fmt::Debug for DomParsedHtmlStyleDeliveryPublication {
             .finish_non_exhaustive()
     }
 }
-impl crate::DomSourceEventExecutor {
+impl crate::internal::source::DomSourceEventExecutor {
     /// Trusted attestation of this exact parsed token's completed Load dispatch.
     /// The bound executor must use its actual completed event receipt. DOM
     /// authenticates binding, lineage and affine consumption, not host callbacks.

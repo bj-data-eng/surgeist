@@ -1265,7 +1265,7 @@ impl Dom {
     ) -> Result<crate::internal::source::DomSourceAttributePayloadRetention, DomError> {
         self.active_source_attribute_callback_work(request, registration, cancel)?;
         let debit = self.retain_source_callback_payload(custody::Usage::new(0, units), cancel)?;
-        Ok(crate::DomSourceAttributePayloadRetention { _debit: debit })
+        Ok(crate::internal::source::DomSourceAttributePayloadRetention { _debit: debit })
     }
 
     pub(in crate::internal::store) fn active_source_attribute_callback_work(

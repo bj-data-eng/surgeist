@@ -1,8 +1,10 @@
 //! HTML877d Frame null child-content, source guards and canonical lifecycle.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomError, DomHistoryError, DomLimits, DomResource,
-    DomSnapshot, NodeId,
+    Dom, DomBatch, DomError, DomSnapshot,
+    edit::{DomChange, DomHistoryError},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
 };
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
@@ -24,7 +26,8 @@ fn dom() -> Dom {
             0,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -397,7 +400,8 @@ fn exact_frame_storage_limits_and_failed_edits_publish_no_partial_family_or_iden
                 0,
                 4,
                 8192,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -457,7 +461,8 @@ fn late_hierarchy_errors_cancellation_and_history_preserve_published_frame_state
                 0,
                 history,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

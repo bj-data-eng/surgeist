@@ -1,7 +1,16 @@
 //! Functional native Dialog state and ordinary closed-hook contracts.
 //! HTML877d Dialog fresh/returnValue and ordinary inactive hooks; not hosted UI.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    dialog::DomDialog,
+    document::DomNativeInputPlatform,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    installation::{DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits},
+    limits::{DomLimits, DomResource},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn limits() -> DomLimits {
@@ -13,7 +22,7 @@ fn limits() -> DomLimits {
         0,
         32,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -189,7 +198,8 @@ fn logical_string_exact_boundary_succeeds_and_one_more_rolls_back_every_edit() {
             0,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     );

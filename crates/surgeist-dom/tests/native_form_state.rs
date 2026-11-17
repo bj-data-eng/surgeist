@@ -1,6 +1,14 @@
 //! HTML877d native Form scalars, canonical owner relations and real lifecycle.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+    tree::DomNodeKind,
+};
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html::{
     construction::HtmlShadowRootMode,
@@ -20,7 +28,8 @@ fn dom() -> Dom {
             128,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -509,7 +518,8 @@ fn native_form_exact_string_and_node_limits_refuse_atomically_and_retirement_rel
                 0,
                 4,
                 4096,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -557,7 +567,8 @@ fn native_form_exact_string_and_node_limits_refuse_atomically_and_retirement_rel
             0,
             4,
             4096,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

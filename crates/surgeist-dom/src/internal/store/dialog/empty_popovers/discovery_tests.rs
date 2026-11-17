@@ -45,7 +45,7 @@ impl Drop for Observation {
         READS.set(None);
     }
 }
-fn policy() -> crate::DomSourceLimits {
+fn policy() -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(
         256_000_000,
         4_000_000,
@@ -61,7 +61,7 @@ fn policy() -> crate::DomSourceLimits {
 // storage is already controlled, and the original fixed 256 MB is additional
 // preparation/old-new overlap headroom. Work and discovery assertions remain
 // independent of these capacity-based storage inputs.
-fn owner_preparation_policy(dom: &Dom) -> crate::DomSourceLimits {
+fn owner_preparation_policy(dom: &Dom) -> crate::internal::source::DomSourceLimits {
     let baseline = dom.custody_registry.ledger().total().bytes();
     let mut configured = policy();
     let additional = configured.retained_bytes;

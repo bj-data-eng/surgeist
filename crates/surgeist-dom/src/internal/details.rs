@@ -56,7 +56,7 @@ impl DomElementTaskAssociation {
     pub const fn global(self) -> crate::internal::hosted::DomHostedGlobalId {
         self.global
     }
-    pub const fn document(self) -> crate::DocumentId {
+    pub const fn document(self) -> crate::internal::identity::DocumentId {
         self.document
     }
 }

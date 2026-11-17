@@ -2,7 +2,24 @@
 //! Literal DOM3071 2584–2610 and Document defaults2110–2114.
 //! New-front functional evidence only: no compiler/stub or historical-main RED.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    custom_element::DomRegistryBinding,
+    document::{DomDocumentClass, DomNativeInputPlatform},
+    edit::DomChange,
+    focus::DomFocusedAreaDesignation,
+    identity::DocumentId,
+    installation::{DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits},
+    limits::{DomLimits, DomResource},
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
+    },
+    style::{
+        DomStyleAction, DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleInlineCspObservation,
+        DomStyleNotificationCompletion,
+    },
+    tree::DomNodeKind,
+};
 use surgeist_html::{
     construction::HtmlDocumentMode,
     values::{DocumentString, Namespace},
@@ -17,7 +34,7 @@ fn limits() -> DomLimits {
         0,
         32,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -340,7 +357,8 @@ fn node_and_string_exact_boundaries_and_cancellation_preserve_old_doctype_topolo
                 0,
                 8,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -408,7 +426,8 @@ fn smaller_svg_mime_does_not_erase_required_initial_xml_metadata_admission() {
                 0,
                 8,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -841,7 +860,7 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
     assert!(matches!(
         dom.finish_style_notification(
             &mut notification,
-            surgeist_dom::DomStyleNotificationDelivery::Native,
+            surgeist_dom::style::DomStyleNotificationDelivery::Native,
             1024,
             &cancel
         )
@@ -851,7 +870,7 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
     assert_eq!(
         dom.finish_style_notification(
             &mut notification,
-            surgeist_dom::DomStyleNotificationDelivery::Native,
+            surgeist_dom::style::DomStyleNotificationDelivery::Native,
             1024,
             &cancel
         )

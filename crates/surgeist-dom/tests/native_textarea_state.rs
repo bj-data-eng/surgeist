@@ -1,6 +1,15 @@
 //! Literal DOM3071/HTML877d Textarea outcomes through the canonical owner.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    document::DomNativeInputPlatform,
+    form::{DomTextareaReadLimits, DomTextareaState},
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource, DomUsage},
+    shadow::DomSlotQueryLimits,
+};
 use surgeist_html::elements::input::{
     HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as NoneDirection,
     HtmlInputSelectionDirection as Direction,
@@ -16,7 +25,7 @@ fn limits() -> DomLimits {
         256,
         32,
         1048576,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -715,7 +724,8 @@ fn one_short_current_units_and_late_wrong_family_refuse_the_whole_private_batch(
                 256,
                 32,
                 1048576,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -764,7 +774,8 @@ fn default_setter_admits_its_real_text_node_and_reached_raw_copy_before_publicat
                 0,
                 8,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -802,7 +813,8 @@ fn default_setter_admits_its_real_text_node_and_reached_raw_copy_before_publicat
             0,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

@@ -1,6 +1,17 @@
 //! Real native authoring -> canonical Draft installation, no parser or toy sink.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::DomHtmlCaptureLimits,
+    identity::{DocumentId, DomDocumentStamp, NodeId},
+    installation::{
+        DomNativeHtmlAssociation, DomNativeHtmlInstallError, DomNativeHtmlInstallLimits,
+        DomNativeHtmlInstallResource, DomNativeHtmlInstallation,
+    },
+    limits::{DomLimits, DomUsage},
+    shadow::DomTemplateDocumentRole,
+    tree::{DomNodeKind, DomQualifiedName},
+};
 use surgeist_html::construction::{
     HtmlAuthoredProcessingInstruction, HtmlConstructionLimits, HtmlDoctype, HtmlFragment,
     HtmlNodeKind,
@@ -27,7 +38,8 @@ fn dom() -> Dom {
             512,
             16,
             1048576,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -56,7 +68,7 @@ fn assert_name_values(actual: &DomQualifiedName, authored: &QualifiedName) {
     assert_eq!(actual.local_name(), authored.local_name());
 }
 fn assert_attribute_values(
-    actual: surgeist_dom::DomNamedNodeMap<'_>,
+    actual: surgeist_dom::tree::DomNamedNodeMap<'_>,
     authored: &OrderedAttributes,
 ) {
     assert_eq!(actual.len(), authored.len());
@@ -945,7 +957,8 @@ fn wrapper_and_every_installed_string_have_exact_canonical_admission() {
                 0,
                 8,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

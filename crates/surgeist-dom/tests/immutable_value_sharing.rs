@@ -3,8 +3,11 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits, DomNamedNodeMap,
-    DomSnapshot, NodeId,
+    Dom, DomBatch, DomCommit, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    tree::DomNamedNodeMap,
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -1003,7 +1006,10 @@ fn new_and_imported_prefixes_keep_their_own_backing_without_merging_names_or_mut
     );
 }
 
-fn readoption_element(batch: &mut DomBatch, document: DocumentId) -> surgeist_dom::CreatedNode {
+fn readoption_element(
+    batch: &mut DomBatch,
+    document: DocumentId,
+) -> surgeist_dom::edit::CreatedNode {
     let element = batch.create_element(document, "cell");
     batch.set_attribute(&element, "title", units(&[111, 108, 100]));
     batch.set_attribute_ns(

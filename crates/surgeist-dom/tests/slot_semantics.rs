@@ -1,5 +1,11 @@
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    shadow::{DomFlatRelation, DomShadowRootInit, DomSlotQueryLimits},
+};
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
@@ -24,7 +30,8 @@ fn owner() -> Dom {
             128,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

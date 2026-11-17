@@ -1,6 +1,20 @@
 //! Independent HTML877d Template and DOM3071 clone/adopt/fragment oracles.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits},
+    custom_element::DomRegistryBinding,
+    document::DomDocumentClass,
+    edit::{DomChange, DomHistoryError},
+    focus::DomFocusedAreaDesignation,
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    shadow::{
+        DomFlatRelation, DomShadowRootInit, DomSlotQueryLimits, DomSlotSignalCancellationReason,
+        DomTemplateDocumentRole,
+    },
+    tree::DomNodeKind,
+};
 use surgeist_html::{
     construction::{
         HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
@@ -24,7 +38,7 @@ fn limits(nodes: usize, units: usize) -> DomLimits {
         512,
         32,
         262144,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -878,7 +892,8 @@ fn native_for_and_shadow_attributes_do_not_create_parser_patching_or_shadow_stat
             512,
             0,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

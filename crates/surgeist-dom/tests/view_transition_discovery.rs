@@ -9,10 +9,17 @@ use surgeist_cssom::{
     CssomStore,
 };
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomDocumentStamp, DomError, DomLimits,
-    DomPreparedViewTransitionSheet, DomSourceCompletion, DomSourceEdit, DomSourceLimits,
-    DomSourceOutput, DomSourceProgress, DomViewTransitionBranches, DomViewTransitionCaptureLimits,
-    DomViewTransitionId, DomViewTransitionRecordId, NodeId,
+    Dom, DomBatch, DomCommit, DomError,
+    edit::DomChange,
+    identity::{DocumentId, DomDocumentStamp, NodeId},
+    limits::DomLimits,
+    source::{
+        DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress,
+    },
+    view_transition::{
+        DomPreparedViewTransitionSheet, DomViewTransitionBranches, DomViewTransitionCaptureLimits,
+        DomViewTransitionId, DomViewTransitionRecordId,
+    },
 };
 
 const LOCAL_WORK: u64 = 20_000;
@@ -74,7 +81,7 @@ fn fixture(unrelated: usize) -> Fixture {
         0,
         16,
         64_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_view_transitions(4, 4096, 16_384)

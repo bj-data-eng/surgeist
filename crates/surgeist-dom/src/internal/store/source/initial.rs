@@ -149,7 +149,7 @@ impl Initial {
     pub(in crate::internal::store) fn external_usage(&self) -> custody::Usage {
         custody::Usage::new(self.bytes.get(), self.units.get())
     }
-    pub(in crate::internal::store) fn limits(&self) -> crate::DomSourceLimits {
+    pub(in crate::internal::store) fn limits(&self) -> crate::internal::source::DomSourceLimits {
         self.limits
     }
 

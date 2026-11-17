@@ -2112,7 +2112,7 @@ impl DomHostedSource {
         self.shared
             .runtime_bytes
             .fetch_add(bytes, Ordering::Relaxed);
-        let retained = crate::DomHostedRuntimeRetention {
+        let retained = crate::internal::hosted::DomHostedRuntimeRetention {
             shared: Arc::downgrade(&self.shared),
             bytes,
         };
@@ -2121,7 +2121,7 @@ impl DomHostedSource {
     }
 }
 
-impl crate::DomHostedSource {
+impl crate::internal::hosted::DomHostedSource {
     /// Admit actual source-issued Runtime Host work on the original counters.
     /// Independent calls with no active Source have no Source work domain.
     pub fn admit_runtime_work(
@@ -2155,7 +2155,7 @@ impl DomHostedSource {
         let issuer = self.observe();
         issuer.validate(global.source, Role::Global, global.slot, global.generation)?;
         let document = dom.dispatch_global_document(global, cancel)?;
-        Ok(crate::DomDocumentConstructorContext {
+        Ok(crate::internal::hosted::DomDocumentConstructorContext {
             data: crate::internal::hosted::DocumentConstructorContext {
                 issuer,
                 global,

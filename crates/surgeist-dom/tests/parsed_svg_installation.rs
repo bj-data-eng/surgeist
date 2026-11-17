@@ -1,6 +1,19 @@
 //! Completed contextual SVG state through the actual public parse/install owners.
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits},
+    custom_element::DomRegistryBinding,
+    document::DomDocumentCreationCause,
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomParsedHtmlInstallError, DomParsedHtmlInstallLimits, DomParsedHtmlInstallResource,
+    },
+    limits::DomLimits,
+    script::DomSvgScriptOrigin,
+    shadow::DomTemplateDocumentRole,
+    tree::DomNodeKind,
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace},
@@ -71,7 +84,8 @@ fn completed_disabled_contextual_svg_script_keeps_processed_parser_state_and_tar
             4096,
             32,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -250,7 +264,8 @@ fn contextual_fixture(
             4096,
             32,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

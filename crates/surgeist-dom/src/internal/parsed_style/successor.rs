@@ -79,10 +79,6 @@ impl std::error::Error for DomParsedHtmlStyleSuccessorError {
         }
     }
 }
-pub use crate::internal::store::pending_associations::{
-    DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,
-    DomParsedHtmlStyleSuccessorPublished, DomParsedHtmlStyleSuccessorRetirement,
-};
 
 /// Borrowed evidence of the actual removal branch. The opaque completion owns
 /// the coupled commits; a known-null removal has no producer or DOM publication.

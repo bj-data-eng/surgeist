@@ -2375,7 +2375,10 @@ fn continuation_limits() -> DomSourceLimits {
     )
 }
 
-fn callback_source(dom: &mut Dom, edit: DomSourceEdit) -> crate::DomSourceCompletion {
+fn callback_source(
+    dom: &mut Dom,
+    edit: DomSourceEdit,
+) -> crate::internal::source::DomSourceCompletion {
     let cancel = AtomicBool::new(false);
     let mut lease = dom
         .begin_source_edit(edit, continuation_limits(), &cancel)

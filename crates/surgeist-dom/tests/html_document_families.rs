@@ -1,8 +1,10 @@
 //! Composed DOM3071 HTML case rules with HTML877d native Canvas/Marquee state.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits, DomResource, DomSnapshot,
-    NodeId,
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
 };
 use surgeist_html::elements::media::HtmlCanvasBitmapDimension;
 use surgeist_html::values::{DocumentString, Namespace};
@@ -17,7 +19,8 @@ fn owner() -> Dom {
             0,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -329,7 +332,8 @@ fn composed_html_canvas_dimension_storage_obeys_independent_exact_capacity() {
                 0,
                 0,
                 0,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

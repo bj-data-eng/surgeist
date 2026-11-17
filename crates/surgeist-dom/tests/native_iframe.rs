@@ -1,7 +1,7 @@
 //! Existing public DOM constructor boundary. HTML877d allows native Iframe
 //! creation with the accepted fresh never-BC/unprocessed/null-child phase.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_dom::{Dom, DomBatch, limits::DomLimits};
 use surgeist_html::values::{DocumentString, Namespace};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
@@ -17,7 +17,8 @@ fn native_html_iframe_creation_publishes_an_actual_element() {
             0,
             4,
             4096,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

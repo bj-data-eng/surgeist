@@ -5,10 +5,17 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use surgeist_dom::{
-    DocumentId, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit,
-    DomDesignModeRangeDisposition, DomError, DomLimits, DomRangeId, DomSnapshot,
-    DomSourceCompletion, DomSourceDesignModeStep, DomSourceEdit, DomSourceLimits, DomSourcePhase,
-    DomSourceProgress, DomSourceRequest, NodeId,
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    range::{
+        DomActiveRangeState, DomDesignModeRangeDisposition, DomRangeId, DomSourceDesignModeStep,
+    },
+    source::{
+        DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourcePhase, DomSourceProgress,
+        DomSourceRequest,
+    },
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -21,7 +28,7 @@ fn limits() -> DomLimits {
         1024,
         64,
         4_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_ranges(16)
@@ -505,7 +512,8 @@ fn parse_limits() -> surgeist_html_parser::HtmlParseLimits {
 }
 fn parsed_document(dom: &mut Dom) -> DocumentId {
     use surgeist_dom::{
-        DomNativeInputPlatform, DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits,
+        document::DomNativeInputPlatform,
+        installation::{DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits},
     };
     use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlSource};
     use surgeist_html_semantics::{
@@ -798,7 +806,7 @@ fn local_null_root_publication_has_exact_change_headroom_and_never_allocates_an_
 
 #[test]
 fn finite_storage_work_and_cancellation_refusals_preserve_real_range_and_retry_once() {
-    use surgeist_dom::DomResource;
+    use surgeist_dom::limits::DomResource;
     let mut dom = owner();
     let document = document(&mut dom);
     let range = associated_range(&mut dom, document);

@@ -1,6 +1,13 @@
 //! Raw source transitions and immediate consuming handoff; no task delivery.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    details::{DomDetailsToggleCancellationReason, DomDetailsToggleTransfer},
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource},
+};
 use surgeist_html::elements::details::HtmlDetailsState::{Closed, Open};
 use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 
@@ -16,7 +23,7 @@ fn limits(pending: usize) -> DomLimits {
         64,
         8,
         131072,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_details_toggle_intentions(pending)

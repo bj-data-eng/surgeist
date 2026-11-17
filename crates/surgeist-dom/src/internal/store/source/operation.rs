@@ -1657,7 +1657,7 @@ impl Operation {
                 Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             prepared.state.node(self.id.owner, subject)?;
-            Some(crate::DomSourceDialogRequest {
+            Some(crate::internal::source::DomSourceDialogRequest {
                 operation: self.id,
                 subject,
                 action: pending.action,
@@ -1690,7 +1690,7 @@ impl Operation {
                 Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             prepared.state.node(self.id.owner, subject)?;
-            Some(crate::DomSourceDialogFocusingRequest {
+            Some(crate::internal::source::DomSourceDialogFocusingRequest {
                 operation: self.id,
                 subject,
                 action: pending.action,
@@ -1717,7 +1717,7 @@ impl Operation {
                 prepared.state.node(self.id.owner, id)?;
                 Ok(id)
             };
-            Some(crate::DomSourceFocusDelegateRequest {
+            Some(crate::internal::source::DomSourceFocusDelegateRequest {
                 operation: self.id,
                 subject: mapped(pending.subject)?,
                 root: mapped(delegate.root)?,
@@ -1740,18 +1740,20 @@ impl Operation {
                 Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             prepared.state.node(self.id.owner, subject)?;
-            Some(crate::DomSourceAutofocusInsertionRequest {
-                operation: self.id,
-                subject,
-                action: pending.cursor.action(),
-                occurrence: crate::internal::source::watcher::HookOccurrence {
-                    command: self.index,
-                    ordinal: match pending.invocation {
-                        Invocation::Unissued => self.draft.source_invocation,
-                        Invocation::Exposed(ordinal) => ordinal,
+            Some(
+                crate::internal::source::DomSourceAutofocusInsertionRequest {
+                    operation: self.id,
+                    subject,
+                    action: pending.cursor.action(),
+                    occurrence: crate::internal::source::watcher::HookOccurrence {
+                        command: self.index,
+                        ordinal: match pending.invocation {
+                            Invocation::Unissued => self.draft.source_invocation,
+                            Invocation::Exposed(ordinal) => ordinal,
+                        },
                     },
                 },
-            })
+            )
         } else {
             None
         };
@@ -1772,7 +1774,7 @@ impl Operation {
             ) {
                 return Err(DomError::WrongNodeKind.into());
             }
-            Some(crate::DomSourceDesignModeRequest {
+            Some(crate::internal::source::DomSourceDesignModeRequest {
                 operation: self.id,
                 document: DocumentId(document),
                 step: pending.step,
@@ -2925,7 +2927,7 @@ impl DomSourceLease<'_> {
                             .ok_or(DomError::UnavailableCreation)?;
                         drop(checkpoint);
                         return Ok(DomSourceProgress::Request(DomSourceRequest::Dialog(
-                            crate::DomSourceDialogRequest {
+                            crate::internal::source::DomSourceDialogRequest {
                                 operation: op.id,
                                 subject,
                                 action,
@@ -3205,7 +3207,7 @@ impl DomSourceLease<'_> {
                             let input = op.installation.as_mut().expect("installation root");
                             let bindings = std::mem::take(&mut input.bindings);
                             let payload = input.bindings_payload.take();
-                            let result = crate::DomNativeHtmlInstallation {
+                            let result = crate::internal::installation::DomNativeHtmlInstallation {
                                 destination: input.destination,
                                 source_root: input.source_root,
                                 root,
@@ -3996,12 +3998,12 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, crate::internal::installation::DomNativeHtmlInstallError> {
         use crate::internal::installation::DomNativeHtmlInstallError as Error;
-        let crate::DomNativeHtmlInstallTarget {
+        let crate::internal::installation::DomNativeHtmlInstallTarget {
             basis,
             parent,
             before,
         } = target;
-        let crate::DomSourceNativeHtmlInstallLimits {
+        let crate::internal::source::DomSourceNativeHtmlInstallLimits {
             native: installation_limits,
             source: limits,
         } = budgets;
@@ -4153,10 +4155,12 @@ impl Operation {
                 Key::Existing(id) => id,
                 Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
-            install.bindings.push(crate::DomNativeHtmlBinding {
-                source: row.source,
-                node: id,
-            });
+            install
+                .bindings
+                .push(crate::internal::installation::DomNativeHtmlBinding {
+                    source: row.source,
+                    node: id,
+                });
             #[cfg(test)]
             native_closing_observation::filled(install.bindings.len(), cancel);
         }

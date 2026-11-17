@@ -333,13 +333,15 @@ impl Node {
     pub(crate) fn children(&self) -> &[NodeId] {
         self.children_backing().map_or(&[], SharedVec::as_slice)
     }
-    pub(crate) fn focused_area_designation(&self) -> crate::DomFocusedAreaDesignation {
+    pub(crate) fn focused_area_designation(
+        &self,
+    ) -> crate::internal::document::DomFocusedAreaDesignation {
         match self {
             Self::Document(n) => n.value.focused_area_designation,
             _ => crate::internal::document::DomFocusedAreaDesignation::Unavailable,
         }
     }
-    pub(crate) fn active_range(&self) -> crate::DomActiveRangeState {
+    pub(crate) fn active_range(&self) -> crate::internal::range::DomActiveRangeState {
         match self {
             Self::Document(n) => n.value.active_range,
             _ => crate::internal::range::DomActiveRangeState::Unavailable,

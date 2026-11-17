@@ -1,6 +1,13 @@
 //! Qualified public readback of canonical layer state and generated UA input.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    fullscreen::DomTopLayerUaRule,
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::DomStyleAction,
+};
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
 use surgeist_html::values::Namespace;
 
@@ -20,7 +27,8 @@ fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
             128,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

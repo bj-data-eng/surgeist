@@ -468,7 +468,7 @@ fn scoped_registry_publication_preserves_exact_snapshot_and_document_order() {
             DomSourceEdit::create_element_with_options(
                 document.node(),
                 crate::internal::source::DomElementCreationName::Local("x-scoped".into()),
-                crate::DomElementCreationOptions {
+                crate::internal::source::DomElementCreationOptions {
                     is: None,
                     registry: Some(DomRegistryBinding::Null),
                 },
@@ -1421,13 +1421,13 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
     assert_eq!(
         loan.facts().collect::<Vec<_>>(),
         [
-            crate::DomCustomElementReaction {
+            crate::internal::store::source::reactions::DomCustomElementReaction {
                 element: inside,
                 definition,
                 kind:
                     crate::internal::store::source::reactions::DomCustomElementReactionKind::Upgrade,
             },
-            crate::DomCustomElementReaction {
+            crate::internal::store::source::reactions::DomCustomElementReaction {
                 element: outside,
                 definition,
                 kind:
@@ -1450,11 +1450,14 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
         .unwrap();
     assert_eq!(
         later_loan.facts().collect::<Vec<_>>(),
-        [crate::DomCustomElementReaction {
-            element: later,
-            definition,
-            kind: crate::internal::store::source::reactions::DomCustomElementReactionKind::Upgrade,
-        }]
+        [
+            crate::internal::store::source::reactions::DomCustomElementReaction {
+                element: later,
+                definition,
+                kind:
+                    crate::internal::store::source::reactions::DomCustomElementReactionKind::Upgrade,
+            }
+        ]
     );
     later_loan.acknowledge_front();
     drop(later_loan);
@@ -1466,11 +1469,14 @@ fn insertion_reaction_receipt_preserves_shadow_order_and_refused_output() {
         .unwrap();
     assert_eq!(
         loan.facts().collect::<Vec<_>>(),
-        [crate::DomCustomElementReaction {
-            element: outside,
-            definition,
-            kind: crate::internal::store::source::reactions::DomCustomElementReactionKind::Upgrade,
-        }]
+        [
+            crate::internal::store::source::reactions::DomCustomElementReaction {
+                element: outside,
+                definition,
+                kind:
+                    crate::internal::store::source::reactions::DomCustomElementReactionKind::Upgrade,
+            }
+        ]
     );
     registration.revoke();
     assert!(matches!(

@@ -1,6 +1,12 @@
 //! Real capture composition retains independent modal and flat-fact admission.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+};
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 use surgeist_html_semantics::{
@@ -22,7 +28,8 @@ fn owner() -> Dom {
             128,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

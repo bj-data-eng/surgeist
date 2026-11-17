@@ -1,6 +1,12 @@
 //! Later native edits consume the actual installed document's opaque environment.
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    document::DomNativeInputPlatform,
+    installation::{DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits},
+    limits::DomLimits,
+    url::DomBaseFactsError,
+};
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
 use surgeist_html_semantics::*;
 fn parse_limits() -> HtmlParseLimits {
@@ -58,7 +64,7 @@ fn installed_environment_accepts_exact_inputs_and_rejects_same_spelling_foreign_
         256,
         16,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_base_processing(128, 1_000_000)

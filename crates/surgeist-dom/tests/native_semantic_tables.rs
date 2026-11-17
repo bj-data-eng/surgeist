@@ -2,9 +2,14 @@
 //! HTML877d §4.9.12 table formation supplies the literal slot oracles below.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    CreatedNode, DocumentId, Dom, DomBatch, DomCommit, DomHostDomains, DomHostError,
-    DomHostObservations, DomHostPublisher, DomHtmlCapture, DomHtmlCaptureError,
-    DomHtmlCaptureLimits, DomHtmlCaptureResource, DomLimits, DomSnapshot, NodeId, Observed,
+    Dom, DomBatch, DomCommit, DomSnapshot,
+    capture::{
+        DomHostDomains, DomHostError, DomHostObservations, DomHostPublisher, DomHtmlCapture,
+        DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource, Observed,
+    },
+    edit::CreatedNode,
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
 };
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html::values::Namespace;
@@ -25,7 +30,8 @@ fn owner() -> Dom {
             0,
             16,
             131072,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

@@ -2,10 +2,14 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChildListObservationLimits, DomChildListObserverId,
-    DomChildListRecord, DomError, DomLimits, DomNameLimits, DomNativeCheckpoint,
-    DomNativeCheckpointLimits, DomResource, DomShadowRootInit, DomSlotQueryLimits, DomSourceEdit,
-    DomSourceLimits, DomSourceProgress, DomSourceRequest, DomStyleInlineCspObservation, NodeId,
+    Dom, DomBatch, DomError,
+    edit::{DomChildListObservationLimits, DomChildListObserverId, DomChildListRecord},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::DomStyleInlineCspObservation,
+    task::{DomNativeCheckpoint, DomNativeCheckpointLimits},
 };
 use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 

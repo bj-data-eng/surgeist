@@ -3,7 +3,12 @@
 //! #ensure-details-exclusivity algorithms. No Runtime delivery is asserted.
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    shadow::DomShadowRootInit,
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace},
@@ -19,7 +24,8 @@ fn dom() -> Dom {
             256,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_details_toggle_intentions(512)

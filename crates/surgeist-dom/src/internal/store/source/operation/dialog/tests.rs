@@ -161,7 +161,7 @@ fn request_close_called_boundary_reserves_nested_close_before_request_state_publ
     // Controlled canonical stored-watcher input for the Source preflight. The
     // original issuer token is real; no manager registration, Window activity,
     // request action or external service reply is fabricated by this fixture.
-    let watcher = crate::DomCloseWatcherId {
+    let watcher = crate::internal::dialog::DomCloseWatcherId {
         operation: original_source,
         command: 0,
         occurrence: 0,

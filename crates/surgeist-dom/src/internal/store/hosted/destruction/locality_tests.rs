@@ -557,7 +557,7 @@ fn empty_preparation_ignores_historical_rows_and_borrowed_restore_is_infallible(
     );
 }
 
-fn source_limits() -> crate::DomSourceLimits {
+fn source_limits() -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(
         128_000_000,
         4_000_000,

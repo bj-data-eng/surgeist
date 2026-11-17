@@ -14,10 +14,10 @@ pub struct DomSourceDialogFocusingRequest {
     pub(crate) occurrence: super::watcher::HookOccurrence,
 }
 impl DomSourceDialogFocusingRequest {
-    pub const fn operation(&self) -> crate::DomSourceOperationId {
+    pub const fn operation(&self) -> crate::internal::source::DomSourceOperationId {
         self.operation
     }
-    pub const fn subject(&self) -> crate::NodeId {
+    pub const fn subject(&self) -> crate::internal::identity::NodeId {
         self.subject
     }
     pub const fn action(&self) -> surgeist_html::elements::dialog::HtmlDialogFocusingAction {
@@ -48,16 +48,16 @@ pub struct DomSourceFocusDelegateRequest {
     pub(crate) occurrence: super::watcher::HookOccurrence,
 }
 impl DomSourceFocusDelegateRequest {
-    pub const fn operation(&self) -> crate::DomSourceOperationId {
+    pub const fn operation(&self) -> crate::internal::source::DomSourceOperationId {
         self.operation
     }
-    pub const fn subject(&self) -> crate::NodeId {
+    pub const fn subject(&self) -> crate::internal::identity::NodeId {
         self.subject
     }
-    pub const fn root(&self) -> crate::NodeId {
+    pub const fn root(&self) -> crate::internal::identity::NodeId {
         self.root
     }
-    pub const fn queried_node(&self) -> crate::NodeId {
+    pub const fn queried_node(&self) -> crate::internal::identity::NodeId {
         self.queried_node
     }
     pub const fn step(&self) -> DomSourceFocusDelegateStep {
@@ -79,10 +79,10 @@ pub struct DomSourceAutofocusInsertionRequest {
     pub(crate) occurrence: super::watcher::HookOccurrence,
 }
 impl DomSourceAutofocusInsertionRequest {
-    pub const fn operation(&self) -> crate::DomSourceOperationId {
+    pub const fn operation(&self) -> crate::internal::source::DomSourceOperationId {
         self.operation
     }
-    pub const fn subject(&self) -> crate::NodeId {
+    pub const fn subject(&self) -> crate::internal::identity::NodeId {
         self.subject
     }
     pub const fn action(&self) -> surgeist_html::focus::HtmlAutofocusInsertionAction {
@@ -105,14 +105,14 @@ pub enum DomFocusRequest {
     AllowAutofocusInsertion(DomSourceAutofocusInsertionRequest),
 }
 impl DomFocusRequest {
-    pub fn operation(&self) -> crate::DomSourceOperationId {
+    pub fn operation(&self) -> crate::internal::source::DomSourceOperationId {
         match self {
             Self::RememberDialog(r) => r.operation(),
             Self::AllowDialog(r) => r.operation(),
             Self::AllowAutofocusInsertion(r) => r.operation(),
         }
     }
-    pub fn subject(&self) -> crate::NodeId {
+    pub fn subject(&self) -> crate::internal::identity::NodeId {
         match self {
             Self::RememberDialog(r) => r.subject(),
             Self::AllowDialog(r) => r.subject(),

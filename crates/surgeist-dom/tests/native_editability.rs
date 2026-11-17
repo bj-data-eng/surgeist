@@ -3,7 +3,7 @@
 //! this direct HTML child has no explicit contenteditable host state.
 use std::sync::atomic::AtomicBool;
 
-use surgeist_dom::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits};
+use surgeist_dom::{Dom, DomBatch, capture::DomHtmlCaptureLimits, limits::DomLimits};
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
@@ -23,7 +23,8 @@ fn native_fresh_document_design_mode_disables_implicit_editing_host() {
             0,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -75,7 +76,11 @@ fn native_fresh_document_design_mode_disables_implicit_editing_host() {
     );
 }
 
-use surgeist_dom::{DocumentId, DomHtmlCapture, DomSnapshot, NodeId};
+use surgeist_dom::{
+    DomSnapshot,
+    capture::DomHtmlCapture,
+    identity::{DocumentId, NodeId},
+};
 use surgeist_html_semantics::HtmlSemanticMissing;
 
 fn owner() -> Dom {
@@ -88,7 +93,8 @@ fn owner() -> Dom {
             1024,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -123,8 +129,8 @@ fn fact(capture: &DomHtmlCapture, node: NodeId, query: HtmlSemanticQuery) -> Htm
 fn with_slots(capture: DomHtmlCapture) -> DomHtmlCapture {
     capture
         .with_slot_semantics(
-            surgeist_dom::DomSlotSemanticLimits::new(
-                surgeist_dom::DomSlotQueryLimits::new(512, 4096).unwrap(),
+            surgeist_dom::capture::DomSlotSemanticLimits::new(
+                surgeist_dom::shadow::DomSlotQueryLimits::new(512, 4096).unwrap(),
                 DomHtmlCaptureLimits::new(512, 1_000_000),
                 surgeist_html_semantics::HtmlLanguageDirectionLimits::new(
                     512, 512, 200_000, 1_000_000,
@@ -228,7 +234,7 @@ fn ordinary_editability_does_not_cross_shadow_or_template_boundaries_and_survive
     b.insert_before(&template, &host, None);
     let done = dom.apply(b, &cancel).unwrap();
     let d = done.document(&d).unwrap();
-    let id = |ticket: &surgeist_dom::CreatedNode| done.created(ticket).unwrap().unwrap();
+    let id = |ticket: &surgeist_dom::edit::CreatedNode| done.created(ticket).unwrap().unwrap();
     let (host, child, blocked, foreign, svg, detached, shadow_child, template) = (
         id(&host),
         id(&child),
@@ -384,7 +390,8 @@ fn parse_limits() -> surgeist_html_parser::HtmlParseLimits {
 fn actual_reports_transfer_separate_owned_document_states_and_preserve_captured_target() {
     use std::sync::Arc;
     use surgeist_dom::{
-        DomNativeInputPlatform, DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits,
+        document::DomNativeInputPlatform,
+        installation::{DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits},
     };
     use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlSource};
     use surgeist_html_semantics::{
@@ -531,7 +538,7 @@ fn actual_reports_transfer_separate_owned_document_states_and_preserve_captured_
 
 #[test]
 fn failed_or_cancelled_capture_does_not_mutate_canonical_state_and_good_limits_recover() {
-    use surgeist_dom::{DomHtmlCaptureError, DomHtmlCaptureResource};
+    use surgeist_dom::capture::{DomHtmlCaptureError, DomHtmlCaptureResource};
     let cancel = AtomicBool::new(false);
     let mut dom = owner();
     let mut b = DomBatch::new();

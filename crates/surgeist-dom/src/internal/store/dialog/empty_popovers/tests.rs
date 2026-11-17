@@ -1,7 +1,7 @@
 //! Owning local qualifications only; no fabricated completed Show or queue.
 use super::*;
 
-fn limits(work: u64) -> crate::DomSourceLimits {
+fn limits(work: u64) -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(16_000_000, 100_000, work, 16, 4096, 4096, 1)
 }
 fn fixture() -> (Dom, DocumentId, DocumentId, NodeId) {

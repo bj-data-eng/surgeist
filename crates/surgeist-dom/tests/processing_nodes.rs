@@ -1,6 +1,11 @@
 use std::sync::atomic::AtomicBool;
 
-use surgeist_dom::{Dom, DomBatch, DomChange, DomError, DomLimits, DomNodeKind, DomResource};
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    edit::DomChange,
+    limits::{DomLimits, DomResource},
+    tree::DomNodeKind,
+};
 use surgeist_html::values::DocumentString;
 
 // Each native Document retains application/xml, UTF-8 and about:blank.
@@ -15,7 +20,7 @@ fn limits() -> DomLimits {
         0,
         16,
         65536,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -26,8 +31,8 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
 #[test]
 fn authored_pi_attributes_preserve_map_order_and_move_live_ranges() {
     use surgeist_dom::{
-        DomProcessingInstructionAttributeEdit as Edit, DomSourceEdit, DomSourceLimits,
-        DomSourceOutput, DomSourceProgress,
+        edit::DomProcessingInstructionAttributeEdit as Edit,
+        source::{DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress},
     };
     let cancel = AtomicBool::new(false);
     let source_limits = DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, 64, 64, 3);
@@ -121,8 +126,8 @@ fn authored_pi_attributes_preserve_map_order_and_move_live_ranges() {
 #[test]
 fn pi_toggle_reserves_scalar_output_before_publication() {
     use surgeist_dom::{
-        DomProcessingInstructionAttributeEdit as Edit, DomSourceEdit, DomSourceLimits,
-        DomSourceOutput, DomSourceProgress,
+        edit::DomProcessingInstructionAttributeEdit as Edit,
+        source::{DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress},
     };
     let cancel = AtomicBool::new(false);
     let limits = |outputs| DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, outputs, 0, 3);
@@ -441,7 +446,8 @@ fn pi_replacement_can_remove_old_map_capacity_at_the_exact_live_string_limit() {
             0,
             8,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -582,7 +588,8 @@ fn new_node_strings_and_derived_pi_map_are_admitted_atomically() {
             0,
             8,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -657,7 +664,8 @@ fn pi_map_growth_over_budget_preserves_prior_data_map_revision_and_history() {
             0,
             8,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -702,7 +710,8 @@ fn destroying_pi_and_doctype_reclaims_all_stored_strings_without_breaking_old_ca
             0,
             8,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

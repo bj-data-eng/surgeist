@@ -1,7 +1,10 @@
 //! Literal oracles: HTML877d Canvas none-mode and obsolete Marquee algorithms.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource, DomSnapshot, NodeId,
+    Dom, DomBatch, DomError, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
 };
 use surgeist_html::elements::media::HtmlCanvasBitmapDimension;
 use surgeist_html::values::{DocumentString, Namespace};
@@ -16,7 +19,8 @@ fn dom() -> Dom {
             0,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -314,8 +318,10 @@ fn exact_limits_count_canonical_digits_but_inline_defaults_cost_no_digit_storage
                     0,
                     0,
                     0,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )
@@ -506,7 +512,8 @@ fn family_changes_publish_complete_history_or_explicit_fallback_under_zero_histo
                 0,
                 history,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -520,7 +527,7 @@ fn family_changes_publish_complete_history_or_explicit_fallback_under_zero_histo
         if history == 0 {
             assert!(matches!(
                 dom.changes_since(before.stamp()),
-                Err(surgeist_dom::DomHistoryError::FullRecomputeRequired { .. })
+                Err(surgeist_dom::edit::DomHistoryError::FullRecomputeRequired { .. })
             ));
         } else {
             assert_eq!(

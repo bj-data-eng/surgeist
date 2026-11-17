@@ -4,7 +4,21 @@ use surgeist_css::CssParserContext;
 use surgeist_css::property::CssPropertyGrammar;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::*;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    event::{DomDispatchCustodyLimits, DomSourceEventOutcome},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::{
+        DomStyleInlineCspObservation, DomStyleRequest,
+        inline::{
+            DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange,
+            DomInlineStyleError, DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
+            DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
+        },
+    },
+};
 use surgeist_html::values::{DocumentString, Namespace};
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

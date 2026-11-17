@@ -1,6 +1,17 @@
 //! Actual source triggers and Document history; no CSS, policy or UI stand-ins.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    edit::{DomChange, NodeOperand},
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource},
+    meta::{DomMetaColorSchemeState, DomMetaError, DomMetaThemeColorState},
+    shadow::DomSlotQueryLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
+    url::DomEncodingUrlFactsError,
+};
 use surgeist_html::attributes::HtmlReferrerPolicy;
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
@@ -20,7 +31,7 @@ fn limits(work: u64) -> DomLimits {
         64,
         8,
         262144,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_meta_processing_work(work)
@@ -547,7 +558,8 @@ fn language_history_retention_is_independent_from_attribute_units() {
             64,
             8,
             262144,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_meta_processing_work(1_000_000)

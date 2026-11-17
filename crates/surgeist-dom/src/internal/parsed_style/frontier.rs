@@ -55,7 +55,3 @@ impl std::error::Error for DomParsedHtmlFrontierError {
         }
     }
 }
-pub use crate::internal::store::pending_associations::{
-    DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry, DomParsedHtmlSynchronousEnd,
-    DomParsedHtmlSynchronousEndView,
-};

@@ -62,7 +62,7 @@ impl Control {
         self.imports_observed.load(Ordering::Relaxed)
     }
 
-    pub(super) fn execution(&self) -> crate::DomParsedHtmlExecutionState {
+    pub(super) fn execution(&self) -> crate::internal::parsed_style::DomParsedHtmlExecutionState {
         match self.execution.load(Ordering::Acquire) {
             0 => crate::internal::parsed_style::DomParsedHtmlExecutionState::Unstarted,
             1 => crate::internal::parsed_style::DomParsedHtmlExecutionState::Activated,

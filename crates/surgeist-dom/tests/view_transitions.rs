@@ -3,7 +3,18 @@ use std::sync::atomic::AtomicBool;
 use surgeist_css::values::common::CssCustomIdent;
 use surgeist_css::values::view_transition::CssViewTransitionIdent;
 use surgeist_cssom::*;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    edit::DomChange,
+    identity::{DocumentId, DomDocumentStamp, NodeId},
+    limits::{DomLimits, DomResource},
+    view_transition::{
+        DomPreparedViewTransitionRules, DomPreparedViewTransitionSheet, DomViewTransitionBranches,
+        DomViewTransitionCaptureLimits, DomViewTransitionCssomError, DomViewTransitionId,
+        DomViewTransitionImageRules, DomViewTransitionPseudoKind, DomViewTransitionRecordId,
+        DomViewTransitionRuleAssociations, DomViewTransitionSubject,
+    },
+};
 
 fn limits() -> DomLimits {
     DomLimits::new(
@@ -14,7 +25,7 @@ fn limits() -> DomLimits {
         0,
         32,
         65536,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_view_transitions(8, 16, 80)
@@ -997,7 +1008,7 @@ fn finite_feature_limits_names_pseudos_and_stale_basis_fail_without_identity_or_
         0,
         32,
         65536,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap();
     f.dom.set_limits(base_limits).unwrap();
@@ -1110,7 +1121,8 @@ fn record_string_and_pseudo_capacity_boundaries_count_retained_state_until_relea
                 0,
                 32,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_view_transitions(2, 1, 5)
@@ -1154,7 +1166,8 @@ fn record_string_and_pseudo_capacity_boundaries_count_retained_state_until_relea
                 0,
                 32,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_view_transitions(2, 1, 8)
@@ -1181,7 +1194,8 @@ fn record_string_and_pseudo_capacity_boundaries_count_retained_state_until_relea
                 0,
                 32,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_view_transitions(2, 2, 8)

@@ -23,7 +23,7 @@ impl Drop for RetirementCutGuard {
         RETIREMENT_CUT.set(None);
     }
 }
-fn source_limits(work: u64) -> crate::DomSourceLimits {
+fn source_limits(work: u64) -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(64_000_000, 1_000_000, work, 64, 4096, 4096, 2)
 }
 fn fixture() -> (Dom, [DocumentId; 2], [NodeId; 3]) {

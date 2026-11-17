@@ -472,7 +472,7 @@ fn assert_range_dependencies(owner: DomOwnerId, state: &State) {
             lowest = Some(index);
         }
         if let Some(record) = slot.record {
-            let id = crate::DomRangeId {
+            let id = crate::internal::range::DomRangeId {
                 owner,
                 slot: index,
                 generation: slot.generation,

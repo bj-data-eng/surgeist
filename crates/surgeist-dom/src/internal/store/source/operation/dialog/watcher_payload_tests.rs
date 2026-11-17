@@ -7,7 +7,7 @@ struct Allocation {
     values: Vec<NodeId>,
     _payload: crate::internal::hosted::DomHostedRuntimeRetention,
 }
-fn issuer(dom: &mut Dom) -> crate::DomHostedSource {
+fn issuer(dom: &mut Dom) -> crate::internal::hosted::DomHostedSource {
     dom.register_hosted_source(
         crate::internal::hosted::DomHostedLimits::new(
             crate::internal::hosted::DomHostedRecordLimits::new(16, 16, 16, 16, 16, 16, 16),

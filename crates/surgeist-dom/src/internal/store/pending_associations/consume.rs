@@ -31,7 +31,8 @@ enum Phase {
 /// Given an authentic pending identity and its admitted finite policy, admission
 /// can inspect immutable history, then release the exclusive owner borrow:
 /// ```no_run
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
+/// use surgeist_dom::{Dom,
+///     installation::{DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits}};
 /// use std::sync::atomic::AtomicBool;
 /// fn inspect(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 /// limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
@@ -43,7 +44,8 @@ enum Phase {
 /// ```
 /// The canonical owner cannot be accessed while its actual hold remains live:
 /// ```compile_fail,E0502
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
+/// use surgeist_dom::{Dom,
+///     installation::{DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits}};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 /// limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
@@ -54,8 +56,9 @@ enum Phase {
 /// ```
 /// A real preparation exclusively holds its original admission front:
 /// ```compile_fail,E0502
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits,
-///                    DomStyleCssomRoot};
+/// use surgeist_dom::{Dom,
+///     installation::{DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits},
+///     style::DomStyleCssomRoot};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 /// limits: DomParsedHtmlAssociationLimits, caps: &[&DomStyleCssomRoot],
@@ -110,7 +113,9 @@ impl Dom {
         })
     }
 }
-fn document_source(value: HtmlParseMetadataDocument<'_>) -> crate::DomParsedHtmlHistoricalDocument {
+fn document_source(
+    value: HtmlParseMetadataDocument<'_>,
+) -> crate::internal::parsed_installation::DomParsedHtmlHistoricalDocument {
     match value {
         HtmlParseMetadataDocument::Owned(node) => {
             crate::internal::parsed_installation::DomParsedHtmlHistoricalDocument::Constructed(

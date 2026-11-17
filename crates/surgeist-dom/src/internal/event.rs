@@ -33,7 +33,7 @@ impl std::fmt::Debug for DomEventRegistryAssociation {
 }
 impl DomEventRegistryAssociation {
     /// Exact canonical owner; this scalar observation grants no execution.
-    pub fn owner(&self) -> crate::DomOwnerId {
+    pub fn owner(&self) -> crate::internal::identity::DomOwnerId {
         self.binding.owner
     }
     /// Fixed producer-owned payload, excluding opaque allocator metadata.

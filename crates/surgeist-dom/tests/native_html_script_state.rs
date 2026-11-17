@@ -1,6 +1,14 @@
 //! HTML877d native Script state and source hooks through the Disabled return.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::DomHtmlCaptureLimits,
+    edit::{DomChange, DomHistoryError},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    script::DomHtmlScript,
+    shadow::DomTemplateDocumentRole,
+};
 use surgeist_html::elements::script::{HtmlScriptKind as Kind, HtmlScriptResult};
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
@@ -18,7 +26,8 @@ fn dom() -> Dom {
             64,
             16,
             262144,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -562,7 +571,8 @@ fn exact_storage_failure_cancellation_and_finite_history_preserve_script_state()
                 0,
                 4,
                 8192,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -599,7 +609,8 @@ fn exact_storage_failure_cancellation_and_finite_history_preserve_script_state()
                 0,
                 history,
                 65536,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

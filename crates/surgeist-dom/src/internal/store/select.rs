@@ -343,7 +343,7 @@ impl Dom {
                     auth
                 } else {
                     let auth = Arc::new(crate::internal::select::Authorization::new(
-                        crate::DomNativeTaskId {
+                        crate::internal::select::DomNativeTaskId {
                             owner: self.owner,
                             serial,
                         },
@@ -354,7 +354,7 @@ impl Dom {
                     auth
                 };
                 Ok(crate::internal::select::DomNativeCheckpoint::Select(
-                    crate::DomSelectTask {
+                    crate::internal::select::DomSelectTask {
                         source: auth.source.clone(),
                         authorization: auth,
                     },
@@ -397,7 +397,7 @@ impl Dom {
         let commit = self.publish(prepared, cancel)?;
         auth.consume();
         self.active_task = std::sync::Weak::new();
-        Ok(crate::DomSelectTaskCompletion {
+        Ok(crate::internal::select::DomSelectTaskCompletion {
             outcome: crate::internal::select::DomSelectTaskOutcome::Updated,
             changes: Some(commit.changes),
         })
@@ -436,7 +436,7 @@ impl Dom {
             check_cancel(cancel)?;
             auth.consume();
             return Ok(CompletionAdmission::Skipped(
-                crate::DomSelectTaskCompletion {
+                crate::internal::select::DomSelectTaskCompletion {
                     outcome: crate::internal::select::DomSelectTaskOutcome::SkippedTargetDestroyed,
                     changes: None,
                 },
@@ -2463,7 +2463,7 @@ mod tests {
         let expected_cancellations: Vec<_> = [first, second, next]
             .into_iter()
             .map(|serial| DomChange::SelectTaskCancelled {
-                operation: crate::DomNativeTaskId {
+                operation: crate::internal::select::DomNativeTaskId {
                     owner: dom.owner,
                     serial,
                 },

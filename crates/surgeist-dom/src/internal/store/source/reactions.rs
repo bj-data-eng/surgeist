@@ -142,7 +142,7 @@ impl Slot {
 }
 
 impl DomCustomElementReactions {
-    pub fn operation(&self) -> crate::DomSourceOperationId {
+    pub fn operation(&self) -> crate::internal::source::DomSourceOperationId {
         self.slot.operation
     }
 

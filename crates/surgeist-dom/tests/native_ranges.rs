@@ -3,9 +3,13 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit, DomError, DomLimits,
-    DomRangeId, DomResource, DomShadowRootInit, DomSnapshot, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, DomSourceRequest, NodeId,
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    range::{DomActiveRangeState, DomRangeId},
+    shadow::DomShadowRootInit,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
 };
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
 use surgeist_html::{
@@ -22,7 +26,7 @@ fn limits(ranges: usize) -> DomLimits {
         0,
         64,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_ranges(ranges)
@@ -912,7 +916,8 @@ fn default_disabled_range_allowance_and_source_work_refusal_preserve_original_st
             0,
             64,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -1112,7 +1117,7 @@ fn source_fragment_safe_offsets_append_and_absent_ranges_keep_original_style_bou
             assert_eq!(request.source().element(), fixture.style);
             assert_eq!(
                 request.action(),
-                surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+                surgeist_dom::style::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
             );
             ordinal = request.source().ordinal();
             let snapshot = lease.snapshot();
@@ -1139,7 +1144,7 @@ fn source_fragment_safe_offsets_append_and_absent_ranges_keep_original_style_bou
         lease.request_cancel();
         // Supply a real explicit policy outcome. It prohibits inline Style,
         // so no CSSOM creation or synthetic Applied receipt is necessary.
-        let block = surgeist_dom::DomStyleInlineCspObservation::evaluated(
+        let block = surgeist_dom::style::DomStyleInlineCspObservation::evaluated(
             request.source(),
             Arc::new(vec!["style-src 'none'".into()]),
             19,
@@ -1235,7 +1240,7 @@ fn full_count_insertion_remains_supported_when_no_external_exposure_is_reached()
 
 #[test]
 fn source_range_lifecycle_returns_typed_identity_and_preserves_association_across_roots() {
-    use surgeist_dom::DomSourceOutput;
+    use surgeist_dom::source::DomSourceOutput;
     let mut dom = dom();
     let (document, parent) = document_and_parent(&mut dom);
     let mut setup = DomBatch::new();
@@ -1335,7 +1340,7 @@ fn source_range_lifecycle_returns_typed_identity_and_preserves_association_acros
 #[test]
 fn source_range_creation_requires_one_identity_and_one_output_without_publishing_refused_candidates()
  {
-    use surgeist_dom::DomSourceOutput;
+    use surgeist_dom::source::DomSourceOutput;
     let mut dom = dom();
     let (document, parent) = document_and_parent(&mut dom);
     let original = at(&mut dom, document, (parent, 0), (parent, 0));

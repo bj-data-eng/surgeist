@@ -6,7 +6,16 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    dialog::DomDialogTask,
+    event::{DomDispatchCustodyLimits, DomSourceEventOutcome},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::{DomStyleAction, DomStyleInlineCspObservation},
+    tree::DomNamedNodeMap,
+};
 use surgeist_html::elements::{dialog::HtmlDialogAction, style::HtmlStyleUpdateAction};
 use surgeist_html::values::{DocumentString, Namespace};
 

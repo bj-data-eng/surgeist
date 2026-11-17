@@ -4,7 +4,16 @@ use surgeist_css::property::CssPropertyGrammar;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_css::{CssParserContext, CssParserMode};
 use surgeist_cssom::*;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    style::inline::{
+        DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleError, DomInlineStyleInputs,
+        DomInlineStyleLimits, DomInlineStyleRequestLimits,
+    },
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {

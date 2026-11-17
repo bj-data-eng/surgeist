@@ -148,7 +148,7 @@ fn completed_lock(
 ///
 /// Inspect an authentic pending contribution without retaining a command hold:
 /// ```no_run
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId};
+/// use surgeist_dom::{Dom, installation::DomParsedHtmlAssociationId};
 /// fn inspect(dom: &Dom, id: DomParsedHtmlAssociationId) {
 ///     let view = dom.parsed_html_style_prefix(id).unwrap();
 ///     let _ = view.phase();
@@ -156,7 +156,8 @@ fn completed_lock(
 /// ```
 /// A canonical read guard excludes a conflicting owner command:
 /// ```compile_fail,E0502
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
+/// use surgeist_dom::{Dom,
+///     installation::{DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits}};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 ///            limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
@@ -286,7 +287,8 @@ impl Dom {
 /// First finish the read loan, then bind an explicitly supplied policy to its
 /// authentic awaiting qualification. This does not form or evaluate a request:
 /// ```no_run
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
+/// use surgeist_dom::{Dom,
+///     installation::{DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits}};
 /// use surgeist_html::security::csp::HtmlCspAssociation;
 /// use std::sync::atomic::AtomicBool;
 /// fn bind(dom: &mut Dom, id: DomParsedHtmlAssociationId,
@@ -301,7 +303,8 @@ impl Dom {
 /// ```
 /// A command hold excludes a concurrent canonical request loan:
 /// ```compile_fail,E0502
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
+/// use surgeist_dom::{Dom,
+///     installation::{DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits}};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 ///            limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {

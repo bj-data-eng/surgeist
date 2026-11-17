@@ -248,10 +248,10 @@ impl DomStyleSource {
     pub fn ordinal(&self) -> u64 {
         self.ordinal
     }
-    pub fn stamp(&self) -> crate::DomStamp {
+    pub fn stamp(&self) -> crate::internal::identity::DomStamp {
         self.stamp
     }
-    pub fn document_metadata(&self) -> &crate::DomDocumentMetadata {
+    pub fn document_metadata(&self) -> &crate::internal::document::DomDocumentMetadata {
         &self.metadata
     }
     pub fn root_kind(&self) -> DomStyleRootKind {
@@ -260,7 +260,7 @@ impl DomStyleSource {
     pub fn element(&self) -> NodeId {
         self.element
     }
-    pub fn document(&self) -> crate::DocumentId {
+    pub fn document(&self) -> crate::internal::identity::DocumentId {
         self.document
     }
     pub fn root(&self) -> NodeId {
@@ -548,7 +548,7 @@ impl DomStyleNotificationToken {
     pub fn origin(&self) -> &DomStyleNotificationOrigin {
         self.origin.as_ref().expect("live notification origin")
     }
-    pub(crate) fn owner(&self) -> crate::DomOwnerId {
+    pub(crate) fn owner(&self) -> crate::internal::identity::DomOwnerId {
         match self.origin() {
             DomStyleNotificationOrigin::NativeSource(operation) => operation.owner,
             DomStyleNotificationOrigin::ParsedOccurrence { contribution, .. } => {

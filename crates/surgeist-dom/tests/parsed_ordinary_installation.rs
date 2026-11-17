@@ -13,7 +13,37 @@ mod pending_associations;
 #[path = "parsed_ordinary_installation/meta_csp.rs"]
 mod meta_csp;
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits},
+    dialog::DomDialog,
+    document::{DomDocumentClass, DomDocumentCreationCause, DomNativeInputPlatform},
+    edit::DomChange,
+    focus::DomFocusedAreaDesignation,
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomParsedDocumentEnvironment, DomParsedHtmlAssociationLimits,
+        DomParsedHtmlAssociationReadiness, DomParsedHtmlInstallError, DomParsedHtmlInstallLimits,
+        DomParsedHtmlInstallResource, DomParsedHtmlInstallation,
+        style::{
+            DomParsedHtmlExecutionState, DomParsedHtmlStyleError,
+            DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStylePhase,
+        },
+    },
+    limits::{DomLimits, DomNameLimits, DomResource},
+    meta::{
+        DomDocumentCspState, DomMetaAtomicError, DomMetaAtomicLimits, DomMetaColorSchemeState,
+        DomMetaError, DomMetaRuntimePrefix, DomMetaRuntimeUsage, DomMetaThemeColorState,
+    },
+    script::{DomHtmlScript, DomSvgScriptOrigin},
+    shadow::{DomShadowRootInit, DomTemplateDocumentRole},
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
+    },
+    style::{DomStyleAction, DomStyleInlineCspObservation, DomStyleSheetAvailability},
+    tree::DomNodeKind,
+    url::{DomBaseFactsError, DomBaseResponse, DomImageUpdateCancellationReason},
+};
 use surgeist_html::construction::HtmlShadowRootMode;
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html::{construction::HtmlDocumentMode, elements::native::HtmlCustomElementState};
@@ -86,7 +116,8 @@ fn setup() -> (Dom, DomParsedDocumentEnvironment) {
             4096,
             32,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -186,7 +217,8 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
             4096,
             32,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_base_processing(256, 10_000_000)
@@ -584,7 +616,8 @@ fn contextual_current_revision_is_independent_of_the_older_frozen_base_record() 
             4096,
             32,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_base_processing(256, 10_000_000)
@@ -4055,8 +4088,10 @@ fn parsed_meta_utf16_language_uses_canonical_exact_units_and_one_short_rolls_bac
                     4096,
                     32,
                     1_000_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )

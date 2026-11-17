@@ -20,7 +20,38 @@ mod successor;
 #[path = "parsed_style/terminal.rs"]
 mod terminal;
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    document::DomNativeInputPlatform,
+    edit::DomChange,
+    identity::{DocumentId, DomStamp, NodeId},
+    installation::{
+        DomParsedDocumentEnvironment, DomParsedHtmlAssociationAdmissionError,
+        DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits,
+        DomParsedHtmlAssociationRuntimeUsage, DomParsedHtmlInstallLimits,
+        meta::DomParsedHtmlMetaOccurrenceError,
+        style::{
+            DomParsedHtmlExecutionState, DomParsedHtmlFrontierError, DomParsedHtmlStyleError,
+            DomParsedHtmlStyleInitialPolicyRequest, DomParsedHtmlStyleInlinePolicyObservation,
+            DomParsedHtmlStyleNotificationContinuation, DomParsedHtmlStyleNotificationDisposition,
+            DomParsedHtmlStyleNotificationError, DomParsedHtmlStyleNotificationHandoff,
+            DomParsedHtmlStyleNotificationHandoffStatus, DomParsedHtmlStyleNotificationRequirement,
+            DomParsedHtmlStyleNotificationUnavailable, DomParsedHtmlStylePhase,
+            DomParsedHtmlStyleQualification, DomParsedHtmlStyleRenderingProgress,
+            DomParsedHtmlStyleRenderingRequirement, DomParsedHtmlStyleResources,
+            DomParsedHtmlStyleSheetError, DomParsedHtmlStyleSheetInput,
+            DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSuccessorCompletion,
+            DomParsedHtmlStyleSuccessorError, DomParsedHtmlStyleSuccessorRemoval,
+            DomParsedHtmlTerminalError,
+        },
+    },
+    limits::{DomLimits, DomNameLimits, DomResource},
+    style::{
+        DomStyleCssomRoot, DomStyleCssomRootError, DomStyleNotificationCompletion,
+        DomStyleNotificationOrigin, DomStyleNotificationToken, DomStyleSheet,
+        DomStyleSheetAvailability,
+    },
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,
 };

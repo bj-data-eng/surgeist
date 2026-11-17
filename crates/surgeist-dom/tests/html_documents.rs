@@ -3,9 +3,15 @@
 //! family initialization and independent absent-browsing-context semantics.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomDocumentClass, DomError,
-    DomHtmlCaptureLimits, DomLimits, DomNodeKind, DomRegistryBinding, DomResource,
-    DomShadowRootInit, DomSnapshot, NodeId,
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::DomHtmlCaptureLimits,
+    custom_element::DomRegistryBinding,
+    document::DomDocumentClass,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    shadow::DomShadowRootInit,
+    tree::DomNodeKind,
 };
 use surgeist_html::{
     construction::{HtmlDocumentMode, HtmlShadowRootMode},
@@ -23,7 +29,8 @@ fn new_dom() -> Dom {
             0,
             32,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -48,7 +55,7 @@ fn skeleton(snapshot: &DomSnapshot, document: DocumentId) -> (NodeId, NodeId, No
             .document(document)
             .unwrap()
             .focused_area_designation(),
-        surgeist_dom::DomFocusedAreaDesignation::KnownNull
+        surgeist_dom::focus::DomFocusedAreaDesignation::KnownNull
     );
     let children = snapshot.node(document.node()).unwrap().children();
     assert_eq!(children.len(), 2);
@@ -642,8 +649,10 @@ fn exact_skeleton_capacity_and_one_short_limits_apply_to_all_private_allocations
                     0,
                     8,
                     8192,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )

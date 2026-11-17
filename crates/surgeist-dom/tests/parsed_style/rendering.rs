@@ -119,7 +119,7 @@ fn absent_empty_and_ascii_whitespace_media_use_original_head_body_gate_and_real_
                 .unwrap()
                 .process_rendering(
                     &value.q,
-                    surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                    surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                     &flag(),
                 )
                 .unwrap();
@@ -149,7 +149,7 @@ fn absent_empty_and_ascii_whitespace_media_use_original_head_body_gate_and_real_
             assert!(matches!(
                 hold.process_rendering(
                     &value.q,
-                    surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                    surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                     &flag()
                 ),
                 Err(DomParsedHtmlStyleError::WrongPhase {
@@ -179,7 +179,7 @@ fn nontrivial_media_keeps_original_cursor_pending_without_guessing_a_match() {
                     .unwrap()
                     .process_rendering(
                         &value.q,
-                        surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                        surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                         &flag()
                     )
                     .unwrap(),
@@ -214,7 +214,7 @@ fn cancellation_wrong_qualification_and_final_output_refusal_preserve_same_origi
         assert!(matches!(
             hold.process_rendering(
                 &other.q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                 &flag()
             ),
             Err(DomParsedHtmlStyleError::WrongRequest)
@@ -222,7 +222,7 @@ fn cancellation_wrong_qualification_and_final_output_refusal_preserve_same_origi
         assert!(matches!(
             hold.process_rendering(
                 &value.q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                 &AtomicBool::new(true)
             ),
             Err(DomParsedHtmlStyleError::Admission(
@@ -232,7 +232,7 @@ fn cancellation_wrong_qualification_and_final_output_refusal_preserve_same_origi
         assert!(matches!(
             hold.process_rendering(
                 &value.q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                 &flag()
             ),
             Err(DomParsedHtmlStyleError::Admission(
@@ -262,7 +262,7 @@ fn cancellation_wrong_qualification_and_final_output_refusal_preserve_same_origi
     assert!(matches!(
         hold.process_rendering(
             &value.q,
-            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
             &flag()
         )
         .unwrap(),
@@ -290,7 +290,7 @@ fn actual_pending_adoption_guard_preserves_live_destination_and_original_qualifi
         .unwrap()
         .process_rendering(
             &value.q,
-            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
             &flag(),
         )
         .unwrap();

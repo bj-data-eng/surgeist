@@ -754,7 +754,7 @@ impl DomDocumentMetadata {
     }
     /// Last completed theme selection at this publication. Current-tree
     /// interpretation requires a complete Source snapshot.
-    pub fn meta_theme_color(&self) -> &crate::DomMetaThemeColorState {
+    pub fn meta_theme_color(&self) -> &crate::internal::meta::DomMetaThemeColorState {
         &self.meta_theme_color
     }
     /// Last completed color-scheme selection, with its original CSS source and
@@ -774,7 +774,7 @@ impl DomDocumentMetadata {
             .map_or(0, |value| value.bytes)
     }
     /// The one canonical supported policy-container authority for this Document.
-    pub fn policy_container(&self) -> &crate::DomDocumentPolicyContainer {
+    pub fn policy_container(&self) -> &crate::internal::meta::DomDocumentPolicyContainer {
         &self.policy
     }
     /// Establish only the actual original-parser history already qualified by
@@ -788,7 +788,7 @@ impl DomDocumentMetadata {
         theme_color: Option<surgeist_color::Color>,
         color_scheme: Option<crate::internal::meta::SelectedColorScheme>,
     ) {
-        self.meta = Some(crate::DomMetaDocumentState {
+        self.meta = Some(crate::internal::meta::DomMetaDocumentState {
             pragma_language: language,
             will_declaratively_refresh,
         });
@@ -801,7 +801,9 @@ impl DomDocumentMetadata {
     ) -> Option<&mut crate::internal::meta::DomMetaDocumentState> {
         self.meta.as_mut()
     }
-    pub(crate) fn policy_container_mut(&mut self) -> &mut crate::DomDocumentPolicyContainer {
+    pub(crate) fn policy_container_mut(
+        &mut self,
+    ) -> &mut crate::internal::meta::DomDocumentPolicyContainer {
         &mut self.policy
     }
     /// Complete application of the selected color or absence to the empty recipient

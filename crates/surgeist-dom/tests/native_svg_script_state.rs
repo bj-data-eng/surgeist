@@ -1,6 +1,16 @@
 //! Selected Tiny processing, DOM3071 topology and actual native owner closure.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::DomHtmlCaptureLimits,
+    edit::{DomChange, DomHistoryError},
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource, DomUsage},
+    script::{DomSvgScript, DomSvgScriptOrigin},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+    tree::DomNodeKind,
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
@@ -15,7 +25,7 @@ fn limits() -> DomLimits {
         256,
         32,
         1048576,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -117,7 +127,7 @@ fn closed_native_processing_has_no_html_empty_type_href_or_handler_guard() {
         assert!(!c.changes().changes().contains(&DomChange::IntrinsicTasks));
         assert!(matches!(
             dom.native_checkpoint_step(
-                surgeist_dom::DomNativeCheckpointLimits::new(
+                surgeist_dom::task::DomNativeCheckpointLimits::new(
                     0,
                     0,
                     DomSlotQueryLimits::new(256, 1024).unwrap()
@@ -126,7 +136,7 @@ fn closed_native_processing_has_no_html_empty_type_href_or_handler_guard() {
                 &AtomicBool::new(false)
             )
             .unwrap(),
-            surgeist_dom::DomNativeCheckpoint::Idle
+            surgeist_dom::task::DomNativeCheckpoint::Idle
         ));
     }
 }
@@ -530,7 +540,8 @@ fn exact_node_command_admission_and_state_only_history_fallback_remain_finite() 
                 0,
                 4,
                 8192,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -579,7 +590,8 @@ fn exact_node_command_admission_and_state_only_history_fallback_remain_finite() 
             0,
             0,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -614,7 +626,8 @@ fn scalar_state_adds_no_string_cost_and_limits_late_failure_retirement_are_atomi
                 0,
                 4,
                 8192,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -692,12 +705,12 @@ fn slot_checkpoint(
     dom: &mut Dom,
     slots: DomSlotQueryLimits,
     cancel: &AtomicBool,
-) -> Result<surgeist_dom::DomSlotNotifications, DomError> {
+) -> Result<surgeist_dom::shadow::DomSlotNotifications, DomError> {
     match dom.native_checkpoint_step(
-        surgeist_dom::DomNativeCheckpointLimits::new(0, 0, slots).unwrap(),
+        surgeist_dom::task::DomNativeCheckpointLimits::new(0, 0, slots).unwrap(),
         cancel,
     )? {
-        surgeist_dom::DomNativeCheckpoint::Slots(n) => Ok(n),
+        surgeist_dom::task::DomNativeCheckpoint::Slots(n) => Ok(n),
         other => panic!("expected reached Slot marker, got {other:?}"),
     }
 }

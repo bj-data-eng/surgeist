@@ -2,11 +2,18 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomChildListObservationLimits, DomChildListRecord,
-    DomError, DomLimits, DomNameLimits, DomNativeCheckpoint, DomNativeCheckpointLimits,
-    DomNodeIteratorFilter, DomNodeIteratorProgress, DomResource, DomSelectCompletionStart,
-    DomSelectTask, DomSelectTaskCancellationReason, DomSelectTaskOutcome, DomShadowRootInit,
-    DomSlotQueryLimits, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress, NodeId,
+    Dom, DomBatch, DomError, DomSnapshot,
+    edit::{DomChange, DomChildListObservationLimits, DomChildListRecord},
+    form::select::{
+        DomSelectCompletionStart, DomSelectTask, DomSelectTaskCancellationReason,
+        DomSelectTaskOutcome,
+    },
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
+    task::{DomNativeCheckpoint, DomNativeCheckpointLimits},
+    tree::{DomNodeIteratorFilter, DomNodeIteratorProgress},
 };
 use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 

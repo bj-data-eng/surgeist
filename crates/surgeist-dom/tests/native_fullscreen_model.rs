@@ -18,9 +18,13 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits, DomResource,
-    DomShadowRootInit, DomSnapshot, DomSourceCompletion, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, DomTopLayerUaRule, NodeId,
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::DomChange,
+    fullscreen::DomTopLayerUaRule,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    shadow::DomShadowRootInit,
+    source::{DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress},
 };
 use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 
@@ -33,7 +37,7 @@ fn limits() -> DomLimits {
         1024,
         64,
         4_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -851,7 +855,8 @@ fn one_short_command_allowance_refuses_the_whole_batch_and_exact_allowance_still
             64,
             8,
             65_536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -936,7 +941,8 @@ fn wrong_kind_foreign_and_retired_operands_cannot_target_new_generation_or_chang
             64,
             8,
             65_536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -988,7 +994,8 @@ fn matching_intermediate_shadow_document_does_not_hide_deeper_adoption_membershi
             256,
             32,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

@@ -2,11 +2,17 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomError, DomLimits, DomNameLimits,
-    DomNodeFilterDecision, DomNodeIteratorFilter, DomNodeIteratorFilterRequest, DomNodeIteratorId,
-    DomNodeIteratorProgress, DomResource, DomSourceEdit, DomSourceEventExecutor,
-    DomSourceEventOutcome, DomSourceEventRequest, DomSourceLimits, DomSourceProgress,
-    DomSourceRequest, DomStyleInlineCspObservation, NodeId,
+    Dom, DomBatch, DomError,
+    edit::DomChange,
+    event::{DomSourceEventExecutor, DomSourceEventOutcome, DomSourceEventRequest},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::DomStyleInlineCspObservation,
+    tree::{
+        DomNodeFilterDecision, DomNodeIteratorFilter, DomNodeIteratorFilterRequest,
+        DomNodeIteratorId, DomNodeIteratorProgress,
+    },
 };
 use surgeist_html::values::Namespace;
 
@@ -96,9 +102,10 @@ fn begin_dialog_observation(
     limits: DomSourceLimits,
     cancel: &AtomicBool,
 ) -> (DomSourceEventExecutor, DomSourceEventRequest) {
-    let custody =
-        surgeist_dom::DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000)
-            .unwrap();
+    let custody = surgeist_dom::event::DomDispatchCustodyLimits::new(
+        64, 4096, 16_000_000, 16_000_000, 4_000_000,
+    )
+    .unwrap();
     dom.set_limits(dom.limits().with_dispatch_custody(custody))
         .unwrap();
     let document = dom.snapshot().node(root).unwrap().owner_document().unwrap();

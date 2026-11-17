@@ -1,7 +1,10 @@
 //! HTML877d54588–54591 requires an associated form-associated definition.
 //! A native undefined custom name with an actual null definition is not listed.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomElementDefinition, DomHtmlCaptureLimits, DomLimits};
+use surgeist_dom::{
+    Dom, DomBatch, capture::DomHtmlCaptureLimits, custom_element::DomElementDefinition,
+    limits::DomLimits,
+};
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
@@ -21,7 +24,8 @@ fn null_definition_custom_element_is_excluded_from_actual_fieldset_controls() {
             0,
             4,
             4096,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

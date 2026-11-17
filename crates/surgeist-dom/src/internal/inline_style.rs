@@ -75,10 +75,10 @@ impl DomInlineStyleBatchContext {
                     NodeOperand::Existing(id) if id.owner() != basis.owner() => {
                         return Err(DomError::ForeignOwner.into());
                     }
-                    NodeOperand::Created(crate::CreatedNode { owner, .. })
-                    | NodeOperand::AttachedShadowRoot(crate::AttachedShadowRoot {
-                        owner, ..
-                    }) if !Arc::ptr_eq(owner, &batch.owner) => {
+                    NodeOperand::Created(crate::internal::batch::CreatedNode { owner, .. })
+                    | NodeOperand::AttachedShadowRoot(
+                        crate::internal::batch::AttachedShadowRoot { owner, .. },
+                    ) if !Arc::ptr_eq(owner, &batch.owner) => {
                         return Err(DomError::ForeignBatch.into());
                     }
                     _ => {}
@@ -141,7 +141,7 @@ impl std::fmt::Debug for DomInlineStyleSourcePublication {
 }
 impl DomInlineStyleSourcePublication {
     /// Exact canonical segment paired with this inline publication.
-    pub fn dom(&self) -> &crate::DomChanges {
+    pub fn dom(&self) -> &crate::internal::store::DomChanges {
         &self.dom
     }
     /// The original producer receipt, returned once at its publication boundary.
@@ -167,7 +167,7 @@ pub struct DomInlineStyleSourceProgress {
 }
 impl DomInlineStyleSourceProgress {
     /// The original Source controller's request or completion.
-    pub fn source(&self) -> &crate::DomSourceProgress {
+    pub fn source(&self) -> &crate::internal::source::DomSourceProgress {
         &self.source
     }
     /// Original inline evidence produced by this advance, if any.

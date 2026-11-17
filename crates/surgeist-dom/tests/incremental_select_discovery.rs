@@ -1,6 +1,8 @@
 //! HTML-owned pruning and disabled-state observations through public operations.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, edit::CreatedNode, identity::NodeId, limits::DomLimits,
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn limits() -> DomLimits {
@@ -12,7 +14,7 @@ fn limits() -> DomLimits {
         128,
         16,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_select_processing(128, 4_000_000, 10_000_000)
