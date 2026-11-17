@@ -3,7 +3,8 @@ use std::mem;
 use std::rc::Rc;
 
 use surgeist_bindings_js::conversion::{
-    Converted, Resource, ResourceTable, Work, WorkTable, declarations, types,
+    Converted, Resource, ResourceFields, ResourceTable, Work, WorkFields, WorkTable, declarations,
+    types,
 };
 use surgeist_bindings_js::{
     Callback, Completion, DomString, EngineKind, Error, Primitive, Process, PropertyKey,
@@ -352,7 +353,7 @@ fn bounded_growth(cut: Cut) -> TestResult {
     let ledger = new_ledger(ProfileMode::Off)?;
     let peak = 12 * mem::size_of::<Converted<DomString>>() as u64 + 10;
     let limits = Limits::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Value: 6,
             CodeUnit: 5,
             EnumerationLookup: 0,
@@ -361,14 +362,14 @@ fn bounded_growth(cut: Cut) -> TestResult {
             IteratorOperation: if matches!(cut, Cut::Iterator) { 19 } else { 20 },
             SequenceItem: if matches!(cut, Cut::Item) { 4 } else { 5 },
             SequenceMove: if matches!(cut, Cut::Movement) { 3 } else { 4 },
-        },
-        ResourceTable {
+        }),
+        ResourceTable::new(ResourceFields {
             BufferBytes: if matches!(cut, Cut::Storage) {
                 peak - 1
             } else {
                 peak
             },
-        },
+        }),
     );
     let account = account(&mut process, &realm, &ledger, limits)?;
     let events = Rc::new(RefCell::new(Vec::new()));

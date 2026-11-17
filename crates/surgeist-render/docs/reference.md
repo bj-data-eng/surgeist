@@ -174,7 +174,7 @@ initializer actually entered, admitted immediately before entry. Its dependency
 arithmetic is an indivisible operation, rather than fabricated interruptible
 scalar prefixes. Solid or eliminated sources enter no initializer. The work
 limit applies to frames; standalone preparation and readback do not produce it.
-Adding this unit also adds a required field to the public `RenderWorkTable`.
+Adding this unit also adds a required field to the public `RenderWorkFields`.
 
 ## SDR sRGB color preparation
 
@@ -694,8 +694,8 @@ concrete semantic operation; active float32 runtime refusal identifies
 `RuntimeOperation::MorphologyRendering`. Adding
 `PrimitiveOperation::GpuMorphologyFilterExecution` extends the existing exhaustive
 public enum and is source-breaking for downstream exhaustive matches. The new
-required `RenderWorkTable<T>::ScheduledMorphologySamples` field also requires
-updates to exhaustive struct literals and patterns.
+required `RenderWorkFields<T>::ScheduledMorphologySamples` field also requires
+updates to exhaustive struct literals.
 
 
 ### Native straight-byte displacement
@@ -712,7 +712,7 @@ ordered binary64 address tables, map-only conversion, integer map records,
 coverage, resource custody and the seven work dimensions. The semantic capability
 is `FilterCapabilities::supports_gpu_displacement_filter_execution()`; a raw-map
 format refusal identifies `RuntimeOperation::DisplacementRendering`.
-The exhaustive `PrimitiveOperation` variant and required `RenderWorkTable<T>`
+The exhaustive `PrimitiveOperation` variant and required `RenderWorkFields<T>`
 fields require downstream exhaustive match/struct updates.
 
 ## Image sampling

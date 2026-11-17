@@ -12,7 +12,7 @@ use super::{CleanupFault, CleanupStage, Conversion, Failure};
 
 surgeist_ledger::dimensions! {
     /// Binding-owned semantic work, excluding engine instructions/allocation.
-    pub enum Work => WorkTable {
+    pub enum Work => WorkTable, WorkFields {
         /// One attempt to convert a JS value through a selected IDL type.
         Value,
         /// One payload code unit copied, validated, or normalized.
@@ -34,7 +34,7 @@ surgeist_ledger::dimensions! {
 
 surgeist_ledger::dimensions! {
     /// Requested payload storage, excluding allocator metadata and engine heaps.
-    pub enum Resource => ResourceTable {
+    pub enum Resource => ResourceTable, ResourceFields {
         /// Requested capacity of live Rust payload buffers in bytes.
         BufferBytes,
     }

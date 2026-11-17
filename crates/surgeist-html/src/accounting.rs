@@ -14,7 +14,7 @@
 pub use crate::internal::accounting::{
     HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapRefusal, HtmlCapScope, HtmlChange,
     HtmlChargeOverflow, HtmlChargedError, HtmlCustody, HtmlHostScope, HtmlLedgerOutcome,
-    HtmlLimits, HtmlRefusalFigures, HtmlResource, HtmlResourceTable, HtmlTariffs, HtmlUnit,
-    HtmlWork, HtmlWorkTable, aggregate_tariffs, charging_tariffs, classify, fault_of,
-    record_largest, retained_provider_storage,
+    HtmlLimits, HtmlRefusalFigures, HtmlResource, HtmlResourceFields, HtmlResourceTable,
+    HtmlTariffs, HtmlUnit, HtmlWork, HtmlWorkFields, HtmlWorkTable, aggregate_tariffs,
+    charging_tariffs, classify, fault_of, record_largest, retained_provider_storage,
 };

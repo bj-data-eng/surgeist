@@ -34,7 +34,7 @@ struct Parent {
 impl Parent {
     fn new(work: u64, tariff: u64) -> Result<Rc<Self>, LedgerError> {
         let mut limits = WorkTable::splat(u64::MAX);
-        limits.Value = work;
+        limits[Work::Value] = work;
         let ledger = Operation::with_profile(
             "original-host",
             Limits::new(limits, ResourceTable::splat(u64::MAX)),
@@ -256,9 +256,9 @@ fn local_refusal_precedes_each_guest_effect() -> TestResult {
     ] {
         let mut limits = WorkTable::splat(u64::MAX);
         match dimension {
-            Work::Value => limits.Value = 0,
-            Work::DictionaryMember => limits.DictionaryMember = 0,
-            Work::IteratorOperation => limits.IteratorOperation = 0,
+            Work::Value => limits[Work::Value] = 0,
+            Work::DictionaryMember => limits[Work::DictionaryMember] = 0,
+            Work::IteratorOperation => limits[Work::IteratorOperation] = 0,
             _ => unreachable!(),
         }
         let Fixture {
@@ -321,7 +321,7 @@ fn dictionary_exact_and_one_short_parent_budgets() -> TestResult {
         (u64::MAX, 1, 4, true, 8),
     ] {
         let mut local = WorkTable::splat(u64::MAX);
-        local.Value = local_values;
+        local[Work::Value] = local_values;
         let Fixture {
             mut process,
             realm,

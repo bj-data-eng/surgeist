@@ -93,11 +93,11 @@ impl LocalUsage {
     }
 
     pub(super) fn live(self) -> u64 {
-        self.live.BufferBytes
+        self.live[Resource::BufferBytes]
     }
 
     pub(super) fn peak(self) -> u64 {
-        self.peak.BufferBytes
+        self.peak[Resource::BufferBytes]
     }
 }
 
@@ -160,8 +160,8 @@ impl LocalState {
                 })
             },
         )?;
-        candidate.live.BufferBytes = next;
-        candidate.peak.BufferBytes = candidate.peak().max(next);
+        candidate.live[Resource::BufferBytes] = next;
+        candidate.peak[Resource::BufferBytes] = candidate.peak().max(next);
         Ok(self.stage(candidate))
     }
 
@@ -178,13 +178,14 @@ impl LocalState {
             current: accepted.live(),
             reason: RefusalReason::Underflow,
         };
-        accepted.live.BufferBytes = accepted.live().checked_sub(bytes).ok_or(refusal)?;
+        accepted.live[Resource::BufferBytes] = accepted.live().checked_sub(bytes).ok_or(refusal)?;
 
         // Pending acquisitions never give existing buffers speculative custody.
         // Validate both subtractions before mutating either accepted snapshot.
         let staged = if self.pending.get() {
             let mut candidate = self.staged.get();
-            candidate.live.BufferBytes = candidate.live().checked_sub(bytes).ok_or(refusal)?;
+            candidate.live[Resource::BufferBytes] =
+                candidate.live().checked_sub(bytes).ok_or(refusal)?;
             Some(candidate)
         } else {
             None

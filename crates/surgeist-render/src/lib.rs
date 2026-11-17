@@ -86,7 +86,8 @@ pub use accounting::{
     RenderGenerationInterval, RenderGenerationScope, RenderLifetimeUsage, RenderLimits,
     RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderReadbackReport,
     RenderReadbackReportRef, RenderRefusal, RenderRefusalReason, RenderResource,
-    RenderResourceTable, RenderStandaloneReport, RenderUsage, RenderWork, RenderWorkTable,
+    RenderResourceFields, RenderResourceTable, RenderStandaloneReport, RenderUsage, RenderWork,
+    RenderWorkFields, RenderWorkTable,
 };
 pub(crate) use error::BackendErrorCode;
 

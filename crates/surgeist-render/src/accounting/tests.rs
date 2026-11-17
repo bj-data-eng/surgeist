@@ -233,20 +233,20 @@ fn account_with_child_below_repeat_quota() -> (Account, Scope) {
         let limits = match phase {
             RenderPhase::RepeatQuota => Limits::new(
                 RenderWorkTable::splat(u64::MAX),
-                RenderResourceTable {
+                RenderResourceTable::new(RenderResourceFields {
                     LocalRepeatTileQuota: 1_000_000,
-                    ..RenderResourceTable::splat(u64::MAX)
-                },
+                    ..RenderResourceFields::splat(u64::MAX)
+                }),
             ),
             RenderPhase::AtlasQuota => {
                 let texels = u64::from(u16::MAX) * u64::from(u16::MAX);
                 Limits::new(
                     RenderWorkTable::splat(u64::MAX),
-                    RenderResourceTable {
+                    RenderResourceTable::new(RenderResourceFields {
                         LocalAtlasSourceByteQuota: texels * 4,
                         LocalAtlasTexelQuota: texels,
-                        ..RenderResourceTable::splat(u64::MAX)
-                    },
+                        ..RenderResourceFields::splat(u64::MAX)
+                    }),
                 )
             }
             _ => Limits::unlimited(),

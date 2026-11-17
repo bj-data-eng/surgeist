@@ -127,6 +127,11 @@ pub const surgeist_html::accounting::HtmlResource::ALL: &'static [Self]
 pub fn surgeist_html::accounting::HtmlResource::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_html::accounting::HtmlResourceTable<T>
 pub fn surgeist_html::accounting::HtmlResource::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_html::accounting::HtmlResourceTable<T>, key: Self) -> &T
 pub fn surgeist_html::accounting::HtmlResource::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_html::accounting::HtmlResourceTable<T>, key: Self) -> &mut T
+impl<T> core::ops::index::Index<surgeist_html::accounting::HtmlResource> for surgeist_html::accounting::HtmlResourceTable<T>
+pub type surgeist_html::accounting::HtmlResourceTable<T>::Output = T
+pub fn surgeist_html::accounting::HtmlResourceTable<T>::index(&self, key: surgeist_html::accounting::HtmlResource) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_html::accounting::HtmlResource> for surgeist_html::accounting::HtmlResourceTable<T>
+pub fn surgeist_html::accounting::HtmlResourceTable<T>::index_mut(&mut self, key: surgeist_html::accounting::HtmlResource) -> &mut T
 pub enum surgeist_html::accounting::HtmlUnit
 pub surgeist_html::accounting::HtmlUnit::Bytes
 pub surgeist_html::accounting::HtmlUnit::Calls
@@ -160,6 +165,11 @@ pub const surgeist_html::accounting::HtmlWork::ALL: &'static [Self]
 pub fn surgeist_html::accounting::HtmlWork::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_html::accounting::HtmlWorkTable<T>
 pub fn surgeist_html::accounting::HtmlWork::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_html::accounting::HtmlWorkTable<T>, key: Self) -> &T
 pub fn surgeist_html::accounting::HtmlWork::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_html::accounting::HtmlWorkTable<T>, key: Self) -> &mut T
+impl<T> core::ops::index::Index<surgeist_html::accounting::HtmlWork> for surgeist_html::accounting::HtmlWorkTable<T>
+pub type surgeist_html::accounting::HtmlWorkTable<T>::Output = T
+pub fn surgeist_html::accounting::HtmlWorkTable<T>::index(&self, key: surgeist_html::accounting::HtmlWork) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_html::accounting::HtmlWork> for surgeist_html::accounting::HtmlWorkTable<T>
+pub fn surgeist_html::accounting::HtmlWorkTable<T>::index_mut(&mut self, key: surgeist_html::accounting::HtmlWork) -> &mut T
 pub struct surgeist_html::accounting::HtmlCapRefusal
 impl surgeist_html::accounting::HtmlCapRefusal
 pub const fn surgeist_html::accounting::HtmlCapRefusal::amount(&self) -> u64
@@ -184,62 +194,84 @@ pub fn surgeist_html::accounting::HtmlHostScope::fmt(&self, f: &mut core::fmt::F
 pub struct surgeist_html::accounting::HtmlRefusalFigures
 pub surgeist_html::accounting::HtmlRefusalFigures::limit: usize
 pub surgeist_html::accounting::HtmlRefusalFigures::required: usize
+pub struct surgeist_html::accounting::HtmlResourceFields<T>
+pub surgeist_html::accounting::HtmlResourceFields::ActiveFormattingEntries: T
+pub surgeist_html::accounting::HtmlResourceFields::AllocatedBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::AssignedNodes: T
+pub surgeist_html::accounting::HtmlResourceFields::AtomicLayoutBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::AuxiliaryEntries: T
+pub surgeist_html::accounting::HtmlResourceFields::BufferedUtf16Units: T
+pub surgeist_html::accounting::HtmlResourceFields::CapturedAttributes: T
+pub surgeist_html::accounting::HtmlResourceFields::CapturedDefinitions: T
+pub surgeist_html::accounting::HtmlResourceFields::CapturedDepth: T
+pub surgeist_html::accounting::HtmlResourceFields::CapturedRegistries: T
+pub surgeist_html::accounting::HtmlResourceFields::CapturedRelationships: T
+pub surgeist_html::accounting::HtmlResourceFields::CapturedSubjects: T
+pub surgeist_html::accounting::HtmlResourceFields::CapturedUtf16Units: T
+pub surgeist_html::accounting::HtmlResourceFields::ContextEffects: T
+pub surgeist_html::accounting::HtmlResourceFields::DiagnosticPayloadUnits: T
+pub surgeist_html::accounting::HtmlResourceFields::Diagnostics: T
+pub surgeist_html::accounting::HtmlResourceFields::ElementValueBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::FactBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::FactCodeUnits: T
+pub surgeist_html::accounting::HtmlResourceFields::FactRecords: T
+pub surgeist_html::accounting::HtmlResourceFields::FormationBacking: T
+pub surgeist_html::accounting::HtmlResourceFields::FormationBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::ManagedAttributes: T
+pub surgeist_html::accounting::HtmlResourceFields::ManagedCapacityBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::ManagedEdges: T
+pub surgeist_html::accounting::HtmlResourceFields::ManagedNodes: T
+pub surgeist_html::accounting::HtmlResourceFields::ManagedUtf16Units: T
+pub surgeist_html::accounting::HtmlResourceFields::MappingEntries: T
+pub surgeist_html::accounting::HtmlResourceFields::NestedOutputRecords: T
+pub surgeist_html::accounting::HtmlResourceFields::OpenElements: T
+pub surgeist_html::accounting::HtmlResourceFields::OutputRecords: T
+pub surgeist_html::accounting::HtmlResourceFields::PeakTransientBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::RetainedBytes: T
+pub surgeist_html::accounting::HtmlResourceFields::RetainedUtf16Units: T
+pub surgeist_html::accounting::HtmlResourceFields::ScratchRecords: T
+pub surgeist_html::accounting::HtmlResourceFields::SourceMapEntries: T
+pub surgeist_html::accounting::HtmlResourceFields::SourceMapPayloadUnits: T
+pub surgeist_html::accounting::HtmlResourceFields::SourceUnits: T
+pub surgeist_html::accounting::HtmlResourceFields::TokenAttributes: T
+pub surgeist_html::accounting::HtmlResourceFields::TreeDepth: T
+impl<T: core::marker::Copy> surgeist_html::accounting::HtmlResourceFields<T>
+pub const fn surgeist_html::accounting::HtmlResourceFields<T>::splat(value: T) -> Self
 pub struct surgeist_html::accounting::HtmlResourceTable<T>
-pub surgeist_html::accounting::HtmlResourceTable::ActiveFormattingEntries: T
-pub surgeist_html::accounting::HtmlResourceTable::AllocatedBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::AssignedNodes: T
-pub surgeist_html::accounting::HtmlResourceTable::AtomicLayoutBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::AuxiliaryEntries: T
-pub surgeist_html::accounting::HtmlResourceTable::BufferedUtf16Units: T
-pub surgeist_html::accounting::HtmlResourceTable::CapturedAttributes: T
-pub surgeist_html::accounting::HtmlResourceTable::CapturedDefinitions: T
-pub surgeist_html::accounting::HtmlResourceTable::CapturedDepth: T
-pub surgeist_html::accounting::HtmlResourceTable::CapturedRegistries: T
-pub surgeist_html::accounting::HtmlResourceTable::CapturedRelationships: T
-pub surgeist_html::accounting::HtmlResourceTable::CapturedSubjects: T
-pub surgeist_html::accounting::HtmlResourceTable::CapturedUtf16Units: T
-pub surgeist_html::accounting::HtmlResourceTable::ContextEffects: T
-pub surgeist_html::accounting::HtmlResourceTable::DiagnosticPayloadUnits: T
-pub surgeist_html::accounting::HtmlResourceTable::Diagnostics: T
-pub surgeist_html::accounting::HtmlResourceTable::ElementValueBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::FactBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::FactCodeUnits: T
-pub surgeist_html::accounting::HtmlResourceTable::FactRecords: T
-pub surgeist_html::accounting::HtmlResourceTable::FormationBacking: T
-pub surgeist_html::accounting::HtmlResourceTable::FormationBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::ManagedAttributes: T
-pub surgeist_html::accounting::HtmlResourceTable::ManagedCapacityBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::ManagedEdges: T
-pub surgeist_html::accounting::HtmlResourceTable::ManagedNodes: T
-pub surgeist_html::accounting::HtmlResourceTable::ManagedUtf16Units: T
-pub surgeist_html::accounting::HtmlResourceTable::MappingEntries: T
-pub surgeist_html::accounting::HtmlResourceTable::NestedOutputRecords: T
-pub surgeist_html::accounting::HtmlResourceTable::OpenElements: T
-pub surgeist_html::accounting::HtmlResourceTable::OutputRecords: T
-pub surgeist_html::accounting::HtmlResourceTable::PeakTransientBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::RetainedBytes: T
-pub surgeist_html::accounting::HtmlResourceTable::RetainedUtf16Units: T
-pub surgeist_html::accounting::HtmlResourceTable::ScratchRecords: T
-pub surgeist_html::accounting::HtmlResourceTable::SourceMapEntries: T
-pub surgeist_html::accounting::HtmlResourceTable::SourceMapPayloadUnits: T
-pub surgeist_html::accounting::HtmlResourceTable::SourceUnits: T
-pub surgeist_html::accounting::HtmlResourceTable::TokenAttributes: T
-pub surgeist_html::accounting::HtmlResourceTable::TreeDepth: T
 impl<T: core::marker::Copy> surgeist_html::accounting::HtmlResourceTable<T>
+pub const fn surgeist_html::accounting::HtmlResourceTable<T>::new(fields: surgeist_html::accounting::HtmlResourceFields<T>) -> Self
 pub const fn surgeist_html::accounting::HtmlResourceTable<T>::splat(value: T) -> Self
+impl<T: core::fmt::Debug> core::fmt::Debug for surgeist_html::accounting::HtmlResourceTable<T>
+pub fn surgeist_html::accounting::HtmlResourceTable<T>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::ops::index::Index<surgeist_html::accounting::HtmlResource> for surgeist_html::accounting::HtmlResourceTable<T>
+pub type surgeist_html::accounting::HtmlResourceTable<T>::Output = T
+pub fn surgeist_html::accounting::HtmlResourceTable<T>::index(&self, key: surgeist_html::accounting::HtmlResource) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_html::accounting::HtmlResource> for surgeist_html::accounting::HtmlResourceTable<T>
+pub fn surgeist_html::accounting::HtmlResourceTable<T>::index_mut(&mut self, key: surgeist_html::accounting::HtmlResource) -> &mut T
+pub struct surgeist_html::accounting::HtmlWorkFields<T>
+pub surgeist_html::accounting::HtmlWorkFields::CopyByte: T
+pub surgeist_html::accounting::HtmlWorkFields::Credits: T
+pub surgeist_html::accounting::HtmlWorkFields::InputUnitRead: T
+pub surgeist_html::accounting::HtmlWorkFields::InspectByte: T
+pub surgeist_html::accounting::HtmlWorkFields::ProviderCall: T
+pub surgeist_html::accounting::HtmlWorkFields::RecordVisit: T
+pub surgeist_html::accounting::HtmlWorkFields::RecordWrite: T
+pub surgeist_html::accounting::HtmlWorkFields::ReserveByte: T
+pub surgeist_html::accounting::HtmlWorkFields::SemanticStep: T
+pub surgeist_html::accounting::HtmlWorkFields::StateStep: T
+impl<T: core::marker::Copy> surgeist_html::accounting::HtmlWorkFields<T>
+pub const fn surgeist_html::accounting::HtmlWorkFields<T>::splat(value: T) -> Self
 pub struct surgeist_html::accounting::HtmlWorkTable<T>
-pub surgeist_html::accounting::HtmlWorkTable::CopyByte: T
-pub surgeist_html::accounting::HtmlWorkTable::Credits: T
-pub surgeist_html::accounting::HtmlWorkTable::InputUnitRead: T
-pub surgeist_html::accounting::HtmlWorkTable::InspectByte: T
-pub surgeist_html::accounting::HtmlWorkTable::ProviderCall: T
-pub surgeist_html::accounting::HtmlWorkTable::RecordVisit: T
-pub surgeist_html::accounting::HtmlWorkTable::RecordWrite: T
-pub surgeist_html::accounting::HtmlWorkTable::ReserveByte: T
-pub surgeist_html::accounting::HtmlWorkTable::SemanticStep: T
-pub surgeist_html::accounting::HtmlWorkTable::StateStep: T
 impl<T: core::marker::Copy> surgeist_html::accounting::HtmlWorkTable<T>
+pub const fn surgeist_html::accounting::HtmlWorkTable<T>::new(fields: surgeist_html::accounting::HtmlWorkFields<T>) -> Self
 pub const fn surgeist_html::accounting::HtmlWorkTable<T>::splat(value: T) -> Self
+impl<T: core::fmt::Debug> core::fmt::Debug for surgeist_html::accounting::HtmlWorkTable<T>
+pub fn surgeist_html::accounting::HtmlWorkTable<T>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::ops::index::Index<surgeist_html::accounting::HtmlWork> for surgeist_html::accounting::HtmlWorkTable<T>
+pub type surgeist_html::accounting::HtmlWorkTable<T>::Output = T
+pub fn surgeist_html::accounting::HtmlWorkTable<T>::index(&self, key: surgeist_html::accounting::HtmlWork) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_html::accounting::HtmlWork> for surgeist_html::accounting::HtmlWorkTable<T>
+pub fn surgeist_html::accounting::HtmlWorkTable<T>::index_mut(&mut self, key: surgeist_html::accounting::HtmlWork) -> &mut T
 pub fn surgeist_html::accounting::aggregate_tariffs() -> surgeist_html::accounting::HtmlTariffs
 pub fn surgeist_html::accounting::charging_tariffs() -> surgeist_html::accounting::HtmlTariffs
 pub fn surgeist_html::accounting::classify(error: surgeist_ledger::Error<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>) -> surgeist_html::accounting::HtmlLedgerOutcome

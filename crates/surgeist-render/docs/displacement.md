@@ -210,8 +210,8 @@ work, cancellation and device failures retain their owning typed diagnostics.
 
 The new opaque native types are additions. Adding
 `PrimitiveOperation::GpuDisplacementFilterExecution` to the exhaustive enum and
-the seven required work-table fields is source-breaking for exhaustive matches,
-struct literals and patterns. `RenderAttemptKind` additions remain
+the seven required `RenderWorkFields<T>` fields is source-breaking for
+exhaustive matches and struct literals. `RenderAttemptKind` additions remain
 non-exhaustive. There are no compatibility aliases.
 
 See [reference](reference.md), [offset](offset.md) and

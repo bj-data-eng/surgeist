@@ -28,18 +28,20 @@ Use a separate elapsed-time or process-memory measurement for those quantities.
 ## Declare dimensions
 
 A consumer declares each dimension set with `dimensions!`. The macro writes a
-fieldless enum with one variant per dimension and a table struct with one public
-field per variant, named like the variant. The enum is the dimension type; the
-table holds one value per dimension. An operation takes one set for work and one
-for live resources. `NoDimension` is the empty set, and `NoTable::EMPTY` is its
-table.
+fieldless enum with one variant per dimension, a table that holds one value per
+dimension, and a fields struct with one public field per variant, named like
+the variant. The enum is the dimension type. A table is built from the fields
+struct, which names every dimension, and is read and updated by indexing it
+with a dimension. In an optimized build a lookup has no branch on which
+dimension it names. An operation takes one set for work and one for live
+resources. `NoDimension` is the empty set, and `NoTable::EMPTY` is its table.
 
 ```rust
 use surgeist_ledger::{Change, Limits, Operation};
 
 surgeist_ledger::dimensions! {
     /// Work a parser charges.
-    enum ParseWork => ParseWorkTable {
+    enum ParseWork => ParseWorkTable, ParseWorkFields {
         /// One input byte read.
         InputByte,
         /// One tree node visited.
@@ -49,15 +51,15 @@ surgeist_ledger::dimensions! {
 
 surgeist_ledger::dimensions! {
     /// Resources a parser holds while it runs.
-    enum ParseResource => ParseResourceTable {
+    enum ParseResource => ParseResourceTable, ParseResourceFields {
         /// Bytes of buffered input.
         Buffer,
     }
 }
 
 let limits = Limits::new(
-    ParseWorkTable { InputByte: 4096, NodeVisit: 512 },
-    ParseResourceTable { Buffer: 1024 },
+    ParseWorkTable::new(ParseWorkFields { InputByte: 4096, NodeVisit: 512 }),
+    ParseResourceTable::new(ParseResourceFields { Buffer: 1024 }),
 );
 let mut operation = Operation::new("parse", limits, 1)?;
 let root = operation.root();
@@ -115,11 +117,11 @@ name a change, a limit or a usage read of an operation. An operation's `Limits`,
 use surgeist_ledger::{Change, Limits, Operation};
 
 surgeist_ledger::dimensions! {
-    enum Visit => VisitTable { Node }
+    enum Visit => VisitTable, VisitFields { Node }
 }
 
 surgeist_ledger::dimensions! {
-    enum Buffer => BufferTable { Bytes }
+    enum Buffer => BufferTable, BufferFields { Bytes }
 }
 
 let mut operation =
@@ -133,15 +135,15 @@ let _ = operation.apply(root, Change::Work(Buffer::Bytes, 1));
 use surgeist_ledger::{Change, Limits, Operation};
 
 surgeist_ledger::dimensions! {
-    enum Visit => VisitTable { Node }
+    enum Visit => VisitTable, VisitFields { Node }
 }
 
 surgeist_ledger::dimensions! {
-    enum Buffer => BufferTable { Bytes }
+    enum Buffer => BufferTable, BufferFields { Bytes }
 }
 
 surgeist_ledger::dimensions! {
-    enum Elsewhere => ElsewhereTable { Node }
+    enum Elsewhere => ElsewhereTable, ElsewhereFields { Node }
 }
 
 let mut operation =
@@ -155,11 +157,11 @@ let _ = operation.apply(root, Change::Work(Elsewhere::Node, 1));
 use surgeist_ledger::{Limits, NoDimension, Operation};
 
 surgeist_ledger::dimensions! {
-    enum Visit => VisitTable { Node }
+    enum Visit => VisitTable, VisitFields { Node }
 }
 
 surgeist_ledger::dimensions! {
-    enum Elsewhere => ElsewhereTable { Node }
+    enum Elsewhere => ElsewhereTable, ElsewhereFields { Node }
 }
 
 // Limits of another schema do not configure this operation.
@@ -209,12 +211,12 @@ The accepted ledger totals remain authoritative when detail is incomplete.
 use surgeist_ledger::{Change, Limits, NoDimension, NoTable, Operation, ProfileMode};
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 let mut operation = Operation::<Work, NoDimension>::with_profile(
     "parse",
-    Limits::new(WorkTable { Visit: 10 }, NoTable::EMPTY),
+    Limits::new(WorkTable::new(WorkFields { Visit: 10 }), NoTable::EMPTY),
     1,
     ProfileMode::Summary { timing: true },
 )?;
@@ -289,7 +291,7 @@ inclusive interval.
 use surgeist_ledger::{Change, Limits, NoDimension, Operation, ProfileMode};
 
 # surgeist_ledger::dimensions! {
-#     enum Work => WorkTable { Visit }
+#     enum Work => WorkTable, WorkFields { Visit }
 # }
 let mut operation = Operation::<Work, NoDimension>::with_profile(
     "callback", Limits::unlimited(), 1,
@@ -373,7 +375,7 @@ drop. Plain operations retain their borrowed phase API without synchronization.
 use surgeist_ledger::{Change, Limits, NoDimension, Operation, ProfileMode};
 
 # surgeist_ledger::dimensions! {
-#     enum Work => WorkTable { Visit }
+#     enum Work => WorkTable, WorkFields { Visit }
 # }
 let operation = Operation::<Work, NoDimension>::with_profile(
     "device", Limits::unlimited(), 1,

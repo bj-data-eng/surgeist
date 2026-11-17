@@ -5,11 +5,11 @@ use surgeist_ledger::{
 };
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes }
+    enum Resource => ResourceTable, ResourceFields { Bytes }
 }
 
 const PHASES: usize = 1_000;

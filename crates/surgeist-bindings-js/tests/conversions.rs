@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use surgeist_bindings_js::conversion::{
-    self, ConversionAccount, Converted, EnumAssignment, IntegerType, Resource, ResourceTable, Work,
-    WorkTable, types,
+    self, ConversionAccount, Converted, EnumAssignment, IntegerType, Resource, ResourceFields,
+    ResourceTable, Work, WorkFields, WorkTable, types,
 };
 use surgeist_bindings_js::declarations::ShadowRootMode;
 use surgeist_bindings_js::{
@@ -260,7 +260,7 @@ fn admission_is_exact_and_terminal(storage_short: bool) -> TestResult {
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Value: 1,
             CodeUnit: if storage_short { 3 } else { 2 },
             EnumerationLookup: 0,
@@ -269,10 +269,10 @@ fn admission_is_exact_and_terminal(storage_short: bool) -> TestResult {
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
-        },
-        ResourceTable {
+        }),
+        ResourceTable::new(ResourceFields {
             BufferBytes: if storage_short { 5 } else { 6 },
-        },
+        }),
     );
     let account = account(&mut process, &realm, &ledger, limits)?;
     let effects = Rc::new(Cell::new(0));
@@ -311,7 +311,7 @@ fn exact_admission_and_cross_realm_account(process: &mut Process) -> TestResult 
     let b = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Value: 1,
             CodeUnit: 3,
             EnumerationLookup: 0,
@@ -320,8 +320,8 @@ fn exact_admission_and_cross_realm_account(process: &mut Process) -> TestResult 
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
-        },
-        ResourceTable { BufferBytes: 6 },
+        }),
+        ResourceTable::new(ResourceFields { BufferBytes: 6 }),
     );
     let exact = account(process, &a, &ledger, limits)?;
     let retained = process.execution().in_realm(&a, |scope| {

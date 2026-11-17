@@ -3,11 +3,11 @@ use surgeist_ledger::{
 };
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Steps, Credits }
+    enum Work => WorkTable, WorkFields { Steps, Credits }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes, Depth }
+    enum Resource => ResourceTable, ResourceFields { Bytes, Depth }
 }
 
 type Ledger = Operation<Work, Resource>;
@@ -17,14 +17,14 @@ fn scopes(credits: u64, depth: u64) -> (Ledger, Scope, Scope) {
     let mut operation = Operation::new(
         "root",
         Limits::new(
-            WorkTable {
+            WorkTable::new(WorkFields {
                 Steps: u64::MAX,
                 Credits: credits,
-            },
-            ResourceTable {
+            }),
+            ResourceTable::new(ResourceFields {
                 Bytes: 64,
                 Depth: depth,
-            },
+            }),
         ),
         2,
     )

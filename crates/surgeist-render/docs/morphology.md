@@ -282,8 +282,8 @@ The new request, operator, preparation, source, receiver and diagnostic APIs are
 additions. Adding `GpuMorphologyFilterExecution` to the existing exhaustive public
 `PrimitiveOperation` enum is source-breaking for downstream exhaustive matches,
 including facade consumers. The required `ScheduledMorphologySamples` field on
-`RenderWorkTable<T>` also requires updates to exhaustive struct literals and
-patterns. There are no compatibility aliases or changes to exhaustiveness.
+`RenderWorkFields<T>` also requires updates to exhaustive struct literals.
+There are no compatibility aliases or changes to exhaustiveness.
 Existing [Gaussian](gaussian.md), [offset](offset.md)
 and [native shadow](native-shadow.md) retain their operation-specific semantics.
 
