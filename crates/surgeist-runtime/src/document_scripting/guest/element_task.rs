@@ -2,7 +2,8 @@
 
 use super::*;
 use crate::element_tasks::{AttachedTaskRequest, ElementTaskRunOutcome};
-use crate::{DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskSourceKind};
+use crate::{DomElementTaskProgress, DomElementTaskRunLimits};
+use surgeist_dom::task::DomElementTaskSourceKind;
 
 impl DocumentScriptHost {
     /// Execute or resume the attached Window's original task at the selected

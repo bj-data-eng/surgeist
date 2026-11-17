@@ -1983,7 +1983,7 @@ impl HostedRuntime {
         dom: &DomEventDom<'_>,
         association: surgeist_dom::task::DomElementTaskAssociation,
         source: surgeist_dom::task::DomElementTaskSourceKind,
-        task: crate::element_tasks::DomElementTaskId,
+        task: surgeist_dom::task::DomElementTaskId,
         retired_target: bool,
         cancel: &AtomicBool,
     ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {

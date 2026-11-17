@@ -3,8 +3,8 @@
 use super::*;
 use crate::{
     DomElementTask, DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntime,
-    DomElementTaskSourceKind,
 };
+use surgeist_dom::task::DomElementTaskSourceKind;
 
 pub(super) fn verify_attached_element_tasks() {
     attached_registry_runs_the_original_queued_details_toggle();

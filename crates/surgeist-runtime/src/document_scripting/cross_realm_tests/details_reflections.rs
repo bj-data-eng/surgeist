@@ -4,10 +4,8 @@ use crate::document_scripting::guest::tests::{
     attach_public_nodes_with_source_output_limit, expose_public_node_for_source_test,
     projected_node_id,
 };
-use crate::{
-    DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntimeError,
-    DomElementTaskSourceKind,
-};
+use crate::{DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntimeError};
+use surgeist_dom::task::DomElementTaskSourceKind;
 
 // HTML877d's HTMLDetailsElement IDL specifies name then open. This semantic
 // fixture explicitly funds native transition intentions for the open changes.

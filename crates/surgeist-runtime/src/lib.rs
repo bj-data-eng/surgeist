@@ -261,9 +261,9 @@ pub use effect::{
     RuntimeIntent, ServiceDiagnosticEffect, StartServiceEffect, StartTaskEffect, StopServiceEffect,
 };
 pub use element_tasks::{
-    DomDetailsTask, DomElementTask, DomElementTaskEventContext, DomElementTaskId,
-    DomElementTaskProgress, DomElementTaskRunLimits, DomElementTaskRuntime,
-    DomElementTaskRuntimeError, DomElementTaskRuntimeLimits, DomElementTaskSourceKind,
+    DomDetailsTask, DomElementTask, DomElementTaskEventContext, DomElementTaskProgress,
+    DomElementTaskRunLimits, DomElementTaskRuntime, DomElementTaskRuntimeError,
+    DomElementTaskRuntimeLimits,
 };
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{

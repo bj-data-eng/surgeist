@@ -8,10 +8,10 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, HostFailureSlot, Primitive, Process,
-    PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Scope, css,
-    dom_exception,
+    PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Scope,
+    css::{self, CssNamespaceLimits},
+    dom_exception::{self, DomExceptionLimits},
 };
-pub use surgeist_bindings_js::{css::CssNamespaceLimits, dom_exception::DomExceptionLimits};
 use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializationError};
 use surgeist_dom::{
     DomError, DomSnapshot,

@@ -5,8 +5,8 @@
 //! after live top-level membership ends. All canonical roles use source-issued
 //! identities; these records do not mirror the canonical navigation graph.
 use super::clock;
-use crate::element_tasks::DomElementTaskId;
 use std::{cell::RefCell, rc::Rc};
+use surgeist_dom::task::DomElementTaskId;
 use surgeist_dom::{
     document::DomOpaqueOrigin,
     hosted::{
