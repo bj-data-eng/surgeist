@@ -874,10 +874,18 @@ fn inflight_then_delivered_cleanup_refusal_cannot_ack_or_replay_callbacks() {
         matches!(DomStyleRuntime::run_networking(&mut session.dom(),&mut dispatcher,&mut context,one,&cancel()).unwrap(),DomStyleNetworkingProgress::Retained { task:actual,.. } if actual==task)
     );
     assert_eq!(context.calls, ["a"]);
+    let tail = match complete(&mut session, id, envelope()) {
+        Err(error) => error,
+        Ok(_) => panic!("a retained same-contribution tail refuses settlement"),
+    };
     assert!(matches!(
-        complete(&mut session, id, envelope()),
-        Err(DomStyleParsedTerminalError::TailPending { .. })
+        tail,
+        DomStyleParsedTerminalError::TailPending { .. }
     ));
+    assert_eq!(
+        tail.to_string(),
+        "a processing, delivery or cleanup row of the same contribution remains"
+    );
     assert!(matches!(
         DomStyleRuntime::run_networking(
             &mut session.dom(),

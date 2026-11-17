@@ -87,6 +87,12 @@ fn parsed_pending_associations_return_original_dom_before_session_owner_adoption
     assert!(
         matches!(rejected.error(),DomSessionCreateFailure::Style(DomStyleRuntimeError::PendingParsedAssociations(actual)) if *actual == pending)
     );
+    assert_eq!(
+        std::error::Error::source(rejected.error())
+            .unwrap()
+            .to_string(),
+        "parsed HTML association inputs remain pending under canonical DOM custody"
+    );
     let dom = rejected.into_dom();
     assert_eq!(dom.snapshot().stamp(), before);
     assert_eq!(dom.usage(), usage);

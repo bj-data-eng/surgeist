@@ -73,9 +73,6 @@ fn assert_chains<E: Error>(outer: &E, inner: &dyn Error) {
 
 #[test]
 fn guest_event_errors_state_the_refused_guest_operation() {
-    // Rows without a constructed value: `Accounting` (row 8, an error type that is not
-    // public), `SourcePending` (row 10, a Source operation id) and `HostedPending`
-    // (row 11, a hosted operation id).
     check_table(
         vec![
             (
@@ -117,8 +114,20 @@ fn guest_event_errors_state_the_refused_guest_operation() {
                 "guest adapter work was refused",
             ),
             (
+                DocumentGuestEventError::Accounting(surgeist_ledger::Error::Allocation),
+                "guest adapter accounting failed",
+            ),
+            (
                 DocumentGuestEventError::HostRouteUnavailable,
                 "the guest operation requires a host route that is unavailable",
+            ),
+            (
+                DocumentGuestEventError::SourcePending(pending_source_operation()),
+                "the original Source operation blocked synchronous completion",
+            ),
+            (
+                DocumentGuestEventError::HostedPending(hosted_operation()),
+                "the original hosted operation blocked synchronous completion",
             ),
         ],
         |error| match error {
@@ -145,9 +154,10 @@ fn guest_event_errors_state_the_refused_guest_operation() {
                     | DocumentGuestEventError::Construction(_)
                     | DocumentGuestEventError::Timestamp(_)
                     | DocumentGuestEventError::Dispatch(_)
+                    | DocumentGuestEventError::Accounting(_)
             )
         },
-        &[8, 10, 11],
+        &[],
     );
     assert_chains(
         &DocumentGuestEventError::Document(DocumentScriptError::Native(
@@ -296,52 +306,52 @@ fn session() -> DomSession {
     let mut batch = DomBatch::new();
     batch.create_document();
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    DomSession::new(dom, session_limits()).unwrap()
+}
+
+fn session_limits() -> surgeist_runtime::DomSessionLimits {
     use surgeist_css::source::CssUtf16InputLimits;
     use surgeist_dom::hosted::{DomHostedLimits, DomHostedRecordLimits};
     use surgeist_runtime::{
         DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomSessionLimits,
         DomStyleRuntimeLimits,
     };
-    DomSession::new(
-        dom,
-        DomSessionLimits {
-            authored_events: surgeist_runtime::DomEventStorageLimits {
-                storage_bytes: 16_000_000,
-                work: 1_000_000,
-            },
-            source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
-                jobs: 4,
-                storage_bytes: 16_000_000,
-                work: 1_000_000,
-            },
-            style: DomStyleRuntimeLimits {
-                roots: 4,
-                completions: 32,
-                reports: 32,
-                storage_bytes: 16_000_000,
-                work: 1_000_000,
-                css_input: CssUtf16InputLimits::default(),
-            },
-            element_tasks: DomElementTaskRuntimeLimits {
-                tasks: 32,
-                storage_bytes: 16_000_000,
-                work: 1_000_000,
-            },
-            hosted: DomHostedRuntimeLimits {
-                canonical: DomHostedLimits::new(
-                    DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
-                    16_000_000,
-                    16_000_000,
-                    1_000_000,
-                ),
-                tasks: 32,
-                storage_bytes: 16_000_000,
-                scratch_bytes: 16_000_000,
-                work: 1_000_000,
-            },
+    DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         },
-    )
-    .unwrap()
+        source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
+            jobs: 4,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+        style: DomStyleRuntimeLimits {
+            roots: 4,
+            completions: 32,
+            reports: 32,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+            css_input: CssUtf16InputLimits::default(),
+        },
+        element_tasks: DomElementTaskRuntimeLimits {
+            tasks: 32,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+        hosted: DomHostedRuntimeLimits {
+            canonical: DomHostedLimits::new(
+                DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                16_000_000,
+                16_000_000,
+                1_000_000,
+            ),
+            tasks: 32,
+            storage_bytes: 16_000_000,
+            scratch_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+    }
 }
 
 #[test]
@@ -475,4 +485,82 @@ fn script_outcome_and_event_errors_state_their_own_context() {
     );
     // The guest event error that wraps the script error no longer prints the native text twice.
     assert_chains(&DocumentGuestEventError::Document(native()), &native());
+}
+
+/// The operation id of one started, unfinished Source edit.
+fn pending_source_operation() -> surgeist_dom::source::DomSourceOperationId {
+    use surgeist_dom::source::{DomSourceEdit, DomSourceLimits, DomSourceProgress};
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            128,
+            0,
+            0,
+            16,
+            65536,
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let style =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let document = commit.document(&document).unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(style, document.node(), None),
+            DomSourceLimits::new(64_000_000, 1_000_000, 20_000_000, 128, 4096, 4096, 8),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&AtomicBool::new(false)).unwrap(),
+        DomSourceProgress::Request(_)
+    ));
+    drop(lease);
+    dom.pending_source_edit().unwrap().operation()
+}
+
+/// The operation id of one hosted top-level destruction.
+fn hosted_operation() -> surgeist_dom::hosted::DomHostedOperationId {
+    let dom = Dom::new(
+        DomLimits::new(
+            512,
+            200_000,
+            1024,
+            1024,
+            1024,
+            64,
+            4_000_000,
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
+                64, 4096, 16_000_000, 16_000_000, 4_000_000,
+            )
+            .unwrap(),
+        )
+        .with_details_toggle_intentions(32)
+        .unwrap(),
+    )
+    .unwrap();
+    let mut session = DomSession::new(dom, session_limits()).unwrap();
+    let mut hosted = session.hosted_execution();
+    let flag = AtomicBool::new(false);
+    let host = hosted.create_host(&mut session.dom(), &flag).unwrap();
+    let top = hosted
+        .create_top_level(&mut session.dom(), host, &flag)
+        .unwrap();
+    hosted
+        .destroy_top_level(&mut session.dom(), top.navigable(), &flag)
+        .unwrap()
+        .operation()
 }

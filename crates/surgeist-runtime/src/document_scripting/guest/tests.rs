@@ -203,6 +203,14 @@ pub(in crate::document_scripting) fn a_new_heap_cannot_claim_an_existing_executa
             DocumentScriptNativeError::CustomElementRegistryCustodyUnavailable(registry)
         )) if registry == document_registry_identity(&original, target.document()).unwrap()
     ));
+    let DocumentGuestEventError::Document(DocumentScriptError::Native(native)) = &failure.error
+    else {
+        panic!("the custody refusal is a native refusal");
+    };
+    assert_eq!(
+        native.to_string(),
+        "the Global retains custom element definitions whose executable custody is absent from this realm"
+    );
     assert!(registry.is_some());
     let stopped = failure.owner.into_session().unwrap().snapshot();
     assert_eq!(stopped.stamp(), stamp);
@@ -4631,4 +4639,21 @@ pub(in crate::document_scripting) fn attached_proxy_uses_its_own_realm() {
             )
         })
         .unwrap();
+}
+
+#[test]
+fn a_refused_direct_dispatch_states_its_own_context_and_chains_its_cause() {
+    let failure = DocumentGuestEventDispatchFailure {
+        error: DocumentGuestEventError::RegistryUnbound,
+        exceptions: None,
+    };
+    assert_eq!(
+        failure.to_string(),
+        "the direct guest event dispatch was refused"
+    );
+    assert_eq!(
+        std::error::Error::source(&failure).unwrap().to_string(),
+        "the supplied guest registry has not claimed the native DOM"
+    );
+    assert!(failure.exceptions().is_empty());
 }

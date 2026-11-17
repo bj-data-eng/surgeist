@@ -291,6 +291,13 @@ pub(super) fn xml_factory_retains_the_original_style_operation() {
         failure.cause::<DocumentGuestEventError>(),
         Some(DocumentGuestEventError::SourcePending(id)) if *id == operation
     ));
+    assert_eq!(
+        failure
+            .cause::<DocumentGuestEventError>()
+            .unwrap()
+            .to_string(),
+        "the original Source operation blocked synchronous completion"
+    );
     assert!(matches!(
         host.resume_pending_style_edit(&permit, operation, LIMITS).unwrap().unwrap(),
         DomSourceDriveProgress::Complete(done)
