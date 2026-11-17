@@ -281,7 +281,21 @@ pub(crate) fn parse_utf16_with_work<E, T>(
     poll: impl FnMut() -> Result<(), E>,
     parse: impl FnOnce(&CssSourceSnapshot) -> T,
 ) -> Result<(T, usize), CssUtf16InputError<E>> {
-    with_prepared(
+    let (result, work) = parse_utf16_counted(original, limits, poll, parse);
+    result.map(|report| (report, work))
+}
+
+/// [`parse_utf16`] with the work the preparation counted against
+/// `limits.max_work`, on every path. A refused call returns the steps it took,
+/// the step that crossed the limit included; a call the consumer interrupted
+/// returns the steps taken before the interruption.
+pub(crate) fn parse_utf16_counted<E, T>(
+    original: Arc<Vec<u16>>,
+    limits: CssUtf16InputLimits,
+    poll: impl FnMut() -> Result<(), E>,
+    parse: impl FnOnce(&CssSourceSnapshot) -> T,
+) -> (Result<T, CssUtf16InputError<E>>, usize) {
+    with_prepared_counted(
         original,
         limits,
         poll,
@@ -291,7 +305,7 @@ pub(crate) fn parse_utf16_with_work<E, T>(
             control.step()?;
             let report = parse(&source);
             control.step()?;
-            Ok((report, control.work))
+            Ok(report)
         },
     )
 }
@@ -412,13 +426,28 @@ impl<E> Preparation<'_, E> {
 fn with_prepared<E, T>(
     original: Arc<Vec<u16>>,
     limits: CssUtf16InputLimits,
+    poll: impl FnMut() -> Result<(), E>,
+    live: impl FnMut(usize, usize) -> Result<(), E>,
+    release: impl FnMut(usize, usize),
+    finish: impl FnOnce(CssSourceSnapshot, &mut Preparation<'_, E>) -> Result<T, CssUtf16InputError<E>>,
+) -> Result<T, CssUtf16InputError<E>> {
+    with_prepared_counted(original, limits, poll, live, release, finish).0
+}
+
+/// [`with_prepared`] with the work its control counted, whether the
+/// preparation and `finish` succeeded or not.
+fn with_prepared_counted<E, T>(
+    original: Arc<Vec<u16>>,
+    limits: CssUtf16InputLimits,
     mut poll: impl FnMut() -> Result<(), E>,
     mut live: impl FnMut(usize, usize) -> Result<(), E>,
     mut release: impl FnMut(usize, usize),
     finish: impl FnOnce(CssSourceSnapshot, &mut Preparation<'_, E>) -> Result<T, CssUtf16InputError<E>>,
-) -> Result<T, CssUtf16InputError<E>> {
-    poll().map_err(CssUtf16InputError::interrupted)?;
-    let (result, retained) = {
+) -> (Result<T, CssUtf16InputError<E>>, usize) {
+    if let Err(error) = poll() {
+        return (Err(CssUtf16InputError::interrupted(error)), 0);
+    }
+    let (result, retained, work) = {
         let mut control = Preparation {
             limits,
             poll: &mut poll,
@@ -447,7 +476,7 @@ fn with_prepared<E, T>(
             retained = (bytes, units);
             finish(source, &mut control)
         })();
-        (result, retained)
+        (result, retained, control.work)
     };
     // The control and every failed-call payload have actually left scope.
     if result.is_err() {
@@ -455,7 +484,7 @@ fn with_prepared<E, T>(
     } else {
         release(retained.0, retained.1);
     }
-    result
+    (result, work)
 }
 
 /// Splits the host's limits into the ones the parser crate's preprocessing
@@ -695,6 +724,95 @@ mod preparation_tests {
     use std::cell::{Cell, RefCell};
     use std::mem::size_of;
     use std::rc::Rc;
+
+    fn units(text: &str) -> Arc<Vec<u16>> {
+        Arc::new(text.encode_utf16().collect())
+    }
+
+    fn work_limit(max_work: usize) -> CssUtf16InputLimits {
+        CssUtf16InputLimits {
+            max_work,
+            ..CssUtf16InputLimits::default()
+        }
+    }
+
+    /// The work a call counts is the smallest `max_work` that admits it: the
+    /// limit counts every step, so one step fewer is refused.
+    #[test]
+    fn the_counted_work_of_a_call_is_the_smallest_limit_that_admits_it() {
+        for text in ["", "a", "a{color:red}", "\r\na\u{0}b\u{1f600}"] {
+            let original = units(text);
+            let admitted = |max_work| {
+                parse_utf16(
+                    original.clone(),
+                    work_limit(max_work),
+                    || Ok::<_, ()>(()),
+                    |_| (),
+                )
+                .is_ok()
+            };
+            let smallest = (0..10_000).find(|&max_work| admitted(max_work)).unwrap();
+
+            let (result, work) = parse_utf16_counted(
+                original.clone(),
+                CssUtf16InputLimits::default(),
+                || Ok::<_, ()>(()),
+                |source| source.as_str().len(),
+            );
+            assert!(result.is_ok(), "{text:?}");
+            assert_eq!(work, smallest, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_call_refused_for_work_counts_the_step_that_crossed_the_limit() {
+        let original = units("a{color:red}");
+        let (_, needed) = parse_utf16_counted(
+            original.clone(),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+            |_| (),
+        );
+        assert!(needed > 2);
+        for max_work in [0, 1, needed / 2, needed - 1] {
+            let (result, work) = parse_utf16_counted(
+                original.clone(),
+                work_limit(max_work),
+                || Ok::<_, ()>(()),
+                |_| (),
+            );
+            assert_eq!(
+                result.unwrap_err().exhausted_limit(),
+                Some(CssUtf16Resource::Work)
+            );
+            assert_eq!(work, max_work + 1);
+        }
+    }
+
+    /// The first poll precedes every step, and each step polls before it is
+    /// counted: an interruption at poll `n` leaves the `n - 2` steps before it.
+    #[test]
+    fn an_interrupted_call_counts_the_steps_before_the_interruption() {
+        let original = units("a{color:red}");
+        for failing in 1_usize..=6 {
+            let polls = Cell::new(0_usize);
+            let (result, work) = parse_utf16_counted(
+                original.clone(),
+                CssUtf16InputLimits::default(),
+                || {
+                    polls.set(polls.get() + 1);
+                    if polls.get() == failing {
+                        Err("stop")
+                    } else {
+                        Ok(())
+                    }
+                },
+                |_| (),
+            );
+            assert_eq!(result.unwrap_err().into_interruption(), Ok("stop"));
+            assert_eq!(work, failing.saturating_sub(2), "poll {failing}");
+        }
+    }
 
     #[test]
     fn shared_preparation_retains_original_spare_backing_mapping_and_one_source_identity() {
