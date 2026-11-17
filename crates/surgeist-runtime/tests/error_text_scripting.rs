@@ -179,7 +179,7 @@ fn native_scripting_errors_state_the_refused_native_operation() {
             ),
             (
                 DocumentScriptNativeError::StorageLimit,
-                "the requested adapter storage exceeds the configured limit or cannot be sized",
+                "the requested adapter storage or pending count exceeds the configured limit or cannot be sized",
             ),
             (
                 DocumentScriptNativeError::Busy,
@@ -187,11 +187,11 @@ fn native_scripting_errors_state_the_refused_native_operation() {
             ),
             (
                 DocumentScriptNativeError::ForeignPermit,
-                "the permit or origin does not belong to this attachment",
+                "the permit, origin or Realm does not belong to this attachment",
             ),
             (
                 DocumentScriptNativeError::Revoked,
-                "the attachment has stopped, expired or no longer has scripting enabled",
+                "the attachment has stopped, expired or no longer has scripting enabled, or a record it retained is gone",
             ),
             (
                 DocumentScriptNativeError::SourcePending,
@@ -199,11 +199,11 @@ fn native_scripting_errors_state_the_refused_native_operation() {
             ),
             (
                 DocumentScriptNativeError::SourceAccess,
-                "this hook lacks the Source authority of the selected native event",
+                "the pending Source operation, event, retained frame or delegated node the operation needs is missing or does not match this hook",
             ),
             (
                 DocumentScriptNativeError::CreationGlobalUnavailable,
-                "the node's creation Global is unavailable in this attachment",
+                "the creation Global is unavailable in this attachment",
             ),
             (
                 DocumentScriptNativeError::CreationRealmAlreadyRegistered,
@@ -215,7 +215,7 @@ fn native_scripting_errors_state_the_refused_native_operation() {
             ),
             (
                 DocumentScriptNativeError::ProjectionCustody,
-                "a projected node or its retained custody record is missing or does not match what was admitted",
+                "adapter custody state is missing, inconsistent with what was admitted, or already failed",
             ),
             (
                 DocumentScriptNativeError::RepresentationExhausted,
@@ -351,7 +351,7 @@ fn preparing_with_too_little_storage_returns_the_storage_refusal() {
     );
     assert_eq!(
         failure.error.to_string(),
-        "the requested adapter storage exceeds the configured limit or cannot be sized"
+        "the requested adapter storage or pending count exceeds the configured limit or cannot be sized"
     );
 }
 
@@ -367,7 +367,7 @@ fn a_failed_preparation_returns_the_session_and_chains_its_cause() {
     let source = failure.source().expect("the native refusal is the source");
     assert_eq!(
         source.to_string(),
-        "the requested adapter storage exceeds the configured limit or cannot be sized"
+        "the requested adapter storage or pending count exceeds the configured limit or cannot be sized"
     );
     assert!(!failure.to_string().contains("storage"));
     // The failure still owns the original Session, which the caller can reuse.
