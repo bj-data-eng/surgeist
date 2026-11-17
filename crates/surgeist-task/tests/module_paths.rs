@@ -1,5 +1,4 @@
-//! Every public item is reachable through its domain module, and the root holds
-//! only the modules and the crate identity constant.
+//! Every public item is reachable through its domain module.
 
 #![allow(unused_imports)]
 
