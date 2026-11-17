@@ -32,9 +32,9 @@ fieldless enum with one variant per dimension, a table that holds one value per
 dimension, and a fields struct with one public field per variant, named like
 the variant. The enum is the dimension type. A table is built from the fields
 struct, which names every dimension, and is read and updated by indexing it
-with a dimension. A lookup has no branch on which dimension it names. An
-operation takes one set for work and one for live resources. `NoDimension` is
-the empty set, and `NoTable::EMPTY` is its table.
+with a dimension. In an optimized build a lookup has no branch on which
+dimension it names. An operation takes one set for work and one for live
+resources. `NoDimension` is the empty set, and `NoTable::EMPTY` is its table.
 
 ```rust
 use surgeist_ledger::{Change, Limits, Operation};

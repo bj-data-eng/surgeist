@@ -4,10 +4,11 @@
 //! macro writes a fieldless enum, a table that stores one value per variant in
 //! an array in declaration order, and a fields struct with one named field per
 //! variant, from which a table is built. [`Dimension`] looks a value up at the
-//! position of its variant, so a lookup is arithmetic on the dimension and has
-//! no branch on which dimension it names. The array has one element per
-//! variant, so a lookup cannot go out of range, and the fields struct names
-//! every variant, so a table cannot be built with a dimension missing.
+//! position of its variant, so in an optimized build a lookup is arithmetic on
+//! the dimension and has no branch on which dimension it names. The array has
+//! one element per variant, so a lookup cannot go out of range, and the fields
+//! struct names every variant, so a table cannot be built with a dimension
+//! missing.
 
 use std::{fmt, hash::Hash, marker::PhantomData};
 
