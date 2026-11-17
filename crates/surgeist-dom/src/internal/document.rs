@@ -1,0 +1,1034 @@
+use std::{fmt, sync::Arc};
+
+use crate::internal::store::DomError;
+use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
+
+const CONTENT_TYPE: &str = "application/xml";
+const ENCODING: &str = "UTF-8";
+const URL: &str = "about:blank";
+// All three source-defined spellings are ASCII, so byte and UTF-16 lengths agree.
+pub(crate) const NATIVE_DOCUMENT_STRING_UNITS: usize =
+    CONTENT_TYPE.len() + ENCODING.len() + URL.len();
+
+/// Source-defined document type, independent of namespaces and compatibility mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomDocumentClass {
+    Xml,
+    Html,
+}
+
+/// The actual implemented interface, independent of XML/HTML document type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomDocumentInterface {
+    Document,
+    XmlDocument,
+}
+
+/// Retained provenance of this Document's focused-area designation.
+/// This does not resolve the currently focused area, system focus or a viewport.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomFocusedAreaDesignation {
+    /// The actual fresh native constructor, or a qualified original controlled
+    /// HTML constructor, established a null designation.
+    KnownNull,
+    /// Original designation history was not supplied by its producer.
+    Unavailable,
+}
+
+/// The actual registry selected by controlled Document/Element creation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomRegistryBinding {
+    Null,
+    Registry(crate::internal::registry::DomRegistryId),
+}
+
+#[derive(Debug)]
+struct OpaqueOriginIdentity;
+
+/// Real opaque-origin identity, unrelated to URL spelling or document labels.
+///
+/// Cloning preserves identity. Fresh native Documents get distinct tokens,
+/// including across stores; imported parser origins preserve their actual
+/// source identity across imports. No serialized/raw identity or construction escape is
+/// exposed. Private aborted drafts cannot publish or consume an observable ID.
+#[derive(Clone)]
+pub struct DomOpaqueOrigin(OpaqueOriginBacking);
+
+#[derive(Clone)]
+enum OpaqueOriginBacking {
+    Native(Arc<OpaqueOriginIdentity>),
+    ParsedFragment(surgeist_html_parser::HtmlParseOpaqueOrigin),
+}
+
+impl PartialEq for DomOpaqueOrigin {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (OpaqueOriginBacking::Native(a), OpaqueOriginBacking::Native(b)) => Arc::ptr_eq(a, b),
+            (OpaqueOriginBacking::ParsedFragment(a), OpaqueOriginBacking::ParsedFragment(b)) => {
+                a == b
+            }
+            _ => false,
+        }
+    }
+}
+impl Eq for DomOpaqueOrigin {}
+impl fmt::Debug for DomOpaqueOrigin {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("DomOpaqueOrigin(..)")
+    }
+}
+
+/// Actual creation cause and environment qualification, independent of labels.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DomDocumentCreationCause {
+    Native,
+    /// The standard Document constructor, qualified by its actual creation Global.
+    Constructed {
+        global: crate::internal::hosted::DomHostedGlobalId,
+    },
+    /// A canonical live clone, with independently established document state.
+    Cloned {
+        /// Actual URL/encoding field producers, when the source owned them.
+        url: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
+        encoding: Option<surgeist_html_semantics::HtmlBaseEncoding>,
+    },
+    ParsedOffline {
+        url: surgeist_html_semantics::HtmlBaseUrlRecord,
+        encoding: surgeist_html_semantics::HtmlBaseEncoding,
+    },
+    ParsedTemplateOwner,
+    /// The actual auxiliary Document created by the original fragment parser.
+    ParsedFragmentParser,
+    /// The actual controlled initial no-opener browsing-context constructor.
+    HostedInitialAboutBlank {
+        source: crate::internal::hosted::DomHostedSourceId,
+        operation: crate::internal::hosted::DomHostedOperationId,
+    },
+}
+/// Canonical document metadata, captured together with its tree and revision.
+///
+/// Native defaults follow the selected DOM document clause. Host/imported facts
+/// have no unchecked constructor here. Native HTML creation publishes its full
+/// source skeleton and copies an actual associated Document origin.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DomDocumentMetadata {
+    class: DomDocumentClass,
+    interface: DomDocumentInterface,
+    content_type: DocumentString,
+    encoding: DocumentString,
+    url: DocumentString,
+    origin: DomOpaqueOrigin,
+    mode: HtmlDocumentMode,
+    design_mode_enabled: bool,
+    allow_declarative_shadow_roots: bool,
+    registry: DomRegistryBinding,
+    environment: DomDocumentEnvironment,
+    cause: DomDocumentCreationCause,
+    meta: Option<crate::internal::meta::DomMetaDocumentState>,
+    pub(crate) meta_theme_color: crate::internal::meta::DomMetaThemeColorState,
+    // Outer None is unavailable; Some(None) is a completed null selection.
+    pub(crate) meta_color_scheme: Option<Option<crate::internal::meta::SelectedColorScheme>>,
+    policy: crate::internal::meta::DomDocumentPolicyContainer,
+    meta_ui: NoAssociatedMetaThemeConsumer,
+    pub(crate) hosted_inputs: Option<HostedDocumentInputs>,
+}
+
+/// One constructor-owned graph, shared unchanged by the original request and
+/// the published Document. Equality observes that actual owner's identity.
+#[derive(Clone, Debug)]
+pub(crate) struct HostedDocumentInputs(pub(crate) Arc<HostedDocumentInputData>);
+#[derive(Debug)]
+pub(crate) struct HostedDocumentInputData {
+    pub(crate) facts: surgeist_html_semantics::HtmlBaseDocumentFacts,
+    pub(crate) opener: surgeist_html::security::opener_policy::HtmlOpenerPolicy,
+    pub(crate) top_creation_url: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
+    pub(crate) top_origin: DomOpaqueOrigin,
+    pub(crate) active_sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags,
+    pub(crate) referrer: Option<DocumentString>,
+    // Both source algorithms complete before the new Document has a container.
+    // Their actual initialized lists are empty in this creation profile.
+    pub(crate) _retained: crate::internal::hosted::Retained,
+}
+impl PartialEq for HostedDocumentInputs {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for HostedDocumentInputs {}
+impl HostedDocumentInputs {
+    pub(crate) fn url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
+        self.0.facts.document_url().expect("constructor-owned URL")
+    }
+    pub(crate) fn payload_units(&self) -> Result<usize, DomError> {
+        let mut units = self.url().retained_storage_usage().utf16_extent();
+        if let surgeist_html_semantics::HtmlAboutBaseUrl::KnownRecord(record) =
+            self.0.facts.about_base_url()
+        {
+            units = units
+                .checked_add(record.retained_storage_usage().utf16_extent())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(record) = &self.0.top_creation_url {
+            units = units
+                .checked_add(record.retained_storage_usage().utf16_extent())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(referrer) = &self.0.referrer {
+            units = units
+                .checked_add(referrer.retained_units())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(units)
+    }
+    pub(crate) fn payload_bytes(&self) -> Result<usize, DomError> {
+        let mut bytes = size_of::<HostedDocumentInputData>()
+            .checked_add(self.url().retained_storage_usage().retained_bytes())
+            .ok_or(DomError::RepresentationExhausted)?;
+        if let surgeist_html_semantics::HtmlAboutBaseUrl::KnownRecord(record) =
+            self.0.facts.about_base_url()
+        {
+            bytes = bytes
+                .checked_add(record.retained_storage_usage().retained_bytes())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(record) = &self.0.top_creation_url {
+            bytes = bytes
+                .checked_add(record.retained_storage_usage().retained_bytes())
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(referrer) = &self.0.referrer {
+            let mut payload = crate::internal::store::source::storage::Payload::default();
+            payload.string(referrer)?;
+            bytes = bytes
+                .checked_add(payload.bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(bytes)
+    }
+}
+
+/// Established by the controlled Document creators, independently of no BC or
+/// offline processing. Current association fronts admit focus/hover/selection,
+/// but no recipient for Meta theme results. A future such association must
+/// replace this qualification before it can publish a ready Document.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct NoAssociatedMetaThemeConsumer;
+
+/// Selected closed offline environment shared by native creation and completed
+/// offline installation. Creation provenance and URL/encoding identities remain
+/// independently recorded in DomDocumentCreationCause.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DomDocumentEnvironment {
+    input: DomNativeInputPlatform,
+    pub(crate) hosted: Option<Arc<crate::internal::hosted::DocumentAssociation>>,
+    // Last actual attachment publication. Current engine provision is sampled
+    // separately, so stopping cannot change historical metadata.
+    script_host_generation: Option<std::num::NonZeroU64>,
+}
+
+/// Native-owner qualification, independent of browsing-context or scripting
+/// flags. Only the private native environment constructor establishes it.
+///
+/// All native entrypoints admit inert strings/values and canonical identities,
+/// never network/data/same-document script acquisition or inline/external execution.
+/// This is acquisition/execution provenance, not a permanent no-listener proof.
+/// Reached processing independently checks the current positive Load/Error
+/// recipient capabilities before changing the processed flag. Host
+/// observations are selection facts only; Slot
+/// intentions cannot represent an SVG event. Native fragment installation creates
+/// fresh values; snapshot import clones another checked native owner. Neither
+/// admits retained script resources/history. A future capability-bearing front
+/// must qualify its real transition before it can retain this closed witness.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NativeSvgScriptEnvironment {
+    _sealed: (),
+}
+impl NativeSvgScriptEnvironment {
+    pub(crate) const fn native_creation() -> Self {
+        Self { _sealed: () }
+    }
+    /// Tiny step3 remains real after the reached operation has separately
+    /// established that its native notifications have no applicable recipient.
+    pub(crate) fn mark_processed(
+        self,
+        flags: &mut surgeist_html::elements::script::SvgScriptFlags,
+    ) {
+        flags.mark_processed();
+    }
+}
+
+/// Established native selection capabilities, independent of browsing context.
+/// Construction fixes both facts for this native environment's lifetime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomNativeInputPlatform {
+    empty_selection: surgeist_html::elements::input::HtmlInputEmptySelectionSupport,
+    none_direction: surgeist_html::elements::input::HtmlInputNoneDirectionSupport,
+}
+impl DomNativeInputPlatform {
+    pub const fn new(
+        empty_selection: surgeist_html::elements::input::HtmlInputEmptySelectionSupport,
+        none_direction: surgeist_html::elements::input::HtmlInputNoneDirectionSupport,
+    ) -> Self {
+        Self {
+            empty_selection,
+            none_direction,
+        }
+    }
+    /// Selected headless profile; neither capability is inferred from no BC.
+    pub const fn headless() -> Self {
+        Self::new(
+            surgeist_html::elements::input::HtmlInputEmptySelectionSupport::Supported,
+            surgeist_html::elements::input::HtmlInputNoneDirectionSupport::Supported,
+        )
+    }
+    pub const fn empty_selection(
+        self,
+    ) -> surgeist_html::elements::input::HtmlInputEmptySelectionSupport {
+        self.empty_selection
+    }
+    pub const fn none_direction(
+        self,
+    ) -> surgeist_html::elements::input::HtmlInputNoneDirectionSupport {
+        self.none_direction
+    }
+}
+impl DomDocumentEnvironment {
+    pub(crate) const fn new(input: DomNativeInputPlatform) -> Self {
+        Self {
+            input,
+            hosted: None,
+            script_host_generation: None,
+        }
+    }
+    pub const fn input_platform(&self) -> DomNativeInputPlatform {
+        self.input
+    }
+    /// Selected native creation policy, not an inference from missing resources.
+    pub const fn input_images(&self) -> surgeist_html::elements::input::HtmlInputImagesDisabled {
+        surgeist_html::elements::input::HtmlInputImagesDisabled::ExplicitlyDisabled
+    }
+    pub fn browsing_context(&self) -> surgeist_html::security::nonce::HtmlBrowsingContextPresence {
+        match &self.hosted {
+            Some(association)
+                if !matches!(
+                    association.phase,
+                    crate::internal::hosted::DocumentPhase::Retired { .. }
+                ) =>
+            {
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
+            }
+            _ => surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent,
+        }
+    }
+    pub const fn has_ever_had_navigable(&self) -> bool {
+        self.hosted.is_some()
+    }
+}
+
+impl DomDocumentMetadata {
+    pub(crate) fn fresh_opaque_origin() -> DomOpaqueOrigin {
+        DomOpaqueOrigin(OpaqueOriginBacking::Native(Arc::new(OpaqueOriginIdentity)))
+    }
+    pub(crate) fn hosted_initial(
+        input: DomNativeInputPlatform,
+        origin: DomOpaqueOrigin,
+        registry: crate::internal::registry::DomRegistryId,
+        association: Arc<crate::internal::hosted::DocumentAssociation>,
+        operation: crate::internal::hosted::DomHostedOperationId,
+        inputs: HostedDocumentInputs,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        let source = operation.source();
+        let mut metadata = Self::native_defaults(
+            DomDocumentClass::Html,
+            "text/html",
+            origin,
+            DomDocumentEnvironment {
+                input,
+                hosted: Some(association),
+                script_host_generation: None,
+            },
+            false,
+            &mut |text| {
+                if text == URL {
+                    Ok(inputs.url().serialization().clone())
+                } else {
+                    materialize(text)
+                }
+            },
+        )?;
+        metadata.mode = HtmlDocumentMode::Quirks;
+        metadata.allow_declarative_shadow_roots = true;
+        metadata.registry = DomRegistryBinding::Registry(registry);
+        metadata.cause = DomDocumentCreationCause::HostedInitialAboutBlank { source, operation };
+        metadata.hosted_inputs = Some(inputs);
+        Ok(metadata)
+    }
+    pub(crate) fn native(
+        environment: DomDocumentEnvironment,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        Self::native_defaults(
+            DomDocumentClass::Xml,
+            CONTENT_TYPE,
+            DomOpaqueOrigin(OpaqueOriginBacking::Native(Arc::new(OpaqueOriginIdentity))),
+            environment,
+            false,
+            materialize,
+        )
+    }
+    pub(crate) fn template_owner(
+        class: DomDocumentClass,
+        environment: DomDocumentEnvironment,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        let mut metadata = Self::native(
+            DomDocumentEnvironment::new(environment.input_platform()),
+            materialize,
+        )?;
+        metadata.class = class;
+        Ok(metadata)
+    }
+    /// Used only by the complete createHTMLDocument transaction, whose source
+    /// Document supplies this identity. No caller can set arbitrary metadata.
+    pub(crate) fn native_html(
+        origin: DomOpaqueOrigin,
+        environment: DomDocumentEnvironment,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        Self::native_defaults(
+            DomDocumentClass::Html,
+            "text/html",
+            origin,
+            DomDocumentEnvironment::new(environment.input_platform()),
+            false,
+            materialize,
+        )
+    }
+    // The owning materializer admits and preserves each exact supplied literal.
+    // It must not substitute metadata or transform the DocumentString contents.
+    fn native_defaults(
+        class: DomDocumentClass,
+        content_type: &str,
+        origin: DomOpaqueOrigin,
+        environment: DomDocumentEnvironment,
+        design_mode_enabled: bool,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        Ok(Self::with_values(
+            class,
+            materialize(content_type)?,
+            materialize(ENCODING)?,
+            materialize(URL)?,
+            origin,
+            environment,
+            design_mode_enabled,
+        ))
+    }
+    fn with_values(
+        class: DomDocumentClass,
+        content_type: DocumentString,
+        encoding: DocumentString,
+        url: DocumentString,
+        origin: DomOpaqueOrigin,
+        environment: DomDocumentEnvironment,
+        design_mode_enabled: bool,
+    ) -> Self {
+        Self {
+            class,
+            interface: DomDocumentInterface::Document,
+            content_type,
+            encoding,
+            url,
+            origin,
+            mode: HtmlDocumentMode::NoQuirks,
+            design_mode_enabled,
+            allow_declarative_shadow_roots: false,
+            registry: DomRegistryBinding::Null,
+            environment,
+            cause: DomDocumentCreationCause::Native,
+            meta: Some(crate::internal::meta::DomMetaDocumentState::native()),
+            meta_theme_color: crate::internal::meta::DomMetaThemeColorState::Known(None),
+            meta_color_scheme: Some(None),
+            policy: crate::internal::meta::DomDocumentPolicyContainer::native(),
+            meta_ui: NoAssociatedMetaThemeConsumer,
+            hosted_inputs: None,
+        }
+    }
+    pub(crate) fn xml_factory(
+        environment: DomDocumentEnvironment,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        let mut metadata = Self::native(environment, materialize)?;
+        metadata.interface = DomDocumentInterface::XmlDocument;
+        Ok(metadata)
+    }
+    pub(crate) fn constructed(
+        global: crate::internal::hosted::DomHostedGlobalId,
+        origin: DomOpaqueOrigin,
+        environment: DomDocumentEnvironment,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        let mut metadata = Self::native_defaults(
+            DomDocumentClass::Xml,
+            CONTENT_TYPE,
+            origin,
+            environment,
+            false,
+            materialize,
+        )?;
+        metadata.cause = DomDocumentCreationCause::Constructed { global };
+        Ok(metadata)
+    }
+    pub(crate) fn clone_document(
+        &self,
+        registry: DomRegistryBinding,
+        share: &mut impl FnMut(&DocumentString) -> Result<DocumentString, DomError>,
+        retain_url: &mut impl FnMut(&surgeist_html_semantics::HtmlBaseUrlRecord) -> Result<(), DomError>,
+    ) -> Result<Self, DomError> {
+        let mut metadata = Self::with_values(
+            self.class,
+            share(&self.content_type)?,
+            share(&self.encoding)?,
+            share(&self.url)?,
+            self.origin.clone(),
+            DomDocumentEnvironment::new(self.environment.input_platform()),
+            false,
+        );
+        metadata.interface = self.interface;
+        metadata.mode = self.mode;
+        metadata.allow_declarative_shadow_roots = self.allow_declarative_shadow_roots;
+        metadata.registry = registry;
+        let (url, encoding) = match &self.cause {
+            DomDocumentCreationCause::ParsedOffline { url, encoding } => {
+                (Some(url), Some(encoding))
+            }
+            DomDocumentCreationCause::Cloned { url, encoding } => (url.as_ref(), encoding.as_ref()),
+            _ => self.hosted_inputs.as_ref().map_or((None, None), |inputs| {
+                (inputs.0.facts.document_url(), inputs.0.facts.encoding())
+            }),
+        };
+        if let Some(url) = url {
+            retain_url(url)?;
+        }
+        metadata.cause = DomDocumentCreationCause::Cloned {
+            url: url.cloned(),
+            encoding: encoding.cloned(),
+        };
+        Ok(metadata)
+    }
+    /// Actual implemented interface; XML type alone does not imply XMLDocument.
+    pub const fn interface(&self) -> DomDocumentInterface {
+        self.interface
+    }
+    // Only the canonical createDocument tail calls these source-ordered writes.
+    // They do not provide caller mutation of arbitrary Document metadata.
+    pub(crate) fn finish_xml_origin(&mut self, origin: DomOpaqueOrigin) {
+        self.origin = origin;
+    }
+    pub(crate) fn finish_xml_content_type(&mut self, content_type: DocumentString) {
+        self.content_type = content_type;
+    }
+    pub(crate) fn from_parsed(
+        class: DomDocumentClass,
+        mode: HtmlDocumentMode,
+        environment: &crate::internal::parsed_installation::DomParsedDocumentEnvironment,
+        design_mode_enabled: bool,
+    ) -> Self {
+        let mut materialize = |text: &str| Ok(text.into());
+        let mut result = Self::native_defaults(
+            class,
+            if class == DomDocumentClass::Html {
+                "text/html"
+            } else {
+                CONTENT_TYPE
+            },
+            environment.origin.clone(),
+            DomDocumentEnvironment::new(environment.input),
+            design_mode_enabled,
+            &mut materialize,
+        )
+        .expect("parsed metadata materializer always returns Ok");
+        result.mode = mode;
+        result.url = environment.url.serialization().clone();
+        result.encoding = environment.encoding_label.clone();
+        result.cause = DomDocumentCreationCause::ParsedOffline {
+            url: environment.url.clone(),
+            encoding: environment.encoding.clone(),
+        };
+        // Target association closure is independent of imported processing
+        // history. The installer must qualify this Document's original parser
+        // record before explicitly establishing its Meta/policy history.
+        result.meta = None;
+        result.meta_theme_color = crate::internal::meta::DomMetaThemeColorState::Unavailable;
+        result.meta_color_scheme = None;
+        result.policy = crate::internal::meta::DomDocumentPolicyContainer::unavailable();
+        result
+    }
+    pub(crate) fn parsed_template_owner(
+        class: DomDocumentClass,
+        input: DomNativeInputPlatform,
+        design_mode_enabled: bool,
+    ) -> Self {
+        let mut materialize = |text: &str| Ok(text.into());
+        let mut result =
+            Self::template_owner(class, DomDocumentEnvironment::new(input), &mut materialize)
+                .expect("parsed template metadata materializer always returns Ok");
+        result.design_mode_enabled = design_mode_enabled;
+        result.cause = DomDocumentCreationCause::ParsedTemplateOwner;
+        result.meta = None;
+        result.meta_theme_color = crate::internal::meta::DomMetaThemeColorState::Unavailable;
+        result.meta_color_scheme = None;
+        result.policy = crate::internal::meta::DomDocumentPolicyContainer::unavailable();
+        result
+    }
+    pub(crate) fn native_field_inputs(&self) -> bool {
+        matches!(
+            &self.cause,
+            DomDocumentCreationCause::Native
+                | DomDocumentCreationCause::Constructed { .. }
+                | DomDocumentCreationCause::Cloned {
+                    url: None,
+                    encoding: None
+                }
+        )
+    }
+    pub fn creation_cause(&self) -> &DomDocumentCreationCause {
+        &self.cause
+    }
+    #[cfg(test)]
+    pub(crate) fn inspect_compact_baseline(
+        &self,
+        graph: &mut crate::internal::store::compact_tests::AllocationGraph,
+    ) {
+        assert!(matches!(self.cause, DomDocumentCreationCause::Native));
+        assert!(self.hosted_inputs.is_none());
+        for value in [&self.content_type, &self.encoding, &self.url] {
+            graph.string(value);
+        }
+        match &self.origin.0 {
+            OpaqueOriginBacking::Native(value) => graph.target(value, "document.origin"),
+            OpaqueOriginBacking::ParsedFragment(_) => panic!("native baseline origin"),
+        }
+        if let Some(language) = self
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.pragma_language.as_ref())
+        {
+            graph.string(language);
+        }
+        assert!(
+            self.meta_color_scheme.as_ref().is_none_or(Option::is_none),
+            "baseline has no CSS report payload"
+        );
+    }
+    /// Consume the original completed fragment-parser constructor proof. Its
+    /// source origin is retained directly; target input and UI association
+    /// qualification are established independently by this controlled creator.
+    pub(crate) fn from_fragment_parser(
+        descriptor: &surgeist_html_parser::HtmlParseFragmentParserDocument<'_>,
+        current: DomDocumentEnvironment,
+        design_mode_enabled: bool,
+    ) -> Self {
+        let mut materialize = |text: &str| Ok(text.into());
+        let mut result = Self::native_defaults(
+            DomDocumentClass::Html,
+            CONTENT_TYPE,
+            DomOpaqueOrigin(OpaqueOriginBacking::ParsedFragment(
+                descriptor.origin().clone(),
+            )),
+            current,
+            design_mode_enabled,
+            &mut materialize,
+        )
+        .expect("fragment parser metadata materializer always returns Ok");
+        result.mode = descriptor.mode();
+        result.cause = DomDocumentCreationCause::ParsedFragmentParser;
+        // Only the separate, qualified per-Document Meta view establishes this
+        // original processing history. Constructor facts never substitute it.
+        result.meta = None;
+        result.meta_theme_color = crate::internal::meta::DomMetaThemeColorState::Unavailable;
+        result.meta_color_scheme = None;
+        result.policy = crate::internal::meta::DomDocumentPolicyContainer::unavailable();
+        result
+    }
+    pub fn class(&self) -> DomDocumentClass {
+        self.class
+    }
+    pub fn content_type(&self) -> &DocumentString {
+        &self.content_type
+    }
+    pub fn encoding(&self) -> &DocumentString {
+        &self.encoding
+    }
+    /// Exact URL serialization; this bounded API does not accept arbitrary URLs.
+    pub fn url(&self) -> &DocumentString {
+        &self.url
+    }
+
+    /// Referrer supplied by the original hosted Document creation. The outer
+    /// option records whether the hosted constructor supplied this fact.
+    pub fn hosted_referrer(&self) -> Option<Option<&DocumentString>> {
+        self.hosted_inputs
+            .as_ref()
+            .map(|inputs| inputs.0.referrer.as_ref())
+    }
+    pub fn origin(&self) -> &DomOpaqueOrigin {
+        &self.origin
+    }
+    pub fn mode(&self) -> HtmlDocumentMode {
+        self.mode
+    }
+    /// Actual canonical Document design-mode flag. This readback neither
+    /// executes editing nor supplies the ordered designMode setter.
+    pub const fn design_mode_enabled(&self) -> bool {
+        self.design_mode_enabled
+    }
+    pub(crate) fn set_design_mode_enabled(&mut self, enabled: bool) {
+        self.design_mode_enabled = enabled;
+    }
+    pub(crate) fn same_nondesign_mode_state(&self, other: &Self) -> bool {
+        self.class == other.class
+            && self.interface == other.interface
+            && self.content_type == other.content_type
+            && self.encoding == other.encoding
+            && self.url == other.url
+            && self.origin == other.origin
+            && self.mode == other.mode
+            && self.allow_declarative_shadow_roots == other.allow_declarative_shadow_roots
+            && self.registry == other.registry
+            && self.environment == other.environment
+            && self.cause == other.cause
+            && self.meta == other.meta
+            && self.meta_theme_color == other.meta_theme_color
+            && self.meta_color_scheme == other.meta_color_scheme
+            && self.policy == other.policy
+            && self.meta_ui == other.meta_ui
+            && self.hosted_inputs == other.hosted_inputs
+    }
+    pub fn allow_declarative_shadow_roots(&self) -> bool {
+        self.allow_declarative_shadow_roots
+    }
+    pub fn custom_element_registry(&self) -> DomRegistryBinding {
+        self.registry
+    }
+    pub(crate) fn establish_registry(
+        &mut self,
+        registry: crate::internal::registry::DomRegistryId,
+    ) {
+        self.registry = DomRegistryBinding::Registry(registry);
+    }
+    pub fn document_environment(&self) -> DomDocumentEnvironment {
+        self.environment.clone()
+    }
+    pub fn initial_permissions_policy(
+        &self,
+    ) -> Option<crate::internal::hosted::DomInitialPermissionsPolicy> {
+        self.environment
+            .hosted
+            .as_ref()
+            .map(|association| association.policy)
+    }
+    pub(crate) fn publish_script_host(&mut self, generation: std::num::NonZeroU64) {
+        self.environment.script_host_generation = Some(generation);
+    }
+    pub(crate) fn script_host_generation(&self) -> Option<std::num::NonZeroU64> {
+        self.environment.script_host_generation
+    }
+    pub(crate) fn set_hosted_association(
+        &mut self,
+        association: Arc<crate::internal::hosted::DocumentAssociation>,
+    ) {
+        if matches!(
+            association.phase,
+            crate::internal::hosted::DocumentPhase::Retired { .. }
+        ) {
+            self.environment.script_host_generation = None;
+        }
+        self.environment.hosted = Some(association);
+    }
+    /// Actual processing history. `None` denotes unavailable imported
+    /// history; current attributes never stand in for completed processing.
+    pub fn meta_state(&self) -> Option<&crate::internal::meta::DomMetaDocumentState> {
+        self.meta.as_ref()
+    }
+    /// Last completed theme selection at this publication. Current-tree
+    /// interpretation requires a complete Source snapshot.
+    pub fn meta_theme_color(&self) -> &crate::DomMetaThemeColorState {
+        &self.meta_theme_color
+    }
+    /// Last completed color-scheme selection, with its original CSS source and
+    /// context. Current-tree interpretation requires a complete Source snapshot.
+    pub fn meta_color_scheme(&self) -> crate::internal::meta::DomMetaColorSchemeState<'_> {
+        match &self.meta_color_scheme {
+            None => crate::internal::meta::DomMetaColorSchemeState::Unavailable,
+            Some(value) => crate::internal::meta::DomMetaColorSchemeState::Known(
+                value.as_ref().map(|value| value.report.as_ref()),
+            ),
+        }
+    }
+    pub(crate) fn meta_color_scheme_bytes(&self) -> usize {
+        self.meta_color_scheme
+            .as_ref()
+            .and_then(Option::as_ref)
+            .map_or(0, |value| value.bytes)
+    }
+    /// The one canonical supported policy-container authority for this Document.
+    pub fn policy_container(&self) -> &crate::DomDocumentPolicyContainer {
+        &self.policy
+    }
+    /// Establish only the actual original-parser history already qualified by
+    /// the installer for this fresh Document. Its controlled creator's current
+    /// target UI qualification remains independent of the source profile.
+    pub(crate) fn establish_parsed_meta_history(
+        &mut self,
+        language: Option<DocumentString>,
+        referrer: surgeist_html::attributes::HtmlReferrerPolicy,
+        will_declaratively_refresh: bool,
+        theme_color: Option<surgeist_color::Color>,
+        color_scheme: Option<crate::internal::meta::SelectedColorScheme>,
+    ) {
+        self.meta = Some(crate::DomMetaDocumentState {
+            pragma_language: language,
+            will_declaratively_refresh,
+        });
+        self.policy.referrer = Some(referrer);
+        self.meta_theme_color = crate::internal::meta::DomMetaThemeColorState::Known(theme_color);
+        self.meta_color_scheme = Some(color_scheme);
+    }
+    pub(crate) fn meta_state_mut(
+        &mut self,
+    ) -> Option<&mut crate::internal::meta::DomMetaDocumentState> {
+        self.meta.as_mut()
+    }
+    pub(crate) fn policy_container_mut(&mut self) -> &mut crate::DomDocumentPolicyContainer {
+        &mut self.policy
+    }
+    /// Complete application of the selected color or absence to the empty recipient
+    /// set. Selection must already have run over this Document's current tree.
+    pub(crate) fn apply_meta_theme(&self) {
+        let NoAssociatedMetaThemeConsumer = self.meta_ui;
+    }
+    fn retained_strings(&self) -> impl Iterator<Item = &DocumentString> {
+        [
+            Some(&self.content_type),
+            Some(&self.encoding),
+            Some(&self.url),
+            self.meta
+                .as_ref()
+                .and_then(|meta| meta.pragma_language.as_ref()),
+        ]
+        .into_iter()
+        .flatten()
+    }
+    /// Retained payload owned by this metadata; its inline header is counted by
+    /// the enclosing node or source record. Keep consumers out of field pricing.
+    pub(crate) fn retained_payload_units(&self) -> Result<usize, crate::internal::store::DomError> {
+        let mut units = self.policy.csp_units();
+        if let Some(Some(value)) = &self.meta_color_scheme {
+            units = units
+                .checked_add(value.units)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        for string in self.retained_strings() {
+            units = units
+                .checked_add(string.retained_units())
+                .ok_or(crate::internal::store::DomError::RepresentationExhausted)?;
+        }
+        if let DomDocumentCreationCause::ParsedOffline { url, .. }
+        | DomDocumentCreationCause::Cloned { url: Some(url), .. } = &self.cause
+        {
+            units = units
+                .checked_add(url.retained_storage_usage().utf16_extent())
+                .ok_or(crate::internal::store::DomError::RepresentationExhausted)?;
+        }
+        if let Some(inputs) = &self.hosted_inputs {
+            units = units
+                .checked_add(inputs.payload_units()?)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(units)
+    }
+    pub(crate) fn retained_payload_bytes(&self) -> Result<usize, crate::internal::store::DomError> {
+        let mut bytes = self
+            .policy
+            .csp_bytes()
+            .ok_or(DomError::RepresentationExhausted)?;
+        if let Some(Some(value)) = &self.meta_color_scheme {
+            bytes = bytes
+                .checked_add(value.bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        for string in self.retained_strings() {
+            bytes = bytes
+                .checked_add(std::mem::size_of::<Vec<u16>>())
+                .and_then(|n| {
+                    n.checked_add(
+                        string
+                            .retained_units()
+                            .checked_mul(std::mem::size_of::<u16>())?,
+                    )
+                })
+                .ok_or(crate::internal::store::DomError::RepresentationExhausted)?;
+        }
+        if let DomDocumentCreationCause::ParsedOffline { url, .. }
+        | DomDocumentCreationCause::Cloned { url: Some(url), .. } = &self.cause
+        {
+            bytes = bytes
+                .checked_add(url.retained_storage_usage().retained_bytes())
+                .ok_or(crate::internal::store::DomError::RepresentationExhausted)?;
+        }
+        if self.environment.hosted.is_some() {
+            bytes = bytes
+                .checked_add(std::mem::size_of::<
+                    crate::internal::hosted::DocumentAssociation,
+                >())
+                .ok_or(crate::internal::store::DomError::RepresentationExhausted)?;
+        }
+        if let Some(inputs) = &self.hosted_inputs {
+            bytes = bytes
+                .checked_add(inputs.payload_bytes()?)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(bytes)
+    }
+    pub(crate) fn units(&self) -> Option<usize> {
+        self.content_type
+            .len()
+            .checked_add(self.policy.csp_units())?
+            .checked_add(self.encoding.len())?
+            .checked_add(self.url.len())?
+            .checked_add(
+                self.meta
+                    .as_ref()
+                    .and_then(|meta| meta.pragma_language.as_ref())
+                    .map_or(0, |value| value.retained_units()),
+            )
+            .and_then(|units| {
+                units.checked_add(
+                    self.meta_color_scheme
+                        .as_ref()
+                        .and_then(Option::as_ref)
+                        .map_or(0, |value| value.units),
+                )
+            })
+    }
+}
+
+#[cfg(test)]
+mod materialization_tests {
+    use super::*;
+
+    fn create(
+        kind: u8,
+        origin: &DomOpaqueOrigin,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, crate::internal::store::DomError>,
+    ) -> Result<DomDocumentMetadata, crate::internal::store::DomError> {
+        let environment = DomDocumentEnvironment::new(DomNativeInputPlatform::headless());
+        match kind {
+            0 => DomDocumentMetadata::native(environment, materialize),
+            1 => DomDocumentMetadata::native_html(origin.clone(), environment, materialize),
+            2 => DomDocumentMetadata::template_owner(
+                DomDocumentClass::Html,
+                environment,
+                materialize,
+            ),
+            _ => unreachable!("closed fixture cases"),
+        }
+    }
+    fn origin() -> DomOpaqueOrigin {
+        DomDocumentMetadata::native(
+            DomDocumentEnvironment::new(DomNativeInputPlatform::headless()),
+            &mut |text| Ok(text.into()),
+        )
+        .unwrap()
+        .origin()
+        .clone()
+    }
+
+    #[test]
+    fn native_factory_materializes_actual_defaults_in_order_and_preserves_metadata() {
+        let origin = origin();
+        for (kind, content_type) in [
+            (0, "application/xml"),
+            (1, "text/html"),
+            (2, "application/xml"),
+        ] {
+            let mut seen = Vec::new();
+            let metadata = create(kind, &origin, &mut |text| {
+                seen.push(text.to_owned());
+                Ok(text.into())
+            })
+            .unwrap();
+            assert_eq!(seen, [content_type, "UTF-8", "about:blank"]);
+            assert_eq!(
+                metadata.content_type().code_units(),
+                content_type.encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                metadata.encoding().code_units(),
+                "UTF-8".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                metadata.url().code_units(),
+                "about:blank".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                metadata.class(),
+                if kind == 0 {
+                    DomDocumentClass::Xml
+                } else {
+                    DomDocumentClass::Html
+                }
+            );
+            assert_eq!(metadata.mode(), HtmlDocumentMode::NoQuirks);
+            assert_eq!(metadata.custom_element_registry(), DomRegistryBinding::Null);
+            assert!(!metadata.allow_declarative_shadow_roots());
+            assert_eq!(
+                metadata.meta_state(),
+                Some(&crate::internal::meta::DomMetaDocumentState::native())
+            );
+            assert_eq!(
+                metadata.policy_container(),
+                &crate::internal::meta::DomDocumentPolicyContainer::native()
+            );
+            assert_eq!(metadata.creation_cause(), &DomDocumentCreationCause::Native);
+            assert_eq!(
+                metadata.document_environment().input_platform(),
+                DomNativeInputPlatform::headless()
+            );
+            if kind == 1 {
+                assert_eq!(metadata.origin(), &origin);
+            } else {
+                assert_ne!(metadata.origin(), &origin);
+            }
+        }
+    }
+    #[test]
+    fn materializer_refusal_preserves_first_error_without_reaching_later_strings() {
+        let origin = origin();
+        for (kind, content_type) in [
+            (0, "application/xml"),
+            (1, "text/html"),
+            (2, "application/xml"),
+        ] {
+            let expected = [content_type, "UTF-8", "about:blank"];
+            for stop in 0..3 {
+                let mut seen = Vec::new();
+                let result = create(kind, &origin, &mut |text| {
+                    seen.push(text.to_owned());
+                    if seen.len() == stop + 1 {
+                        Err(crate::internal::store::DomError::Cancelled)
+                    } else {
+                        Ok(text.into())
+                    }
+                });
+                assert_eq!(
+                    result.unwrap_err(),
+                    crate::internal::store::DomError::Cancelled
+                );
+                assert_eq!(seen, expected[..=stop]);
+            }
+        }
+    }
+}
