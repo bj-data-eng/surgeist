@@ -10,8 +10,10 @@ tokenization, parsing results and token streams, parser entry points and
 algorithms, the `An+B` microsyntax and token serialization. It gives syntax no
 CSS meaning. [surgeist-css](../surgeist-css/AGENTS.md) owns grammars, property
 and descriptor values, rules, selectors, queries and recovery diagnostics, and
-depends on this crate. This crate depends on no Surgeist crate; do not add one.
-Its one runtime dependency is `encoding_rs` (pinned exactly, with its license
+depends on this crate. This crate's one Surgeist dependency is
+[surgeist-ledger](../surgeist-ledger/README.md), for the accounting schema in
+`accounting`; do not add another.
+Its one external runtime dependency is `encoding_rs` (pinned exactly, with its license
 files in [licenses/encoding-rs](licenses/encoding-rs)), which implements the
 Encoding Standard's decoders for `input::decode`. (Its tests use
 `surgeist-fuzz` for the property runner, a dev-dependency that ships nowhere.)

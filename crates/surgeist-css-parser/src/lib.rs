@@ -12,7 +12,8 @@
 //! recovery diagnostics belong to `surgeist-css`, which builds CSS language
 //! interpretation on this crate.
 //!
-//! The crate depends on no other Surgeist crate. The dependency runs from
+//! The crate's one Surgeist dependency is `surgeist-ledger`, for the
+//! accounting schema in [`accounting`]. The dependency runs from
 //! `surgeist-css` to this crate, never the other way, because Syntax 3 is a
 //! layer below every CSS grammar rather than a consumer of CSS values.
 //!
@@ -48,6 +49,8 @@
 //! - [`lexical`]: the code-point classes of Syntax 3 section 4.2 and the
 //!   checks of sections 4.3.8 to 4.3.11, as `const fn`s;
 //! - [`Offset`]: a byte offset into the text a tokenizer reads;
+//! - [`accounting`]: the work and resource dimensions the CSS crates charge
+//!   to a host's ledger operation, and the scope a host supplies for them;
 //! - [`limits`]: the depth, node and byte limits of a build, the [`Meter`]
 //!   contract through which a host admits work and storage, and the growth
 //!   and copy helpers that charge it;
@@ -107,6 +110,7 @@ mod match_ascii;
 mod offset;
 mod syntax_token;
 
+pub mod accounting;
 pub mod anb;
 pub mod document;
 pub mod grammar;

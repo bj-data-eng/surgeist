@@ -109,7 +109,9 @@ A new edition is adopted deliberately and recorded there.
 
 ## Dependencies
 
-The crate depends on no other Surgeist crate, and `surgeist-css` depends on it.
+The crate's one Surgeist dependency is
+[surgeist-ledger](../surgeist-ledger/README.md), for the accounting schema of
+the CSS crates in `accounting`; `surgeist-css` depends on this crate.
 Its one external runtime dependency is `encoding_rs`, whose decoders implement
 the Encoding Standard for `input::decode`; its license files ship with the
 crate and the [notice](NOTICE.md) links them.
