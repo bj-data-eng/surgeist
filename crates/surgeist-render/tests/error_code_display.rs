@@ -30,7 +30,7 @@ fn phrase(code: ErrorCode) -> &'static str {
         ErrorCode::DegradedQuality => "degraded quality",
         ErrorCode::RuntimeCapabilityUnavailable => "runtime capability unavailable",
         ErrorCode::ImageUploadFailed => "image data refused",
-        ErrorCode::RenderFailed => "render failed",
+        ErrorCode::RenderFailed => "render pipeline failed",
         ErrorCode::ReadbackFailed => "readback failed",
         ErrorCode::PresentFailed => "presented output failed",
         ErrorCode::UnsupportedBackend => "unsupported backend",

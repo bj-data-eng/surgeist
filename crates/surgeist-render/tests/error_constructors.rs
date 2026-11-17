@@ -9,7 +9,7 @@
 
 use core::error::Error as StdError;
 use surgeist_render::{
-    DegradedQuality, DegradedQualityKind, Error, ErrorCode, InvalidValue, PrimitiveFamily,
+    DegradedQuality, DegradedQualityKind, Error, ErrorCode, InvalidValue, PrimitiveFamily, Rect, Size,
     PrimitiveOperation, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
 };
 
@@ -102,54 +102,61 @@ fn a_degraded_quality_prints_its_limitation_and_value() {
 }
 
 #[test]
-fn an_extreme_number_in_an_invalid_value_stays_short() {
-    for (value, text) in [
-        (f64::MAX, "1.7976931348623157e308"),
-        (f64::MIN, "-1.7976931348623157e308"),
-        (f64::MIN_POSITIVE, "2.2250738585072014e-308"),
-        (f64::from_bits(1), "5e-324"),
-        (0.000001, "1e-6"),
+fn a_value_passed_to_the_public_constructor_keeps_its_text_exactly() {
+    // The constructor receives only the `Display` text of a value, so it never rewrites it:
+    // trailing zeros, leading zeros, long digit strings and tiny or huge numbers stay as given.
+    for text in [
+        "2.10",
+        "007.5",
+        "0.000001",
+        "0.12345678901234567890123456789",
+        "123456789012345678901234567890.5",
+        "1.7976931348623157e308",
+        "NaN",
+        "-inf",
+        "hello",
+        "",
     ] {
-        let error = Error::invalid_value("scale", value, "must be at most 1");
-        assert_eq!(
-            error.to_string(),
-            format!("scale value {text} is invalid: must be at most 1")
-        );
-        assert!(error.to_string().len() < 80);
-        // The structured value keeps the exact text that `Display` produced for the number.
-        assert_eq!(
-            error.invalid_value_diagnostic().unwrap().value(),
-            value.to_string()
-        );
+        let error = Error::invalid_value("x", text, "r");
+        assert_eq!(error.to_string(), format!("x value {text} is invalid: r"));
+        assert_eq!(error.invalid_value_diagnostic().unwrap().value(), text);
     }
-}
-
-#[test]
-fn an_ordinary_number_or_an_integer_keeps_its_plain_text() {
-    for (text, value) in [
+    for (text, error) in [
         ("0.5", Error::invalid_value("x", 0.5, "r")),
         ("-12.25", Error::invalid_value("x", -12.25, "r")),
         ("0.00001", Error::invalid_value("x", 0.00001, "r")),
-        (
-            "123456789.125",
-            Error::invalid_value("x", 123_456_789.125, "r"),
-        ),
-        (
-            "18446744073709551615",
-            Error::invalid_value("x", u64::MAX, "r"),
-        ),
-        (
-            "-9223372036854775808",
-            Error::invalid_value("x", i64::MIN, "r"),
-        ),
+        ("0.000001", Error::invalid_value("x", 0.000001, "r")),
+        ("18446744073709551615", Error::invalid_value("x", u64::MAX, "r")),
+        ("-9223372036854775808", Error::invalid_value("x", i64::MIN, "r")),
         (
             "340282366920938463463374607431768211455",
             Error::invalid_value("x", u128::MAX, "r"),
         ),
         ("NaN", Error::invalid_value("x", f64::NAN, "r")),
-        ("-inf", Error::invalid_value("x", f64::NEG_INFINITY, "r")),
-        ("hello", Error::invalid_value("x", "hello", "r")),
     ] {
-        assert_eq!(value.to_string(), format!("x value {text} is invalid: r"));
+        assert_eq!(error.to_string(), format!("x value {text} is invalid: r"));
+    }
+}
+
+#[test]
+fn an_extreme_float_at_a_crate_call_site_prints_in_exponent_form() {
+    // These crate call sites pass the rejected float, so they print it through the number helper.
+    for (value, text) in [
+        (-f64::MAX, "-1.7976931348623157e308"),
+        (-f64::MIN_POSITIVE, "-2.2250738585072014e-308"),
+        (-1e300, "-1e300"),
+        (-2.5, "-2.5"),
+    ] {
+        let error = Rect::try_new(0.0, 0.0, value, 1.0).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("rectangle width value {text} is invalid: must be finite and non-negative")
+        );
+        let error = Size::try_new(1.0, value).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("size height value {text} is invalid: must be finite and non-negative")
+        );
+        assert!(error.to_string().len() < 100);
     }
 }

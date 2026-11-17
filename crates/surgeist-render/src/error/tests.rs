@@ -400,7 +400,11 @@ fn every_backend_code_prints_exactly_its_message_without_the_classification() {
             ErrorCode::ImageUploadFailed,
             "image data refused",
         ),
-        (B::RenderFailed, ErrorCode::RenderFailed, "render failed"),
+        (
+            B::RenderFailed,
+            ErrorCode::RenderFailed,
+            "render pipeline failed",
+        ),
         (
             B::ReadbackFailed,
             ErrorCode::ReadbackFailed,

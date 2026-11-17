@@ -4155,7 +4155,7 @@ mod diagnostic_tests {
             ),
             (
                 E::InvalidCaptureResult,
-                "a capture does not match the span or coverage that records it: its reads, result role, scale or consumer count",
+                "a capture does not match the shape or the span or coverage record required for it",
             ),
             (
                 E::InvalidImportedResourceRole,
@@ -4163,7 +4163,7 @@ mod diagnostic_tests {
             ),
             (
                 E::InvalidPassArity,
-                "a pass does not have the reads, result, order or count that its recorded operation requires",
+                "a pass does not match the records, reads or bindings that the graph holds or records for its operation",
             ),
             (
                 E::InvalidPassResultRole,
