@@ -59,15 +59,19 @@ pub struct DomHostedRuntimeLimits {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomHostedRuntimeError {
-    /// The canonical source or operation could not be qualified.
+    /// The canonical DOM, or a DOM-level check the runtime makes for it, refused
+    /// the operation.
     Dom(DomHostedError),
     /// This execution permission's original session was disposed.
     OwnerDisposed,
-    /// The original owner is temporarily borrowed by another operation.
+    /// The hosted state, its event loop or the element-task state this operation
+    /// needs is already in use by another operation.
     Busy,
-    /// The permission and canonical view belong to different original owners.
+    /// The permission, DOM view, clock source or target does not match the
+    /// original binding, or is not ready.
     Binding,
-    /// Actual retained/scratch/count/work admission refused the operation.
+    /// Actual retained/scratch/count/work admission refused the operation, or a
+    /// size could not be represented.
     Admission,
     /// This target has no selected native monotonic clock provider.
     ClockUnavailable,
@@ -81,13 +85,16 @@ pub enum DomHostedRuntimeError {
     EntropyFailed,
     /// Cancellation preserves the original lifecycle phase.
     Cancelled,
-    /// Another retained operation must be resumed first.
+    /// A retained operation, live hosted record or cleanup phase must be settled
+    /// or reached before this operation can proceed.
     OperationPending,
     /// The exact live native host/global/navigable was not found.
     TargetNotFound,
-    /// A retained phase disagrees with the actual canonical request.
+    /// A retained record, phase or source identity is missing or disagrees with
+    /// the request, or the element-task owner refused it.
     Protocol,
-    /// The queued original Document is not presently runnable.
+    /// The Document, Global or navigable the operation names is not currently
+    /// active, ready or the expected top-level target.
     Inactive,
     /// Actual native checkpoint work remains unsupported or source-pending.
     CheckpointUnavailable,
@@ -97,13 +104,13 @@ pub enum DomHostedRuntimeError {
 impl fmt::Display for DomHostedRuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Dom(_) => "the canonical DOM refused the hosted lifecycle operation",
+            Self::Dom(_) => "a canonical DOM or hosted DOM error refused the hosted lifecycle operation",
             Self::OwnerDisposed => "the session that issued this hosted permission was disposed",
             Self::Busy => {
-                "the hosted lifecycle owner or its event loop is already in use by another operation"
+                "the hosted lifecycle state, its event loop or the element-task state this operation needs is already in use"
             }
             Self::Binding => {
-                "the hosted lifecycle permission, DOM view or target does not match the original binding"
+                "the hosted lifecycle permission, DOM view, clock source or target does not match the original binding, or is not ready"
             }
             Self::Admission => "hosted lifecycle admission refused the operation",
             Self::ClockUnavailable => "this target has no native monotonic clock provider",
@@ -113,16 +120,16 @@ impl fmt::Display for DomHostedRuntimeError {
             Self::EntropyFailed => "the native entropy operation failed",
             Self::Cancelled => "the hosted lifecycle operation was cancelled",
             Self::OperationPending => {
-                "another retained hosted operation or live hosted record must be settled before this operation"
+                "a retained hosted operation, live hosted record or cleanup phase must be settled or reached before this operation can proceed"
             }
             Self::TargetNotFound => {
                 "the live native host, Global, navigable or retained record this operation names was not found"
             }
             Self::Protocol => {
-                "retained hosted lifecycle state disagrees with the canonical request"
+                "a retained hosted lifecycle record, phase or source identity is missing or disagrees with the request, or the element-task owner refused it"
             }
             Self::Inactive => {
-                "the Document or Global this operation names is not currently active or ready"
+                "the Document, Global or navigable this operation names is not currently active, ready or the expected top-level target"
             }
             Self::CheckpointUnavailable => {
                 "native checkpoint work is unavailable while a Source or hosted operation or a slot signal is pending"

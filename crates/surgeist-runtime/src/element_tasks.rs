@@ -135,11 +135,13 @@ impl DomElementTask {
 pub enum DomElementTaskRuntimeError {
     /// Standalone intake already transferred unknown external task obligations.
     PretransferredSession,
-    /// A foreign canonical owner, replaced task owner or invalid target kind.
+    /// A foreign canonical owner, replaced task owner, invalid target kind, or a
+    /// retained task state that does not match the request or outcome.
     Binding,
     /// The original durable session has released this permission's owner.
     OwnerDisposed,
-    /// The original task state is temporarily borrowed by another operation.
+    /// The task state, or the hosted state this operation needs, is temporarily
+    /// borrowed by another operation.
     Busy,
     /// A transfer predates another already consumed transfer from this DOM.
     OutOfOrderTransfer,
@@ -162,7 +164,7 @@ impl fmt::Display for DomElementTaskRuntimeError {
             Self::PretransferredSession => {
                 "standalone intake already transferred element-task obligations that this session cannot recover"
             }
-            Self::Binding => "the element-task owner, DOM or task binding is missing or does not match",
+            Self::Binding => "the element-task owner, DOM or task binding is missing or does not match, or the retained task state does not match",
             Self::OwnerDisposed => "the session that owns the element-task state was disposed",
             Self::Busy => {
                 "the state needed by the element-task operation is already borrowed by another operation"

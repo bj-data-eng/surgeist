@@ -114,13 +114,15 @@ pub enum DomStyleRuntimeError {
     PendingParsedAssociations(surgeist_dom::installation::DomParsedHtmlAssociationId),
     /// Canonical source admission or qualification failed.
     Dom(DomError),
-    /// The CSSOM owner refused its actual mutation.
+    /// The CSSOM owner refused its actual mutation or read.
     Cssom(surgeist_cssom::CssomError),
     /// Real CSS input preparation/parsing failed, including cancellation.
     Css(surgeist_css::source::CssUtf16InputError<DomError>),
-    /// Runtime's own finite bank/work/identity admission failed.
+    /// Runtime's own finite bank/work/identity admission failed, or a guest
+    /// accounting step mapped to it failed.
     Admission,
-    /// A caller replaced an actual owner or supplied a conflicting binding.
+    /// An owner the operation needs is borrowed or was replaced, or the caller
+    /// supplied a conflicting binding.
     Binding,
     /// Source reply is inconsistent with the retained operation.
     Protocol,
@@ -128,11 +130,11 @@ pub enum DomStyleRuntimeError {
     Dispatch(crate::dom_event::DomEventDispatchError),
     /// The durable original session has ended.
     SessionUnavailable,
-    /// Execution permission and canonical view belong to different sessions.
+    /// The canonical view belongs to a different session than the Style runtime.
     WrongSession,
     /// A new session cannot reconstruct preexisting root/task custody.
     PreboundSession,
-    /// The actual Document has no bound stylesheet association owner.
+    /// The root has no bound stylesheet association owner.
     SheetSetRootUnavailable {
         /// Exact live Document for which ownership is unavailable.
         root: NodeId,
@@ -167,9 +169,10 @@ pub enum DomStyleRuntimeError {
     SourcePending(DomSourceOperationId),
     /// The exact retained CSSOM resource is temporarily unavailable or refused work.
     Resource(DomStyleCssomRootError),
-    /// Actual bound trusted event executor refused Style attestation.
+    /// The bound trusted Source event executor refused the Style event dispatch.
     EventExecutor(crate::DomSourceEventRuntimeError),
-    /// The original hosted issuer refused Style event timing qualification.
+    /// The hosted runtime refused a Style operation, including event timing
+    /// qualification.
     EventClock(crate::DomHostedRuntimeError),
 }
 impl std::fmt::Display for DomStyleRuntimeError {
@@ -179,11 +182,11 @@ impl std::fmt::Display for DomStyleRuntimeError {
                 "parsed HTML association inputs remain pending under canonical DOM custody"
             }
             Self::Dom(_) => "the canonical DOM refused the Style runtime operation",
-            Self::Cssom(_) => "the CSSOM owner refused the mutation",
+            Self::Cssom(_) => "the CSSOM owner refused the operation",
             Self::Css(_) => "the CSS input could not be prepared or parsed",
-            Self::Admission => "the Style runtime's own admission refused the operation",
+            Self::Admission => "the Style operation was refused admission or an accounting step failed",
             Self::Binding => {
-                "the Style runtime owner is borrowed, replaced or conflicts with the supplied binding"
+                "an owner needed by the Style operation is borrowed, replaced or conflicts with the supplied binding"
             }
             Self::Protocol => {
                 "a Source reply, retained operation or permit is inconsistent with the original request"
@@ -191,7 +194,7 @@ impl std::fmt::Display for DomStyleRuntimeError {
             Self::Dispatch(_) => "shared DOM event dispatch refused the Style task",
             Self::SessionUnavailable => "the session that owns the Style runtime has ended",
             Self::WrongSession => {
-                "the execution permission and the DOM view belong to different sessions"
+                "the DOM view belongs to a different session than the Style runtime"
             }
             Self::PreboundSession => {
                 "the DOM already has Style CSSOM roots that a new session cannot reconstruct"
@@ -221,7 +224,7 @@ impl std::fmt::Display for DomStyleRuntimeError {
             Self::Resource(_) => {
                 "the retained CSSOM root resource is unavailable or refused the work"
             }
-            Self::EventExecutor(_) => "the Source event executor refused Style event attestation",
+            Self::EventExecutor(_) => "the Source event executor refused the Style event dispatch",
             Self::EventClock(_) => "the hosted runtime refused the Style operation",
         })
     }

@@ -207,7 +207,8 @@ pub enum DomSourceRuntimeError {
     Hosted(DomHostedRuntimeError),
     /// The named native installation refused its actual input or target.
     NativeInstallation(DomNativeHtmlInstallError),
-    /// The processor or original Source controller refused a reached CSP pragma.
+    /// The meta CSP pragma could not be processed: its processor is unavailable
+    /// or busy, or the processor or original Source controller refused it.
     MetaCsp(
         surgeist_dom::meta::DomSourceMetaCspError<crate::trusted_types_csp::PolicyListCapacity>,
     ),
@@ -224,9 +225,7 @@ impl std::fmt::Display for DomSourceRuntimeError {
             Self::NativeInstallation(_) => {
                 "the native HTML installation refused the Source operation"
             }
-            Self::MetaCsp(_) => {
-                "the CSP processor or the Source controller refused the meta CSP pragma"
-            }
+            Self::MetaCsp(_) => "the meta CSP pragma could not be processed",
         })
     }
 }
