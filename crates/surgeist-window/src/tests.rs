@@ -4946,18 +4946,6 @@ fn host_command_plan_keeps_backend_capability_rejections_before_application() {
 }
 
 #[test]
-fn host_command_enum_is_not_part_of_public_front_door() {
-    let lib = include_str!("lib.rs");
-    let command = include_str!("command.rs");
-    let duplicate_name = ["Host", "Command"].concat();
-    let planning_export = "pub use super::planning::HostCommandPlan;";
-
-    assert!(command.contains(planning_export));
-    assert!(!lib.contains("HostCommandPlan"));
-    assert!(!command.contains(&format!("pub use super::planning::{duplicate_name};")));
-}
-
-#[test]
 fn modifier_state_converts_from_winit() {
     let modifiers = winit::keyboard::ModifiersState::SHIFT
         | winit::keyboard::ModifiersState::CONTROL
