@@ -43,7 +43,7 @@ use crate::{
     stats::Stats, surface::Attachment, surface::Format, surface::Parameters, surface::Surface,
     surface::SurfaceOptions, surface::WebCanvas,
 };
-#[cfg(all(test, not(all(feature = "render-web", target_arch = "wasm32"))))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::{accounting::RenderAttemptStatus, geometry::Rect, paint::Color};
 #[cfg(not(all(feature = "render-web", target_arch = "wasm32")))]
 use crate::{error::PrimitiveFamily, error::PrimitiveOperation, error::UnsupportedPrimitive};
