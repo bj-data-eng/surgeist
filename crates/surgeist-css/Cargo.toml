@@ -38,3 +38,7 @@ harness = false
 
 [[test]]
 name = "component_borrow_retention"
+
+[[bench]]
+name = "fronts"
+harness = false

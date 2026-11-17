@@ -518,6 +518,25 @@ The [borrowed current graph input](docs/reference.md#borrowed-current-rule-graph
 assembles edited typed fields without preformatting descendants, then admits and
 formats the complete request under one native cumulative allowance.
 
+## Benchmarks
+
+`benches/fronts.rs` times the source-text, serialization, normalization, colour
+and source-retention fronts in a release build, on a 1 MiB synthetic sheet for
+parsing, 256 KiB synthetic sheets for the other sheet fronts, the CSSTree
+stylesheet cases and short inputs. The serialization and colour cases run under
+the widest limits and normalization under the default limits. Each case runs
+over 11 rounds, each starting one case later, with calls per round calibrated
+to about 100 ms and at most a million. It
+prints the median, minimum and maximum time of one call, the input bytes, the
+time per byte, and the volume the front counts: from the public result where it
+reports one, otherwise the smallest value of the public limit at which the call
+still succeeds, found outside the timed region. A dimension that no public limit
+reaches prints `-`.
+
+```sh
+cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts
+```
+
 ## License and attribution
 
 See the [MIT license](LICENSE) and [third-party notices](NOTICE.md).
