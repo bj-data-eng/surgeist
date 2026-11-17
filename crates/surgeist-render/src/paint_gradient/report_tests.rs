@@ -6,7 +6,15 @@ use crate::{
 };
 use std::{cell::Cell, mem::size_of, time::Duration};
 use surgeist_layout as layout;
-use surgeist_paint as paint;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientStopItem, GradientStopPositions, GradientStops,
+    resolve_gradient_stops,
+};
+use surgeist_paint::linear_gradient::{
+    LinearGradientDirection, LinearGradientLine, resolve_linear_gradient,
+};
 
 thread_local! { static CLOCK: Cell<u64> = const { Cell::new(0) }; }
 fn clock() -> Duration {
@@ -28,36 +36,33 @@ fn blue() -> Color {
     Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap()
 }
 
-fn paint_options() -> paint::PaintOptions {
-    paint::PaintOptions::new(paint::PaintLimits::unlimited(), paint::ProfileMode::Off)
+fn paint_options() -> PaintOptions {
+    PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
 }
 
-fn position(length: f64, fraction: f64) -> paint::GradientPosition {
-    paint::GradientPosition { length, fraction }
+fn position(length: f64, fraction: f64) -> GradientPosition {
+    GradientPosition { length, fraction }
 }
 
-fn at(value: f64, color: Color) -> paint::GradientStopItem<Color> {
-    paint::GradientStopItem::Stop {
+fn at(value: f64, color: Color) -> GradientStopItem<Color> {
+    GradientStopItem::Stop {
         payload: color,
-        positions: paint::GradientStopPositions::One(position(value, 0.0)),
+        positions: GradientStopPositions::One(position(value, 0.0)),
     }
 }
 
-fn line(length: f64) -> paint::LinearGradientLine {
-    paint::resolve_linear_gradient(
+fn line(length: f64) -> LinearGradientLine {
+    resolve_linear_gradient(
         layout::Size::<f64>::new(length, 1.0),
-        paint::LinearGradientDirection::Right,
+        LinearGradientDirection::Right,
         paint_options(),
     )
     .result
     .unwrap()
 }
 
-fn stops(
-    length: f64,
-    source: &[paint::GradientStopItem<Color>],
-) -> paint::GradientStops<'_, Color> {
-    paint::resolve_gradient_stops(length, source, paint_options())
+fn stops(length: f64, source: &[GradientStopItem<Color>]) -> GradientStops<'_, Color> {
+    resolve_gradient_stops(length, source, paint_options())
         .result
         .unwrap()
 }
@@ -122,16 +127,16 @@ fn mandatory_head_hint_and_final_output_frontiers_preserve_reports_across_profil
     };
     let geometry = line(1.0);
     let source = [
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: red(),
-            positions: paint::GradientStopPositions::Two(position(-4.0, 0.0), position(0.0, 0.0)),
+            positions: GradientStopPositions::Two(position(-4.0, 0.0), position(0.0, 0.0)),
         },
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(2.0, 0.0),
         },
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: blue(),
-            positions: paint::GradientStopPositions::Two(position(4.0, 0.0), position(12.0, 0.0)),
+            positions: GradientStopPositions::Two(position(4.0, 0.0), position(12.0, 0.0)),
         },
     ];
     let used = stops(1.0, &source);
