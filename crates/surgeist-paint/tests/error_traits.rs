@@ -6,7 +6,7 @@
 //! row, so a new variant cannot be added without a row and a message here.
 
 use std::error::Error;
-use surgeist_layout::{Edges, PhysicalAxis, Point, Size, SourceIndex};
+use surgeist_layout::{Edges, ItemOrder, PhysicalAxis, Point, Size, SourceIndex};
 use surgeist_ledger::{Defect, ProfileMode, RefusalReason};
 use surgeist_paint::PaintError;
 use surgeist_paint::accounting::{
@@ -24,8 +24,9 @@ use surgeist_paint::linear_gradient::{
     GradientGeometryError, LinearGradientDirection, resolve_linear_gradient,
 };
 use surgeist_paint::paint_order::{
-    BoxCategoryError, BoxPaintKind, ContentEntry, FragmentId, FragmentOwner, LineId,
-    PaintInputError, PaintRequest, PrimitiveId, SourceChild, TextId, plan_paint_order,
+    BoxCategoryError, BoxPaint, BoxPaintKind, CanvasPaintKind, ContentEntry, FloatParticipation,
+    FragmentId, FragmentOwner, LineId, PaintInputError, PaintPrimitive, PaintRequest, PrimitiveId,
+    SourceChild, TextId, plan_paint_order,
 };
 use surgeist_paint::radial_gradient::{
     RadialGradientError, RadialGradientSize, resolve_radial_gradient,
@@ -330,7 +331,7 @@ fn paint_input_errors_state_what_input_is_wrong_in_words() {
                 other: primitive(9),
                 record_order: 2,
             },
-            "primitives 8 and 9 share record order 2",
+            "primitives 8 and 9 have the same record order 2 for the same target and paint role (and applying box, for a decoration)",
         ),
     ];
     assert_table(&table, input_row, 27);
@@ -437,7 +438,7 @@ fn paint_errors_state_what_failed_in_words() {
         ),
         (
             PaintError::IncompatibleParticipation { box_id: box_id(7) },
-            "box 7 has a participation its parent's child ordering does not admit",
+            "box 7 has a participation that does not fit its place in the tree: a root must be ordinary, and a child must be ordinary under a source-order parent or out of flow, or a flex or grid item in flow under a matching parent",
         ),
         (
             PaintError::CapacityOverflow,
@@ -559,8 +560,8 @@ fn a_box_paint_table_of_the_wrong_length_is_reported_in_words_end_to_end() {
 }
 
 #[test]
-fn a_stacking_request_without_a_root_is_reported_in_words_end_to_end() {
-    // The only box names a parent that is not in the table, so no box is a root.
+fn a_child_naming_a_missing_parent_is_reported_in_words_end_to_end() {
+    // The only box names a parent that is not in the table.
     let boxes = [BoxFacts::new(
         Some(BoxId::new(7)),
         SourceIndex::ZERO,
@@ -576,6 +577,83 @@ fn a_stacking_request_without_a_root_is_reported_in_words_end_to_end() {
     assert_eq!(
         error.to_string(),
         "box 0 names parent 7, which is not in the box table"
+    );
+}
+
+fn item_box(parent: Option<BoxId>, participation: Participation) -> BoxFacts {
+    BoxFacts::new(
+        parent,
+        SourceIndex::ZERO,
+        ChildOrder::Source,
+        participation,
+        Position::Static,
+        ZIndex::Auto,
+        ContextEffect::None,
+    )
+}
+
+fn incompatible(box_id: usize) -> String {
+    format!(
+        "box {box_id} has a participation that does not fit its place in the tree: a root must be ordinary, and a child must be ordinary under a source-order parent or out of flow, or a flex or grid item in flow under a matching parent"
+    )
+}
+
+#[test]
+fn a_root_with_an_item_participation_is_reported_without_naming_a_parent() {
+    // The only box has no parent, so it is the root, but it claims to be a flex item.
+    let boxes = [item_box(None, Participation::FlexItem(ItemOrder::new(0)))];
+    let error = plan_stacking(&boxes, BoxId::new(0), options())
+        .result
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        PaintError::IncompatibleParticipation { box_id } if box_id == BoxId::new(0)
+    ));
+    assert_eq!(error.to_string(), incompatible(0));
+}
+
+#[test]
+fn a_flex_item_under_a_source_order_parent_is_reported_in_words() {
+    let boxes = [
+        item_box(None, Participation::Ordinary),
+        item_box(
+            Some(BoxId::new(0)),
+            Participation::FlexItem(ItemOrder::new(0)),
+        ),
+    ];
+    let error = plan_stacking(&boxes, BoxId::new(0), options())
+        .result
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        PaintError::IncompatibleParticipation { box_id } if box_id == BoxId::new(1)
+    ));
+    assert_eq!(error.to_string(), incompatible(1));
+}
+
+#[test]
+fn two_primitives_with_one_target_and_role_and_order_are_reported_in_words() {
+    // One root box and two canvas background colors with the same record order.
+    let boxes = [item_box(None, Participation::Ordinary)];
+    let appearance = [BoxPaint::new(BoxPaintKind::Block, FloatParticipation::None)];
+    let primitives = [
+        PaintPrimitive::canvas(CanvasPaintKind::BackgroundColor, 0),
+        PaintPrimitive::canvas(CanvasPaintKind::BackgroundColor, 0),
+    ];
+    let request = PaintRequest::new(
+        &boxes,
+        &appearance,
+        &[],
+        &[],
+        &[],
+        &primitives,
+        BoxId::new(0),
+    );
+    let error = plan_paint_order(request, options()).result.unwrap_err();
+    assert_eq!(error.to_string(), "paint input is invalid");
+    assert_eq!(
+        error.source().unwrap().to_string(),
+        "primitives 0 and 1 have the same record order 0 for the same target and paint role (and applying box, for a decoration)"
     );
 }
 
