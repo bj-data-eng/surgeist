@@ -4,9 +4,12 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomError, DomEventRecipientLimits, DomLimits,
-    DomNameLimits, DomResource, DomSnapshot, DomSvgScriptOrigin, DomUsage, HtmlShadowRootMode,
-    HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomError, DomEventRecipientLimits, DomLimits, DomNameLimits,
+    DomResource, DomSnapshot, DomSvgScriptOrigin, DomUsage, NodeId,
+};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{DocumentString, Namespace},
 };
 use surgeist_runtime::{
     DomEventCallback, DomEventDispatchError, DomEventDispatcher, DomEventDom,

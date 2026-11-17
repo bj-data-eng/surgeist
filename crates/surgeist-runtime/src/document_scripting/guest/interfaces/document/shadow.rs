@@ -6,8 +6,9 @@ use surgeist_bindings_js::{
     declarations::{ShadowRootMode, SlotAssignmentMode},
     dom_exception::DomExceptionName,
 };
-use surgeist_dom::{
-    DomShadowRootInit, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+use surgeist_dom::DomShadowRootInit;
+use surgeist_html::construction::{
+    HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
 
 const OPEN: &[u16] = &ascii(b"open");

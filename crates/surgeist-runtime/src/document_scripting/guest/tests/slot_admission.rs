@@ -1,7 +1,7 @@
 use super::*;
-use surgeist_dom::{
-    DomBatch, DomSourceEdit, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-    NodeId,
+use surgeist_dom::{DomBatch, DomSourceEdit, NodeId};
+use surgeist_html::construction::{
+    HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
 use surgeist_html::values::Namespace;
 

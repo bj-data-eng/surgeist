@@ -2,6 +2,10 @@ use super::support::{HostedFixture, cancel, source_limits};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_runtime::*;
 
 // The expected kinds, names, data and identities follow DOM's creation steps.

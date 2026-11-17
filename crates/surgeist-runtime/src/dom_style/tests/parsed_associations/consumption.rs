@@ -3,6 +3,7 @@ use super::super::meta::{cancel, is_disabled, native_session, observe};
 use super::super::*;
 use std::sync::Arc;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseReport,
     HtmlSource,

@@ -2924,9 +2924,8 @@ mod tests {
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
-    use surgeist_dom::{
-        DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress, Namespace,
-    };
+    use surgeist_dom::{DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress};
+    use surgeist_html::values::Namespace;
 
     struct Context {
         styles: DomStyleRuntime,
@@ -3283,7 +3282,7 @@ mod tests {
             .unwrap()
             .unwrap()
             .association();
-        let title = surgeist_dom::DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
+        let title = surgeist_html::values::DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]);
         let mut batch = DomBatch::new();
         batch.set_attribute(style, "title", title.clone());
         batch.set_attribute(style, "media", "screen and (min-width: 2px)");
@@ -6133,7 +6132,8 @@ mod replacement_test {
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
-    use surgeist_dom::{DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, Namespace};
+    use surgeist_dom::{DomBatch, DomLimits, DomSourceEdit, DomSourceLimits};
+    use surgeist_html::values::Namespace;
 
     struct Context {
         styles: DomStyleRuntime,

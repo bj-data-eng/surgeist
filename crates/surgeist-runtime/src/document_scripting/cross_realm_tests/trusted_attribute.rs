@@ -884,11 +884,12 @@ use crate::trusted_types_csp::{AttributePolicies, AttributePolicyError, PolicyFa
 use std::convert::Infallible;
 use surgeist_bindings_js::conversion::{ConversionAccount, ResourceTable, WorkTable};
 use surgeist_bindings_js::{TrustedPolicyCallback, TrustedTypeKind};
-use surgeist_dom::{DocumentString, DomSourceAttributeVerificationOutcome, DomSourceProgress};
+use surgeist_dom::{DomSourceAttributeVerificationOutcome, DomSourceProgress};
 use surgeist_html::security::csp::{
     HtmlCspError, HtmlCspLayout, HtmlCspProcessorProfile, HtmlCspStorage, HtmlMetaCspOutcome,
     HtmlMetaCspProcessor, HtmlMetaCspRequest,
 };
+use surgeist_html::values::DocumentString;
 
 struct StopAfterCspPreparation<'a> {
     processor: &'a mut crate::trusted_types_csp::PolicyProcessor,

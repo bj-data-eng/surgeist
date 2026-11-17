@@ -5,6 +5,7 @@ use surgeist_css::rule::CssRule;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::{CssomEditGuard, CssomSnapshot, CssomStore};
 use surgeist_dom::*;
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {

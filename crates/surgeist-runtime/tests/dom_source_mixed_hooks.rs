@@ -12,6 +12,7 @@ use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::{CssomSnapshot, CssomStore};
 use surgeist_dom::*;
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{
     HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseParseObservation, HtmlBaseParseOutcome,
     HtmlBaseProducerId, HtmlBaseUrlRecord,

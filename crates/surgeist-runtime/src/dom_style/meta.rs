@@ -4,10 +4,11 @@ pub(super) mod parsed;
 use std::cell::Cell;
 use std::rc::Rc;
 use surgeist_dom::{
-    DocumentString, DomBatch, DomMetaAtomicLimits, DomMetaInlineBatch, DomMetaOrdinaryCommit,
+    DomBatch, DomMetaAtomicLimits, DomMetaInlineBatch, DomMetaOrdinaryCommit,
     DomMetaOrdinaryPreparation, DomMetaRuntimePrefix, DomMetaRuntimeUsage, DomSourceAdvance,
     DomSourceEventClockMode, DomSourceProgress,
 };
+use surgeist_html::values::DocumentString;
 
 /// Native Meta preparation failed before its joined owners published.
 /// Retains the original Runtime refusal or root-qualified native producer error.

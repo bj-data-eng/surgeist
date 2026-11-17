@@ -5,7 +5,7 @@ use std::fmt::Write;
 use surgeist_bindings_js::conversion::IntegerType;
 use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING, DOM_STRING_NULL_TO_EMPTY};
 use surgeist_bindings_js::{IntegerKind, IntegerMode, IntegerValue};
-use surgeist_dom::{DomNode, DomSourceEdit, Namespace};
+use surgeist_dom::{DomNode, DomSourceEdit};
 use surgeist_html::bounded::attributes::{
     dir_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     popover_keyword_with, template_shadow_root_mode_keyword_with,
@@ -14,6 +14,7 @@ use surgeist_html::bounded::attributes::{
 use surgeist_html::bounded::numeric::{
     HtmlNumericParseError, integer_long_work_bound, parse_integer_long,
 };
+use surgeist_html::values::Namespace;
 use surgeist_html::vocabulary::KnownHtmlElement;
 
 #[derive(Clone, Copy)]

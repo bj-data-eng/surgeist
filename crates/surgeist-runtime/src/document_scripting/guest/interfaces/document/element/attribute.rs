@@ -20,8 +20,9 @@ use surgeist_bindings_js::{
 use surgeist_dom::{
     DomAttrId, DomAttributeAttachment, DomSourceAttributeAttachmentOutput, DomSourceAttributeSink,
     DomSourceAttributeVerificationOutcome, DomSourceAttributeVerificationRequest, DomSourceEdit,
-    DomSourceLease, DomSourceLimits, DomSourceOutput, DomSourceRequest, DomSourceStatus, Namespace,
+    DomSourceLease, DomSourceLimits, DomSourceOutput, DomSourceRequest, DomSourceStatus,
 };
+use surgeist_html::values::Namespace;
 
 pub(in crate::document_scripting::guest::interfaces::document) enum AttributeResult<'scope> {
     Value,

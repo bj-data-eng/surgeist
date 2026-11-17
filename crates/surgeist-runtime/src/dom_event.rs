@@ -36,9 +36,9 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use surgeist_dom::{
     Dom, DomDispatchCustody, DomError, DomEventParent, DomEventParentQuery, DomEventRecipient,
-    DomHostedError, DomParsedHtmlStyleNotificationRequirement, DomSnapshot, HtmlShadowRootMode,
-    NodeId,
+    DomHostedError, DomParsedHtmlStyleNotificationRequirement, DomSnapshot, NodeId,
 };
+use surgeist_html::construction::HtmlShadowRootMode;
 mod storage;
 pub(crate) use storage::EventStorage;
 pub use storage::{DomEventStorageLimits, DomEventType};

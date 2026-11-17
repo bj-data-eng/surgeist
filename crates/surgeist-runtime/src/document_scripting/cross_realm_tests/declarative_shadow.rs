@@ -3,8 +3,9 @@
 use super::*;
 use surgeist_dom::{
     DocumentId, DomError, DomHtmlCapture, DomHtmlCaptureLimits, DomParsedHtmlInstallLimits,
-    DomSnapshot, HtmlShadowRootMode,
+    DomSnapshot,
 };
+use surgeist_html::construction::HtmlShadowRootMode;
 use surgeist_html::parsing::HtmlParserScriptingMode;
 use surgeist_html_parser::{
     HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,

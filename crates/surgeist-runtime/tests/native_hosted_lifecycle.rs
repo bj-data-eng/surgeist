@@ -13,6 +13,10 @@ use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_dom::*;
 use surgeist_html::construction::HtmlDocumentMode;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {

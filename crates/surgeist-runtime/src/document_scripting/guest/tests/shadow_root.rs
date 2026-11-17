@@ -1,9 +1,9 @@
 //! Canonical ShadowRoot projection through native V8 callbacks.
 
 use super::*;
-use surgeist_dom::{
-    DocumentId, DomBatch, DomShadowRootInit, HtmlShadowRootMode, HtmlShadowRootProperties,
-    HtmlSlotAssignment, NodeId,
+use surgeist_dom::{DocumentId, DomBatch, DomShadowRootInit, NodeId};
+use surgeist_html::construction::{
+    HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
 use surgeist_html::values::Namespace;
 

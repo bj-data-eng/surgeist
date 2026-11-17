@@ -288,7 +288,7 @@ fn data_time_reads_follow_native_edits_and_retirement(tag: &str, member: &str, a
             element,
             Namespace::none(),
             attribute,
-            surgeist_dom::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
+            surgeist_html::values::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
         );
         batch.set_attribute_ns(
             element,

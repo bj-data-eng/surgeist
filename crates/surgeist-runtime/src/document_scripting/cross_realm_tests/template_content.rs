@@ -93,7 +93,8 @@ pub(super) fn template_content_is_the_live_owned_inert_fragment() {
 }
 
 pub(super) fn template_content_reaches_parsed_and_retired_native_contents() {
-    use surgeist_dom::{DomParsedHtmlInstallLimits, Namespace};
+    use surgeist_dom::DomParsedHtmlInstallLimits;
+    use surgeist_html::values::Namespace;
 
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, target) = hosted_session(&cancel, 0);
@@ -265,13 +266,13 @@ pub(super) fn template_attributes_reflect_the_live_native_element() {
         let mut batch = DomBatch::new();
         batch.set_attribute_ns(
             node,
-            surgeist_dom::Namespace::none(),
+            surgeist_html::values::Namespace::none(),
             "shadowrootmode",
             "CLOSED",
         );
         batch.set_attribute_ns(
             node,
-            surgeist_dom::Namespace::none(),
+            surgeist_html::values::Namespace::none(),
             "shadowrootclonable",
             "",
         );

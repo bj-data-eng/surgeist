@@ -10,9 +10,10 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomChange, DomHostedLimits, DomHostedRecordLimits, DomLimits,
-    DomSourceEdit, DomSourceLimits,
+    Dom, DomBatch, DomChange, DomHostedLimits, DomHostedRecordLimits, DomLimits, DomSourceEdit,
+    DomSourceLimits,
 };
+use surgeist_html::values::DocumentString;
 use surgeist_runtime::{
     DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomSession, DomSessionLimits,
     DomSourceDriveProgress, DomSourceEventRuntimeLimits, DomSourceServices, DomStyleRuntimeLimits,
@@ -308,9 +309,8 @@ fn continuation_limits() -> DomSourceLimits {
 #[test]
 #[ignore = "explicit release parked Source event, actual Runtime receipt and reentry after public million-node setup"]
 fn production_session_parked_source_reentry_scale() {
-    use surgeist_dom::{
-        DomDispatchCustodyLimits, DomSourceOutput, DomSourceRequest, Namespace, NodeId,
-    };
+    use surgeist_dom::{DomDispatchCustodyLimits, DomSourceOutput, DomSourceRequest, NodeId};
+    use surgeist_html::values::Namespace;
     use surgeist_runtime::{
         DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
         DomEventRegistryLimits, DomEventType, DomSourceEventServiceLimits,

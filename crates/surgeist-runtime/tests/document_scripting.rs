@@ -15,6 +15,7 @@ use surgeist_css::{
 };
 use surgeist_dom::*;
 use surgeist_html::scripting::HtmlScriptingPolicy;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
 use surgeist_runtime::{document_scripting::*, *};
 

@@ -13,6 +13,7 @@ use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::CssomStore;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::HtmlAboutBaseUrl;
 use surgeist_runtime::*;
 

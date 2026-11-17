@@ -3,7 +3,8 @@ use super::*;
 use crate::{
     DomHostedDestructionQueued, DomHostedRuntimeError, DomHostedTaskProgress, HostedRuntime,
 };
-use surgeist_dom::{DocumentString, DomHostedError, DomMetaAtomicLimits, DomStyleSheet};
+use surgeist_dom::{DomHostedError, DomMetaAtomicLimits, DomStyleSheet};
+use surgeist_html::values::DocumentString;
 use surgeist_html::values::Namespace;
 
 fn cancel() -> AtomicBool {

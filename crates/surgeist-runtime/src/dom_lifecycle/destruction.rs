@@ -1452,8 +1452,9 @@ mod completion_retention_tests {
     };
     use surgeist_dom::{
         Dom, DomBatch, DomHostedLimits, DomHostedRecordLimits, DomLimits, DomSourceEdit,
-        DomSourceLimits, Namespace, NodeId,
+        DomSourceLimits, NodeId,
     };
+    use surgeist_html::values::Namespace;
 
     fn fixture() -> (DomSession, HostedRuntime, DomHostedTopLevel, NodeId, NodeId) {
         let cancel = AtomicBool::new(false);

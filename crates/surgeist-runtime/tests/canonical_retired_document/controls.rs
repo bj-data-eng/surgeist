@@ -6,6 +6,7 @@
 use super::support::{HostedFixture, cancel};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html::{
     attributes::HtmlInputType,
     elements::{

@@ -1,7 +1,8 @@
 use super::*;
 
 pub(in crate::document_scripting) fn guest_attribute_writes_reach_the_native_element() {
-    use surgeist_dom::{DomBatch, Namespace};
+    use surgeist_dom::DomBatch;
+    use surgeist_html::values::Namespace;
 
     let mut host = public_node_host(5_000, 20_000);
     let permit = host.permit().unwrap();

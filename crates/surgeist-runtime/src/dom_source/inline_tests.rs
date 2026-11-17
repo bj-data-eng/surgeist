@@ -4,8 +4,9 @@ use crate::{DomSession, DomSessionLimits, DomStyleRuntimeLimits};
 use surgeist_dom::{
     Dom, DomBatch, DomHostedLimits, DomHostedRecordLimits, DomInlineStyleInputs,
     DomInlineStyleLimits, DomInlineStyleProfile, DomInlineStyleRequestLimits,
-    DomInlineStyleSourceContext, DomLimits, Namespace,
+    DomInlineStyleSourceContext, DomLimits,
 };
+use surgeist_html::values::Namespace;
 
 fn session() -> DomSession {
     let dom = Dom::new(
@@ -171,7 +172,7 @@ fn compound_failure_delivers_partial_native_commit_and_releases_runtime_source_g
                 document.node(),
                 vec![
                     element.into(),
-                    surgeist_dom::DocumentString::from("x").into(),
+                    surgeist_html::values::DocumentString::from("x").into(),
                 ],
             ),
             limits(),
@@ -241,7 +242,7 @@ fn compound_terminal_refusal_resumes_the_original_runtime_invocation_after_cance
             document.node(),
             vec![
                 element.into(),
-                surgeist_dom::DocumentString::from("x").into(),
+                surgeist_html::values::DocumentString::from("x").into(),
             ],
         ),
         low,
@@ -360,7 +361,7 @@ fn compound_failure_preserves_paired_inline_adoption_publication_through_native_
                     second.node(),
                     vec![
                         element.into(),
-                        surgeist_dom::DocumentString::from("x").into(),
+                        surgeist_html::values::DocumentString::from("x").into(),
                     ],
                 ),
                 context,

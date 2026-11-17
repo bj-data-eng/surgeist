@@ -7,6 +7,7 @@ use std::sync::{
 };
 use surgeist_dom::*;
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
+use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
 
 fn source_limits() -> DomSourceLimits {

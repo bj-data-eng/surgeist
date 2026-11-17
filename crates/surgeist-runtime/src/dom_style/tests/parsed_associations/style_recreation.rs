@@ -6,6 +6,7 @@ use super::style_decision::{installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending, ready};
 use surgeist_css::source::CssUtf16Resource;
 use surgeist_dom::*;
+use surgeist_html::values::DocumentString;
 use surgeist_html::{
     elements::style::HtmlStyleTrigger,
     security::csp::{HtmlCspAssociation, HtmlCspProcessorProfile},

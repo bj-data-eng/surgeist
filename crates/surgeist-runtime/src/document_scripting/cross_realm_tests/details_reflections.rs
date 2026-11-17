@@ -400,7 +400,7 @@ fn details_native_edits_and_retirement_preserve_identity() {
             element,
             Namespace::none(),
             "name",
-            surgeist_dom::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
+            surgeist_html::values::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
         );
         batch.set_attribute_ns(element, Namespace::none(), "open", "false");
         batch.set_attribute_ns(

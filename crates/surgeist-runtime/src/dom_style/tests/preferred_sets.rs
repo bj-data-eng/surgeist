@@ -130,7 +130,7 @@ fn later_non_alternate_named_style_is_disabled_by_first_preferred_set() {
 }
 
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};
-use surgeist_dom::DocumentString;
+use surgeist_html::values::DocumentString;
 fn flag() -> AtomicBool {
     AtomicBool::new(false)
 }

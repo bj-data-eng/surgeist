@@ -7,6 +7,7 @@ use surgeist_css::CssParser;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16Resource;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 
 pub(super) fn ready(
     value: &str,

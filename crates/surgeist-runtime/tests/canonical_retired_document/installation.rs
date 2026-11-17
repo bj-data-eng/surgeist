@@ -4,6 +4,7 @@ use super::support::{HostedFixture, body, cancel, source_limits};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::construction::{HtmlConstructionLimits, HtmlDoctype, HtmlFragment};
+use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 use surgeist_runtime::*;
 
 fn authoring() -> HtmlConstructionLimits {

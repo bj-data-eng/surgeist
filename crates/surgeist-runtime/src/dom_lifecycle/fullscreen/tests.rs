@@ -7,8 +7,9 @@ use crate::{
 use surgeist_dom::{
     DomBatch, DomError, DomFullscreenEventKind, DomFullscreenExitReturn, DomFullscreenExitStep,
     DomHostedLimits, DomHostedRecordLimits, DomLimits, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, DomSourceRequest, Namespace, NodeId,
+    DomSourceProgress, DomSourceRequest, NodeId,
 };
+use surgeist_html::values::Namespace;
 
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
@@ -477,11 +478,12 @@ fn inline_fixture(
         .unwrap();
     let snapshot = session.snapshot();
     let document = snapshot.document(top.document()).unwrap();
-    let mode = if document.metadata().mode() == surgeist_dom::HtmlDocumentMode::Quirks {
-        CssParserMode::Quirks
-    } else {
-        CssParserMode::Standards
-    };
+    let mode =
+        if document.metadata().mode() == surgeist_html::construction::HtmlDocumentMode::Quirks {
+            CssParserMode::Quirks
+        } else {
+            CssParserMode::Standards
+        };
     let parser = CssParserContext::new(mode);
     let version = CssomInputVersion {
         role: CssomInputRole::Support,

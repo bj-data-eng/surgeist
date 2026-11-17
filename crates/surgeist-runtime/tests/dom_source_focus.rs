@@ -9,6 +9,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogFocusingAction};
+use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
 #[path = "dom_source_focus/allow_focus.rs"]
 mod allow_focus;
