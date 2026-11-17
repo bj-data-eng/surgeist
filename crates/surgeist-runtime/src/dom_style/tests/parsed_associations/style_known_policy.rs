@@ -7,7 +7,19 @@ use super::consumption::{envelope, parsing};
 use super::style_decision::{installed, observe};
 use super::style_sheet::{bind, create, pending};
 use std::{convert::Infallible, mem::size_of, sync::Arc};
-use surgeist_dom::*;
+use surgeist_dom::{
+    identity::DocumentId,
+    installation::{
+        DomParsedHtmlAssociationId,
+        style::{
+            DomParsedHtmlExecutionState, DomParsedHtmlStyleError,
+            DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStylePhase,
+            DomParsedHtmlStyleQualification, DomParsedHtmlStyleRenderingProgress,
+            DomParsedHtmlStyleSuccessorRemoval,
+        },
+    },
+    meta::DomDocumentCspState,
+};
 use surgeist_html::{
     security::csp::{
         HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspError,

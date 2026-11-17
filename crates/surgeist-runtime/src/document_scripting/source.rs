@@ -3,8 +3,11 @@
 use super::*;
 use surgeist_bindings_js::{Arguments, Exception, Root, Value};
 use surgeist_dom::{
-    DomNodeKind, DomNodeRetirementWatch, DomSourceEdit, DomSourceEventPayloadRetention,
-    DomSourceEventRequest, DomSourceEventRetention, DomSourceLimits, NodeId,
+    edit::DomNodeRetirementWatch,
+    event::{DomSourceEventPayloadRetention, DomSourceEventRequest, DomSourceEventRetention},
+    identity::NodeId,
+    source::{DomSourceEdit, DomSourceLimits},
+    tree::DomNodeKind,
 };
 
 use crate::{

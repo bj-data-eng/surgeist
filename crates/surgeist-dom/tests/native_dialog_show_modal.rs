@@ -1,6 +1,10 @@
 //! Native ShowModal entry guards, without an invented active Window.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits},
+};
 use surgeist_html::values::{DocumentString, Namespace};
 fn limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 4)
@@ -18,7 +22,8 @@ fn inactive_closed_and_already_open_nonmodal_dialogs_fail_before_dispatch_or_mod
                 0,
                 16,
                 1_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -74,7 +79,8 @@ fn wrong_family_and_canceled_entry_leave_no_source_guard_or_canonical_changes() 
             0,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

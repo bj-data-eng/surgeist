@@ -8,7 +8,13 @@ use surgeist_css::declaration::CssGlobalKeyword;
 use surgeist_css::property::CssKnownPropertyValueRef;
 use surgeist_css::source::{CssUtf16InputLimits, CssUtf16PropertyValueLimits};
 use surgeist_css::values::color_adjust::{CssColorSchemeKeyword, CssColorSchemeParseReport};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    meta::{DomMetaColorSchemeState, DomMetaError, DomMetaThemeColorState},
+};
 use surgeist_html::values::Namespace;
 
 fn limits() -> DomLimits {
@@ -20,7 +26,7 @@ fn limits() -> DomLimits {
         64,
         16,
         1_048_576,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_meta_processing_work(100_000_000)

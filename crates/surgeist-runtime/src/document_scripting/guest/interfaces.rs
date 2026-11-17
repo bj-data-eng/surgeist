@@ -25,7 +25,7 @@ use surgeist_bindings_js::{
         declarations::{event_constructor_0_event_init_dict, event_constructor_0_type},
     },
 };
-use surgeist_dom::DocumentId;
+use surgeist_dom::identity::DocumentId;
 
 const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     let mut units = [0; N];
@@ -239,8 +239,8 @@ impl PublicEventBindings {
         permit: DocumentScriptPermit,
         admission: &GuestEventAdmission,
         (inbox, registry, global): (
-            surgeist_dom::DomNodeRetirementInbox,
-            surgeist_dom::DomRegistryId,
+            surgeist_dom::edit::DomNodeRetirementInbox,
+            surgeist_dom::custom_element::DomRegistryId,
             DomHostedGlobalId,
         ),
         conversion_host: crate::document_scripting::preparation::NativeConversionHost,
@@ -497,7 +497,11 @@ impl PublicEventBindings {
         scope: &mut Scope<'_>,
         events: &GuestEvents,
         dom_exception_limits: DomExceptionLimits,
-        (global, document, registry): (DomHostedGlobalId, DocumentId, surgeist_dom::DomRegistryId),
+        (global, document, registry): (
+            DomHostedGlobalId,
+            DocumentId,
+            surgeist_dom::custom_element::DomRegistryId,
+        ),
         admission: OriginAdmission,
         conversion_host: preparation::NativeConversionHost,
     ) -> Result<(), DocumentGuestEventError> {
@@ -739,14 +743,14 @@ fn install_event_interface<'scope>(
 }
 
 enum SourceReadRequest<'a> {
-    Event(&'a surgeist_dom::DomSourceEventRequest),
+    Event(&'a surgeist_dom::event::DomSourceEventRequest),
     Attribute {
-        request: surgeist_dom::DomSourceAttributeVerificationRequest,
-        registration: Rc<surgeist_dom::DomDocumentScriptRegistration>,
+        request: surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest,
+        registration: Rc<surgeist_dom::script::DomDocumentScriptRegistration>,
     },
     Constructor {
-        request: surgeist_dom::DomSourceCustomElementRequest,
-        registration: Rc<surgeist_dom::DomDocumentScriptRegistration>,
+        request: surgeist_dom::custom_element::DomSourceCustomElementRequest,
+        registration: Rc<surgeist_dom::script::DomDocumentScriptRegistration>,
     },
 }
 
@@ -762,13 +766,13 @@ struct NativeRead<'a> {
 
 enum NativeTextUnits {
     Event {
-        _retained: surgeist_dom::DomSourceEventRetention,
+        _retained: surgeist_dom::event::DomSourceEventRetention,
     },
     Attribute {
-        _retained: surgeist_dom::DomSourceAttributePayloadRetention,
+        _retained: surgeist_dom::source::attribute::DomSourceAttributePayloadRetention,
     },
     Constructor {
-        _retained: surgeist_dom::DomSourceCustomElementRetention,
+        _retained: surgeist_dom::custom_element::DomSourceCustomElementRetention,
     },
 }
 
@@ -904,8 +908,8 @@ impl NativeRead<'_> {
 
     fn node(
         &self,
-        id: surgeist_dom::NodeId,
-    ) -> Result<surgeist_dom::DomNode<'_>, DocumentGuestEventError> {
+        id: surgeist_dom::identity::NodeId,
+    ) -> Result<surgeist_dom::tree::DomNode<'_>, DocumentGuestEventError> {
         self.snapshot.node_with(id, || self.step())
     }
 }
@@ -979,7 +983,7 @@ impl Callbacks {
     fn with_qualified_session<T>(
         &self,
         owner: &NativeOwner,
-        request: Option<&surgeist_dom::DomSourceEventRequest>,
+        request: Option<&surgeist_dom::event::DomSourceEventRequest>,
         action: impl FnOnce(&mut DomSession, DomHostedGlobalId) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
         let attachment = owner

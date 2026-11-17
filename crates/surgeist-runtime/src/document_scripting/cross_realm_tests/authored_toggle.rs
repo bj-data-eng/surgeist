@@ -8,7 +8,7 @@ pub(super) fn verify_authored_toggle_constructor() {
     let mut batch = DomBatch::new();
     let root = batch.attach_shadow(
         source,
-        surgeist_dom::DomShadowRootInit::new(
+        surgeist_dom::shadow::DomShadowRootInit::new(
             surgeist_html::construction::HtmlShadowRootMode::Closed,
         ),
     );

@@ -39,10 +39,10 @@ impl DomCloseWatcherId {
         self.target
     }
     /// Original Window associated Document established with this actual watcher.
-    pub const fn window_document(self) -> crate::DocumentId {
+    pub const fn window_document(self) -> crate::internal::identity::DocumentId {
         self.window_document
     }
-    pub const fn global(self) -> crate::DomHostedGlobalId {
+    pub const fn global(self) -> crate::internal::hosted::DomHostedGlobalId {
         self.global
     }
 }
@@ -54,7 +54,7 @@ pub struct DomDialogToggleTracker {
 }
 impl DomDialogToggleTracker {
     /// Exact actual task identity; this observation grants no execution right.
-    pub const fn task(self) -> crate::DomElementTaskId {
+    pub const fn task(self) -> crate::internal::element_tasks::DomElementTaskId {
         self.task
     }
     /// First old state preserved by coalescing.

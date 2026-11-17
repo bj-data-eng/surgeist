@@ -1,7 +1,7 @@
 //! Read-only Node comparisons over the current canonical snapshot.
 
 use super::*;
-use surgeist_dom::DomDocumentPosition;
+use surgeist_dom::tree::DomDocumentPosition;
 
 #[derive(Clone, Copy)]
 enum Comparison {

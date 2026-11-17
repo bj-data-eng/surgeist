@@ -49,7 +49,7 @@ impl DomParsedHtmlStyleSheetCompletion {
     pub fn phase(&self) -> DomParsedHtmlStylePhase {
         DomParsedHtmlStylePhase::ReadScriptBlockingPending
     }
-    pub fn resources(&self) -> crate::DomParsedHtmlStyleResources {
+    pub fn resources(&self) -> crate::internal::parsed_style::DomParsedHtmlStyleResources {
         self.media.resources
     }
     pub fn media_diagnostics(&self) -> &[CssRecoveryDiagnostic] {
@@ -92,7 +92,8 @@ impl DomParsedHtmlStyleSheetPublished<'_> {
 /// escapes. Drop publishes nothing; forgotten custody cannot reopen the cursor.
 /// A prepared editor excludes overlapping use of its command hold:
 /// ```compile_fail,E0502
-/// use surgeist_dom::{DomParsedHtmlStyleRuntimeHold, DomStyleCssomRoot};
+/// use surgeist_dom::{installation::style::DomParsedHtmlStyleRuntimeHold,
+///     style::DomStyleCssomRoot};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
 /// root: &DomStyleCssomRoot, cancel: &AtomicBool) {
@@ -104,7 +105,8 @@ impl DomParsedHtmlStyleSheetPublished<'_> {
 /// ```
 /// End borrowed request inspection before consuming the prepared publication:
 /// ```compile_fail,E0505
-/// use surgeist_dom::{DomParsedHtmlStyleRuntimeHold, DomStyleCssomRoot};
+/// use surgeist_dom::{installation::style::DomParsedHtmlStyleRuntimeHold,
+///     style::DomStyleCssomRoot};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
 /// root: &DomStyleCssomRoot, cancel: &AtomicBool) {

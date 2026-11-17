@@ -11,7 +11,8 @@ fn fixture(candidates: usize) -> (DomSession, DomHostedTopLevel) {
             2048,
             64,
             8_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_autofocus_candidates(candidates)

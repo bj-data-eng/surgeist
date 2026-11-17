@@ -2,7 +2,7 @@
 use super::*;
 use std::cell::Cell;
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};
-use surgeist_dom::{DomMetaAtomicError, DomMetaAtomicLimits, DomMetaInlineBatch};
+use surgeist_dom::meta::{DomMetaAtomicError, DomMetaAtomicLimits, DomMetaInlineBatch};
 use surgeist_html::values::DocumentString;
 use surgeist_html::values::Namespace;
 
@@ -43,7 +43,7 @@ fn meta(
     document: NodeId,
     parent: NodeId,
     name: DocumentString,
-) -> surgeist_dom::CreatedNode {
+) -> surgeist_dom::edit::CreatedNode {
     let element = batch.create_element_ns(document, Namespace::html(), "meta");
     batch.set_attribute(&element, "http-equiv", "DeFaUlT-StYlE");
     batch.set_attribute(&element, "content", name);
@@ -407,10 +407,12 @@ fn inline_fixture(
 ) -> (
     NodeId,
     surgeist_cssom::CssStyleProperties,
-    surgeist_dom::DomInlineStyleProfile,
+    surgeist_dom::style::inline::DomInlineStyleProfile,
 ) {
     use surgeist_cssom::{CssomDeclarationSupport, CssomUsabilityRequirement};
-    use surgeist_dom::{DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile};
+    use surgeist_dom::style::inline::{
+        DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
+    };
     let mut batch = DomBatch::new();
     let element = batch.create_element_ns(document, Namespace::html(), "aside");
     batch.insert_before(&element, container(session, document), None);
@@ -470,8 +472,8 @@ fn inline_fixture(
     .unwrap();
     (element, properties, profile)
 }
-fn inline_requests() -> surgeist_dom::DomInlineStyleRequestLimits {
-    surgeist_dom::DomInlineStyleRequestLimits {
+fn inline_requests() -> surgeist_dom::style::inline::DomInlineStyleRequestLimits {
+    surgeist_dom::style::inline::DomInlineStyleRequestLimits {
         input: CssUtf16InputLimits::default(),
         declaration: Default::default(),
     }
@@ -530,7 +532,8 @@ fn two_documents_and_inline_publish_one_authentic_complete_atomic_result() {
     meta(&mut batch, second, container(&session, second), "B".into());
     batch.set_attribute(element, "style", "width: 17px;");
     let context =
-        surgeist_dom::DomInlineStyleBatchContext::new(&batch, before, vec![profile]).unwrap();
+        surgeist_dom::style::inline::DomInlineStyleBatchContext::new(&batch, before, vec![profile])
+            .unwrap();
     let calls = Cell::new(0);
     let mut resolver = |candidates: &[surgeist_cssom::CssomDeclarationCandidate],
                         context: &CssomContext| {
@@ -642,8 +645,12 @@ fn mixed_inline_refusal_and_late_second_owner_refusal_preserve_all_three_owners(
         meta(&mut batch, first, container(&session, first), "B".into());
         meta(&mut batch, second, container(&session, second), "B".into());
         batch.set_attribute(element, "style", "width: 19px;");
-        let context =
-            surgeist_dom::DomInlineStyleBatchContext::new(&batch, before, vec![profile]).unwrap();
+        let context = surgeist_dom::style::inline::DomInlineStyleBatchContext::new(
+            &batch,
+            before,
+            vec![profile],
+        )
+        .unwrap();
         let mut request = inline_requests();
         if refusal == 1 {
             request.declaration.max_entries = 0;
@@ -673,7 +680,10 @@ fn mixed_inline_refusal_and_late_second_owner_refusal_preserve_all_three_owners(
             1 => assert!(matches!(
                 result,
                 Err(DomStyleMetaError::Meta(DomMetaAtomicError::Inline(
-                    surgeist_dom::DomInlineStyleError::Cssom(CssomError::Limit { maximum: 0, .. })
+                    surgeist_dom::style::inline::DomInlineStyleError::Cssom(CssomError::Limit {
+                        maximum: 0,
+                        ..
+                    })
                 )))
             )),
             2 => assert!(result.is_err()),
@@ -732,7 +742,7 @@ fn raw_dom_refusal_and_unbound_or_foreign_runtime_capabilities_remain_precise() 
     assert!(matches!(
         session.dom().apply(raw, &cancel()),
         Err(DomError::Meta(
-            surgeist_dom::DomMetaError::DefaultStyleUnsupported
+            surgeist_dom::meta::DomMetaError::DefaultStyleUnsupported
         ))
     ));
     assert_eq!(session.snapshot().stamp(), before);
@@ -829,7 +839,7 @@ fn detached_empty_and_shadow_only_meta_do_not_select_a_document_set() {
     let host = batch.create_element_ns(document, Namespace::html(), "div");
     let shadow = batch.attach_shadow(
         &host,
-        surgeist_dom::DomShadowRootInit::new(
+        surgeist_dom::shadow::DomShadowRootInit::new(
             surgeist_html::construction::HtmlShadowRootMode::Closed,
         ),
     );
@@ -890,7 +900,7 @@ fn shared_original_name_backing_is_charged_once_across_native_and_runtime_owners
             }
         } else {
             assert!(
-                matches!(result, Err(DomStyleMetaError::Meta(DomMetaAtomicError::Dom(DomError::ResourceLimit { resource: surgeist_dom::DomResource::MetaAtomicRetainedUnits, limit }))) if limit == admitted_units)
+                matches!(result, Err(DomStyleMetaError::Meta(DomMetaAtomicError::Dom(DomError::ResourceLimit { resource: surgeist_dom::limits::DomResource::MetaAtomicRetainedUnits, limit }))) if limit == admitted_units)
             );
             assert_eq!(session.dom().usage(), usage);
             assert_names_equal(&observe(&mut session, document), &before);

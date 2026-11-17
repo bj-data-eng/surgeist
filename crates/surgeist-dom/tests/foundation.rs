@@ -1,8 +1,11 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomError, DomHistoryError, DomLimits, DomNodeKind,
-    DomResource, NodeId,
+    Dom, DomBatch, DomError,
+    edit::{DomChange, DomHistoryError},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    tree::DomNodeKind,
 };
 use surgeist_html::values::DocumentString;
 
@@ -18,7 +21,7 @@ fn limits() -> DomLimits {
         0,
         16,
         64 * 1024,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -415,7 +418,8 @@ fn finite_nodes_strings_commands_and_lowered_limits_preserve_admitted_state() {
             0,
             4,
             4096,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -463,7 +467,8 @@ fn finite_nodes_strings_commands_and_lowered_limits_preserve_admitted_state() {
                 0,
                 4,
                 4096,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap()
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap()
             )
             .unwrap()
         ),
@@ -482,7 +487,8 @@ fn finite_nodes_strings_commands_and_lowered_limits_preserve_admitted_state() {
                 0,
                 4,
                 4096,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap()
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap()
             )
             .unwrap()
         ),
@@ -502,7 +508,8 @@ fn finite_nodes_strings_commands_and_lowered_limits_preserve_admitted_state() {
             0,
             0,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap()
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap()
         ),
         Err(DomError::InvalidLimit(DomResource::ManagedNodes))
     );
@@ -549,7 +556,8 @@ fn history_is_complete_in_order_or_reports_explicit_recomputation() {
             0,
             1,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -572,7 +580,8 @@ fn history_is_complete_in_order_or_reports_explicit_recomputation() {
             0,
             16,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -606,7 +615,8 @@ fn positive_history_budget_too_small_for_one_record_falls_back_without_rejecting
             0,
             8,
             1,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -719,5 +729,8 @@ fn borrowed_kinds_copy_exact_snapshot_payload_references() {
     // values used to obtain them or the subsequently edited live owner.
     assert_eq!(first.code_units(), &[0xd800, 0x61]);
     assert_eq!(language.name().local_name().code_units(), &[100, 105, 118]);
-    assert_eq!(metadata.class(), surgeist_dom::DomDocumentClass::Xml);
+    assert_eq!(
+        metadata.class(),
+        surgeist_dom::document::DomDocumentClass::Xml
+    );
 }

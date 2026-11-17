@@ -3,7 +3,7 @@
 use super::super::character_data::copy_native_data;
 use super::*;
 use surgeist_bindings_js::conversion::{ArgumentValue, declarations};
-use surgeist_dom::{DomSourceEdit, DomSourceOutput};
+use surgeist_dom::source::{DomSourceEdit, DomSourceOutput};
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,

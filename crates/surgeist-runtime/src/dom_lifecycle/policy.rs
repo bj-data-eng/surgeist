@@ -199,21 +199,21 @@ fn directives(
 /// later wildcard would make the actual declared origin irrelevant to matching.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Decision {
-    Complete(surgeist_dom::DomInitialPermissionsPolicy),
+    Complete(surgeist_dom::hosted::DomInitialPermissionsPolicy),
     SandboxOrigin,
     Url,
 }
 
 pub(super) fn inherited(
-    request: &surgeist_dom::DomHostedPolicyRequest,
+    request: &surgeist_dom::hosted::DomHostedPolicyRequest,
     declared_matches: Option<bool>,
     work: &mut u64,
     limit: u64,
     cancel: &AtomicBool,
 ) -> Result<Decision, DomHostedRuntimeError> {
-    use surgeist_dom::{
-        DomHostedEmbedderKind, DomInitialPermissionsPolicy as Policy,
-        DomPermissionsPolicyValue as Value,
+    use surgeist_dom::hosted::{
+        DomInitialPermissionsPolicy as Policy, DomPermissionsPolicyValue as Value,
+        child::DomHostedEmbedderKind,
     };
     use surgeist_html::attributes::sandbox::HtmlSandboxFlag;
     spend(work, limit, cancel)?;
@@ -316,12 +316,12 @@ pub(super) fn inherited(
 }
 
 fn inherited_feature(
-    parent: surgeist_dom::DomPermissionsPolicyValue,
+    parent: surgeist_dom::hosted::DomPermissionsPolicyValue,
     directive: Option<OpaqueDirective>,
     parent_matches: bool,
     declared_matches: bool,
-) -> surgeist_dom::DomPermissionsPolicyValue {
-    use surgeist_dom::DomPermissionsPolicyValue::{Disabled, Enabled};
+) -> surgeist_dom::hosted::DomPermissionsPolicyValue {
+    use surgeist_dom::hosted::DomPermissionsPolicyValue::{Disabled, Enabled};
     if parent == Disabled {
         return Disabled;
     }

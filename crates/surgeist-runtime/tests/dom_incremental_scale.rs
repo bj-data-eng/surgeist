@@ -10,8 +10,11 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use surgeist_dom::{
-    Dom, DomBatch, DomChange, DomHostedLimits, DomHostedRecordLimits, DomLimits, DomSourceEdit,
-    DomSourceLimits,
+    Dom, DomBatch,
+    edit::DomChange,
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits},
 };
 use surgeist_html::values::DocumentString;
 use surgeist_runtime::{
@@ -147,8 +150,13 @@ fn production_session_local_source_scale() {
             0,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(1_073_741_824, 2_000_000, 64_000_000, 268_435_456)
-                .unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(
+                1_073_741_824,
+                2_000_000,
+                64_000_000,
+                268_435_456,
+            )
+            .unwrap(),
         )
         .unwrap();
         let mut dom = Dom::new(limits).unwrap();
@@ -309,7 +317,11 @@ fn continuation_limits() -> DomSourceLimits {
 #[test]
 #[ignore = "explicit release parked Source event, actual Runtime receipt and reentry after public million-node setup"]
 fn production_session_parked_source_reentry_scale() {
-    use surgeist_dom::{DomDispatchCustodyLimits, DomSourceOutput, DomSourceRequest, NodeId};
+    use surgeist_dom::{
+        event::DomDispatchCustodyLimits,
+        identity::NodeId,
+        source::{DomSourceOutput, DomSourceRequest},
+    };
     use surgeist_html::values::Namespace;
     use surgeist_runtime::{
         DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
@@ -328,8 +340,13 @@ fn production_session_parked_source_reentry_scale() {
             0,
             64,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(1_073_741_824, 2_000_000, 64_000_000, 268_435_456)
-                .unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(
+                1_073_741_824,
+                2_000_000,
+                64_000_000,
+                268_435_456,
+            )
+            .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(

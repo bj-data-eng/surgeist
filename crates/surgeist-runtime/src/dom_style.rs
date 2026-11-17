@@ -51,10 +51,15 @@ use surgeist_cssom::{
     CssomSheetOwnerAttributes, CssomSnapshot,
 };
 use surgeist_dom::{
-    Dom, DomError, DomOwnerId, DomParsedHtmlStyleNotificationRequirement, DomSnapshot,
-    DomSourceLease, DomSourceOperationId, DomStyleAction, DomStyleCssomOwnerBinding,
-    DomStyleCssomRoot, DomStyleCssomRootError, DomStyleNotificationOrigin,
-    DomStyleNotificationToken, DomStyleRequest, DomStyleSheetPlacement, DomStyleSource, NodeId,
+    Dom, DomError, DomSnapshot,
+    identity::{DomOwnerId, NodeId},
+    installation::style::DomParsedHtmlStyleNotificationRequirement,
+    source::{DomSourceLease, DomSourceOperationId},
+    style::{
+        DomStyleAction, DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleCssomRootError,
+        DomStyleNotificationOrigin, DomStyleNotificationToken, DomStyleRequest,
+        DomStyleSheetPlacement, DomStyleSource,
+    },
 };
 use surgeist_html::{
     construction::HtmlDocumentMode,
@@ -106,7 +111,7 @@ pub enum DomStyleUnavailable {
 pub enum DomStyleRuntimeError {
     /// Original parsed association inputs remain under canonical DOM custody;
     /// no live #840 admission/execution service has consumed them.
-    PendingParsedAssociations(surgeist_dom::DomParsedHtmlAssociationId),
+    PendingParsedAssociations(surgeist_dom::installation::DomParsedHtmlAssociationId),
     /// Canonical source admission or qualification failed.
     Dom(DomError),
     /// The CSSOM owner refused its actual mutation.
@@ -143,7 +148,7 @@ pub enum DomStyleRuntimeError {
         /// Exact retained root generation.
         root: NodeId,
         /// Actual original hosted cleanup for which custody was withdrawn.
-        cleanup: surgeist_dom::DomHostedOperationId,
+        cleanup: surgeist_dom::hosted::DomHostedOperationId,
         /// Authenticated historical producer revision at withdrawal, not current authority.
         withdrawal_revision: surgeist_cssom::CssomRevision,
     },
@@ -196,10 +201,10 @@ impl From<DomError> for DomStyleRuntimeError {
         Self::Dom(e)
     }
 }
-impl From<surgeist_dom::DomHostedError> for DomStyleRuntimeError {
-    fn from(error: surgeist_dom::DomHostedError) -> Self {
+impl From<surgeist_dom::hosted::DomHostedError> for DomStyleRuntimeError {
+    fn from(error: surgeist_dom::hosted::DomHostedError) -> Self {
         match error {
-            surgeist_dom::DomHostedError::Dom(error) => Self::Dom(error),
+            surgeist_dom::hosted::DomHostedError::Dom(error) => Self::Dom(error),
             error => Self::EventClock(crate::DomHostedRuntimeError::Dom(error)),
         }
     }
@@ -227,7 +232,7 @@ struct Root {
 enum RootResource {
     Bound(std::rc::Rc<DomStyleCssomRoot>),
     ReleasedForHostedDestruction {
-        cleanup: surgeist_dom::DomHostedOperationId,
+        cleanup: surgeist_dom::hosted::DomHostedOperationId,
         at_withdrawal: surgeist_cssom::CssomRevision,
     },
 }
@@ -275,15 +280,15 @@ impl DomStyleProcessedSheet {
 /// and actual current CSSOM object. This does not certify resource readiness.
 #[derive(Clone, Debug)]
 pub struct DomStyleDisabledObservation {
-    stamp: surgeist_dom::DomStamp,
+    stamp: surgeist_dom::identity::DomStamp,
     element: NodeId,
-    association: Option<surgeist_dom::DomStyleAssociationId>,
+    association: Option<surgeist_dom::style::DomStyleAssociationId>,
     revision: Option<surgeist_cssom::CssomRevision>,
     disabled: bool,
 }
 impl DomStyleDisabledObservation {
     /// Canonical capture actually inspected.
-    pub fn stamp(&self) -> surgeist_dom::DomStamp {
+    pub fn stamp(&self) -> surgeist_dom::identity::DomStamp {
         self.stamp
     }
     /// Exact current target generation.
@@ -291,7 +296,7 @@ impl DomStyleDisabledObservation {
         self.element
     }
     /// Current association occurrence; None is an established null sheet.
-    pub fn association(&self) -> Option<surgeist_dom::DomStyleAssociationId> {
+    pub fn association(&self) -> Option<surgeist_dom::style::DomStyleAssociationId> {
         self.association
     }
     /// Current producer revision, distinct from the historical source receipt.
@@ -368,7 +373,8 @@ struct Task {
     parsed: Option<ParsedProcessing>,
     cursor: HtmlStyleNotificationCursor,
     delivery: Delivery,
-    delivery_publication: Option<surgeist_dom::DomParsedHtmlStyleDeliveryPublication>,
+    delivery_publication:
+        Option<surgeist_dom::installation::style::DomParsedHtmlStyleDeliveryPublication>,
     running: bool,
     // Any original admission carried by this token outlives represented task,
     // delivery and processing graphs on ordinary Drop and target retirement.
@@ -406,23 +412,24 @@ fn import_dependencies_with<E>(
 /// Only the private preformed candidate may have no sheet; installation fills
 /// it from the authentic publication before this row enters the live bank.
 struct ParsedProcessing {
-    qualification: surgeist_dom::DomParsedHtmlStyleQualification,
+    qualification: surgeist_dom::installation::style::DomParsedHtmlStyleQualification,
     owner: std::rc::Rc<DomStyleCssomRoot>,
-    sheet: surgeist_dom::DomStyleSheet,
-    continuation: Option<surgeist_dom::DomParsedHtmlStyleNotificationContinuation>,
+    sheet: surgeist_dom::style::DomStyleSheet,
+    continuation:
+        Option<surgeist_dom::installation::style::DomParsedHtmlStyleNotificationContinuation>,
     profile: HtmlStyleExecutionProfile,
     dependencies: ImportDependencies,
     owner_label: String,
 }
 struct ParsedProcessingCandidate {
-    qualification: surgeist_dom::DomParsedHtmlStyleQualification,
+    qualification: surgeist_dom::installation::style::DomParsedHtmlStyleQualification,
     owner: std::rc::Rc<DomStyleCssomRoot>,
     profile: HtmlStyleExecutionProfile,
     dependencies: ImportDependencies,
     owner_label: String,
 }
 impl ParsedProcessingCandidate {
-    fn publish(self, sheet: surgeist_dom::DomStyleSheet) -> ParsedProcessing {
+    fn publish(self, sheet: surgeist_dom::style::DomStyleSheet) -> ParsedProcessing {
         ParsedProcessing {
             qualification: self.qualification,
             owner: self.owner,
@@ -485,7 +492,7 @@ impl Completion {
 /// Exact task metadata; identity grants no independent execution authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomStyleNetworkingTaskId {
-    association: surgeist_dom::DomStyleAssociationId,
+    association: surgeist_dom::style::DomStyleAssociationId,
     serial: u64,
 }
 /// Actual task delivery or a retained continuation.
@@ -1056,7 +1063,8 @@ impl StyleState {
         let node = snapshot.node(root)?;
         if !matches!(
             node.kind(),
-            surgeist_dom::DomNodeKind::Document(_) | surgeist_dom::DomNodeKind::ShadowRoot(_)
+            surgeist_dom::tree::DomNodeKind::Document(_)
+                | surgeist_dom::tree::DomNodeKind::ShadowRoot(_)
         ) || label.is_empty()
         {
             return Err(DomStyleRuntimeError::Binding);
@@ -1086,7 +1094,7 @@ impl StyleState {
         if self.roots.len() >= self.limits.roots {
             return Err(DomStyleRuntimeError::Admission);
         }
-        let document = matches!(node.kind(), surgeist_dom::DomNodeKind::Document(_));
+        let document = matches!(node.kind(), surgeist_dom::tree::DomNodeKind::Document(_));
         let incoming = label
             .capacity()
             .checked_add(if document { size_of::<Vec<u16>>() } else { 0 })
@@ -1448,7 +1456,7 @@ impl StyleState {
                     inputs.owner = Some(label);
                     if matches!(
                         request.source().root_kind(),
-                        surgeist_dom::DomStyleRootKind::Document
+                        surgeist_dom::style::DomStyleRootKind::Document
                     ) && let Some(title) = request.source().title()
                     {
                         inputs.title = title.to_shared_utf16();
@@ -1611,7 +1619,7 @@ impl StyleState {
                 )
                 .map_err(DomStyleRuntimeError::Css)?;
                 let title = (request.source().root_kind()
-                    == surgeist_dom::DomStyleRootKind::Document)
+                    == surgeist_dom::style::DomStyleRootKind::Document)
                     .then(|| request.source().title().map_or(&[][..], |s| s.code_units()));
                 let edit = batch.update_sheet_owner_attributes(
                     &sheet_id,
@@ -1761,7 +1769,7 @@ impl std::error::Error for DomSessionCreateError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomShutdownReason {
     /// The actual beforetoggle event remains owned by this session.
-    SourceEvent(surgeist_dom::DomSourceEventId),
+    SourceEvent(surgeist_dom::event::DomSourceEventId),
     /// An actual Details source intention has not reached its task owner.
     DetailsIntentions,
     /// An actual queued/running element task has not completed or been canceled.
@@ -1769,7 +1777,7 @@ pub enum DomShutdownReason {
     /// Canonical hooks are not complete.
     SourceTail(DomSourceOperationId),
     /// Original installed parser association history has not been consumed.
-    ParsedAssociations(surgeist_dom::DomParsedHtmlAssociationId),
+    ParsedAssociations(surgeist_dom::installation::DomParsedHtmlAssociationId),
     /// Actual root or pre-task processing custody still retains a resource.
     LiveResources,
     /// An actual queued/running task remains.
@@ -1823,7 +1831,7 @@ impl DomSession {
     pub fn admit_parsed(
         dom: Dom,
         limits: DomSessionLimits,
-        processing: surgeist_dom::DomParsedHtmlAssociationLimits,
+        processing: surgeist_dom::installation::DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<Self, DomSessionCreateError> {
         Self::create(dom, limits, Some((processing, cancel)))
@@ -1835,7 +1843,10 @@ impl DomSession {
     fn create(
         mut dom: Dom,
         limits: DomSessionLimits,
-        parsed: Option<(surgeist_dom::DomParsedHtmlAssociationLimits, &AtomicBool)>,
+        parsed: Option<(
+            surgeist_dom::installation::DomParsedHtmlAssociationLimits,
+            &AtomicBool,
+        )>,
     ) -> Result<Self, DomSessionCreateError> {
         if dom.has_element_task_source() {
             return Err(DomSessionCreateError {
@@ -2003,7 +2014,7 @@ impl DomSession {
     /// Weak scope permission for one actual Host of this original Session.
     pub fn source_execution_scope(
         &self,
-        host: surgeist_dom::DomHostedHostId,
+        host: surgeist_dom::hosted::DomHostedHostId,
         cancel: &AtomicBool,
     ) -> Result<crate::dom_lifecycle::DomSourceExecutionScope, crate::DomHostedRuntimeError> {
         self.hosted
@@ -2481,7 +2492,7 @@ impl DomStyleRuntime {
                 if dom.snapshot().incomplete_hosted_operation().is_some() {
                     return Err(DomStyleRuntimeError::Dispatch(
                         crate::DomEventDispatchError::Hosted(
-                            surgeist_dom::DomHostedError::IncompleteOperation,
+                            surgeist_dom::hosted::DomHostedError::IncompleteOperation,
                         ),
                     ));
                 }
@@ -2724,7 +2735,7 @@ impl DomStyleRuntime {
                         || dom.snapshot().incomplete_hosted_operation().is_some()
                     {
                         let task = state.completions[index].task_mut();
-                        let error = dom.raw_mut().finish_style_notification(&mut task.token, if task.parsed.is_some() { surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut task.delivery_publication) } else { surgeist_dom::DomStyleNotificationDelivery::Native }, 0, cancel)
+                        let error = dom.raw_mut().finish_style_notification(&mut task.token, if task.parsed.is_some() { surgeist_dom::style::DomStyleNotificationDelivery::Parsed(&mut task.delivery_publication) } else { surgeist_dom::style::DomStyleNotificationDelivery::Native }, 0, cancel)
                             .expect_err("actual unchanged Source/hosted guard refuses before dispatch admission");
                         return Err(error.into());
                     }
@@ -2784,11 +2795,11 @@ impl DomStyleRuntime {
                     let cleanup = dom.raw_mut().finish_style_notification(
                         &mut task.token,
                         if task.parsed.is_some() {
-                            surgeist_dom::DomStyleNotificationDelivery::Parsed(
+                            surgeist_dom::style::DomStyleNotificationDelivery::Parsed(
                                 &mut task.delivery_publication,
                             )
                         } else {
-                            surgeist_dom::DomStyleNotificationDelivery::Native
+                            surgeist_dom::style::DomStyleNotificationDelivery::Native
                         },
                         dispatch_work,
                         cancel,
@@ -2878,7 +2889,7 @@ use crate::{
     DomSourceUnavailable,
 };
 #[cfg(test)]
-use surgeist_dom::DomStyleInlineCspObservation;
+use surgeist_dom::style::DomStyleInlineCspObservation;
 #[cfg(test)]
 mod tests {
     mod constructed_sheet;
@@ -2907,8 +2918,8 @@ mod tests {
                 work: 1_000_000,
             },
             hosted: crate::dom_lifecycle::DomHostedRuntimeLimits {
-                canonical: surgeist_dom::DomHostedLimits::new(
-                    surgeist_dom::DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
+                canonical: surgeist_dom::hosted::DomHostedLimits::new(
+                    surgeist_dom::hosted::DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
                     16 * 1024 * 1024,
                     16 * 1024 * 1024,
                     1_000_000,
@@ -2924,7 +2935,11 @@ mod tests {
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
-    use surgeist_dom::{DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress};
+    use surgeist_dom::{
+        DomBatch,
+        limits::DomLimits,
+        source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
+    };
     use surgeist_html::values::Namespace;
 
     struct Context {
@@ -2969,7 +2984,8 @@ mod tests {
                 0,
                 32,
                 1_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -2985,15 +3001,18 @@ mod tests {
                 0,
                 32,
                 1_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_event_recipients(
-                surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
-                    .unwrap(),
+                surgeist_dom::event::DomEventRecipientLimits::new(
+                    64, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
             )
             .with_dispatch_custody(
-                surgeist_dom::DomDispatchCustodyLimits::new(
+                surgeist_dom::event::DomDispatchCustodyLimits::new(
                     64, 4096, 16_000_000, 16_000_000, 4_000_000,
                 )
                 .unwrap(),
@@ -3014,7 +3033,7 @@ mod tests {
         let host = batch.create_element_ns(&document, Namespace::html(), "div");
         let shadow = batch.attach_shadow(
             &host,
-            surgeist_dom::DomShadowRootInit::new(
+            surgeist_dom::shadow::DomShadowRootInit::new(
                 surgeist_html::construction::HtmlShadowRootMode::Open,
             ),
         );
@@ -3852,7 +3871,7 @@ mod tests {
                 )
                 .unwrap();
             operation = lease.operation();
-            let DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) =
+            let DomSourceProgress::Request(surgeist_dom::source::DomSourceRequest::Style(request)) =
                 lease.advance(&cancel).unwrap()
             else {
                 panic!("the actual disabled setter must request its CSSOM write");
@@ -3981,7 +4000,7 @@ mod tests {
             let mut lease = dom
                 .resume_source_edit(operation, source_limits(), &cancel)
                 .unwrap();
-            let DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) =
+            let DomSourceProgress::Request(surgeist_dom::source::DomSourceRequest::Style(request)) =
                 lease.advance(&cancel).unwrap()
             else {
                 panic!("no Source acknowledgment was consumed before recovery");
@@ -4190,58 +4209,66 @@ mod tests {
             let mut bound_request = None;
             loop {
                 match lease.advance(&cancel).unwrap() {
-                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) => {
-                        match request.action() {
-                            DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp) => {
-                                if !bind {
-                                    break;
-                                }
-                                lease
-                                    .accept_inline_csp(
-                                        &request,
-                                        &DomStyleInlineCspObservation::complete_empty(
-                                            request.source(),
-                                            1,
-                                        ),
-                                        &cancel,
-                                    )
-                                    .unwrap();
-                            }
-                            DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet) => {
-                                lease.bind_cssom_root(&request, &root, &cancel).unwrap();
-                                bound_request = Some(request);
+                    DomSourceProgress::Request(surgeist_dom::source::DomSourceRequest::Style(
+                        request,
+                    )) => match request.action() {
+                        DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp) => {
+                            if !bind {
                                 break;
                             }
-                            action => panic!("unexpected actual source request {action:?}"),
+                            lease
+                                .accept_inline_csp(
+                                    &request,
+                                    &DomStyleInlineCspObservation::complete_empty(
+                                        request.source(),
+                                        1,
+                                    ),
+                                    &cancel,
+                                )
+                                .unwrap();
                         }
-                    }
-                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::HostedChild(_)) => {
+                        DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet) => {
+                            lease.bind_cssom_root(&request, &root, &cancel).unwrap();
+                            bound_request = Some(request);
+                            break;
+                        }
+                        action => panic!("unexpected actual source request {action:?}"),
+                    },
+                    DomSourceProgress::Request(
+                        surgeist_dom::source::DomSourceRequest::HostedChild(_),
+                    ) => {
                         panic!("Style fixture cannot request a hosted child")
                     }
-                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::DesignMode(_)) => {
+                    DomSourceProgress::Request(
+                        surgeist_dom::source::DomSourceRequest::DesignMode(_),
+                    ) => {
                         panic!("Style fixture cannot request a designMode service")
                     }
-                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Script(_)) => {
+                    DomSourceProgress::Request(surgeist_dom::source::DomSourceRequest::Script(
+                        _,
+                    )) => {
                         panic!("Style fixture cannot request Script settings")
                     }
-                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::MetaCsp(_)) => {
+                    DomSourceProgress::Request(
+                        surgeist_dom::source::DomSourceRequest::MetaCsp(_),
+                    ) => {
                         panic!("Style fixture cannot request a Meta CSP processor")
                     }
                     DomSourceProgress::Request(
-                        surgeist_dom::DomSourceRequest::FullscreenExitHandoff(_),
+                        surgeist_dom::source::DomSourceRequest::FullscreenExitHandoff(_),
                     ) => {
                         panic!("Style fixture cannot request a fullscreen exit handoff")
                     }
                     DomSourceProgress::Request(
-                        surgeist_dom::DomSourceRequest::AttributeVerification(_)
-                        | surgeist_dom::DomSourceRequest::AttributeAttachmentOutput(_)
-                        | surgeist_dom::DomSourceRequest::CustomElementConstruction(_)
-                        | surgeist_dom::DomSourceRequest::Event(_)
-                        | surgeist_dom::DomSourceRequest::Dialog(_)
-                        | surgeist_dom::DomSourceRequest::DialogFocusing(_)
-                        | surgeist_dom::DomSourceRequest::FocusDelegate(_)
-                        | surgeist_dom::DomSourceRequest::AutofocusInsertion(_)
-                        | surgeist_dom::DomSourceRequest::CloseWatcher(_),
+                        surgeist_dom::source::DomSourceRequest::AttributeVerification(_)
+                        | surgeist_dom::source::DomSourceRequest::AttributeAttachmentOutput(_)
+                        | surgeist_dom::source::DomSourceRequest::CustomElementConstruction(_)
+                        | surgeist_dom::source::DomSourceRequest::Event(_)
+                        | surgeist_dom::source::DomSourceRequest::Dialog(_)
+                        | surgeist_dom::source::DomSourceRequest::DialogFocusing(_)
+                        | surgeist_dom::source::DomSourceRequest::FocusDelegate(_)
+                        | surgeist_dom::source::DomSourceRequest::AutofocusInsertion(_)
+                        | surgeist_dom::source::DomSourceRequest::CloseWatcher(_),
                     ) => {
                         panic!("Style fixture cannot request a Dialog service")
                     }
@@ -4900,7 +4927,7 @@ mod tests {
         let original = styles.original().unwrap();
         let cap = original.borrow().roots[0].bound().unwrap().clone();
         let dom_stamp = session.snapshot().stamp();
-        let surgeist_dom::DomSourceRequest::Style(request) = request else {
+        let surgeist_dom::source::DomSourceRequest::Style(request) = request else {
             panic!("Style fixture cannot request a hosted child");
         };
         let source_stamp = request.source().stamp();
@@ -5093,7 +5120,7 @@ mod tests {
                 None,
             )
             .unwrap();
-            surgeist_dom::DomParsedDocumentEnvironment::headless(
+            surgeist_dom::installation::DomParsedDocumentEnvironment::headless(
                 metadata.origin().clone(),
                 url,
                 HtmlBaseEncoding::fresh(),
@@ -5134,7 +5161,7 @@ mod tests {
                 owner.snapshot().stamp(),
                 report,
                 environment,
-                surgeist_dom::DomParsedHtmlInstallLimits::new(
+                surgeist_dom::installation::DomParsedHtmlInstallLimits::new(
                     1024,
                     10_000_000,
                     16_000_000,
@@ -5196,7 +5223,7 @@ mod tests {
         let host = batch.create_element_ns(initial, Namespace::html(), "div");
         let shadow = batch.attach_shadow(
             &host,
-            surgeist_dom::DomShadowRootInit::new(
+            surgeist_dom::shadow::DomShadowRootInit::new(
                 surgeist_html::construction::HtmlShadowRootMode::Open,
             ),
         );
@@ -5423,7 +5450,7 @@ mod tests {
         owner
             .set_limits(
                 owner.limits().with_event_recipients(
-                    surgeist_dom::DomEventRecipientLimits::new(
+                    surgeist_dom::event::DomEventRecipientLimits::new(
                         64, 16_000_000, 16_000_000, 4_000_000,
                     )
                     .unwrap(),
@@ -5669,7 +5696,7 @@ mod tests {
         let host = batch.create_element_ns(&document, Namespace::html(), "div");
         let shadow = batch.attach_shadow(
             &host,
-            surgeist_dom::DomShadowRootInit::new(
+            surgeist_dom::shadow::DomShadowRootInit::new(
                 surgeist_html::construction::HtmlShadowRootMode::Open,
             ),
         );
@@ -6132,7 +6159,11 @@ mod replacement_test {
     use super::*;
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
-    use surgeist_dom::{DomBatch, DomLimits, DomSourceEdit, DomSourceLimits};
+    use surgeist_dom::{
+        DomBatch,
+        limits::DomLimits,
+        source::{DomSourceEdit, DomSourceLimits},
+    };
     use surgeist_html::values::Namespace;
 
     struct Context {
@@ -6168,15 +6199,18 @@ mod replacement_test {
                 0,
                 16,
                 100000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_event_recipients(
-                surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
-                    .unwrap(),
+                surgeist_dom::event::DomEventRecipientLimits::new(
+                    64, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
             )
             .with_dispatch_custody(
-                surgeist_dom::DomDispatchCustodyLimits::new(
+                surgeist_dom::event::DomDispatchCustodyLimits::new(
                     64, 4096, 16_000_000, 16_000_000, 4_000_000,
                 )
                 .unwrap(),
@@ -6196,7 +6230,8 @@ mod replacement_test {
                 0,
                 16,
                 100000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

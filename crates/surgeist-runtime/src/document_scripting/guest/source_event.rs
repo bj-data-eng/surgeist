@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::{DomSourceEventServiceLimits, DomSourceEventServiceProgress};
-use surgeist_dom::DomSourceEventRequest;
+use surgeist_dom::event::DomSourceEventRequest;
 
 pub(super) struct ActiveAttachedEvent<'owner>(&'owner NativeOwner);
 

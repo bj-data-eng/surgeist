@@ -5,7 +5,13 @@
 //! tests use no interactive selection, form-wide reset, URL or resource service.
 use super::support::{HostedFixture, cancel};
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomCommit, DomError, DomSnapshot,
+    document::DomNativeInputPlatform,
+    form::{DomInputState, DomTextareaReadLimits, DomTextareaState},
+    identity::{DocumentId, NodeId},
+    limits::DomResource,
+};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html::{
     attributes::HtmlInputType,
@@ -306,7 +312,7 @@ fn input_image_disabled_history_observes_absent_empty_and_changed_reentry_after_
             fixture
                 .session
                 .element_task_execution()
-                .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+                .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
                 .unwrap(),
             0
         );
@@ -492,7 +498,7 @@ fn closed_dialog_insert_and_open_hooks_use_actual_retired_inactivity_after_empty
             fixture
                 .session
                 .element_task_execution()
-                .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+                .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
                 .unwrap(),
             0
         );

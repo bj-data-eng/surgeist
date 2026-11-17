@@ -1,7 +1,16 @@
 //! Independent literal oracles: DOM3071 §4.2.2, HTML877d slot.assign,
 //! CSS Shadow §4.1 and #1124's selected native destruction policy.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    edit::{CreatedNode, DomChange, DomHistoryError},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    shadow::{
+        DomFlatRelation, DomShadowRootInit, DomSlotNotificationTarget, DomSlotQueryLimits,
+        DomSlotSignalCancellationReason,
+    },
+};
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
     values::{DocumentString, Namespace},
@@ -19,7 +28,7 @@ fn limits(references: usize, inputs: usize) -> DomLimits {
         inputs,
         16,
         131072,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -435,7 +444,7 @@ fn checkpoints_are_ordered_atomic_historical_and_revalidate_retired_generations(
         f.dom
             .native_checkpoint_step(checkpoint_limits(queries()), &cancel())
             .unwrap(),
-        surgeist_dom::DomNativeCheckpoint::Idle
+        surgeist_dom::task::DomNativeCheckpoint::Idle
     ));
     assert_eq!(f.dom.snapshot().stamp(), stamp);
     let mut b = DomBatch::new();
@@ -764,7 +773,8 @@ fn deep_fallback_is_iterative_fallible_and_keeps_order_without_following_raw_sel
             1024,
             0,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -907,7 +917,8 @@ fn source_assignments_keep_finite_history_complete_or_explicitly_require_recompu
                 128,
                 0,
                 0,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -964,16 +975,16 @@ fn insertion_into_a_manual_host_does_not_invent_a_stored_assignment_refresh() {
     );
 }
 
-fn checkpoint_limits(slots: DomSlotQueryLimits) -> surgeist_dom::DomNativeCheckpointLimits {
-    surgeist_dom::DomNativeCheckpointLimits::new(0, 0, slots).unwrap()
+fn checkpoint_limits(slots: DomSlotQueryLimits) -> surgeist_dom::task::DomNativeCheckpointLimits {
+    surgeist_dom::task::DomNativeCheckpointLimits::new(0, 0, slots).unwrap()
 }
 fn slot_checkpoint(
     dom: &mut Dom,
     slots: DomSlotQueryLimits,
     cancel: &AtomicBool,
-) -> Result<surgeist_dom::DomSlotNotifications, DomError> {
+) -> Result<surgeist_dom::shadow::DomSlotNotifications, DomError> {
     match dom.native_checkpoint_step(checkpoint_limits(slots), cancel)? {
-        surgeist_dom::DomNativeCheckpoint::Slots(n) => Ok(n),
+        surgeist_dom::task::DomNativeCheckpoint::Slots(n) => Ok(n),
         other => panic!("expected reached Slot marker, got {other:?}"),
     }
 }

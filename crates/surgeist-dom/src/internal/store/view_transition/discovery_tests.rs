@@ -1,6 +1,6 @@
 // Included in the owning tests module; fixture() uses a real admitted CSSOM sheet.
 
-fn discovery_limits() -> crate::DomSourceLimits {
+fn discovery_limits() -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(64_000_000, 1_000_000, 20_000, 8, 64, 64, 1)
 }
 

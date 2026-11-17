@@ -93,7 +93,7 @@ pub(super) fn template_content_is_the_live_owned_inert_fragment() {
 }
 
 pub(super) fn template_content_reaches_parsed_and_retired_native_contents() {
-    use surgeist_dom::DomParsedHtmlInstallLimits;
+    use surgeist_dom::installation::DomParsedHtmlInstallLimits;
     use surgeist_html::values::Namespace;
 
     let cancel = Arc::new(AtomicBool::new(false));

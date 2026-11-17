@@ -4,7 +4,16 @@ use std::{
     rc::Rc,
     sync::atomic::{AtomicBool, Ordering},
 };
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    edit::NodeOperand,
+    hosted::{DomHostedLimits, DomHostedRecordLimits, DomHostedRuntimeRetention, DomHostedSource},
+    identity::NodeId,
+    limits::{DomLimits, DomNameLimits, DomResource},
+    shadow::DomSlotQueryLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
+    tree::DomNodeKind,
+};
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
     values::Namespace,

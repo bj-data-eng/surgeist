@@ -1,6 +1,21 @@
 //! Literal HTML877d Select-family outcomes on the real canonical owner.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    edit::{DomChange, DomChildListObservationLimits},
+    form::select::{
+        DomSelectCompletionStart, DomSelectTask, DomSelectTaskCancellationReason,
+        DomSelectTaskOutcome,
+    },
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    shadow::DomSlotQueryLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::DomStyleAction,
+    task::{DomNativeCheckpoint, DomNativeCheckpointLimits},
+    tree::DomNodeKind,
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {
@@ -15,7 +30,7 @@ fn limits() -> DomLimits {
         256,
         16,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_select_processing(128, 4_000_000, 10_000_000)
@@ -802,7 +817,8 @@ fn reached_node_and_pending_task_limits_refuse_without_changing_canonical_state(
                 256,
                 16,
                 1_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_select_processing(128, 4_000_000, 10_000_000)

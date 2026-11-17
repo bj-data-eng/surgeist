@@ -13,7 +13,7 @@ use surgeist_bindings_js::{
         },
     },
 };
-use surgeist_dom::{DomDetachedNodeCreation, DomSourceEventRequest};
+use surgeist_dom::{edit::DomDetachedNodeCreation, event::DomSourceEventRequest};
 
 const CHARACTER_DATA: &[u16] = &ascii(b"CharacterData");
 const TEXT: &[u16] = &ascii(b"Text");

@@ -1,7 +1,18 @@
 //! Real parse/install/consume paths; no caller-authored acknowledgement proof.
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_cssom::*;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    document::DomNativeInputPlatform,
+    identity::DocumentId,
+    installation::{
+        DomParsedDocumentEnvironment, DomParsedHtmlAssociationAdmissionError,
+        DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits, DomParsedHtmlInstallLimits,
+        meta::DomParsedHtmlMetaError,
+    },
+    limits::{DomLimits, DomNameLimits, DomResource},
+    style::{DomStyleCssomRoot, DomStyleCssomRootError},
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,
 };

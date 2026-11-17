@@ -4,7 +4,7 @@ use super::*;
 use std::mem::size_of;
 use surgeist_html::values::DocumentString;
 
-fn policy() -> crate::DomSourceLimits {
+fn policy() -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(
         16_000_000, 100_000, 10_000_000, 128, 4096, 4096, 1,
     )

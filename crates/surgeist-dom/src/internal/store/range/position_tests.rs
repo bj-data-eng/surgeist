@@ -44,7 +44,7 @@ fn fixture(siblings: usize) -> (Dom, DomRangeId, NodeId, NodeId) {
     )
 }
 
-fn policy() -> crate::DomSourceLimits {
+fn policy() -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(
         500_000_000,
         10_000_000,

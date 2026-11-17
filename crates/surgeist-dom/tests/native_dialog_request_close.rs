@@ -1,7 +1,11 @@
 //! HTML877d request-close early-return guards through the public Source owner.
 //! These native no-Global cases do not attest hosted watcher/event execution.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn source_limits() -> DomSourceLimits {
@@ -22,7 +26,8 @@ fn closed_disconnected_and_inactive_dialogs_return_before_request_state_or_servi
                 0,
                 16,
                 1_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -78,7 +83,8 @@ fn request_close_rejects_a_non_dialog_without_retaining_an_unpublished_operation
             0,
             8,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

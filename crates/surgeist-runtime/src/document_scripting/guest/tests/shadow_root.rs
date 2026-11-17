@@ -1,7 +1,11 @@
 //! Canonical ShadowRoot projection through native V8 callbacks.
 
 use super::*;
-use surgeist_dom::{DocumentId, DomBatch, DomShadowRootInit, NodeId};
+use surgeist_dom::{
+    DomBatch,
+    identity::{DocumentId, NodeId},
+    shadow::DomShadowRootInit,
+};
 use surgeist_html::construction::{
     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
@@ -487,7 +491,7 @@ pub(in crate::document_scripting) fn scripted_shadow_source_refusal_keeps_the_or
 }
 
 pub(in crate::document_scripting) fn scripted_shadow_selects_the_hosted_registry_and_clones_null() {
-    use surgeist_dom::DomRegistryBinding;
+    use surgeist_dom::custom_element::DomRegistryBinding;
 
     let mut host = public_node_host(1_000, 20_000);
     let permit = host.permit().unwrap();

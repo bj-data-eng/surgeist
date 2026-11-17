@@ -1,7 +1,10 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomError, DomLimits, DomNodeKind, DomResource,
-    DomSnapshot, NodeId,
+    Dom, DomBatch, DomError, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    tree::DomNodeKind,
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -14,7 +17,7 @@ fn limits() -> DomLimits {
         0,
         16,
         65536,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -458,7 +461,8 @@ fn resource_failure_after_partial_subtree_copy_and_late_command_leave_no_state()
             0,
             8,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -532,7 +536,8 @@ fn import_counts_exact_logical_strings_even_when_immutable_backing_is_shared() {
                 0,
                 8,
                 8192,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -569,7 +574,7 @@ fn deep_import_walks_bounded_tree_without_recursive_native_calls() {
         0,
         0,
         0,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap();
     let mut source = Dom::new(limits).unwrap();

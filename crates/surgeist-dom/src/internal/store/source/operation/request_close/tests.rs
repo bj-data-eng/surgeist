@@ -96,7 +96,7 @@ fn enabled_within(
             focusing: None,
         },
         cursor,
-        watcher: crate::DomCloseWatcherId {
+        watcher: crate::internal::dialog::DomCloseWatcherId {
             operation: id,
             command: 0,
             occurrence: 0,

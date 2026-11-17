@@ -11,8 +11,12 @@ use crate::{
 };
 use std::cell::RefCell;
 use surgeist_dom::{
-    DomBatch, DomDispatchCustodyLimits, DomHostedLimits, DomHostedRecordLimits, DomLimits,
-    DomSourceEdit, DomSourceRequest, NodeId,
+    DomBatch,
+    event::DomDispatchCustodyLimits,
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    identity::NodeId,
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceRequest},
 };
 use surgeist_html::values::Namespace;
 
@@ -46,7 +50,8 @@ fn fixture_with_source_storage(storage_bytes: usize) -> (DomSession, NodeId, Nod
             128,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
@@ -455,8 +460,8 @@ fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() 
 }
 fn services(
     policy: &mut dyn FnMut(
-        &surgeist_dom::DomStyleSource,
-    ) -> Option<surgeist_dom::DomStyleInlineCspObservation>,
+        &surgeist_dom::style::DomStyleSource,
+    ) -> Option<surgeist_dom::style::DomStyleInlineCspObservation>,
 ) -> DomSourceServices<'_> {
     DomSourceServices {
         meta: None,

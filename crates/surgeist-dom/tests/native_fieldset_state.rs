@@ -1,6 +1,17 @@
 //! Literal HTML877d Fieldset state, mutation and semantic composition oracles.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{
+        DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
+        DomSlotSemanticLimits,
+    },
+    edit::{CreatedNode, DomChange},
+    form::DomFieldsetState,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+};
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
     values::{DocumentString, Namespace},
@@ -25,7 +36,8 @@ fn owner() -> Dom {
             128,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -198,7 +210,8 @@ fn custom_message_limits_inapplicability_cancellation_and_late_failure_are_atomi
             128,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

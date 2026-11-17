@@ -10,11 +10,19 @@ use super::super::custom_elements::{ActiveReactionQueue, SynchronousReactionScop
 use super::*;
 use surgeist_bindings_js::NativeProjectionPrototype;
 use surgeist_dom::{
-    DomDetachedNodeCreation, DomDocumentScriptRegistration, DomElementCreationName,
-    DomElementCreationOptions, DomNodeRetirementWatch, DomSourceAttributeAttachmentOutput,
-    DomSourceAttributeVerificationRequest, DomSourceCustomElementOutcome,
-    DomSourceCustomElementRequest, DomSourceCustomElementReturn, DomSourceEventRequest,
-    DomWatchedCustomElementResult,
+    custom_element::{
+        DomSourceCustomElementOutcome, DomSourceCustomElementRequest, DomSourceCustomElementReturn,
+        DomWatchedCustomElementResult,
+    },
+    edit::{
+        DomDetachedNodeCreation, DomElementCreationName, DomElementCreationOptions,
+        DomNodeRetirementWatch,
+    },
+    event::DomSourceEventRequest,
+    script::DomDocumentScriptRegistration,
+    source::attribute::{
+        DomSourceAttributeAttachmentOutput, DomSourceAttributeVerificationRequest,
+    },
 };
 
 pub(in crate::document_scripting::guest::interfaces) struct OrdinaryBindings {
@@ -51,7 +59,7 @@ pub(super) struct Admission<'a> {
 
 enum ElementFactoryResult<'scope> {
     Created(Value<'scope>),
-    Constructor(surgeist_dom::DomSourceCustomElementRequest),
+    Constructor(surgeist_dom::custom_element::DomSourceCustomElementRequest),
 }
 
 pub(in crate::document_scripting) struct PendingConstructor {
@@ -119,7 +127,7 @@ impl NativeOwner {
 
     pub(in crate::document_scripting) fn raise_stopped_constructor_limits(
         &self,
-        limits: surgeist_dom::DomSourceLimits,
+        limits: surgeist_dom::source::DomSourceLimits,
     ) -> Result<(), DocumentScriptNativeError> {
         let slot = self
             .pending_constructor
@@ -145,7 +153,7 @@ impl NativeOwner {
 
     pub(in crate::document_scripting) fn settle_stopped_constructor(
         &self,
-        limits: surgeist_dom::DomSourceLimits,
+        limits: surgeist_dom::source::DomSourceLimits,
     ) -> Result<(), DocumentGuestEventError> {
         self.raise_stopped_constructor_limits(limits)?;
         let mut session = self
@@ -186,7 +194,7 @@ impl NativeOwner {
         }
         if !matches!(
             lease.advance(&cancel)?,
-            surgeist_dom::DomSourceProgress::Complete(_)
+            surgeist_dom::source::DomSourceProgress::Complete(_)
         ) {
             return Err(DocumentScriptNativeError::SourceAccess.into());
         }
@@ -545,7 +553,7 @@ impl OrdinaryBindings {
     ) -> Result<
         (
             Value<'scope>,
-            Option<surgeist_dom::DomSynchronousReactionQueue>,
+            Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>,
         ),
         DocumentGuestEventError,
     > {
@@ -708,7 +716,7 @@ impl OrdinaryBindings {
         (owner, events): (&NativeOwner, &GuestEvents),
         (node, definition, global): (
             NodeId,
-            surgeist_dom::DomRegistryDefinitionId,
+            surgeist_dom::custom_element::DomRegistryDefinitionId,
             DomHostedGlobalId,
         ),
         (constructor, interface, realm): (&Value<'scope>, &'static str, RealmId),
@@ -743,12 +751,12 @@ impl OrdinaryBindings {
         };
         let (request, callback, receiver_registry_matches) = match callback {
             None => return Ok(None),
-            Some(surgeist_dom::DomSourceCustomElementUpgrade::Callback {
+            Some(surgeist_dom::custom_element::DomSourceCustomElementUpgrade::Callback {
                 request,
                 scope,
                 receiver_registry_matches,
             }) => (request, scope, receiver_registry_matches),
-            Some(surgeist_dom::DomSourceCustomElementUpgrade::ShadowForbidden) => {
+            Some(surgeist_dom::custom_element::DomSourceCustomElementUpgrade::ShadowForbidden) => {
                 *accepted = true;
                 let value = scope.dom_exception(
                     surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError,
@@ -836,7 +844,7 @@ impl OrdinaryBindings {
         registration: &'registration DomDocumentScriptRegistration,
     ) -> Result<
         (
-            surgeist_dom::DomSourceCustomElementCallbackScope<'registration>,
+            surgeist_dom::custom_element::DomSourceCustomElementCallbackScope<'registration>,
             (NodeId, Value<'scope>),
         ),
         DocumentGuestEventError,
@@ -950,7 +958,7 @@ impl OrdinaryBindings {
             )?;
             if !matches!(
                 lease.advance(cancel)?,
-                surgeist_dom::DomSourceProgress::Complete(_)
+                surgeist_dom::source::DomSourceProgress::Complete(_)
             ) {
                 return Err(DocumentScriptNativeError::SourceAccess.into());
             }
@@ -1024,13 +1032,13 @@ impl OrdinaryBindings {
             }
             let prototype = public.unknown_element_prototype(events, pending.request.global())?;
             if pending.exception.is_none()
-                && disposition != surgeist_dom::DomSourceCustomElementDisposition::Abrupt
+                && disposition != surgeist_dom::custom_element::DomSourceCustomElementDisposition::Abrupt
             {
                 let value = match disposition {
-                    surgeist_dom::DomSourceCustomElementDisposition::InvalidInterface => {
+                    surgeist_dom::custom_element::DomSourceCustomElementDisposition::InvalidInterface => {
                         scope.type_error(&ascii(b"HTMLElement required"))?
                     }
-                    surgeist_dom::DomSourceCustomElementDisposition::InvalidElement => scope
+                    surgeist_dom::custom_element::DomSourceCustomElementDisposition::InvalidElement => scope
                         .dom_exception(
                         surgeist_bindings_js::dom_exception::DomExceptionName::NotSupportedError,
                         &[],
@@ -1198,7 +1206,10 @@ impl OrdinaryBindings {
         &self,
         scope: &mut Scope<'scope>,
         (owner, events): (&NativeOwner, &GuestEvents),
-        target: (surgeist_dom::DomRegistryDefinitionId, DomHostedGlobalId),
+        target: (
+            surgeist_dom::custom_element::DomRegistryDefinitionId,
+            DomHostedGlobalId,
+        ),
         prototype: &Value<'scope>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let registration = owner
@@ -1304,10 +1315,11 @@ impl OrdinaryBindings {
                     )
                 })?;
             let (watched, prepared) = match result {
-                surgeist_dom::DomWatchedElementCreation::Created(watched, prepared) => {
-                    (watched, prepared)
-                }
-                surgeist_dom::DomWatchedElementCreation::Constructor(request) => {
+                surgeist_dom::custom_element::DomWatchedElementCreation::Created(
+                    watched,
+                    prepared,
+                ) => (watched, prepared),
+                surgeist_dom::custom_element::DomWatchedElementCreation::Constructor(request) => {
                     return Ok(ElementFactoryResult::Constructor(request));
                 }
             };
@@ -1419,7 +1431,7 @@ impl OrdinaryBindings {
         (owner, events): (&NativeOwner, &GuestEvents),
         prototype: &RetainedCallbackObject,
         run: impl FnOnce(
-            &mut surgeist_dom::DomSourceNodeOutputWatch<'_>,
+            &mut surgeist_dom::edit::DomSourceNodeOutputWatch<'_>,
         ) -> Result<GuestNode, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let event = owner.active_event_request();
@@ -1439,7 +1451,7 @@ impl OrdinaryBindings {
             (
                 NodePrototype::Creation(prototype),
                 |inbox: &DomNodeRetirementInbox, key| {
-                    let mut output = surgeist_dom::DomSourceNodeOutputWatch::new(
+                    let mut output = surgeist_dom::edit::DomSourceNodeOutputWatch::new(
                         inbox,
                         key,
                         events.limits.node_retirement,

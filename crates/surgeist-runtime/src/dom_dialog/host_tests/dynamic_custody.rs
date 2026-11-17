@@ -1,7 +1,10 @@
 //! Actual Source dispatch backing outlives its producer only while retained.
 use super::*;
 use crate::dom_event::manipulation_observation_layout;
-use surgeist_dom::{DomResource, DomSourceEdit, DomSourceProgress};
+use surgeist_dom::{
+    limits::DomResource,
+    source::{DomSourceEdit, DomSourceProgress},
+};
 
 fn actual_source_owner() -> (Dom, SourceEventOwner, [NodeId; 2]) {
     let cancel = AtomicBool::new(false);
@@ -14,7 +17,8 @@ fn actual_source_owner() -> (Dom, SourceEventOwner, [NodeId; 2]) {
             128,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(

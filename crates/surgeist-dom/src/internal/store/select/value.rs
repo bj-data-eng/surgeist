@@ -505,7 +505,7 @@ mod tests {
             capacity,
         )
     }
-    fn limits(bytes: usize) -> crate::DomSourceLimits {
+    fn limits(bytes: usize) -> crate::internal::source::DomSourceLimits {
         crate::internal::source::DomSourceLimits::new(
             bytes,
             10_000_000,

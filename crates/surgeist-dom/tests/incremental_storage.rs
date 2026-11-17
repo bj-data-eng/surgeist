@@ -5,9 +5,14 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits, DomSourceEdit,
-    DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
-    DomStyleInlineCspObservation, NodeId,
+    Dom, DomBatch, DomCommit, DomError,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
+    },
+    style::DomStyleInlineCspObservation,
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -21,7 +26,8 @@ fn owner() -> Dom {
             0,
             64,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_ranges(32)

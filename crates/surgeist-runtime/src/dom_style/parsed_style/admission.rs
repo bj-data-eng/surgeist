@@ -1,9 +1,9 @@
 //! Shared original/Runtime admission at actual public producer boundaries.
 use super::*;
 use std::cell::Cell;
-use surgeist_dom::{
-    DomParsedHtmlAssociationRuntimeUsage, DomParsedHtmlStyleRuntimeHold,
-    DomParsedHtmlStyleSheetPreparation,
+use surgeist_dom::installation::{
+    DomParsedHtmlAssociationRuntimeUsage,
+    style::{DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetPreparation},
 };
 
 // References the existing Runtime counter and original Entry meter, never a

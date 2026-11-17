@@ -6,7 +6,27 @@ use crate::{
     DomSourceEventRuntimeLimits, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
     DomSourceServices, DomStyleRuntimeLimits,
 };
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    dialog::{DomDialogToggleTaskDisposition, DomSourceDialogRequest},
+    event::{DomDispatchCustodyLimits, DomSourceEventRequest},
+    focus::{
+        DomFocusObservation, DomFocusRequest, DomFocusTarget, DomSourceAutofocusInsertionRequest,
+        DomSourceDialogFocusingRequest,
+    },
+    fullscreen::DomTopLayerUaRule,
+    hosted::{
+        DomHostedError, DomHostedGlobalId, DomHostedHostId, DomHostedLimits, DomHostedRecordLimits,
+        DomHostedRuntimeRetention, DomHostedSource,
+    },
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    source::{
+        DomSourceEdit, DomSourceExecutionEntryScope, DomSourceLease, DomSourceLimits,
+        DomSourcePhase, DomSourceProgress, DomSourceRequest,
+    },
+    task::DomElementTaskSourceKind,
+};
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogEventSource, HtmlDialogState};
 use surgeist_html::values::Namespace;
 
@@ -62,7 +82,8 @@ fn fixture() -> (DomSession, DomHostedHostId, NodeId) {
                 512,
                 32,
                 4_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_dispatch_custody(

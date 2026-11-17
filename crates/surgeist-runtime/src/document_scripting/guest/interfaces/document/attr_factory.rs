@@ -3,7 +3,7 @@
 use super::*;
 use character_data::copy_native_data;
 use surgeist_bindings_js::{conversion::declarations, dom_exception::DomExceptionName};
-use surgeist_dom::DomDetachedNodeCreation;
+use surgeist_dom::edit::DomDetachedNodeCreation;
 use surgeist_html::values::Namespace;
 
 pub(super) fn install<'scope>(

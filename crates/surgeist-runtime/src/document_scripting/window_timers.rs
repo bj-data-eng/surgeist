@@ -6,7 +6,7 @@ use surgeist_bindings_js::{
     Arguments, Exception, FunctionMetadata, IntegerKind, IntegerMode, IntegerValue,
     RetainedCallbackObject, Value,
 };
-use surgeist_dom::DomHostedSourceId;
+use surgeist_dom::hosted::DomHostedSourceId;
 
 use super::*;
 use crate::dom_lifecycle::WindowTimerMoment;

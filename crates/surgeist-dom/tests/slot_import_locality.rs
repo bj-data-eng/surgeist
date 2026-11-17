@@ -2,8 +2,10 @@
 //! Fixed Slot participants keep discovery work bounded at each insertion hook.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    Dom, DomBatch, DomLimits, DomNodeKind, DomSourceEdit, DomSourceLimits, DomSourceOutput,
-    DomSourceProgress,
+    Dom, DomBatch,
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress},
+    tree::DomNodeKind,
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -19,7 +21,7 @@ fn limits() -> DomLimits {
         0,
         8,
         64_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }

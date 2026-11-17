@@ -99,7 +99,7 @@ impl CspEventData {
     pub(super) fn native(
         dom: &mut DomEventDom<'_>,
         storage: &EventStorage,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         report: Rc<QueuedViolation>,
         cancel: &AtomicBool,
     ) -> Result<Rc<Self>, DomEventDispatchError> {
@@ -113,7 +113,7 @@ impl CspEventData {
         // producer must supply response status and qualified URL stripping.
         if !matches!(
             metadata.creation_cause(),
-            surgeist_dom::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+            surgeist_dom::document::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
         ) {
             return Err(DomError::HostedSourceUnavailable.into());
         }

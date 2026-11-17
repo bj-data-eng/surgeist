@@ -2,7 +2,7 @@
 
 use super::character_data::CharacterKind;
 use super::*;
-use surgeist_dom::DomAttrId;
+use surgeist_dom::identity::DomAttrId;
 use surgeist_html::{
     bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
 };
@@ -485,7 +485,7 @@ fn element_interface(
 }
 
 pub(super) fn is_html_element(
-    node: surgeist_dom::DomNode<'_>,
+    node: surgeist_dom::tree::DomNode<'_>,
     step: impl FnMut() -> Result<(), DocumentGuestEventError>,
 ) -> Result<bool, DocumentGuestEventError> {
     let Some(element) = node.as_element() else {

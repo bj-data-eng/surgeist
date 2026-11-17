@@ -130,7 +130,7 @@ fn retired_original_global_preserves_host_scope_but_refuses_new_toggle_queue() {
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -277,7 +277,10 @@ fn additional_headless_context_remembers_none(in_frame_child: bool) {
     );
     let task = session
         .element_task_execution()
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap()
         .dialog_toggle()
@@ -334,7 +337,7 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -347,7 +350,10 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     let accepted = session.snapshot();
     let task = session
         .element_task_execution()
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     assert_eq!(task.queue_association().unwrap().global(), top.global());
@@ -363,14 +369,17 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
             .element_task_execution()
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap(),
         Some(task)
     );
@@ -414,7 +423,7 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -444,7 +453,7 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );

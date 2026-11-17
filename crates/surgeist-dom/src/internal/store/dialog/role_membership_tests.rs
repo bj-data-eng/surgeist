@@ -2,7 +2,7 @@
 //! Populating a canonical list here does not fabricate completed watcher/focus work.
 use super::*;
 
-fn policy(work: u64) -> crate::DomSourceLimits {
+fn policy(work: u64) -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(256_000_000, 4_000_000, work, 64, 4096, 4096, 2)
 }
 fn draft(dom: &Dom) -> Draft {

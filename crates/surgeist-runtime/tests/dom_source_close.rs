@@ -8,7 +8,18 @@
     target_os = "ios"
 ))]
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    dialog::DomDialogToggleTaskDisposition,
+    event::{DomDispatchCustodyLimits, DomSourceEventRequest},
+    hosted::{DomHostedError, DomHostedLimits, DomHostedRecordLimits},
+    identity::NodeId,
+    limits::DomLimits,
+    source::{
+        DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceOperationId, DomSourceRequest,
+    },
+    task::DomElementTaskSourceKind,
+};
 use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_runtime::*;
@@ -47,7 +58,8 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
             2048,
             64,
             8_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(

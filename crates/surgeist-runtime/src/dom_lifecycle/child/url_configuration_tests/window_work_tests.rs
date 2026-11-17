@@ -1,7 +1,10 @@
 //! Actual first Frame NativeExecution preflight, before borrowed execution.
 use super::*;
 use crate::dom_lifecycle::watcher::NativeWindow;
-use surgeist_dom::{DomSourceLease, DomSourceProgress, NodeId};
+use surgeist_dom::{
+    identity::NodeId,
+    source::{DomSourceLease, DomSourceProgress},
+};
 use surgeist_html::values::Namespace;
 
 fn frame_fixture() -> (DomSession, HostedRuntime, NodeId, NodeId) {

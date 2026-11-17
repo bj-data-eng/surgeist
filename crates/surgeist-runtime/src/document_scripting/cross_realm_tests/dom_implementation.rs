@@ -80,13 +80,16 @@ pub(super) fn implementation_creates_native_doctypes() {
     assert_eq!(node.owner_document(), Some(document));
     assert!(matches!(
         node.kind(),
-        surgeist_dom::DomNodeKind::DocumentType(_)
+        surgeist_dom::tree::DomNodeKind::DocumentType(_)
     ));
 }
 
 pub(super) fn implementation_creates_native_documents() {
     use crate::document_scripting::guest::tests::projected_node_id;
-    use surgeist_dom::{DomDocumentClass, DomDocumentInterface, DomNodeKind};
+    use surgeist_dom::{
+        document::{DomDocumentClass, DomDocumentInterface},
+        tree::DomNodeKind,
+    };
 
     let cancel = Arc::new(AtomicBool::new(false));
     let (session, target) = hosted_session(&cancel, 0);
@@ -227,7 +230,7 @@ pub(super) fn factory_refusal_preserves_native_dom() {
 
 pub(super) fn xml_factory_retains_the_original_style_operation() {
     use surgeist_cssom::CssomStore;
-    use surgeist_dom::{DomSourceOutput, DomStyleCssomRoot};
+    use surgeist_dom::{source::DomSourceOutput, style::DomStyleCssomRoot};
 
     const LIMITS: DomSourceLimits =
         DomSourceLimits::new(16_000_000, 200_000, 60_000, 64, 64, 64, 3);
@@ -300,7 +303,7 @@ pub(super) fn xml_factory_retains_the_original_style_operation() {
     let xml = snapshot.document(document).unwrap();
     assert_eq!(
         xml.metadata().interface(),
-        surgeist_dom::DomDocumentInterface::XmlDocument
+        surgeist_dom::document::DomDocumentInterface::XmlDocument
     );
     assert_eq!(
         snapshot

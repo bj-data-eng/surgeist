@@ -7,8 +7,14 @@ use super::{
 };
 use std::{error::Error, fmt, sync::atomic::AtomicBool};
 use surgeist_dom::{
-    DocumentId, DomDocumentCspState, DomDocumentScriptRegistration, DomError,
-    DomSourceAttributePolicyRead, DomSourceAttributeVerificationRequest, DomSourceLease,
+    DomError,
+    identity::DocumentId,
+    meta::DomDocumentCspState,
+    script::DomDocumentScriptRegistration,
+    source::{
+        DomSourceLease,
+        attribute::{DomSourceAttributePolicyRead, DomSourceAttributeVerificationRequest},
+    },
 };
 #[cfg(feature = "document-scripting")]
 use surgeist_html::security::csp::HtmlCspAssociationGeneration;

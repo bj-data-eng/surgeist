@@ -23,10 +23,15 @@ use std::mem::size_of;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
 use surgeist_dom::{
-    Dom, DomHostedCreationLease, DomHostedCreationPublication, DomHostedCreationStep,
-    DomHostedEntryId, DomHostedEntryInitialization, DomHostedError, DomHostedGlobalId,
-    DomHostedHostId, DomHostedLimits, DomHostedNavigableId, DomHostedPolicyPublication,
-    DomHostedPreparedTopLevel, DomHostedSource, DomHostedTopLevelPreparation, DomOwnerId,
+    Dom,
+    hosted::{
+        DomHostedCreationLease, DomHostedCreationPublication, DomHostedCreationStep,
+        DomHostedError, DomHostedGlobalId, DomHostedHostId, DomHostedLimits, DomHostedNavigableId,
+        DomHostedPolicyPublication, DomHostedPreparedTopLevel, DomHostedSource,
+        DomHostedTopLevelPreparation,
+        history::{DomHostedEntryId, DomHostedEntryInitialization},
+    },
+    identity::DomOwnerId,
 };
 mod event;
 #[cfg(feature = "document-scripting")]
@@ -108,11 +113,11 @@ impl std::error::Error for DomHostedRuntimeError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHostedTopLevel {
     host: DomHostedHostId,
-    context: surgeist_dom::DomHostedBrowsingContextId,
+    context: surgeist_dom::hosted::DomHostedBrowsingContextId,
     navigable: DomHostedNavigableId,
     entry: DomHostedEntryId,
     global: DomHostedGlobalId,
-    document: surgeist_dom::DocumentId,
+    document: surgeist_dom::identity::DocumentId,
 }
 impl DomHostedTopLevel {
     /// Original native host membership.
@@ -120,7 +125,7 @@ impl DomHostedTopLevel {
         self.host
     }
     /// Actual browsing-context indirection.
-    pub const fn browsing_context(self) -> surgeist_dom::DomHostedBrowsingContextId {
+    pub const fn browsing_context(self) -> surgeist_dom::hosted::DomHostedBrowsingContextId {
         self.context
     }
     /// Actual active/current-entry navigable.
@@ -136,7 +141,7 @@ impl DomHostedTopLevel {
         self.global
     }
     /// Actual canonically created initial about:blank Document.
-    pub const fn document(self) -> surgeist_dom::DocumentId {
+    pub const fn document(self) -> surgeist_dom::identity::DocumentId {
         self.document
     }
 }
@@ -147,7 +152,7 @@ pub struct DomHostedDestructionQueued {
     host: DomHostedHostId,
     navigable: DomHostedNavigableId,
     traversable: DomHostedNavigableId,
-    operation: surgeist_dom::DomHostedOperationId,
+    operation: surgeist_dom::hosted::DomHostedOperationId,
 }
 impl DomHostedDestructionQueued {
     /// Original actual Host membership.
@@ -163,7 +168,7 @@ impl DomHostedDestructionQueued {
         self.traversable
     }
     /// Canonical operation retaining this invocation's original Work.
-    pub const fn operation(self) -> surgeist_dom::DomHostedOperationId {
+    pub const fn operation(self) -> surgeist_dom::hosted::DomHostedOperationId {
         self.operation
     }
 }
@@ -204,23 +209,23 @@ pub enum DomHostedTaskProgress {
     /// This observation grants no execution or service-reply authority.
     FullscreenExitPending {
         /// Exact canonical invocation retained by the DOM owner.
-        invocation: surgeist_dom::DomFullscreenExitId,
+        invocation: surgeist_dom::fullscreen::DomFullscreenExitId,
         /// The reached source action, without a service acknowledgment.
-        step: surgeist_dom::DomFullscreenExitStep,
+        step: surgeist_dom::fullscreen::DomFullscreenExitStep,
     },
     /// The same original operation and queue head remain retained.
     Pending {
         /// Actual canonical lifecycle operation owning this continuation.
-        operation: surgeist_dom::DomHostedOperationId,
+        operation: surgeist_dom::hosted::DomHostedOperationId,
         /// The precise reached wait, without acknowledging its work.
         reason: DomHostedTaskWait,
     },
     /// One actual native task body and its checkpoint completed.
     Executed {
         /// Original canonical lifecycle operation.
-        operation: surgeist_dom::DomHostedOperationId,
+        operation: surgeist_dom::hosted::DomHostedOperationId,
         /// Original task Document, independent of later node adoption.
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         /// Actual original native Global.
         global: DomHostedGlobalId,
         /// The body that actually ran.
@@ -230,23 +235,23 @@ pub enum DomHostedTaskProgress {
     /// Document destruction, without executing its body or writing History.
     CanceledDocumentDestroyed {
         /// Original canonical lifecycle operation.
-        operation: surgeist_dom::DomHostedOperationId,
+        operation: surgeist_dom::hosted::DomHostedOperationId,
         /// Actual destroyed task Document.
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         /// Original Global whose task was not executed.
         global: DomHostedGlobalId,
     },
     /// The original queued continuation finished all its actual obligations.
     Complete {
         /// Actual completed canonical lifecycle operation.
-        operation: surgeist_dom::DomHostedOperationId,
+        operation: surgeist_dom::hosted::DomHostedOperationId,
     },
 }
 
 impl DomHostedTaskProgress {
     /// The lifecycle operation owning this outcome. Parallel exit observations
     /// use their distinct exit identity rather than a lifecycle operation ID.
-    pub const fn operation(self) -> Option<surgeist_dom::DomHostedOperationId> {
+    pub const fn operation(self) -> Option<surgeist_dom::hosted::DomHostedOperationId> {
         match self {
             Self::Idle | Self::Quiescent | Self::FullscreenExitPending { .. } => None,
             Self::Pending { operation, .. }
@@ -263,12 +268,12 @@ impl DomHostedTaskProgress {
 pub struct DomHostedSettings {
     snapshot: surgeist_dom::DomSnapshot,
     global: DomHostedGlobalId,
-    document: surgeist_dom::DocumentId,
+    document: surgeist_dom::identity::DocumentId,
     ready: bool,
     time_origin: clock::CoarsenedSample,
     creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
     top_level_creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
-    top_level_origin: surgeist_dom::DomOpaqueOrigin,
+    top_level_origin: surgeist_dom::document::DomOpaqueOrigin,
     cross_site: bool,
 }
 impl DomHostedSettings {
@@ -279,13 +284,13 @@ impl DomHostedSettings {
     /// Associated current Document at this exact captured canonical revision.
     /// Current base/URL/encoding queries consume this Document's ordinary
     /// qualified semantic facts; creation URL is not a current-base substitute.
-    pub fn document(&self) -> surgeist_dom::DomDocument<'_> {
+    pub fn document(&self) -> surgeist_dom::tree::DomDocument<'_> {
         self.snapshot
             .document(self.document)
             .expect("captured associated Document")
     }
     /// Current associated Document's actual origin at this captured revision.
-    pub fn origin(&self) -> &surgeist_dom::DomOpaqueOrigin {
+    pub fn origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin {
         self.document().metadata().origin()
     }
     /// Current effective base chosen by the original bounded Base owner.
@@ -296,7 +301,7 @@ impl DomHostedSettings {
         self.document().document_base_url()
     }
     /// Canonical supported initial Permissions Policy from that current Document.
-    pub fn permissions_policy(&self) -> Option<surgeist_dom::DomInitialPermissionsPolicy> {
+    pub fn permissions_policy(&self) -> Option<surgeist_dom::hosted::DomInitialPermissionsPolicy> {
         self.document().metadata().initial_permissions_policy()
     }
     /// Actual make-active readiness; never inferred from an ID or native proof.
@@ -304,7 +309,7 @@ impl DomHostedSettings {
         self.ready
     }
     /// Original native clock domain, shared across this session's Globals.
-    pub fn clock_source(&self) -> surgeist_dom::DomHostedSourceId {
+    pub fn clock_source(&self) -> surgeist_dom::hosted::DomHostedSourceId {
         self.time_origin.source
     }
     /// Actual navigation-start sample, floored to 100µs in that domain.
@@ -321,7 +326,7 @@ impl DomHostedSettings {
     }
     /// Original top-level origin passed to this actual Settings constructor.
     /// This does not change when the top traversable's active entry changes.
-    pub fn top_level_origin(&self) -> &surgeist_dom::DomOpaqueOrigin {
+    pub fn top_level_origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin {
         &self.top_level_origin
     }
     /// Group mode none does not provide cross-origin isolation.
@@ -340,8 +345,8 @@ impl DomHostedSettings {
 #[derive(Clone, Debug)]
 pub struct DomHostedHistoryEntry {
     entry: DomHostedEntryId,
-    document: surgeist_dom::DocumentId,
-    origin: surgeist_dom::DomOpaqueOrigin,
+    document: surgeist_dom::identity::DocumentId,
+    origin: surgeist_dom::document::DomOpaqueOrigin,
     key: [u16; 36],
     id: [u16; 36],
     step: Option<u64>,
@@ -352,11 +357,11 @@ impl DomHostedHistoryEntry {
         self.entry
     }
     /// Actual associated initial Document.
-    pub const fn document(&self) -> surgeist_dom::DocumentId {
+    pub const fn document(&self) -> surgeist_dom::identity::DocumentId {
         self.document
     }
     /// Actual source-created opaque origin retained by the document state.
-    pub fn origin(&self) -> &surgeist_dom::DomOpaqueOrigin {
+    pub fn origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin {
         &self.origin
     }
     /// Exact independently generated navigation API key, in UTF-16 code units.
@@ -520,7 +525,7 @@ impl HostedState {
     }
     fn source_retained_bytes(
         &mut self,
-        lease: &surgeist_dom::DomSourceLease<'_>,
+        lease: &surgeist_dom::source::DomSourceLease<'_>,
         cancel: &AtomicBool,
     ) -> Result<usize, DomHostedRuntimeError> {
         native_retained_bytes(
@@ -724,7 +729,7 @@ impl HostedState {
     fn settings_at(
         &self,
         (h, t, c, g): (usize, usize, usize, usize),
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
     ) -> Result<&records::Settings, DomHostedRuntimeError> {
         let native = self
             .hosts
@@ -854,7 +859,7 @@ impl HostedRuntime {
         &self,
         dom: &mut DomEventDom<'_>,
         target: DomHostedTopLevel,
-        event: Option<&surgeist_dom::DomSourceEventRequest>,
+        event: Option<&surgeist_dom::event::DomSourceEventRequest>,
         cancel: &AtomicBool,
         use_target: impl FnOnce(
             &DomHostedSource,
@@ -880,13 +885,13 @@ impl HostedRuntime {
     #[cfg(feature = "document-scripting")]
     pub(crate) fn with_script_source_settings<R>(
         &self,
-        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         target: DomHostedTopLevel,
-        request: surgeist_dom::DomSourceScriptRequest,
+        request: surgeist_dom::script::DomSourceScriptRequest,
         cancel: &AtomicBool,
         use_target: impl FnOnce(
             &DomHostedSource,
-            &mut surgeist_dom::DomSourceLease<'_>,
+            &mut surgeist_dom::source::DomSourceLease<'_>,
         ) -> Result<R, DomHostedRuntimeError>,
     ) -> Result<R, DomHostedRuntimeError> {
         self.with_script_settings_view(
@@ -973,7 +978,7 @@ impl HostedRuntime {
         dom: &mut DomEventDom<'_>,
         bytes: usize,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomHostedRuntimeRetention, DomHostedRuntimeError> {
+    ) -> Result<surgeist_dom::hosted::DomHostedRuntimeRetention, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -991,9 +996,9 @@ impl HostedRuntime {
         &self,
         dom: &mut DomEventDom<'_>,
         global: DomHostedGlobalId,
-        limits: surgeist_dom::DomSourceLimits,
+        limits: surgeist_dom::source::DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomRegistryId, DomHostedRuntimeError> {
+    ) -> Result<surgeist_dom::custom_element::DomRegistryId, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -1012,11 +1017,11 @@ impl HostedRuntime {
         &self,
         dom: &mut DomEventDom<'_>,
         global: DomHostedGlobalId,
-        registry: surgeist_dom::DomRegistryId,
+        registry: surgeist_dom::custom_element::DomRegistryId,
         definition: &surgeist_html_semantics::HtmlCustomElementDefinition,
-        limits: surgeist_dom::DomSourceLimits,
+        limits: surgeist_dom::source::DomSourceLimits,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomRegistryDefinitionId, DomHostedRuntimeError> {
+    ) -> Result<surgeist_dom::custom_element::DomRegistryDefinitionId, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -1496,9 +1501,9 @@ fn drive_creation(
                         source
                             .seal_permissions_policy(
                                 request,
-                                surgeist_dom::DomInitialPermissionsPolicy::new(
-                                    surgeist_dom::DomPermissionsPolicyValue::Enabled,
-                                    surgeist_dom::DomPermissionsPolicyValue::Enabled,
+                                surgeist_dom::hosted::DomInitialPermissionsPolicy::new(
+                                    surgeist_dom::hosted::DomPermissionsPolicyValue::Enabled,
+                                    surgeist_dom::hosted::DomPermissionsPolicyValue::Enabled,
                                 ),
                                 cancel,
                             )
@@ -1957,7 +1962,7 @@ impl HostedRuntime {
         &self,
         dom: &DomEventDom<'_>,
         global: DomHostedGlobalId,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         task: u64,
         custody: &mut Option<CspTaskCustody>,
         cancel: &AtomicBool,
@@ -1976,8 +1981,8 @@ impl HostedRuntime {
     pub(crate) fn enter_element_task(
         &self,
         dom: &DomEventDom<'_>,
-        association: surgeist_dom::DomElementTaskAssociation,
-        source: surgeist_dom::DomElementTaskSourceKind,
+        association: surgeist_dom::task::DomElementTaskAssociation,
+        source: surgeist_dom::task::DomElementTaskSourceKind,
         task: crate::element_tasks::DomElementTaskId,
         retired_target: bool,
         cancel: &AtomicBool,
@@ -1999,7 +2004,7 @@ impl HostedRuntime {
     fn enter_document_task(
         &self,
         dom: &DomEventDom<'_>,
-        (global_id, document): (DomHostedGlobalId, surgeist_dom::DocumentId),
+        (global_id, document): (DomHostedGlobalId, surgeist_dom::identity::DocumentId),
         current: records::CurrentTask,
         retired_target: bool,
         cancel: &AtomicBool,
@@ -2226,7 +2231,7 @@ mod constructor_settings_tests {
     use super::*;
     use crate::{DomElementTaskRuntimeLimits, DomSession, DomSessionLimits, DomStyleRuntimeLimits};
     use surgeist_css::source::CssUtf16InputLimits;
-    use surgeist_dom::{DomHostedRecordLimits, DomLimits};
+    use surgeist_dom::{hosted::DomHostedRecordLimits, limits::DomLimits};
 
     fn limits() -> DomHostedRuntimeLimits {
         DomHostedRuntimeLimits {
@@ -2254,8 +2259,10 @@ mod constructor_settings_tests {
                     256,
                     32,
                     1_000_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )
@@ -2463,7 +2470,7 @@ mod constructor_settings_tests {
     #[test]
     fn stylesheet_construction_refuses_while_second_top_level_owns_unmarked_native_execution() {
         use crate::DomConstructedSheetOwnerInit;
-        use surgeist_dom::DomHostedSheetConstructionError;
+        use surgeist_dom::hosted::sheet::DomHostedSheetConstructionError;
 
         let cancel = AtomicBool::new(false);
         let open_limits = limits();

@@ -2,7 +2,7 @@
 use super::admission::{Custody, Steps, current_storage};
 use super::*;
 use std::rc::Rc;
-use surgeist_dom::{
+use surgeist_dom::installation::style::{
     DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetError,
     DomParsedHtmlStyleSheetInput, DomParsedHtmlStyleSheetPreparation,
 };
@@ -403,8 +403,10 @@ impl DomStyleRuntime {
             .resources()
             .expect("actual staged report classification")
         {
-            surgeist_dom::DomParsedHtmlStyleResources::NoImports => ImportDependencies::NoImports,
-            surgeist_dom::DomParsedHtmlStyleResources::ImportsUnresolved => {
+            surgeist_dom::installation::style::DomParsedHtmlStyleResources::NoImports => {
+                ImportDependencies::NoImports
+            }
+            surgeist_dom::installation::style::DomParsedHtmlStyleResources::ImportsUnresolved => {
                 ImportDependencies::Imports
             }
         };

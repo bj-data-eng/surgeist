@@ -24,7 +24,7 @@ fn total(dom: &Dom) -> custody::Usage {
     dom.custody_registry.ledger().total()
 }
 
-fn document(dom: &mut Dom) -> crate::DocumentId {
+fn document(dom: &mut Dom) -> crate::internal::identity::DocumentId {
     let mut batch = crate::internal::batch::DomBatch::new();
     let document = batch.create_document();
     let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();

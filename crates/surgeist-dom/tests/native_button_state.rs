@@ -1,6 +1,17 @@
 //! HTML877d native Button association, explicit weak reflection and query oracles.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{
+        DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
+        DomSlotSemanticLimits,
+    },
+    edit::{CreatedNode, DomChange},
+    form::DomButton,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+};
 use surgeist_html::{
     attributes::HtmlFormMethod, elements::form::HtmlNativeFormAssociationKind,
     values::HtmlValueInterpreter,
@@ -23,7 +34,8 @@ fn owner() -> Dom {
             128,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -398,7 +410,8 @@ fn target_limits_late_failure_foreign_identity_and_cancel_preserve_state_and_his
             128,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -421,7 +434,8 @@ fn target_limits_late_failure_foreign_identity_and_cancel_preserve_state_and_his
             128,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

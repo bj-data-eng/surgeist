@@ -1,6 +1,6 @@
 //! Actual Frame state follows source Slot insertion/removal and fresh clone steps.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{Dom, DomBatch, DomCommit, limits::DomLimits};
 use surgeist_html::{
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
     values::Namespace,
@@ -21,7 +21,8 @@ fn frame_slottable_clone_and_adoption_preserve_both_canonical_families() {
             0,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

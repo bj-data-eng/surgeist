@@ -582,7 +582,7 @@ mod tests {
         select: NodeId,
         details: [NodeId; 2],
     }
-    fn limits(bytes: usize) -> crate::DomSourceLimits {
+    fn limits(bytes: usize) -> crate::internal::source::DomSourceLimits {
         crate::internal::source::DomSourceLimits::new(
             bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1,
         )

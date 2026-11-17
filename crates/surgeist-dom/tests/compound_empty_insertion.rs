@@ -2,9 +2,15 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomLimits, DomNameLimits, DomNodeKind, DomNodeOrString,
-    DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest,
-    DomStyleAction, DomStyleInlineCspObservation, DomStyleRequest, NodeId,
+    Dom, DomBatch,
+    edit::{DomChange, DomNodeOrString},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    source::{
+        DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest,
+    },
+    style::{DomStyleAction, DomStyleInlineCspObservation, DomStyleRequest},
+    tree::DomNodeKind,
 };
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
 use surgeist_html::values::{DocumentString, Namespace};

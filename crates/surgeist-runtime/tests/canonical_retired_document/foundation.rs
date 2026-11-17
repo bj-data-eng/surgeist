@@ -1,6 +1,20 @@
 use super::support::{HostedFixture, cancel, source_limits};
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    custom_element::DomRegistryBinding,
+    document::{DomDocumentClass, DomNativeInputPlatform},
+    hosted::DomHostedGlobalId,
+    identity::DocumentId,
+    installation::{
+        DomNativeHtmlInstallError, DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource,
+        DomNativeHtmlInstallTarget, DomSourceNativeHtmlInstallLimits,
+    },
+    limits::DomLimits,
+    shadow::DomShadowRootInit,
+    style::DomStyleSource,
+    tree::DomNodeKind,
+};
 use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
@@ -244,7 +258,8 @@ fn immutable_text_and_element_clones_get_fresh_retired_target_identities() {
             0,
             4,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -586,7 +601,8 @@ fn malformed_foreign_stale_cancelled_and_late_failed_edits_leave_retired_documen
             0,
             1,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

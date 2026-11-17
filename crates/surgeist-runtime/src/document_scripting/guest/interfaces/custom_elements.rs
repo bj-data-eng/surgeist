@@ -7,8 +7,13 @@ use surgeist_bindings_js::{
     dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DomDocumentScriptRegistration, DomNodeKind, DomRegistryBinding, DomRegistryDefinitionId,
-    DomRegistryId, DomSnapshot, DomSourceCustomElementRequest, NodeId,
+    DomSnapshot,
+    custom_element::{
+        DomRegistryBinding, DomRegistryDefinitionId, DomRegistryId, DomSourceCustomElementRequest,
+    },
+    identity::NodeId,
+    script::DomDocumentScriptRegistration,
+    tree::DomNodeKind,
 };
 use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::HtmlCustomElementDefinition;
@@ -657,9 +662,15 @@ impl Capture {
                 public.native_registry(read, identity)
             })?;
             let edit = if initialize {
-                surgeist_dom::DomSourceEdit::initialize_custom_element_registry(root.node(), id)
+                surgeist_dom::source::DomSourceEdit::initialize_custom_element_registry(
+                    root.node(),
+                    id,
+                )
             } else {
-                surgeist_dom::DomSourceEdit::upgrade_custom_element_registry(root.node(), id)
+                surgeist_dom::source::DomSourceEdit::upgrade_custom_element_registry(
+                    root.node(),
+                    id,
+                )
             };
             self.apply_tree_edit(scope, &owner, &events, edit, Completion::Undefined)
         })();
@@ -1252,7 +1263,7 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        operation: surgeist_dom::DomSourceOperationId,
+        operation: surgeist_dom::source::DomSourceOperationId,
     ) -> Result<(), DocumentGuestEventError> {
         self.drain_source_and_routed_reactions(scope, owner, events, operation, None)
     }
@@ -1279,7 +1290,7 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        queue: Option<surgeist_dom::DomSynchronousReactionQueue>,
+        queue: Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>,
     ) -> Result<(), DocumentGuestEventError> {
         let registration = reaction_registration(owner)?;
         while let Some(receiver) = use_reaction_work(events, |remaining| {
@@ -1302,8 +1313,8 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        operation: surgeist_dom::DomSourceOperationId,
-        queue: Option<surgeist_dom::DomSynchronousReactionQueue>,
+        operation: surgeist_dom::source::DomSourceOperationId,
+        queue: Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>,
     ) -> Result<(), DocumentGuestEventError> {
         let registration = reaction_registration(owner)?;
         let mut invocation = ReactionInvocation::new(owner)?;
@@ -1320,7 +1331,7 @@ impl Capture {
                 while let Some(fact) = batch.front() {
                     let reaction = if matches!(
                         fact.kind,
-                        surgeist_dom::DomCustomElementReactionKind::Upgrade
+                        surgeist_dom::custom_element::DomCustomElementReactionKind::Upgrade
                     ) {
                         Some(QueuedReaction::Upgrade {
                             definition: Some(fact.definition),
@@ -1622,9 +1633,9 @@ impl Capture {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        fact: surgeist_dom::DomCustomElementReaction<'_>,
+        fact: surgeist_dom::custom_element::DomCustomElementReaction<'_>,
     ) -> Result<Option<CallbackReaction>, DocumentGuestEventError> {
-        use surgeist_dom::DomCustomElementReactionKind as Kind;
+        use surgeist_dom::custom_element::DomCustomElementReactionKind as Kind;
         let (kind, callback_index) = match fact.kind {
             Kind::AttributeChanged { .. } => {
                 (DocumentGuestCustomElementCallback::AttributeChanged, 4)
@@ -1893,7 +1904,7 @@ impl Capture {
     fn registry_value<'scope>(
         &self,
         scope: &mut Scope<'scope>,
-        node: surgeist_dom::NodeId,
+        node: surgeist_dom::identity::NodeId,
     ) -> Result<Completion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
         let result = self.callbacks.with_read(&owner, &events, |read, _| {
@@ -2152,9 +2163,9 @@ impl QueuedReaction {
 }
 
 pub(super) struct SynchronousReactionScope<'a> {
-    operation: &'a Cell<Option<surgeist_dom::DomSynchronousReactionQueue>>,
-    previous: Option<surgeist_dom::DomSynchronousReactionQueue>,
-    queue: surgeist_dom::DomSynchronousReactionQueue,
+    operation: &'a Cell<Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>>,
+    previous: Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>,
+    queue: surgeist_dom::custom_element::DomSynchronousReactionQueue,
     published: &'a Cell<bool>,
     previous_published: bool,
     owner: &'a NativeOwner,
@@ -2179,7 +2190,7 @@ impl<'a> SynchronousReactionScope<'a> {
         })
     }
 
-    pub(super) fn queue(&self) -> surgeist_dom::DomSynchronousReactionQueue {
+    pub(super) fn queue(&self) -> surgeist_dom::custom_element::DomSynchronousReactionQueue {
         self.queue
     }
 
@@ -2201,7 +2212,7 @@ impl Drop for SynchronousReactionScope<'_> {
 
 fn pop_reaction_scope(
     scope: Option<SynchronousReactionScope<'_>>,
-) -> Option<surgeist_dom::DomSynchronousReactionQueue> {
+) -> Option<surgeist_dom::custom_element::DomSynchronousReactionQueue> {
     scope.and_then(|scope| scope.has_reactions().then(|| scope.queue()))
 }
 

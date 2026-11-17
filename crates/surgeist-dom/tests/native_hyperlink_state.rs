@@ -1,6 +1,16 @@
 //! Qualified A/Area set-URL through actual native attribute and tree owners.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    capture::{
+        DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource, DomSlotSemanticLimits,
+    },
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource},
+    shadow::DomSlotQueryLimits,
+    url::DomEncodingUrlFactsError,
+};
 use surgeist_html::values::DocumentString;
 use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 use surgeist_html_semantics::*;
@@ -16,7 +26,7 @@ fn policy(records: usize, work: u64, units: usize) -> DomLimits {
         64,
         8,
         262144,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_base_processing(128, 1_000_000)

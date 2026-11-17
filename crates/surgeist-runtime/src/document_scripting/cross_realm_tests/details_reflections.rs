@@ -694,7 +694,7 @@ fn details_zero_intention_capacity_refuses_only_transitions() {
         failure.cause::<crate::DomSourceDriveError>(),
         Some(crate::DomSourceDriveError::Source(
             crate::DomSourceRuntimeError::Dom(DomError::ResourceLimit {
-                resource: surgeist_dom::DomResource::DetailsToggleIntentions,
+                resource: surgeist_dom::limits::DomResource::DetailsToggleIntentions,
                 limit: 0
             })
         ))

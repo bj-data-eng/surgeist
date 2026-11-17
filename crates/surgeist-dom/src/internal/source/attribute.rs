@@ -41,7 +41,7 @@ impl DomSourceAttributeAttachmentOutput {
         self.operation
     }
 
-    pub const fn replaced(self) -> crate::DomAttrId {
+    pub const fn replaced(self) -> crate::internal::identity::DomAttrId {
         self.replaced
     }
 

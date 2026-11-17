@@ -3,7 +3,7 @@
 //! The selected non-isolated profile floors exposed timestamps to 100
 //! microseconds without jitter. Scheduling uses native elapsed time.
 use std::time::{Duration, Instant};
-use surgeist_dom::DomHostedSourceId;
+use surgeist_dom::hosted::DomHostedSourceId;
 
 /// A real observation of the epoch bound to the original hosted source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -147,7 +147,11 @@ mod tests {
             DomStyleRuntimeLimits,
         };
         use std::sync::atomic::AtomicBool;
-        use surgeist_dom::{Dom, DomHostedLimits, DomHostedRecordLimits, DomLimits};
+        use surgeist_dom::{
+            Dom,
+            hosted::{DomHostedLimits, DomHostedRecordLimits},
+            limits::DomLimits,
+        };
 
         let dom = Dom::new(
             DomLimits::new(
@@ -158,7 +162,8 @@ mod tests {
                 1024,
                 64,
                 4_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -269,7 +274,9 @@ mod tests {
         use super::*;
         use std::sync::atomic::AtomicBool;
         use surgeist_dom::{
-            Dom, DomHostedLimits, DomHostedRecordLimits, DomHostedSource, DomLimits,
+            Dom,
+            hosted::{DomHostedLimits, DomHostedRecordLimits, DomHostedSource},
+            limits::DomLimits,
         };
 
         // Controlled native observations exercise the production checked
@@ -284,8 +291,10 @@ mod tests {
                     1024,
                     64,
                     4_000_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )
@@ -451,9 +460,16 @@ mod tests {
                 DomSourceRuntimeError, DomSourceServices, DomStyleRuntimeLimits, HostedRuntime,
             };
             use surgeist_dom::{
-                DomBatch, DomHostedChildStep, DomHostedCreationStep, DomHostedError,
-                DomHostedOperationId, DomHostedResource, DomSourceEdit, DomSourceLimits,
-                DomSourceOperationId, DomSourceProgress, DomSourceRequest, NodeId,
+                DomBatch,
+                hosted::{
+                    DomHostedCreationStep, DomHostedError, DomHostedOperationId, DomHostedResource,
+                    child::DomHostedChildStep,
+                },
+                identity::NodeId,
+                source::{
+                    DomSourceEdit, DomSourceLimits, DomSourceOperationId, DomSourceProgress,
+                    DomSourceRequest,
+                },
             };
 
             fn limits(entries: usize, globals: usize) -> DomHostedRuntimeLimits {
@@ -488,7 +504,7 @@ mod tests {
                             1024,
                             64,
                             4_000_000,
-                            surgeist_dom::DomNameLimits::new(
+                            surgeist_dom::limits::DomNameLimits::new(
                                 16_777_216, 16_384, 4_000_000, 1_048_576,
                             )
                             .unwrap(),
@@ -1032,8 +1048,10 @@ mod tests {
                 let (mut session, _, top, dialog) =
                     hosted_dialog_for_clock(&[Ok(150_001), Ok(260_001), Ok(430_001)], &cancel);
                 let limits = session.dom().limits().with_event_recipients(
-                    surgeist_dom::DomEventRecipientLimits::new(4, 2_000_000, 2_000_000, 100_000)
-                        .unwrap(),
+                    surgeist_dom::event::DomEventRecipientLimits::new(
+                        4, 2_000_000, 2_000_000, 100_000,
+                    )
+                    .unwrap(),
                 );
                 session.dom().raw_mut().set_limits(limits).unwrap();
                 let retain = |dom: &mut crate::DomEventDom<'_>, target| {
@@ -1288,7 +1306,7 @@ mod tests {
                         .with_details_toggle_intentions(4)
                         .unwrap()
                         .with_dispatch_custody(
-                            surgeist_dom::DomDispatchCustodyLimits::new(
+                            surgeist_dom::event::DomDispatchCustodyLimits::new(
                                 8, 64, 1_000_000, 1_000_000, 100_000,
                             )
                             .unwrap(),
@@ -1461,7 +1479,10 @@ mod tests {
                     DomSourceEventServiceLimits, DomSourceEventServiceProgress,
                     DomSourceUnavailable,
                 };
-                use surgeist_dom::{DomError, DomSourceEventClockFailure, DomSourceEventKind};
+                use surgeist_dom::{
+                    DomError,
+                    event::{DomSourceEventClockFailure, DomSourceEventKind},
+                };
                 use surgeist_html::values::Namespace;
 
                 struct Context {
@@ -1481,7 +1502,7 @@ mod tests {
                         .with_details_toggle_intentions(4)
                         .unwrap()
                         .with_dispatch_custody(
-                            surgeist_dom::DomDispatchCustodyLimits::new(
+                            surgeist_dom::event::DomDispatchCustodyLimits::new(
                                 8, 64, 2_000_000, 2_000_000, 100_000,
                             )
                             .unwrap(),
@@ -1788,7 +1809,7 @@ mod tests {
                     DomEventType, DomStyleEventContext, DomStyleNetworkingProgress,
                     DomStyleRuntime,
                 };
-                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation};
+                use surgeist_dom::style::{DomStyleCssomRoot, DomStyleInlineCspObservation};
                 use surgeist_html::values::Namespace;
 
                 struct Context {
@@ -1809,13 +1830,13 @@ mod tests {
                 let mut session = session_with_dom_limits(|limits| {
                     limits
                         .with_dispatch_custody(
-                            surgeist_dom::DomDispatchCustodyLimits::new(
+                            surgeist_dom::event::DomDispatchCustodyLimits::new(
                                 8, 64, 2_000_000, 2_000_000, 100_000,
                             )
                             .unwrap(),
                         )
                         .with_event_recipients(
-                            surgeist_dom::DomEventRecipientLimits::new(
+                            surgeist_dom::event::DomEventRecipientLimits::new(
                                 16, 2_000_000, 2_000_000, 100_000,
                             )
                             .unwrap(),
@@ -2037,7 +2058,7 @@ mod tests {
                     DomSourceEventServiceProgress, DomSourceUnavailable, DomStyleEventContext,
                     DomStyleNetworkingProgress, DomStyleRuntime, DomStyleRuntimeError,
                 };
-                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation};
+                use surgeist_dom::style::{DomStyleCssomRoot, DomStyleInlineCspObservation};
                 use surgeist_html::values::Namespace;
 
                 struct Context {
@@ -2064,8 +2085,10 @@ mod tests {
                     &cancel,
                 );
                 let recipient_limits = session.dom().limits().with_event_recipients(
-                    surgeist_dom::DomEventRecipientLimits::new(16, 2_000_000, 2_000_000, 100_000)
-                        .unwrap(),
+                    surgeist_dom::event::DomEventRecipientLimits::new(
+                        16, 2_000_000, 2_000_000, 100_000,
+                    )
+                    .unwrap(),
                 );
                 session
                     .dom()
@@ -2314,7 +2337,10 @@ mod tests {
                     DomEventType, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
                     DomSourceEventServiceProgress, DomSourceUnavailable,
                 };
-                use surgeist_dom::{DomError, DomSourceEventKind, DomSourceEventRequest};
+                use surgeist_dom::{
+                    DomError,
+                    event::{DomSourceEventKind, DomSourceEventRequest},
+                };
 
                 struct Observation {
                     kind: DomEventType,
@@ -2327,7 +2353,7 @@ mod tests {
                 let cancel = AtomicBool::new(false);
                 let mut session = session_with_dom_limits(|limits| {
                     limits.with_dispatch_custody(
-                        surgeist_dom::DomDispatchCustodyLimits::new(
+                        surgeist_dom::event::DomDispatchCustodyLimits::new(
                             16, 128, 2_000_000, 2_000_000, 100_000,
                         )
                         .unwrap(),
@@ -2636,11 +2662,11 @@ mod tests {
                 DomSession,
                 HostedRuntime,
                 crate::DomHostedTopLevel,
-                surgeist_dom::NodeId,
+                surgeist_dom::identity::NodeId,
             ) {
                 let mut session = session_with_dom_limits(|limits| {
                     limits.with_dispatch_custody(
-                        surgeist_dom::DomDispatchCustodyLimits::new(
+                        surgeist_dom::event::DomDispatchCustodyLimits::new(
                             8, 64, 2_000_000, 2_000_000, 100_000,
                         )
                         .unwrap(),
@@ -2678,7 +2704,7 @@ mod tests {
 
             #[test]
             fn canceled_clock_preflight_keeps_the_private_dialog_firing_for_resume() {
-                use surgeist_dom::{DomSourceAdvance, DomSourcePhase};
+                use surgeist_dom::{event::DomSourceAdvance, source::DomSourcePhase};
 
                 let cancel = AtomicBool::new(false);
                 let (mut session, hosted, top, target) =
@@ -2771,8 +2797,9 @@ mod tests {
                     DomSourceEventServiceProgress, DomSourceInlineStyleEdit, DomSourceUnavailable,
                 };
                 use surgeist_dom::{
-                    DomInlineStyleRequestLimits, DomInlineStyleSourceContext, DomMetaAtomicLimits,
-                    DomSourceEventClockFailure, DomSourceEventKind,
+                    event::{DomSourceEventClockFailure, DomSourceEventKind},
+                    meta::DomMetaAtomicLimits,
+                    style::inline::{DomInlineStyleRequestLimits, DomInlineStyleSourceContext},
                 };
 
                 let meta = DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap();
@@ -2797,7 +2824,7 @@ mod tests {
                         .dom()
                         .raw_mut()
                         .configure_inline_styles(
-                            surgeist_dom::DomInlineStyleLimits::new(
+                            surgeist_dom::style::inline::DomInlineStyleLimits::new(
                                 surgeist_cssom::CssomLimits::default(),
                                 8,
                                 64_000_000,
@@ -3096,7 +3123,7 @@ mod tests {
                     .set_limits(&mut session.dom(), limits(1, 1), &cancel)
                     .unwrap();
                 let mut source = session.source_execution();
-                let mut policy = |_: &surgeist_dom::DomStyleSource| None;
+                let mut policy = |_: &surgeist_dom::style::DomStyleSource| None;
                 let mut services = DomSourceServices {
                     meta: None,
                     execution_scope: None,

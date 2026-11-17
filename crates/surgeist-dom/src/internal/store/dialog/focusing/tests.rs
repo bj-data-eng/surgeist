@@ -3,7 +3,7 @@
 use super::*;
 use surgeist_html::vocabulary::KnownHtmlAttribute;
 
-fn limits(work: u64) -> crate::DomSourceLimits {
+fn limits(work: u64) -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(32_000_000, 1_000_000, work, 32, 4096, 4096, 2)
 }
 fn fixture(root_dialog: bool) -> (Dom, NodeId, NodeId) {

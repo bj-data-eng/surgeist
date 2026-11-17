@@ -2,8 +2,11 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomError, DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits,
-    DomHtmlCaptureResource, DomLimits, DomShadowRootInit, DomSnapshot, NodeId,
+    Dom, DomBatch, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource},
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    shadow::DomShadowRootInit,
 };
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html::{
@@ -27,7 +30,8 @@ fn dom() -> Dom {
             0,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

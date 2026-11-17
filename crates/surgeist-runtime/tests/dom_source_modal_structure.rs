@@ -9,7 +9,15 @@
     target_os = "ios"
 ))]
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch,
+    event::DomDispatchCustodyLimits,
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    identity::NodeId,
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceRequest},
+    task::DomElementTaskSourceKind,
+};
 use surgeist_html::elements::dialog::{HtmlDialogFocusingAction, HtmlDialogState};
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
@@ -39,7 +47,8 @@ fn headless_dialog() -> (DomSession, DomHostedTopLevel, NodeId) {
             2048,
             64,
             8_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(

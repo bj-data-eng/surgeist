@@ -2,7 +2,13 @@
 //! Supplied URL observations are opaque external facts, not a test URL parser.
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits},
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    url::{DomEncodingUrlFactsError, DomHyperlink},
+};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::*;
 
@@ -19,7 +25,8 @@ fn owner() -> Dom {
             512,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_base_processing(256, 10_000_000)

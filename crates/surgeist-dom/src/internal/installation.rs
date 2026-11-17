@@ -45,7 +45,7 @@ impl DomNativeHtmlInstallTarget {
 /// their UTF-16 extent. An empty ordinary fragment costs nine work units.
 /// Scratch bytes bound the simultaneous actual capacities of adapter traversal,
 /// source rows, final IDs and returned bindings. Canonical staged tree and
-/// publication storage use [`crate::DomLimits`] separately. Zero limits are legal
+/// publication storage use [`crate::limits::DomLimits`] separately. Zero limits are legal
 /// and refuse any operation requiring that resource.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomNativeHtmlInstallLimits {

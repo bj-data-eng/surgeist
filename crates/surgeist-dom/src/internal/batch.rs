@@ -443,8 +443,11 @@ impl DomBatch {
             ranges: 0,
         }
     }
-    pub fn create_range(&mut self, document: impl Into<NodeOperand>) -> crate::CreatedRange {
-        let ticket = crate::CreatedRange {
+    pub fn create_range(
+        &mut self,
+        document: impl Into<NodeOperand>,
+    ) -> crate::internal::range::CreatedRange {
+        let ticket = crate::internal::range::CreatedRange {
             owner: self.owner.clone(),
             index: self.ranges,
         };

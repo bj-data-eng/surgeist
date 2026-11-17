@@ -2,7 +2,18 @@
 //! positive case lives in foundation; these controls retain the same installer.
 use super::support::{HostedFixture, body, cancel, source_limits};
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    custom_element::DomRegistryBinding,
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomNativeHtmlAssociation, DomNativeHtmlInstallError, DomNativeHtmlInstallLimits,
+        DomNativeHtmlInstallResource, DomNativeHtmlInstallTarget, DomSourceNativeHtmlInstallLimits,
+    },
+    limits::DomUsage,
+    style::DomStyleSource,
+    tree::DomNodeKind,
+};
 use surgeist_html::construction::{HtmlConstructionLimits, HtmlDoctype, HtmlFragment};
 use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 use surgeist_runtime::*;

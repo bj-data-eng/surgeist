@@ -63,7 +63,7 @@ impl<C> DomEventDispatcher<C> {
     pub(crate) fn prepare_csp_violation(
         &mut self,
         dom: &mut DomEventDom<'_>,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         report: Rc<QueuedViolation>,
         creation: &mut Option<Result<EventCreation, DomEventTimestampUnavailable>>,
         cancel: &AtomicBool,

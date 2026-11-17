@@ -1,10 +1,15 @@
 //! The original NativeAgent's retained Window and close-watcher managers.
 use super::*;
 use surgeist_dom::{
-    DomCloseWatcherId, DomCloseWatcherRequestPublication, DomDialogWatcherPublication,
-    DomHostedRuntimeRetention, DomSnapshot, DomSourceCloseWatcherInvocationId,
-    DomSourceCloseWatcherRequest, DomSourceCloseWatcherStep, DomSourceDialogRequest,
-    DomSourceLease, NodeId,
+    DomSnapshot,
+    dialog::{
+        DomCloseWatcherId, DomCloseWatcherRequestPublication, DomDialogWatcherPublication,
+        DomSourceCloseWatcherInvocationId, DomSourceCloseWatcherRequest, DomSourceCloseWatcherStep,
+        DomSourceDialogRequest,
+    },
+    hosted::DomHostedRuntimeRetention,
+    identity::NodeId,
+    source::DomSourceLease,
 };
 use surgeist_html::elements::dialog::{
     HtmlCloseWatcherManager, HtmlCloseWatcherPlacement, HtmlCloseWatcherRequestAction,

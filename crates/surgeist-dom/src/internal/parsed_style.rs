@@ -10,11 +10,18 @@ use crate::{
     internal::parsed_installation::DomParsedHtmlAssociationId,
     internal::parsed_installation::DomParsedHtmlHistoricalDocument, internal::store::DomError,
 };
-pub use frontier::*;
-pub use notification::*;
-pub use sheet::*;
-pub use subject::*;
-pub use successor::*;
+pub use frontier::{DomParsedHtmlExecutionState, DomParsedHtmlFrontierError};
+pub use notification::{
+    DomParsedHtmlStyleNotificationDisposition, DomParsedHtmlStyleNotificationError,
+    DomParsedHtmlStyleNotificationHandoff, DomParsedHtmlStyleNotificationHandoffStatus,
+    DomParsedHtmlStyleNotificationRequirement, DomParsedHtmlStyleNotificationUnavailable,
+};
+pub use sheet::{
+    DomParsedHtmlStyleCreateSheetRequest, DomParsedHtmlStyleSheetError,
+    DomParsedHtmlStyleSheetInput,
+};
+pub use subject::DomParsedHtmlStyleSubjectError;
+pub use successor::{DomParsedHtmlStyleSuccessorError, DomParsedHtmlStyleSuccessorRemoval};
 use surgeist_html::values::DocumentString;
 use surgeist_html::{
     construction::HtmlNodeId,
@@ -314,7 +321,11 @@ impl DomParsedHtmlStyleInlinePolicyRequest {
 /// before beginning the accepting command. `None` explicitly leaves evaluation
 /// unavailable; it never means permission:
 /// ```no_run
-/// use surgeist_dom::*;
+/// use surgeist_dom::Dom;
+/// use surgeist_dom::installation::style::{
+///     DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStyleInlinePolicyRequest,
+/// };
+/// use surgeist_dom::installation::{DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn supply(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 ///           limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool,
@@ -363,4 +374,4 @@ impl DomParsedHtmlStyleInlinePolicyObservation {
 }
 
 mod terminal;
-pub use terminal::*;
+pub use terminal::DomParsedHtmlTerminalError;

@@ -1265,7 +1265,7 @@ fn check_published_iframe_svg_refusal(retry_close: bool) {
 }
 
 pub(super) fn native_installation_refuses_unavailable_producers_before_publication() {
-    use surgeist_dom::{
+    use surgeist_dom::installation::{
         DomNativeHtmlInstallError, DomNativeHtmlInstallLimits, DomNativeHtmlInstallTarget,
         DomSourceNativeHtmlInstallLimits,
     };

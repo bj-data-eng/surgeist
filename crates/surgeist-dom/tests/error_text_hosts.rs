@@ -19,14 +19,29 @@ use surgeist_cssom::{
     CssomOwnerEffectStatus, CssomUsabilityRequirement,
 };
 use surgeist_dom::{
-    DocumentId, Dom, DomBaseFactsError, DomBatch, DomDocumentConstructorError,
-    DomEncodingUrlFactsError, DomError, DomHostDomains, DomHostError, DomHostObservations,
-    DomHostPublisher, DomHostedError, DomHostedLimits, DomHostedRecordLimits, DomHostedResource,
-    DomHostedSheetConstructionError, DomHtmlCaptureError, DomHtmlCaptureLimits,
-    DomHtmlCaptureResource, DomInlineStyleError, DomInlineStyleInputs, DomInlineStyleLimits,
-    DomInlineStyleRequestLimits, DomLimits, DomMetaAtomicError, DomMetaError,
-    DomSourceEventClockFailure, DomStyleCssomRootError, DomViewTransitionCssomError, NodeId,
-    Observed,
+    Dom, DomBatch, DomError,
+    capture::{
+        DomHostDomains, DomHostError, DomHostObservations, DomHostPublisher, DomHtmlCaptureError,
+        DomHtmlCaptureLimits, DomHtmlCaptureResource, Observed,
+    },
+    event::DomSourceEventClockFailure,
+    hosted::{
+        DomHostedError, DomHostedLimits, DomHostedRecordLimits, DomHostedResource,
+        sheet::DomHostedSheetConstructionError,
+    },
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    meta::{DomMetaAtomicError, DomMetaError},
+    script::DomDocumentConstructorError,
+    style::{
+        DomStyleCssomRootError,
+        inline::{
+            DomInlineStyleError, DomInlineStyleInputs, DomInlineStyleLimits,
+            DomInlineStyleRequestLimits,
+        },
+    },
+    url::{DomBaseFactsError, DomEncodingUrlFactsError},
+    view_transition::DomViewTransitionCssomError,
 };
 use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
@@ -426,7 +441,7 @@ fn limits(meta_work: u64) -> DomLimits {
         64,
         8,
         262_144,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_base_processing(128, 1_000_000)

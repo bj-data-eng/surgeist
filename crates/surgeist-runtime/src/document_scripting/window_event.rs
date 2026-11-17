@@ -4,7 +4,7 @@ use surgeist_bindings_js::{
     Arguments, Callback, Completion, Error, FunctionMetadata, Primitive, PropertyDescriptor,
     PropertyKey, Root, Scope,
 };
-use surgeist_dom::DomHostedRuntimeRetention;
+use surgeist_dom::hosted::DomHostedRuntimeRetention;
 
 const EVENT: [u8; 5] = *b"event";
 const ILLEGAL_RECEIVER: [u8; 19] = *b"Not a Window object";

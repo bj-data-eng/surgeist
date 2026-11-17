@@ -1,8 +1,11 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomElementDefinition, DomError, DomLimits,
-    DomRegistryBinding, DomResource, NodeId,
+    Dom, DomBatch, DomError,
+    custom_element::{DomElementDefinition, DomRegistryBinding},
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
 };
 use surgeist_html::{
     elements::native::HtmlCustomElementState,
@@ -19,7 +22,8 @@ fn dom() -> Dom {
             0,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -361,7 +365,7 @@ fn element_traversal_filters_character_data_and_preserves_captured_indices() {
     assert_eq!(before.node(text).unwrap().element_index(), None);
     assert_eq!(before.node(b).unwrap().element_index(), Some(1));
     assert_eq!(before.node(a).unwrap().parent_element(), Some(root));
-    use surgeist_dom::DomSiblingDirection::{Next, Previous};
+    use surgeist_dom::tree::DomSiblingDirection::{Next, Previous};
     let mut parent_lookup = 0usize;
     let found = before.node(b).unwrap().parent_element_with(|| {
         parent_lookup += 1;
@@ -413,7 +417,8 @@ fn exact_attribute_budget_counts_all_stored_name_parts_and_rolls_back_overflow()
             0,
             8,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

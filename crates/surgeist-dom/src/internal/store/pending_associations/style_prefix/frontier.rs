@@ -154,7 +154,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
 }
 pub(super) fn original_document(
     value: HtmlParseMetadataDocument<'_>,
-) -> crate::DomParsedHtmlHistoricalDocument {
+) -> crate::internal::parsed_installation::DomParsedHtmlHistoricalDocument {
     match value {
         HtmlParseMetadataDocument::Owned(node) => {
             crate::internal::parsed_installation::DomParsedHtmlHistoricalDocument::Constructed(

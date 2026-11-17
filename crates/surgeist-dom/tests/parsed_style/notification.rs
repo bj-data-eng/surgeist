@@ -19,7 +19,7 @@ fn rendered(outputs: usize) -> Ready {
             .unwrap()
             .process_rendering(
                 &value.q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Transfer(
                     &mut value.notification
                 ),
                 &flag()
@@ -96,7 +96,7 @@ fn actual_parsed_origin_is_once_only_and_bare_cleanup_cannot_substitute_for_deli
     assert!(matches!(
         value.dom.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Native,
+            surgeist_dom::style::DomStyleNotificationDelivery::Native,
             1024,
             &flag()
         ),
@@ -232,7 +232,7 @@ fn wrong_label_foreign_owner_cancellation_and_dropped_preparation_do_not_issue()
     assert!(matches!(
         foreign.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Native,
+            surgeist_dom::style::DomStyleNotificationDelivery::Native,
             1024,
             &flag()
         ),

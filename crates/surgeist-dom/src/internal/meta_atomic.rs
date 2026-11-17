@@ -369,7 +369,7 @@ pub struct DomMetaSourceCommit {
     pub(crate) stamp: crate::internal::identity::DomStamp,
 }
 impl DomMetaSourceCommit {
-    pub fn source(&self) -> &crate::DomSourceProgress {
+    pub fn source(&self) -> &crate::internal::source::DomSourceProgress {
         &self.source
     }
     pub fn roots(&self) -> &[DomMetaRootCommit] {
@@ -380,7 +380,7 @@ impl DomMetaSourceCommit {
     ) -> Option<&crate::internal::inline_style::DomInlineStyleSourcePublication> {
         self.inline.as_ref()
     }
-    pub const fn stamp(&self) -> crate::DomStamp {
+    pub const fn stamp(&self) -> crate::internal::identity::DomStamp {
         self.stamp
     }
     pub fn into_parts(

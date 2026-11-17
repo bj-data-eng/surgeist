@@ -10,7 +10,10 @@
 //! document and parent validity, native-family admission, limits and atomic
 //! publication. This module evaluates nothing.
 
-use surgeist_dom::{CreatedNode, DomBatch, NodeOperand};
+use surgeist_dom::{
+    DomBatch,
+    edit::{CreatedNode, NodeOperand},
+};
 use surgeist_html::{
     values::{DocumentString, Namespace},
     vocabulary::KnownHtmlElement,
@@ -110,7 +113,7 @@ struct PlannedNode {
 ///
 /// ```
 /// use std::sync::atomic::AtomicBool;
-/// use surgeist_dom::{Dom, DomBatch, DomLimits};
+/// use surgeist_dom::{Dom, DomBatch, limits::DomLimits};
 /// use surgeist_html::values::Namespace;
 /// use surgeist_template::dom::append_static_html;
 /// use surgeist_template::registry::{AttributeKind, AttributeRule, ComponentRegistry,
@@ -120,7 +123,7 @@ struct PlannedNode {
 ///     AttributeRule::one(AttributeKind::Static)).unwrap();
 /// let authored = parse_template("<div title=example>hello</div>").unwrap();
 /// let template = validate_template(&authored, &native, &ComponentRegistry::default()).unwrap();
-/// let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap();
+/// let names = surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap();
 /// let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 4, 8192, names).unwrap()).unwrap();
 /// let mut batch = DomBatch::new();
 /// let document = batch.create_document();

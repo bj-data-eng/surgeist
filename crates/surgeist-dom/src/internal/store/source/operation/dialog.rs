@@ -438,7 +438,7 @@ impl Operation {
             DialogFiring {
                 subject,
                 payload: crate::internal::source::event::DomSourceEventPayload::Toggle(
-                    crate::DomSourceToggleEvent { old, new },
+                    crate::internal::source::DomSourceToggleEvent { old, new },
                 ),
                 cancelable,
                 kind: DomSourceEventKind::BeforeToggle,
@@ -461,7 +461,7 @@ impl Operation {
                 payload: match task {
                     crate::internal::store::source::operation::dialog_queue::DomDialogTaskInfo::Toggle(info) => {
                         crate::internal::source::event::DomSourceEventPayload::Toggle(
-                            crate::DomSourceToggleEvent {
+                            crate::internal::source::DomSourceToggleEvent {
                                 old: info.old_state(),
                                 new: info.new_state(),
                             },
@@ -708,7 +708,7 @@ impl DomSourceEventFiringLoan<'_> {
             FiringTime::Observed(occurrence.map(|microseconds| DomSourceEventTime {
                 global: self.global,
                 origin: self.origin,
-                occurrence: crate::DomHostedMoment {
+                occurrence: crate::internal::hosted::DomHostedMoment {
                     source: self.source.id(),
                     microseconds,
                 },

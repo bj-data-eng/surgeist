@@ -47,13 +47,13 @@ impl DomSourceFullscreenExitHandoffRequest {
     pub const fn current_occurrence(&self) -> u64 {
         self.occurrence.ordinal
     }
-    pub const fn traversable(&self) -> crate::DomHostedNavigableId {
+    pub const fn traversable(&self) -> crate::internal::hosted::DomHostedNavigableId {
         self.traversable
     }
-    pub const fn global(&self) -> crate::DomHostedGlobalId {
+    pub const fn global(&self) -> crate::internal::hosted::DomHostedGlobalId {
         self.global
     }
-    pub const fn host(&self) -> crate::DomHostedHostId {
+    pub const fn host(&self) -> crate::internal::hosted::DomHostedHostId {
         self.host
     }
 }
@@ -69,13 +69,13 @@ impl DomFullscreenExitJob {
     pub const fn id(&self) -> DomFullscreenExitId {
         self.id
     }
-    pub const fn traversable(&self) -> crate::DomHostedNavigableId {
+    pub const fn traversable(&self) -> crate::internal::hosted::DomHostedNavigableId {
         self.traversable
     }
-    pub const fn global(&self) -> crate::DomHostedGlobalId {
+    pub const fn global(&self) -> crate::internal::hosted::DomHostedGlobalId {
         self.global
     }
-    pub const fn host(&self) -> crate::DomHostedHostId {
+    pub const fn host(&self) -> crate::internal::hosted::DomHostedHostId {
         self.host
     }
 }
@@ -366,7 +366,12 @@ impl<'dom> DomSourceLease<'dom> {
         drop(locked);
         Ok((
             job,
-            inline.map(|inline| crate::DomInlineStyleSourcePublication { dom, inline }),
+            inline.map(
+                |inline| crate::internal::inline_style::DomInlineStyleSourcePublication {
+                    dom,
+                    inline,
+                },
+            ),
         ))
     }
 

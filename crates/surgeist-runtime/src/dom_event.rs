@@ -35,8 +35,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use surgeist_dom::{
-    Dom, DomDispatchCustody, DomError, DomEventParent, DomEventParentQuery, DomEventRecipient,
-    DomHostedError, DomParsedHtmlStyleNotificationRequirement, DomSnapshot, NodeId,
+    Dom, DomError, DomSnapshot,
+    event::{DomDispatchCustody, DomEventParent, DomEventParentQuery, DomEventRecipient},
+    hosted::DomHostedError,
+    identity::NodeId,
+    installation::style::DomParsedHtmlStyleNotificationRequirement,
 };
 use surgeist_html::construction::HtmlShadowRootMode;
 mod storage;
@@ -78,15 +81,15 @@ impl<'a> DomEventDom<'a> {
         }
     }
     /// Exact canonical owner identity.
-    pub fn owner(&self) -> surgeist_dom::DomOwnerId {
+    pub fn owner(&self) -> surgeist_dom::identity::DomOwnerId {
         self.dom.owner()
     }
     /// Current finite canonical limits.
-    pub fn limits(&self) -> surgeist_dom::DomLimits {
+    pub fn limits(&self) -> surgeist_dom::limits::DomLimits {
         self.dom.limits()
     }
     /// Current canonical usage.
-    pub fn usage(&self) -> surgeist_dom::DomUsage {
+    pub fn usage(&self) -> surgeist_dom::limits::DomUsage {
         self.dom.usage()
     }
     /// An immutable historical capture, without mutable resource custody.
@@ -112,29 +115,29 @@ impl<'a> DomEventDom<'a> {
         &mut self,
         max_output: usize,
         cancel: &std::sync::atomic::AtomicBool,
-    ) -> Result<surgeist_dom::DomDetailsToggleTransfer, DomError> {
+    ) -> Result<surgeist_dom::details::DomDetailsToggleTransfer, DomError> {
         self.dom.take_details_toggle_intentions(max_output, cancel)
     }
     /// Actual parked source status, including unpublished formation. This read
     /// lends no source lease or notification token.
-    pub fn pending_source_edit(&self) -> Option<surgeist_dom::DomSourceStatus> {
+    pub fn pending_source_edit(&self) -> Option<surgeist_dom::source::DomSourceStatus> {
         self.dom.pending_source_edit()
     }
     /// Live canonical invocation observation, without execution or reply authority.
     pub fn fullscreen_exit_status(
         &self,
-        invocation: surgeist_dom::DomFullscreenExitId,
-    ) -> Result<surgeist_dom::DomFullscreenExitStatus, DomError> {
+        invocation: surgeist_dom::fullscreen::DomFullscreenExitId,
+    ) -> Result<surgeist_dom::fullscreen::DomFullscreenExitStatus, DomError> {
         self.dom.fullscreen_exit_status(invocation)
     }
     /// Atomically transfers the recorded Document's actual pending fullscreen
     /// tuples. This does not choose targets or deliver events.
     pub fn take_fullscreen_events(
         &mut self,
-        document: surgeist_dom::DocumentId,
+        document: surgeist_dom::identity::DocumentId,
         max_output: usize,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::DomFullscreenEventBatch, DomError> {
+    ) -> Result<surgeist_dom::fullscreen::DomFullscreenEventBatch, DomError> {
         self.dom
             .take_fullscreen_events(document, max_output, cancel)
     }
@@ -143,7 +146,7 @@ impl<'a> DomEventDom<'a> {
     pub fn style_cssom_root(
         &self,
         root: NodeId,
-    ) -> Result<Option<surgeist_dom::DomStyleCssomRoot>, DomError> {
+    ) -> Result<Option<surgeist_dom::style::DomStyleCssomRoot>, DomError> {
         self.dom.style_cssom_root(root)
     }
     pub(crate) fn raw_mut(&mut self) -> &mut Dom {
@@ -154,18 +157,18 @@ impl<'a> DomEventDom<'a> {
     }
     pub(crate) fn begin_source_edit<Backing>(
         &mut self,
-        input: impl Into<surgeist_dom::DomSourceInput<Backing>>,
-        limits: surgeist_dom::DomSourceLimits,
+        input: impl Into<surgeist_dom::source::DomSourceInput<Backing>>,
+        limits: surgeist_dom::source::DomSourceLimits,
         cancel: &std::sync::atomic::AtomicBool,
-    ) -> Result<surgeist_dom::DomSourceLease<'_>, DomError> {
+    ) -> Result<surgeist_dom::source::DomSourceLease<'_>, DomError> {
         self.dom.begin_source_edit(input, limits, cancel)
     }
     pub(crate) fn resume_source_edit(
         &mut self,
-        id: surgeist_dom::DomSourceOperationId,
-        limits: surgeist_dom::DomSourceLimits,
+        id: surgeist_dom::source::DomSourceOperationId,
+        limits: surgeist_dom::source::DomSourceLimits,
         cancel: &std::sync::atomic::AtomicBool,
-    ) -> Result<surgeist_dom::DomSourceLease<'_>, DomError> {
+    ) -> Result<surgeist_dom::source::DomSourceLease<'_>, DomError> {
         self.dom.resume_source_edit(id, limits, cancel)
     }
 }
@@ -427,10 +430,10 @@ pub enum DomEventDispatchOutcome {
     RetainedParsedAdmission(DomError),
     /// A callback published an unfinished canonical source hook tail. Finish
     /// that exact DOM operation before resuming; no listener is replayed.
-    RetainedSourceOperation(surgeist_dom::DomSourceOperationId),
+    RetainedSourceOperation(surgeist_dom::source::DomSourceOperationId),
     /// A published native creator tail must complete before later invocations.
     /// Coherent queued destruction does not trigger this state.
-    RetainedHostedOperation(surgeist_dom::DomHostedOperationId),
+    RetainedHostedOperation(surgeist_dom::hosted::DomHostedOperationId),
     /// The next listener's current hosted authority is unavailable. Its exact
     /// cursor remains retained; previously entered callbacks are not replayed.
     RetainedHostedAuthority(DomHostedError),
@@ -652,7 +655,7 @@ impl DomEventHostInvocation {
     }
     pub(crate) fn retain_source_scope(
         &self,
-        scope: surgeist_dom::DomSourceEventDispatchGuard,
+        scope: surgeist_dom::event::DomSourceEventDispatchGuard,
     ) -> Result<(), DomEventDispatchError> {
         let custody = self
             .custody
@@ -706,7 +709,7 @@ struct HostFrame {
     current_target: DomEventTarget,
     result: Option<Result<(), DomEventCallbackError>>,
     running: Option<RunningReservation>,
-    scope: Option<surgeist_dom::DomSourceEventDispatchGuard>,
+    scope: Option<surgeist_dom::event::DomSourceEventDispatchGuard>,
 }
 struct Registration<C> {
     target: DomEventTarget,
@@ -742,13 +745,13 @@ impl Drop for RunningReservation {
 }
 enum RegistryAssociation {
     Unbound,
-    Bound(surgeist_dom::DomEventRegistryAssociation),
+    Bound(surgeist_dom::event::DomEventRegistryAssociation),
 }
 struct PreparedRegistry {
     // Backing is released before its provisional canonical debit.
     pending: Vec<ContinuationObservation>,
     funding: EventAllocation,
-    association: surgeist_dom::DomEventRegistryPreparation,
+    association: surgeist_dom::event::DomEventRegistryPreparation,
 }
 impl RegistryAssociation {
     fn validate(&self, dom: &Dom) -> Result<(), DomEventDispatchError> {
@@ -1929,7 +1932,7 @@ impl NativeEventCause {
     }
 }
 struct Event {
-    owner: surgeist_dom::DomOwnerId,
+    owner: surgeist_dom::identity::DomOwnerId,
     // No type means legacy initialization has not occurred. An initialized
     // Event may have the exact empty type.
     event_type: RefCell<Option<DomEventType>>,
@@ -1983,7 +1986,7 @@ enum BodyStorage {
         _retained: crate::element_tasks::TaskPayload,
     },
     Source {
-        _retained: surgeist_dom::DomSourceEventRetention,
+        _retained: surgeist_dom::event::DomSourceEventRetention,
         _extent: BodyExtent,
     },
     Style {
@@ -2022,7 +2025,7 @@ enum Funding {
     Element(crate::element_tasks::TaskPayload),
     Source {
         extent: BodyExtent,
-        retained: surgeist_dom::DomSourceEventRetention,
+        retained: surgeist_dom::event::DomSourceEventRetention,
     },
     Style(BodyExtent),
     #[cfg(test)]
@@ -2038,7 +2041,7 @@ enum PathFunding {
     },
     Source {
         _extent: BodyExtent,
-        _retained: surgeist_dom::DomSourceEventPayloadRetention,
+        _retained: surgeist_dom::event::DomSourceEventPayloadRetention,
     },
     Style {
         _extent: BodyExtent,
@@ -2054,7 +2057,7 @@ impl DispatchFunding {
 
     pub(crate) fn source(
         live: &Rc<Cell<usize>>,
-        retained: surgeist_dom::DomSourceEventRetention,
+        retained: surgeist_dom::event::DomSourceEventRetention,
         bytes: usize,
     ) -> Self {
         Self(Funding::Source {
@@ -2246,7 +2249,7 @@ impl EventBodyCustody {
         })
     }
     pub(crate) fn source(
-        retained: &mut surgeist_dom::DomSourceEventRetention,
+        retained: &mut surgeist_dom::event::DomSourceEventRetention,
         live: &Rc<Cell<usize>>,
         storage: EventStorage,
     ) -> Result<Self, DomError> {
@@ -2305,7 +2308,7 @@ fn test_event_backing() -> EventBodyCustody {
 /// The state of one invocation survives weak expiry for truthful diagnostics.
 /// Its storage receipt retains no continuation, callback or execution scope.
 struct ContinuationState {
-    owner: surgeist_dom::DomOwnerId,
+    owner: surgeist_dom::identity::DomOwnerId,
     origin: DispatchOrigin,
     status: Cell<Status>,
     _body: BodyCustody,
@@ -2314,7 +2317,7 @@ struct ContinuationState {
 #[derive(Clone, Debug)]
 enum DispatchOrigin {
     Node(NodeId),
-    Global(surgeist_dom::DomHostedGlobalId),
+    Global(surgeist_dom::hosted::DomHostedGlobalId),
     Standalone(DomStandaloneEventTarget),
     Selected {
         node: NodeId,
@@ -3243,8 +3246,8 @@ enum RunStop {
     Resource(DomEventResource),
     ParsedSynchronous(DomParsedHtmlStyleNotificationRequirement),
     ParsedAdmission(DomError),
-    SourceOperation(surgeist_dom::DomSourceOperationId),
-    HostedOperation(surgeist_dom::DomHostedOperationId),
+    SourceOperation(surgeist_dom::source::DomSourceOperationId),
+    HostedOperation(surgeist_dom::hosted::DomHostedOperationId),
     HostedAuthority(DomHostedError),
     ForeignOwner,
     ForeignRegistry,

@@ -1,7 +1,9 @@
 //! Whole original settlement joins canonical proof with actual Runtime tails.
 use super::admission::{Custody, Steps, current_storage};
 use super::*;
-use surgeist_dom::{DomParsedHtmlContributionCompletion, DomParsedHtmlTerminalError};
+use surgeist_dom::installation::style::{
+    DomParsedHtmlContributionCompletion, DomParsedHtmlTerminalError,
+};
 
 /// Actual Session admission, canonical settlement or a retained same-contribution tail refused.
 #[derive(Debug)]

@@ -155,7 +155,7 @@ impl Draft {
                 .as_mut()
                 .expect("prepared image evidence bank")
                 .push(Cancelled {
-                    update: crate::DomImageUpdateId {
+                    update: crate::internal::image::DomImageUpdateId {
                         target,
                         invocation: waiting.invocation,
                     },

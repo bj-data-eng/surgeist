@@ -4,7 +4,20 @@ use surgeist_css::property::CssPropertyGrammar;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_css::{CssParserContext, CssParserMode};
 use surgeist_cssom::*;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    shadow::DomShadowRootInit,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
+    style::inline::{
+        DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleError,
+        DomInlineStyleFeedbackLimits, DomInlineStyleInputs, DomInlineStyleLimits,
+        DomInlineStyleMutation, DomInlineStyleMutationLimits, DomInlineStyleProfile,
+        DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
+    },
+};
 use surgeist_html::{
     construction::{HtmlDocumentMode, HtmlShadowRootMode},
     values::Namespace,

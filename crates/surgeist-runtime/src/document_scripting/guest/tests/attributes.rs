@@ -2,7 +2,7 @@
 
 use super::super::interfaces::GuestNodeProjection;
 use super::*;
-use surgeist_dom::{DomBatch, DomNodeKind};
+use surgeist_dom::{DomBatch, tree::DomNodeKind};
 use surgeist_html::values::{DocumentString, Namespace};
 
 pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exact_output() {
@@ -58,7 +58,7 @@ pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exac
         .unwrap();
     assert_eq!(
         status.phase(),
-        surgeist_dom::DomSourcePhase::AttributeAttachmentOutput
+        surgeist_dom::source::DomSourcePhase::AttributeAttachmentOutput
     );
     assert_eq!(host.snapshot().unwrap().stamp(), before);
     assert_eq!(
@@ -71,7 +71,7 @@ pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exac
         .unwrap()
         .unwrap();
     let crate::DomSourceDriveProgress::Pending {
-        request: surgeist_dom::DomSourceRequest::AttributeAttachmentOutput(request),
+        request: surgeist_dom::source::DomSourceRequest::AttributeAttachmentOutput(request),
         ..
     } = progress
     else {
@@ -91,8 +91,8 @@ pub(in crate::document_scripting) fn refused_verified_replacement_keeps_its_exac
     assert_eq!(done.operation(), status.operation());
     assert!(matches!(
         done.output(),
-        Some(surgeist_dom::DomSourceOutput::AttributeAttachment(
-            surgeist_dom::DomAttributeAttachment::Replaced(id)
+        Some(surgeist_dom::source::DomSourceOutput::AttributeAttachment(
+            surgeist_dom::tree::DomAttributeAttachment::Replaced(id)
         )) if id == old
     ));
     let session = stopped.into_session().unwrap();

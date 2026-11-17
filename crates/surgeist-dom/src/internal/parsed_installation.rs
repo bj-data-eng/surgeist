@@ -66,7 +66,7 @@ impl DomParsedDocumentEnvironment {
     }
 }
 
-/// Independent adapter admission, in addition to the canonical [`crate::DomLimits`].
+/// Independent adapter admission, in addition to the canonical [`crate::limits::DomLimits`].
 /// Zero is legal and refuses the first operation needing that resource.
 ///
 /// Mapped nodes bound the retained subject closure. Work covers adapter visits,

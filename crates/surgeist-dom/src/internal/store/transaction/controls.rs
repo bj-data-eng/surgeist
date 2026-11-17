@@ -1463,7 +1463,7 @@ mod tests {
         )
         .unwrap()
     }
-    fn source_limits() -> crate::DomSourceLimits {
+    fn source_limits() -> crate::internal::source::DomSourceLimits {
         crate::internal::source::DomSourceLimits::new(
             50_000_000,
             1_000_000,

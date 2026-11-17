@@ -11,7 +11,30 @@ use std::fmt::{self, Debug, Display};
 use std::sync::{Arc, atomic::AtomicBool};
 
 use surgeist_cssom::{CssomError, CssomStore};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    document::DomNativeInputPlatform,
+    identity::{DocumentId, DomDocumentStamp, DomStamp, NodeId},
+    installation::{
+        DomNativeHtmlAssociation, DomNativeHtmlInstallError, DomNativeHtmlInstallLimits,
+        DomNativeHtmlInstallResource, DomParsedDocumentEnvironment,
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+        DomParsedHtmlAssociationLimits, DomParsedHtmlHistoricalDocument, DomParsedHtmlInstallError,
+        DomParsedHtmlInstallLimits, DomParsedHtmlInstallResource,
+        meta::{DomParsedHtmlMetaError, DomParsedHtmlMetaOccurrenceError},
+        style::{
+            DomParsedHtmlFrontierError, DomParsedHtmlStyleError,
+            DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStyleNotificationError,
+            DomParsedHtmlStyleNotificationRequirement, DomParsedHtmlStyleNotificationUnavailable,
+            DomParsedHtmlStylePhase, DomParsedHtmlStyleSheetError, DomParsedHtmlStyleSubjectError,
+            DomParsedHtmlStyleSuccessorError, DomParsedHtmlTerminalError,
+        },
+    },
+    limits::{DomLimits, DomNameLimits},
+    meta::DomSourceMetaCspError,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::DomStyleCssomRoot,
+};
 use surgeist_html::construction::{HtmlConstructionCause, HtmlNodeId};
 use surgeist_html::security::csp::{
     HtmlCspError, HtmlCspLayout, HtmlCspOwner, HtmlCspProcessorAuthority, HtmlCspProcessorProfile,

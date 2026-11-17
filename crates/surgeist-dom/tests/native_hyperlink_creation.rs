@@ -1,6 +1,6 @@
 //! DOM3071 namespace creation and HTML877d native A/Area URL initialization.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_dom::{Dom, DomBatch, limits::DomLimits};
 use surgeist_html::values::{DocumentString, Namespace};
 
 fn native_hyperlink_element(local: &str) {
@@ -13,7 +13,8 @@ fn native_hyperlink_element(local: &str) {
             0,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

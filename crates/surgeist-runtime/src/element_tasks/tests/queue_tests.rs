@@ -2,7 +2,8 @@
 use super::*;
 use crate::{DomSourceEventServiceLimits, DomSourceEventServiceProgress};
 use surgeist_dom::{
-    DomSourceDialogRequest, DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest,
+    dialog::DomSourceDialogRequest,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
 };
 
 mod element_started;
@@ -107,8 +108,8 @@ fn candidate_peak(prior: bool) -> usize {
     let new = old + 1;
     size_of::<RefCell<ElementTaskState>>()
         + size_of::<TaskPayloadCounterTarget>()
-        + size_of::<surgeist_dom::DomElementTaskSource>()
-        + surgeist_dom::DomElementTaskSource::binding_payload_bytes()
+        + size_of::<surgeist_dom::task::DomElementTaskSource>()
+        + surgeist_dom::task::DomElementTaskSource::binding_payload_bytes()
         + size_of::<Intake>()
         + old * (size_of::<Task>() + size_of::<Tracker>())
         + new * (size_of::<Plan>() + size_of::<Tracker>() + size_of::<Task>())
@@ -322,7 +323,7 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
         .unwrap();
     let receipt = match DomElementTaskRuntime::run_next(
         &mut session.dom(),
-        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+        surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
         &mut dispatcher,
         &mut context,
         crate::DomElementTaskRunLimits {
@@ -345,7 +346,7 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
     assert_eq!(
         context
             .owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -566,7 +567,7 @@ fn details_observation_bytes(held: &HeldObservations) -> (usize, usize) {
 
 fn assert_abandoned_details_row(
     state: &RefCell<ElementTaskState>,
-    task: surgeist_dom::DomElementTaskId,
+    task: surgeist_dom::task::DomElementTaskId,
     held: &mut HeldObservations,
     expected_path: [NodeId; 3],
 ) {
@@ -605,7 +606,7 @@ fn details_dispatcher_drop_releases_retained_dispatch_with_live_task_owner() {
     let snapshot = session.dom().snapshot();
     let stamp = snapshot.stamp();
     let parent = snapshot.node(target).unwrap().parent().unwrap();
-    let source = surgeist_dom::DomElementTaskSourceKind::DomManipulation;
+    let source = surgeist_dom::task::DomElementTaskSourceKind::DomManipulation;
     let original = context.held.owner.pending_task(source, 0).unwrap().unwrap();
     let progress = DomElementTaskRuntime::run_next(
         &mut session.dom(),
@@ -731,7 +732,7 @@ fn details_dispatcher_drop_keeps_running_dispatch_funded_until_callback_returns(
         .unwrap()
         .parent()
         .unwrap();
-    let source = surgeist_dom::DomElementTaskSourceKind::DomManipulation;
+    let source = surgeist_dom::task::DomElementTaskSourceKind::DomManipulation;
     let original = context.held.owner.pending_task(source, 0).unwrap().unwrap();
     let result = DomElementTaskRuntime::run_next(
         &mut session.dom(),

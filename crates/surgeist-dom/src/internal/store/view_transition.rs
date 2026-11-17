@@ -672,7 +672,7 @@ mod tests {
             .unwrap();
         (dom, document, transition)
     }
-    fn source_append_limits(bytes: usize) -> crate::DomSourceLimits {
+    fn source_append_limits(bytes: usize) -> crate::internal::source::DomSourceLimits {
         crate::internal::source::DomSourceLimits::new(
             bytes, 1_000_000, 10_000_000, 64, 4096, 4096, 1,
         )

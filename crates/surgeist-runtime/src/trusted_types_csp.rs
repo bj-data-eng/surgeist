@@ -67,7 +67,7 @@ impl Policy {
     #[cfg(feature = "document-scripting")]
     pub(crate) fn inline_style<E: From<surgeist_dom::DomError>>(
         &self,
-        nonce: &surgeist_dom::DomStyleNonceContent,
+        nonce: &surgeist_dom::style::DomStyleNonceContent,
         hashes: &mut style_hash::StyleHashes<'_>,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<(bool, bool)>, E> {
@@ -86,14 +86,14 @@ impl Policy {
                 if let Some(value) = inline_credential(token, b"'nonce-", step)? {
                     has_credential = true;
                     match nonce {
-                        surgeist_dom::DomStyleNonceContent::Present(nonce)
+                        surgeist_dom::style::DomStyleNonceContent::Present(nonce)
                             if matching_nonce(value, nonce.code_units(), step)? =>
                         {
                             return Ok(Some((true, false)));
                         }
-                        surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable(nonce)
-                            if matching_nonce(value, nonce.code_units(), step)? =>
-                        {
+                        surgeist_dom::style::DomStyleNonceContent::TokenizerHistoryUnavailable(
+                            nonce,
+                        ) if matching_nonce(value, nonce.code_units(), step)? => {
                             unavailable = true;
                         }
                         _ => {}

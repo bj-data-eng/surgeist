@@ -1,7 +1,7 @@
 //! Authenticate the original synchronous end without completing async work.
 use super::admission::{Custody, Steps, current_storage};
 use super::*;
-use surgeist_dom::{DomParsedHtmlFrontierError, DomParsedHtmlSynchronousEnd};
+use surgeist_dom::installation::style::{DomParsedHtmlFrontierError, DomParsedHtmlSynchronousEnd};
 
 /// Session admission or actual original synchronous-end validation refused.
 #[derive(Debug)]

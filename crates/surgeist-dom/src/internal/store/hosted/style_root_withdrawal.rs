@@ -29,7 +29,7 @@ impl DomHostedStyleRootWithdrawal {
         self.cleanup
     }
     /// Canonical tree stamp inspected; custody withdrawal changes no tree state.
-    pub fn stamp(&self) -> crate::DomStamp {
+    pub fn stamp(&self) -> crate::internal::identity::DomStamp {
         self.stamp
     }
     /// Historical producer capture under the withdrawal lock. Independently
@@ -252,7 +252,7 @@ impl DomHostedDestructionLease {
             root: root.root(),
             document,
             cleanup: self.operation,
-            stamp: crate::DomStamp {
+            stamp: crate::internal::identity::DomStamp {
                 owner: dom.owner,
                 revision: dom.revision,
             },

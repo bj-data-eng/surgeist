@@ -4,8 +4,11 @@ use super::*;
 use crate::DomSourceDriveProgress;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
 use surgeist_dom::{
-    DomBatch, DomDocumentInterface, DomNodeKind, DomNodeRetirementInbox, DomQualifiedName,
-    DomSiblingDirection, DomTagName, NodeId,
+    DomBatch,
+    document::DomDocumentInterface,
+    edit::DomNodeRetirementInbox,
+    identity::NodeId,
+    tree::{DomNodeKind, DomQualifiedName, DomSiblingDirection, DomTagName},
 };
 use surgeist_html::values::DocumentString;
 
@@ -52,7 +55,7 @@ pub(in crate::document_scripting) use ordinary::missing_pins_refuse_without_nati
 
 fn creation_realm_fallback(
     owner: &NativeOwner,
-) -> Result<surgeist_dom::DomCreationRealmFallback, DocumentScriptNativeError> {
+) -> Result<surgeist_dom::script::DomCreationRealmFallback, DocumentScriptNativeError> {
     owner
         .attachment
         .get()
@@ -63,8 +66,8 @@ fn creation_realm_fallback(
 
 fn guest_source_services(
     style_policy: &mut dyn FnMut(
-        &surgeist_dom::DomStyleSource,
-    ) -> Option<surgeist_dom::DomStyleInlineCspObservation>,
+        &surgeist_dom::style::DomStyleSource,
+    ) -> Option<surgeist_dom::style::DomStyleInlineCspObservation>,
 ) -> crate::DomSourceServices<'_> {
     crate::DomSourceServices {
         meta: None,
@@ -78,9 +81,10 @@ fn guest_source_services(
 /// producer receipts have already published and carry no further authority.
 fn guest_source_terminal(
     result: crate::DomSourceDriveProgress,
-) -> Option<Result<surgeist_dom::DomSourceCompletion, surgeist_dom::DomSourceFailure>> {
+) -> Option<Result<surgeist_dom::source::DomSourceCompletion, surgeist_dom::source::DomSourceFailure>>
+{
     use crate::DomSourceDriveProgress as Drive;
-    use surgeist_dom::DomSourceProgress as Source;
+    use surgeist_dom::source::DomSourceProgress as Source;
 
     let source = match result {
         Drive::Complete(done) => return Some(Ok(done)),
@@ -101,7 +105,7 @@ impl DocumentScriptHost {
         &mut self,
         permit: &DocumentScriptPermit,
         terminal: GuestTerminalSource<'_>,
-        shadow_reactions: Option<surgeist_dom::DomSynchronousReactionQueue>,
+        shadow_reactions: Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>,
         original_guest_exception: Option<&Error>,
         reaction_failure: Option<&ReactionFailureSlot>,
     ) -> Result<(), DocumentGuestEventError> {
@@ -185,19 +189,19 @@ impl DocumentScriptHost {
 }
 
 struct GuestTerminalSource<'a> {
-    operation: surgeist_dom::DomSourceOperationId,
+    operation: surgeist_dom::source::DomSourceOperationId,
     error: Option<&'a surgeist_dom::DomError>,
 }
 
 fn guest_terminal_result(result: &DomSourceDriveProgress) -> Option<GuestTerminalSource<'_>> {
-    use surgeist_dom::DomSourceProgress as Source;
-    let complete = |done: &surgeist_dom::DomSourceCompletion| GuestTerminalSource {
+    use surgeist_dom::source::DomSourceProgress as Source;
+    let complete = |done: &surgeist_dom::source::DomSourceCompletion| GuestTerminalSource {
         operation: done.operation(),
         error: done
             .cancellation_requested()
             .then_some(&surgeist_dom::DomError::Cancelled),
     };
-    fn failed(failure: &surgeist_dom::DomSourceFailure) -> GuestTerminalSource<'_> {
+    fn failed(failure: &surgeist_dom::source::DomSourceFailure) -> GuestTerminalSource<'_> {
         GuestTerminalSource {
             operation: failure.operation(),
             error: Some(failure.error()),

@@ -11,7 +11,18 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::DomHtmlCaptureLimits,
+    custom_element::DomRegistryBinding,
+    document::{DomDocumentClass, DomDocumentCreationCause},
+    hosted::{DomHostedError, DomHostedLimits, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    shadow::{DomShadowRootInit, DomTemplateDocumentRole},
+    source::{DomSourceEdit, DomSourceLimits},
+    style::{DomStyleCssomRoot, DomStyleInlineCspObservation, DomStyleSource},
+};
 use surgeist_html::construction::HtmlDocumentMode;
 use surgeist_html::{
     construction::HtmlShadowRootMode,
@@ -70,11 +81,12 @@ fn session() -> DomSession {
             1024,
             64,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
-            surgeist_dom::DomDispatchCustodyLimits::new(
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
                 64, 4096, 16_000_000, 16_000_000, 4_000_000,
             )
             .unwrap(),
@@ -175,12 +187,12 @@ fn run_details(
     let mut dom = session.dom();
     match DomElementTaskRuntime::run_next(
         &mut dom,
-        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+        surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
         registry,
         context,
         crate::DomElementTaskRunLimits {
             dispatch: event_limits(),
-            source: surgeist_dom::DomSourceLimits::new(
+            source: surgeist_dom::source::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
             ),
         },
@@ -469,7 +481,7 @@ fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -584,7 +596,10 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
         );
         let queued = context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         let association = queued.queue_association().unwrap();
@@ -601,7 +616,10 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
         assert_eq!(
             context
                 .element_tasks
-                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+                .pending_task(
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                    0
+                )
                 .unwrap()
                 .unwrap()
                 .id(),
@@ -610,7 +628,10 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
         assert_eq!(
             context
                 .element_tasks
-                .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+                .pending_task(
+                    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                    0
+                )
                 .unwrap()
                 .unwrap()
                 .queue_association(),
@@ -639,7 +660,7 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -713,11 +734,12 @@ fn zero_host_admission_refuses_before_any_document_or_global_is_published() {
             128,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(
-            surgeist_dom::DomDispatchCustodyLimits::new(
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
                 64, 4096, 16_000_000, 16_000_000, 4_000_000,
             )
             .unwrap(),
@@ -788,7 +810,10 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
         );
         let queued = context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         let association = queued.queue_association().unwrap();
@@ -804,7 +829,10 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
         );
         let after = context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(after.id(), queued.id());
@@ -823,7 +851,7 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
         assert_eq!(
             context
                 .element_tasks
-                .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+                .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
                 .unwrap(),
             1
         );
@@ -834,12 +862,12 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
         assert!(matches!(
             DomElementTaskRuntime::run_next(
                 &mut dom,
-                surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
                 &mut registry,
                 &mut context,
                 crate::DomElementTaskRunLimits {
                     dispatch: event_limits(),
-                    source: surgeist_dom::DomSourceLimits::new(
+                    source: surgeist_dom::source::DomSourceLimits::new(
                         16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
                     )
                 },
@@ -852,7 +880,7 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -969,7 +997,7 @@ fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -1018,7 +1046,10 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
         );
         let queued = context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(queued.queue_association().unwrap().global(), top.global());
@@ -1029,12 +1060,12 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
         assert!(matches!(
             DomElementTaskRuntime::run_next(
                 &mut dom,
-                surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
                 &mut registry,
                 &mut context,
                 crate::DomElementTaskRunLimits {
                     dispatch: event_limits(),
-                    source: surgeist_dom::DomSourceLimits::new(
+                    source: surgeist_dom::source::DomSourceLimits::new(
                         16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
                     )
                 },
@@ -1052,7 +1083,10 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
         );
         let retained = context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(retained.id(), queued.id());
@@ -1071,7 +1105,7 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
@@ -1562,7 +1596,10 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
         );
         let queued = context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         let association = queued.queue_association().unwrap();
@@ -1635,13 +1672,16 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     let retained = context
         .element_tasks
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     assert_eq!(retained.id(), queued.id());
@@ -1657,12 +1697,12 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
     // qualify the actual retired destination before invoking Rust callbacks.
     let result = DomElementTaskRuntime::run_next(
         &mut session.dom(),
-        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+        surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut context,
         crate::DomElementTaskRunLimits {
             dispatch: event_limits(),
-            source: surgeist_dom::DomSourceLimits::new(
+            source: surgeist_dom::source::DomSourceLimits::new(
                 16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
             ),
         },
@@ -1682,14 +1722,17 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap()
             .unwrap()
             .id(),
@@ -1698,7 +1741,10 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
     assert_eq!(
         context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap()
             .unwrap()
             .queue_association(),
@@ -1758,7 +1804,10 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         );
         let queued = context
             .element_tasks
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -1830,12 +1879,12 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         let mut dom = session.dom();
         DomElementTaskRuntime::run_next(
             &mut dom,
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
             crate::DomElementTaskRunLimits {
                 dispatch: event_limits(),
-                source: surgeist_dom::DomSourceLimits::new(
+                source: surgeist_dom::source::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
                 ),
             },
@@ -1890,12 +1939,12 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         let mut dom = session.dom();
         let _retry = DomElementTaskRuntime::run_next(
             &mut dom,
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
             crate::DomElementTaskRunLimits {
                 dispatch: event_limits(),
-                source: surgeist_dom::DomSourceLimits::new(
+                source: surgeist_dom::source::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
                 ),
             },
@@ -1906,7 +1955,10 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     assert_eq!(context.observed.len(), 1);
     if let Some(retained) = context
         .element_tasks
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
     {
         assert_eq!(retained.id(), queued.id());
@@ -1943,7 +1995,10 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
         let target = commit.created(&target).unwrap().unwrap();
         assert_eq!(details.ingest(&mut dom, &cancel()).unwrap(), 1);
         let queued = details
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0,
+            )
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -2028,7 +2083,10 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
     );
     let still_queued = context
         .element_tasks
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     assert_eq!(still_queued.id(), queued.id());
@@ -2037,12 +2095,12 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
         let mut dom = session.dom();
         DomElementTaskRuntime::run_next(
             &mut dom,
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
             crate::DomElementTaskRunLimits {
                 dispatch: event_limits(),
-                source: surgeist_dom::DomSourceLimits::new(
+                source: surgeist_dom::source::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
                 ),
             },
@@ -2088,7 +2146,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -2100,12 +2158,12 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
         let mut dom = session.dom();
         DomElementTaskRuntime::run_next(
             &mut dom,
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut context,
             crate::DomElementTaskRunLimits {
                 dispatch: event_limits(),
-                source: surgeist_dom::DomSourceLimits::new(
+                source: surgeist_dom::source::DomSourceLimits::new(
                     16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
                 ),
             },
@@ -2119,7 +2177,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
     assert_eq!(
         context
             .element_tasks
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );

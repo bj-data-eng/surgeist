@@ -4,7 +4,17 @@ use super::super::*;
 use super::consumption::{envelope, report};
 use super::style_decision::{empty_policy, installed, observe, request_ready};
 use super::style_sheet::{bind, ready};
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomError,
+    identity::{DocumentId, NodeId},
+    installation::{
+        DomParsedHtmlAssociationId,
+        style::{
+            DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStylePhase,
+            DomParsedHtmlStyleQualification, DomParsedHtmlStyleRenderingProgress,
+        },
+    },
+};
 
 struct FrontierContext {
     styles: DomStyleRuntime,

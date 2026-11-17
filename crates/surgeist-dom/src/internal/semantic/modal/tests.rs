@@ -51,7 +51,7 @@ fn capture(source: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
         .unwrap()
 }
 
-fn slot_limits() -> crate::DomSlotSemanticLimits {
+fn slot_limits() -> crate::internal::semantic::DomSlotSemanticLimits {
     crate::internal::semantic::DomSlotSemanticLimits::new(
         crate::internal::slot::DomSlotQueryLimits::new(64, 128).unwrap(),
         DomHtmlCaptureLimits::new(64, 1000000),

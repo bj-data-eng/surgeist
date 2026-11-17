@@ -6,7 +6,20 @@ use std::{
 use surgeist_css::CssParserContext;
 use surgeist_css::property::CssPropertyGrammar;
 use surgeist_cssom::*;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    event::{DomDispatchCustodyLimits, DomSourceEventOutcome},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
+    style::inline::{
+        DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange,
+        DomInlineStyleCompletion, DomInlineStyleError, DomInlineStyleFeedbackLimits,
+        DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleMutation,
+        DomInlineStyleMutationLimits, DomInlineStyleOutcome, DomInlineStyleProfile,
+        DomInlineStyleProperty, DomInlineStyleRequestLimits, DomInlineStyleReturn,
+    },
+};
 use surgeist_html::values::{DocumentString, Namespace};
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

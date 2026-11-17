@@ -2,8 +2,11 @@
 //! Expectations use authored literals and actual immutable backing, not receipts.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits, DomSnapshot,
-    DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress, NodeId,
+    Dom, DomBatch, DomCommit, DomSnapshot,
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    source::{DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress},
 };
 use surgeist_html::values::{DocumentString, Namespace};
 

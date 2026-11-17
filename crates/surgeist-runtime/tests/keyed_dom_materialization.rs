@@ -5,8 +5,10 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    CreatedNode, DocumentId, Dom, DomBatch, DomError, DomLimits, DomResource, DomSnapshot,
-    DomStamp, NodeId, NodeOperand,
+    Dom, DomBatch, DomError, DomSnapshot,
+    edit::{CreatedNode, NodeOperand},
+    identity::{DocumentId, DomStamp, NodeId},
+    limits::{DomLimits, DomResource},
 };
 use surgeist_runtime::{
     AppInput, InputProvenance, Reducer, ReducerCommit, ReducerResult, Runtime, RuntimeBudget,
@@ -92,7 +94,7 @@ fn limits(nodes: usize) -> DomLimits {
         0,
         16,
         65536,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }

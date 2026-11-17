@@ -5,7 +5,10 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomCommit, DomError, DomLimits, DomNameAtom, DomSnapshot, NodeId,
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    tree::DomNameAtom,
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -25,7 +28,8 @@ fn dom() -> Dom {
             0,
             64,
             65_536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -218,7 +222,7 @@ fn removing_a_same_batch_attribute_publishes_its_detached_identity() {
     batch.remove_attribute(root, "transient");
     let commit = apply(&mut dom, batch);
     let after = dom.snapshot();
-    let [surgeist_dom::DomChange::Created(id)] = commit.changes().changes() else {
+    let [surgeist_dom::edit::DomChange::Created(id)] = commit.changes().changes() else {
         panic!("expected the detached Attr creation");
     };
     let attr = after.attr(*id).unwrap();

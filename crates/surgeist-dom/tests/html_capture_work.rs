@@ -4,7 +4,13 @@
 //! finish is exactly the work it charged, because each step charges before it
 //! runs and refuses only when the bound would be exceeded.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomSnapshot,
+    capture::{DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource},
+    identity::DocumentId,
+    limits::{DomLimits, DomNameLimits},
+    shadow::DomShadowRootInit,
+};
 use surgeist_html::construction::HtmlShadowRootMode;
 use surgeist_html::values::Namespace;
 use surgeist_html::{

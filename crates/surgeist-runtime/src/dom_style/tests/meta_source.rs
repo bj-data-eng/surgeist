@@ -3,7 +3,7 @@ mod cross_document;
 mod events;
 use super::meta::*;
 use super::*;
-use surgeist_dom::{DomSourceProgress, DomSourceRequest};
+use surgeist_dom::source::{DomSourceProgress, DomSourceRequest};
 use surgeist_html::values::DocumentString;
 use surgeist_html::values::Namespace;
 
@@ -51,7 +51,7 @@ fn compound_conversion_services_real_sheet_removal_before_delivering_original_hi
     let fragment = snapshot.node(style).unwrap().parent().unwrap();
     assert!(matches!(
         snapshot.node(fragment).unwrap().kind(),
-        surgeist_dom::DomNodeKind::DocumentFragment
+        surgeist_dom::tree::DomNodeKind::DocumentFragment
     ));
     assert_eq!(snapshot.node(fragment).unwrap().children(), [style]);
     assert!(
@@ -463,7 +463,7 @@ fn source_retained_bank_refusal_parks_the_original_edit_and_retry_keeps_spent_wo
         assert_eq!(current.names().next().unwrap(), before.preferred_name());
     }
     let native = envelope();
-    let lowered = surgeist_dom::DomMetaAtomicLimits::new(
+    let lowered = surgeist_dom::meta::DomMetaAtomicLimits::new(
         native.retained_bytes(),
         native.retained_units(),
         native.work() - 1,
@@ -513,7 +513,7 @@ fn source_retained_bank_refusal_parks_the_original_edit_and_retry_keeps_spent_wo
     assert!(matches!(
         absent,
         crate::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::Meta(
-            surgeist_dom::DomMetaError::DefaultStyleUnsupported
+            surgeist_dom::meta::DomMetaError::DefaultStyleUnsupported
         )))
     ));
     assert_eq!(session.snapshot().stamp(), before.stamp());
@@ -592,7 +592,7 @@ fn native_installation_returns_the_original_mapping_with_its_meta_publication() 
     let input = fragment.root().children().next().unwrap();
     let before = session.snapshot();
     let parent = container(&session, document);
-    let target = surgeist_dom::DomNativeHtmlInstallTarget::new(
+    let target = surgeist_dom::installation::DomNativeHtmlInstallTarget::new(
         before
             .node(document)
             .unwrap()
@@ -608,8 +608,8 @@ fn native_installation_returns_the_original_mapping_with_its_meta_publication() 
             &mut session.dom(),
             target,
             &fragment,
-            surgeist_dom::DomSourceNativeHtmlInstallLimits::new(
-                surgeist_dom::DomNativeHtmlInstallLimits::new(16, 100_000, 1_000_000),
+            surgeist_dom::installation::DomSourceNativeHtmlInstallLimits::new(
+                surgeist_dom::installation::DomNativeHtmlInstallLimits::new(16, 100_000, 1_000_000),
                 source_limits(),
             ),
             &mut DomSourceServices {

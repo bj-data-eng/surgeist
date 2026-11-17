@@ -3,7 +3,9 @@
 use super::super::interfaces::GuestNodeProjection;
 use super::*;
 use crate::{DomSourceDriveError, DomSourceRuntimeError};
-use surgeist_dom::{DomBatch, DomChildListObservationLimits, DomResource, NodeId};
+use surgeist_dom::{
+    DomBatch, edit::DomChildListObservationLimits, identity::NodeId, limits::DomResource,
+};
 use surgeist_html::values::Namespace;
 
 fn native_node(scope: &mut Scope<'_>, expression: &str) -> Result<NodeId, Error> {

@@ -1,7 +1,7 @@
 //! DOM createElementNS and HTML877d Frame initialization: an actual native
 //! null browsing context permits fresh null-content Frame construction.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_dom::{Dom, DomBatch, limits::DomLimits};
 use surgeist_html::values::{DocumentString, Namespace};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
@@ -17,7 +17,8 @@ fn native_html_frame_creation_publishes_an_actual_element() {
             0,
             4,
             4096,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

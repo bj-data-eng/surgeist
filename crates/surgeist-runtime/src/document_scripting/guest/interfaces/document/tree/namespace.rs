@@ -15,7 +15,7 @@ enum Lookup {
 
 enum Observation {
     Prefix(Option<DocumentString>),
-    Uri(Option<surgeist_dom::DomNamespaceUri>),
+    Uri(Option<surgeist_dom::tree::DomNamespaceUri>),
     IsDefault(bool),
 }
 

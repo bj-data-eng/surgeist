@@ -5,9 +5,12 @@ use crate::{
     DomSourceEventRuntimeLimits, DomSourceServices, DomStyleRuntimeLimits,
 };
 use surgeist_dom::{
-    DomBatch, DomError, DomFullscreenEventKind, DomFullscreenExitReturn, DomFullscreenExitStep,
-    DomHostedLimits, DomHostedRecordLimits, DomLimits, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, DomSourceRequest, NodeId,
+    DomBatch, DomError,
+    fullscreen::{DomFullscreenEventKind, DomFullscreenExitReturn, DomFullscreenExitStep},
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    identity::NodeId,
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest},
 };
 use surgeist_html::values::Namespace;
 
@@ -66,7 +69,8 @@ fn fixture() -> (DomSession, HostedRuntime, DomHostedTopLevel, NodeId) {
                 128,
                 32,
                 4_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_fullscreen_exits(4)
@@ -439,7 +443,7 @@ fn inline_fixture(
     NodeId,
     NodeId,
     surgeist_cssom::CssStyleProperties,
-    surgeist_dom::DomInlineStyleSourceContext,
+    surgeist_dom::style::inline::DomInlineStyleSourceContext,
 ) {
     use surgeist_css::source::CssUtf16InputLimits;
     use surgeist_css::{CssParserContext, CssParserMode};
@@ -447,7 +451,7 @@ fn inline_fixture(
         CssomDeclarationRequestLimits, CssomDeclarationSupport, CssomInputRole, CssomInputVersion,
         CssomLimits,
     };
-    use surgeist_dom::{
+    use surgeist_dom::style::inline::{
         DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
         DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
     };
@@ -529,8 +533,8 @@ fn inline_fixture(
     (session, hosted, top, root, child, properties, context)
 }
 
-fn inline_requests() -> surgeist_dom::DomInlineStyleRequestLimits {
-    surgeist_dom::DomInlineStyleRequestLimits {
+fn inline_requests() -> surgeist_dom::style::inline::DomInlineStyleRequestLimits {
+    surgeist_dom::style::inline::DomInlineStyleRequestLimits {
         input: surgeist_css::source::CssUtf16InputLimits::default(),
         declaration: surgeist_cssom::CssomDeclarationRequestLimits::default(),
     }
@@ -649,7 +653,7 @@ fn bound_detach_joins_inline_context_and_one_runtime_job_before_returning_receip
 
 #[test]
 fn replacement_closes_svg_refusal_after_original_fullscreen_handoff() {
-    use surgeist_dom::{
+    use surgeist_dom::script::{
         DomDocumentScriptRegistration, DomDocumentScriptingFacts, DomSourceScriptStep,
     };
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
@@ -804,7 +808,7 @@ fn replacement_closes_svg_refusal_after_original_fullscreen_handoff() {
     assert!(matches!(
         hosted.run_next(&mut session.dom(), top.navigable(), &cancel),
         Err(DomHostedRuntimeError::Dom(
-            surgeist_dom::DomHostedError::Dom(DomError::SourceOperationPending)
+            surgeist_dom::hosted::DomHostedError::Dom(DomError::SourceOperationPending)
         ))
     ));
     assert_eq!(queued_invocation(), invocation);
@@ -851,7 +855,7 @@ fn replacement_closes_svg_refusal_after_original_fullscreen_handoff() {
             .changes_since(prefix.stamp())
             .unwrap()
             .changes(),
-        [surgeist_dom::DomChange::SourceOperation]
+        [surgeist_dom::edit::DomChange::SourceOperation]
     );
     assert_eq!(
         hosted
@@ -901,9 +905,11 @@ fn inline_commit_refusal_releases_reserved_runtime_row_and_preserves_exposed_sou
     assert!(matches!(
         result,
         Err(crate::DomSourceDriveError::Source(
-            crate::DomSourceRuntimeError::Inline(surgeist_dom::DomInlineStyleError::Cssom(
-                surgeist_cssom::CssomError::RevisionExhausted
-            ))
+            crate::DomSourceRuntimeError::Inline(
+                surgeist_dom::style::inline::DomInlineStyleError::Cssom(
+                    surgeist_cssom::CssomError::RevisionExhausted
+                )
+            )
         ))
     ));
     assert_eq!(session.snapshot().stamp(), before.stamp());

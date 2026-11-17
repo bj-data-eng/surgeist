@@ -2,8 +2,11 @@
 //! initialization and §2.5.6 nonce attribute/IDL/insertion/cloning clauses.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    Dom, DomBatch, DomChange, DomError, DomFlatRelation, DomLimits, DomResource, DomShadowRootInit,
-    DomSlotQueryLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+    Dom, DomBatch, DomError,
+    edit::DomChange,
+    limits::{DomLimits, DomResource},
+    shadow::{DomFlatRelation, DomShadowRootInit, DomSlotQueryLimits},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
 };
 use surgeist_html::{
     construction::HtmlShadowRootMode,
@@ -30,7 +33,8 @@ fn dom() -> Dom {
             0,
             16,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -703,7 +707,8 @@ fn exact_nonce_string_capacity_counts_both_content_and_slot_and_rolls_back_late_
                 0,
                 0,
                 0,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -775,7 +780,8 @@ fn replacing_nonce_slot_can_make_room_for_the_content_attribute() {
                 0,
                 0,
                 0,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -869,7 +875,7 @@ fn common_state_survives_character_data_replacement_fragment_moves_and_child_rep
 
 #[test]
 fn state_only_edits_have_dom_history_while_equal_host_facts_keep_their_revision() {
-    use surgeist_dom::{DomHostDomains, DomHostObservations, DomHostPublisher, Observed};
+    use surgeist_dom::capture::{DomHostDomains, DomHostObservations, DomHostPublisher, Observed};
     let mut dom = dom();
     let mut batch = DomBatch::new();
     let document = batch.create_document();

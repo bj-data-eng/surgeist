@@ -1,6 +1,10 @@
 //! Source-selected native Style intrinsic and atomic boundary behavior.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{Dom, DomBatch, DomError, DomLimits, DomSourceEdit, DomSourceRequest};
+use surgeist_dom::{
+    Dom, DomBatch, DomError,
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceRequest},
+};
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
 use surgeist_html::values::Namespace;
 
@@ -31,7 +35,7 @@ fn source_command_payload_joins_the_simultaneous_utf16_allowance() {
     assert!(matches!(
         dom.begin_source_edit(
             edit(),
-            surgeist_dom::DomSourceLimits::new(
+            surgeist_dom::source::DomSourceLimits::new(
                 16_000_000,
                 capacity - 1,
                 10_000_000,
@@ -43,7 +47,7 @@ fn source_command_payload_joins_the_simultaneous_utf16_allowance() {
             &cancel,
         ),
         Err(DomError::ResourceLimit {
-            resource: surgeist_dom::DomResource::SourceRetainedUnits,
+            resource: surgeist_dom::limits::DomResource::SourceRetainedUnits,
             ..
         })
     ));
@@ -54,14 +58,16 @@ fn source_command_payload_joins_the_simultaneous_utf16_allowance() {
         .begin_source_edit(edit(), source_limits(), &cancel)
         .unwrap();
     let request = match lease.advance(&cancel).unwrap() {
-        surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(request)) => request,
+        surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
+            request
+        }
         other => panic!("expected the first Style boundary, got {other:?}"),
     };
     assert_eq!(request.source().element(), style);
     assert_eq!(request.source().text().as_ref(), payload.code_units());
     assert_eq!(
         request.action(),
-        surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+        surgeist_dom::style::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
     );
 }
 
@@ -78,8 +84,9 @@ fn first_external_phase_reserves_its_required_closing_publication() {
     let before = dom.snapshot();
     let usage = dom.usage();
     let edit = DomSourceEdit::insert_before(style, document, None);
-    let limits =
-        surgeist_dom::DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 1, 4096, 4096, 1);
+    let limits = surgeist_dom::source::DomSourceLimits::new(
+        16_000_000, 1_000_000, 10_000_000, 1, 4096, 4096, 1,
+    );
     let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
     assert_eq!(
         lease.advance(&cancel).unwrap_err(),
@@ -95,7 +102,11 @@ fn first_external_phase_reserves_its_required_closing_publication() {
 
 #[test]
 fn source_retained_bytes_cover_actual_spare_attribute_backing() {
-    use surgeist_dom::{DomResource, DomSourceLimits, DomSourceProgress, NodeId};
+    use surgeist_dom::{
+        identity::NodeId,
+        limits::DomResource,
+        source::{DomSourceLimits, DomSourceProgress},
+    };
 
     fn expose_csp(
         dom: &mut Dom,
@@ -117,7 +128,7 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
         assert_eq!(request.source().element(), style);
         assert_eq!(
             request.action(),
-            surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+            surgeist_dom::style::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
         );
         Ok(())
     }
@@ -138,7 +149,8 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
                 0,
                 16,
                 1_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -225,7 +237,8 @@ fn dom() -> Dom {
             0,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -301,16 +314,18 @@ fn equal_comment_data_reaches_style_but_nested_text_and_type_attribute_alone_do_
     assert!(!dom.snapshot().node(style).unwrap().is_connected());
 }
 
-fn source_limits() -> surgeist_dom::DomSourceLimits {
-    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1)
+fn source_limits() -> surgeist_dom::source::DomSourceLimits {
+    surgeist_dom::source::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1)
 }
 fn cssom() -> surgeist_cssom::CssomStore {
     surgeist_cssom::CssomStore::new(Default::default(), Default::default()).unwrap()
 }
-fn block(request: &surgeist_dom::DomStyleRequest) -> surgeist_dom::DomStyleInlineCspObservation {
+fn block(
+    request: &surgeist_dom::style::DomStyleRequest,
+) -> surgeist_dom::style::DomStyleInlineCspObservation {
     // A supplied full CSP evaluation, not a local CSP interpreter or inference
     // from the native environment. This exact policy prohibits inline styles.
-    surgeist_dom::DomStyleInlineCspObservation::evaluated(
+    surgeist_dom::style::DomStyleInlineCspObservation::evaluated(
         request.source(),
         std::sync::Arc::new(vec!["style-src 'none'".into()]),
         19,
@@ -334,7 +349,7 @@ fn lease_drop_before_publication_discards_only_the_private_candidate() {
 
 #[test]
 fn published_source_parks_exact_tail_and_cancellation_finishes_the_same_insertion() {
-    use surgeist_dom::{DomSourceOperationId, DomSourceProgress};
+    use surgeist_dom::source::{DomSourceOperationId, DomSourceProgress};
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut setup = DomBatch::new();
@@ -369,7 +384,7 @@ fn published_source_parks_exact_tail_and_cancellation_finishes_the_same_insertio
         assert_eq!(request.source().element(), first);
         assert_eq!(
             request.action(),
-            surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+            surgeist_dom::style::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
         );
         assert!(lease.snapshot().incomplete_source_operation().is_some());
         assert!(matches!(
@@ -455,7 +470,7 @@ fn published_source_parks_exact_tail_and_cancellation_finishes_the_same_insertio
 
 #[test]
 fn same_parent_text_move_keeps_two_source_time_direct_text_captures() {
-    use surgeist_dom::DomSourceProgress;
+    use surgeist_dom::source::DomSourceProgress;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut b = DomBatch::new();
@@ -553,7 +568,8 @@ fn actual_creation_receipt(
     use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
-        DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleInlineCspObservation,
+        source::DomSourceProgress,
+        style::{DomStyleCssomOwnerBinding, DomStyleInlineCspObservation},
     };
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
@@ -597,7 +613,7 @@ fn actual_creation_receipt(
     };
     assert_eq!(
         create.action(),
-        surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
+        surgeist_dom::style::DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
     );
     let mut owner_store = cssom();
     let effect_block = if with_owner_effect {
@@ -631,7 +647,8 @@ fn actual_creation_receipt(
     } else {
         None
     };
-    let owner = surgeist_dom::DomStyleCssomRoot::new(create.cssom_root().unwrap(), owner_store);
+    let owner =
+        surgeist_dom::style::DomStyleCssomRoot::new(create.cssom_root().unwrap(), owner_store);
     assert_eq!(
         lease
             .qualify_cssom(&create, owner.root(), &owner.snapshot().unwrap())
@@ -645,7 +662,7 @@ fn actual_creation_receipt(
     );
     cancel.store(false, std::sync::atomic::Ordering::Relaxed);
     lease.bind_cssom_root(&create, &owner, &cancel).unwrap();
-    let foreign = surgeist_dom::DomStyleCssomRoot::new(owner.root(), cssom());
+    let foreign = surgeist_dom::style::DomStyleCssomRoot::new(owner.root(), cssom());
     assert_eq!(
         lease
             .bind_cssom_root(&create, &foreign, &cancel)
@@ -785,7 +802,7 @@ fn actual_creation_receipt(
     drop(lease);
     fn require_send<T: Send>() {}
     require_send::<Dom>();
-    require_send::<surgeist_dom::DomStyleCssomRoot>();
+    require_send::<surgeist_dom::style::DomStyleCssomRoot>();
     let (moved, owner, id) = std::thread::spawn(move || {
         // The whole published owner and exact acknowledged receipt move, not a
         // snapshot or a reconstructed tree. Refusals on the destination leave
@@ -799,7 +816,7 @@ fn actual_creation_receipt(
         assert_eq!(dom.snapshot().stamp(), before);
         destination_cancel.store(false, std::sync::atomic::Ordering::Relaxed);
         let insufficient =
-            surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 0, 64, 4096, 4096, 1);
+            surgeist_dom::source::DomSourceLimits::new(16_000_000, 100_000, 0, 64, 4096, 4096, 1);
         assert!(matches!(
             dom.resume_source_edit(operation, insufficient, &destination_cancel),
             Err(DomError::InvalidLimit(_))
@@ -830,17 +847,17 @@ fn actual_creation_receipt(
     assert!(matches!(
         dom.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Native,
+            surgeist_dom::style::DomStyleNotificationDelivery::Native,
             1024,
             &cancel
         )
         .unwrap(),
-        surgeist_dom::DomStyleNotificationCompletion::Complete(_)
+        surgeist_dom::style::DomStyleNotificationCompletion::Complete(_)
     ));
     assert_eq!(
         dom.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Native,
+            surgeist_dom::style::DomStyleNotificationDelivery::Native,
             1024,
             &cancel
         )
@@ -856,8 +873,8 @@ fn actual_creation_receipt(
 }
 fn exercise_wrong_owner_media(
     dom: &mut Dom,
-    element: surgeist_dom::NodeId,
-    owner: &surgeist_dom::DomStyleCssomRoot,
+    element: surgeist_dom::identity::NodeId,
+    owner: &surgeist_dom::style::DomStyleCssomRoot,
     sheet: &surgeist_cssom::CssomSheetId,
 ) {
     use surgeist_css::query::media::CssMediaQueryList;
@@ -867,7 +884,7 @@ fn exercise_wrong_owner_media(
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomOwnerMediaInput,
         CssomSheetOwnerAttributes,
     };
-    use surgeist_dom::{DomSourceProgress, DomStyleCssomOwnerBinding};
+    use surgeist_dom::{source::DomSourceProgress, style::DomStyleCssomOwnerBinding};
     let cancel = AtomicBool::new(false);
     let edit = DomSourceEdit::set_native_attribute(element, "media", "print");
     let mut lease = dom
@@ -880,7 +897,7 @@ fn exercise_wrong_owner_media(
     };
     assert_eq!(
         request.action(),
-        surgeist_dom::DomStyleAction::OwnerAttributes
+        surgeist_dom::style::DomStyleAction::OwnerAttributes
     );
     assert_eq!(request.source().media(), Some(&"print".into()));
     let request = lease
@@ -947,12 +964,12 @@ fn exercise_wrong_owner_media(
 
 fn exercise_disabled_sheet(
     dom: &mut Dom,
-    element: surgeist_dom::NodeId,
-    owner: &surgeist_dom::DomStyleCssomRoot,
+    element: surgeist_dom::identity::NodeId,
+    owner: &surgeist_dom::style::DomStyleCssomRoot,
     sheet: &surgeist_cssom::CssomSheetId,
 ) {
     use surgeist_cssom::CssomEditGuard;
-    use surgeist_dom::{DomSourceProgress, DomStyleAction};
+    use surgeist_dom::{source::DomSourceProgress, style::DomStyleAction};
     let cancel = AtomicBool::new(false);
     let historical_css = owner.snapshot().unwrap();
     assert!(!historical_css.sheet(sheet).unwrap().inputs().disabled);
@@ -1133,7 +1150,10 @@ fn disabled_without_an_association_is_a_no_op_and_does_not_accept_other_families
 
 #[test]
 fn source_input_finite_work_or_storage_refusal_preserves_the_first_style_boundary() {
-    use surgeist_dom::{DomResource, DomSourceLimits, DomSourceProgress};
+    use surgeist_dom::{
+        limits::DomResource,
+        source::{DomSourceLimits, DomSourceProgress},
+    };
     use surgeist_html::values::DocumentString;
     let cancel = AtomicBool::new(false);
     for work_bound in [false, true] {
@@ -1193,7 +1213,7 @@ fn source_input_finite_work_or_storage_refusal_preserves_the_first_style_boundar
                     Ok(DomSourceProgress::Request(DomSourceRequest::Style(request))) => {
                         assert_eq!(
                             request.action(),
-                            surgeist_dom::DomStyleAction::Update(
+                            surgeist_dom::style::DomStyleAction::Update(
                                 HtmlStyleUpdateAction::CheckInlineCsp
                             )
                         );
@@ -1258,7 +1278,7 @@ fn source_input_finite_work_or_storage_refusal_preserves_the_first_style_boundar
 #[test]
 fn committed_transition_generations_and_request_snapshots_survive_style_phases() {
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
-    use surgeist_dom::{DomSourceProgress, DomStyleAction};
+    use surgeist_dom::{source::DomSourceProgress, style::DomStyleAction};
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(
@@ -1269,7 +1289,8 @@ fn committed_transition_generations_and_request_snapshots_survive_style_phases()
             0,
             16,
             100000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_view_transitions(8, 16, 80)
@@ -1309,10 +1330,10 @@ fn committed_transition_generations_and_request_snapshots_survive_style_phases()
     let mut batch = DomBatch::new();
     batch.initialize_view_transitions(
         dom.snapshot().document(document).unwrap().stamp(),
-        surgeist_dom::DomPreparedViewTransitionSheet::capture(
+        surgeist_dom::view_transition::DomPreparedViewTransitionSheet::capture(
             &css.snapshot(),
             &sheet,
-            surgeist_dom::DomViewTransitionCaptureLimits::new(16_384, 1_000_000),
+            surgeist_dom::view_transition::DomViewTransitionCaptureLimits::new(16_384, 1_000_000),
             &cancel,
         )
         .unwrap(),
@@ -1400,7 +1421,7 @@ fn committed_transition_generations_and_request_snapshots_survive_style_phases()
 
 #[test]
 fn pending_source_refuses_dependent_base_and_image_reads_but_old_snapshots_stay_complete() {
-    use surgeist_dom::DomSourceProgress;
+    use surgeist_dom::source::DomSourceProgress;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut batch = DomBatch::new();
@@ -1497,7 +1518,9 @@ fn pending_source_refuses_dependent_base_and_image_reads_but_old_snapshots_stay_
 
 #[test]
 fn csp_fact_admission_counts_actual_policy_backing_and_failed_reply_keeps_request_retryable() {
-    use surgeist_dom::{DomResource, DomSourceProgress, DomStyleInlineCspObservation};
+    use surgeist_dom::{
+        limits::DomResource, source::DomSourceProgress, style::DomStyleInlineCspObservation,
+    };
     use surgeist_html::values::DocumentString;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
@@ -1558,7 +1581,9 @@ fn csp_fact_admission_counts_actual_policy_backing_and_failed_reply_keeps_reques
 #[test]
 fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() {
     use surgeist_dom::{
-        DomNativeCheckpoint, DomNativeCheckpointLimits, DomSlotQueryLimits, DomSourceProgress,
+        shadow::DomSlotQueryLimits,
+        source::DomSourceProgress,
+        task::{DomNativeCheckpoint, DomNativeCheckpointLimits},
     };
     let cancel = AtomicBool::new(false);
     let checkpoint = DomNativeCheckpointLimits::new(
@@ -1576,7 +1601,8 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
             0,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_select_processing(32, 4_000_000, 10_000_000)
@@ -1623,7 +1649,7 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
         ))
     ));
     assert_eq!(dom.pending_native_tasks(), 1);
-    let surgeist_dom::DomSelectCompletionStart::Source(mut lease) = dom
+    let surgeist_dom::form::select::DomSelectCompletionStart::Source(mut lease) = dom
         .begin_select_completion(&task, checkpoint, source_limits(), &cancel)
         .unwrap()
     else {
@@ -1644,7 +1670,7 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
     assert!(
         !partial.nodes().any(|id| matches!(
             partial.node(id).unwrap().kind(),
-            surgeist_dom::DomNodeKind::DocumentFragment
+            surgeist_dom::tree::DomNodeKind::DocumentFragment
         )),
         "private clone wrapper must never get a public identity"
     );
@@ -1681,15 +1707,17 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
     ));
     assert!(!dom.snapshot().nodes().any(|id| matches!(
         dom.snapshot().node(id).unwrap().kind(),
-        surgeist_dom::DomNodeKind::DocumentFragment
+        surgeist_dom::tree::DomNodeKind::DocumentFragment
     )));
 }
 
 #[test]
 fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_occurrence() {
     use surgeist_dom::{
-        DomNativeCheckpoint, DomNativeCheckpointLimits, DomSlotQueryLimits, DomSourceLimits,
-        DomSourceProgress, DomStyleSheetAvailability,
+        shadow::DomSlotQueryLimits,
+        source::{DomSourceLimits, DomSourceProgress},
+        style::DomStyleSheetAvailability,
+        task::{DomNativeCheckpoint, DomNativeCheckpointLimits},
     };
     let cancel = AtomicBool::new(false);
     let checkpoint = DomNativeCheckpointLimits::new(
@@ -1707,7 +1735,8 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
             0,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_select_processing(32, 4_000_000, 10_000_000)
@@ -1751,7 +1780,7 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
     };
     let task_operation = task.operation();
     let before_source = dom.snapshot();
-    let surgeist_dom::DomSelectCompletionStart::Source(mut lease) = dom
+    let surgeist_dom::form::select::DomSelectCompletionStart::Source(mut lease) = dom
         .begin_select_completion(&task, checkpoint, source_limits(), &cancel)
         .unwrap()
     else {
@@ -1765,7 +1794,7 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
     };
     assert_eq!(
         request.action(),
-        surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+        surgeist_dom::style::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
     );
     assert_eq!(lease.status().published_phases(), 1);
     let copied_style = request.source().element();
@@ -1781,7 +1810,7 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
     assert!(
         already_published
             .changes()
-            .contains(&surgeist_dom::DomChange::SourceOperation)
+            .contains(&surgeist_dom::edit::DomChange::SourceOperation)
     );
     // Measure only the real already-published output, not a predicted queue
     // tariff. This cap admits resume but no additional final output record.
@@ -1846,7 +1875,7 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
             // observation again; do not assume either replay or suppression.
             assert_eq!(
                 retry.action(),
-                surgeist_dom::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+                surgeist_dom::style::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
             );
             assert_eq!(retry.source().element(), copied_style);
             assert_eq!(retry.source().stamp(), request.source().stamp());
@@ -1922,8 +1951,9 @@ fn html_body_gate_and_blocking_cleanup(selected_media: Option<&str>) {
     use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
-        DomChange, DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
-        DomStyleInlineCspObservation,
+        edit::DomChange,
+        source::DomSourceProgress,
+        style::{DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleInlineCspObservation},
     };
     let cancel = AtomicBool::new(false);
     for body_present in [true, false] {
@@ -2098,7 +2128,7 @@ fn dropped_unpublished_permission_id_cannot_resume_a_later_published_tail() {
     stale_operation_id_case(2);
 }
 fn stale_operation_id_case(end: u8) {
-    use surgeist_dom::DomSourceProgress;
+    use surgeist_dom::source::DomSourceProgress;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut setup = DomBatch::new();
@@ -2156,7 +2186,13 @@ fn stale_operation_id_case(end: u8) {
     ));
 }
 
-fn manual_slot_input_fixture(inputs: usize) -> (Dom, surgeist_dom::NodeId, surgeist_dom::NodeId) {
+fn manual_slot_input_fixture(
+    inputs: usize,
+) -> (
+    Dom,
+    surgeist_dom::identity::NodeId,
+    surgeist_dom::identity::NodeId,
+) {
     use surgeist_html::construction::{
         HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
     };
@@ -2169,7 +2205,8 @@ fn manual_slot_input_fixture(inputs: usize) -> (Dom, surgeist_dom::NodeId, surge
             inputs,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -2208,59 +2245,71 @@ fn execute_slot_source_edit(
     match dom.begin_source_edit(edit, source_limits(), cancel) {
         Err(error) => Err(error),
         Ok(mut lease) => match lease.advance(cancel)? {
-            surgeist_dom::DomSourceProgress::Failed(failure) => {
+            surgeist_dom::source::DomSourceProgress::Failed(failure) => {
                 panic!("manual Slot assignment cannot produce a compound failure: {failure:?}")
             }
-            surgeist_dom::DomSourceProgress::Complete(_) => Ok(()),
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
+            surgeist_dom::source::DomSourceProgress::Complete(_) => Ok(()),
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
                 panic!("manual Slot assignment has no external Style phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::HostedChild(
+                request,
+            )) => {
                 panic!("manual Slot assignment has no hosted child phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
                 panic!("manual Slot assignment has no event observation: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
                 panic!("manual Slot assignment has no Dialog service phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::CloseWatcher(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::CloseWatcher(
+                request,
+            )) => {
                 panic!("manual Slot assignment has no close-watcher service phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::AutofocusInsertion(
-                request,
-            )) => {
+            surgeist_dom::source::DomSourceProgress::Request(
+                DomSourceRequest::AutofocusInsertion(request),
+            ) => {
                 panic!("unexpected autofocus insertion service: {request:?}");
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::DialogFocusing(
+                request,
+            )) => {
                 panic!("manual Slot assignment has no Dialog focusing service phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::FocusDelegate(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::FocusDelegate(
+                request,
+            )) => {
                 panic!("manual Slot assignment has no focus delegate service phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::DesignMode(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::DesignMode(
+                request,
+            )) => {
                 panic!("manual Slot assignment has no designMode service phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
                 panic!("manual Slot assignment has no Script settings phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::MetaCsp(request)) => {
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::MetaCsp(
+                request,
+            )) => {
                 panic!("manual Slot assignment has no Meta CSP phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::AttributeVerification(
-                request,
-            )) => {
+            surgeist_dom::source::DomSourceProgress::Request(
+                DomSourceRequest::AttributeVerification(request),
+            ) => {
                 panic!("manual Slot assignment has no attribute verification phase: {request:?}")
             }
-            surgeist_dom::DomSourceProgress::Request(
+            surgeist_dom::source::DomSourceProgress::Request(
                 DomSourceRequest::AttributeAttachmentOutput(request),
             ) => panic!("manual Slot assignment has no attribute attachment output: {request:?}"),
-            surgeist_dom::DomSourceProgress::Request(
+            surgeist_dom::source::DomSourceProgress::Request(
                 DomSourceRequest::CustomElementConstruction(request),
             ) => panic!("manual Slot assignment has no constructor request: {request:?}"),
-            surgeist_dom::DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(
-                request,
-            )) => {
+            surgeist_dom::source::DomSourceProgress::Request(
+                DomSourceRequest::FullscreenExitHandoff(request),
+            ) => {
                 panic!("manual Slot assignment has no fullscreen exit handoff: {request:?}")
             }
         },
@@ -2269,7 +2318,7 @@ fn execute_slot_source_edit(
 
 #[test]
 fn source_slot_inputs_preserve_the_canonical_zero_allowance_before_publication() {
-    use surgeist_dom::DomResource;
+    use surgeist_dom::limits::DomResource;
     let cancel = AtomicBool::new(false);
     let (mut dom, slot, text) = manual_slot_input_fixture(0);
     let commands = || {
@@ -2328,7 +2377,7 @@ fn source_slot_inputs_preserve_the_canonical_zero_allowance_before_publication()
 
 #[test]
 fn slot_inputs_admit_atomic_batch_totals_and_one_source_bank_at_exact_and_one_short() {
-    use surgeist_dom::DomResource;
+    use surgeist_dom::limits::DomResource;
     let cancel = AtomicBool::new(false);
     for (limit, duplicate, raw_count) in [(1, false, 2), (2, false, 2), (2, true, 3), (3, true, 3)]
     {
@@ -2434,7 +2483,7 @@ fn slot_inputs_admit_atomic_batch_totals_and_one_source_bank_at_exact_and_one_sh
 
 #[test]
 fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
-    use surgeist_dom::DomResource;
+    use surgeist_dom::limits::DomResource;
     let (mut dom, slot, text) = manual_slot_input_fixture(0);
     let commands = || {
         let mut batch = DomBatch::new();
@@ -2464,7 +2513,8 @@ fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
             0,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -2476,7 +2526,7 @@ fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
     };
     assert_eq!(dom.apply(commands(), &cancel).unwrap_err(), expected);
     assert!(
-        matches!(dom.begin_source_edit(DomSourceEdit::assign_slot(slot, vec![text]), surgeist_dom::DomSourceLimits::new(0, 0, 0, 0, 0, 0, 1), &cancel), Err(error) if error == expected)
+        matches!(dom.begin_source_edit(DomSourceEdit::assign_slot(slot, vec![text]), surgeist_dom::source::DomSourceLimits::new(0, 0, 0, 0, 0, 0, 1), &cancel), Err(error) if error == expected)
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert!(dom.pending_source_edit().is_none());
@@ -2484,7 +2534,7 @@ fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
 
 #[test]
 fn atomic_batch_slot_inputs_are_admitted_before_an_earlier_style_can_publish() {
-    use surgeist_dom::DomResource;
+    use surgeist_dom::limits::DomResource;
     let cancel = AtomicBool::new(false);
     let (mut dom, slot, text) = manual_slot_input_fixture(0);
     let before = dom.snapshot();
@@ -2541,7 +2591,7 @@ fn raised_independent_meta_budget_reaches_the_exact_published_source_tail() {
     }
 }
 fn meta_budget_reaches_first_style_request(low: u64) -> bool {
-    use surgeist_dom::{DomMetaError, DomSourceProgress};
+    use surgeist_dom::{meta::DomMetaError, source::DomSourceProgress};
     let cancel = AtomicBool::new(false);
     let (mut dom, _, _, edit) = meta_recovery_fixture(low);
     let before = dom.snapshot();
@@ -2561,7 +2611,14 @@ fn meta_budget_reaches_first_style_request(low: u64) -> bool {
         other => panic!("actual same-command Meta preflight: {other:?}"),
     }
 }
-fn meta_recovery_fixture(low: u64) -> (Dom, DomLimits, surgeist_dom::DocumentId, DomSourceEdit) {
+fn meta_recovery_fixture(
+    low: u64,
+) -> (
+    Dom,
+    DomLimits,
+    surgeist_dom::identity::DocumentId,
+    DomSourceEdit,
+) {
     let cancel = AtomicBool::new(false);
     let high = DomLimits::new(
         128,
@@ -2571,7 +2628,7 @@ fn meta_recovery_fixture(low: u64) -> (Dom, DomLimits, surgeist_dom::DocumentId,
         0,
         16,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_meta_processing_work(1_000_000);
@@ -2593,7 +2650,7 @@ fn meta_recovery_fixture(low: u64) -> (Dom, DomLimits, surgeist_dom::DocumentId,
     (dom, high, document, edit)
 }
 fn resume_after_meta_work_refusal(low: u64) {
-    use surgeist_dom::{DomMetaError, DomSourceProgress};
+    use surgeist_dom::{meta::DomMetaError, source::DomSourceProgress};
     let cancel = AtomicBool::new(false);
     let (mut dom, high, document, edit) = meta_recovery_fixture(low);
     let before = dom.snapshot();
@@ -2679,9 +2736,13 @@ fn admitted_inert_parser_style_continues_after_creation_to_render_context() {
     use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
-        DomNativeInputPlatform, DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits,
-        DomSourceProgress, DomStyleAction, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
-        DomStyleInlineCspObservation,
+        document::DomNativeInputPlatform,
+        installation::{DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits},
+        source::DomSourceProgress,
+        style::{
+            DomStyleAction, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
+            DomStyleInlineCspObservation,
+        },
     };
     use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
     use surgeist_html_semantics::{
@@ -2888,7 +2949,10 @@ fn admitted_inert_parser_style_continues_after_creation_to_render_context() {
 
 #[test]
 fn a_style_source_copies_the_attribute_values_that_borrow_a_block() {
-    use surgeist_dom::{DomResource, DomSourceLimits, DomSourceProgress};
+    use surgeist_dom::{
+        limits::DomResource,
+        source::{DomSourceLimits, DomSourceProgress},
+    };
     use surgeist_html::values::TextBlock;
 
     // One unit of a block whose capacity is a mebi-unit. The source retains the attribute
@@ -2908,7 +2972,8 @@ fn a_style_source_copies_the_attribute_values_that_borrow_a_block() {
             0,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

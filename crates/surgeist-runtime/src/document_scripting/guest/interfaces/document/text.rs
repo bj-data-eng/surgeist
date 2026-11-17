@@ -2,7 +2,7 @@
 
 use super::{character_data::copy_native_data, *};
 use surgeist_bindings_js::conversion::types::DOM_STRING;
-use surgeist_dom::DomSourceEdit;
+use surgeist_dom::source::DomSourceEdit;
 
 pub(super) fn install_whole_text<'scope>(
     scope: &mut Scope<'scope>,
@@ -279,7 +279,7 @@ impl TextBuffer {
 
 fn collect_text(
     read: &NativeRead<'_>,
-    node: surgeist_dom::DomNode<'_>,
+    node: surgeist_dom::tree::DomNode<'_>,
 ) -> Result<TextBuffer, DocumentGuestEventError> {
     let mut text = TextBuffer::default();
     node.visit_descendant_text_with(

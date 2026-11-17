@@ -33,24 +33,28 @@ fn queued(
         let key = draft.resolve(subject.into()).unwrap();
         let token = cancel();
         let mut state = draft.dialog_state_mut(key, &token).unwrap();
-        state.toggle_tracker = Some(crate::DomDialogToggleTracker {
+        state.toggle_tracker = Some(crate::internal::dialog::DomDialogToggleTracker {
             task: id,
             old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
         });
         state.commit(&token).unwrap();
         let prepared = draft.finish(&dom, &cancel()).unwrap();
         dom.publish(prepared, &cancel()).unwrap();
-        DomDialogTaskInfo::Toggle(crate::DomDialogToggleTaskInfo {
-            id,
-            old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
-            new: surgeist_html::elements::dialog::HtmlDialogState::Open,
-            association: None,
-        })
+        DomDialogTaskInfo::Toggle(
+            crate::internal::store::source::operation::dialog_queue::DomDialogToggleTaskInfo {
+                id,
+                old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
+                new: surgeist_html::elements::dialog::HtmlDialogState::Open,
+                association: None,
+            },
+        )
     } else {
-        DomDialogTaskInfo::Close(crate::DomDialogCloseTaskInfo {
-            id,
-            association: None,
-        })
+        DomDialogTaskInfo::Close(
+            crate::internal::store::source::operation::dialog_queue::DomDialogCloseTaskInfo {
+                id,
+                association: None,
+            },
+        )
     };
     let task = Some(DomDialogTask {
         info,

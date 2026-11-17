@@ -644,7 +644,7 @@ impl Draft {
         let (cancellations, cancellations_debit) = cancellations.into_parts();
         for (operation, targets) in cancellations {
             source::formation::reserve(&mut changes, 1, budget, cancel)?;
-            let operation = crate::DomNativeTaskId {
+            let operation = crate::internal::select::DomNativeTaskId {
                 owner: dom.owner,
                 serial: operation,
             };
@@ -1484,7 +1484,7 @@ mod tests {
         assert_eq!(counters.sequence_materialized_bytes, 0);
         assert_eq!(counters.relation_sequence_materialized_bytes, 0);
 
-        let event = crate::DomFullscreenEvent {
+        let event = crate::internal::fullscreen::DomFullscreenEvent {
             document,
             subject: button,
             kind: crate::internal::fullscreen::DomFullscreenEventKind::Change,

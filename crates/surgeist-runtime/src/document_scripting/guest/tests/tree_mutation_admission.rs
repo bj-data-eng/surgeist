@@ -62,7 +62,7 @@ fn invoke(scope: &mut Scope<'_>) -> Result<(), Error> {
 
 pub(in crate::document_scripting) fn normalized_operands_admit_exact_backing_and_work() {
     let normalized_bytes = 2
-        * (size_of::<surgeist_dom::DomNodeOrString>() + size_of::<GuestBacking>())
+        * (size_of::<surgeist_dom::edit::DomNodeOrString>() + size_of::<GuestBacking>())
         + size_of::<Vec<u16>>()
         + 2 * size_of::<usize>()
         + 3 * size_of::<u16>();

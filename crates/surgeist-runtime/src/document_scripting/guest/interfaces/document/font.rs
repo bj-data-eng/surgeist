@@ -4,7 +4,7 @@ use super::{
     reflection::{self, Receiver, Reflection},
     *,
 };
-use surgeist_dom::DomNode;
+use surgeist_dom::tree::DomNode;
 
 const MEMBERS: &[reflection::Member] = &[
     (

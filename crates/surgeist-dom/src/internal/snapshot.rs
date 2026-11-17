@@ -58,7 +58,7 @@ impl DomSnapshot {
             .filter(|slot| slot.generation == id.generation)
             .and_then(|slot| slot.record.as_ref())
             .ok_or(DomError::StaleRange)?;
-        Ok(crate::DomRange { id, record })
+        Ok(crate::internal::range::DomRange { id, record })
     }
     pub fn incomplete_hosted_operation(
         &self,
@@ -203,14 +203,14 @@ impl<'a> DomDocument<'a> {
     /// proof stays unavailable. Neither value supplies a current-area resolver,
     /// viewport, system-focus observation or execution authority. Reads preserve
     /// the captured value across later inactivity, metadata and tree changes.
-    pub fn focused_area_designation(self) -> crate::DomFocusedAreaDesignation {
+    pub fn focused_area_designation(self) -> crate::internal::document::DomFocusedAreaDesignation {
         self.snapshot
             .state
             .node(self.snapshot.owner, self.id.0)
             .expect("captured Document")
             .focused_area_designation()
     }
-    pub fn active_range(self) -> crate::DomActiveRangeState {
+    pub fn active_range(self) -> crate::internal::range::DomActiveRangeState {
         self.snapshot
             .state
             .node(self.snapshot.owner, self.id.0)
@@ -355,46 +355,46 @@ impl<'a> DomNode<'a> {
     pub fn as_form(self) -> Option<crate::internal::form::DomForm<'a>> {
         self.as_element()
             .and_then(DomElement::form_state)
-            .map(|_| crate::DomForm { node: self })
+            .map(|_| crate::internal::form::DomForm { node: self })
     }
     pub fn as_fieldset(self) -> Option<crate::internal::fieldset::DomFieldset<'a>> {
         self.as_element()
             .and_then(DomElement::fieldset_state)
-            .map(|_| crate::DomFieldset { node: self })
+            .map(|_| crate::internal::fieldset::DomFieldset { node: self })
     }
     pub fn as_button(self) -> Option<crate::internal::button::DomButton<'a>> {
         self.as_element()
             .and_then(DomElement::button_state)
-            .map(|_| crate::DomButton { node: self })
+            .map(|_| crate::internal::button::DomButton { node: self })
     }
     pub fn as_input(self) -> Option<crate::internal::input::DomInput<'a>> {
         self.as_element()?.input_state()?;
-        Some(crate::DomInput { node: self })
+        Some(crate::internal::input::DomInput { node: self })
     }
     pub fn as_details(self) -> Option<crate::internal::details::DomDetails<'a>> {
         self.as_element()?
             .is_details()
-            .then_some(crate::DomDetails { node: self })
+            .then_some(crate::internal::details::DomDetails { node: self })
     }
     pub fn as_select(self) -> Option<crate::internal::select::DomSelect<'a>> {
         self.as_element()?.select_state()?;
-        Some(crate::DomSelect { node: self })
+        Some(crate::internal::select::DomSelect { node: self })
     }
     pub fn as_option(self) -> Option<crate::internal::select::DomOption<'a>> {
         self.as_element()?.option_state()?;
-        Some(crate::DomOption { node: self })
+        Some(crate::internal::select::DomOption { node: self })
     }
     pub fn as_selectedcontent(self) -> Option<crate::internal::select::DomSelectedcontent<'a>> {
         self.as_element()?.selectedcontent_disabled()?;
-        Some(crate::DomSelectedcontent { node: self })
+        Some(crate::internal::select::DomSelectedcontent { node: self })
     }
     pub fn as_output(self) -> Option<crate::internal::output::DomOutput<'a>> {
         self.as_element()?.output_state()?;
-        Some(crate::DomOutput { node: self })
+        Some(crate::internal::output::DomOutput { node: self })
     }
     pub fn as_textarea(self) -> Option<crate::internal::textarea::DomTextarea<'a>> {
         self.as_element()?.textarea_state()?;
-        Some(crate::DomTextarea { node: self })
+        Some(crate::internal::textarea::DomTextarea { node: self })
     }
 
     /// Privileged canonical ownership, including closed roots. This does not
@@ -833,7 +833,7 @@ impl<'a> DomNode<'a> {
     }
     pub fn as_attr(self) -> Option<crate::internal::attr::DomAttr<'a>> {
         let (data, owner) = self.node.attribute_node()?;
-        Some(crate::DomAttr {
+        Some(crate::internal::attr::DomAttr {
             id: crate::internal::identity::DomAttrId(self.id),
             document: self.node.document(),
             owner,
@@ -908,7 +908,7 @@ impl<'a> DomNode<'a> {
     }
     pub fn attributes(self) -> Option<crate::internal::attr::DomNamedNodeMap<'a>> {
         self.as_element()?;
-        Some(crate::DomNamedNodeMap { element: self })
+        Some(crate::internal::attr::DomNamedNodeMap { element: self })
     }
     pub fn get_attribute_node(
         self,
@@ -1148,7 +1148,7 @@ impl<'a> DomShadowRoot<'a> {
     pub fn host(self) -> NodeId {
         self.node.shadow_host().expect("canonical non-null host")
     }
-    pub fn state(self) -> &'a crate::DomShadowRootState {
+    pub fn state(self) -> &'a crate::internal::shadow::DomShadowRootState {
         let DomNodeKind::ShadowRoot(state) = self.node.kind() else {
             unreachable!("checked root kind")
         };
@@ -1218,7 +1218,7 @@ impl DomSnapshot {
         id: crate::internal::view_transition::DomViewTransitionId,
     ) -> Result<crate::internal::view_transition::DomViewTransition<'_>, DomError> {
         let value = self.state.view_transitions.transition(self.owner, id)?;
-        Ok(crate::DomViewTransition {
+        Ok(crate::internal::view_transition::DomViewTransition {
             snapshot: self,
             value,
         })
@@ -1234,7 +1234,7 @@ impl DomSnapshot {
             .get(usize::try_from(id.generation).map_err(|_| DomError::RepresentationExhausted)?)
             .filter(|r| r.id == id)
             .ok_or(DomError::StaleViewTransitionRecord)?;
-        Ok(crate::DomViewTransitionRecord { transition, value })
+        Ok(crate::internal::view_transition::DomViewTransitionRecord { transition, value })
     }
     /// Complete relation reads require this snapshot's actual document element.
     pub fn view_transition_pseudo(
@@ -1246,8 +1246,8 @@ impl DomSnapshot {
             .document(value.document)?
             .document_element()
             .ok_or(DomError::ViewTransitionOriginUnavailable)?;
-        Ok(crate::DomViewTransitionPseudo {
-            transition: crate::DomViewTransition {
+        Ok(crate::internal::view_transition::DomViewTransitionPseudo {
+            transition: crate::internal::view_transition::DomViewTransition {
                 snapshot: self,
                 value,
             },

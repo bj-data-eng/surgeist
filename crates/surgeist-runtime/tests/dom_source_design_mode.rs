@@ -2,7 +2,21 @@
 //! Session Source driver, without acknowledging an unavailable focus service.
 use std::sync::atomic::AtomicBool;
 
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    edit::DomChange,
+    event::DomDispatchCustodyLimits,
+    hosted::{DomHostedLimits, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    range::{
+        DomActiveRangeState, DomDesignModeRangeDisposition, DomRangeId, DomSourceDesignModeRequest,
+        DomSourceDesignModeStep,
+    },
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOperationId, DomSourcePhase, DomSourceRequest,
+    },
+};
 use surgeist_html::focus::HtmlFocusingAction;
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
@@ -22,7 +36,8 @@ fn session() -> DomSession {
                 128,
                 32,
                 4_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_ranges(8)

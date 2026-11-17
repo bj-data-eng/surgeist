@@ -3,7 +3,7 @@
 //! These tests exercise new public commands, without preimplementation RED.
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{Dom, DomBatch, DomCommit, DomSnapshot, identity::NodeId, limits::DomLimits};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
 
@@ -16,7 +16,7 @@ fn limits() -> DomLimits {
         256,
         16,
         1_000_000,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_select_processing(128, 4_000_000, 10_000_000)

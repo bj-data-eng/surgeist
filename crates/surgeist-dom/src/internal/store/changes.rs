@@ -278,7 +278,7 @@ pub(super) fn sparse_difference(
             .and_then(|slot| slot.record.as_ref().map(|record| (slot.generation, record)));
         let same = before.zip(after).is_some_and(|(a, b)| a.0 == b.0);
         if let Some((generation, record)) = before {
-            let id = crate::DomRangeId {
+            let id = crate::internal::range::DomRangeId {
                 owner,
                 slot: index,
                 generation,
@@ -299,11 +299,13 @@ pub(super) fn sparse_difference(
         }
         if !same && let Some((generation, _)) = after {
             source::formation::reserve(&mut changes, 1, budget, cancelled)?;
-            changes.push(DomChange::RangeCreated(crate::DomRangeId {
-                owner,
-                slot: index,
-                generation,
-            }));
+            changes.push(DomChange::RangeCreated(
+                crate::internal::range::DomRangeId {
+                    owner,
+                    slot: index,
+                    generation,
+                },
+            ));
             #[cfg(test)]
             written.pushed::<DomChange>();
         }
@@ -656,7 +658,7 @@ pub(super) fn full_difference(
             .and_then(|slot| slot.record.as_ref().map(|record| (slot.generation, record)));
         let same = before.zip(after).is_some_and(|(a, b)| a.0 == b.0);
         if let Some((generation, record)) = before {
-            let id = crate::DomRangeId {
+            let id = crate::internal::range::DomRangeId {
                 owner,
                 slot: index,
                 generation,
@@ -673,11 +675,13 @@ pub(super) fn full_difference(
         }
         if !same && let Some((generation, _)) = after {
             source::formation::reserve(&mut changes, 1, budget, cancelled)?;
-            changes.push(DomChange::RangeCreated(crate::DomRangeId {
-                owner,
-                slot: index,
-                generation,
-            }));
+            changes.push(DomChange::RangeCreated(
+                crate::internal::range::DomRangeId {
+                    owner,
+                    slot: index,
+                    generation,
+                },
+            ));
         }
     }
     for index in 0..old.slots.len().max(new.slots.len()) {

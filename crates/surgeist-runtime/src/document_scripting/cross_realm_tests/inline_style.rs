@@ -5,7 +5,7 @@ use crate::document_scripting::guest::tests::{
 use crate::{DomSourceDriveError, DomStyleRuntimeError};
 use std::sync::atomic::Ordering;
 use surgeist_cssom::CssomStore;
-use surgeist_dom::DomStyleCssomRoot;
+use surgeist_dom::style::DomStyleCssomRoot;
 use surgeist_html::values::DocumentString;
 
 pub(super) fn guest_insertion_publishes_a_sheet_under_the_known_empty_policy() {
@@ -138,7 +138,7 @@ pub(super) fn stopped_upgrade_can_settle_its_published_style_child() {
     assert!(child.parent_operation().is_some());
     assert_ne!(
         child.phase(),
-        surgeist_dom::DomSourcePhase::CustomElementConstruction,
+        surgeist_dom::source::DomSourcePhase::CustomElementConstruction,
         "{failure:?}, {cause:?}"
     );
     assert_eq!(

@@ -50,7 +50,7 @@ fn parsed_pending_associations_return_original_dom_before_session_owner_adoption
         .metadata()
         .origin()
         .clone();
-    let environment = surgeist_dom::DomParsedDocumentEnvironment::headless(
+    let environment = surgeist_dom::installation::DomParsedDocumentEnvironment::headless(
         origin,
         HtmlBaseUrlRecord::observed(
             HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3),
@@ -62,14 +62,14 @@ fn parsed_pending_associations_return_original_dom_before_session_owner_adoption
         .unwrap(),
         HtmlBaseEncoding::fresh(),
         "UTF-8".into(),
-        surgeist_dom::DomNativeInputPlatform::headless(),
+        surgeist_dom::document::DomNativeInputPlatform::headless(),
     );
     let installed = dom
         .install_parsed_html_document(
             dom.snapshot().stamp(),
             report,
             environment,
-            surgeist_dom::DomParsedHtmlInstallLimits::new(
+            surgeist_dom::installation::DomParsedHtmlInstallLimits::new(
                 1024,
                 10_000_000,
                 16_000_000,

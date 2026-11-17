@@ -29,7 +29,7 @@ pub(super) fn rendered() -> Ready {
             .unwrap()
             .process_rendering(
                 &value.q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Transfer(
                     &mut value.notification
                 ),
                 &flag()
@@ -193,7 +193,7 @@ fn queued_predecessor_reports_new_request_and_bare_cleanup_refuses() {
     assert!(matches!(
         value.dom.finish_style_notification(
             &mut token,
-            surgeist_dom::DomStyleNotificationDelivery::Native,
+            surgeist_dom::style::DomStyleNotificationDelivery::Native,
             1024,
             &flag()
         ),
@@ -320,7 +320,9 @@ fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
         .unwrap()
         .process_rendering(
             &value.q,
-            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(&mut value.notification),
+            surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Transfer(
+                &mut value.notification,
+            ),
             &flag(),
         )
         .unwrap();

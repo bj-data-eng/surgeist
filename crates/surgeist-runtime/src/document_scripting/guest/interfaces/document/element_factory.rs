@@ -6,7 +6,10 @@ use surgeist_bindings_js::{
     conversion::declarations, declarations::ElementCreationArgument,
     dom_exception::DomExceptionName,
 };
-use surgeist_dom::{DomElementCreationName, DomElementCreationOptions, DomRegistryBinding};
+use surgeist_dom::{
+    custom_element::DomRegistryBinding,
+    edit::{DomElementCreationName, DomElementCreationOptions},
+};
 use surgeist_html::values::Namespace;
 
 pub(super) fn install<'scope>(

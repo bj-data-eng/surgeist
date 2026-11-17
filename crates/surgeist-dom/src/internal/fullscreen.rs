@@ -49,7 +49,7 @@ impl DomFullscreenExitStatus {
     pub const fn resize(self) -> bool {
         self.resize
     }
-    pub const fn operation(self) -> crate::DomSourceOperationId {
+    pub const fn operation(self) -> crate::internal::source::DomSourceOperationId {
         self.operation
     }
     pub const fn command(self) -> usize {

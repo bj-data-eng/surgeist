@@ -1117,7 +1117,7 @@ fn trusted_attribute_sink_parks_for_its_registered_global() {
         .created(&element)
         .unwrap()
         .unwrap();
-    let facts = crate::DomDocumentScriptingFacts {
+    let facts = crate::internal::hosted::DomDocumentScriptingFacts {
         engine: HtmlScriptingEngine::Supported,
         policy: HtmlScriptingPolicy {
             user_allows: true,
@@ -1533,7 +1533,7 @@ fn registered_attribute_verification_precedes_attr_writes_and_attachment_guards(
             &mut dom,
             global,
             document,
-            crate::DomDocumentScriptingFacts {
+            crate::internal::hosted::DomDocumentScriptingFacts {
                 engine: HtmlScriptingEngine::Supported,
                 policy: HtmlScriptingPolicy {
                     user_allows: true,
@@ -1688,7 +1688,7 @@ fn script_settings_from_an_expired_hosted_issuer_do_not_advance_source() {
         .created(&script)
         .unwrap()
         .unwrap();
-    let facts = crate::DomDocumentScriptingFacts {
+    let facts = crate::internal::hosted::DomDocumentScriptingFacts {
         engine: HtmlScriptingEngine::Supported,
         policy: HtmlScriptingPolicy {
             user_allows: true,
@@ -2885,7 +2885,7 @@ fn attach_svg_cleanup_fixture(
             dom,
             global,
             document,
-            crate::DomDocumentScriptingFacts {
+            crate::internal::hosted::DomDocumentScriptingFacts {
                 engine: HtmlScriptingEngine::Supported,
                 policy: HtmlScriptingPolicy {
                     user_allows: true,
@@ -2903,7 +2903,7 @@ fn require_svg_fixture_script(
     suffix: &StyleSvgSuffix,
     document: DocumentId,
     cancel: &AtomicBool,
-) -> crate::DomSourceScriptRequest {
+) -> crate::internal::source::DomSourceScriptRequest {
     let DomSourceProgress::Request(DomSourceRequest::Script(read)) = lease.advance(cancel).unwrap()
     else {
         panic!(
@@ -2985,7 +2985,7 @@ fn configured_inline_source_closes_empty_profile_after_svg_refusal() {
                 DomSourceEdit::insert_before(suffix.wrapper, parent, None),
                 context,
                 source_limits(),
-                crate::DomInlineStyleRequestLimits {
+                crate::internal::inline_style::DomInlineStyleRequestLimits {
                     input: CssUtf16InputLimits::default(),
                     declaration: Default::default(),
                 },
@@ -3222,7 +3222,7 @@ fn profile_svg_fixture_script(
     lease: &crate::internal::store::source::operation::DomSourceLease<'_>,
     suffix: &StyleSvgSuffix,
     document: DocumentId,
-) -> crate::DomSourceScriptRequest {
+) -> crate::internal::source::DomSourceScriptRequest {
     let DomSourceProgress::Request(DomSourceRequest::Script(read)) = progress else {
         panic!("actual Style receipt must be followed by the original Script settings request");
     };
@@ -3264,7 +3264,7 @@ fn stopped_registration_does_not_accept_a_prior_script_settings_receipt() {
         .created(&script)
         .unwrap()
         .unwrap();
-    let facts = crate::DomDocumentScriptingFacts {
+    let facts = crate::internal::hosted::DomDocumentScriptingFacts {
         engine: HtmlScriptingEngine::Supported,
         policy: HtmlScriptingPolicy {
             user_allows: true,
@@ -3542,7 +3542,7 @@ fn rejected_svg_suffix_does_not_publish_private_inline_recording() {
         &cancel,
     )
     .unwrap();
-    let request_limits = crate::DomInlineStyleRequestLimits {
+    let request_limits = crate::internal::inline_style::DomInlineStyleRequestLimits {
         input: CssUtf16InputLimits::default(),
         declaration: Default::default(),
     };

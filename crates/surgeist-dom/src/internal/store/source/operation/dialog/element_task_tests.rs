@@ -172,7 +172,7 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
         let (mut dom, executor, _, first, _) = fixture();
         let managed = dom.usage().managed_nodes();
         if !has_node_room {
-            dom.set_limits(crate::DomLimits {
+            dom.set_limits(crate::internal::store::DomLimits {
                 nodes: managed,
                 ..dom.limits()
             })

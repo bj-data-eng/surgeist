@@ -6,7 +6,7 @@ use super::*;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn limits(bytes: usize, work: u64) -> crate::DomSourceLimits {
+fn limits(bytes: usize, work: u64) -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(bytes, 1_000_000, work, 64, 4096, 4096, 2)
 }
 fn dom() -> Dom {

@@ -3,8 +3,11 @@
 //! whether the scheduler has offered its execution permission since handoff.
 use super::*;
 use surgeist_dom::{
-    DomFullscreenExitId, DomFullscreenExitJob, DomHostedRuntimeRetention,
-    DomSourceFullscreenExitHandoffRequest, DomSourceLease,
+    fullscreen::{
+        DomFullscreenExitId, DomFullscreenExitJob, DomSourceFullscreenExitHandoffRequest,
+    },
+    hosted::DomHostedRuntimeRetention,
+    source::DomSourceLease,
 };
 
 pub(super) struct Jobs {
@@ -295,7 +298,7 @@ impl HostedRuntime {
         resolver: &mut crate::dom_source::InlineResolver<'_>,
         cancel: &AtomicBool,
     ) -> Result<
-        Option<surgeist_dom::DomInlineStyleSourcePublication>,
+        Option<surgeist_dom::style::inline::DomInlineStyleSourcePublication>,
         crate::dom_source::DomSourceRuntimeError,
     > {
         self.service_fullscreen_handoff(lease, request, cancel, |lease, source| {
@@ -314,7 +317,7 @@ impl HostedRuntime {
         cancel: &AtomicBool,
         commit: impl FnOnce(
             &mut DomSourceLease<'_>,
-            &surgeist_dom::DomHostedSource,
+            &surgeist_dom::hosted::DomHostedSource,
         ) -> Result<(DomFullscreenExitJob, T), E>,
     ) -> Result<T, E>
     where

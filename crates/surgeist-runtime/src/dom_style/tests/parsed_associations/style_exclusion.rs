@@ -3,7 +3,20 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomError,
+    installation::{
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+        DomParsedHtmlAssociationLimits,
+        style::{
+            DomParsedHtmlStyleError, DomParsedHtmlStylePhase, DomParsedHtmlStyleQualification,
+        },
+    },
+    limits::DomResource,
+    source::DomSourceEdit,
+    style::DomStyleSheetAvailability,
+    tree::DomNodeKind,
+};
 use surgeist_html::values::Namespace;
 
 fn qualification(

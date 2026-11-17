@@ -1,6 +1,15 @@
 //! Literal HTML877d Output state and DOM3071 tree outcomes.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomSlotSemanticLimits},
+    form::DomOutputState,
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource, DomUsage},
+    shadow::{DomShadowRootInit, DomSlotQueryLimits},
+    tree::DomNodeKind,
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
@@ -16,7 +25,7 @@ fn limits() -> DomLimits {
         256,
         32,
         1048576,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
 }
@@ -503,7 +512,8 @@ fn source_reached_override_then_new_text_admission_refuses_atomically_one_short(
                 256,
                 32,
                 1048576,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )
@@ -545,7 +555,8 @@ fn node_capacity_precedes_old_child_removal_and_late_wrong_family_rolls_back() {
             256,
             32,
             1048576,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

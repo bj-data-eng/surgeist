@@ -7,7 +7,7 @@ use surgeist_html::values::Namespace;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn limits(work: u64) -> crate::DomSourceLimits {
+fn limits(work: u64) -> crate::internal::source::DomSourceLimits {
     crate::internal::source::DomSourceLimits::new(32_000_000, 1_000_000, work, 32, 4096, 4096, 2)
 }
 fn fixture() -> (Dom, DocumentId, DocumentId, [NodeId; 3]) {

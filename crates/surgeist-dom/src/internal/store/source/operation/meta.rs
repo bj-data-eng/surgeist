@@ -216,7 +216,7 @@ enum HoldUse {
 ///
 /// The original lease cannot advance beside its hold:
 /// ```compile_fail,E0499
-/// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
+/// use surgeist_dom::{meta::DomMetaAtomicLimits, source::DomSourceLease};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
 /// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
@@ -226,7 +226,7 @@ enum HoldUse {
 /// ```
 /// Nor can a borrowed inline resolver open another advance:
 /// ```compile_fail,E0499
-/// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
+/// use surgeist_dom::{meta::DomMetaAtomicLimits, source::DomSourceLease};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
 /// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
@@ -236,7 +236,7 @@ enum HoldUse {
 /// ```
 /// The hold prevents dropping its actual lease:
 /// ```compile_fail,E0505
-/// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
+/// use surgeist_dom::{meta::DomMetaAtomicLimits, source::DomSourceLease};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(mut lease: DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
 /// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
@@ -246,7 +246,7 @@ enum HoldUse {
 /// ```
 /// A second hold cannot borrow the same lease:
 /// ```compile_fail,E0499
-/// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
+/// use surgeist_dom::{meta::DomMetaAtomicLimits, source::DomSourceLease};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
 /// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
@@ -256,8 +256,8 @@ enum HoldUse {
 /// ```
 /// Event acceptance remains behind that same exclusive borrow:
 /// ```compile_fail,E0499
-/// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits, DomSourceEventRequest,
-///     DomSourceEventPublication};
+/// use surgeist_dom::{event::{DomSourceEventPublication, DomSourceEventRequest},
+///     meta::DomMetaAtomicLimits, source::DomSourceLease};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool,
 /// request: &DomSourceEventRequest, receipt: &mut Option<DomSourceEventPublication>) {
@@ -268,7 +268,8 @@ enum HoldUse {
 /// ```
 /// Reacquiring the canonical Source owner also conflicts with its actual lease:
 /// ```compile_fail,E0499
-/// use surgeist_dom::{Dom, DomSourceOperationId, DomSourceLimits, DomMetaAtomicLimits};
+/// use surgeist_dom::{Dom, meta::DomMetaAtomicLimits,
+///     source::{DomSourceLimits, DomSourceOperationId}};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, operation: DomSourceOperationId, source: DomSourceLimits,
 /// limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
@@ -825,7 +826,7 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
                 match self.lease.advance_execution(&mut execution, cssom, cancel) {
                     Ok(source) => {
                         return Ok(Err(crate::internal::source::DomSourceAdvance::Progress(
-                            crate::DomInlineStyleSourceProgress {
+                            crate::internal::inline_style::DomInlineStyleSourceProgress {
                                 source,
                                 inline: execution.publication,
                             },
@@ -1315,7 +1316,7 @@ impl Pending {
                         .expect("original installation");
                     let bindings = std::mem::take(&mut input.bindings);
                     let payload = input.bindings_payload.take();
-                    let value = crate::DomNativeHtmlInstallation {
+                    let value = crate::internal::installation::DomNativeHtmlInstallation {
                         destination: input.destination,
                         source_root: input.source_root,
                         root,
@@ -1488,10 +1489,13 @@ impl<'caps> DomMetaSourcePreparation<'_, '_, 'caps> {
             .expect("owner-retained native phase");
         let (source, changes) = pending.finish(&mut operation, self.lease);
         let stamp = changes.to();
-        let inline = inline.map(|inline| crate::DomInlineStyleSourcePublication {
-            dom: changes,
-            inline,
-        });
+        let inline =
+            inline.map(
+                |inline| crate::internal::inline_style::DomInlineStyleSourcePublication {
+                    dom: changes,
+                    inline,
+                },
+            );
         if matches!(
             &source,
             DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_)

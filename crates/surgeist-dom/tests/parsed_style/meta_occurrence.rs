@@ -56,7 +56,7 @@ fn pair(
         drop(
             h.process_rendering(
                 &binding_q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                 &flag(),
             )
             .unwrap(),
@@ -95,7 +95,7 @@ fn pair(
         drop(
             h.process_rendering(
                 &q,
-                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                surgeist_dom::installation::style::DomParsedHtmlStyleNotificationHandoff::Retain,
                 &flag(),
             )
             .unwrap(),

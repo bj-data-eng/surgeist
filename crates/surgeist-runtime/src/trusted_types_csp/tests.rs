@@ -12,7 +12,7 @@ fn parse(serialized: &str, delivery: PolicyDelivery) -> Policy {
 #[cfg(feature = "document-scripting")]
 #[test]
 fn only_an_exact_nonce_match_needs_imported_tokenizer_history() {
-    use surgeist_dom::DomStyleNonceContent::TokenizerHistoryUnavailable;
+    use surgeist_dom::style::DomStyleNonceContent::TokenizerHistoryUnavailable;
     let policy = parse(
         "style-src 'nonce-AbC' 'report-sample'",
         PolicyDelivery::Meta,
@@ -41,7 +41,7 @@ fn inline_style_samples_only_for_the_exact_reporting_expression() {
         assert_eq!(
             policy
                 .inline_style(
-                    &surgeist_dom::DomStyleNonceContent::Absent,
+                    &surgeist_dom::style::DomStyleNonceContent::Absent,
                     &mut style_hash::StyleHashes::new(&[]),
                     &mut || Ok::<(), surgeist_dom::DomError>(()),
                 )

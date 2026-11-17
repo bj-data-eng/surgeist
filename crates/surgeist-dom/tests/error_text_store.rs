@@ -5,9 +5,14 @@ use std::error::Error;
 use std::sync::atomic::AtomicBool;
 use surgeist_css::color::CssColorUnavailable;
 use surgeist_dom::{
-    DocumentId, Dom, DomBaseFactsError, DomBatch, DomDocumentConstructorError,
-    DomEncodingUrlFactsError, DomError, DomHistoryError, DomLimits, DomMetaError, DomNameLimits,
-    DomResource, DomViewTransitionCssomError, NodeId,
+    Dom, DomBatch, DomError,
+    edit::DomHistoryError,
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    meta::DomMetaError,
+    script::DomDocumentConstructorError,
+    url::{DomBaseFactsError, DomEncodingUrlFactsError},
+    view_transition::DomViewTransitionCssomError,
 };
 use surgeist_html::bounded::lexical::HtmlPiPseudoAttributeError;
 use surgeist_html::bounded::numeric::HtmlRangeNumericError;

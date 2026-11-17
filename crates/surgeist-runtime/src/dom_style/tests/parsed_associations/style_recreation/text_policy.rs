@@ -1,6 +1,6 @@
 //! A real external artifact whose evaluator distinguishes the two original texts.
 use std::{convert::Infallible, mem::size_of, sync::Arc};
-use surgeist_dom::{
+use surgeist_dom::installation::style::{
     DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStyleInlinePolicyRequest,
 };
 use surgeist_html::security::csp::{

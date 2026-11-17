@@ -4,9 +4,13 @@ pub(super) mod parsed;
 use std::cell::Cell;
 use std::rc::Rc;
 use surgeist_dom::{
-    DomBatch, DomMetaAtomicLimits, DomMetaInlineBatch, DomMetaOrdinaryCommit,
-    DomMetaOrdinaryPreparation, DomMetaRuntimePrefix, DomMetaRuntimeUsage, DomSourceAdvance,
-    DomSourceEventClockMode, DomSourceProgress,
+    DomBatch,
+    event::{DomSourceAdvance, DomSourceEventClockMode},
+    meta::{
+        DomMetaAtomicLimits, DomMetaInlineBatch, DomMetaOrdinaryCommit, DomMetaOrdinaryPreparation,
+        DomMetaRuntimePrefix, DomMetaRuntimeUsage,
+    },
+    source::DomSourceProgress,
 };
 use surgeist_html::values::DocumentString;
 
@@ -17,7 +21,7 @@ pub enum DomStyleMetaError {
     /// Runtime qualification, preference, storage or work admission failed.
     Runtime(DomStyleRuntimeError),
     /// Canonical or producer preparation refused the actual native batch.
-    Meta(surgeist_dom::DomMetaAtomicError),
+    Meta(surgeist_dom::meta::DomMetaAtomicError),
 }
 impl std::fmt::Display for DomStyleMetaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -40,8 +44,8 @@ impl From<DomStyleRuntimeError> for DomStyleMetaError {
         Self::Runtime(error)
     }
 }
-impl From<surgeist_dom::DomMetaAtomicError> for DomStyleMetaError {
-    fn from(error: surgeist_dom::DomMetaAtomicError) -> Self {
+impl From<surgeist_dom::meta::DomMetaAtomicError> for DomStyleMetaError {
+    fn from(error: surgeist_dom::meta::DomMetaAtomicError) -> Self {
         Self::Meta(error)
     }
 }
@@ -51,7 +55,7 @@ impl From<surgeist_dom::DomMetaAtomicError> for DomStyleMetaError {
 /// their preference revisions still distinguish the actual ordered transitions.
 #[derive(Debug)]
 pub struct DomStyleMetaPreference {
-    meta: surgeist_dom::DomMetaSubject,
+    meta: surgeist_dom::meta::DomMetaSubject,
     observation: DomStyleSheetSetObservation,
     root_commit_index: usize,
 }
@@ -59,7 +63,7 @@ impl DomStyleMetaPreference {
     /// Exact existing generation or opaque original phase-qualified subject.
     /// A subsequently destroyed created Meta need not receive a canonical ID;
     /// cloned/imported descendants need not have caller creation tickets.
-    pub fn meta(&self) -> &surgeist_dom::DomMetaSubject {
+    pub fn meta(&self) -> &surgeist_dom::meta::DomMetaSubject {
         &self.meta
     }
     /// Actual preference transition with the joined canonical/producer bases.
@@ -95,8 +99,8 @@ impl DomStyleMetaOrdinaryOutcome {
 #[must_use]
 pub struct DomStyleMetaSourceOutcome {
     source: DomSourceProgress,
-    roots: Vec<surgeist_dom::DomMetaRootCommit>,
-    inline: Option<surgeist_dom::DomInlineStyleSourcePublication>,
+    roots: Vec<surgeist_dom::meta::DomMetaRootCommit>,
+    inline: Option<surgeist_dom::style::inline::DomInlineStyleSourcePublication>,
     preferences: Vec<DomStyleMetaPreference>,
 }
 impl std::fmt::Debug for DomStyleMetaSourceOutcome {
@@ -115,11 +119,11 @@ impl DomStyleMetaSourceOutcome {
         &self.source
     }
     /// Final producer outputs in first-occurrence Document order.
-    pub fn roots(&self) -> &[surgeist_dom::DomMetaRootCommit] {
+    pub fn roots(&self) -> &[surgeist_dom::meta::DomMetaRootCommit] {
         &self.roots
     }
     /// Authentic paired inline publication, when the original operation made one.
-    pub fn inline(&self) -> Option<&surgeist_dom::DomInlineStyleSourcePublication> {
+    pub fn inline(&self) -> Option<&surgeist_dom::style::inline::DomInlineStyleSourcePublication> {
         self.inline.as_ref()
     }
     /// Reached operations, including repeated names and semantic no-ops.
@@ -131,8 +135,8 @@ impl DomStyleMetaSourceOutcome {
         self,
     ) -> (
         DomSourceProgress,
-        Vec<surgeist_dom::DomMetaRootCommit>,
-        Option<surgeist_dom::DomInlineStyleSourcePublication>,
+        Vec<surgeist_dom::meta::DomMetaRootCommit>,
+        Option<surgeist_dom::style::inline::DomInlineStyleSourcePublication>,
         Vec<DomStyleMetaPreference>,
     ) {
         (self.source, self.roots, self.inline, self.preferences)
@@ -179,21 +183,21 @@ impl SourceSteps<'_> {
     }
     fn prefix(
         &self,
-        hold: &surgeist_dom::DomMetaSourceRuntimeHold<'_, '_>,
+        hold: &surgeist_dom::meta::DomMetaSourceRuntimeHold<'_, '_>,
     ) -> Result<(), DomStyleRuntimeError> {
         hold.step(self.cancel)?;
         self.runtime()
     }
     fn joined(
         &self,
-        preparation: &surgeist_dom::DomMetaSourcePreparation<'_, '_, '_>,
+        preparation: &surgeist_dom::meta::DomMetaSourcePreparation<'_, '_, '_>,
     ) -> Result<(), DomStyleRuntimeError> {
         preparation.step(self.cancel)?;
         self.runtime()
     }
     fn same(
         &self,
-        preparation: &surgeist_dom::DomMetaSourcePreparation<'_, '_, '_>,
+        preparation: &surgeist_dom::meta::DomMetaSourcePreparation<'_, '_, '_>,
         left: &[u16],
         right: &[u16],
     ) -> Result<bool, DomStyleRuntimeError> {
@@ -213,7 +217,7 @@ impl SourceSteps<'_> {
 
 fn source_storage(
     state: &StyleState,
-    hold: &mut surgeist_dom::DomMetaSourceRuntimeHold<'_, '_>,
+    hold: &mut surgeist_dom::meta::DomMetaSourceRuntimeHold<'_, '_>,
     backing: &Backing,
     steps: &SourceSteps<'_>,
 ) -> Result<usize, DomStyleRuntimeError> {
@@ -320,7 +324,7 @@ struct BackingLimits {
     bytes: usize,
     units: usize,
     outputs: usize,
-    resources: [surgeist_dom::DomResource; 3],
+    resources: [surgeist_dom::limits::DomResource; 3],
 }
 impl BackingLimits {
     fn native(limits: DomMetaAtomicLimits) -> Self {
@@ -329,21 +333,21 @@ impl BackingLimits {
             units: limits.retained_units(),
             outputs: limits.outputs(),
             resources: [
-                surgeist_dom::DomResource::MetaAtomicRetainedBytes,
-                surgeist_dom::DomResource::MetaAtomicRetainedUnits,
-                surgeist_dom::DomResource::MetaAtomicOutputs,
+                surgeist_dom::limits::DomResource::MetaAtomicRetainedBytes,
+                surgeist_dom::limits::DomResource::MetaAtomicRetainedUnits,
+                surgeist_dom::limits::DomResource::MetaAtomicOutputs,
             ],
         }
     }
-    fn parsed(limits: surgeist_dom::DomParsedHtmlAssociationLimits) -> Self {
+    fn parsed(limits: surgeist_dom::installation::DomParsedHtmlAssociationLimits) -> Self {
         Self {
             bytes: limits.retained_bytes(),
             units: limits.retained_units(),
             outputs: limits.outputs(),
             resources: [
-                surgeist_dom::DomResource::ParsedAssociationProcessingRetainedBytes,
-                surgeist_dom::DomResource::ParsedAssociationProcessingRetainedUnits,
-                surgeist_dom::DomResource::ParsedAssociationProcessingOutputs,
+                surgeist_dom::limits::DomResource::ParsedAssociationProcessingRetainedBytes,
+                surgeist_dom::limits::DomResource::ParsedAssociationProcessingRetainedUnits,
+                surgeist_dom::limits::DomResource::ParsedAssociationProcessingOutputs,
             ],
         }
     }
@@ -504,7 +508,7 @@ impl Backing {
         &mut self,
         values: &mut Vec<T>,
         count: usize,
-        hold: &mut surgeist_dom::DomMetaSourceRuntimeHold<'_, '_>,
+        hold: &mut surgeist_dom::meta::DomMetaSourceRuntimeHold<'_, '_>,
         steps: &SourceSteps<'_>,
     ) -> Result<(), DomStyleRuntimeError> {
         let requested = count
@@ -533,7 +537,7 @@ impl Backing {
         &mut self,
         values: &mut Vec<T>,
         count: usize,
-        preparation: &mut surgeist_dom::DomMetaSourcePreparation<'_, '_, '_>,
+        preparation: &mut surgeist_dom::meta::DomMetaSourcePreparation<'_, '_, '_>,
         steps: &SourceSteps<'_>,
     ) -> Result<(), DomStyleRuntimeError> {
         let requested = count
@@ -637,7 +641,7 @@ impl DomStyleRuntime {
             .raw_mut()
             .prepare_meta_batch(batch, &references, inline, limits, prefix, cancel)
             .map_err(|error| {
-                if let surgeist_dom::DomMetaAtomicError::MissingOwner { root } = &error
+                if let surgeist_dom::meta::DomMetaAtomicError::MissingOwner { root } = &error
                     && let Err(reason) = state.require_bound_if_registered(*root, cancel)
                 {
                     return DomStyleMetaError::Runtime(reason);
@@ -858,7 +862,7 @@ impl DomStyleRuntime {
     pub fn advance_meta(
         &self,
         lease: &mut DomSourceLease<'_>,
-        resolver: Option<&mut surgeist_dom::DomMetaInlineResolver<'_>>,
+        resolver: Option<&mut surgeist_dom::meta::DomMetaInlineResolver<'_>>,
         limits: DomMetaAtomicLimits,
         clock: DomSourceEventClockMode,
         cancel: &AtomicBool,
@@ -931,18 +935,18 @@ impl DomStyleRuntime {
             match hold
                 .prepare(&references, resolver, clock, cancel)
                 .map_err(|error| {
-                    if let surgeist_dom::DomMetaAtomicError::MissingOwner { root } = &error
+                    if let surgeist_dom::meta::DomMetaAtomicError::MissingOwner { root } = &error
                         && let Err(reason) = state.require_bound_if_registered(*root, cancel)
                     {
                         return DomStyleMetaError::Runtime(reason);
                     }
                     DomStyleMetaError::Meta(error)
                 })? {
-                surgeist_dom::DomMetaSourceStep::Prepared(preparation) => preparation,
-                surgeist_dom::DomMetaSourceStep::EventFiring(firing) => {
+                surgeist_dom::meta::DomMetaSourceStep::Prepared(preparation) => preparation,
+                surgeist_dom::meta::DomMetaSourceStep::EventFiring(firing) => {
                     return Ok(DomSourceAdvance::EventFiring(firing));
                 }
-                surgeist_dom::DomMetaSourceStep::Progress(progress) => {
+                surgeist_dom::meta::DomMetaSourceStep::Progress(progress) => {
                     let (source, inline) = progress.into_parts();
                     let outcome = DomStyleMetaSourceOutcome {
                         source,

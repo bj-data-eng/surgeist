@@ -779,7 +779,7 @@ impl DomSourceLease<'_> {
             .source_invocation
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
-        let issued = crate::DomSourceUrlRequest {
+        let issued = crate::internal::source::DomSourceUrlRequest {
             basis: formation::allocated_arc(crate::internal::source::UrlBasis {
                 child: request.clone(),
                 occurrence,

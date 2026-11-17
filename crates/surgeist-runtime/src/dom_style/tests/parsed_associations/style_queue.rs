@@ -4,7 +4,21 @@ use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomError,
+    installation::{
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+        DomParsedHtmlAssociationLimits, DomParsedHtmlInstallation,
+        style::{
+            DomParsedHtmlStyleError, DomParsedHtmlStyleNotificationError,
+            DomParsedHtmlStyleNotificationRequirement, DomParsedHtmlStylePhase,
+            DomParsedHtmlStyleQualification, DomParsedHtmlStyleRenderingProgress,
+        },
+    },
+    limits::DomResource,
+    source::{DomSourceEdit, DomSourceRequest},
+    style::{DomStyleCssomRoot, DomStyleNotificationOrigin, DomStyleSheet},
+};
 use surgeist_html::elements::style::HtmlStyleTrigger;
 use surgeist_html::values::Namespace;
 use surgeist_html_parser::{

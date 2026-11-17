@@ -2,7 +2,7 @@
 
 use super::super::interfaces::GuestNodeProjection;
 use super::*;
-use surgeist_dom::{DomBatch, DomNodeKind, NodeId};
+use surgeist_dom::{DomBatch, identity::NodeId, tree::DomNodeKind};
 
 pub(in crate::document_scripting) fn document_element_factories_use_native_names_and_identity() {
     let cancellation = Arc::new(AtomicBool::new(false));
@@ -78,7 +78,7 @@ pub(in crate::document_scripting) fn document_element_factories_use_native_names
         let DomNodeKind::Element(element) = element.kind() else { panic!("expected element") };
         assert_eq!(element.saved_is().unwrap().code_units(), units("x-native"));
         let DomNodeKind::Element(element) = snapshot.node(null_node).unwrap().kind() else { panic!("expected element") };
-        assert_eq!(element.custom_element_registry(), surgeist_dom::DomRegistryBinding::Null);
+        assert_eq!(element.custom_element_registry(), surgeist_dom::custom_element::DomRegistryBinding::Null);
     }).unwrap();
 }
 
@@ -1079,7 +1079,7 @@ pub(in crate::document_scripting) fn borrowed_fragment_factory_keeps_dom_on_wrap
 }
 
 pub(in crate::document_scripting) fn shadow_root_keeps_its_registered_creation_realm() {
-    use surgeist_dom::DomShadowRootInit;
+    use surgeist_dom::shadow::DomShadowRootInit;
     use surgeist_html::construction::HtmlShadowRootMode;
     use surgeist_html::values::Namespace;
 
@@ -1176,7 +1176,7 @@ pub(in crate::document_scripting) fn character_data_observation_admits_native_lo
         .find(|id| {
             matches!(
                 snapshot.node(*id).unwrap().kind(),
-                surgeist_dom::DomNodeKind::Text(data) if data.code_units() == expected
+                surgeist_dom::tree::DomNodeKind::Text(data) if data.code_units() == expected
             )
         })
         .unwrap();
@@ -1611,7 +1611,7 @@ pub(in crate::document_scripting) fn native_document_constructor_refusal_release
         failure.cause::<DocumentGuestEventError>(),
         Some(DocumentGuestEventError::Document(DocumentScriptError::Native(
             DocumentScriptNativeError::Dom(DomError::ResourceLimit {
-                resource: surgeist_dom::DomResource::ManagedNodes,
+                resource: surgeist_dom::limits::DomResource::ManagedNodes,
                 limit: observed,
             })
         ))) if *observed == limit

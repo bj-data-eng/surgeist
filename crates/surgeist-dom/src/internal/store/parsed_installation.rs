@@ -18,7 +18,7 @@ use surgeist_html_parser::{
 };
 fn historical_document(
     value: HtmlParseMetadataDocument<'_>,
-) -> crate::DomParsedHtmlHistoricalDocument {
+) -> crate::internal::parsed_installation::DomParsedHtmlHistoricalDocument {
     match value {
         HtmlParseMetadataDocument::Owned(node) => {
             crate::internal::parsed_installation::DomParsedHtmlHistoricalDocument::Constructed(
@@ -1169,10 +1169,12 @@ fn association_document(
         }
     }
     c.reserve(documents, 1)?;
-    documents.push(crate::DomParsedHtmlAssociationDocument {
-        source: historical,
-        document,
-    });
+    documents.push(
+        crate::internal::parsed_installation::DomParsedHtmlAssociationDocument {
+            source: historical,
+            document,
+        },
+    );
     Ok(())
 }
 
@@ -1867,7 +1869,7 @@ impl Dom {
             .materialize(pending.bindings, pending.captured_bindings);
         let publication = self.prepare_publication(pending.prepared, cancelled)?;
         let pending_association = (!pending.association_documents.is_empty()).then_some(
-            crate::DomParsedHtmlAssociationId {
+            crate::internal::parsed_installation::DomParsedHtmlAssociationId {
                 stamp: publication.to,
                 root: pending.root,
             },

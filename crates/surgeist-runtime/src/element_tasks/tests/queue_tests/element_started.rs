@@ -1,8 +1,8 @@
 //! Real Details delivery abandoned after callback entry.
 use super::*;
 
-const SOURCE: surgeist_dom::DomElementTaskSourceKind =
-    surgeist_dom::DomElementTaskSourceKind::DomManipulation;
+const SOURCE: surgeist_dom::task::DomElementTaskSourceKind =
+    surgeist_dom::task::DomElementTaskSourceKind::DomManipulation;
 
 fn run(
     fixture: &mut DetailsDispatchDropFixture,

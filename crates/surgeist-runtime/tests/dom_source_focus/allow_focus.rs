@@ -70,7 +70,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -262,13 +262,16 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     let task = session
         .element_task_execution()
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     let toggle = task.dialog_toggle().unwrap();
@@ -347,14 +350,17 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
             .element_task_execution()
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap(),
         Some(task)
     );
@@ -392,7 +398,10 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     let before_return = session.snapshot();
     let original_task = session
         .element_task_execution()
-        .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+        .pending_task(
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+            0,
+        )
         .unwrap()
         .unwrap();
     assert_eq!(original_task, task);
@@ -451,14 +460,17 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(
         session
             .element_task_execution()
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         1
     );
     assert_eq!(
         session
             .element_task_execution()
-            .pending_task(surgeist_dom::DomElementTaskSourceKind::DomManipulation, 0)
+            .pending_task(
+                surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
+                0
+            )
             .unwrap(),
         Some(original_task)
     );
@@ -551,7 +563,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     };
     let delivered = DomElementTaskRuntime::run_next(
         &mut session.dom(),
-        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+        surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
         &mut registry,
         &mut delivery,
         run_limits,
@@ -563,7 +575,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         receipt,
         displaced_owner,
         dialog_toggle_disposition:
-            Some(surgeist_dom::DomDialogToggleTaskDisposition::TrackerCleared),
+            Some(surgeist_dom::dialog::DomDialogToggleTaskDisposition::TrackerCleared),
     } = delivered
     else {
         panic!(
@@ -637,7 +649,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(
         delivery
             .owner
-            .pending_tasks(surgeist_dom::DomElementTaskSourceKind::DomManipulation)
+            .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
             .unwrap(),
         0
     );
@@ -691,7 +703,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert!(matches!(
         DomElementTaskRuntime::run_next(
             &mut session.dom(),
-            surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+            surgeist_dom::task::DomElementTaskSourceKind::DomManipulation,
             &mut registry,
             &mut delivery,
             run_limits,

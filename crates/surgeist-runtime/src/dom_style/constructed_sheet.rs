@@ -3,7 +3,7 @@ use super::*;
 use crate::dom_lifecycle::{DomHostedRuntimeError, DomHostedTopLevel, HostedRuntime};
 use std::rc::Rc;
 use surgeist_cssom::{CssomLimits, CssomRevision, CssomSheetInit, CssomStore};
-use surgeist_dom::{DocumentId, DomHostedSheetConstructionError};
+use surgeist_dom::{hosted::sheet::DomHostedSheetConstructionError, identity::DocumentId};
 
 /// Native Style policy used only when this Document has no producer yet.
 pub struct DomConstructedSheetOwnerInit<'a> {

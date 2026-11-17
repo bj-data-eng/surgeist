@@ -10,7 +10,21 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::{CssomSnapshot, CssomStore};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    document::DomOpaqueOrigin,
+    event::DomDispatchCustodyLimits,
+    hosted::{
+        DomHostedError, DomHostedLimits, DomHostedNavigableId, DomHostedRecordLimits,
+        DomHostedResource, DomInitialPermissionsPolicy, DomPermissionsPolicyValue,
+        child::DomHostedChildRequest,
+    },
+    identity::{DocumentId, NodeId},
+    limits::DomLimits,
+    source::{DomSourceEdit, DomSourceLimits, DomSourceOperationId, DomSourceRequest},
+    style::{DomStyleCssomRoot, DomStyleInlineCspObservation, DomStyleSheet, DomStyleSource},
+    url::{DomSourceUrlRequest, DomSourceUrlStage},
+};
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{
@@ -89,12 +103,14 @@ impl Fixture {
                     2048,
                     64,
                     8_000_000,
-                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
-                        .unwrap(),
+                    surgeist_dom::limits::DomNameLimits::new(
+                        16_777_216, 16_384, 4_000_000, 1_048_576,
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
                 .with_event_recipients(
-                    surgeist_dom::DomEventRecipientLimits::new(
+                    surgeist_dom::event::DomEventRecipientLimits::new(
                         64, 16_000_000, 16_000_000, 4_000_000,
                     )
                     .unwrap(),
@@ -711,7 +727,8 @@ fn teardown(mut fixture: Fixture) {
                 0,
                 0,
                 0,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap(),
         )

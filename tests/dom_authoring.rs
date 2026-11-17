@@ -2,7 +2,7 @@
 
 use std::sync::atomic::AtomicBool;
 
-use surgeist::dom::{Dom, DomBatch, DomLimits, DomSnapshot, NodeId};
+use surgeist::dom::{Dom, DomBatch, DomSnapshot, identity::NodeId, limits::DomLimits};
 use surgeist::html::values::Namespace;
 use surgeist::template::dom::append_static_html;
 use surgeist::template::registry::{
@@ -37,7 +37,8 @@ fn native_and_template_edits_share_canonical_identity_and_preserve_old_snapshots
             0,
             8,
             65536,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

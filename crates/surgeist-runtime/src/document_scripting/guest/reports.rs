@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use super::*;
 use crate::trusted_types_csp::{ReportError, ViolationReport};
-use surgeist_dom::DocumentId;
+use surgeist_dom::identity::DocumentId;
 
 pub(super) fn violation_error(
     error: ReportError<DocumentGuestEventError>,
@@ -21,10 +21,10 @@ pub(crate) enum ViolationBacking {
         _backing: GuestBacking,
     },
     Attribute {
-        _backing: surgeist_dom::DomSourceAttributePayloadRetention,
+        _backing: surgeist_dom::source::attribute::DomSourceAttributePayloadRetention,
     },
     Style {
-        _backing: surgeist_dom::DomStyleCspRetention,
+        _backing: surgeist_dom::style::DomStyleCspRetention,
     },
 }
 
@@ -38,7 +38,7 @@ pub(super) struct ViolationOrigin {
 /// The immutable report and its original admission, shared by its task and Event.
 pub(crate) struct QueuedViolation {
     report: ViolationReport<ViolationBacking>,
-    element: Option<surgeist_dom::NodeId>,
+    element: Option<surgeist_dom::identity::NodeId>,
 }
 
 impl QueuedViolation {
@@ -46,7 +46,7 @@ impl QueuedViolation {
         &self.report
     }
 
-    pub(crate) fn element(&self) -> Option<surgeist_dom::NodeId> {
+    pub(crate) fn element(&self) -> Option<surgeist_dom::identity::NodeId> {
         self.element
     }
 }
@@ -178,7 +178,7 @@ impl ViolationQueue {
 
     pub(super) fn push_style(
         &mut self,
-        element: surgeist_dom::NodeId,
+        element: surgeist_dom::identity::NodeId,
         reports: Vec<ViolationReport<ViolationBacking>>,
     ) {
         self.reports.extend(reports.into_iter().map(|report| {

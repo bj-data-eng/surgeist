@@ -1334,7 +1334,7 @@ impl DomHostedPolicyRequest {
     pub fn embedder_policy(&self) -> Option<&DomHostedEmbedderPolicyInputs> {
         self.embedder_policy.as_deref()
     }
-    pub fn target_origin(&self) -> &crate::DomOpaqueOrigin {
+    pub fn target_origin(&self) -> &crate::internal::document::DomOpaqueOrigin {
         &self.origin
     }
     pub const fn profile(&self) -> DomInitialPermissionsPolicyProfile {
@@ -1351,7 +1351,7 @@ impl DomHostedExecutionRequest {
     pub fn parent_global(&self) -> Option<DomHostedGlobalId> {
         self.request.parent.map(|parent| parent.global)
     }
-    pub fn top_level_origin(&self) -> &crate::DomOpaqueOrigin {
+    pub fn top_level_origin(&self) -> &crate::internal::document::DomOpaqueOrigin {
         &self.inputs.0.top_origin
     }
     pub fn creation_url(&self) -> &surgeist_html_semantics::HtmlBaseUrlRecord {
@@ -1370,14 +1370,14 @@ impl DomHostedExecutionRequest {
     pub fn opener_policy(&self) -> &surgeist_html::security::opener_policy::HtmlOpenerPolicy {
         &self.inputs.0.opener
     }
-    pub fn origin(&self) -> &crate::DomOpaqueOrigin {
+    pub fn origin(&self) -> &crate::internal::document::DomOpaqueOrigin {
         &self.origin
     }
 }
 macro_rules! document_request {
     ($name:ident) => {
         impl $name {
-            pub fn document(&self) -> crate::DocumentId {
+            pub fn document(&self) -> crate::internal::identity::DocumentId {
                 self.document
             }
             pub fn global(&self) -> DomHostedGlobalId {
@@ -1816,7 +1816,7 @@ pub struct DomHostedCreation {
     pub(crate) navigable: DomHostedNavigableId,
 }
 impl DomHostedCreation {
-    pub const fn document(self) -> crate::DocumentId {
+    pub const fn document(self) -> crate::internal::identity::DocumentId {
         self.document
     }
     pub const fn host(self) -> DomHostedHostId {
@@ -1987,7 +1987,7 @@ pub struct DomHostedDocumentDestructionProof {
     pub(crate) operation: DomHostedOperationId,
 }
 impl DomHostedDocumentDestructionProof {
-    pub fn document(&self) -> crate::DocumentId {
+    pub fn document(&self) -> crate::internal::identity::DocumentId {
         self.document
     }
     pub fn global(&self) -> DomHostedGlobalId {
@@ -2040,7 +2040,7 @@ impl DomHostedDestructionRequest {
     pub fn global(&self) -> DomHostedGlobalId {
         self.creation.global
     }
-    pub fn document(&self) -> crate::DocumentId {
+    pub fn document(&self) -> crate::internal::identity::DocumentId {
         self.creation.document
     }
     pub fn entry(&self) -> DomHostedEntryId {
@@ -2309,10 +2309,12 @@ impl DomDocumentScriptRegistration {
                 serial.checked_add(1)
             })
             .map_err(|_| crate::internal::store::DomError::RepresentationExhausted)?;
-        Ok(crate::DomSynchronousReactionQueue {
-            owner: self.0.key,
-            serial,
-        })
+        Ok(
+            crate::internal::store::source::reactions::DomSynchronousReactionQueue {
+                owner: self.0.key,
+                serial,
+            },
+        )
     }
 
     /// Dequeue one element position from the selected synchronous or backup queue.
@@ -2449,7 +2451,7 @@ pub struct DomDocumentScriptingObservation {
 impl DomDocumentScriptingObservation {
     /// The structural basis. Joining an observation to a snapshot also
     /// requires that snapshot's exact captured scripting registration.
-    pub const fn basis(self) -> crate::DomDocumentStamp {
+    pub const fn basis(self) -> crate::internal::snapshot::DomDocumentStamp {
         self.basis
     }
     pub const fn status(self) -> surgeist_html_semantics::HtmlScriptingStatus {

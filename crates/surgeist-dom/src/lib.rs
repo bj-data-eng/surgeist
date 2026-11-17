@@ -50,11 +50,56 @@
 //! canonical installation entries that preserve actual retained history and
 //! qualified contextual effects, with typed refusal for unsupported profiles.
 //!
+//! # Modules
+//!
+//! Five items sit at the crate root: [`Dom`] (the exclusive owner), [`DomBatch`]
+//! (an ordered edit), [`DomCommit`] (the result of a published batch),
+//! [`DomSnapshot`] (the owned read model) and [`DomError`] (the shared failure type).
+//! Every other public item has exactly one path, in the module below that owns it.
+//! Read the module documentation for the contract of each domain.
+//!
+//! | Module | Holds |
+//! | --- | --- |
+//! | [`capture`] | Immutable captures for semantic queries and host observations of external state. |
+//! | [`custom_element`] | Custom element registries, definitions, reactions and the Source constructor protocol. |
+//! | [`details`] | Details element state and its toggle intentions. |
+//! | [`dialog`] | Dialog state, the dialog task queue, close watchers and the dialog Source requests. |
+//! | [`document`] | Document class, interface, creation cause, environment and metadata. |
+//! | [`edit`] | Operands and results of batch edits, change coverage, child-list observers and node-retirement watches. |
+//! | [`event`] | Event parents, recipients, dispatch custody and the Source event firing protocol. |
+//! | [`focus`] | Focus requests and observations, autofocus history and the focus-delegate protocol. |
+//! | [`form`] | Form-associated element state: form, button, fieldset, input, output and textarea. |
+//! | [`form::select`] | Select, option and selectedcontent state and the select task protocol. |
+//! | [`fullscreen`] | Fullscreen model and exit protocol, and top-layer state. |
+//! | [`hosted`] | Hosted lifecycle: identities, limits, creation and permissions policy. |
+//! | [`hosted::child`] | Child navigables created and removed inside a hosted document. |
+//! | [`hosted::destruction`] | Hosted document destruction and its proofs. |
+//! | [`hosted::history`] | Session history entries, navigables and queued history jobs. |
+//! | [`hosted::sheet`] | Constructed stylesheets and style-root withdrawal for a hosted document. |
+//! | [`identity`] | Checked identities, revisions and stamps that qualify every read and change. |
+//! | [`installation`] | Native HTML fragment installation and the completed parser-report installation. |
+//! | [`installation::meta`] | Pending Meta associations of a parsed report. |
+//! | [`installation::style`] | Pending Style stylesheet associations of a parsed report: prefix, notification, sheet, subject, successor and terminal. |
+//! | [`limits`] | Finite admission policy for one DOM owner and its usage accounting. |
+//! | [`meta`] | Meta element state, document policy and CSP, and the native Meta composition. |
+//! | [`range`] | Ranges, their boundaries and operands, and the designMode range transition. |
+//! | [`script`] | HTML and SVG Script state, Document scripting registration and the Document constructor. |
+//! | [`shadow`] | Shadow roots, slots, the flat tree and Template contents. |
+//! | [`source`] | The domain-independent Source continuation: edit, request, input, limits, lease, status and cleanup. |
+//! | [`source::attribute`] | Attribute write verification hooks of the Source continuation. |
+//! | [`style`] | Style element association: sheets, sources, state, CSSOM roots and notifications. |
+//! | [`style::inline`] | Inline-style identity bound to CSSOM, its capture, mutation and feedback. |
+//! | [`task`] | Element task sources and the native checkpoint that releases queued tasks. |
+//! | [`tree`] | The read model of the canonical tree: documents, nodes, elements, names, attributes and node iteration. |
+//! | [`url`] | URL-bearing elements: Base, Link, hyperlinks and images, and the Source URL requests. |
+//! | [`view_transition`] | View Transition structural state, pseudo-elements, rules and sheets. |
+//!
 //! ```
 //! use std::sync::atomic::AtomicBool;
-//! use surgeist_dom::{Dom, DomBatch, DomLimits};
+//! use surgeist_dom::limits::DomLimits;
+//! use surgeist_dom::{Dom, DomBatch};
 //!
-//! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+//! let names = surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
 //! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
@@ -69,9 +114,10 @@
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
-//! use surgeist_dom::{Dom, DomBatch, DomLimits};
+//! use surgeist_dom::limits::DomLimits;
+//! use surgeist_dom::{Dom, DomBatch};
 //! use surgeist_html::values::Namespace;
-//! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+//! let names = surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
 //! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
@@ -88,11 +134,14 @@
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
-//! use surgeist_dom::{Dom, DomBatch, DomLimits, DomSlotQueryLimits};
+//! use surgeist_dom::limits::DomLimits;
+//! use surgeist_dom::shadow::DomSlotQueryLimits;
+//! use surgeist_dom::task::{DomNativeCheckpoint, DomNativeCheckpointLimits};
+//! use surgeist_dom::{Dom, DomBatch};
 //! use surgeist_html::construction::{
 //!     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
 //! use surgeist_html::values::Namespace;
-//! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+//! let names = surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
 //! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 64, 32, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
@@ -109,218 +158,41 @@
 //! let slot = committed.created(&slot)?.unwrap();
 //! let text = committed.created(&text)?.unwrap();
 //! assert_eq!(dom.snapshot().slot(slot)?.assigned_nodes(), &[text]);
-//! let surgeist_dom::DomNativeCheckpoint::Slots(notifications) = dom.native_checkpoint_step(
-//!     surgeist_dom::DomNativeCheckpointLimits::new(0, 0, DomSlotQueryLimits::new(32, 64)?)?, &AtomicBool::new(false))? else { panic!("reached Slot marker") };
+//! let DomNativeCheckpoint::Slots(notifications) = dom.native_checkpoint_step(
+//!     DomNativeCheckpointLimits::new(0, 0, DomSlotQueryLimits::new(32, 64)?)?, &AtomicBool::new(false))? else { panic!("reached Slot marker") };
 //! assert_eq!(notifications.targets(), &[slot]);
 //! # Ok::<(), surgeist_dom::DomError>(())
 //! ```
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
 
+pub mod capture;
+pub mod custom_element;
+pub mod details;
+pub mod dialog;
+pub mod document;
+pub mod edit;
+pub mod event;
+pub mod focus;
+pub mod form;
+pub mod fullscreen;
+pub mod hosted;
+pub mod identity;
+pub mod installation;
+pub mod limits;
+pub mod meta;
+pub mod range;
+pub mod script;
+pub mod shadow;
+pub mod source;
+pub mod style;
+pub mod task;
+pub mod tree;
+pub mod url;
+pub mod view_transition;
+
 mod internal;
 
-pub use internal::compound::DomNodeOrString;
-pub use internal::element_tasks::{
-    DomElementTaskId, DomElementTaskRetention, DomElementTaskSource, DomElementTaskSourceKind,
-};
-pub use internal::event::{
-    DomEventParent, DomEventParentQuery, DomEventPayloadRetention, DomEventRecipient,
-    DomEventRecipientLimits, DomEventRecipientTarget, DomEventRegistryAssociation,
-    DomEventRegistryPreparation,
-};
-pub use internal::inline_style::{
-    DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleCommit,
-    DomInlineStyleCompletion, DomInlineStyleError, DomInlineStyleFeedbackLimits,
-    DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleMutation,
-    DomInlineStyleMutationLimits, DomInlineStyleOutcome, DomInlineStyleProfile,
-    DomInlineStyleProperty, DomInlineStyleRequestLimits, DomInlineStyleReturn,
-    DomInlineStyleSourceContext, DomInlineStyleSourceProgress, DomInlineStyleSourcePublication,
-    DomInlineStyleTerminal,
-};
-pub use internal::name::{DomAttribute, DomNameAtom, DomQualifiedName};
-pub use internal::name_limits::DomNameLimits;
-pub use internal::source::*;
-pub use internal::store::DomInlineStyleOperation;
-
-pub use internal::attr::{DomAttr, DomAttributeAttachment, DomNamedNodeMap};
-pub use internal::autofocus::DomDocumentAutofocus;
-pub use internal::base::{DomBase, DomBaseFactsError, DomBaseResponse, DomFrozenBase, DomLink};
-pub use internal::batch::{
-    AttachedAttribute, AttachedShadowRoot, CreatedNode, DomBatch, NodeOperand, RemovedAttribute,
-};
-pub use internal::child_list::{
-    DomChildListObservationLimits, DomChildListObserverId, DomChildListRecord,
-};
-pub use internal::details::{
-    DomDetails, DomDetailsToggleCancellationReason, DomDetailsToggleIntention,
-    DomDetailsToggleIntentionId, DomDetailsToggleTransfer, DomElementTaskAssociation,
-};
-pub use internal::dialog::{DomCloseWatcherId, DomDialog, DomDialogToggleTracker};
-pub use internal::dispatch::{
-    DomDispatchAssociation, DomDispatchCustody, DomDispatchCustodyLimits,
-};
-pub use internal::document::DomNativeInputPlatform;
-pub use internal::document::{
-    DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentInterface,
-    DomDocumentMetadata, DomFocusedAreaDesignation, DomOpaqueOrigin, DomRegistryBinding,
-};
-pub use internal::element::{DomElement, DomElementDefinition};
-pub use internal::fullscreen::{
-    DomFullscreenEvent, DomFullscreenEventBatch, DomFullscreenEventKind, DomFullscreenExitFact,
-    DomFullscreenExitId, DomFullscreenExitReturn, DomFullscreenExitStatus, DomFullscreenExitStep,
-    DomFullscreenModelStep,
-};
-pub use internal::host::{
-    DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,
-    DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
-    DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
-};
-pub use internal::hosted::{
-    DomCreationRealmFallback, DomDocumentScriptBinding, DomDocumentScriptRegistration,
-    DomDocumentScriptingFacts, DomDocumentScriptingObservation,
-};
-pub use internal::hosted::{DomDocumentConstructorContext, DomDocumentConstructorError};
-pub use internal::hosted::{
-    DomHostedBrowsingContextId, DomHostedChildHistoryPublication, DomHostedChildHistoryRequest,
-    DomHostedChildPreparation, DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication,
-    DomHostedChildRemovalRequest, DomHostedChildRequest, DomHostedChildStep, DomHostedCreation,
-    DomHostedCreationLease, DomHostedCreationPublication, DomHostedCreationStep,
-    DomHostedDestructionInvocation, DomHostedDestructionInvocationRequest,
-    DomHostedDestructionLease, DomHostedDestructionPublication, DomHostedDestructionRequest,
-    DomHostedDestructionStep, DomHostedDocumentDestructionProof, DomHostedEmbedderKind,
-    DomHostedEmbedderPolicyInputs, DomHostedEntry, DomHostedEntryId, DomHostedEntryInitialization,
-    DomHostedEntryRequest, DomHostedError, DomHostedExecutionRequest,
-    DomHostedFinishLoadingRequest, DomHostedGlobalId, DomHostedHistoryJobReceipt,
-    DomHostedHistoryJobRequest, DomHostedHistoryStep, DomHostedHostId, DomHostedLimits,
-    DomHostedMakeActiveRequest, DomHostedMoment, DomHostedNavigable, DomHostedNavigableId,
-    DomHostedOperationId, DomHostedPolicyPublication, DomHostedPolicyRequest,
-    DomHostedPreparedChild, DomHostedPreparedTopLevel, DomHostedQueuedHistory,
-    DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention,
-    DomHostedSheetConstruction, DomHostedSheetConstructionError,
-    DomHostedSheetConstructionPublished, DomHostedSource, DomHostedSourceId,
-    DomHostedSourceRevision, DomHostedStyleRootWithdrawal, DomHostedStyleRootWithdrawalPreparation,
-    DomHostedStyleRootWithdrawalPublished, DomHostedTopLevelPreparation,
-    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
-};
-pub use internal::hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
-pub use internal::identity::{DocumentId, DomAttrId, DomOwnerId, DomRevision, DomStamp, NodeId};
-pub use internal::image::{
-    DomImageUpdate, DomImageUpdateCancellationReason, DomImageUpdateId, DomImg,
-};
-pub use internal::input::{DomInput, DomInputState};
-pub use internal::installation::{
-    DomNativeHtmlAssociation, DomNativeHtmlBinding, DomNativeHtmlInstallError,
-    DomNativeHtmlInstallLimits, DomNativeHtmlInstallResource, DomNativeHtmlInstallTarget,
-    DomNativeHtmlInstallation,
-};
-pub use internal::meta::{
-    DomDocumentCspState, DomDocumentPolicyContainer, DomMetaColorSchemeState, DomMetaDocumentState,
-    DomMetaError, DomMetaThemeColorState,
-};
-pub use internal::meta_atomic::*;
-pub use internal::node_iterator::{
-    DomNodeFilterDecision, DomNodeIterator, DomNodeIteratorFilter, DomNodeIteratorId,
-    DomNodeIteratorProgress,
-};
-pub use internal::node_values::{DomDocumentType, DomProcessingInstruction};
-pub use internal::output::{DomOutput, DomOutputState};
-pub use internal::parsed_association::*;
-pub use internal::parsed_installation::{
-    DomParsedDocumentEnvironment, DomParsedHtmlAssociationDocument, DomParsedHtmlAssociationId,
-    DomParsedHtmlAssociationReadiness, DomParsedHtmlBinding, DomParsedHtmlCapturedBinding,
-    DomParsedHtmlHistoricalDocument, DomParsedHtmlInstallError, DomParsedHtmlInstallLimits,
-    DomParsedHtmlInstallResource, DomParsedHtmlInstallation, DomParsedHtmlPendingAssociations,
-};
-pub use internal::parsed_meta::*;
-pub use internal::parsed_style::*;
-pub use internal::range::{
-    CreatedRange, DomActiveRangeState, DomRange, DomRangeBoundary, DomRangeId, DomRangeOperand,
-};
-pub use internal::registry::{DomRegistry, DomRegistryDefinitionId, DomRegistryId};
-pub use internal::script::DomHtmlScript;
-pub use internal::select::{
-    DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId, DomOption, DomOptionState,
-    DomSelect, DomSelectCompletionStart, DomSelectState, DomSelectTask,
-    DomSelectTaskCancellationReason, DomSelectTaskCompletion, DomSelectTaskOutcome,
-    DomSelectedcontent,
-};
-pub use internal::semantic::{
-    DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
-    DomScriptingCapture, DomSlotSemanticLimits,
-};
-pub use internal::shadow::{DomShadowRootInit, DomShadowRootState};
-pub use internal::slot::{
-    DomFlatRelation, DomFlatTree, DomSlot, DomSlotNodes, DomSlotNotificationTarget,
-    DomSlotNotifications, DomSlotQueryLimits, DomSlotSignalCancellationReason,
-};
-pub use internal::snapshot::{
-    DomDocument, DomDocumentPosition, DomDocumentStamp, DomNamespaceUri, DomNode, DomNodeKind,
-    DomShadowRoot, DomSiblingDirection, DomSnapshot, DomTagName, DomTreeOrder, DomTreeScope,
-};
-pub use internal::store::DomChildListNotification;
-pub use internal::store::DomNodeIteratorFilterRequest;
-pub use internal::store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
-pub use internal::store::pending_associations::{
-    DomParsedHtmlMetaOccurrenceCompletion, DomParsedHtmlMetaOccurrenceError,
-    DomParsedHtmlMetaOccurrencePreparation, DomParsedHtmlMetaOccurrencePublished,
-    DomParsedHtmlMetaOccurrenceRetirement, DomParsedHtmlMetaPreparation,
-    DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement, DomParsedHtmlMetaRuntimeHold,
-    DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
-    DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
-    DomParsedHtmlStyleSheetRetirement, DomParsedHtmlStyleSubjectCompletion,
-};
-pub use internal::store::registry::DomRegistryDefinitionPreparation;
-pub use internal::store::source::operation::dialog_queue::{
-    DomDialogCloseTaskInfo, DomDialogTask, DomDialogTaskInfo, DomDialogTaskQueueCommit,
-    DomDialogTaskQueuePlan, DomDialogTaskQueuePublication, DomDialogToggleTaskInfo,
-};
-pub use internal::store::{
-    Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits,
-    DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
-    DomNodeRetirementWatch, DomResource, DomUsage, DomWatchedNode,
-};
-pub use internal::svg_script::{DomSvgScript, DomSvgScriptOrigin};
-pub use internal::template::{DomTemplate, DomTemplateDocumentRole, DomTemplatePatch};
-pub use internal::textarea::{DomTextarea, DomTextareaReadLimits, DomTextareaState};
-pub use internal::top_layer::{DomDocumentTopLayer, DomTopLayerUaRule};
-pub use internal::view_transition::{
-    CreatedViewTransition, CreatedViewTransitionRecord, DomDocumentViewTransitions,
-    DomPreparedViewTransitionRules, DomPreparedViewTransitionSheet, DomViewTransition,
-    DomViewTransitionBranches, DomViewTransitionCaptureLimits, DomViewTransitionCssomError,
-    DomViewTransitionId, DomViewTransitionImageRules, DomViewTransitionPseudo,
-    DomViewTransitionPseudoChildren, DomViewTransitionPseudoId, DomViewTransitionPseudoKind,
-    DomViewTransitionRecord, DomViewTransitionRecordId, DomViewTransitionRuleAssociations,
-    DomViewTransitionRules, DomViewTransitionSheet, DomViewTransitionSubject,
-    ViewTransitionOperand, ViewTransitionRecordOperand,
-};
-
-pub use internal::button::{DomButton, DomButtonState};
-pub use internal::fieldset::{DomFieldset, DomFieldsetState};
-pub use internal::form::DomForm;
-
-pub use internal::store::source::operation::fullscreen::{
-    DomFullscreenExitHandoffCommit, DomFullscreenExitJob, DomSourceFullscreenExitHandoffRequest,
-};
-pub use internal::store::source::operation::meta::{
-    DomMetaSourcePreparation, DomMetaSourcePublished, DomMetaSourceRuntimeHold, DomMetaSourceStep,
-    DomSourceMetaCspError, DomSourceMetaCspProcessorFailure,
-};
-pub use internal::store::source::operation::{
-    DomPreparedElementName, DomShadowReactionRoute, DomSourceCustomElementCallbackScope,
-    DomSourceCustomElementDisposition, DomSourceCustomElementOutcome,
-    DomSourceCustomElementRetention, DomSourceCustomElementReturn, DomSourceCustomElementUpgrade,
-    DomSourceEventFiringLoan, DomSourceLease, DomSourceNodeOutputWatch, DomStyleCspBudget,
-    DomWatchedCustomElementResult, DomWatchedElementCreation,
-};
-pub use internal::store::source::reactions::{
-    DomCustomElementReaction, DomCustomElementReactionKind, DomCustomElementReactions,
-    DomSynchronousReactionQueue,
-};
-pub use internal::style::{
-    DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCspRetention,
-    DomStyleCssomOwnerBinding, DomStyleCssomPublicationRejection, DomStyleCssomRoot,
-    DomStyleCssomRootError, DomStyleInlineCspObservation, DomStyleNonceContent,
-    DomStyleNotificationCompletion, DomStyleNotificationDelivery, DomStyleNotificationOrigin,
-    DomStyleNotificationToken, DomStyleRequest, DomStyleRootKind, DomStyleSheet,
-    DomStyleSheetAvailability, DomStyleSheetPlacement, DomStyleSource, DomStyleState,
-};
+pub use crate::internal::batch::DomBatch;
+pub use crate::internal::snapshot::DomSnapshot;
+pub use crate::internal::store::{Dom, DomCommit, DomError};

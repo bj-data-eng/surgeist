@@ -1,6 +1,17 @@
 //! Finite Source work cuts; budgets place refusals, while DOM3071 supplies oracles.
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    edit::{DomChange, DomNodeRetirementLimits, DomSourceNodeOutputWatch},
+    event::DomSourceAdvance,
+    identity::NodeId,
+    limits::{DomLimits, DomNameLimits},
+    range::DomRangeId,
+    source::{
+        DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
+    },
+    style::{DomStyleInlineCspObservation, DomStyleRequest},
+};
 use surgeist_html::values::Namespace;
 
 fn cancel() -> AtomicBool {

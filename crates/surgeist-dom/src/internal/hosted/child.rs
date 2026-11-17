@@ -215,7 +215,7 @@ impl DomHostedEmbedderPolicyInputs {
     pub fn parent_document(&self) -> DomDocumentStamp {
         self.parent_document
     }
-    pub fn parent_origin(&self) -> &crate::DomOpaqueOrigin {
+    pub fn parent_origin(&self) -> &crate::internal::document::DomOpaqueOrigin {
         &self.parent_origin
     }
     pub fn parent_policy(&self) -> DomInitialPermissionsPolicy {

@@ -43,7 +43,7 @@ pub(super) fn native_processing_instruction_uses_its_canonical_wrapper() {
         Ok(())
     }).unwrap();
     let snapshot = host.snapshot().unwrap();
-    let surgeist_dom::DomNodeKind::ProcessingInstruction(value) =
+    let surgeist_dom::tree::DomNodeKind::ProcessingInstruction(value) =
         snapshot.node(instruction).unwrap().kind()
     else {
         panic!("native instruction");
@@ -142,7 +142,7 @@ pub(super) fn authored_processing_instructions_use_native_creation() {
             .filter(|id| before.node(*id).is_err()
                 && matches!(
                     after.node(*id).unwrap().kind(),
-                    surgeist_dom::DomNodeKind::ProcessingInstruction(_)
+                    surgeist_dom::tree::DomNodeKind::ProcessingInstruction(_)
                 ))
             .count(),
         3

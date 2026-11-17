@@ -8,7 +8,16 @@
     target_os = "ios"
 ))]
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomError, DomSnapshot,
+    event::{DomDispatchCustodyLimits, DomEventRecipientLimits},
+    hosted::{DomHostedError, DomHostedGlobalId, DomHostedLimits, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomNameLimits},
+    shadow::DomShadowRootInit,
+    source::DomSourceLimits,
+    task::DomElementTaskSourceKind,
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace},

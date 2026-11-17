@@ -1,6 +1,15 @@
 //! Qualified external outcomes through the real native Base owner.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError,
+    capture::{DomHtmlCaptureError, DomHtmlCaptureLimits},
+    edit::DomChange,
+    identity::{DocumentId, NodeId},
+    installation::DomNativeHtmlInstallLimits,
+    limits::{DomLimits, DomResource},
+    shadow::DomShadowRootInit,
+    url::{DomBaseFactsError, DomBaseResponse},
+};
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
@@ -18,7 +27,7 @@ fn limits(records: usize, work: u64, units: usize) -> DomLimits {
         128,
         8,
         262144,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap()
     .with_base_processing(records, work)

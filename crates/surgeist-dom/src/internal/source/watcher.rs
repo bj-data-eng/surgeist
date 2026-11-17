@@ -46,7 +46,7 @@ pub struct DomSourceCloseWatcherInvocationId {
     pub(crate) method: u64,
 }
 impl DomSourceCloseWatcherInvocationId {
-    pub const fn operation(self) -> crate::DomSourceOperationId {
+    pub const fn operation(self) -> crate::internal::source::DomSourceOperationId {
         self.operation
     }
     pub const fn method_occurrence(self) -> u64 {
@@ -69,7 +69,7 @@ pub struct DomSourceCloseWatcherRequest {
     pub(crate) cause: Option<DomSourceCleanupCause>,
 }
 impl DomSourceCloseWatcherRequest {
-    pub const fn operation(&self) -> crate::DomSourceOperationId {
+    pub const fn operation(&self) -> crate::internal::source::DomSourceOperationId {
         self.invocation.operation
     }
     pub const fn invocation(&self) -> DomSourceCloseWatcherInvocationId {
@@ -113,13 +113,13 @@ impl DomSourceInvariantFailure {
     pub const fn dialog_operation(self) -> surgeist_html::elements::dialog::HtmlDialogOperation {
         self.dialog_operation
     }
-    pub const fn subject(self) -> crate::NodeId {
+    pub const fn subject(self) -> crate::internal::identity::NodeId {
         self.subject
     }
     pub const fn action(self) -> surgeist_html::elements::dialog::HtmlDialogAction {
         self.action
     }
-    pub const fn basis(self) -> crate::DomStamp {
+    pub const fn basis(self) -> crate::internal::identity::DomStamp {
         self.basis
     }
     pub const fn reason(self) -> DomSourceInvariantReason {

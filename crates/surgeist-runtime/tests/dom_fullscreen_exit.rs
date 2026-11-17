@@ -14,7 +14,19 @@
 
 use std::sync::atomic::AtomicBool;
 
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch, DomCommit, DomError, DomSnapshot,
+    event::DomDispatchCustodyLimits,
+    fullscreen::{
+        DomFullscreenEventKind, DomFullscreenExitId, DomFullscreenExitReturn, DomFullscreenExitStep,
+    },
+    hosted::{DomHostedError, DomHostedLimits, DomHostedNavigableId, DomHostedRecordLimits},
+    identity::{DocumentId, NodeId},
+    limits::{DomLimits, DomResource},
+    source::{
+        DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceOperationId, DomSourceRequest,
+    },
+};
 use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
 
@@ -46,7 +58,8 @@ fn session(exits: usize, events: usize) -> DomSession {
                 1024,
                 128,
                 16_000_000,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap(),
             )
             .unwrap()
             .with_dispatch_custody(

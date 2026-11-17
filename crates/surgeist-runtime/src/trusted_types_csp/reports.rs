@@ -2,7 +2,7 @@
 
 use super::{Decision, Directive, Policy, PolicyDelivery, Violation};
 use std::{error::Error, fmt, mem::size_of};
-use surgeist_dom::DomSourceAttributeSink;
+use surgeist_dom::source::attribute::DomSourceAttributeSink;
 
 /// The original reached attribute sink and its stringified input.
 #[derive(Clone, Copy)]

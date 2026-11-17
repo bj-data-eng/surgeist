@@ -697,7 +697,7 @@ impl DomSlotNotifications {
             changes,
         }
     }
-    pub fn changes(&self) -> &crate::DomChanges {
+    pub fn changes(&self) -> &crate::internal::store::DomChanges {
         &self.changes
     }
     pub fn source(&self) -> &DomSnapshot {

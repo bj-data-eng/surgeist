@@ -1,8 +1,12 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, Dom, DomBatch, DomChange, DomDocumentClass, DomError, DomLimits,
-    DomRegistryBinding, DomResource,
+    Dom, DomBatch, DomError,
+    custom_element::DomRegistryBinding,
+    document::DomDocumentClass,
+    edit::DomChange,
+    identity::DocumentId,
+    limits::{DomLimits, DomResource},
 };
 use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
 
@@ -20,7 +24,8 @@ fn dom() -> Dom {
             0,
             8,
             8192,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -47,7 +52,8 @@ fn native_document_charges_its_source_default_string_slots() {
             0,
             0,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -69,7 +75,8 @@ fn insufficient_default_metadata_budget_rejects_atomic_creation() {
             0,
             0,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -274,7 +281,8 @@ fn lowered_capacity_cannot_hide_or_discard_admitted_metadata_strings() {
                 0,
                 0,
                 0,
-                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap()
+                surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                    .unwrap()
             )
             .unwrap()
         ),
@@ -298,7 +306,8 @@ fn lowered_capacity_cannot_hide_or_discard_admitted_metadata_strings() {
             0,
             0,
             0,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )
@@ -308,7 +317,7 @@ fn lowered_capacity_cannot_hide_or_discard_admitted_metadata_strings() {
 
 #[test]
 fn focused_designation_survives_projection_and_rejected_document_destruction() {
-    use surgeist_dom::DomFocusedAreaDesignation::KnownNull;
+    use surgeist_dom::focus::DomFocusedAreaDesignation::KnownNull;
     let mut owner = dom();
     let original = document(&mut owner);
     let captured = owner.snapshot();
@@ -386,7 +395,7 @@ fn focused_designation_survives_projection_and_rejected_document_destruction() {
 
 #[test]
 fn focused_designation_failed_creation_is_atomic_and_retry_is_fresh() {
-    use surgeist_dom::DomFocusedAreaDesignation::KnownNull;
+    use surgeist_dom::focus::DomFocusedAreaDesignation::KnownNull;
     let mut owner = dom();
     let original = document(&mut owner);
     let before = owner.snapshot();
@@ -409,7 +418,7 @@ fn focused_designation_failed_creation_is_atomic_and_retry_is_fresh() {
         0,
         8,
         8192,
-        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
     )
     .unwrap();
     owner.set_limits(limited).unwrap();
@@ -447,8 +456,8 @@ fn focused_designation_failed_creation_is_atomic_and_retry_is_fresh() {
 #[test]
 fn focused_designation_source_output_refusal_discards_unpublished_initialization() {
     use surgeist_dom::{
-        DomFocusedAreaDesignation::KnownNull, DomSourceEdit, DomSourceLimits, DomSourceOutput,
-        DomSourceProgress,
+        focus::DomFocusedAreaDesignation::KnownNull,
+        source::{DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress},
     };
     let mut owner = dom();
     let before = owner.snapshot();

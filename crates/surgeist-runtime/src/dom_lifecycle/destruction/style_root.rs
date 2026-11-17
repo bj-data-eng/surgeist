@@ -6,7 +6,7 @@ pub(crate) struct StyleCleanupSelection {
     index: usize,
     info: Info,
     owner: Rc<RefCell<records::WindowLoop>>,
-    _retention: surgeist_dom::DomHostedRuntimeRetention,
+    _retention: surgeist_dom::hosted::DomHostedRuntimeRetention,
 }
 pub(crate) struct StyleCleanupTask<'a> {
     _loop: RefMut<'a, records::WindowLoop>,
@@ -57,7 +57,7 @@ pub(crate) struct StyleCleanupContext<'a> {
     work: &'a mut u64,
     limit: u64,
     pub(crate) invocation: DomHostedOperationId,
-    pub(crate) document: surgeist_dom::DocumentId,
+    pub(crate) document: surgeist_dom::identity::DocumentId,
 }
 impl StyleCleanupContext<'_> {
     pub(crate) fn step(&mut self, cancel: &AtomicBool) -> Result<(), DomHostedRuntimeError> {

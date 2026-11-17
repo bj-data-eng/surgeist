@@ -23,7 +23,7 @@ impl NativeDomEvent {
 }
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits};
+use surgeist_dom::{DomBatch, DomCommit, identity::DocumentId, limits::DomLimits};
 use surgeist_html::values::Namespace;
 
 impl<C> DomEventDispatcher<C> {
@@ -228,15 +228,18 @@ pub(super) fn dom() -> Dom {
             128,
             32,
             131072,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_event_recipients(
-            surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
-                .unwrap(),
+            surgeist_dom::event::DomEventRecipientLimits::new(
+                64, 16_000_000, 16_000_000, 4_000_000,
+            )
+            .unwrap(),
         )
         .with_dispatch_custody(
-            surgeist_dom::DomDispatchCustodyLimits::new(
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
                 64, 4096, 16_000_000, 16_000_000, 4_000_000,
             )
             .unwrap(),
@@ -271,8 +274,8 @@ fn event_session(owner: Dom) -> crate::DomSession {
                 work: 100_000,
             },
             hosted: crate::DomHostedRuntimeLimits {
-                canonical: surgeist_dom::DomHostedLimits::new(
-                    surgeist_dom::DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
+                canonical: surgeist_dom::hosted::DomHostedLimits::new(
+                    surgeist_dom::hosted::DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
                     1_000_000,
                     1_000_000,
                     100_000,
@@ -367,7 +370,7 @@ fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing
             fixture
                 .dom
                 .limits()
-                .with_event_recipients(surgeist_dom::DomEventRecipientLimits::default()),
+                .with_event_recipients(surgeist_dom::event::DomEventRecipientLimits::default()),
         )
         .unwrap();
     let mut dispatcher: DomEventDispatcher<()> = registry();
@@ -380,7 +383,7 @@ fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing
             DomEventListenerOptions::default(),
         ),
         Err(DomEventDispatchError::Dom(DomError::ResourceLimit {
-            resource: surgeist_dom::DomResource::EventRecipients,
+            resource: surgeist_dom::limits::DomResource::EventRecipients,
             limit: 0
         }))
     ));
@@ -550,8 +553,13 @@ fn direct_global_error_registration_admits_canonical_recipient_lookup_work() {
     let exact = lookup_steps + resident_recipient_steps;
     let policy = |registrations, work| {
         original_limits.with_event_recipients(
-            surgeist_dom::DomEventRecipientLimits::new(registrations, 16_000_000, 16_000_000, work)
-                .unwrap(),
+            surgeist_dom::event::DomEventRecipientLimits::new(
+                registrations,
+                16_000_000,
+                16_000_000,
+                work,
+            )
+            .unwrap(),
         )
     };
     let mut dispatcher = registry::<()>();
@@ -573,7 +581,7 @@ fn direct_global_error_registration_admits_canonical_recipient_lookup_work() {
             options,
         ),
         Err(DomEventDispatchError::Dom(DomError::WorkLimit {
-            resource: surgeist_dom::DomResource::EventRecipientWork,
+            resource: surgeist_dom::limits::DomResource::EventRecipientWork,
             limit: exact - 1,
         }))
     );
@@ -589,7 +597,7 @@ fn direct_global_error_registration_admits_canonical_recipient_lookup_work() {
     assert!(matches!(
         dom.raw_mut().set_limits(policy(1, exact)),
         Err(DomError::ResourceLimit {
-            resource: surgeist_dom::DomResource::EventRecipients,
+            resource: surgeist_dom::limits::DomResource::EventRecipients,
             limit: 1,
         })
     ));
@@ -2048,10 +2056,13 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
     ));
 }
 
-fn style_edit_limits() -> surgeist_dom::DomSourceLimits {
-    surgeist_dom::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1)
+fn style_edit_limits() -> surgeist_dom::source::DomSourceLimits {
+    surgeist_dom::source::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 64, 4096, 4096, 1)
 }
-fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::DomSourceOperationId {
+fn park_real_style_tail(
+    dom: &mut Dom,
+    document: DocumentId,
+) -> surgeist_dom::source::DomSourceOperationId {
     let mut b = DomBatch::new();
     let style = b.create_element_ns(document, Namespace::html(), "style");
     let parent = dom
@@ -2064,7 +2075,7 @@ fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::Do
     let style = commit.created(&style).unwrap().unwrap();
     let mut lease = dom
         .begin_source_edit(
-            surgeist_dom::DomSourceEdit::insert_before(style, parent, None),
+            surgeist_dom::source::DomSourceEdit::insert_before(style, parent, None),
             style_edit_limits(),
             &AtomicBool::new(false),
         )
@@ -2072,7 +2083,7 @@ fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::Do
     let operation = lease.operation();
     assert!(matches!(
         lease.advance(&AtomicBool::new(false)).unwrap(),
-        surgeist_dom::DomSourceProgress::Request(_)
+        surgeist_dom::source::DomSourceProgress::Request(_)
     ));
     assert_eq!(
         lease.snapshot().incomplete_source_operation(),
@@ -2080,19 +2091,20 @@ fn park_real_style_tail(dom: &mut Dom, document: DocumentId) -> surgeist_dom::Do
     );
     operation
 }
-fn finish_real_style_tail(dom: &mut Dom, operation: surgeist_dom::DomSourceOperationId) {
+fn finish_real_style_tail(dom: &mut Dom, operation: surgeist_dom::source::DomSourceOperationId) {
     let mut lease = dom
         .resume_source_edit(operation, style_edit_limits(), &AtomicBool::new(false))
         .unwrap();
-    let surgeist_dom::DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Style(request)) =
-        lease.advance(&AtomicBool::new(false)).unwrap()
+    let surgeist_dom::source::DomSourceProgress::Request(
+        surgeist_dom::source::DomSourceRequest::Style(request),
+    ) = lease.advance(&AtomicBool::new(false)).unwrap()
     else {
         panic!("retained actual CSP request")
     };
     lease
         .accept_inline_csp(
             &request,
-            &surgeist_dom::DomStyleInlineCspObservation::evaluated(
+            &surgeist_dom::style::DomStyleInlineCspObservation::evaluated(
                 request.source(),
                 std::sync::Arc::new(vec!["style-src 'none'".into()]),
                 19,
@@ -2103,7 +2115,7 @@ fn finish_real_style_tail(dom: &mut Dom, operation: surgeist_dom::DomSourceOpera
         .unwrap();
     assert!(matches!(
         lease.advance(&AtomicBool::new(false)).unwrap(),
-        surgeist_dom::DomSourceProgress::Complete(_)
+        surgeist_dom::source::DomSourceProgress::Complete(_)
     ));
 }
 #[test]
@@ -2163,7 +2175,7 @@ fn callback_published_source_tail_blocks_later_listener_until_exact_tail_finishe
             f.target,
             DomEventType::LOAD,
             DomEventCallback::new(
-                move |dom, _, c: &mut Vec<surgeist_dom::DomSourceOperationId>, _| {
+                move |dom, _, c: &mut Vec<surgeist_dom::source::DomSourceOperationId>, _| {
                     c.push(park_real_style_tail(dom.raw_mut(), document));
                     Ok(())
                 },
@@ -2177,7 +2189,7 @@ fn callback_published_source_tail_blocks_later_listener_until_exact_tail_finishe
             f.target,
             DomEventType::LOAD,
             DomEventCallback::new(
-                |dom, _, c: &mut Vec<surgeist_dom::DomSourceOperationId>, _| {
+                |dom, _, c: &mut Vec<surgeist_dom::source::DomSourceOperationId>, _| {
                     assert_eq!(dom.snapshot().incomplete_source_operation(), None);
                     c.push(c[0]);
                     Ok(())
@@ -2668,7 +2680,9 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
         DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
         DomElementTaskRuntime,
     };
-    use surgeist_dom::{DomDispatchCustodyLimits, DomElementTaskSourceKind, DomSourceLimits};
+    use surgeist_dom::{
+        event::DomDispatchCustodyLimits, source::DomSourceLimits, task::DomElementTaskSourceKind,
+    };
 
     struct Context {
         tasks: DomElementTaskRuntime,
@@ -2689,7 +2703,8 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
             64,
             8,
             100_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_dispatch_custody(

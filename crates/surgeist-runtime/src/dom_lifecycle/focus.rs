@@ -1,8 +1,12 @@
 //! Qualified negative focus observations from actual Host/Window lifetime state.
 use super::*;
 use surgeist_dom::{
-    DomFocusObservation, DomFocusPreparation, DomFocusPublication, DomFocusRequest, DomFocusTarget,
-    DomHostedRuntimeRetention, DomSourceLease,
+    focus::{
+        DomFocusObservation, DomFocusPreparation, DomFocusPublication, DomFocusRequest,
+        DomFocusTarget,
+    },
+    hosted::DomHostedRuntimeRetention,
+    source::DomSourceLease,
 };
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HostFocusDisposition {
@@ -145,8 +149,8 @@ impl HostedRuntime {
                     .execution_entry_scope()
                     .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
                 {
-                    surgeist_dom::DomSourceExecutionEntryScope::ExplicitHost(host)
-                    | surgeist_dom::DomSourceExecutionEntryScope::Hosted {
+                    surgeist_dom::source::DomSourceExecutionEntryScope::ExplicitHost(host)
+                    | surgeist_dom::source::DomSourceExecutionEntryScope::Hosted {
                         original_host: Some(host),
                         ..
                     } => host,

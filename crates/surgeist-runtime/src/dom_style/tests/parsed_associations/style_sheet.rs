@@ -6,7 +6,21 @@ use super::style_decision::{empty_policy, installed, observe, request_ready};
 use surgeist_css::CssParser;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16Resource;
-use surgeist_dom::*;
+use surgeist_dom::{
+    DomBatch, DomError,
+    identity::{DocumentId, DomStamp},
+    installation::{
+        DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+        DomParsedHtmlAssociationLimits, DomParsedHtmlInstallation,
+        style::{
+            DomParsedHtmlStyleError, DomParsedHtmlStyleInlinePolicyObservation,
+            DomParsedHtmlStylePhase, DomParsedHtmlStyleSheetError,
+        },
+    },
+    limits::DomResource,
+    source::{DomSourceEdit, DomSourceRequest},
+    style::{DomStyleCssomRoot, DomStyleSheetAvailability},
+};
 use surgeist_html::values::{DocumentString, Namespace};
 
 pub(super) fn ready(

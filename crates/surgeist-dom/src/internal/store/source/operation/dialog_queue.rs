@@ -78,7 +78,7 @@ impl DomDialogTaskInfo {
         }
     }
     /// Actual source intrinsic to the closed payload.
-    pub const fn source(self) -> crate::DomElementTaskSourceKind {
+    pub const fn source(self) -> crate::internal::element_tasks::DomElementTaskSourceKind {
         match self {
             Self::Toggle(_) => {
                 crate::internal::element_tasks::DomElementTaskSourceKind::DomManipulation

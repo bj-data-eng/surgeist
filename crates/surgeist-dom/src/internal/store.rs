@@ -1077,7 +1077,9 @@ impl DomLimits {
         self.child_list_observation = limits;
         self
     }
-    pub fn child_list_observation(self) -> crate::DomChildListObservationLimits {
+    pub fn child_list_observation(
+        self,
+    ) -> crate::internal::child_list::DomChildListObservationLimits {
         self.child_list_observation
     }
     /// Aggregate installed candidate references across all Document histories.
@@ -1102,7 +1104,7 @@ impl DomLimits {
         self
     }
     /// Current independent dispatch-custody allowances.
-    pub fn dispatch_custody(self) -> crate::DomDispatchCustodyLimits {
+    pub fn dispatch_custody(self) -> crate::internal::dispatch::DomDispatchCustodyLimits {
         self.dispatch_custody
     }
     /// Finite positive Load/Error recipient ownership; unused owners allocate nothing.
@@ -1114,7 +1116,7 @@ impl DomLimits {
         self
     }
     /// Current independent positive recipient capability policy.
-    pub fn event_recipients(self) -> crate::DomEventRecipientLimits {
+    pub fn event_recipients(self) -> crate::internal::event::DomEventRecipientLimits {
         self.event_recipients
     }
     #[expect(
@@ -1406,7 +1408,7 @@ impl DomLimits {
         self.pseudos
     }
     /// Required persistent and operation admission for exact owner names.
-    pub const fn names(self) -> crate::DomNameLimits {
+    pub const fn names(self) -> crate::internal::name_limits::DomNameLimits {
         self.names
     }
     pub fn managed_nodes(self) -> usize {
@@ -1650,7 +1652,7 @@ enum AttachmentKind {
 }
 
 impl AttachmentKind {
-    fn published(self, node: NodeId) -> crate::DomAttributeAttachment {
+    fn published(self, node: NodeId) -> crate::internal::attr::DomAttributeAttachment {
         use crate::internal::attr::DomAttributeAttachment;
         let id = crate::internal::identity::DomAttrId(node);
         match self {

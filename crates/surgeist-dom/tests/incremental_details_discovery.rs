@@ -1,6 +1,6 @@
 //! Literal Details groups and immediate hooks; no index-layout expectations.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::*;
+use surgeist_dom::{Dom, DomBatch, DomError, edit::CreatedNode, limits::DomLimits};
 use surgeist_html::elements::details::HtmlDetailsState::{Closed, Open};
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -16,7 +16,8 @@ fn exact_details_names_stay_root_scoped_and_failed_renaming_restores_the_group()
             0,
             16,
             1_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap()
         .with_details_toggle_intentions(32)

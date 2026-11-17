@@ -2,8 +2,10 @@
 
 use super::*;
 use surgeist_dom::{
-    DocumentId, DomError, DomHtmlCapture, DomHtmlCaptureLimits, DomParsedHtmlInstallLimits,
-    DomSnapshot,
+    DomError, DomSnapshot,
+    capture::{DomHtmlCapture, DomHtmlCaptureLimits},
+    identity::DocumentId,
+    installation::DomParsedHtmlInstallLimits,
 };
 use surgeist_html::construction::HtmlShadowRootMode;
 use surgeist_html::parsing::HtmlParserScriptingMode;

@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_dom::{DomBatch, DomSourceEdit, NodeId};
+use surgeist_dom::{DomBatch, identity::NodeId, source::DomSourceEdit};
 use surgeist_html::construction::{
     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
@@ -86,7 +86,7 @@ fn fixture_with_policy(source_work: u64, manual: bool, policy: bool) -> Fixture 
         };
         let mut source = session.source_execution();
         let crate::DomSourceDriveProgress::Pending {
-            request: surgeist_dom::DomSourceRequest::MetaCsp(request),
+            request: surgeist_dom::source::DomSourceRequest::MetaCsp(request),
             ..
         } = source
             .apply(
@@ -415,7 +415,7 @@ pub(in crate::document_scripting) fn slot_queries_consume_the_enclosing_attribut
             // This cancelled, unaccepted attribute has no reached event or
             // host operation; the native progress front settles its own tail.
             let progress = lease.advance(&cancel).unwrap();
-            let surgeist_dom::DomSourceProgress::Complete(completion) = progress else {
+            let surgeist_dom::source::DomSourceProgress::Complete(completion) = progress else {
                 panic!(
                     "the original cancelled verifier must complete its native tail: {progress:?}"
                 );

@@ -10,7 +10,11 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
-use surgeist_dom::*;
+use surgeist_dom::{
+    Dom, DomBatch,
+    hosted::{DomHostedError, DomHostedLimits, DomHostedRecordLimits, DomHostedResource},
+    limits::DomLimits,
+};
 use surgeist_html::security::opener_policy::HtmlOpenerPolicyValue;
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::HtmlAboutBaseUrl;
@@ -67,7 +71,8 @@ fn session(policy: DomSessionLimits) -> DomSession {
             1024,
             32,
             4_000_000,
-            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
         )
         .unwrap(),
     )

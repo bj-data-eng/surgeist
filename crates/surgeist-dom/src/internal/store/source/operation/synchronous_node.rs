@@ -189,7 +189,7 @@ pub struct DomPreparedElementName<'a> {
 }
 
 impl DomPreparedElementName<'_> {
-    pub const fn name(&self) -> &crate::DomQualifiedName {
+    pub const fn name(&self) -> &crate::internal::name::DomQualifiedName {
         self.name
     }
 

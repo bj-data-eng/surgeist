@@ -57,15 +57,15 @@ pub struct DomSourceEventTime {
     pub(crate) occurrence: crate::internal::hosted::DomHostedMoment,
 }
 impl DomSourceEventTime {
-    pub const fn global(self) -> crate::DomHostedGlobalId {
+    pub const fn global(self) -> crate::internal::hosted::DomHostedGlobalId {
         self.global
     }
 
-    pub const fn origin(self) -> crate::DomHostedMoment {
+    pub const fn origin(self) -> crate::internal::hosted::DomHostedMoment {
         self.origin
     }
 
-    pub const fn occurrence(self) -> crate::DomHostedMoment {
+    pub const fn occurrence(self) -> crate::internal::hosted::DomHostedMoment {
         self.occurrence
     }
 }
@@ -381,8 +381,8 @@ impl DomSourceEventExecutor {
     /// ```compile_fail
     /// fn parallel_dispatch(
     ///     dom: &surgeist_dom::Dom,
-    ///     executor: &surgeist_dom::DomSourceEventExecutor,
-    ///     request: &surgeist_dom::DomSourceEventRequest,
+    ///     executor: &surgeist_dom::event::DomSourceEventExecutor,
+    ///     request: &surgeist_dom::event::DomSourceEventRequest,
     /// ) {
     ///     std::thread::scope(|scope| {
     ///         scope.spawn(move || {
