@@ -98,7 +98,7 @@ use crate::{
     style::mask::MaskLayer,
     style::mask::MaskLayerStack,
     style::mask::MaskMode,
-    style::{ColorFilterOp, ColorFilterPipeline},
+    style::{ColorFilterPipeline, filter::ColorFilterOp},
     surface::Format,
     surface::Parameters,
     surface::Surface,

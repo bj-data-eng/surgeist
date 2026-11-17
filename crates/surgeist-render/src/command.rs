@@ -8,7 +8,7 @@ use super::{
     paint::PaintKind,
     scene::Command,
     shape::ShapeKind,
-    style::{ClipGeometryKind, FilterBlur, FilterList, FilterOp},
+    style::{clip::ClipGeometryKind, filter::FilterBlur, filter::FilterList, filter::FilterOp},
     validation::*,
 };
 use crate::accounting::{

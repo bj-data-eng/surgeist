@@ -19,7 +19,9 @@ use crate::{
     paint::Color,
     style::filter::FilterList,
     style::filter::FilteredImagePaint,
-    style::{ColorFilterOp, FilterBlur, FilterDropShadow, FilterOpKind},
+    style::{
+        filter::ColorFilterOp, filter::FilterBlur, filter::FilterDropShadow, filter::FilterOpKind,
+    },
 };
 use std::sync::Arc;
 

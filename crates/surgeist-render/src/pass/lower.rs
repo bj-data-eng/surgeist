@@ -43,7 +43,7 @@ use crate::{
         ShaderMaskSamplingKey, ShaderModuleKey, ShaderProgramKey, ShaderSamplingEdgeKey,
         ShaderSamplingFilterKey, ShaderTextureFormatKey,
     },
-    style::ColorFilterOp,
+    style::filter::ColorFilterOp,
     surface::Format,
 };
 

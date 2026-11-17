@@ -36,8 +36,8 @@ use crate::image::{
 };
 use crate::renderer::Antialiasing;
 #[cfg(test)]
-use crate::style::FilterList;
-use crate::style::FilterOp;
+use crate::style::filter::FilterList;
+use crate::style::filter::FilterOp;
 
 #[cfg(test)]
 static NEXT_GRAPH_GENERATION: AtomicU64 = AtomicU64::new(1);

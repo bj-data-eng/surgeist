@@ -32,7 +32,7 @@ use crate::{
     layer::LayerComposition,
     paint::Color,
     renderer::Antialiasing,
-    style::ColorFilterOp,
+    style::filter::ColorFilterOp,
 };
 
 #[cfg(test)]

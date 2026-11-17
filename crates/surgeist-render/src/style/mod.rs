@@ -26,9 +26,8 @@ pub(crate) use self::filter::ColorFilterPipeline;
 #[cfg(test)]
 pub(crate) use self::filter::filter_drop_shadow_payload_accepts_shadow_for_test;
 pub use self::filter::{
-    BackdropCaptureBounds, BackdropFilterInput, ColorFilterOp, FilterAmount, FilterAngle,
-    FilterBlur, FilterDropShadow, FilterList, FilterOp, FilterOpKind, FilteredImagePaint,
-    UnitFilterAmount,
+    BackdropCaptureBounds, BackdropFilterInput, FilterAmount, FilterAngle, FilterBlur,
+    FilterDropShadow, FilterList, FilterOp, FilterOpKind, FilteredImagePaint, UnitFilterAmount,
 };
 pub use self::image::{
     BackgroundAreas, BackgroundAttachment, BackgroundBox, BackgroundClipGeometry,

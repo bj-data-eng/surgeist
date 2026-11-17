@@ -21,7 +21,7 @@ use crate::{
     geometry::{PhysicalSize, Point, Rect, Transform},
     paint::Color,
     renderer::Antialiasing,
-    style::FilterList,
+    style::filter::FilterList,
     text::TextRunBoundsKind,
 };
 

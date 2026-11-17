@@ -5,7 +5,7 @@ use crate::{
     image::Image,
     image::ImageBuffer,
     image::{image_dimension, validate_image_buffer_rgba_len, validate_rgba_image},
-    style::{ColorFilterOp, ColorFilterPipeline, UnitFilterAmount},
+    style::{ColorFilterPipeline, filter::ColorFilterOp, filter::UnitFilterAmount},
 };
 
 const GRAYSCALE_LUMA_RED: f64 = 0.2126;
