@@ -561,7 +561,7 @@ impl std::fmt::Display for DomError {
             Self::SourceReceiverRetired { .. } => f.write_str("the receiver of the Source dialog action was retired before the action completed"),
             Self::SourceCloseWatcherReceiverRetired { .. } => f.write_str("the receiver of the Source close-watcher request was retired before the action completed"),
             Self::CloseWatcherProtocol(..) => f.write_str("the close-watcher request protocol was violated"),
-            Self::SourceEventExecutorUnavailable => f.write_str("no event executor is installed for this Source operation"),
+            Self::SourceEventExecutorUnavailable => f.write_str("no live event executor is available for this Source operation"),
             Self::SourceAttributeGlobalUnavailable => f.write_str("attribute verification has no authentic node-document Global"),
             Self::SourceAttributeExecutorUnavailable => f.write_str("attribute verification has no qualified executor"),
             Self::SourceAttributeVerificationRejected => f.write_str("the registered verifier rejected the proposed attribute value"),
@@ -612,7 +612,7 @@ impl std::fmt::Display for DomError {
             Self::OutputInapplicable => f.write_str("the Element is not an Output"),
             Self::OutputProtocol(..) => f.write_str("the Output protocol was violated"),
             Self::TextareaReadWorkLimit { limit } => write!(f, "reading the Textarea exhausted its work allowance of {limit}"),
-            Self::InputFilenameInvalidState => f.write_str("the Input cannot take this filename in its current state"),
+            Self::InputFilenameInvalidState => f.write_str("a file Input accepts only an empty string as its value"),
             Self::InputProcessingProtocol => f.write_str("the Input processing protocol was violated"),
             Self::InputProcessingWorkLimit { limit } => write!(f, "Input processing exhausted its work allowance of {limit}"),
             Self::InputNumeric(..) => f.write_str("Input numeric processing failed"),
@@ -627,8 +627,8 @@ impl std::fmt::Display for DomError {
             Self::StyleProtocol => f.write_str("the Style processing protocol was violated"),
             Self::SvgScriptProcessingUnavailable => f.write_str("SVG Script processing is unavailable for this operation"),
             Self::SourceOperationPending => f.write_str("a Source operation, callback or hold is still pending"),
-            Self::IncompleteSourceOperation => f.write_str("an incomplete Source operation must finish first"),
-            Self::InvalidSourceOperation => f.write_str("the request does not match the retained operation or task-source state"),
+            Self::IncompleteSourceOperation => f.write_str("a Source operation or its recorded inputs are incomplete and must finish first"),
+            Self::InvalidSourceOperation => f.write_str("the request, the retained operation or other retained state is not in the condition this operation requires"),
             Self::SourcePublicationLimit => f.write_str("the Source operation exhausted its publication allowance"),
             Self::SourceOutputLimit => f.write_str("the Source operation exhausted its output allowance"),
             Self::SourceIdentityLimit => f.write_str("the Source operation exhausted its identity allowance"),
@@ -662,7 +662,7 @@ impl std::fmt::Display for DomError {
             Self::InvalidNativeTask => f.write_str("the native task is not valid for this operation in its current state"),
             Self::SlotInapplicable => f.write_str("the node is not a Slot"),
             Self::NonceEnvironmentUnavailable(..) => f.write_str("the nonce environment is unavailable"),
-            Self::NotFound => f.write_str("the requested node was not found"),
+            Self::NotFound => f.write_str("the requested node or relation was not found"),
             Self::InUseAttribute => f.write_str("the Attr is already in use by another Element"),
             Self::InvalidDestruction => f.write_str("the node is attached or is a Document or ShadowRoot, so it cannot be destroyed directly"),
             Self::CustomElementReactionPending(..) => f.write_str("a routed custom element reaction must settle before the receiver can be retired"),
@@ -670,21 +670,17 @@ impl std::fmt::Display for DomError {
             Self::Cancelled => f.write_str("the operation was cancelled"),
             Self::ResourceLimit { resource, limit } => write!(
                 f,
-                "{} would exceed its configured limit of {limit}",
+                "the configured limit of {limit} for {} would be exceeded",
                 resource_text(*resource)
             ),
             Self::WorkLimit { resource, limit } => write!(
                 f,
-                "{} work exhausted its allowance of {limit}",
+                "the allowance of {limit} for {} was exhausted",
                 resource_text(*resource)
             ),
-            Self::InvalidLimit(resource) => write!(
-                f,
-                "the configured limit for {} is invalid",
-                resource_text(*resource)
-            ),
+            Self::InvalidLimit(..) => f.write_str("a configured limit is invalid"),
             Self::AllocationFailed => f.write_str("memory allocation failed"),
-            Self::RepresentationExhausted => f.write_str("the canonical storage cannot represent this state"),
+            Self::RepresentationExhausted => f.write_str("a length, count or internal state cannot be represented"),
             Self::HtmlChargeProtocol => f.write_str("an HTML operation broke its accounting contract with the DOM"),
             Self::PseudoAttributeCursor(..) => f.write_str("the processing-instruction pseudo-attribute driver and its cursor disagree"),
             Self::OwnerIdentityExhausted => f.write_str("no DOM owner identities remain"),
@@ -796,7 +792,150 @@ impl std::error::Error for DomError {
             Self::BaseFacts(error) => Some(error),
             Self::PseudoAttributeCursor(error) => Some(error),
             Self::ViewTransitionCssom(error) => Some(error),
-            _ => None,
+            Self::ParsedAssociationPending { .. }
+            | Self::ParsedAssociationSynchronousPending { .. }
+            | Self::ParsedAssociationProcessingPoisoned { .. }
+            | Self::InlineStyleProfileMissing { .. }
+            | Self::InlineStyleProfileConflict { .. }
+            | Self::InlineStyleContextRequired { .. }
+            | Self::InlineStyleOperationPending { .. }
+            | Self::StaleFullscreenExit
+            | Self::FullscreenExitHandoffRequired
+            | Self::FullscreenExitAssertionFailed { .. }
+            | Self::FullscreenExitCompositionUnsupported { .. }
+            | Self::FullscreenExitDocumentRetired { .. }
+            | Self::FullscreenModelUnavailable { .. }
+            | Self::TopLayerAdoptionUnavailable { .. }
+            | Self::StaleRange
+            | Self::StaleNodeIterator
+            | Self::StaleChildListObserver
+            | Self::ChildListPublicationUnavailable
+            | Self::ChildListDeliveryActive
+            | Self::ChildListWorkLimit { .. }
+            | Self::NodeIteratorFilterActive
+            | Self::NodeIteratorPublicationUnavailable
+            | Self::NodeIteratorWorkLimit { .. }
+            | Self::RangeAssociationIneligible
+            | Self::RangePublicationUnavailable
+            | Self::HostedSourceUnavailable
+            | Self::HostedCompositionRequired
+            | Self::InvalidDispatchCustody
+            | Self::EventRegistryAlreadyBound
+            | Self::InvalidEventRegistry
+            | Self::DispatchCustodyWorkLimit { .. }
+            | Self::SourceLimitReduction
+            | Self::ParsedAssociationOperationPending { .. }
+            | Self::InvalidSourceEvent
+            | Self::SourceInvariantFailed { .. }
+            | Self::SourceReceiverRetired { .. }
+            | Self::SourceCloseWatcherReceiverRetired { .. }
+            | Self::SourceEventExecutorUnavailable
+            | Self::SourceAttributeGlobalUnavailable
+            | Self::SourceAttributeExecutorUnavailable
+            | Self::SourceAttributeVerificationRejected
+            | Self::SourceAttributeVerificationAbrupt
+            | Self::DialogInvalidState
+            | Self::NeedsEventfulOperation { .. }
+            | Self::SourceNestedOperationLimit { .. }
+            | Self::SourceUrlInputsMismatch
+            | Self::SourceUrlUnavailable
+            | Self::ForeignOwner
+            | Self::StaleNode
+            | Self::NodeRetirementAlreadyWatched
+            | Self::NodeRetirementWorkLimit { .. }
+            | Self::ForeignBatch
+            | Self::UnavailableCreation
+            | Self::WrongNodeKind
+            | Self::WrongDocument
+            | Self::HierarchyRequest
+            | Self::InvalidAdjacentPosition
+            | Self::InvalidCharacter
+            | Self::Namespace
+            | Self::ScriptPreparationRequired
+            | Self::MetaCspProcessingRequired
+            | Self::NotSupported
+            | Self::NativeInitializationRequired(..)
+            | Self::NonceInapplicable
+            | Self::TemplateContentsUnavailable
+            | Self::MarqueeInapplicable
+            | Self::DialogInapplicable
+            | Self::DialogDocumentStateUnavailable
+            | Self::AutofocusDocumentStateUnavailable
+            | Self::AutofocusInsertionUnavailable { .. }
+            | Self::DesignModeProcessingUnavailable { .. }
+            | Self::DialogFocusingUnavailable { .. }
+            | Self::FocusedAreaDesignationUnavailable { .. }
+            | Self::TopLayerAlreadyActive { .. }
+            | Self::DialogProcessingUnavailable { .. }
+            | Self::CustomValidityInapplicable
+            | Self::ButtonInapplicable
+            | Self::InputInapplicable
+            | Self::TextareaInapplicable
+            | Self::OutputInapplicable
+            | Self::TextareaReadWorkLimit { .. }
+            | Self::InputFilenameInvalidState
+            | Self::InputProcessingProtocol
+            | Self::InputProcessingWorkLimit { .. }
+            | Self::InputColorUnavailable(..)
+            | Self::InputColorUnsupported(..)
+            | Self::InputColorFacts(..)
+            | Self::StyleCompositionRequired(..)
+            | Self::StyleOwnerAttributesCompositionRequired
+            | Self::StyleDisabledCompositionRequired
+            | Self::StyleProcessingUnavailable
+            | Self::StyleProtocol
+            | Self::SvgScriptProcessingUnavailable
+            | Self::SourceOperationPending
+            | Self::IncompleteSourceOperation
+            | Self::InvalidSourceOperation
+            | Self::SourcePublicationLimit
+            | Self::SourceOutputLimit
+            | Self::SourceIdentityLimit
+            | Self::StyleReceiptMismatch
+            | Self::StyleFactsMismatch
+            | Self::StyleCssomRootBusy
+            | Self::StyleCssomRootPoisoned
+            | Self::SourceWorkLimit { .. }
+            | Self::SelectInapplicable
+            | Self::OptionInapplicable
+            | Self::SelectProtocol
+            | Self::SelectValueQueriesUnconfigured
+            | Self::InvalidSelectSemanticLimit { .. }
+            | Self::LinkProcessingUnavailable
+            | Self::ImageProcessingUnavailable
+            | Self::MediaResourceEffectUnavailable(..)
+            | Self::MediaRemovalStableStateUnavailable
+            | Self::ImageUpdateExhausted
+            | Self::HyperlinkProcessingUnavailable
+            | Self::EncodingUrlWorkLimit { .. }
+            | Self::BaseWorkLimit { .. }
+            | Self::SelectWorkLimit { .. }
+            | Self::InvalidNativeTask
+            | Self::SlotInapplicable
+            | Self::NonceEnvironmentUnavailable(..)
+            | Self::NotFound
+            | Self::InUseAttribute
+            | Self::InvalidDestruction
+            | Self::CustomElementReactionPending(..)
+            | Self::IndexSize
+            | Self::Cancelled
+            | Self::ResourceLimit { .. }
+            | Self::WorkLimit { .. }
+            | Self::InvalidLimit(..)
+            | Self::AllocationFailed
+            | Self::RepresentationExhausted
+            | Self::HtmlChargeProtocol
+            | Self::OwnerIdentityExhausted
+            | Self::RevisionExhausted
+            | Self::ViewTransitionsUninitialized
+            | Self::ViewTransitionRevisionMismatch
+            | Self::StaleViewTransition
+            | Self::StaleViewTransitionRecord
+            | Self::StaleViewTransitionPseudo
+            | Self::InvalidViewTransitionState
+            | Self::DuplicateViewTransitionName
+            | Self::ViewTransitionOriginUnavailable
+            | Self::ViewTransitionCaptureWorkLimit { .. } => None,
         }
     }
 }
