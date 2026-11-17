@@ -12,7 +12,10 @@
 //! - one and four threads charging sibling scopes of one shared operation;
 //! - a loop of events that keeps a local limit check and charges the ledger per
 //!   event, per block of events, or once after the loop, beside the same loop
-//!   with no ledger and with plain counters that apply the two-scope work rule.
+//!   with no ledger, with plain counters that apply the two-scope work rule,
+//!   and with a [`Chain`] of the same two scopes.
+//!
+//! The admission section also charges a `Chain` of two and of three scopes.
 //!
 //! A batch of one work change with profiling off takes the journal-free path of
 //! `Operation::apply_batch`; every other batch and mode takes the general path.
@@ -28,7 +31,8 @@ use std::{
 };
 
 use surgeist_ledger::{
-    Change, Charge, Dimension, Limits, Operation, ProfileMode, Scope, SharedOperation, Tariffs,
+    Chain, Change, Charge, Dimension, Limits, Operation, ProfileMode, Scope, SharedOperation,
+    Tariffs,
 };
 
 surgeist_ledger::dimensions! {
@@ -165,6 +169,29 @@ fn admission(mut holder: impl Holder, scope: Scope, size: usize) -> f64 {
     time
 }
 
+/// A chain of `BELOW` uncapped scopes below a root capped at `limit`.
+fn plain_chain<const BELOW: usize>(limit: u64) -> Chain<Work, Resource, BELOW> {
+    Chain::new(
+        Limits::from_fn(|_| limit, |_| limit),
+        [(Limits::unlimited(), Tariffs::identity()); BELOW],
+    )
+    .unwrap()
+}
+
+fn chain_admission<const BELOW: usize>(size: usize) -> f64 {
+    let mut chain = plain_chain::<BELOW>(u64::MAX);
+    let batch = changes(size);
+    let time = timed(BATCHES, || {
+        for _ in 0..BATCHES {
+            chain.apply_batch(black_box(&batch)).unwrap();
+        }
+    });
+    for &dimension in Work::ALL.iter().take(size) {
+        assert_eq!(chain.usage(chain.root()).unwrap().work(dimension), BATCHES);
+    }
+    time
+}
+
 fn phases(mut holder: impl Holder, scope: Scope, detached: bool) -> f64 {
     timed(PHASES, || {
         for _ in 0..PHASES {
@@ -297,6 +324,8 @@ enum Granularity {
     Guard,
     /// The local check and plain two-scope counters per event.
     Counters,
+    /// The local check and a two-scope [`Chain`] per event.
+    Chain,
     /// The local check and one ledger batch per `block` events, with the rest
     /// charged after the loop. A block of one is a charge per event.
     Block(u64),
@@ -313,6 +342,7 @@ fn events(mut holder: impl Holder, scope: Scope, granularity: Granularity) -> f6
         root: WorkTable::splat(0),
         caps: WorkTable::splat(limit),
     };
+    let mut chain = plain_chain::<1>(limit);
     let mut local = 0_u64;
     let mut pending = 0_u64;
     let time = timed(EVENTS, || {
@@ -323,6 +353,7 @@ fn events(mut holder: impl Holder, scope: Scope, granularity: Granularity) -> f6
             match granularity {
                 Granularity::Guard | Granularity::Call => {}
                 Granularity::Counters => counters.work(Work::W0, amount).unwrap(),
+                Granularity::Chain => chain.apply(Change::Work(Work::W0, amount)).unwrap(),
                 Granularity::Block(block) => {
                     pending += amount;
                     if pending == block {
@@ -333,7 +364,7 @@ fn events(mut holder: impl Holder, scope: Scope, granularity: Granularity) -> f6
             }
         }
         match granularity {
-            Granularity::Guard | Granularity::Counters => {}
+            Granularity::Guard | Granularity::Counters | Granularity::Chain => {}
             Granularity::Block(_) if pending == 0 => {}
             Granularity::Block(_) => holder.apply(scope, &[Change::Work(Work::W0, pending)]),
             Granularity::Call => holder.apply(scope, &[Change::Work(Work::W0, local)]),
@@ -343,6 +374,9 @@ fn events(mut holder: impl Holder, scope: Scope, granularity: Granularity) -> f6
     match granularity {
         Granularity::Guard => {}
         Granularity::Counters => assert_eq!(counters.root[Work::W0], EVENTS),
+        Granularity::Chain => {
+            assert_eq!(chain.usage(chain.root()).unwrap().work(Work::W0), EVENTS);
+        }
         Granularity::Block(_) | Granularity::Call => {
             assert_eq!(holder.work(scope, Work::W0), EVENTS);
         }
@@ -408,6 +442,16 @@ fn admission_cases() -> Vec<Case> {
                 ));
             }
         }
+    }
+    for size in [1, 2, 3, 5, 8] {
+        cases.push(case(
+            format!("chain, 2 scopes, {size} changes"),
+            move || chain_admission::<1>(size),
+        ));
+        cases.push(case(
+            format!("chain, 3 scopes, {size} changes"),
+            move || chain_admission::<2>(size),
+        ));
     }
     cases
 }
@@ -484,6 +528,10 @@ fn event_cases() -> Vec<Case> {
         case("plain two-scope counters per event", move || {
             let (operation, scope) = chain(off, 2);
             events(operation, scope, Granularity::Counters)
+        }),
+        case("two-scope chain per event", move || {
+            let (operation, scope) = chain(off, 2);
+            events(operation, scope, Granularity::Chain)
         }),
     ];
     for (mode_name, mode) in [("off", off), ("summary", summary)] {

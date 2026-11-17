@@ -24,6 +24,7 @@ use std::{
     time::Duration,
 };
 
+mod chain;
 mod charge;
 mod checkpoint;
 mod dimension;
@@ -33,6 +34,7 @@ mod scope_ledger;
 mod shared;
 #[cfg(test)]
 mod tests;
+pub use chain::Chain;
 pub use charge::{Charge, ScopeCharge, SharedScopeCharge};
 pub use checkpoint::{Checkpoint, IntervalReport, IntervalScopeReport, IntervalUsage};
 pub use dimension::{Dimension, NoDimension, NoTable, TableValue};
