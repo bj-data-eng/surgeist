@@ -4,10 +4,10 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     CreatedNode, DocumentId, Dom, DomBatch, DomCommit, DomHostDomains, DomHostError,
     DomHostObservations, DomHostPublisher, DomHtmlCapture, DomHtmlCaptureError,
-    DomHtmlCaptureLimits, DomHtmlCaptureResource, DomLimits, DomSnapshot, Namespace, NodeId,
-    Observed,
+    DomHtmlCaptureLimits, DomHtmlCaptureResource, DomLimits, DomSnapshot, NodeId, Observed,
 };
 use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
     HtmlCaptureError, HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticDependencies,
     HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery,

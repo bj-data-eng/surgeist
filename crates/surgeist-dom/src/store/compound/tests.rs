@@ -1,6 +1,10 @@
 //! Independent DOM3071 order, identity, Range and failure oracles.
 use super::*;
 use crate::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

@@ -2,6 +2,7 @@
 //! These native no-Global cases do not attest hosted watcher/event execution.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 4)

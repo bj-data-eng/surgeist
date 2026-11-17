@@ -556,7 +556,7 @@ impl DocumentScriptHost {
             assert_eq!(outcome.preferences().len(), 1);
             assert_eq!(
                 outcome.preferences()[0].observation().preferred_name(),
-                &surgeist_dom::DocumentString::from("Prefix")
+                &surgeist_html::values::DocumentString::from("Prefix")
             );
             let result = capture.finish_guest_tree_edit(
                 scope,

@@ -2,6 +2,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
+use surgeist_html::values::Namespace;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

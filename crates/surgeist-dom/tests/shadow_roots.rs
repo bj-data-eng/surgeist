@@ -2,10 +2,14 @@
 //! and #1074's native destruction, identity and publication contract.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomError, DomHistoryError,
-    DomLimits, DomNodeKind, DomRegistryBinding, DomResource, DomShadowRootInit,
-    HtmlShadowRootMode as Mode, HtmlShadowRootProperties, HtmlSlotAssignment as Assignment,
-    Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomError, DomHistoryError, DomLimits,
+    DomNodeKind, DomRegistryBinding, DomResource, DomShadowRootInit, NodeId,
+};
+use surgeist_html::{
+    construction::{
+        HtmlShadowRootMode as Mode, HtmlShadowRootProperties, HtmlSlotAssignment as Assignment,
+    },
+    values::{DocumentString, Namespace},
 };
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn dom() -> Dom {

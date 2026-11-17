@@ -1,7 +1,8 @@
 //! DOM namespace queries over ordinary tree and attribute relationships.
 
 use super::{DomNode, DomNodeKind};
-use crate::{DocumentString, DomError, names::same_code_units};
+use crate::{DomError, names::same_code_units};
+use surgeist_html::values::DocumentString;
 
 const XML: &[u16] = &ascii_units(b"xml");
 const XMLNS: &[u16] = &ascii_units(b"xmlns");

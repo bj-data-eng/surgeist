@@ -313,7 +313,7 @@ struct Surviving {
 fn charge_name(
     custody: &mut Custody,
     surviving: &mut Surviving,
-    name: &surgeist_dom::DocumentString,
+    name: &surgeist_html::values::DocumentString,
     held: NameHeld,
 ) -> Result<(), DomStyleRuntimeError> {
     let (bytes, units) = sheet_sets::occurrence_backing(name)?;

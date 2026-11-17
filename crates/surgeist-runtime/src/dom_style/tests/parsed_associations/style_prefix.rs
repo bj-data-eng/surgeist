@@ -5,6 +5,7 @@ use super::consumption::{envelope, environment, installation, parsing, report};
 use std::sync::Arc;
 use surgeist_dom::*;
 use surgeist_html::security::csp::{HtmlCspAssociation, HtmlCspOwner};
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseReport, HtmlSource};
 
 fn install(value: Arc<HtmlParseReport>) -> (DomSession, DomParsedHtmlInstallation) {

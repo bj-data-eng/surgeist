@@ -2,7 +2,8 @@
 
 use std::sync::atomic::AtomicBool;
 
-use surgeist::dom::{Dom, DomBatch, DomLimits, DomSnapshot, Namespace, NodeId};
+use surgeist::dom::{Dom, DomBatch, DomLimits, DomSnapshot, NodeId};
+use surgeist::html::values::Namespace;
 use surgeist::template::dom::append_static_html;
 use surgeist::template::registry::{
     AttributeKind, AttributeRule, ComponentRegistry, NativeElementRegistry,

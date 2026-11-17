@@ -1,6 +1,10 @@
 //! Qualified external outcomes through the real native Base owner.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

@@ -1,6 +1,10 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::Namespace,
+};
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlDirectionality, HtmlInertFactLimits, HtmlLanguageDirectionLimits,
     HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits, HtmlSemanticMissing,

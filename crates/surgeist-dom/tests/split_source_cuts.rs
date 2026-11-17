@@ -1,6 +1,7 @@
 //! Finite Source work cuts; budgets place refusals, while DOM3071 supplies oracles.
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
+use surgeist_html::values::Namespace;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

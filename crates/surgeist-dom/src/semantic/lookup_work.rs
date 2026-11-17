@@ -10,10 +10,11 @@ use std::{cell::Cell, sync::atomic::AtomicBool};
 
 use super::*;
 use crate::{
-    Dom, DomBatch, DomLimits, DomNameLimits, DomRegistryId, Namespace,
+    Dom, DomBatch, DomLimits, DomNameLimits, DomRegistryId,
     hosted::{DomHostedLimits, DomHostedRecordLimits, DomHostedSource, DomHostedSourceId},
     store::registry::Bank,
 };
+use surgeist_html::values::Namespace;
 use surgeist_html::values::{OrderedAttributes, QualifiedName};
 
 /// A linear count grows 2x per doubling; the slack covers per-document

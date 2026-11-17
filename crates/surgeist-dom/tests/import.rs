@@ -1,8 +1,9 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomNodeKind,
-    DomResource, DomSnapshot, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomError, DomLimits, DomNodeKind, DomResource,
+    DomSnapshot, NodeId,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn limits() -> DomLimits {
     DomLimits::new(

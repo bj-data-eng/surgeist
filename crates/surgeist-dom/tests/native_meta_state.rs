@@ -2,6 +2,10 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::attributes::HtmlReferrerPolicy;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 
 fn cancel() -> AtomicBool {

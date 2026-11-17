@@ -1,7 +1,8 @@
 //! DOM3071 createElementNS and HTML877d Dialog native creation.
 //! This checks constructor admission without asserting Dialog-specific state.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[test]
 fn native_html_dialog_can_be_created_and_inserted_with_common_state() {

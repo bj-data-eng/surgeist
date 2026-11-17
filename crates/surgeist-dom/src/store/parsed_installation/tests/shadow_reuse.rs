@@ -3,10 +3,10 @@ use crate::store::source::operation::accounting_tests::commit_actual_empty_sheet
 use crate::{
     DomNodeRetirementLimits, DomShadowRootInit, DomSourceEdit, DomSourceLimits, DomSourceOutput,
     DomSourceProgress, DomSourceRequest, DomStyleAction, DomStyleInlineCspObservation,
-    HtmlShadowRootMode,
 };
 use std::sync::atomic::Ordering;
 use surgeist_cssom::CssomEditGuard;
+use surgeist_html::construction::HtmlShadowRootMode;
 use surgeist_html::{elements::style::HtmlStyleUpdateAction, values::Namespace};
 use surgeist_html_parser::HtmlFragmentParseRequest;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};

@@ -8,7 +8,9 @@ pub(super) fn verify_authored_toggle_constructor() {
     let mut batch = DomBatch::new();
     let root = batch.attach_shadow(
         source,
-        surgeist_dom::DomShadowRootInit::new(surgeist_dom::HtmlShadowRootMode::Closed),
+        surgeist_dom::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Closed,
+        ),
     );
     let inside = batch.create_element_ns(target.document(), Namespace::html(), "span");
     batch.insert_before(&inside, &root, None);

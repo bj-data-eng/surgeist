@@ -241,7 +241,7 @@ fn font_reflections_observe_native_edits_and_retirement() {
                 font,
                 Namespace::none(),
                 member,
-                surgeist_dom::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
+                surgeist_html::values::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
             );
             batch.set_attribute_ns(font, Namespace::from_uri("urn:foreign"), member, "foreign");
         }

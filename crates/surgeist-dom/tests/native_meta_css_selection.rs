@@ -9,6 +9,7 @@ use surgeist_css::property::CssKnownPropertyValueRef;
 use surgeist_css::source::{CssUtf16InputLimits, CssUtf16PropertyValueLimits};
 use surgeist_css::values::color_adjust::{CssColorSchemeKeyword, CssColorSchemeParseReport};
 use surgeist_dom::*;
+use surgeist_html::values::Namespace;
 
 fn limits() -> DomLimits {
     DomLimits::new(

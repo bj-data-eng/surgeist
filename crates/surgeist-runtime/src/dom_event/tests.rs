@@ -23,7 +23,8 @@ impl NativeDomEvent {
 }
 
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits, Namespace};
+use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits};
+use surgeist_html::values::Namespace;
 
 impl<C> DomEventDispatcher<C> {
     fn dispatch(
@@ -1221,9 +1222,12 @@ struct Shadow {
     inside: NodeId,
 }
 fn shadow(mode: HtmlShadowRootMode) -> Shadow {
-    shadow_config(mode, surgeist_dom::HtmlSlotAssignment::Named)
+    shadow_config(mode, surgeist_html::construction::HtmlSlotAssignment::Named)
 }
-fn shadow_config(mode: HtmlShadowRootMode, assignment: surgeist_dom::HtmlSlotAssignment) -> Shadow {
+fn shadow_config(
+    mode: HtmlShadowRootMode,
+    assignment: surgeist_html::construction::HtmlSlotAssignment,
+) -> Shadow {
     let mut dom = dom();
     let mut b = DomBatch::new();
     let d = b.create_document();
@@ -1231,13 +1235,15 @@ fn shadow_config(mode: HtmlShadowRootMode, assignment: surgeist_dom::HtmlSlotAss
     b.insert_before(&h, &d, None);
     let r = b.attach_shadow(
         &h,
-        surgeist_dom::HtmlShadowRootProperties::new(mode, assignment, false, false, false),
+        surgeist_html::construction::HtmlShadowRootProperties::new(
+            mode, assignment, false, false, false,
+        ),
     );
     let s = b.create_element_ns(&d, Namespace::html(), "slot");
     b.insert_before(&s, &r, None);
     let l = b.create_text(&d, "light");
     b.insert_before(&l, &h, None);
-    if assignment == surgeist_dom::HtmlSlotAssignment::Manual {
+    if assignment == surgeist_html::construction::HtmlSlotAssignment::Manual {
         b.assign_slot(&s, vec![(&l).into()]);
     }
     let i = b.create_element_ns(&d, Namespace::html(), "span");
@@ -1376,16 +1382,16 @@ fn slotted_light_origin_crosses_shadow_host_and_closed_composed_path_hides_only_
 fn stored_assignment_not_fresh_slot_query_controls_event_path() {
     let mut f = shadow_config(
         HtmlShadowRootMode::Open,
-        surgeist_dom::HtmlSlotAssignment::Manual,
+        surgeist_html::construction::HtmlSlotAssignment::Manual,
     );
     let mut b = DomBatch::new();
     let h2 = b.create_element_ns(f.document, Namespace::html(), "div");
     b.insert_before(&h2, f.host, None);
     let r2 = b.attach_shadow(
         &h2,
-        surgeist_dom::HtmlShadowRootProperties::new(
+        surgeist_html::construction::HtmlShadowRootProperties::new(
             HtmlShadowRootMode::Open,
-            surgeist_dom::HtmlSlotAssignment::Manual,
+            surgeist_html::construction::HtmlSlotAssignment::Manual,
             false,
             false,
             false,

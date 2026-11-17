@@ -328,7 +328,11 @@ mod tests {
         let mut dom = dom();
         let mut batch = crate::DomBatch::new();
         let document = batch.create_document();
-        let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+        let dialog = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
         let commit = dom.apply(batch, &cancel).unwrap();
         let target = commit.created(&dialog).unwrap().unwrap();
         let executor = dom.bind_source_event_executor(&cancel).unwrap();

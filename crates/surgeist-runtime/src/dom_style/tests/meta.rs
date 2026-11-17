@@ -2,7 +2,8 @@
 use super::*;
 use std::cell::Cell;
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};
-use surgeist_dom::{DocumentString, DomMetaAtomicError, DomMetaAtomicLimits, DomMetaInlineBatch};
+use surgeist_dom::{DomMetaAtomicError, DomMetaAtomicLimits, DomMetaInlineBatch};
+use surgeist_html::values::DocumentString;
 use surgeist_html::values::Namespace;
 
 pub(super) fn cancel() -> AtomicBool {

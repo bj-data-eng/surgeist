@@ -3,11 +3,15 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit, DomError,
-    DomLimits, DomRangeId, DomResource, DomShadowRootInit, DomSnapshot, DomSourceEdit,
-    DomSourceLimits, DomSourceProgress, DomSourceRequest, HtmlShadowRootMode, Namespace, NodeId,
+    DocumentId, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit, DomError, DomLimits,
+    DomRangeId, DomResource, DomShadowRootInit, DomSnapshot, DomSourceEdit, DomSourceLimits,
+    DomSourceProgress, DomSourceRequest, NodeId,
 };
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 
 fn limits(ranges: usize) -> DomLimits {
     DomLimits::new(

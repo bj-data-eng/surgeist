@@ -3,8 +3,9 @@
 //! this direct HTML child has no explicit contenteditable host state.
 use std::sync::atomic::AtomicBool;
 
-use surgeist_dom::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits};
 use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
     HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,

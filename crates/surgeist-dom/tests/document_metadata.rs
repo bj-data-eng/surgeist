@@ -1,9 +1,10 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomDocumentClass, DomError, DomLimits,
-    DomRegistryBinding, DomResource, HtmlDocumentMode,
+    DocumentId, Dom, DomBatch, DomChange, DomDocumentClass, DomError, DomLimits,
+    DomRegistryBinding, DomResource,
 };
+use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
 
 // DOM's native Document defaults retain three strings: application/xml (15),
 // UTF-8 (5) and about:blank (11). These are stored slots, not derived display.

@@ -3,9 +3,10 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits,
-    DomNamedNodeMap, DomSnapshot, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits, DomNamedNodeMap,
+    DomSnapshot, NodeId,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 const RAW: &[u16] = &[107, 0xd800, 0, 0xdc00];
 

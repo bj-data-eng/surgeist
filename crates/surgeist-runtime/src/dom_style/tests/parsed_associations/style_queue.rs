@@ -6,6 +6,7 @@ use super::style_sheet::{bind, create, pending, ready};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::style::HtmlStyleTrigger;
+use surgeist_html::values::Namespace;
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };

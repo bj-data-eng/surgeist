@@ -3,6 +3,10 @@
 //! New-front functional evidence only: no compiler/stub or historical-main RED.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{DocumentString, Namespace},
+};
 
 fn limits() -> DomLimits {
     DomLimits::new(

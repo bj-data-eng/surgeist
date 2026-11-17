@@ -464,7 +464,7 @@ fn list_native_edits_and_retirement(tag: &str, member: &str, kind: &str) {
                 element,
                 Namespace::none(),
                 member,
-                surgeist_dom::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
+                surgeist_html::values::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
             );
         } else {
             batch.set_attribute_ns(

@@ -1,6 +1,10 @@
 //! Actual Frame state follows source Slot insertion/removal and fresh clone steps.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::Namespace,
+};
 
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()

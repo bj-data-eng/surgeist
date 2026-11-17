@@ -2,7 +2,8 @@
 //! an actual HTML Slot is a constructible Element with its own family state.
 //! This admission test uses only the existing public constructor/readback API.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[test]
 fn native_html_slot_creation_publishes_an_actual_element() {

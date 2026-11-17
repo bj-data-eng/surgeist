@@ -1,9 +1,8 @@
 //! Source-selected native Style intrinsic and atomic boundary behavior.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{
-    Dom, DomBatch, DomError, DomLimits, DomSourceEdit, DomSourceRequest, Namespace,
-};
+use surgeist_dom::{Dom, DomBatch, DomError, DomLimits, DomSourceEdit, DomSourceRequest};
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
+use surgeist_html::values::Namespace;
 
 #[test]
 fn source_command_payload_joins_the_simultaneous_utf16_allowance() {
@@ -27,7 +26,7 @@ fn source_command_payload_joins_the_simultaneous_utf16_allowance() {
     let mut units = Vec::with_capacity(16_384);
     units.push(0xd800);
     let capacity = units.capacity();
-    let payload = surgeist_dom::DocumentString::from_utf16(units);
+    let payload = surgeist_html::values::DocumentString::from_utf16(units);
     let edit = || DomSourceEdit::replace_data(text, 0, 0, payload.clone());
     assert!(matches!(
         dom.begin_source_edit(
@@ -153,7 +152,7 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
         batch.set_attribute(
             &parent,
             "data-retained",
-            surgeist_dom::DocumentString::from_utf16(raw),
+            surgeist_html::values::DocumentString::from_utf16(raw),
         );
         batch.insert_before(&parent, &document, None);
         let commit = dom.apply(batch, &cancel).unwrap();
@@ -1134,7 +1133,8 @@ fn disabled_without_an_association_is_a_no_op_and_does_not_accept_other_families
 
 #[test]
 fn source_input_finite_work_or_storage_refusal_preserves_the_first_style_boundary() {
-    use surgeist_dom::{DocumentString, DomResource, DomSourceLimits, DomSourceProgress};
+    use surgeist_dom::{DomResource, DomSourceLimits, DomSourceProgress};
+    use surgeist_html::values::DocumentString;
     let cancel = AtomicBool::new(false);
     for work_bound in [false, true] {
         // Each attempt constructs a fresh owner. These explicit finite budgets
@@ -1497,9 +1497,8 @@ fn pending_source_refuses_dependent_base_and_image_reads_but_old_snapshots_stay_
 
 #[test]
 fn csp_fact_admission_counts_actual_policy_backing_and_failed_reply_keeps_request_retryable() {
-    use surgeist_dom::{
-        DocumentString, DomResource, DomSourceProgress, DomStyleInlineCspObservation,
-    };
+    use surgeist_dom::{DomResource, DomSourceProgress, DomStyleInlineCspObservation};
+    use surgeist_html::values::DocumentString;
     let cancel = AtomicBool::new(false);
     let mut dom = dom();
     let mut batch = DomBatch::new();
@@ -2158,7 +2157,9 @@ fn stale_operation_id_case(end: u8) {
 }
 
 fn manual_slot_input_fixture(inputs: usize) -> (Dom, surgeist_dom::NodeId, surgeist_dom::NodeId) {
-    use surgeist_dom::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
     let mut dom = Dom::new(
         DomLimits::new(
             32,

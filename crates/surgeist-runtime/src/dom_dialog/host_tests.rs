@@ -12,8 +12,9 @@ use crate::{
 use std::cell::RefCell;
 use surgeist_dom::{
     DomBatch, DomDispatchCustodyLimits, DomHostedLimits, DomHostedRecordLimits, DomLimits,
-    DomSourceEdit, DomSourceRequest, Namespace, NodeId,
+    DomSourceEdit, DomSourceRequest, NodeId,
 };
+use surgeist_html::values::Namespace;
 
 mod dynamic_custody;
 mod same_request_reentry;

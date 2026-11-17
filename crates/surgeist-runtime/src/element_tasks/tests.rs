@@ -6,7 +6,8 @@ use crate::dom_event::{
 };
 use crate::dom_lifecycle::DomHostedRuntimeLimits;
 use crate::dom_style::{DomSession, DomSessionLimits, DomStyleRuntimeLimits};
-use surgeist_dom::{DocumentId, Dom, DomBatch, DomCommit, DomLimits, Namespace, NodeId};
+use surgeist_dom::{DocumentId, Dom, DomBatch, DomCommit, DomLimits, NodeId};
+use surgeist_html::values::Namespace;
 
 fn session(dom: Dom) -> DomSession {
     DomSession::new(

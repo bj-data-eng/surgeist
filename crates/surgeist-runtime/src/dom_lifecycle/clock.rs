@@ -1461,9 +1461,8 @@ mod tests {
                     DomSourceEventServiceLimits, DomSourceEventServiceProgress,
                     DomSourceUnavailable,
                 };
-                use surgeist_dom::{
-                    DomError, DomSourceEventClockFailure, DomSourceEventKind, Namespace,
-                };
+                use surgeist_dom::{DomError, DomSourceEventClockFailure, DomSourceEventKind};
+                use surgeist_html::values::Namespace;
 
                 struct Context {
                     tasks: DomElementTaskRuntime,
@@ -1789,7 +1788,8 @@ mod tests {
                     DomEventType, DomStyleEventContext, DomStyleNetworkingProgress,
                     DomStyleRuntime,
                 };
-                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace};
+                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation};
+                use surgeist_html::values::Namespace;
 
                 struct Context {
                     styles: DomStyleRuntime,
@@ -2037,7 +2037,8 @@ mod tests {
                     DomSourceEventServiceProgress, DomSourceUnavailable, DomStyleEventContext,
                     DomStyleNetworkingProgress, DomStyleRuntime, DomStyleRuntimeError,
                 };
-                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace};
+                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation};
+                use surgeist_html::values::Namespace;
 
                 struct Context {
                     styles: DomStyleRuntime,
@@ -2661,7 +2662,7 @@ mod tests {
                 let mut batch = DomBatch::new();
                 let target = batch.create_element_ns(
                     top.document(),
-                    surgeist_dom::Namespace::html(),
+                    surgeist_html::values::Namespace::html(),
                     "dialog",
                 );
                 batch.insert_before(&target, body, None);

@@ -2,6 +2,8 @@
 //! have no prior executable boundary; expectations are independent source facts.
 use super::*;
 use crate::*;
+use surgeist_html::construction::{HtmlDocumentMode, HtmlShadowRootMode};
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -2682,7 +2684,7 @@ fn shallow_and_deep_document_clones_preserve_interface_fields_and_fresh_ownershi
 }
 #[test]
 fn deep_live_clone_keeps_control_script_template_and_shadow_clone_rules() {
-    use crate::{
+    use surgeist_html::construction::{
         HtmlShadowRootMode as Mode, HtmlShadowRootProperties, HtmlSlotAssignment as Assignment,
     };
     let mut dom = dom();

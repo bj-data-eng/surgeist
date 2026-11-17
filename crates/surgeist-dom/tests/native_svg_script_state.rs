@@ -1,6 +1,10 @@
 //! Selected Tiny processing, DOM3071 topology and actual native owner closure.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn limits() -> DomLimits {
     DomLimits::new(

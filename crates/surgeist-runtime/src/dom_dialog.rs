@@ -772,8 +772,9 @@ mod payload_tests {
     };
     use surgeist_dom::{
         DomBatch, DomDispatchCustodyLimits, DomLimits, DomSourceEdit, DomSourcePhase,
-        DomSourceProgress, DomSourceRequest, Namespace,
+        DomSourceProgress, DomSourceRequest,
     };
+    use surgeist_html::values::Namespace;
 
     #[test]
     fn retained_path_and_growing_failures_refuse_before_callbacks_until_owner_storage_fits() {

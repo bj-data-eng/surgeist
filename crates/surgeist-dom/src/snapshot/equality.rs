@@ -1,7 +1,8 @@
 //! Structural Node equality over two ordinary subtrees in one snapshot.
 
 use super::{DomNode, DomNodeKind};
-use crate::{DocumentString, DomError, NodeId, names::same_code_units};
+use crate::{DomError, NodeId, names::same_code_units};
+use surgeist_html::values::DocumentString;
 
 #[derive(Clone, Copy)]
 struct Children<'a> {

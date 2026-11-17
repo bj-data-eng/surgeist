@@ -722,7 +722,7 @@ fn document_tree_reads_follow_native_edits_and_retirement() {
             old_body,
             Namespace::none(),
             "text",
-            surgeist_dom::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
+            surgeist_html::values::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
         );
         dom.apply(batch, &cancel).unwrap();
     })

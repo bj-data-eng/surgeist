@@ -831,7 +831,7 @@ fn prepare_failed_tree_edit(
         document.node(),
         vec![
             receiver.into(),
-            surgeist_dom::DocumentString::from("text").into(),
+            surgeist_html::values::DocumentString::from("text").into(),
         ],
     );
     (permit, edit)
@@ -890,7 +890,7 @@ pub(in crate::document_scripting) fn custom_element_reacts_to_an_inline_joined_f
         destination.node(),
         vec![
             receiver.into(),
-            surgeist_dom::DocumentString::from("text").into(),
+            surgeist_html::values::DocumentString::from("text").into(),
         ],
     );
     host.run_guest_joined_tree_edit_fixture(
@@ -1024,7 +1024,7 @@ pub(in crate::document_scripting) fn registry_upgrade_attempts_adopted_candidate
     let element = snapshot.node(receiver).unwrap().as_element().unwrap();
     assert_eq!(
         element.custom_element_state(),
-        surgeist_dom::HtmlCustomElementState::Precustomized
+        surgeist_html::elements::native::HtmlCustomElementState::Precustomized
     );
     assert_eq!(
         element.custom_element_definition(),

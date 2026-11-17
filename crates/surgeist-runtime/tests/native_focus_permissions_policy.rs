@@ -9,6 +9,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
     HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,

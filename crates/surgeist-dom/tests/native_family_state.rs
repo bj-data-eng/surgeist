@@ -1,10 +1,10 @@
 //! Literal oracles: HTML877d Canvas none-mode and obsolete Marquee algorithms.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource,
-    DomSnapshot, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource, DomSnapshot, NodeId,
 };
 use surgeist_html::elements::media::HtmlCanvasBitmapDimension;
+use surgeist_html::values::{DocumentString, Namespace};
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn dom() -> Dom {
     Dom::new(
@@ -431,7 +431,7 @@ fn late_errors_and_cancelled_commands_preserve_all_prior_family_values() {
 
 #[test]
 fn shadow_descendant_adoption_cloning_and_destruction_preserve_actual_family_semantics() {
-    use surgeist_dom::{
+    use surgeist_html::construction::{
         HtmlShadowRootMode as Mode, HtmlShadowRootProperties, HtmlSlotAssignment as Assignment,
     };
     let mut dom = dom();

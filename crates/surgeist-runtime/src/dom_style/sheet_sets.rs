@@ -1,6 +1,6 @@
 //! Document stylesheet-set history beside the actual association owner.
 use super::*;
-use surgeist_dom::DocumentString;
+use surgeist_html::values::DocumentString;
 
 pub(super) enum RootSets {
     Document(State),

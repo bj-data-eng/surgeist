@@ -1,9 +1,8 @@
 //! Qualified execution-resource withdrawal, preserving the original root history.
 use super::*;
 use crate::dom_lifecycle::{DomHostedRuntimeError, HostedRuntime};
-use surgeist_dom::{
-    DocumentId, DocumentString, DomHostedOperationId, DomHostedStyleRootWithdrawal,
-};
+use surgeist_dom::{DocumentId, DomHostedOperationId, DomHostedStyleRootWithdrawal};
+use surgeist_html::values::DocumentString;
 
 /// Refusal retains both actual owners and the same destruction task.
 #[derive(Debug)]

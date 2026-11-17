@@ -2,6 +2,7 @@
 //! HTML877d Dialog fresh/returnValue and ordinary inactive hooks; not hosted UI.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn limits() -> DomLimits {
     DomLimits::new(

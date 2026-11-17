@@ -1079,7 +1079,8 @@ pub(in crate::document_scripting) fn borrowed_fragment_factory_keeps_dom_on_wrap
 }
 
 pub(in crate::document_scripting) fn shadow_root_keeps_its_registered_creation_realm() {
-    use surgeist_dom::{DomShadowRootInit, HtmlShadowRootMode};
+    use surgeist_dom::DomShadowRootInit;
+    use surgeist_html::construction::HtmlShadowRootMode;
     use surgeist_html::values::Namespace;
 
     let RegisteredOrigin {

@@ -2,6 +2,10 @@
 //! CSS Shadow §4.1 and #1124's selected native destruction policy.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{DocumentString, Namespace},
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

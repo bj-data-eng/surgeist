@@ -1,6 +1,7 @@
 //! Native ShowModal entry guards, without an invented active Window.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 fn limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 4)
 }

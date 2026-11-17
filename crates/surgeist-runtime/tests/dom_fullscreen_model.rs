@@ -18,8 +18,9 @@ use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomDispatchCustodyLimits, DomError, DomFullscreenModelStep,
     DomHostedError, DomHostedGlobalId, DomHostedLimits, DomHostedNavigableId,
     DomHostedRecordLimits, DomLimits, DomSourceCompletion, DomSourceEdit, DomSourceLimits,
-    DomTopLayerUaRule, Namespace, NodeId,
+    DomTopLayerUaRule, NodeId,
 };
+use surgeist_html::values::Namespace;
 use surgeist_runtime::{
     DomElementTaskRuntimeLimits, DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedTaskKind,
     DomHostedTaskProgress, DomHostedTopLevel, DomSession, DomSessionLimits, DomSourceDriveProgress,

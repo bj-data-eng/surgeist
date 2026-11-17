@@ -1,10 +1,11 @@
 use super::DomSourceOperationId;
 use crate::{
-    DocumentId, DocumentString, DomDocumentCspState, DomDocumentScriptRegistration, DomError,
-    DomHostedGlobalId, NodeId,
+    DocumentId, DomDocumentCspState, DomDocumentScriptRegistration, DomError, DomHostedGlobalId,
+    NodeId,
 };
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use surgeist_html::values::DocumentString;
 
 /// The exact sink selected for a standard attribute write.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

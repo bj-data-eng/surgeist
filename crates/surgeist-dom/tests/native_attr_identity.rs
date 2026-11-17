@@ -2,10 +2,10 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomAttributeAttachment, DomBatch, DomError, DomLimits, DomNameLimits,
-    DomNodeKind, DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, Namespace,
-    NodeId,
+    Dom, DomAttributeAttachment, DomBatch, DomError, DomLimits, DomNameLimits, DomNodeKind,
+    DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, NodeId,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn owner() -> Dom {
     let names = DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap();

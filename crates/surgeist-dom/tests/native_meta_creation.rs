@@ -1,6 +1,7 @@
 //! DOM3071 namespace creation; HTML877d Meta has no extra fresh Element slot.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[test]
 fn detached_native_meta_creation_publishes_the_actual_element() {

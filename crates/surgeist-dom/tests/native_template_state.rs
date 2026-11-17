@@ -1,6 +1,12 @@
 //! Independent HTML877d Template and DOM3071 clone/adopt/fragment oracles.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::{
+        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{DocumentString, Namespace},
+};
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlCapturedHost, HtmlCapturedNodeKind, HtmlCapturedTemplateCache,
     HtmlCapturedTemplateContents, HtmlTemplateDocumentRole,

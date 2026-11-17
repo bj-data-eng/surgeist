@@ -2,9 +2,13 @@
 //! initialization and §2.5.6 nonce attribute/IDL/insertion/cloning clauses.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomChange, DomError, DomFlatRelation, DomLimits, DomResource,
-    DomShadowRootInit, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress,
-    HtmlCustomElementState, HtmlShadowRootMode, Namespace,
+    Dom, DomBatch, DomChange, DomError, DomFlatRelation, DomLimits, DomResource, DomShadowRootInit,
+    DomSlotQueryLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+};
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    elements::native::HtmlCustomElementState,
+    values::{DocumentString, Namespace},
 };
 use surgeist_html::{
     elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect},

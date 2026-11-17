@@ -4,6 +4,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn owner() -> Dom {
     Dom::new(

@@ -1,9 +1,10 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomError, DomHistoryError, DomLimits,
-    DomNodeKind, DomResource, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomError, DomHistoryError, DomLimits, DomNodeKind,
+    DomResource, NodeId,
 };
+use surgeist_html::values::DocumentString;
 
 // Each native Document retains application/xml, UTF-8 and about:blank.
 const DOCUMENT_UNITS: usize = 31;
@@ -668,7 +669,8 @@ fn borrowed_kinds_copy_exact_snapshot_payload_references() {
     let mut dom = Dom::new(limits()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let element = batch.create_element_ns(&document, surgeist_dom::Namespace::html(), "div");
+    let element =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     let text = batch.create_text(&document, DocumentString::from_utf16(vec![0xd800, 0x61]));
     batch.insert_before(&element, &document, None);
     batch.insert_before(&text, &element, None);

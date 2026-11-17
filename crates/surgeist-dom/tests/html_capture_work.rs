@@ -5,6 +5,8 @@
 //! runs and refuses only when the bound would be exceeded.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::construction::HtmlShadowRootMode;
+use surgeist_html::values::Namespace;
 use surgeist_html::{
     construction::HtmlDocumentMode,
     values::{Namespace as HtmlNamespace, OrderedAttributes, QualifiedName},

@@ -1,10 +1,11 @@
 //! Composed DOM3071 HTML case rules with HTML877d native Canvas/Marquee state.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits,
-    DomResource, DomSnapshot, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits, DomResource, DomSnapshot,
+    NodeId,
 };
 use surgeist_html::elements::media::HtmlCanvasBitmapDimension;
+use surgeist_html::values::{DocumentString, Namespace};
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn owner() -> Dom {
     Dom::new(

@@ -11,6 +11,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::dialog::{HtmlDialogFocusingAction, HtmlDialogState};
+use surgeist_html::values::Namespace;
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {

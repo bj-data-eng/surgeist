@@ -2,9 +2,10 @@
 //! Fixed Slot participants keep discovery work bounded at each insertion hook.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomLimits, DomNodeKind, DomSourceEdit, DomSourceLimits,
-    DomSourceOutput, DomSourceProgress, Namespace,
+    Dom, DomBatch, DomLimits, DomNodeKind, DomSourceEdit, DomSourceLimits, DomSourceOutput,
+    DomSourceProgress,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 const COMMENTS: usize = 512;
 const IMPORT_WORK: u64 = 2_000_000;

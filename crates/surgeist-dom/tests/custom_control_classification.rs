@@ -1,10 +1,9 @@
 //! HTML877d54588–54591 requires an associated form-associated definition.
 //! A native undefined custom name with an actual null definition is not listed.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{
-    Dom, DomBatch, DomElementDefinition, DomHtmlCaptureLimits, DomLimits, Namespace,
-};
+use surgeist_dom::{Dom, DomBatch, DomElementDefinition, DomHtmlCaptureLimits, DomLimits};
 use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
     HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,

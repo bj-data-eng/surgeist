@@ -7,9 +7,10 @@ use surgeist_bindings_js::{
     dom_exception::DomExceptionName,
 };
 use surgeist_dom::{
-    DocumentString, DomDocumentScriptRegistration, DomNodeKind, DomRegistryBinding,
-    DomRegistryDefinitionId, DomRegistryId, DomSnapshot, DomSourceCustomElementRequest, NodeId,
+    DomDocumentScriptRegistration, DomNodeKind, DomRegistryBinding, DomRegistryDefinitionId,
+    DomRegistryId, DomSnapshot, DomSourceCustomElementRequest, NodeId,
 };
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::HtmlCustomElementDefinition;
 
 const INTERFACE: &[u16] = &ascii(b"CustomElementRegistry");
@@ -1475,7 +1476,9 @@ impl Capture {
             let Some(element) = node.as_element() else {
                 return Ok(None);
             };
-            if element.custom_element_state() != surgeist_dom::HtmlCustomElementState::Undefined {
+            if element.custom_element_state()
+                != surgeist_html::elements::native::HtmlCustomElementState::Undefined
+            {
                 return Ok(None);
             }
             let mut attributes = ReactionList::default();

@@ -3,7 +3,8 @@ mod cross_document;
 mod events;
 use super::meta::*;
 use super::*;
-use surgeist_dom::{DocumentString, DomSourceProgress, DomSourceRequest};
+use surgeist_dom::{DomSourceProgress, DomSourceRequest};
+use surgeist_html::values::DocumentString;
 use surgeist_html::values::Namespace;
 
 #[test]

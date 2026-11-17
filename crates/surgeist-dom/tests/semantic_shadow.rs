@@ -2,11 +2,14 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomError, DomHtmlCapture, DomHtmlCaptureError,
-    DomHtmlCaptureLimits, DomHtmlCaptureResource, DomLimits, DomShadowRootInit, DomSnapshot,
-    HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomError, DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits,
+    DomHtmlCaptureResource, DomLimits, DomShadowRootInit, DomSnapshot, NodeId,
 };
 use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{DocumentString, Namespace},
+};
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlCapturedChildren, HtmlCapturedFragmentKind, HtmlCapturedHost,
     HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCapturedRegistry, HtmlCapturedShadowRoot,

@@ -2,7 +2,7 @@
 //! input reaches the loop with a borrower name today, because the names it sees are the DOM's
 //! decoded owners.
 use super::*;
-use surgeist_dom::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html::values::TextBlock;
 
 fn new_custody() -> Custody {

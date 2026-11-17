@@ -2,6 +2,10 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::script::{HtmlScriptKind as Kind, HtmlScriptResult};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{DocumentString, Namespace},
+};
 use surgeist_html_semantics::HtmlCaptureLimits;
 
 fn dom() -> Dom {

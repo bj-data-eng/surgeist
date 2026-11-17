@@ -6,8 +6,9 @@ use surgeist_dom::{
     DomNodeFilterDecision, DomNodeIteratorFilter, DomNodeIteratorFilterRequest, DomNodeIteratorId,
     DomNodeIteratorProgress, DomResource, DomSourceEdit, DomSourceEventExecutor,
     DomSourceEventOutcome, DomSourceEventRequest, DomSourceLimits, DomSourceProgress,
-    DomSourceRequest, DomStyleInlineCspObservation, Namespace, NodeId,
+    DomSourceRequest, DomStyleInlineCspObservation, NodeId,
 };
+use surgeist_html::values::Namespace;
 
 struct Tree {
     dom: Dom,

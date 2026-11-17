@@ -5,6 +5,7 @@ use surgeist_html::elements::input::{
     HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as NoneDirection,
     HtmlInputSelectionDirection as Direction,
 };
+use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
 fn limits() -> DomLimits {
     DomLimits::new(

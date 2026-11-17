@@ -14,6 +14,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_dom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_semantics::{
     HtmlBaseAllowed, HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseParseObservation,
     HtmlBaseParseOutcome, HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme,

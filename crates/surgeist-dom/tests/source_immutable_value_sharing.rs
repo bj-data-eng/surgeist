@@ -8,6 +8,7 @@ use std::{
 
 use surgeist_dom::*;
 use surgeist_html::elements::{dialog::HtmlDialogAction, style::HtmlStyleUpdateAction};
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

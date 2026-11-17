@@ -1,8 +1,7 @@
 use std::sync::atomic::AtomicBool;
 
-use surgeist_dom::{
-    DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomNodeKind, DomResource,
-};
+use surgeist_dom::{Dom, DomBatch, DomChange, DomError, DomLimits, DomNodeKind, DomResource};
+use surgeist_html::values::DocumentString;
 
 // Each native Document retains application/xml, UTF-8 and about:blank.
 const DOCUMENT_UNITS: usize = 31;

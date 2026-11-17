@@ -9,6 +9,10 @@
 ))]
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {

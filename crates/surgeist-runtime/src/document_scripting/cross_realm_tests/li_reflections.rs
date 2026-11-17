@@ -371,7 +371,7 @@ fn li_native_edits_and_retirement_keep_wrapper_identity() {
             item,
             Namespace::none(),
             "type",
-            surgeist_dom::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
+            surgeist_html::values::DocumentString::from_utf16([0xd800, 0, 0xdc00]),
         );
         for attribute in ["value", "type"] {
             batch.set_attribute_ns(

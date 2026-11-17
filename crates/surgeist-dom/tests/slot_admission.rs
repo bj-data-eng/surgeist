@@ -5,6 +5,10 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::Namespace,
+};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

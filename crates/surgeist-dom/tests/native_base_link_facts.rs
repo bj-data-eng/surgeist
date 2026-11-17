@@ -3,7 +3,9 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
+use surgeist_html::values::DocumentString;
 use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 use surgeist_html_semantics::*;
 
 fn cancel() -> AtomicBool {

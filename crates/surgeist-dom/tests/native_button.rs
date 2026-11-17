@@ -1,7 +1,8 @@
 //! DOM3071 createElementNS and HTML877d HTMLButtonElement initialization.
 //! Native Button construction includes its real form and weak-target state.
 use std::sync::atomic::AtomicBool;
-use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
+use surgeist_dom::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[test]
 fn native_html_button_creation_publishes_an_actual_element() {

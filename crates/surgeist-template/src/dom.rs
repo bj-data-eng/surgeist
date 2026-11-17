@@ -110,7 +110,8 @@ struct PlannedNode {
 ///
 /// ```
 /// use std::sync::atomic::AtomicBool;
-/// use surgeist_dom::{Dom, DomBatch, DomLimits, Namespace};
+/// use surgeist_dom::{Dom, DomBatch, DomLimits};
+/// use surgeist_html::values::Namespace;
 /// use surgeist_template::dom::append_static_html;
 /// use surgeist_template::registry::{AttributeKind, AttributeRule, ComponentRegistry,
 ///     NativeElementRegistry};

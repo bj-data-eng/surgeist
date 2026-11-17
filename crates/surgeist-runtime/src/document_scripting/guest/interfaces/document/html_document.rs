@@ -13,7 +13,8 @@ use surgeist_bindings_js::{
     },
     dom_exception::DomExceptionName,
 };
-use surgeist_dom::{DomSourceEdit, Namespace};
+use surgeist_dom::DomSourceEdit;
+use surgeist_html::values::Namespace;
 use surgeist_html::{
     bounded::attributes::dir_keyword_with,
     elements::style::{HtmlDocumentBodyRole, document_body_role_with},

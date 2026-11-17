@@ -20,8 +20,9 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomChange, DomCommit, DomError, DomLimits, DomResource,
     DomShadowRootInit, DomSnapshot, DomSourceCompletion, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, DomTopLayerUaRule, HtmlShadowRootMode, Namespace, NodeId,
+    DomSourceProgress, DomTopLayerUaRule, NodeId,
 };
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 
 fn limits() -> DomLimits {
     DomLimits::new(

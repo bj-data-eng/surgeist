@@ -2,12 +2,12 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomLimits, DomNameLimits, DomNodeKind,
-    DomNodeOrString, DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress,
-    DomSourceRequest, DomStyleAction, DomStyleInlineCspObservation, DomStyleRequest, Namespace,
-    NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomLimits, DomNameLimits, DomNodeKind, DomNodeOrString,
+    DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest,
+    DomStyleAction, DomStyleInlineCspObservation, DomStyleRequest, NodeId,
 };
 use surgeist_html::elements::style::HtmlStyleUpdateAction;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

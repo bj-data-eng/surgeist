@@ -963,7 +963,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
     for refusal in [Some(true), Some(false), None] {
         let (mut session, top, _body, subject) = fixture();
         let cancel = AtomicBool::new(false);
-        let namespace = surgeist_dom::Namespace::from_uri("urn:foreign");
+        let namespace = surgeist_html::values::Namespace::from_uri("urn:foreign");
         let mut authored = surgeist_dom::DomBatch::new();
         authored.set_attribute_ns(subject, namespace.clone(), "open", "foreign");
         session.dom().apply(authored, &cancel).unwrap();
@@ -1103,7 +1103,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
         assert_eq!(watcher.global(), top.global());
         let node = snapshot.node(subject).unwrap();
         assert_eq!(
-            node.attribute_ns(&surgeist_dom::Namespace::none(), &"open".into()),
+            node.attribute_ns(&surgeist_html::values::Namespace::none(), &"open".into()),
             Some(&"".into())
         );
         assert_eq!(

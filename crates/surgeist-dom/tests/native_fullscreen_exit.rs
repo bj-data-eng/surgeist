@@ -6,8 +6,9 @@ use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
     DocumentId, Dom, DomBatch, DomCommit, DomError, DomFullscreenExitReturn, DomLimits,
-    DomResource, DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress, Namespace,
+    DomResource, DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress,
 };
+use surgeist_html::values::Namespace;
 
 fn owner() -> Dom {
     Dom::new(

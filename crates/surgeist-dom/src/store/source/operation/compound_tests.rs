@@ -1,6 +1,7 @@
 //! Original first-error custody through public refusal, Drop, resume and cancel.
 use super::*;
 use crate::*;
+use surgeist_html::values::DocumentString;
 
 fn fixture() -> (Dom, DocumentId, NodeId) {
     let cancel = AtomicBool::new(false);
