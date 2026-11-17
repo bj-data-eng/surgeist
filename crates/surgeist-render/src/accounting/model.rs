@@ -1,5 +1,5 @@
 use crate::ErrorCode;
-use std::time::Duration;
+use std::{fmt, time::Duration};
 use surgeist_ledger::{Dimension, IntervalReport, IntervalUsage, Scope, dimensions};
 
 dimensions! {
@@ -1076,6 +1076,164 @@ impl RenderRefusal {
         self.reason
     }
 }
+impl RenderWork {
+    /// Lowercase words naming the unit in a message; every variant has one.
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::CommandVisits => "command visits",
+            Self::PathElementVisits => "path element visits",
+            Self::GlyphVisits => "glyph visits",
+            Self::PaintVisits => "paint visits",
+            Self::GradientStopVisits => "gradient stop visits",
+            Self::FontRecordVisits => "font record visits",
+            Self::CoordinateVisits => "coordinate visits",
+            Self::OutlinePointVisits => "outline point visits",
+            Self::VariationTupleVisits => "variation tuple visits",
+            Self::GlyphComponentVisits => "glyph component visits",
+            Self::FilterOperationVisits => "filter operation visits",
+            Self::KernelSampleVisits => "kernel sample visits",
+            Self::GraphNodeVisits => "graph node visits",
+            Self::GraphEdgeVisits => "graph edge visits",
+            Self::ResourceProbes => "resource probes",
+            Self::GlyphInputs => "glyph inputs",
+            Self::CoordinateInputs => "coordinate inputs",
+            Self::TextRuns => "text runs",
+            Self::LeaderClusterVisits => "leader cluster visits",
+            Self::TextDecorations => "text decorations",
+            Self::PathElementsEmitted => "path elements emitted",
+            Self::CommandsEmitted => "commands emitted",
+            Self::FillsEmitted => "fills emitted",
+            Self::StrokesEmitted => "strokes emitted",
+            Self::ShadowsEmitted => "shadows emitted",
+            Self::ImagesEmitted => "images emitted",
+            Self::GlyphsEmitted => "glyphs emitted",
+            Self::LayersEmitted => "layers emitted",
+            Self::RepeatTiles => "repeat tiles",
+            Self::ImageSourceBytes => "image source bytes",
+            Self::AtlasTexels => "atlas texels",
+            Self::UploadBytes => "upload bytes",
+            Self::SerializedBytes => "serialized bytes",
+            Self::ScheduledFilterTexels => "scheduled filter texels",
+            Self::ScheduledConvolutionTaps => "scheduled convolution taps",
+            Self::ScheduledOffsetSamples => "scheduled offset samples",
+            Self::ScheduledGaussianSamples => "scheduled gaussian samples",
+            Self::ScheduledShadowSamples => "scheduled shadow samples",
+            Self::ScheduledMorphologySamples => "scheduled morphology samples",
+            Self::DisplacementMapByteVisits => "displacement map byte visits",
+            Self::DisplacementMapRecordVisits => "displacement map record visits",
+            Self::DisplacementTableVisits => "displacement table visits",
+            Self::ScheduledDisplacementMapRecordReads => "scheduled displacement map record reads",
+            Self::ScheduledDisplacementAddressReads => "scheduled displacement address reads",
+            Self::ScheduledDisplacementMapSamples => "scheduled displacement map samples",
+            Self::ScheduledDisplacementSourceSamples => "scheduled displacement source samples",
+            Self::RasterDispatches => "raster dispatches",
+            Self::VelloPasses => "vello passes",
+            Self::ImagePasses => "image passes",
+            Self::CompositePasses => "composite passes",
+            Self::CopyOperations => "copy operations",
+            Self::CustomPresentPasses => "custom present passes",
+            Self::Submissions => "submissions",
+            Self::Presentations => "presentations",
+            Self::ReadbackCopies => "readback copies",
+            Self::ReadbackMapRequests => "readback map requests",
+            Self::ReadbackRows => "readback rows",
+            Self::ReadbackBytes => "readback bytes",
+            Self::ReadbackTransferredBytes => "readback transferred bytes",
+            Self::PreparedTransferredBytes => "prepared transferred bytes",
+            Self::ResourceAllocationRequests => "resource allocation requests",
+            Self::ResourceAllocations => "resource allocations",
+            Self::ResourceReuses => "resource reuses",
+            Self::ResourceLeaseReturns => "resource lease returns",
+            Self::ResourceEvictions => "resource evictions",
+            Self::ResourceRetirements => "resource retirements",
+            Self::GpuObjectsCreated => "gpu objects created",
+            Self::ImageContentHits => "image content hits",
+            Self::ImageContentMisses => "image content misses",
+            Self::ImageFirstObservedBytes => "image first observed bytes",
+            Self::PngByteVisits => "png byte visits",
+            Self::ImageTexelVisits => "image texel visits",
+            Self::AuthoredCommands => "authored commands",
+            Self::AuthoredFills => "authored fills",
+            Self::AuthoredStrokes => "authored strokes",
+            Self::AuthoredShadows => "authored shadows",
+            Self::AuthoredImages => "authored images",
+            Self::AuthoredGlyphs => "authored glyphs",
+            Self::AuthoredLayers => "authored layers",
+            Self::ImageIdentityCopies => "image identity copies",
+            Self::ImageIdentityByteComparisons => "image identity byte comparisons",
+            Self::ImageIdentityDrops => "image identity drops",
+            Self::SurfaceAcquisitions => "surface acquisitions",
+            Self::ShaderBindingVisits => "shader binding visits",
+            Self::ShaderSourceScanBytes => "shader source scan bytes",
+            Self::ShaderKeyCopies => "shader key copies",
+            Self::StorageRelocations => "storage relocations",
+            Self::EncodingStreamCopies => "encoding stream copies",
+            Self::DashInitializations => "dash initializations",
+            Self::RasterCommandsEmitted => "raster commands emitted",
+            Self::RasterCommandVisits => "raster command visits",
+            Self::RasterResourceCopies => "raster resource copies",
+            Self::GraphProofSortMoves => "graph proof sort moves",
+            Self::NativeBitmapDecodeBytes => "native bitmap decode bytes",
+            Self::ActiveFrameRecordMoves => "active frame record moves",
+            Self::ResourceCacheRecordMoves => "resource cache record moves",
+        }
+    }
+}
+impl RenderResource {
+    /// Lowercase words naming the dimension in a message; every variant has one.
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::RetainedCpuBytes => "retained cpu bytes",
+            Self::ScratchCpuBytes => "scratch cpu bytes",
+            Self::GpuBytes => "gpu bytes",
+            Self::OpaqueGpuObjects => "opaque gpu objects",
+            Self::LocalRepeatTileQuota => "local repeat tile quota",
+            Self::LocalAtlasSourceByteQuota => "local atlas source byte quota",
+            Self::LocalAtlasTexelQuota => "local atlas texel quota",
+            Self::RegisteredCacheGpuBytes => "registered cache gpu bytes",
+            Self::IdleCacheGpuBytes => "idle cache gpu bytes",
+        }
+    }
+}
+
+/// Message form of a quantity: work units read as `<label> work`, resources as their label.
+pub(super) struct QuantityText(pub(super) RenderQuantity);
+impl fmt::Display for QuantityText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            RenderQuantity::Work(work) => write!(f, "{} work", work.label()),
+            RenderQuantity::Resource(resource) => f.write_str(resource.label()),
+        }
+    }
+}
+
+/// Message form of a refusal reason.
+pub(super) struct ReasonText(pub(super) RenderRefusalReason);
+impl fmt::Display for ReasonText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            RenderRefusalReason::Limit { limit } => write!(f, "the limit is {limit}"),
+            RenderRefusalReason::Overflow => f.write_str("the total would overflow"),
+            RenderRefusalReason::Underflow => f.write_str("the release exceeds the held amount"),
+        }
+    }
+}
+
+impl fmt::Display for RenderRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} refused {} in the {} phase at usage {}: {}",
+            QuantityText(self.quantity),
+            self.amount,
+            self.phase.name(),
+            self.current,
+            ReasonText(self.reason)
+        )
+    }
+}
+impl std::error::Error for RenderRefusal {}
+
 /// Setup failure occurs before an attempt starts or runs native/provider work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RenderAccountingSetupError {
@@ -1086,6 +1244,16 @@ pub enum RenderAccountingSetupError {
     /// Operation identities were exhausted.
     IdentityExhausted,
 }
+impl fmt::Display for RenderAccountingSetupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Allocation => "accounting could not allocate its setup or report storage",
+            Self::TimingUnavailable => "timed profiling is unavailable on this target",
+            Self::IdentityExhausted => "accounting identities are exhausted",
+        })
+    }
+}
+impl std::error::Error for RenderAccountingSetupError {}
 /// General accounting failure. Legacy limits retain their glyph/Text errors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -1104,7 +1272,7 @@ pub enum RenderAccountingError {
         /// The requested backing dimension.
         resource: RenderResource,
     },
-    /// This dimension has no producer at the selected operation boundary.
+    /// This dimension is not produced by the operations the limit applies to, or has no limit at all.
     InvalidLimit(RenderWork),
     /// A private fixed-scope, checkpoint or participant contract was violated.
     Invariant,
@@ -1156,12 +1324,90 @@ pub enum RenderAccountingError {
         resource: RenderResource,
     },
 }
-impl std::fmt::Display for RenderAccountingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+impl fmt::Display for RenderAccountingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Setup(_) => f.write_str("accounting setup failed"),
+            Self::Refused(_) => f.write_str("accounting refused a change"),
+            Self::StandaloneAllocation { resource } => write!(
+                f,
+                "allocating the standalone backing for {} failed",
+                resource.label()
+            ),
+            Self::StandaloneCapacityOverflow { resource } => write!(
+                f,
+                "the standalone backing size for {} cannot be represented",
+                resource.label()
+            ),
+            Self::InvalidLimit(work) => write!(
+                f,
+                "{} work is not produced by the operations this limit applies to and cannot be limited",
+                work.label()
+            ),
+            Self::Invariant => f.write_str("an internal consistency check failed"),
+            Self::LedgerDefect(defect) => {
+                write!(f, "the ledger reported an internal defect: {defect}")
+            }
+            Self::GenerationRefused {
+                quantity,
+                current,
+                amount,
+                reason,
+            } => write!(
+                f,
+                "generation accounting refused {amount} of {} at usage {current}: {}",
+                QuantityText(*quantity),
+                ReasonText(*reason)
+            ),
+            Self::GenerationRetired => {
+                f.write_str("the device generation is retired and cannot start new work")
+            }
+            Self::CpuRefused {
+                scope,
+                quantity,
+                current,
+                amount,
+                reason,
+            } => write!(
+                f,
+                "cpu accounting for {} refused {amount} of {} at usage {current}: {}",
+                scope.name(),
+                QuantityText(*quantity),
+                ReasonText(*reason)
+            ),
+            Self::CpuAllocation { scope, resource } => write!(
+                f,
+                "allocating cpu backing {} for {} failed",
+                resource.label(),
+                scope.name()
+            ),
+            Self::CpuCapacityOverflow { scope, resource } => write!(
+                f,
+                "the cpu backing size of {} for {} cannot be represented",
+                resource.label(),
+                scope.name()
+            ),
+        }
     }
 }
-impl std::error::Error for RenderAccountingError {}
+impl std::error::Error for RenderAccountingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Setup(error) => Some(error),
+            Self::Refused(refusal) => Some(refusal),
+            Self::StandaloneAllocation { .. }
+            | Self::StandaloneCapacityOverflow { .. }
+            | Self::InvalidLimit(_)
+            | Self::Invariant
+            | Self::LedgerDefect(_)
+            | Self::GenerationRefused { .. }
+            | Self::GenerationRetired
+            | Self::CpuRefused { .. }
+            | Self::CpuAllocation { .. }
+            | Self::CpuCapacityOverflow { .. } => None,
+        }
+    }
+}
 /// Exact inclusive accepted usage. Parent and child values are attribution, not sums.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderUsage(IntervalUsage<RenderWork, RenderResource>);

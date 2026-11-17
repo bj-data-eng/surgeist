@@ -335,7 +335,7 @@ impl InclusiveFilterKernelSupport {
         if inclusive_radius < 0.0 || inclusive_radius > f64::from(u32::MAX) {
             return Err(Error::invalid_value(
                 "filter blur inclusive support",
-                inclusive_radius,
+                crate::number_text::Number(inclusive_radius),
                 "must fit in u32 device taps",
             ));
         }

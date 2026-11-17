@@ -117,6 +117,9 @@ pub surgeist_render::ConvolutionPreparationError::Numeric::phase: surgeist_rende
 pub surgeist_render::ConvolutionPreparationError::Numeric::value: f64
 impl core::convert::From<surgeist_render::ConvolutionPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::ConvolutionPreparationError) -> Self
+impl core::error::Error for surgeist_render::ConvolutionPreparationError
+impl core::fmt::Display for surgeist_render::ConvolutionPreparationError
+pub fn surgeist_render::ConvolutionPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::CoordinateSpaceKind
 pub surgeist_render::CoordinateSpaceKind::Local
 pub surgeist_render::CoordinateSpaceKind::Named(surgeist_render::CoordinateSpaceId)
@@ -163,6 +166,9 @@ pub surgeist_render::DisplacementPreparationError::Numeric::phase: surgeist_rend
 pub surgeist_render::DisplacementPreparationError::Numeric::value: f64
 impl core::convert::From<surgeist_render::DisplacementPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::DisplacementPreparationError) -> Self
+impl core::error::Error for surgeist_render::DisplacementPreparationError
+impl core::fmt::Display for surgeist_render::DisplacementPreparationError
+pub fn surgeist_render::DisplacementPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::DropShadowNumericPhase
 pub surgeist_render::DropShadowNumericPhase::GridIndex
 pub surgeist_render::DropShadowNumericPhase::MergeMapping
@@ -177,6 +183,9 @@ pub surgeist_render::DropShadowPreparationError::Numeric::phase: surgeist_render
 pub surgeist_render::DropShadowPreparationError::Numeric::value: f64
 impl core::convert::From<surgeist_render::DropShadowPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::DropShadowPreparationError) -> Self
+impl core::error::Error for surgeist_render::DropShadowPreparationError
+impl core::fmt::Display for surgeist_render::DropShadowPreparationError
+pub fn surgeist_render::DropShadowPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::EffectPrecision
 pub surgeist_render::EffectPrecision::High
 pub surgeist_render::EffectPrecision::Reduced
@@ -208,6 +217,8 @@ pub surgeist_render::ErrorCode::TextLayout
 pub surgeist_render::ErrorCode::UnresolvedResource
 pub surgeist_render::ErrorCode::UnsupportedBackend
 pub surgeist_render::ErrorCode::UnsupportedPrimitive
+impl core::fmt::Display for surgeist_render::ErrorCode
+pub fn surgeist_render::ErrorCode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::Extend
 pub surgeist_render::Extend::Pad
 pub surgeist_render::Extend::Reflect
@@ -260,6 +271,9 @@ pub surgeist_render::GaussianPreparationError::Numeric::phase: surgeist_render::
 pub surgeist_render::GaussianPreparationError::Numeric::value: f64
 impl core::convert::From<surgeist_render::GaussianPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GaussianPreparationError) -> Self
+impl core::error::Error for surgeist_render::GaussianPreparationError
+impl core::fmt::Display for surgeist_render::GaussianPreparationError
+pub fn surgeist_render::GaussianPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::GeometryRealizationError
 pub surgeist_render::GeometryRealizationError::InsufficientNativeCapacity
 pub surgeist_render::GeometryRealizationError::UnrepresentableBlur
@@ -271,6 +285,9 @@ pub surgeist_render::GeometryRealizationError::UnrepresentableStroke
 pub surgeist_render::GeometryRealizationError::UnrepresentableTransform
 impl core::convert::From<surgeist_render::GeometryRealizationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GeometryRealizationError) -> Self
+impl core::error::Error for surgeist_render::GeometryRealizationError
+impl core::fmt::Display for surgeist_render::GeometryRealizationError
+pub fn surgeist_render::GeometryRealizationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::GlyphCapability
 pub surgeist_render::GlyphCapability::CompositeGlyph
 pub surgeist_render::GlyphCapability::PostScript
@@ -322,6 +339,9 @@ pub surgeist_render::GlyphPreparationError::UnsupportedOutline::capability: surg
 pub surgeist_render::GlyphPreparationError::UnsupportedPng
 impl core::convert::From<surgeist_render::GlyphPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GlyphPreparationError) -> Self
+impl core::error::Error for surgeist_render::GlyphPreparationError
+impl core::fmt::Display for surgeist_render::GlyphPreparationError
+pub fn surgeist_render::GlyphPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::GlyphResource
 pub surgeist_render::GlyphResource::Glyphs
 pub surgeist_render::GlyphResource::PathElements
@@ -340,6 +360,9 @@ pub surgeist_render::GradientHintError::UnsupportedSweep
 pub surgeist_render::GradientHintError::UnsupportedSweep::stop_index: usize
 impl core::convert::From<surgeist_render::GradientHintError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GradientHintError) -> Self
+impl core::error::Error for surgeist_render::GradientHintError
+impl core::fmt::Display for surgeist_render::GradientHintError
+pub fn surgeist_render::GradientHintError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::GradientRealizationError
 pub surgeist_render::GradientRealizationError::DegenerateLinearField
 pub surgeist_render::GradientRealizationError::InsufficientNativeCapacity
@@ -350,6 +373,9 @@ pub surgeist_render::GradientRealizationError::UnrepresentableStop
 pub surgeist_render::GradientRealizationError::UnrepresentableStop::stop_index: usize
 impl core::convert::From<surgeist_render::GradientRealizationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GradientRealizationError) -> Self
+impl core::error::Error for surgeist_render::GradientRealizationError
+impl core::fmt::Display for surgeist_render::GradientRealizationError
+pub fn surgeist_render::GradientRealizationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::HitTestOwnership
 pub surgeist_render::HitTestOwnership::RootOwned
 pub enum surgeist_render::ImageColorProfilePolicy
@@ -382,12 +408,20 @@ pub surgeist_render::ImageRepeatMode::RepeatY
 pub enum surgeist_render::LeaderPatternCause
 pub surgeist_render::LeaderPatternCause::Render(alloc::boxed::Box<surgeist_render::Error>)
 pub surgeist_render::LeaderPatternCause::Text(alloc::boxed::Box<surgeist_text::error::Error>)
+impl core::error::Error for surgeist_render::LeaderPatternCause
+pub fn surgeist_render::LeaderPatternCause::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_render::LeaderPatternCause
+pub fn surgeist_render::LeaderPatternCause::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::LeaderPatternError
 pub surgeist_render::LeaderPatternError::Run
 pub surgeist_render::LeaderPatternError::Run::cause: surgeist_render::LeaderPatternCause
 pub surgeist_render::LeaderPatternError::Run::run: usize
 impl core::convert::From<surgeist_render::LeaderPatternError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::LeaderPatternError) -> Self
+impl core::error::Error for surgeist_render::LeaderPatternError
+pub fn surgeist_render::LeaderPatternError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_render::LeaderPatternError
+pub fn surgeist_render::LeaderPatternError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::LineCap
 pub surgeist_render::LineCap::Butt
 pub surgeist_render::LineCap::Round
@@ -438,6 +472,9 @@ pub surgeist_render::MorphologyPreparationError::Numeric::phase: surgeist_render
 pub surgeist_render::MorphologyPreparationError::Numeric::value: f64
 impl core::convert::From<surgeist_render::MorphologyPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::MorphologyPreparationError) -> Self
+impl core::error::Error for surgeist_render::MorphologyPreparationError
+impl core::fmt::Display for surgeist_render::MorphologyPreparationError
+pub fn surgeist_render::MorphologyPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::NormalizedBackgroundCommandKind
 pub surgeist_render::NormalizedBackgroundCommandKind::ColorFill
 pub surgeist_render::NormalizedBackgroundCommandKind::ColorFill::color: surgeist_render::Color
@@ -475,6 +512,9 @@ pub surgeist_render::OffsetPreparationError::Numeric::phase: surgeist_render::Of
 pub surgeist_render::OffsetPreparationError::Numeric::value: f64
 impl core::convert::From<surgeist_render::OffsetPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::OffsetPreparationError) -> Self
+impl core::error::Error for surgeist_render::OffsetPreparationError
+impl core::fmt::Display for surgeist_render::OffsetPreparationError
+pub fn surgeist_render::OffsetPreparationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::OutlineStyle
 pub surgeist_render::OutlineStyle::Auto
 pub surgeist_render::OutlineStyle::Dashed
@@ -636,12 +676,16 @@ pub surgeist_render::RenderAccountingError::StandaloneCapacityOverflow::resource
 impl core::convert::From<surgeist_render::RenderAccountingError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::RenderAccountingError) -> Self
 impl core::error::Error for surgeist_render::RenderAccountingError
+pub fn surgeist_render::RenderAccountingError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_render::RenderAccountingError
 pub fn surgeist_render::RenderAccountingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::RenderAccountingSetupError
 pub surgeist_render::RenderAccountingSetupError::Allocation
 pub surgeist_render::RenderAccountingSetupError::IdentityExhausted
 pub surgeist_render::RenderAccountingSetupError::TimingUnavailable
+impl core::error::Error for surgeist_render::RenderAccountingSetupError
+impl core::fmt::Display for surgeist_render::RenderAccountingSetupError
+pub fn surgeist_render::RenderAccountingSetupError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_render::RenderAttemptKind
 pub surgeist_render::RenderAttemptKind::Background
 pub surgeist_render::RenderAttemptKind::BoxDecoration
@@ -1053,6 +1097,10 @@ pub const fn surgeist_render::TextDecorationLineStyle::label(self) -> &'static s
 pub enum surgeist_render::TextLayoutCause
 pub surgeist_render::TextLayoutCause::Render(alloc::boxed::Box<surgeist_render::Error>)
 pub surgeist_render::TextLayoutCause::Text(alloc::boxed::Box<surgeist_text::error::Error>)
+impl core::error::Error for surgeist_render::TextLayoutCause
+pub fn surgeist_render::TextLayoutCause::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_render::TextLayoutCause
+pub fn surgeist_render::TextLayoutCause::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::TextLayoutError
 pub surgeist_render::TextLayoutError::Allocation
 pub surgeist_render::TextLayoutError::Allocation::resource: surgeist_render::TextLayoutResource
@@ -1066,6 +1114,10 @@ pub surgeist_render::TextLayoutError::Limit::required: usize
 pub surgeist_render::TextLayoutError::Limit::resource: surgeist_render::TextLayoutResource
 impl core::convert::From<surgeist_render::TextLayoutError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::TextLayoutError) -> Self
+impl core::error::Error for surgeist_render::TextLayoutError
+pub fn surgeist_render::TextLayoutError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_render::TextLayoutError
+pub fn surgeist_render::TextLayoutError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_render::TextLayoutLocation
 pub surgeist_render::TextLayoutLocation::Decoration
 pub surgeist_render::TextLayoutLocation::Decoration::decoration: usize
@@ -2128,6 +2180,9 @@ pub const fn surgeist_render::RenderRefusal::current(self) -> u64
 pub const fn surgeist_render::RenderRefusal::phase(self) -> surgeist_render::RenderPhase
 pub const fn surgeist_render::RenderRefusal::quantity(self) -> surgeist_render::RenderQuantity
 pub const fn surgeist_render::RenderRefusal::reason(self) -> surgeist_render::RenderRefusalReason
+impl core::error::Error for surgeist_render::RenderRefusal
+impl core::fmt::Display for surgeist_render::RenderRefusal
+pub fn surgeist_render::RenderRefusal::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_render::RenderResourceFields<T>
 pub surgeist_render::RenderResourceFields::GpuBytes: T
 pub surgeist_render::RenderResourceFields::IdleCacheGpuBytes: T

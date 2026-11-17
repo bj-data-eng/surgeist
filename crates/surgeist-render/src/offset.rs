@@ -2,6 +2,7 @@
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };
+use crate::number_text::Number;
 use crate::{Error, FilterDomains, ImageRendering, Result};
 
 /// Offset parameter whose resolved value is invalid.
@@ -40,6 +41,42 @@ pub enum OffsetPreparationError {
         value: f64,
     },
 }
+
+impl OffsetParameter {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Dx => "horizontal displacement",
+            Self::Dy => "vertical displacement",
+        }
+    }
+}
+
+impl OffsetNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::GridMapping => "grid mapping",
+            Self::GridIndex => "grid index",
+        }
+    }
+}
+
+impl core::fmt::Display for OffsetPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidParameter { parameter, value } => write!(
+                f,
+                "offset parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "offset numeric check failed at {}", phase.label())
+            }
+        }
+    }
+}
+
+impl core::error::Error for OffsetPreparationError {}
 
 /// Untrusted resolved displacement and captured-input reconstruction intent.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -183,7 +220,7 @@ pub fn prepare_offset(
                         if !value.is_finite() || (extent && value < 0.0) {
                             return Err(Error::invalid_value(
                                 format!("filter domain {role} {field}"),
-                                value,
+                                crate::number_text::Number(value),
                                 if extent {
                                     "must be finite and non-negative"
                                 } else {

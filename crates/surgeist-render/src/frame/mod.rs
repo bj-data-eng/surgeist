@@ -116,7 +116,7 @@ impl FrameContext {
         if !surface_scale.is_finite() || surface_scale <= 0.0 {
             return Err(Error::invalid_value(
                 "frame surface scale",
-                surface_scale,
+                crate::number_text::Number(surface_scale),
                 "must be finite and greater than 0",
             ));
         }

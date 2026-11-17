@@ -1412,6 +1412,17 @@ pub enum Format {
     Bgra8,
 }
 
+impl Format {
+    /// The name of the format in a message.
+    #[cfg(test)]
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Rgba8 => "RGBA8",
+            Self::Bgra8 => "BGRA8",
+        }
+    }
+}
+
 /// Per-frame render parameters.
 ///
 /// [`Default`] clears to transparent and disables diagnostics.

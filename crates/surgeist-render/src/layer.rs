@@ -259,7 +259,7 @@ impl Layer {
         if !opacity.is_finite() {
             return Err(Error::invalid_value(
                 "layer opacity",
-                opacity,
+                crate::number_text::Number(opacity),
                 "must be finite",
             ));
         }
@@ -585,6 +585,31 @@ pub enum BlendMode {
     Plus,
 }
 
+impl BlendMode {
+    /// The name of the mode in a message.
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Multiply => "multiply",
+            Self::Screen => "screen",
+            Self::Overlay => "overlay",
+            Self::Darken => "darken",
+            Self::Lighten => "lighten",
+            Self::ColorDodge => "color dodge",
+            Self::ColorBurn => "color burn",
+            Self::HardLight => "hard light",
+            Self::SoftLight => "soft light",
+            Self::Difference => "difference",
+            Self::Exclusion => "exclusion",
+            Self::Hue => "hue",
+            Self::Saturation => "saturation",
+            Self::Color => "color",
+            Self::Luminosity => "luminosity",
+            Self::Plus => "plus",
+        }
+    }
+}
+
 /// One of the twelve basic Porter-Duff region selections or saturating PlusLighter.
 ///
 /// These operators have bounded premultiplied color and alpha for valid inputs.
@@ -671,7 +696,7 @@ impl LayerComposition {
             if blend != BlendMode::Normal {
                 return Err(Error::invalid_value(
                     "PlusLighter mixing function",
-                    format_args!("{blend:?}"),
+                    blend.label(),
                     "must be Normal; PlusLighter is a complete operation",
                 ));
             }

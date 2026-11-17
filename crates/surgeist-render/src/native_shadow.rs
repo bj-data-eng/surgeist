@@ -1,5 +1,6 @@
 //! Resolved native alpha-blur, displacement, flood and source-over shadow.
 use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
+use crate::number_text::Number;
 use crate::offset::{OffsetDisplacement, prepare_offset_displacement_in};
 use crate::{
     Color, FilterColorSpace, FilterDomains, GaussianInput, GaussianPreparationError,
@@ -11,7 +12,8 @@ use crate::{filter_source::FilterSourceDescriptor, gaussian::prepare_gaussian_in
 /// Actual native shadow merge arithmetic that could not be represented safely.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DropShadowNumericPhase {
-    /// Mapping the final output into the retained original and shifted alpha.
+    /// Mapping the final output into the retained original and shifted alpha, and the Gaussian
+    /// kernel extent, grid mapping and sampling arithmetic that frame qualification reports here.
     MergeMapping,
     /// Checked original or shifted-alpha sample neighborhoods.
     GridIndex,
@@ -39,6 +41,39 @@ pub enum DropShadowPreparationError {
         value: f64,
     },
 }
+
+impl DropShadowNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::MergeMapping => "merge mapping, kernel extent or sampling",
+            Self::GridIndex => "grid index",
+            Self::Sampling => "sampling",
+        }
+    }
+}
+
+impl core::fmt::Display for DropShadowPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidFloodOpacity { value } => write!(
+                f,
+                "drop shadow flood opacity {} is not finite or is outside 0 to 1",
+                Number(*value)
+            ),
+            Self::EmptyPeriod => {
+                f.write_str("a periodic source must have positive width and height")
+            }
+            Self::InfiniteSourceBackdrop => f.write_str(
+                "a same-layer backdrop cannot be combined with a declared infinite source",
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "drop shadow numeric check failed at {}", phase.label())
+            }
+        }
+    }
+}
+
+impl core::error::Error for DropShadowPreparationError {}
 
 /// Untrusted resolved native shadow request, in layer-local primitive units.
 #[derive(Clone, Copy, Debug, PartialEq)]

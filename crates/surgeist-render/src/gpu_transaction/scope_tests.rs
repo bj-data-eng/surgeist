@@ -279,12 +279,23 @@ fn characterize_captured_and_terminal(submission: bool) {
             assert!(Arc::ptr_eq(&first, &signal.first_terminal().unwrap()));
             assert_eq!(first.operation_generation_for_test(), Some(generation));
         } else {
+            // The message names the fault; the captured cause is the source and is not repeated.
+            assert_eq!(
+                error.to_string(),
+                "the GPU rejected the operation as invalid"
+            );
             assert!(
-                error
+                !error
                     .to_string()
                     .contains("Surgeist captured validation cause")
             );
-            assert!(error.source().is_some());
+            assert!(
+                error
+                    .source()
+                    .unwrap()
+                    .to_string()
+                    .contains("Surgeist captured validation cause")
+            );
             assert!(signal.first_terminal().is_none());
         }
         assert_eq!(signal.active_generation_for_test(), None);

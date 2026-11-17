@@ -42,6 +42,14 @@ pub(crate) enum WorkingFormat {
 }
 
 impl WorkingFormat {
+    /// The name of the working format in a message.
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::HighPrecision => "high precision",
+            Self::ReducedPrecision => "reduced precision",
+        }
+    }
+
     pub(crate) const fn texture_format(self) -> wgpu::TextureFormat {
         match self {
             Self::HighPrecision => wgpu::TextureFormat::Rgba16Float,

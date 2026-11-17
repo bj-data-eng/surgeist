@@ -430,7 +430,12 @@ impl TextGlyph {
         if !x.is_finite() || !y.is_finite() || !advance.is_finite() {
             return Err(super::Error::invalid_value(
                 "text glyph positions and advances",
-                format_args!("x={x}, y={y}, advance={advance}"),
+                format_args!(
+                    "x={}, y={}, advance={}",
+                    crate::number_text::Number(x),
+                    crate::number_text::Number(y),
+                    crate::number_text::Number(advance)
+                ),
                 "must be finite",
             ));
         }

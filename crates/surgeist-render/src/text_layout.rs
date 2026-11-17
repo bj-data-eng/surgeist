@@ -203,6 +203,83 @@ pub enum TextLayoutError {
     },
 }
 
+impl TextLayoutResource {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Runs => "runs",
+            Self::CoordinateValues => "coordinate values",
+            Self::Decorations => "decorations",
+            Self::Glyphs => "glyphs",
+            Self::PathElements => "path elements",
+            // The byte resources are the accounting dimensions, so a chain names them as they are named there.
+            Self::ScratchBytes => RenderResource::ScratchCpuBytes.label(),
+            Self::RetainedBytes => RenderResource::RetainedCpuBytes.label(),
+        }
+    }
+}
+
+/// Message form of a layout item location.
+struct LocationText(TextLayoutLocation);
+impl core::fmt::Display for LocationText {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.0 {
+            TextLayoutLocation::Run { line, run } => write!(f, "run {run} on line {line}"),
+            TextLayoutLocation::Decoration { decoration } => {
+                write!(f, "decoration {decoration}")
+            }
+        }
+    }
+}
+
+impl core::fmt::Display for TextLayoutCause {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Text(_) => "text could not qualify the face, instance or synthesis",
+            // Every error of glyph preparation is wrapped here, including a caller's limit.
+            Self::Render(_) => "render could not prepare the item",
+        })
+    }
+}
+
+impl core::error::Error for TextLayoutCause {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Text(error) => Some(&**error),
+            Self::Render(error) => Some(&**error),
+        }
+    }
+}
+
+impl core::fmt::Display for TextLayoutError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Limit {
+                resource,
+                required,
+                limit,
+            } => write!(
+                f,
+                "placed layout needs {required} {}, above the limit of {limit}",
+                resource.label()
+            ),
+            Self::CapacityOverflow => f.write_str("a count calculation overflowed"),
+            Self::Allocation { resource } => write!(f, "allocating {} failed", resource.label()),
+            Self::Item { location, .. } => {
+                write!(f, "layout item at {} was refused", LocationText(*location))
+            }
+        }
+    }
+}
+
+impl core::error::Error for TextLayoutError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Item { cause, .. } => Some(cause),
+            Self::Limit { .. } | Self::CapacityOverflow | Self::Allocation { .. } => None,
+        }
+    }
+}
+
 impl TextLayoutError {
     fn render(location: TextLayoutLocation, cause: Error) -> Error {
         Self::Item {

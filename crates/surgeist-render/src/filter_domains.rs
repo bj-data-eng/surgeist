@@ -68,7 +68,7 @@ fn validate_domain(role: &'static str, rect: Rect) -> Result<()> {
         if !value.is_finite() {
             return Err(Error::invalid_value(
                 format!("filter domain {role} {field}"),
-                value,
+                crate::number_text::Number(value),
                 "must be finite",
             ));
         }
@@ -77,7 +77,7 @@ fn validate_domain(role: &'static str, rect: Rect) -> Result<()> {
         if !value.is_finite() || value < 0.0 {
             return Err(Error::invalid_value(
                 format!("filter domain {role} {field}"),
-                value,
+                crate::number_text::Number(value),
                 "must be finite and non-negative",
             ));
         }

@@ -389,7 +389,11 @@ fn classify_captured_error(stage: GpuOperationStage, error: wgpu::Error) -> Erro
         wgpu::Error::OutOfMemory { .. } => GpuFaultKind::OutOfMemory,
         wgpu::Error::Internal { .. } => GpuFaultKind::Internal,
     };
-    stage
-        .classify_fault(kind, &error.to_string())
-        .with_source(error)
+    // The wgpu error is the source, so the message names the fault and does not repeat the source.
+    let message = match kind {
+        GpuFaultKind::Validation => "the GPU rejected the operation as invalid",
+        GpuFaultKind::OutOfMemory => "the GPU ran out of memory during the operation",
+        GpuFaultKind::Internal => "the GPU reported an internal error during the operation",
+    };
+    stage.classify_fault(kind, message).with_source(error)
 }

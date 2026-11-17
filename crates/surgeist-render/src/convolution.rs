@@ -3,6 +3,7 @@ use crate::accounting::{
     Account, AccountedVec, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
     SharedValue,
 };
+use crate::number_text::Number;
 use crate::{Error, FilterDomains, Result};
 
 use crate::{FilterColorSpace, FilterEdgeMode};
@@ -63,6 +64,52 @@ pub enum ConvolutionPreparationError {
         value: f64,
     },
 }
+
+impl ConvolutionParameter {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::OrderX => "horizontal order",
+            Self::OrderY => "vertical order",
+            Self::TargetX => "horizontal target",
+            Self::TargetY => "vertical target",
+            Self::Coefficient => "kernel coefficient",
+            Self::Divisor => "divisor",
+            Self::Bias => "bias",
+        }
+    }
+}
+
+impl ConvolutionNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::TapCount => "tap count",
+            Self::DivisorSum => "divisor sum",
+            Self::WeightNormalization => "weight normalization",
+            Self::BiasNarrowing => "bias narrowing",
+            Self::AccumulationBound => "accumulation bound",
+            Self::GridIndex => "grid index",
+            Self::GridMapping => "grid mapping",
+        }
+    }
+}
+
+impl core::fmt::Display for ConvolutionPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidParameter { parameter, value } => write!(
+                f,
+                "convolution parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "convolution numeric check failed at {}", phase.label())
+            }
+        }
+    }
+}
+
+impl core::error::Error for ConvolutionPreparationError {}
 
 /// Borrowed untrusted numeric attributes. Builders retain no coefficient allocation.
 #[derive(Clone, Copy, Debug)]
@@ -288,7 +335,7 @@ pub fn prepare_convolution(
                         if !value.is_finite() {
                             return Err(Error::invalid_value(
                                 "filter domain coordinate",
-                                value,
+                                crate::number_text::Number(value),
                                 "must be finite",
                             ));
                         }

@@ -1027,3 +1027,267 @@ fn reports_refuse_ledger_intervals_that_lack_the_fixed_scopes() {
         RenderAccountingError::Invariant
     );
 }
+
+#[test]
+fn work_and_resource_labels_are_distinct_lowercase_words() {
+    use surgeist_ledger::Dimension;
+    let mut seen = std::collections::BTreeSet::new();
+    for &work in RenderWork::ALL {
+        let label = work.label();
+        assert!(
+            !label.is_empty() && label.chars().all(|c| c.is_ascii_lowercase() || c == ' '),
+            "{label:?}"
+        );
+        assert!(seen.insert(label), "{label:?} labels two work units");
+    }
+    assert_eq!(seen.len(), RenderWork::ALL.len());
+    let mut seen = std::collections::BTreeSet::new();
+    for &resource in RenderResource::ALL {
+        let label = resource.label();
+        assert!(
+            !label.is_empty() && label.chars().all(|c| c.is_ascii_lowercase() || c == ' '),
+            "{label:?}"
+        );
+        assert!(seen.insert(label), "{label:?} labels two resources");
+    }
+    assert_eq!(seen.len(), RenderResource::ALL.len());
+}
+
+#[test]
+fn a_refusal_prints_its_quantity_amount_phase_usage_and_reason() {
+    use std::error::Error as _;
+    let refusal = |quantity, reason| RenderRefusal {
+        phase: RenderPhase::Preparation,
+        quantity,
+        current: 3,
+        amount: 2,
+        reason,
+    };
+    for (quantity, name) in [
+        (
+            RenderQuantity::Work(RenderWork::GlyphInputs),
+            "glyph inputs work",
+        ),
+        (
+            RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+            "scratch cpu bytes",
+        ),
+    ] {
+        for (reason, tail) in [
+            (RenderRefusalReason::Limit { limit: 4 }, "the limit is 4"),
+            (RenderRefusalReason::Overflow, "the total would overflow"),
+            (
+                RenderRefusalReason::Underflow,
+                "the release exceeds the held amount",
+            ),
+        ] {
+            let refusal = refusal(quantity, reason);
+            assert_eq!(
+                refusal.to_string(),
+                format!("{name} refused 2 in the preparation phase at usage 3: {tail}")
+            );
+            assert!(refusal.source().is_none());
+        }
+    }
+}
+
+#[test]
+fn every_accounting_error_variant_has_its_message_and_cause() {
+    use std::error::Error as _;
+    let refusal = RenderRefusal {
+        phase: RenderPhase::Preparation,
+        quantity: RenderQuantity::Work(RenderWork::GlyphInputs),
+        current: 3,
+        amount: 2,
+        reason: RenderRefusalReason::Limit { limit: 4 },
+    };
+    let limit = RenderRefusalReason::Limit { limit: 6 };
+    let quantity = RenderQuantity::Resource(RenderResource::GpuBytes);
+    let rows = [
+        (
+            RenderAccountingError::Setup(RenderAccountingSetupError::Allocation),
+            "accounting setup failed",
+            true,
+        ),
+        (
+            RenderAccountingError::Refused(refusal),
+            "accounting refused a change",
+            true,
+        ),
+        (
+            RenderAccountingError::StandaloneAllocation {
+                resource: RenderResource::ScratchCpuBytes,
+            },
+            "allocating the standalone backing for scratch cpu bytes failed",
+            false,
+        ),
+        (
+            RenderAccountingError::StandaloneCapacityOverflow {
+                resource: RenderResource::ScratchCpuBytes,
+            },
+            "the standalone backing size for scratch cpu bytes cannot be represented",
+            false,
+        ),
+        (
+            RenderAccountingError::InvalidLimit(RenderWork::PreparedTransferredBytes),
+            "prepared transferred bytes work is not produced by the operations this limit applies to and cannot be limited",
+            false,
+        ),
+        (
+            RenderAccountingError::Invariant,
+            "an internal consistency check failed",
+            false,
+        ),
+        (
+            RenderAccountingError::LedgerDefect(surgeist_ledger::Defect::ScopeEntry),
+            "the ledger reported an internal defect: scope identity names no scope entry",
+            false,
+        ),
+        (
+            RenderAccountingError::GenerationRefused {
+                quantity,
+                current: 5,
+                amount: 3,
+                reason: limit,
+            },
+            "generation accounting refused 3 of gpu bytes at usage 5: the limit is 6",
+            false,
+        ),
+        (
+            RenderAccountingError::GenerationRetired,
+            "the device generation is retired and cannot start new work",
+            false,
+        ),
+        (
+            RenderAccountingError::CpuRefused {
+                scope: RenderCpuScope::FrameBacking,
+                quantity,
+                current: 5,
+                amount: 3,
+                reason: limit,
+            },
+            "cpu accounting for frame_backing refused 3 of gpu bytes at usage 5: the limit is 6",
+            false,
+        ),
+        (
+            RenderAccountingError::CpuAllocation {
+                scope: RenderCpuScope::Cleanup,
+                resource: RenderResource::RetainedCpuBytes,
+            },
+            "allocating cpu backing retained cpu bytes for cleanup failed",
+            false,
+        ),
+        (
+            RenderAccountingError::CpuCapacityOverflow {
+                scope: RenderCpuScope::Root,
+                resource: RenderResource::RetainedCpuBytes,
+            },
+            "the cpu backing size of retained cpu bytes for render.cpu cannot be represented",
+            false,
+        ),
+    ];
+    let mut seen = [false; 12];
+    for (error, text, wraps) in rows {
+        assert_eq!(error.to_string(), text);
+        assert_eq!(error.source().is_some(), wraps, "{error:?}");
+        // No wildcard: a new variant must get a row here.
+        seen[match error {
+            RenderAccountingError::Setup(_) => 0,
+            RenderAccountingError::Refused(_) => 1,
+            RenderAccountingError::StandaloneAllocation { .. } => 2,
+            RenderAccountingError::StandaloneCapacityOverflow { .. } => 3,
+            RenderAccountingError::InvalidLimit(_) => 4,
+            RenderAccountingError::Invariant => 5,
+            RenderAccountingError::LedgerDefect(_) => 6,
+            RenderAccountingError::GenerationRefused { .. } => 7,
+            RenderAccountingError::GenerationRetired => 8,
+            RenderAccountingError::CpuRefused { .. } => 9,
+            RenderAccountingError::CpuAllocation { .. } => 10,
+            RenderAccountingError::CpuCapacityOverflow { .. } => 11,
+        }] = true;
+    }
+    assert!(seen.iter().all(|covered| *covered));
+}
+
+/// Written text of the owned-vector contract failures, from what each raise site checks. The
+/// failure reaches callers as the source of a render failure, so a reporter that walks the chain
+/// prints it and must not print the `Debug` form.
+#[test]
+fn every_storage_contract_failure_has_written_text_as_the_source_of_a_render_failure() {
+    use super::storage::StorageContractError as S;
+    use std::error::Error as _;
+    let rows = [
+        (
+            S::MissingBacking,
+            "the owned vector has no active admitted backing",
+        ),
+        (
+            S::ReservedCapacity {
+                needed: 5,
+                capacity: 3,
+            },
+            "the owned vector needs room for 5 values but reserved 3",
+        ),
+        (
+            S::InvalidInsertion { index: 4, len: 2 },
+            "cannot insert at index 4 in an owned vector of length 2",
+        ),
+        (
+            S::InvalidPosition { index: 7, len: 6 },
+            "index or count 7 is beyond a sequence of length 6",
+        ),
+        (
+            S::BackingCapacityMismatch {
+                admitted_bytes: 64,
+                actual_bytes: 96,
+            },
+            "the owned vector holds 96 bytes of capacity but 64 bytes were admitted",
+        ),
+        (
+            S::WrongRetentionLifetime,
+            "the backing is retained by the renderer where a preparation backing is required",
+        ),
+        (
+            S::BackingResourceMismatch {
+                admitted: RenderResource::RetainedCpuBytes,
+                requested: RenderResource::ScratchCpuBytes,
+            },
+            "the admitted backing counts retained cpu bytes but scratch cpu bytes was requested",
+        ),
+        (
+            S::ProducerCapacityChanged {
+                expected: 8,
+                actual: 16,
+            },
+            "the producer changed the vector capacity from 8 to 16 values",
+        ),
+        (
+            S::ProducerLengthChanged {
+                expected: 8,
+                actual: 7,
+            },
+            "the producer left 7 values in the vector where 8 were qualified",
+        ),
+    ];
+    let mut covered = [false; 9];
+    for (failure, text) in rows {
+        covered[match failure {
+            S::MissingBacking => 0,
+            S::ReservedCapacity { .. } => 1,
+            S::InvalidInsertion { .. } => 2,
+            S::InvalidPosition { .. } => 3,
+            S::BackingCapacityMismatch { .. } => 4,
+            S::WrongRetentionLifetime => 5,
+            S::BackingResourceMismatch { .. } => 6,
+            S::ProducerCapacityChanged { .. } => 7,
+            S::ProducerLengthChanged { .. } => 8,
+        }] = true;
+        let error = crate::Error::from(failure);
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(error.to_string(), "owned-vector storage contract failed");
+        let source = error.source().expect("the contract failure is the source");
+        assert_eq!(source.to_string(), text, "{failure:?}");
+        assert_ne!(source.to_string(), format!("{failure:?}"));
+    }
+    assert!(covered.iter().all(|row| *row));
+}

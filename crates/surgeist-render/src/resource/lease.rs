@@ -279,7 +279,7 @@ impl ResourceManagerState {
         if !key.accepts_modeled_payload() {
             return Err(Error::invalid_value(
                 "modeled resource key",
-                format!("{key:?}"),
+                key.namespace(),
                 "must use a Vello atlas or effect texture namespace",
             ));
         }
@@ -436,7 +436,7 @@ impl ResourceManagerState {
         if !key.accepts_modeled_payload() {
             return Err(Error::invalid_value(
                 "modeled resource key",
-                format!("{key:?}"),
+                key.namespace(),
                 "must use a Vello atlas or effect texture namespace",
             ));
         }
@@ -1875,6 +1875,35 @@ mod tests {
             .unwrap()
             .cache_key(),
         )
+    }
+
+    #[test]
+    fn a_key_outside_the_modeled_namespaces_is_named_by_its_namespace() {
+        use crate::accounting::{RenderAccountingOptions, RenderProfile, RendererCpu};
+        use crate::{Image, Size, image::ResolvedMaskUploadDescriptor};
+
+        let options =
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+        let cpu = RendererCpu::new(options).unwrap();
+        let manager = ResourceManager::with_generation(
+            ResourceCacheBudget::DEFAULT,
+            Generation::new(options).unwrap(),
+            cpu.at(RenderCpuScope::DeviceBacking),
+        );
+        let image = Image::from_rgba(Size::try_new(1.0, 1.0).unwrap(), vec![255_u8; 4]).unwrap();
+        let key = ResourceCacheKey::ResolvedMaskUpload(
+            ResolvedMaskUploadDescriptor::try_from_image(image)
+                .unwrap()
+                .cache_key_in(&crate::accounting::Account::for_test())
+                .unwrap(),
+        );
+        let mut frame = manager.begin_frame(None).unwrap();
+        let error = frame.acquire(key, 4).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+        assert_eq!(
+            error.to_string(),
+            "modeled resource key value resolved mask upload is invalid: must use a Vello atlas or effect texture namespace"
+        );
     }
 
     #[test]

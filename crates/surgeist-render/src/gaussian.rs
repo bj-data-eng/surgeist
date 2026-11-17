@@ -3,6 +3,7 @@ use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };
 use crate::filter_source::FilterSourceDescriptor;
+use crate::number_text::Number;
 use crate::{Color, FilterColorSpace, FilterDomains, FilterEdgeMode, Rect, Result, Scene};
 
 /// Gaussian parameter whose resolved value is invalid.
@@ -49,6 +50,50 @@ pub enum GaussianPreparationError {
     /// A same-layer backdrop could invalidate a declared infinite source.
     InfiniteSourceBackdrop,
 }
+
+impl GaussianParameter {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::StandardDeviationX => "horizontal standard deviation",
+            Self::StandardDeviationY => "vertical standard deviation",
+        }
+    }
+}
+
+impl GaussianNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::KernelExtent => "kernel extent",
+            Self::GridIndex => "grid index",
+            Self::GridMapping => "grid mapping",
+            Self::Sampling => "sampling",
+        }
+    }
+}
+
+impl core::fmt::Display for GaussianPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidParameter { parameter, value } => write!(
+                f,
+                "Gaussian parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "Gaussian numeric check failed at {}", phase.label())
+            }
+            Self::EmptyPeriod => {
+                f.write_str("a periodic source must have positive width and height")
+            }
+            Self::InfiniteSourceBackdrop => f.write_str(
+                "a same-layer backdrop cannot be combined with a declared infinite source",
+            ),
+        }
+    }
+}
+
+impl core::error::Error for GaussianPreparationError {}
 
 /// Untrusted resolved independent standard deviations.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -295,7 +295,7 @@ impl RuntimeDestinationToLayerLocal {
         if !runtime_affine_is_finite_and_non_singular(affine) {
             return Err(Error::invalid_value(
                 "destination-to-layer-local affine mapping",
-                format!("{:?}", affine.as_array()),
+                crate::number_text::CoefficientsText(affine.as_array()),
                 "must be finite and non-singular",
             ));
         }
@@ -391,12 +391,12 @@ impl RuntimeResolvedAlphaMaskComposition {
         {
             return Err(Error::invalid_value(
                 "composite mask semantic bounds",
-                format!(
+                format_args!(
                     "({}, {}, {}, {})",
-                    bounds.x(),
-                    bounds.y(),
-                    bounds.width(),
-                    bounds.height()
+                    crate::number_text::Number(bounds.x()),
+                    crate::number_text::Number(bounds.y()),
+                    crate::number_text::Number(bounds.width()),
+                    crate::number_text::Number(bounds.height())
                 ),
                 "must be a finite positive rectangle with a finite maximum",
             ));
@@ -470,7 +470,7 @@ impl RuntimeLayerCompositeParameters {
         if !opacity.is_finite() {
             return Err(Error::invalid_value(
                 "composite opacity",
-                opacity,
+                crate::number_text::Number(opacity),
                 "must be finite before clamping",
             ));
         }

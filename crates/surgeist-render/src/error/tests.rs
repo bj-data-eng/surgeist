@@ -11,10 +11,11 @@ fn accounting_failure_preserves_typed_cause_and_full_human_message() {
         reason: RenderRefusalReason::Limit { limit: 3 },
     };
     let error = Error::from(diagnostic);
-    let message = format!("render accounting: {diagnostic}");
+    let message =
+        "generation accounting refused 1 of resource allocations work at usage 3: the limit is 3";
     assert_eq!(error.code(), ErrorCode::Accounting);
     assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
-    assert_eq!(error.to_string(), format!("Accounting: {message}"));
+    assert_eq!(error.to_string(), message);
     assert_eq!(error.message(), message);
     assert_eq!(error.message(), message);
     assert!(error.source().is_none());
@@ -38,7 +39,10 @@ fn const_accounting_failure_is_ready_for_typed_observation() {
         error.accounting_diagnostic(),
         Some(RenderAccountingError::GenerationRetired)
     );
-    assert_eq!(error.message(), "render accounting: GenerationRetired");
+    assert_eq!(
+        error.message(),
+        "the device generation is retired and cannot start new work"
+    );
 }
 
 #[derive(Debug)]
@@ -58,13 +62,16 @@ fn explicit_message_and_source_enrichment_keep_the_accounting_cause() {
     let mut error = error.with_source(Cause);
     assert_eq!(error.code(), ErrorCode::Accounting);
     assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
-    assert_eq!(error.message(), "render accounting: Invariant at command 7");
+    assert_eq!(
+        error.message(),
+        "an internal consistency check failed at command 7"
+    );
     assert_eq!(error.source().unwrap().to_string(), "source marker");
     error = error.replace_message("replaced diagnostic prose");
     assert_eq!(error.message(), "replaced diagnostic prose");
     assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
     assert_eq!(error.source().unwrap().to_string(), "source marker");
-    assert_eq!(error.to_string(), "Accounting: replaced diagnostic prose");
+    assert_eq!(error.to_string(), "replaced diagnostic prose");
 }
 
 #[test]
@@ -75,16 +82,16 @@ fn accounting_observers_stay_lazy_until_message_or_enrichment() {
         error.accounting_diagnostic(),
         Some(RenderAccountingError::Invariant)
     );
-    assert_eq!(
-        error.to_string(),
-        "Accounting: render accounting: Invariant"
-    );
+    assert_eq!(error.to_string(), "an internal consistency check failed");
     let super::ErrorPayload::Accounting(failure) = &error.payload else {
         panic!("typed and Display observation must retain fixed accounting data");
     };
     assert!(failure.message.get().is_none());
     error = error.append_message(" at command 7");
-    assert_eq!(error.message(), "render accounting: Invariant at command 7");
+    assert_eq!(
+        error.message(),
+        "an internal consistency check failed at command 7"
+    );
     assert_eq!(
         error.accounting_diagnostic(),
         Some(RenderAccountingError::Invariant)
@@ -113,21 +120,31 @@ fn accounting_source_enrichment_moves_cached_message_and_formats_uncached_messag
     for cached in [false, true] {
         let error = Error::from(RenderAccountingError::GenerationRetired);
         let cached_address = cached.then(|| {
-            assert_eq!(error.message(), "render accounting: GenerationRetired");
+            assert_eq!(
+                error.message(),
+                "the device generation is retired and cannot start new work"
+            );
             error.message().as_ptr()
         });
         let error = error.with_source(std::io::Error::other("original source"));
-        assert_eq!(error.message(), "render accounting: GenerationRetired");
+        assert_eq!(
+            error.message(),
+            "the device generation is retired and cannot start new work"
+        );
         if let Some(address) = cached_address {
             assert_eq!(error.message().as_ptr(), address);
         }
-        assert_context_enrichment(error, "render accounting: GenerationRetired", |error| {
-            assert_eq!(error.code(), ErrorCode::Accounting);
-            assert_eq!(
-                error.accounting_diagnostic(),
-                Some(RenderAccountingError::GenerationRetired)
-            );
-        });
+        assert_context_enrichment(
+            error,
+            "the device generation is retired and cannot start new work",
+            |error| {
+                assert_eq!(error.code(), ErrorCode::Accounting);
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::GenerationRetired)
+                );
+            },
+        );
     }
 }
 
@@ -223,7 +240,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
     let geometry = GeometryRealizationError::UnrepresentablePath { element_index: 7 };
     assert_context_enrichment(
         Error::from(geometry),
-        "geometry realization refused: UnrepresentablePath { element_index: 7 }",
+        "path element 7 cannot be converted or retained natively",
         |error| {
             assert_eq!(error.code(), ErrorCode::GeometryRealization);
             assert_eq!(error.geometry_realization_diagnostic(), Some(&geometry));
@@ -232,7 +249,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
     let gradient = GradientRealizationError::UnrepresentableStop { stop_index: 2 };
     assert_context_enrichment(
         Error::from(gradient),
-        "gradient realization refused: UnrepresentableStop { stop_index: 2 }",
+        "stop 2 cannot keep its source position, ordering or separation natively",
         |error| {
             assert_eq!(error.code(), ErrorCode::GradientRealization);
             assert_eq!(error.gradient_realization_diagnostic(), Some(&gradient));
@@ -241,7 +258,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
     let hint = GradientHintError::TrailingHint { stop_index: 3 };
     assert_context_enrichment(
         Error::from(hint),
-        "gradient hint refused: TrailingHint { stop_index: 3 }",
+        "stop 3 is the last stop and cannot carry an outgoing hint",
         |error| {
             assert_eq!(error.code(), ErrorCode::GradientHint);
             assert_eq!(error.gradient_hint_diagnostic(), Some(&hint));
@@ -250,7 +267,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
     let glyph = crate::GlyphPreparationError::InvalidFont;
     assert_context_enrichment(
         Error::from(glyph),
-        "glyph preparation refused: InvalidFont",
+        "font, outline, color or bitmap data is invalid",
         |error| {
             assert_eq!(error.code(), ErrorCode::GlyphPreparation);
             assert_eq!(error.glyph_preparation_diagnostic(), Some(&glyph));
@@ -263,7 +280,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
 fn enrichment_preserves_text_layout_cause() {
     assert_context_enrichment(
         Error::from(crate::TextLayoutError::CapacityOverflow),
-        "Text layout admission refused: CapacityOverflow",
+        "a count calculation overflowed",
         |error| {
             assert_eq!(error.code(), ErrorCode::TextLayout);
             assert!(matches!(
@@ -279,7 +296,7 @@ fn enrichment_preserves_text_layout_cause() {
 fn enrichment_preserves_paint_gradient_cause() {
     assert_context_enrichment(
         Error::from(crate::PaintGradientError::UnsupportedZeroLengthLinear),
-        "Paint gradient preparation refused: UnsupportedZeroLengthLinear",
+        "a linear gradient of zero length cannot be prepared",
         |error| {
             assert_eq!(error.code(), ErrorCode::PaintGradient);
             assert_eq!(
@@ -296,14 +313,14 @@ fn accounting_prose_enrichment_preserves_cause_with_or_without_cached_message() 
         for replace in [false, true] {
             let mut error = Error::from(RenderAccountingError::Invariant);
             if cached {
-                assert_eq!(error.message(), "render accounting: Invariant");
+                assert_eq!(error.message(), "an internal consistency check failed");
             }
             let expected = if replace {
                 error = error.replace_message("qualified accounting failure");
                 "qualified accounting failure"
             } else {
                 error = error.append_message(" at command 7");
-                "render accounting: Invariant at command 7"
+                "an internal consistency check failed at command 7"
             };
             assert_eq!(error.message(), expected);
             assert_eq!(error.code(), ErrorCode::Accounting);
@@ -342,4 +359,127 @@ fn backend_error_codes_keep_exact_mappings_and_custom_prose() {
             },
         );
     }
+}
+
+#[test]
+fn every_backend_code_prints_exactly_its_message_without_the_classification() {
+    use super::BackendErrorCode as B;
+    for (backend, public, phrase) in [
+        (
+            B::RendererCreateFailed,
+            ErrorCode::RendererCreateFailed,
+            "renderer creation failed",
+        ),
+        (
+            B::SurfaceCreateFailed,
+            ErrorCode::SurfaceCreateFailed,
+            "surface setup failed",
+        ),
+        (
+            B::SurfaceConfigureFailed,
+            ErrorCode::SurfaceConfigureFailed,
+            "surface configuration unavailable",
+        ),
+        (
+            B::SurfaceOutOfMemory,
+            ErrorCode::SurfaceOutOfMemory,
+            "gpu memory exhausted",
+        ),
+        (
+            B::SurfaceTimeout,
+            ErrorCode::SurfaceTimeout,
+            "surface operation timed out",
+        ),
+        (
+            B::SurfaceOutdated,
+            ErrorCode::SurfaceOutdated,
+            "surface configuration outdated",
+        ),
+        (
+            B::ImageUploadFailed,
+            ErrorCode::ImageUploadFailed,
+            "image data refused",
+        ),
+        (
+            B::RenderFailed,
+            ErrorCode::RenderFailed,
+            "render pipeline failed",
+        ),
+        (
+            B::ReadbackFailed,
+            ErrorCode::ReadbackFailed,
+            "readback failed",
+        ),
+        (
+            B::PresentFailed,
+            ErrorCode::PresentFailed,
+            "presented output failed",
+        ),
+        (
+            B::UnsupportedBackend,
+            ErrorCode::UnsupportedBackend,
+            "unsupported backend",
+        ),
+    ] {
+        let error = Error::new(backend, "the stage reported a fault");
+        assert_eq!(error.code(), public);
+        // `Display` is the message alone: the phrase belongs to the code, whose text is separate.
+        assert_eq!(error.to_string(), "the stage reported a fault");
+        assert_eq!(error.code().to_string(), phrase);
+        // A source is reported through `source()` and is not folded into the text.
+        let with_source = error.with_source(std::io::Error::other("the device said no"));
+        assert_eq!(with_source.to_string(), "the stage reported a fault");
+        assert_eq!(
+            with_source.source().unwrap().to_string(),
+            "the device said no"
+        );
+        // Enrichment changes the message and `Display` follows it.
+        let enriched = with_source.append_message(" at command 3");
+        assert_eq!(
+            enriched.to_string(),
+            "the stage reported a fault at command 3"
+        );
+        let replaced = enriched.replace_message("replaced");
+        assert_eq!(replaced.to_string(), "replaced");
+        assert_eq!(replaced.message(), "replaced");
+    }
+}
+
+#[test]
+fn the_runtime_capability_constructor_prints_its_fixed_sentence() {
+    let error = Error::runtime_capability_unavailable(
+        super::RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+    );
+    assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    assert_eq!(error.to_string(), "runtime capability is unavailable");
+    assert_eq!(error.code().to_string(), "runtime capability unavailable");
+    // The variant that adds prose keeps the typed payload and prints the prose.
+    let described = Error::runtime_unavailable(
+        super::RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+        "no adapter can render",
+    );
+    assert_eq!(described.to_string(), "no adapter can render");
+    assert!(
+        described
+            .runtime_capability_unavailable_diagnostic()
+            .is_some()
+    );
+}
+
+#[test]
+fn an_accounting_error_prints_its_chain_and_not_its_classification() {
+    let error = Error::from(RenderAccountingError::Setup(
+        crate::RenderAccountingSetupError::Allocation,
+    ));
+    assert_eq!(error.code(), ErrorCode::Accounting);
+    assert_eq!(
+        error.to_string(),
+        "accounting setup failed: accounting could not allocate its setup or report storage"
+    );
+    assert_eq!(error.code().to_string(), "accounting failed");
+    // Printing does not initialize the cached message.
+    let super::ErrorPayload::Accounting(failure) = &error.payload else {
+        panic!("an accounting diagnostic keeps its fixed payload");
+    };
+    assert!(failure.message.get().is_none());
 }

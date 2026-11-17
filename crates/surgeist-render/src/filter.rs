@@ -443,7 +443,7 @@ pub(crate) fn vello_outer_shadow_support_radius(blur_radius: f64) -> Result<f64>
     if !blur_radius.is_finite() || blur_radius < 0.0 {
         return Err(Error::invalid_value(
             "shadow blur",
-            blur_radius,
+            crate::number_text::Number(blur_radius),
             "must be finite and non-negative",
         ));
     }
@@ -452,7 +452,7 @@ pub(crate) fn vello_outer_shadow_support_radius(blur_radius: f64) -> Result<f64>
     if !support.is_finite() {
         return Err(Error::invalid_value(
             "box shadow blur support",
-            blur_radius,
+            crate::number_text::Number(blur_radius),
             "must produce finite Vello-compatible support",
         ));
     }
@@ -477,7 +477,7 @@ impl DevicePixelConversionPolicy {
         if !scale.is_finite() || scale <= 0.0 {
             return Err(Error::invalid_value(
                 "filter device-pixel scale",
-                scale,
+                crate::number_text::Number(scale),
                 "must be finite and greater than 0",
             ));
         }
@@ -570,7 +570,11 @@ fn validate_filter_outset_value(value: f64, name: &str) -> Result<()> {
 
 fn validate_finite(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() {
-        return Err(Error::invalid_value(name, value, "must be finite"));
+        return Err(Error::invalid_value(
+            name,
+            crate::number_text::Number(value),
+            "must be finite",
+        ));
     }
     Ok(())
 }
@@ -579,7 +583,7 @@ fn validate_positive_dimension(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() || value <= 0.0 {
         return Err(Error::invalid_value(
             name,
-            value,
+            crate::number_text::Number(value),
             "must be finite and greater than 0",
         ));
     }
@@ -613,7 +617,7 @@ fn checked_rounded_i32(value: f64, name: &str) -> Result<i32> {
     if !value.is_finite() || value < f64::from(i32::MIN) || value > f64::from(i32::MAX) {
         return Err(Error::invalid_value(
             name,
-            value,
+            crate::number_text::Number(value),
             "must fit in i32 device pixels",
         ));
     }
@@ -750,7 +754,7 @@ impl RuntimeUnitFilterAmount {
         if !(0.0..=1.0).contains(&value) {
             return Err(Error::invalid_value(
                 "runtime unit filter amount",
-                value,
+                crate::number_text::Number(value),
                 "must remain between 0 and 1 after f64-to-f32 narrowing",
             ));
         }
@@ -775,7 +779,7 @@ impl RuntimeFilterAmount {
         if !value.is_finite() || value < 0.0 {
             return Err(Error::invalid_value(
                 "runtime filter amount",
-                value,
+                crate::number_text::Number(value),
                 "must be finite and non-negative before runtime lowering",
             ));
         }
@@ -817,7 +821,7 @@ impl RuntimeFilterAmount {
         if !(0.5..1.0).contains(&mantissa) {
             return Err(Error::invalid_value(
                 "runtime filter amount mantissa",
-                mantissa,
+                crate::number_text::Number(mantissa),
                 "must be finite and normalized to [0.5, 1)",
             ));
         }
@@ -856,7 +860,11 @@ impl RuntimeFilterAngle {
         if !sine.is_finite() || !cosine.is_finite() {
             return Err(Error::invalid_value(
                 "runtime filter angle sine and cosine",
-                format!("{sine}, {cosine}"),
+                format_args!(
+                    "{}, {}",
+                    crate::number_text::Number(sine),
+                    crate::number_text::Number(cosine)
+                ),
                 "must remain finite after angle reduction",
             ));
         }
@@ -877,7 +885,7 @@ fn checked_runtime_f32(field: &'static str, value: f64) -> Result<f32> {
     if !narrowed.is_finite() {
         return Err(Error::invalid_value(
             field,
-            value,
+            crate::number_text::Number(value),
             "must remain finite after f64-to-f32 narrowing",
         ));
     }

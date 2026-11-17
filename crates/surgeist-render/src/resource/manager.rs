@@ -109,6 +109,22 @@ impl ResourceCacheKey {
         matches!(self, Self::VelloImage(key) if key.is_persistent_atlas())
     }
 
+    /// The name of the namespace in a message.
+    pub(super) const fn namespace(&self) -> &'static str {
+        match self {
+            #[cfg(test)]
+            Self::VelloAtlas => "Vello atlas",
+            Self::VelloBuffer(_) => "Vello buffer",
+            Self::VelloImage(_) => "Vello image",
+            Self::EffectTexture(_) => "effect texture",
+            Self::ResolvedMaskUpload(_) => "resolved mask upload",
+            Self::RawImageUpload(_) => "raw image upload",
+            Self::DisplacementBuffer(_) => "displacement buffer",
+            Self::GaussianKernelBuffer(_) => "Gaussian kernel buffer",
+            Self::ConvolutionWeightsBuffer(_) => "convolution weights buffer",
+        }
+    }
+
     const fn accepts_graph_preparation(&self) -> bool {
         matches!(
             self,
@@ -484,7 +500,7 @@ impl ResourceManagerState {
             if !request.key.accepts_graph_preparation() {
                 return Err(Error::invalid_value(
                     "graph resource preflight key",
-                    format!("{:?}", request.key),
+                    request.key.namespace(),
                     "must use a graph texture, resolved-mask, raw-image, Gaussian-kernel, convolution-weight, or displacement-buffer namespace",
                 ));
             }

@@ -340,7 +340,7 @@ fn validate_gaussian_geometry(
     if !standard_deviation.is_finite() || standard_deviation < 0.0 {
         return Err(Error::invalid_value(
             "Gaussian standard deviation",
-            standard_deviation,
+            crate::number_text::Number(standard_deviation),
             "must be finite and non-negative",
         ));
     }
@@ -351,7 +351,7 @@ fn validate_gaussian_geometry(
         if !value.is_finite() || value <= 0.0 {
             return Err(Error::invalid_value(
                 field,
-                value,
+                crate::number_text::Number(value),
                 "must be finite and greater than zero",
             ));
         }
@@ -360,7 +360,7 @@ fn validate_gaussian_geometry(
     if !device_standard_deviation.is_finite() {
         return Err(Error::invalid_value(
             "Gaussian device standard deviation",
-            device_standard_deviation,
+            crate::number_text::Number(device_standard_deviation),
             "must be finite",
         ));
     }
@@ -368,7 +368,7 @@ fn validate_gaussian_geometry(
     if !support.is_finite() || support > f64::from(u32::MAX) {
         return Err(Error::invalid_value(
             "Gaussian support radius",
-            support,
+            crate::number_text::Number(support),
             "must be finite and fit in u32 device pixels",
         ));
     }
@@ -419,7 +419,7 @@ impl NormalizedGaussianWeights {
         if !normalization.is_finite() || normalization <= 0.0 {
             return Err(Error::invalid_value(
                 "Gaussian kernel normalization",
-                normalization,
+                crate::number_text::Number(normalization),
                 "must be finite and greater than zero",
             ));
         }
@@ -528,7 +528,7 @@ fn paired_gaussian_sample(
     if weight <= 0.0 {
         return Err(Error::invalid_value(
             "Gaussian paired sample weight",
-            weight,
+            crate::number_text::Number(weight),
             "must remain greater than zero",
         ));
     }
@@ -549,7 +549,11 @@ fn append_kernel_sample(
     if !offset.is_finite() || !weight.is_finite() {
         return Err(Error::invalid_value(
             "Gaussian kernel sample",
-            format!("offset {offset}, weight {weight}"),
+            format_args!(
+                "offset {}, weight {}",
+                crate::number_text::Number(offset),
+                crate::number_text::Number(weight)
+            ),
             "must narrow to finite f32 values",
         ));
     }

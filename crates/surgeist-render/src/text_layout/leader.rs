@@ -33,6 +33,41 @@ pub enum LeaderPatternError {
     },
 }
 
+impl core::fmt::Display for LeaderPatternCause {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Text(_) => "text could not qualify the retained instance or glyph frame",
+            // Every error of glyph preparation is wrapped here, including a caller's limit.
+            Self::Render(_) => "render could not prepare the run",
+        })
+    }
+}
+
+impl core::error::Error for LeaderPatternCause {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Text(error) => Some(&**error),
+            Self::Render(error) => Some(&**error),
+        }
+    }
+}
+
+impl core::fmt::Display for LeaderPatternError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Run { run, .. } => write!(f, "leader run {run} was refused"),
+        }
+    }
+}
+
+impl core::error::Error for LeaderPatternError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Run { cause, .. } => Some(cause),
+        }
+    }
+}
+
 impl LeaderPatternError {
     fn text(run: usize, error: surgeist_text::Error) -> Error {
         Self::Run {

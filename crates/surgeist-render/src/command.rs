@@ -1659,7 +1659,7 @@ fn shadow_bounds(shape: &ShadowShape, shadow: &RenderShadow) -> Result<Offscreen
     if !support.is_finite() {
         return Err(Error::invalid_value(
             "box shadow support",
-            support,
+            crate::number_text::Number(support),
             "must be finite",
         ));
     }
@@ -2126,6 +2126,8 @@ mod unsupported_input_tests {
             Some(UnsupportedPrimitive::new(family, operation))
         );
         assert_eq!(error.message(), message);
+        // `Display` prints the message and not the classification.
+        assert_eq!(error.to_string(), message);
         assert!(std::error::Error::source(error).is_none());
         assert!(error.invalid_value_diagnostic().is_none());
         assert!(error.accounting_diagnostic().is_none());
