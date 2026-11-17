@@ -931,6 +931,8 @@ mod error_context_tests {
             let error = terminal.error(RuntimeOperation::SurfaceRendering);
             assert_eq!(error.code(), crate::ErrorCode::RuntimeCapabilityUnavailable);
             assert_eq!(error.message(), message);
+            // `Display` prints the message and not the classification.
+            assert_eq!(error.to_string(), message);
             let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
             assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceRendering);
             assert_eq!(diagnostic.reason(), reason);
@@ -959,6 +961,10 @@ mod error_context_tests {
                     error.message(),
                     "runtime capability is unavailable: literal device loss"
                 );
+                assert_eq!(
+                    error.to_string(),
+                    "runtime capability is unavailable: literal device loss"
+                );
             }
             for kind in [
                 GpuFaultKind::Validation,
@@ -975,6 +981,10 @@ mod error_context_tests {
                 assert_eq!(diagnostic.reason(), expected);
                 assert_eq!(
                     error.message(),
+                    "runtime capability is unavailable: literal GPU fault"
+                );
+                assert_eq!(
+                    error.to_string(),
                     "runtime capability is unavailable: literal GPU fault"
                 );
             }

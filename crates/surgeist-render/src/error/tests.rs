@@ -15,7 +15,7 @@ fn accounting_failure_preserves_typed_cause_and_full_human_message() {
         "generation accounting refused 1 of resource allocations work at usage 3: the limit is 3";
     assert_eq!(error.code(), ErrorCode::Accounting);
     assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
-    assert_eq!(error.to_string(), format!("accounting failed: {message}"));
+    assert_eq!(error.to_string(), format!("{message}"));
     assert_eq!(error.message(), message);
     assert_eq!(error.message(), message);
     assert!(error.source().is_none());
@@ -71,10 +71,7 @@ fn explicit_message_and_source_enrichment_keep_the_accounting_cause() {
     assert_eq!(error.message(), "replaced diagnostic prose");
     assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
     assert_eq!(error.source().unwrap().to_string(), "source marker");
-    assert_eq!(
-        error.to_string(),
-        "accounting failed: replaced diagnostic prose"
-    );
+    assert_eq!(error.to_string(), "replaced diagnostic prose");
 }
 
 #[test]
@@ -85,10 +82,7 @@ fn accounting_observers_stay_lazy_until_message_or_enrichment() {
         error.accounting_diagnostic(),
         Some(RenderAccountingError::Invariant)
     );
-    assert_eq!(
-        error.to_string(),
-        "accounting failed: an internal consistency check failed"
-    );
+    assert_eq!(error.to_string(), "an internal consistency check failed");
     let super::ErrorPayload::Accounting(failure) = &error.payload else {
         panic!("typed and Display observation must retain fixed accounting data");
     };
@@ -255,7 +249,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
     let gradient = GradientRealizationError::UnrepresentableStop { stop_index: 2 };
     assert_context_enrichment(
         Error::from(gradient),
-        "stop 2 cannot keep its source ordering, separation or finiteness natively",
+        "stop 2 cannot keep its source position, ordering or separation natively",
         |error| {
             assert_eq!(error.code(), ErrorCode::GradientRealization);
             assert_eq!(error.gradient_realization_diagnostic(), Some(&gradient));
@@ -286,7 +280,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
 fn enrichment_preserves_text_layout_cause() {
     assert_context_enrichment(
         Error::from(crate::TextLayoutError::CapacityOverflow),
-        "a count or storage size calculation overflowed",
+        "a count calculation overflowed",
         |error| {
             assert_eq!(error.code(), ErrorCode::TextLayout);
             assert!(matches!(
@@ -365,4 +359,123 @@ fn backend_error_codes_keep_exact_mappings_and_custom_prose() {
             },
         );
     }
+}
+
+#[test]
+fn every_backend_code_prints_exactly_its_message_without_the_classification() {
+    use super::BackendErrorCode as B;
+    for (backend, public, phrase) in [
+        (
+            B::RendererCreateFailed,
+            ErrorCode::RendererCreateFailed,
+            "renderer creation failed",
+        ),
+        (
+            B::SurfaceCreateFailed,
+            ErrorCode::SurfaceCreateFailed,
+            "surface setup failed",
+        ),
+        (
+            B::SurfaceConfigureFailed,
+            ErrorCode::SurfaceConfigureFailed,
+            "surface configuration unavailable",
+        ),
+        (
+            B::SurfaceOutOfMemory,
+            ErrorCode::SurfaceOutOfMemory,
+            "gpu memory exhausted",
+        ),
+        (
+            B::SurfaceTimeout,
+            ErrorCode::SurfaceTimeout,
+            "surface operation timed out",
+        ),
+        (
+            B::SurfaceOutdated,
+            ErrorCode::SurfaceOutdated,
+            "surface configuration outdated",
+        ),
+        (
+            B::ImageUploadFailed,
+            ErrorCode::ImageUploadFailed,
+            "image data refused",
+        ),
+        (B::RenderFailed, ErrorCode::RenderFailed, "render failed"),
+        (
+            B::ReadbackFailed,
+            ErrorCode::ReadbackFailed,
+            "readback failed",
+        ),
+        (
+            B::PresentFailed,
+            ErrorCode::PresentFailed,
+            "presented output failed",
+        ),
+        (
+            B::UnsupportedBackend,
+            ErrorCode::UnsupportedBackend,
+            "unsupported backend",
+        ),
+    ] {
+        let error = Error::new(backend, "the stage reported a fault");
+        assert_eq!(error.code(), public);
+        // `Display` is the message alone: the phrase belongs to the code, whose text is separate.
+        assert_eq!(error.to_string(), "the stage reported a fault");
+        assert_eq!(error.code().to_string(), phrase);
+        // A source is reported through `source()` and is not folded into the text.
+        let with_source = error.with_source(std::io::Error::other("the device said no"));
+        assert_eq!(with_source.to_string(), "the stage reported a fault");
+        assert_eq!(
+            with_source.source().unwrap().to_string(),
+            "the device said no"
+        );
+        // Enrichment changes the message and `Display` follows it.
+        let enriched = with_source.append_message(" at command 3");
+        assert_eq!(
+            enriched.to_string(),
+            "the stage reported a fault at command 3"
+        );
+        let replaced = enriched.replace_message("replaced");
+        assert_eq!(replaced.to_string(), "replaced");
+        assert_eq!(replaced.message(), "replaced");
+    }
+}
+
+#[test]
+fn the_runtime_capability_constructor_prints_its_fixed_sentence() {
+    let error = Error::runtime_capability_unavailable(
+        super::RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+    );
+    assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    assert_eq!(error.to_string(), "runtime capability is unavailable");
+    assert_eq!(error.code().to_string(), "runtime capability unavailable");
+    // The variant that adds prose keeps the typed payload and prints the prose.
+    let described = Error::runtime_unavailable(
+        super::RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+        "no adapter can render",
+    );
+    assert_eq!(described.to_string(), "no adapter can render");
+    assert!(
+        described
+            .runtime_capability_unavailable_diagnostic()
+            .is_some()
+    );
+}
+
+#[test]
+fn an_accounting_error_prints_its_chain_and_not_its_classification() {
+    let error = Error::from(RenderAccountingError::Setup(
+        crate::RenderAccountingSetupError::Allocation,
+    ));
+    assert_eq!(error.code(), ErrorCode::Accounting);
+    assert_eq!(
+        error.to_string(),
+        "accounting setup failed: accounting could not allocate its setup or report storage"
+    );
+    assert_eq!(error.code().to_string(), "accounting failed");
+    // Printing does not initialize the cached message.
+    let super::ErrorPayload::Accounting(failure) = &error.payload else {
+        panic!("an accounting diagnostic keeps its fixed payload");
+    };
+    assert!(failure.message.get().is_none());
 }

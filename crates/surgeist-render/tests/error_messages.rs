@@ -3,8 +3,7 @@
 //! Every test obtains an error from a documented public operation and compares its text with a
 //! sentence written from that operation's contract (the validation rule in the operation's
 //! documentation, a font's own table, a limit the test sets) rather than from the message
-//! implementation. `Error` prints `"{classification}: {message}"`; the classification phrases are
-//! the documented meaning of each `ErrorCode`.
+//! implementation. `Error` prints its message and nothing else; the classification is `code()`.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::error::Error as _;
@@ -35,10 +34,10 @@ fn domains() -> FilterDomains {
 }
 
 #[track_caller]
-fn assert_text(error: &Error, code: ErrorCode, message: &str, text: &str) {
+fn assert_text(error: &Error, code: ErrorCode, message: &str) {
     assert_eq!(error.code(), code);
     assert_eq!(error.message(), message);
-    assert_eq!(error.to_string(), text);
+    assert_eq!(error.to_string(), message);
 }
 
 // ---- standalone filter preparation: the documented rule is "a reached resolved value must be finite" ----
@@ -51,7 +50,6 @@ fn gaussian_refuses_a_nan_horizontal_deviation_by_name() {
         &error,
         ErrorCode::InvalidInput,
         "Gaussian parameter horizontal standard deviation has the invalid value NaN",
-        "invalid input: Gaussian parameter horizontal standard deviation has the invalid value NaN",
     );
     assert!(error.source().is_none());
 }
@@ -78,7 +76,6 @@ fn offset_refuses_an_infinite_horizontal_displacement() {
         &error,
         ErrorCode::InvalidInput,
         "offset parameter horizontal displacement has the invalid value inf",
-        "invalid input: offset parameter horizontal displacement has the invalid value inf",
     );
 }
 
@@ -108,7 +105,6 @@ fn morphology_refuses_a_nan_vertical_radius() {
         &error,
         ErrorCode::InvalidInput,
         "morphology parameter vertical radius has the invalid value NaN",
-        "invalid input: morphology parameter vertical radius has the invalid value NaN",
     );
 }
 
@@ -148,7 +144,6 @@ fn drop_shadow_refuses_a_flood_opacity_above_one() {
         &error,
         ErrorCode::InvalidInput,
         "drop shadow flood opacity 2 is not finite or is outside 0 to 1",
-        "invalid input: drop shadow flood opacity 2 is not finite or is outside 0 to 1",
     );
 }
 
@@ -180,7 +175,6 @@ fn native_displacement_map_states_the_required_byte_length() {
         &error,
         ErrorCode::InvalidInput,
         "displacement map has 15 bytes but its dimensions require 16",
-        "invalid input: displacement map has 15 bytes but its dimensions require 16",
     );
 }
 
@@ -211,7 +205,6 @@ fn periodic_sources_need_a_positive_period() {
         &gaussian,
         ErrorCode::InvalidInput,
         "a periodic source must have positive width and height",
-        "invalid input: a periodic source must have positive width and height",
     );
     let displacement =
         DisplacementSource::periodic(Scene::new(), period, unit(), unit()).unwrap_err();
@@ -230,8 +223,7 @@ fn a_coordinate_outside_the_normalized_domain_is_named_with_its_bits() {
     assert_text(
         &error,
         ErrorCode::GlyphPreparation,
-        "variation coordinate value 20000 is outside the normalized domain",
-        "glyph preparation refused: variation coordinate value 20000 is outside the normalized domain",
+        "a variation coordinate is outside the normalized domain, which is -1 to 1 as a scalar and -16384 to 16384 as 2.14 bits",
     );
 }
 
@@ -252,7 +244,6 @@ fn synthesis_rejects_nonfinite_skew() {
         &error,
         ErrorCode::GlyphPreparation,
         "synthesis skew or embolden is not finite, or embolden is negative",
-        "glyph preparation refused: synthesis skew or embolden is not finite, or embolden is negative",
     );
 }
 
@@ -272,7 +263,6 @@ fn a_zero_text_size_fails_the_canonical_size_check() {
         &error,
         ErrorCode::GlyphPreparation,
         "glyph numeric check failed at canonical size",
-        "glyph preparation refused: glyph numeric check failed at canonical size",
     );
 }
 
@@ -316,7 +306,6 @@ fn a_glyph_id_beyond_the_face_names_the_actual_glyph_count() {
         &error,
         ErrorCode::GlyphPreparation,
         &format!("glyph 60000 is outside the face's {count} glyphs"),
-        &format!("glyph preparation refused: glyph 60000 is outside the face's {count} glyphs"),
     );
 }
 
@@ -351,7 +340,7 @@ fn a_work_limit_for_a_unit_no_operation_produces_is_refused() {
     );
     assert_eq!(
         error.to_string(),
-        "prepared transferred bytes work has no producer at the selected operation boundary and cannot be limited"
+        "prepared transferred bytes work is not produced by the operations this limit applies to and cannot be limited"
     );
     assert!(error.source().is_none());
 }
@@ -398,7 +387,7 @@ fn a_refused_work_limit_reports_the_refusal_as_the_cause() {
     assert_eq!(
         error.to_string(),
         format!(
-            "accounting failed: accounting refused a change: font record visits work refused 1 in the render.attempt phase at usage {directory}: the limit is {directory}"
+            "accounting refused a change: font record visits work refused 1 in the render.attempt phase at usage {directory}: the limit is {directory}"
         )
     );
 }
@@ -427,7 +416,6 @@ fn a_hint_on_the_last_stop_names_that_stop() {
         &error,
         ErrorCode::GradientHint,
         "stop 1 is the last stop and cannot carry an outgoing hint",
-        "gradient hint refused: stop 1 is the last stop and cannot carry an outgoing hint",
     );
 }
 
@@ -464,7 +452,6 @@ fn a_sweep_gradient_refuses_any_hint() {
         &error,
         ErrorCode::GradientHint,
         "a hinted full-turn sweep after stop 0 is not supported",
-        "gradient hint refused: a hinted full-turn sweep after stop 0 is not supported",
     );
 }
 
@@ -498,6 +485,5 @@ fn a_dash_cycle_longer_than_native_arithmetic_allows_is_a_geometry_refusal() {
         &error,
         ErrorCode::GeometryRealization,
         "native geometry cannot meet the required rank, precision, range or dash behavior",
-        "geometry realization refused: native geometry cannot meet the required rank, precision, range or dash behavior",
     );
 }

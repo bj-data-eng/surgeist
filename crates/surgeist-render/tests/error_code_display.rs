@@ -1,4 +1,4 @@
-//! `ErrorCode` prints one lowercase phrase per classification, written from its documentation.
+//! `ErrorCode` prints one lowercase phrase per classification, true at every place the code is raised.
 //!
 //! The exhaustive `match` has no wildcard: a new code fails to compile here until it gets a phrase.
 
@@ -16,23 +16,23 @@ fn phrase(code: ErrorCode) -> &'static str {
         ErrorCode::TextLayout => "text layout admission refused",
         #[cfg(feature = "render-text")]
         ErrorCode::LeaderPattern => "leader pattern admission refused",
-        ErrorCode::GlyphPreparation => "glyph preparation refused",
+        ErrorCode::GlyphPreparation => "preparation refused",
         ErrorCode::DeviceCreateFailed => "gpu device creation failed",
         ErrorCode::RendererCreateFailed => "renderer creation failed",
-        ErrorCode::SurfaceCreateFailed => "surface creation failed",
-        ErrorCode::SurfaceConfigureFailed => "surface configuration failed",
+        ErrorCode::SurfaceCreateFailed => "surface setup failed",
+        ErrorCode::SurfaceConfigureFailed => "surface configuration unavailable",
         ErrorCode::SurfaceOutOfMemory => "gpu memory exhausted",
         ErrorCode::SurfaceTimeout => "surface operation timed out",
         ErrorCode::SurfaceOutdated => "surface configuration outdated",
-        ErrorCode::InvalidInput => "invalid input",
+        ErrorCode::InvalidInput => "invalid value",
         ErrorCode::UnsupportedPrimitive => "unsupported primitive",
         ErrorCode::UnresolvedResource => "unresolved resource",
         ErrorCode::DegradedQuality => "degraded quality",
         ErrorCode::RuntimeCapabilityUnavailable => "runtime capability unavailable",
-        ErrorCode::ImageUploadFailed => "image upload failed",
+        ErrorCode::ImageUploadFailed => "image data refused",
         ErrorCode::RenderFailed => "render failed",
         ErrorCode::ReadbackFailed => "readback failed",
-        ErrorCode::PresentFailed => "presentation failed",
+        ErrorCode::PresentFailed => "presented output failed",
         ErrorCode::UnsupportedBackend => "unsupported backend",
     }
 }

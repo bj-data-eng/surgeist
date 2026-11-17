@@ -1130,7 +1130,7 @@ fn every_accounting_error_variant_has_its_message_and_cause() {
         ),
         (
             RenderAccountingError::InvalidLimit(RenderWork::PreparedTransferredBytes),
-            "prepared transferred bytes work has no producer at the selected operation boundary and cannot be limited",
+            "prepared transferred bytes work is not produced by the operations this limit applies to and cannot be limited",
             false,
         ),
         (
@@ -1207,4 +1207,87 @@ fn every_accounting_error_variant_has_its_message_and_cause() {
         }] = true;
     }
     assert!(seen.iter().all(|covered| *covered));
+}
+
+/// Written text of the owned-vector contract failures, from what each raise site checks. The
+/// failure reaches callers as the source of a render failure, so a reporter that walks the chain
+/// prints it and must not print the `Debug` form.
+#[test]
+fn every_storage_contract_failure_has_written_text_as_the_source_of_a_render_failure() {
+    use super::storage::StorageContractError as S;
+    use std::error::Error as _;
+    let rows = [
+        (
+            S::MissingBacking,
+            "the owned vector has no active admitted backing",
+        ),
+        (
+            S::ReservedCapacity {
+                needed: 5,
+                capacity: 3,
+            },
+            "the owned vector needs room for 5 values but reserved 3",
+        ),
+        (
+            S::InvalidInsertion { index: 4, len: 2 },
+            "cannot insert at index 4 in an owned vector of length 2",
+        ),
+        (
+            S::InvalidPosition { index: 7, len: 6 },
+            "position 7 is outside a sequence of length 6",
+        ),
+        (
+            S::BackingCapacityMismatch {
+                admitted_bytes: 64,
+                actual_bytes: 96,
+            },
+            "the owned vector holds 96 bytes of capacity but 64 bytes were admitted",
+        ),
+        (
+            S::WrongRetentionLifetime,
+            "the backing is retained by the renderer where a preparation backing is required",
+        ),
+        (
+            S::BackingResourceMismatch {
+                admitted: RenderResource::RetainedCpuBytes,
+                requested: RenderResource::ScratchCpuBytes,
+            },
+            "the admitted backing counts retained cpu bytes but scratch cpu bytes was requested",
+        ),
+        (
+            S::ProducerCapacityChanged {
+                expected: 8,
+                actual: 16,
+            },
+            "the producer changed the vector capacity from 8 to 16 values",
+        ),
+        (
+            S::ProducerLengthChanged {
+                expected: 8,
+                actual: 7,
+            },
+            "the producer wrote 7 values where 8 were qualified",
+        ),
+    ];
+    let mut covered = [false; 9];
+    for (failure, text) in rows {
+        covered[match failure {
+            S::MissingBacking => 0,
+            S::ReservedCapacity { .. } => 1,
+            S::InvalidInsertion { .. } => 2,
+            S::InvalidPosition { .. } => 3,
+            S::BackingCapacityMismatch { .. } => 4,
+            S::WrongRetentionLifetime => 5,
+            S::BackingResourceMismatch { .. } => 6,
+            S::ProducerCapacityChanged { .. } => 7,
+            S::ProducerLengthChanged { .. } => 8,
+        }] = true;
+        let error = crate::Error::from(failure);
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(error.to_string(), "owned-vector storage contract failed");
+        let source = error.source().expect("the contract failure is the source");
+        assert_eq!(source.to_string(), text, "{failure:?}");
+        assert_ne!(source.to_string(), format!("{failure:?}"));
+    }
+    assert!(covered.iter().all(|row| *row));
 }

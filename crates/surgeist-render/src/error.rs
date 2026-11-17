@@ -2101,10 +2101,7 @@ mod geometry_error_tests {
             error.source().unwrap().to_string(),
             "native receiving context"
         );
-        assert_eq!(
-            error.to_string(),
-            "geometry realization refused: qualified receiving failure"
-        );
+        assert_eq!(error.to_string(), "qualified receiving failure");
     }
 
     #[test]

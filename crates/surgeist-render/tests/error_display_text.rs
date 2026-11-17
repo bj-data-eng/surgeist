@@ -49,8 +49,8 @@ fn text_layout_limit_allocation_and_overflow_messages_name_the_resource() {
         (R::Decorations, "decorations"),
         (R::Glyphs, "glyphs"),
         (R::PathElements, "path elements"),
-        (R::ScratchBytes, "scratch bytes"),
-        (R::RetainedBytes, "retained bytes"),
+        (R::ScratchBytes, "scratch cpu bytes"),
+        (R::RetainedBytes, "retained cpu bytes"),
     ] {
         let limit = TextLayoutError::Limit {
             resource,
@@ -67,10 +67,7 @@ fn text_layout_limit_allocation_and_overflow_messages_name_the_resource() {
         assert!(allocation.source().is_none());
     }
     let overflow = TextLayoutError::CapacityOverflow;
-    assert_eq!(
-        overflow.to_string(),
-        "a count or storage size calculation overflowed"
-    );
+    assert_eq!(overflow.to_string(), "a count calculation overflowed");
     assert!(overflow.source().is_none());
 }
 
@@ -103,10 +100,7 @@ fn a_layout_item_error_names_the_item_and_returns_its_cause() {
         "layout item at decoration 5 was refused"
     );
     let cause = decoration.source().unwrap();
-    assert_eq!(
-        cause.to_string(),
-        "render refused the font, paint, numeric facts or outline capability"
-    );
+    assert_eq!(cause.to_string(), "render could not prepare the item");
     assert_eq!(
         cause.source().unwrap().to_string(),
         render_error().to_string()
@@ -135,10 +129,7 @@ fn a_leader_run_error_names_the_run_and_returns_its_cause() {
         cause: LeaderPatternCause::Render(Box::new(render_error())),
     };
     let cause = render.source().unwrap();
-    assert_eq!(
-        cause.to_string(),
-        "render could not admit the representation, paint or numeric facts"
-    );
+    assert_eq!(cause.to_string(), "render could not prepare the run");
     assert_eq!(
         cause.source().unwrap().to_string(),
         render_error().to_string()

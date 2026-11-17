@@ -84,7 +84,7 @@ fn a_zero_length_line_is_refused_with_the_documented_zero_length_sentence() {
     );
     assert_eq!(
         error.to_string(),
-        "paint gradient preparation refused: a linear gradient of zero length cannot be prepared"
+        "a linear gradient of zero length cannot be prepared"
     );
     let repeating = prepare_repeating_linear_gradient(
         &line(0.0),
@@ -147,6 +147,6 @@ fn stops_measured_on_another_line_report_both_lengths() {
     );
     assert_eq!(
         error.to_string(),
-        "paint gradient preparation refused: the used stops are measured on a line of length 10, but the geometry's basis is 0"
+        "the used stops are measured on a line of length 10, but the geometry's basis is 0"
     );
 }

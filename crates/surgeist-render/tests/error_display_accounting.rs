@@ -35,7 +35,7 @@ fn messages_describe_each_variant() {
         ),
         (
             E::InvalidLimit(RenderWork::GlyphInputs),
-            "glyph inputs work has no producer at the selected operation boundary and cannot be limited"
+            "glyph inputs work is not produced by the operations this limit applies to and cannot be limited"
                 .into(),
         ),
         (E::Invariant, "an internal consistency check failed".into()),
@@ -130,7 +130,7 @@ fn every_work_unit_has_a_distinct_lowercase_label_in_the_limit_message() {
     let mut seen = std::collections::BTreeSet::new();
     for &work in RenderWork::ALL {
         let label = format!(
-            "{} work has no producer at the selected operation boundary and cannot be limited",
+            "{} work is not produced by the operations this limit applies to and cannot be limited",
             words(&format!("{work:?}"))
         );
         assert_eq!(E::InvalidLimit(work).to_string(), label);

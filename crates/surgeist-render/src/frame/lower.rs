@@ -2425,7 +2425,10 @@ mod resource_binding_tests {
         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
         assert_eq!(
             error.message(),
-            format!("semantic frame graph validation failed: ResourceWithoutProducer({id:?})")
+            format!(
+                "semantic frame graph validation failed: resource {} has no producer",
+                id.index.0
+            )
         );
         graph.resources[index].producer = producer;
 
@@ -2435,7 +2438,8 @@ mod resource_binding_tests {
         assert_eq!(
             error.message(),
             format!(
-                "semantic frame graph validation failed: UnscheduledReads {{ resource: {id:?}, remaining: 0 }}"
+                "semantic frame graph validation failed: resource {} has 0 reads still to be scheduled",
+                id.index.0
             )
         );
         graph.resources[index].releasable_after = last_use;
@@ -2446,7 +2450,7 @@ mod resource_binding_tests {
         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
         assert_eq!(
             error.message(),
-            "semantic frame graph validation failed: InvalidImportedResourceRole"
+            "semantic frame graph validation failed: an imported resource must have the imported image role"
         );
     }
 }

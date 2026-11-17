@@ -231,7 +231,10 @@ fn drop_shadow_messages_cover_opacity_period_backdrop_and_merge_arithmetic() {
         ),
     ];
     for (phase, label) in [
-        (Phase::MergeMapping, "merge mapping"),
+        (
+            Phase::MergeMapping,
+            "merge mapping, kernel extent or sampling",
+        ),
         (Phase::GridIndex, "grid index"),
         (Phase::Sampling, "sampling"),
     ] {
@@ -425,7 +428,7 @@ fn glyph_preparation_messages_describe_each_refusal() {
         ),
         (
             E::CoordinateValue { value: 20000.0 },
-            "variation coordinate value 20000 is outside the normalized domain".into(),
+            "a variation coordinate is outside the normalized domain, which is -1 to 1 as a scalar and -16384 to 16384 as 2.14 bits".into(),
         ),
         (
             E::CoordinateLoss { value: 0.5 },
@@ -516,8 +519,8 @@ fn glyph_preparation_messages_describe_each_refusal() {
     for (resource, label) in [
         (GlyphResource::Glyphs, "glyphs"),
         (GlyphResource::PathElements, "path elements"),
-        (GlyphResource::ScratchBytes, "scratch bytes"),
-        (GlyphResource::RetainedBytes, "retained bytes"),
+        (GlyphResource::ScratchBytes, "scratch cpu bytes"),
+        (GlyphResource::RetainedBytes, "retained cpu bytes"),
     ] {
         rows.push((
             E::Limit {
@@ -647,7 +650,7 @@ fn gradient_realization_messages_say_what_the_native_field_cannot_hold() {
         ),
         (
             E::UnrepresentableStop { stop_index: 4 },
-            "stop 4 cannot keep its source ordering, separation or finiteness natively",
+            "stop 4 cannot keep its source position, ordering or separation natively",
         ),
         (
             E::UnrepresentableHint { stop_index: 3 },
