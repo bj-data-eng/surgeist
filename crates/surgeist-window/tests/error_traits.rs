@@ -63,7 +63,10 @@ fn source_is_absent_without_an_underlying_error() {
 /// Each phrase is derived from the variant's documented meaning in `ErrorCode`.
 const CODE_PHRASES: [(ErrorCode, &str); 20] = [
     (ErrorCode::InvalidRequest, "invalid request"),
-    (ErrorCode::DuplicateIdentity, "duplicate window identity"),
+    (
+        ErrorCode::DuplicateIdentity,
+        "duplicate window identity or name",
+    ),
     (ErrorCode::IdentityExhausted, "window identities exhausted"),
     (ErrorCode::StaleWindow, "stale window"),
     (ErrorCode::WindowClosing, "window is closing"),
