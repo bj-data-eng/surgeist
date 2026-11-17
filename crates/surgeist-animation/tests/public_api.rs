@@ -66,7 +66,7 @@ fn public_front_door_exposes_explicit_color_space_interpolation() {
 }
 
 #[test]
-fn linear_easing_samples_through_public_reexports() {
+fn linear_easing_samples_through_public_modules() {
     let linear = animation::easing::LinearEasing::new(vec![
         animation::easing::LinearControlPoint::new(0.0, 0.0),
         animation::easing::LinearControlPoint::new(0.5, 0.25),
@@ -83,7 +83,7 @@ fn linear_easing_samples_through_public_reexports() {
 }
 
 #[test]
-fn unrestricted_percentage_interpolation_samples_through_public_reexports() {
+fn unrestricted_percentage_interpolation_samples_through_public_modules() {
     let pair = animation::interpolation::InterpolationPair::new(
         animation::interpolation::PropertyKey::new("width").unwrap(),
         animation::interpolation::InterpolableValue::percentage(
@@ -107,7 +107,7 @@ fn unrestricted_percentage_interpolation_samples_through_public_reexports() {
 }
 
 #[test]
-fn explicit_color_space_interpolation_samples_through_public_reexports() {
+fn explicit_color_space_interpolation_samples_through_public_modules() {
     let from = animation::interpolation::InterpolableColor::from_straight_components(
         animation::interpolation::ColorInterpolationSpace::Oklab,
         0.5,
@@ -148,7 +148,7 @@ fn explicit_color_space_interpolation_samples_through_public_reexports() {
 }
 
 #[test]
-fn delayed_transition_sample_uses_public_reexports() {
+fn delayed_transition_sample_uses_public_modules() {
     let track = public_transition(
         animation::interpolation::InterpolableValue::number(
             animation::interpolation::InterpolableNumber::new(0.0).unwrap(),
@@ -182,7 +182,7 @@ fn delayed_transition_sample_uses_public_reexports() {
 }
 
 #[test]
-fn zero_iteration_keyframe_sample_uses_public_reexports() {
+fn zero_iteration_keyframe_sample_uses_public_modules() {
     let timing = animation::keyframe::KeyframeTiming::try_new(
         animation::time::AnimationDelay::from_secs(0.0).unwrap(),
         animation::time::AnimationDuration::from_secs(1.0).unwrap(),
@@ -232,7 +232,7 @@ fn zero_iteration_keyframe_sample_uses_public_reexports() {
 }
 
 #[test]
-fn unsupported_sample_distinction_uses_public_reexports() {
+fn unsupported_sample_distinction_uses_public_modules() {
     let track = animation::transition::TransitionTrack::new(
         animation::transition::TransitionTrackId::new(2),
         animation::interpolation::PropertyKey::new("transform").unwrap(),
@@ -274,7 +274,7 @@ fn unsupported_sample_distinction_uses_public_reexports() {
 }
 
 #[test]
-fn transient_arithmetic_failure_sample_distinction_uses_public_reexports() {
+fn transient_arithmetic_failure_sample_distinction_uses_public_modules() {
     let track = public_transition(
         animation::interpolation::InterpolableValue::number(
             animation::interpolation::InterpolableNumber::new(f64::MAX).unwrap(),

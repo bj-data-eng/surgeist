@@ -21,11 +21,12 @@ commands below run from the crate directory and use offline mode.
 Transition tracks are already normalized when they reach this crate:
 
 ```rust
-use surgeist_animation::{
-    AnimationDelay, AnimationDuration, AnimationPlayState, Easing, ElapsedTime,
-    InterpolableNumber, InterpolableValue, PropertyKey, SampleClassification, TransitionTrack,
-    TransitionTrackId,
-};
+use surgeist_animation::easing::Easing;
+use surgeist_animation::interpolation::{InterpolableNumber, InterpolableValue, PropertyKey};
+use surgeist_animation::sample::SampleClassification;
+use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use surgeist_animation::timing::AnimationPlayState;
+use surgeist_animation::transition::{TransitionTrack, TransitionTrackId};
 
 let track = TransitionTrack::new(
     TransitionTrackId::new(1),
