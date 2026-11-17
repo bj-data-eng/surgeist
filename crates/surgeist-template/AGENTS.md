@@ -27,7 +27,8 @@ canonical association is available. No expression evaluation is supplied.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door and reexports | [src/lib.rs](src/lib.rs) |
+| Public front door: pipeline functions and public modules | [src/lib.rs](src/lib.rs) |
+| Facade modules over private files (`parse`, `registry`, `validation`) | [src/parse.rs](src/parse.rs), [src/registry.rs](src/registry.rs), [src/validation.rs](src/validation.rs) |
 | Template syntax and authored structure | [src/parser.rs](src/parser.rs), [src/lexer.rs](src/lexer.rs), and [src/ast.rs](src/ast.rs) |
 | Expression syntax and name constraints | [src/expr.rs](src/expr.rs) and [src/name.rs](src/name.rs) |
 | Registry contracts and validated structure | [src/validate.rs](src/validate.rs) |
@@ -44,7 +45,8 @@ Select affected checks under the root process/resource policy; commands below
 run from this crate directory.
 
 Verification includes source-module tests, `tests/template_v1.rs` and
-`tests/native_ast.rs`, `tests/html_dom.rs` and the static adapter's doc example.
+`tests/native_ast.rs`, `tests/html_dom.rs`, `tests/render_paths.rs`,
+`tests/error_traits.rs` and the static adapter's doc example.
 The root `tests/template_generated_rust.rs` compiles and
 executes actual generated Rust against the real facade. Keep generated Rust safe
 and validated-template expressions symbolic.

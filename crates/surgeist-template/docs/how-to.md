@@ -1,7 +1,9 @@
 # How-to guides
 
 These procedures assume the pipeline in [getting started](getting-started.md)
-is familiar. They use the public exports in [src/lib.rs](../src/lib.rs).
+is familiar. They use the public functions and modules in [src/lib.rs](../src/lib.rs): registry
+types come from `registry`, diagnostics from `parse` and `validation`, and the DOM
+adapter from `dom`.
 
 ## Register a native element or component
 
@@ -45,7 +47,7 @@ element permits.
    kinds. Create an `AttributeSpec` with the attribute's name and rule, and
    include it in the element specification.
 3. Validate the document. Confirm that the intended form succeeds and that an
-   excluded form produces `ValidationErrorKind::InvalidAttributeValue`.
+   excluded form produces `validation::ValidationErrorKind::InvalidAttributeValue`.
    An undeclared attribute produces `InvalidAttribute`; repeated authored
    attributes produce `DuplicateAttribute`.
 
