@@ -471,7 +471,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "NativeInitializationRequired",
             DomError::NativeInitializationRequired(HtmlElementClass::GenericElement),
-            "the Element needs native initialization before it can be created",
+            "creating this Element requires a native initialization that this operation cannot perform",
         ),
         (
             "NonceInapplicable",
@@ -580,27 +580,27 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "CustomValidityInapplicable",
             DomError::CustomValidityInapplicable,
-            "the Element has no custom validity",
+            "the node has no custom validity state",
         ),
         (
             "ButtonInapplicable",
             DomError::ButtonInapplicable,
-            "the Element is not a Button with this reflected target",
+            "the node has no such reflected element target",
         ),
         (
             "InputInapplicable",
             DomError::InputInapplicable,
-            "the Element is not an Input",
+            "the node is not an Input element",
         ),
         (
             "TextareaInapplicable",
             DomError::TextareaInapplicable,
-            "the Element is not a Textarea",
+            "the node is not a Textarea element",
         ),
         (
             "OutputInapplicable",
             DomError::OutputInapplicable,
-            "the Element is not an Output",
+            "the node is not an Output element",
         ),
         (
             "OutputProtocol",
@@ -952,7 +952,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "StaleViewTransitionPseudo",
             DomError::StaleViewTransitionPseudo,
-            "the view transition pseudo-element is stale",
+            "the view transition pseudo-element does not exist or is stale",
         ),
         (
             "InvalidViewTransitionState",

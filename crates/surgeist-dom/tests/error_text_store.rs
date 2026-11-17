@@ -98,7 +98,7 @@ fn variants_without_payload_state_their_condition() {
         ),
         (
             DomError::ButtonInapplicable,
-            "the Element is not a Button with this reflected target",
+            "the node has no such reflected element target",
         ),
         (DomError::SlotInapplicable, "the node is not a Slot"),
         (
@@ -517,17 +517,17 @@ fn control_setters_on_a_div_name_the_element_they_need() {
         (
             |b, n| b.set_input_checked(n, true),
             DomError::InputInapplicable,
-            "the Element is not an Input",
+            "the node is not an Input element",
         ),
         (
             |b, n| b.set_textarea_value(n, "x"),
             DomError::TextareaInapplicable,
-            "the Element is not a Textarea",
+            "the node is not a Textarea element",
         ),
         (
             |b, n| b.set_output_value(n, "x"),
             DomError::OutputInapplicable,
-            "the Element is not an Output",
+            "the node is not an Output element",
         ),
         (
             |b, n| b.set_select_value(n, "x"),
@@ -547,7 +547,7 @@ fn control_setters_on_a_div_name_the_element_they_need() {
         (
             |b, n| b.set_custom_validity(n, "x"),
             DomError::CustomValidityInapplicable,
-            "the Element has no custom validity",
+            "the node has no custom validity state",
         ),
     ];
     for (setter, variant, text) in cases {
@@ -762,4 +762,32 @@ fn adopting_into_a_node_that_is_not_a_document_is_refused() {
         &DomError::WrongNodeKind,
         "the node is not of the kind the operation requires",
     );
+}
+
+#[test]
+fn control_setters_on_a_text_node_do_not_call_it_an_element() {
+    let cases: [SetterCase; 3] = [
+        (
+            |b, n| b.set_input_checked(n, true),
+            DomError::InputInapplicable,
+            "the node is not an Input element",
+        ),
+        (
+            |b, n| b.set_textarea_value(n, "x"),
+            DomError::TextareaInapplicable,
+            "the node is not a Textarea element",
+        ),
+        (
+            |b, n| b.set_output_value(n, "x"),
+            DomError::OutputInapplicable,
+            "the node is not an Output element",
+        ),
+    ];
+    for (setter, variant, text) in cases {
+        let mut w = world();
+        let mut batch = DomBatch::new();
+        setter(&mut batch, w.text);
+        let error = refused(&mut w.dom, batch);
+        assert_refusal(&error, &variant, text);
+    }
 }
