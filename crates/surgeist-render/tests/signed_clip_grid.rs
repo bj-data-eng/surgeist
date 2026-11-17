@@ -2,9 +2,11 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Antialiasing, ClipInput, Color, CoordinateSpaceTag, EffectQualityPolicy, FillRule, FilledPath,
-    Image, ImageBuffer, Layer, Options, Parameters, Path, Point, Rect, RenderRoute, Renderer,
-    ResolvedLayerAlphaMask, Scene, Size, Transform,
+    geometry::CoordinateSpaceTag, geometry::Point, geometry::Rect, geometry::Size,
+    geometry::Transform, image::Image, image::ImageBuffer, paint::Color, renderer::Antialiasing,
+    renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute, renderer::Renderer,
+    scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene, shape::FillRule, shape::FilledPath,
+    shape::Path, style::clip::ClipInput, surface::Parameters,
 };
 
 fn clipped_scene(fill_rule: FillRule) -> Scene {

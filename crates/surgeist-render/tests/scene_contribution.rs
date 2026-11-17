@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 #![cfg(not(target_family = "wasm"))]
 
-use surgeist_render::{Color, Layer, Options, Parameters, Renderer, Scene, Size};
+use surgeist_render::{
+    geometry::Size, paint::Color, renderer::Options, renderer::Renderer, scene::Layer,
+    scene::Scene, surface::Parameters,
+};
 
 fn empty_layer_frame(depth: usize) {
     std::thread::Builder::new()

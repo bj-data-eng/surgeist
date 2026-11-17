@@ -2,12 +2,14 @@ use std::error::Error as _;
 
 use surgeist_font::{DecodeError, DecodeLimits, LimitKind};
 use surgeist_render::{
-    Error, ErrorCode, FontData, GlyphNumericPhase, GlyphPreparationError, GlyphResource,
-    GlyphRunLimits, GlyphSynthesis, Image, NormalizedCoordinate, PathElement, Point,
-    PreparedGlyphRun, Rect, RenderAccountingContext, RenderAccountingError,
-    RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus, RenderLimits, RenderQuantity,
-    RenderRefusalReason, RenderResource, RenderWork, Size, TextGlyph, TextInstance,
-    TextRunBoundsKind,
+    Error, ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderQuantity,
+    accounting::RenderRefusalReason, accounting::RenderResource, accounting::RenderWork,
+    geometry::Point, geometry::Rect, geometry::Size, image::Image, shape::PathElement,
+    text::FontData, text::GlyphNumericPhase, text::GlyphPreparationError, text::GlyphResource,
+    text::GlyphRunLimits, text::GlyphSynthesis, text::NormalizedCoordinate, text::PreparedGlyphRun,
+    text::TextGlyph, text::TextInstance, text::TextRunBoundsKind,
 };
 
 use super::*;

@@ -9,14 +9,20 @@
 use std::error::Error as _;
 use std::sync::Arc;
 use surgeist_render::{
-    Color, ConvolutionInput, Dash, DisplacementInput, DisplacementSource, DropShadowInput,
-    EffectQualityPolicy, Error, ErrorCode, FilterColorSpace, FilterDomains, GaussianInput,
-    GaussianPreparationError, GaussianSource, GeometryRealizationError, GlyphRunLimits,
-    GlyphSynthesis, Gradient, GradientHint, GradientStop, MorphologyInput, NormalizedCoordinate,
-    OffsetInput, Options, Parameters, Point, Rect, RenderAccountingContext, RenderAccountingError,
-    RenderAccountingOptions, RenderLimits, RenderWork, Renderer, Scene, Size, Stroke, TextGlyph,
-    TextInstance, prepare_convolution, prepare_displacement, prepare_drop_shadow, prepare_gaussian,
-    prepare_morphology, prepare_native_displacement_map, prepare_offset,
+    Error, ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderWork,
+    convolution::ConvolutionInput, convolution::prepare_convolution,
+    diagnostic::GeometryRealizationError, displacement::DisplacementInput,
+    displacement::DisplacementSource, displacement::prepare_displacement,
+    displacement::prepare_native_displacement_map, effect::FilterColorSpace, effect::FilterDomains,
+    gaussian::GaussianInput, gaussian::GaussianPreparationError, gaussian::GaussianSource,
+    gaussian::prepare_gaussian, geometry::Point, geometry::Rect, geometry::Size,
+    morphology::MorphologyInput, morphology::prepare_morphology, native_shadow::DropShadowInput,
+    native_shadow::prepare_drop_shadow, offset::OffsetInput, offset::prepare_offset, paint::Color,
+    paint::Gradient, paint::GradientHint, paint::GradientStop, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::Renderer, scene::Scene, shape::Dash, shape::Stroke,
+    surface::Parameters, text::GlyphRunLimits, text::GlyphSynthesis, text::NormalizedCoordinate,
+    text::TextGlyph, text::TextInstance,
 };
 
 const FONT: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
@@ -266,8 +272,8 @@ fn a_zero_text_size_fails_the_canonical_size_check() {
     );
 }
 
-fn font() -> surgeist_render::FontData {
-    surgeist_render::FontData::try_from_bytes(
+fn font() -> surgeist_render::text::FontData {
+    surgeist_render::text::FontData::try_from_bytes(
         FONT.to_vec(),
         0,
         surgeist_test::fixtures::FONT_LIMITS,

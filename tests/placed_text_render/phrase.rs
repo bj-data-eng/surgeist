@@ -406,16 +406,16 @@ fn phrase_separator_retains_actual_scope_font_pair_and_source_free_selection() {
         assert!(selection.plaintext().is_empty());
         assert!(selection.source_pieces().is_empty());
         drop(system);
-        let scene = render::prepare_text_layout(
+        let scene = render::text_layout::prepare_text_layout(
             placed,
-            render::Transform::identity(),
-            render::TextLayoutLimits::new(
-                render::GlyphRunLimits::new(64, 4096, 8 << 20, 8 << 20),
+            render::geometry::Transform::identity(),
+            render::text_layout::TextLayoutLimits::new(
+                render::text::GlyphRunLimits::new(64, 4096, 8 << 20, 8 << 20),
                 16,
                 64,
                 8,
             ),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(scene.layout(), placed));

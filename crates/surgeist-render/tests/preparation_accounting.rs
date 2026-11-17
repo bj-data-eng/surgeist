@@ -1,6 +1,13 @@
 //! Counts below follow Ahem's one rectangular glyph: four provider path points,
 //! Move + three Lines + Close, one foreground paint, and one original input.
-use surgeist_render::*;
+use surgeist_render::{
+    ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderResource,
+    accounting::RenderWork, text::FontData, text::GlyphPreparationError, text::GlyphResource,
+    text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph, text::TextInstance,
+};
 const FONT: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 fn input() -> (FontData, TextInstance, [TextGlyph; 1]) {
     (

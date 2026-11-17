@@ -6,8 +6,9 @@
 
 use core::error::Error as StdError;
 use surgeist_render::{
-    Error, LeaderPatternCause, LeaderPatternError, TextLayoutCause, TextLayoutError,
-    TextLayoutLocation, TextLayoutResource,
+    Error, text_layout::LeaderPatternCause, text_layout::LeaderPatternError,
+    text_layout::TextLayoutCause, text_layout::TextLayoutError, text_layout::TextLayoutLocation,
+    text_layout::TextLayoutResource,
 };
 
 fn text_error() -> surgeist_text::Error {

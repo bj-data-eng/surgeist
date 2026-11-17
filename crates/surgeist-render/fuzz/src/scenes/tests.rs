@@ -47,7 +47,7 @@ fn nested_separately_allocated_equal_and_dimension_distinct_images_have_exact_co
     let actual = recipe
         .build()
         .unwrap()
-        .inspect(&mut render::RenderAccountingContext::default())
+        .inspect(&mut render::accounting::RenderAccountingContext::default())
         .unwrap();
     // Hand-derived from the authored recipe, without consulting the comparator.
     assert_eq!(
@@ -290,15 +290,15 @@ fn canonical_refusal_retains_exact_low_and_raised_work_limits() {
 
 #[test]
 fn lattice_transform_order_and_origin_are_independently_known() {
-    let first = render::Transform::try_new([2., 1., -1., 3., 5., -7.]).unwrap();
-    let next = render::Transform::try_new([1., -2., 3., 1., -4., 8.]).unwrap();
+    let first = render::geometry::Transform::try_new([2., 1., -1., 3., 5., -7.]).unwrap();
+    let next = render::geometry::Transform::try_new([1., -2., 3., 1., -4., 8.]).unwrap();
     assert_eq!(
         first.then(next).unwrap().as_array(),
         [5., -3., 8., 5., -20., -9.]
     );
     assert_eq!(
         first
-            .around(render::Point::try_new(3., -5.).unwrap())
+            .around(render::geometry::Point::try_new(3., -5.).unwrap())
             .unwrap()
             .as_array(),
         [2., 1., -1., 3., -3., 0.]
@@ -459,17 +459,17 @@ impl CaseTarget for InspectionRefusalObservationControl {
             Ok(scene) => scene,
             Err(failure) => return Ok(failure),
         };
-        let limits = render::RenderLimits::new()
-            .with_work_limit(render::RenderWork::AuthoredCommands, 0)
+        let limits = render::accounting::RenderLimits::new()
+            .with_work_limit(render::accounting::RenderWork::AuthoredCommands, 0)
             .map_err(|cause| error(cause.to_string()))?;
-        let mut context = render::RenderAccountingContext::new(
-            render::RenderAccountingOptions::new().with_limits(limits),
+        let mut context = render::accounting::RenderAccountingContext::new(
+            render::accounting::RenderAccountingOptions::new().with_limits(limits),
         );
         let observation = scene.inspect(&mut context);
         // Establish the injected observation really came from the public
         // inspection boundary's accounting refusal, rather than a made-up error.
         assert!(
-            matches!(&observation, Err(cause) if matches!(cause.accounting_diagnostic(), Some(render::RenderAccountingError::Refused(_))))
+            matches!(&observation, Err(cause) if matches!(cause.accounting_diagnostic(), Some(render::accounting::RenderAccountingError::Refused(_))))
         );
         compare_inspection(
             recipe.expected(),
@@ -599,7 +599,7 @@ impl CaseTarget for CommandCountObservationControl {
             Err(failure) => return Ok(failure),
         };
         let mut observed = match product_observation(
-            scene.inspect(&mut render::RenderAccountingContext::default()),
+            scene.inspect(&mut render::accounting::RenderAccountingContext::default()),
             STRUCTURE,
             "authored-inspection-rejected",
         )? {

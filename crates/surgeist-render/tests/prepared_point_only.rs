@@ -2,11 +2,14 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, EffectQualityPolicy, FontData, GlyphRunLimits, GlyphSynthesis, Image, ImageBuffer,
-    Layer, Options, Parameters, PathElement, PreparedGlyphRun, Rect, RenderAccountingContext,
-    RenderAccountingOptions, RenderAttemptStatus, RenderProfile, RenderRoute, RenderWork, Renderer,
-    ResolvedLayerAlphaMask, Scene, Size, TextGlyph, TextInstance, TextPaint, TextRunBoundsKind,
-    Transform,
+    accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderProfile, accounting::RenderWork,
+    geometry::Rect, geometry::Size, geometry::Transform, image::Image, image::ImageBuffer,
+    paint::Color, renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute,
+    renderer::Renderer, scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene,
+    shape::PathElement, surface::Parameters, text::FontData, text::GlyphRunLimits,
+    text::GlyphSynthesis, text::PreparedGlyphRun, text::TextGlyph, text::TextInstance,
+    text::TextPaint, text::TextRunBoundsKind,
 };
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
@@ -95,7 +98,7 @@ fn cpu_point_only_preparation_retains_metadata_and_empty_ink() {
     assert_eq!(
         prepared.path_elements().collect::<Vec<_>>(),
         [
-            PathElement::MoveTo(surgeist_render::Point::try_new(0.0, 0.0).unwrap()),
+            PathElement::MoveTo(surgeist_render::geometry::Point::try_new(0.0, 0.0).unwrap()),
             PathElement::Close,
         ]
     );

@@ -12,11 +12,16 @@
 
 use std::sync::Arc;
 use surgeist_render::{
-    BackdropCaptureBounds, BackdropFilterInput, Color, DisplacementInput, DisplacementSource,
-    DropShadowInput, DropShadowSource, Error, ErrorCode, FilterBlur, FilterColorSpace, FilterList,
-    FilterOp, GaussianInput, GaussianSource, Layer, MorphologyInput, MorphologySource, Rect,
-    RenderAccountingContext, Scene, Size, prepare_displacement, prepare_drop_shadow,
-    prepare_gaussian, prepare_morphology, prepare_native_displacement_map,
+    Error, ErrorCode, accounting::RenderAccountingContext, displacement::DisplacementInput,
+    displacement::DisplacementSource, displacement::prepare_displacement,
+    displacement::prepare_native_displacement_map, effect::FilterColorSpace,
+    gaussian::GaussianInput, gaussian::GaussianSource, gaussian::prepare_gaussian, geometry::Rect,
+    geometry::Size, morphology::MorphologyInput, morphology::MorphologySource,
+    morphology::prepare_morphology, native_shadow::DropShadowInput,
+    native_shadow::DropShadowSource, native_shadow::prepare_drop_shadow, paint::Color,
+    scene::Layer, scene::Scene, style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput, style::filter::FilterBlur, style::filter::FilterList,
+    style::filter::FilterOp,
 };
 
 fn unit() -> Rect {

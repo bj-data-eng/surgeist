@@ -9,7 +9,7 @@ use surgeist_fuzz::{
     TargetDescriptor,
     generation::{Budget, BudgetCharge, Entropy},
 };
-use surgeist_render::{self as render, Scene, SceneSummary};
+use surgeist_render::{self as render, scene::Scene, scene::SceneSummary};
 
 mod geometry;
 #[cfg(test)]
@@ -102,9 +102,9 @@ impl ImageRecipe {
         }
         Ok(())
     }
-    fn materialize(&self) -> render::Result<render::Image> {
-        render::Image::from_rgba(
-            render::Size::try_new(f64::from(self.width), f64::from(self.height))?,
+    fn materialize(&self) -> render::Result<render::image::Image> {
+        render::image::Image::from_rgba(
+            render::geometry::Size::try_new(f64::from(self.width), f64::from(self.height))?,
             self.rgba.clone(),
         )
     }
@@ -747,7 +747,7 @@ impl Inspection {
     fn append(
         &self,
         parent: u8,
-        images: &[render::Image],
+        images: &[render::image::Image],
         scene: &mut Scene,
     ) -> render::Result<()> {
         for (index, node) in self
@@ -756,10 +756,10 @@ impl Inspection {
             .enumerate()
             .filter(|(_, node)| node.parent == parent)
         {
-            let rect = render::Rect::try_new(0., 0., 4., 4.)?;
-            let paint = |image| -> render::Paint {
+            let rect = render::geometry::Rect::try_new(0., 0., 4., 4.)?;
+            let paint = |image| -> render::paint::Paint {
                 if image == ROOT {
-                    render::Color::BLACK.into()
+                    render::paint::Color::BLACK.into()
                 } else {
                     images[usize::from(image)].clone().into()
                 }
@@ -767,7 +767,7 @@ impl Inspection {
             match node.draw {
                 Draw::Layer => {
                     let mut result = Ok(());
-                    scene.layer(render::Layer::new(), |child| {
+                    scene.layer(render::scene::Layer::new(), |child| {
                         result = self.append(index as u8, images, child)
                     });
                     result?;
@@ -776,32 +776,39 @@ impl Inspection {
                     scene.fill(rect, paint(image));
                 }
                 Draw::Stroke(image) => {
-                    scene.stroke(rect, render::Stroke::try_new(1.)?, paint(image));
+                    scene.stroke(rect, render::shape::Stroke::try_new(1.)?, paint(image));
                 }
                 Draw::Shadow(image) => {
                     scene.shadow(
                         rect,
-                        render::Shadow::try_new(render::Point::default(), 0., 0., paint(image))?,
+                        render::scene::Shadow::try_new(
+                            render::geometry::Point::default(),
+                            0.,
+                            0.,
+                            paint(image),
+                        )?,
                     );
                 }
                 Draw::Image(image) => {
                     scene.image(
                         images[usize::from(image)].clone(),
                         rect,
-                        render::ImageFit::Fill,
+                        render::image::ImageFit::Fill,
                     );
                 }
                 Draw::Glyphs(count) => {
                     let glyphs = (0..count)
-                        .map(|id| render::TextGlyph::try_new(u32::from(id), f64::from(id), 0., 1.))
+                        .map(|id| {
+                            render::text::TextGlyph::try_new(u32::from(id), f64::from(id), 0., 1.)
+                        })
                         .collect::<render::Result<Vec<_>>>()?;
-                    scene.text_run(render::TextRun::try_new(
-                        render::FontRef::new(1),
+                    scene.text_run(render::text::TextRun::try_new(
+                        render::text::FontRef::new(1),
                         12.,
-                        render::Transform::identity(),
-                        render::TextPaint::try_fill(render::Color::BLACK.into())?,
+                        render::geometry::Transform::identity(),
+                        render::text::TextPaint::try_fill(render::paint::Color::BLACK.into())?,
                         &glyphs,
-                        render::TextRunBounds::unspecified(),
+                        render::text::TextRunBounds::unspecified(),
                     )?);
                 }
             }
@@ -819,7 +826,7 @@ impl Inspection {
             Err(failure) => return Ok(failure),
         };
         let original = scene.clone();
-        let mut context = render::RenderAccountingContext::default();
+        let mut context = render::accounting::RenderAccountingContext::default();
         if let Some(failure) = compare_inspection(
             expected,
             scene.inspect(&mut context),
@@ -830,28 +837,34 @@ impl Inspection {
         }
         if !matches!(self.refusal, Refusal::None) {
             let (work, limit, retry_limit) = match self.refusal {
-                Refusal::Commands { limit, retry_limit } => {
-                    (render::RenderWork::AuthoredCommands, limit, retry_limit)
-                }
-                Refusal::ResourceProbe { retry_limit } => {
-                    (render::RenderWork::ResourceProbes, 0, retry_limit)
-                }
+                Refusal::Commands { limit, retry_limit } => (
+                    render::accounting::RenderWork::AuthoredCommands,
+                    limit,
+                    retry_limit,
+                ),
+                Refusal::ResourceProbe { retry_limit } => (
+                    render::accounting::RenderWork::ResourceProbes,
+                    0,
+                    retry_limit,
+                ),
                 Refusal::IdentityByte { retry_limit } => (
-                    render::RenderWork::ImageIdentityByteComparisons,
+                    render::accounting::RenderWork::ImageIdentityByteComparisons,
                     1,
                     retry_limit,
                 ),
                 Refusal::None => unreachable!(),
             };
             let limits = match product_observation(
-                render::RenderLimits::new().with_work_limit(work, limit),
+                render::accounting::RenderLimits::new().with_work_limit(work, limit),
                 RETRY,
                 "inspection-work-limit-rejected",
             )? {
                 Ok(limits) => limits,
                 Err(failure) => return Ok(failure),
             };
-            context.set_options(render::RenderAccountingOptions::new().with_limits(limits));
+            context.set_options(
+                render::accounting::RenderAccountingOptions::new().with_limits(limits),
+            );
             let outcome = scene.inspect(&mut context);
             let Err(cause) = outcome else {
                 return violated(
@@ -860,7 +873,7 @@ impl Inspection {
                     "inspection accepted a request beyond its work cap",
                 );
             };
-            let Some(render::RenderAccountingError::Refused(refusal)) =
+            let Some(render::accounting::RenderAccountingError::Refused(refusal)) =
                 cause.accounting_diagnostic()
             else {
                 return violated(RETRY, "inspection-refusal-kind", format!("{cause:?}"));
@@ -875,7 +888,7 @@ impl Inspection {
             let prefix = report.usage();
             let exact_prefix = match self.refusal {
                 Refusal::Commands { .. } => {
-                    prefix.work(render::RenderWork::CommandVisits) == limit + 1
+                    prefix.work(render::accounting::RenderWork::CommandVisits) == limit + 1
                 }
                 Refusal::ResourceProbe { .. } | Refusal::IdentityByte { .. } => {
                     let first_image = self
@@ -883,26 +896,26 @@ impl Inspection {
                         .iter()
                         .find_map(|node| self.image_for(node.draw))
                         .expect("validated repeated images");
-                    prefix.work(render::RenderWork::AuthoredCommands) >= 2
-                        && prefix.work(render::RenderWork::AuthoredImages) == 2
-                        && prefix.work(render::RenderWork::ImageContentMisses) == 1
-                        && prefix.work(render::RenderWork::ImageContentHits) == 0
-                        && prefix.work(render::RenderWork::ImageFirstObservedBytes)
+                    prefix.work(render::accounting::RenderWork::AuthoredCommands) >= 2
+                        && prefix.work(render::accounting::RenderWork::AuthoredImages) == 2
+                        && prefix.work(render::accounting::RenderWork::ImageContentMisses) == 1
+                        && prefix.work(render::accounting::RenderWork::ImageContentHits) == 0
+                        && prefix.work(render::accounting::RenderWork::ImageFirstObservedBytes)
                             == first_image.rgba.len() as u64
                 }
                 Refusal::None => unreachable!(),
             };
             if scene != original
-                || report.status() != render::RenderAttemptStatus::Refused
+                || report.status() != render::accounting::RenderAttemptStatus::Refused
                 || !exact_prefix
                 || prefix.work(work) != limit
-                || prefix.live(render::RenderResource::ScratchCpuBytes) != 0
-                || prefix.live(render::RenderResource::RetainedCpuBytes) != 0
-                || prefix.work(render::RenderWork::AuthoredCommands) > expected.commands
-                || refusal.quantity() != render::RenderQuantity::Work(work)
+                || prefix.live(render::accounting::RenderResource::ScratchCpuBytes) != 0
+                || prefix.live(render::accounting::RenderResource::RetainedCpuBytes) != 0
+                || prefix.work(render::accounting::RenderWork::AuthoredCommands) > expected.commands
+                || refusal.quantity() != render::accounting::RenderQuantity::Work(work)
                 || refusal.current() != limit
                 || refusal.amount() != 1
-                || refusal.reason() != (render::RenderRefusalReason::Limit { limit })
+                || refusal.reason() != (render::accounting::RenderRefusalReason::Limit { limit })
             {
                 return violated(
                     RETRY,
@@ -911,14 +924,16 @@ impl Inspection {
                 );
             }
             let retry_limits = match product_observation(
-                render::RenderLimits::new().with_work_limit(work, retry_limit),
+                render::accounting::RenderLimits::new().with_work_limit(work, retry_limit),
                 RETRY,
                 "inspection-work-limit-rejected",
             )? {
                 Ok(limits) => limits,
                 Err(failure) => return Ok(failure),
             };
-            context.set_options(render::RenderAccountingOptions::new().with_limits(retry_limits));
+            context.set_options(
+                render::accounting::RenderAccountingOptions::new().with_limits(retry_limits),
+            );
             if let Some(failure) = compare_inspection(
                 expected,
                 scene.inspect(&mut context),

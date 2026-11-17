@@ -532,8 +532,8 @@ impl<'a> FontRef<'a> {
             let mut bytes = account.retained(name.len())?;
             bytes.extend_from_slice(name.as_bytes())?;
             let (bytes, hold) = bytes.into_parts()?;
-            let name =
-                String::from_utf8(bytes).map_err(|_| super::RenderAccountingError::Invariant)?;
+            let name = String::from_utf8(bytes)
+                .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?;
             (Some(Cow::Owned(name)), Some(hold))
         } else {
             (None, None)

@@ -68,7 +68,7 @@ impl RenderReadbackReport {
 /// Mutable Renderer operations require a later-used observation to end first.
 ///
 /// ```compile_fail,E0502
-/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
 /// fn render_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
 ///     let report = renderer.last_readback_attempt().unwrap();
 ///     let pending = renderer.render(surface, scene, Parameters::default());
@@ -76,8 +76,17 @@ impl RenderReadbackReport {
 /// }
 /// ```
 ///
+/// ```no_run
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
+/// fn render_after_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let _status = report.status(); // The last use ends the borrow before the mutation.
+///     let pending = renderer.render(surface, scene, Parameters::default());
+/// }
+/// ```
+///
 /// ```compile_fail,E0502
-/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
 /// fn readback_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
 ///     let report = renderer.last_readback_attempt().unwrap();
 ///     let pending = renderer.read_headless(surface);
@@ -85,8 +94,17 @@ impl RenderReadbackReport {
 /// }
 /// ```
 ///
+/// ```no_run
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
+/// fn readback_after_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let _status = report.status(); // The last use ends the borrow before the mutation.
+///     let pending = renderer.read_headless(surface);
+/// }
+/// ```
+///
 /// ```compile_fail,E0502
-/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
 /// fn take_frame_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
 ///     let report = renderer.last_readback_attempt().unwrap();
 ///     let taken = renderer.take_last_attempt();
@@ -94,12 +112,30 @@ impl RenderReadbackReport {
 /// }
 /// ```
 ///
+/// ```no_run
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
+/// fn take_frame_after_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let _status = report.status(); // The last use ends the borrow before the mutation.
+///     let taken = renderer.take_last_attempt();
+/// }
+/// ```
+///
 /// ```compile_fail,E0502
-/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
 /// fn take_readback_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
 ///     let report = renderer.last_readback_attempt().unwrap();
 ///     let taken = renderer.take_last_readback_attempt();
 ///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+///
+/// ```no_run
+/// use surgeist_render::{renderer::Renderer, scene::Scene, surface::{Parameters, Surface}};
+/// fn take_readback_after_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let _status = report.status(); // The last use ends the borrow before the mutation.
+///     let taken = renderer.take_last_readback_attempt();
 /// }
 /// ```
 pub struct RenderReadbackReportRef<'a>(&'a RenderReadbackReport);

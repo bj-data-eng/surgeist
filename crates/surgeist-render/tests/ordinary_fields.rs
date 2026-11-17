@@ -2,8 +2,9 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, Gradient, GradientStop, ImageBuffer, Options, Parameters, Point, Rect, RenderRoute,
-    Renderer, Scene, Size, Transform,
+    geometry::Point, geometry::Rect, geometry::Size, geometry::Transform, image::ImageBuffer,
+    paint::Color, paint::Gradient, paint::GradientStop, renderer::Options, renderer::RenderRoute,
+    renderer::Renderer, scene::Scene, surface::Parameters,
 };
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> Color {
@@ -37,7 +38,7 @@ fn assert_pixel(image: &ImageBuffer, x: u32, y: u32, expected: [u8; 4], toleranc
 }
 
 fn field_scene(graph: bool, draw: impl FnOnce(&mut Scene)) -> Scene {
-    use surgeist_render::{Image, Layer, ResolvedLayerAlphaMask};
+    use surgeist_render::{image::Image, scene::Layer, scene::ResolvedLayerAlphaMask};
 
     let mut scene = Scene::new();
     if graph {
@@ -56,7 +57,7 @@ fn field_scene(graph: bool, draw: impl FnOnce(&mut Scene)) -> Scene {
 
 fn read(
     renderer: &mut Renderer,
-    surface: &mut surgeist_render::Surface,
+    surface: &mut surgeist_render::surface::Surface,
     scene: &Scene,
     graph: bool,
 ) -> ImageBuffer {
@@ -135,7 +136,7 @@ fn linear_gradient_preserves_its_local_field_under_shear() {
 
 #[test]
 fn finite_f64_positions_and_elliptical_axes_are_preserved_by_the_public_model() {
-    use surgeist_render::{ErrorCode, RepeatingGradient};
+    use surgeist_render::{ErrorCode, paint::RepeatingGradient};
 
     let red = rgba(1.0, 0.0, 0.0, 1.0);
     let blue = rgba(0.0, 0.0, 1.0, 1.0);
@@ -181,7 +182,7 @@ fn finite_f64_positions_and_elliptical_axes_are_preserved_by_the_public_model() 
 
 #[test]
 fn outside_stops_ellipses_steps_and_overflow_safe_fields_execute_on_both_gpu_routes() {
-    use surgeist_render::EffectQualityPolicy;
+    use surgeist_render::renderer::EffectQualityPolicy;
 
     let red = rgba(1.0, 0.0, 0.0, 1.0);
     let blue = rgba(0.0, 0.0, 1.0, 1.0);
@@ -326,8 +327,8 @@ fn outside_stops_ellipses_steps_and_overflow_safe_fields_execute_on_both_gpu_rou
 #[test]
 fn distinct_f64_stop_collapse_refuses_without_publication_and_allows_retry() {
     use surgeist_render::{
-        ErrorCode, GradientRealizationError, RenderAccountingOptions, RenderAttemptStatus,
-        RenderProfile, RenderWork,
+        ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderProfile, accounting::RenderWork, paint::GradientRealizationError,
     };
 
     let red = rgba(1.0, 0.0, 0.0, 1.0);
@@ -398,9 +399,9 @@ fn distinct_f64_stop_collapse_refuses_without_publication_and_allows_retry() {
 #[test]
 fn outside_fields_follow_transformed_strokes_and_both_glyph_routes_at_final_scale() {
     use surgeist_render::{
-        EffectQualityPolicy, FontData, FontRef, GlyphRunLimits, GlyphSynthesis,
-        RenderAccountingContext, Shape, Stroke, TextGlyph, TextInstance, TextPaint, TextRun,
-        TextRunBounds,
+        accounting::RenderAccountingContext, renderer::EffectQualityPolicy, shape::Shape,
+        shape::Stroke, text::FontData, text::FontRef, text::GlyphRunLimits, text::GlyphSynthesis,
+        text::TextGlyph, text::TextInstance, text::TextPaint, text::TextRun, text::TextRunBounds,
     };
 
     let red = rgba(1.0, 0.0, 0.0, 0.5);
@@ -527,8 +528,9 @@ mod paint {
         RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
     };
     use surgeist_render::{
-        EffectQualityPolicy, Error, ErrorCode, PaintGradientError, RenderAccountingContext,
-        prepare_linear_gradient, prepare_radial_gradient,
+        Error, ErrorCode, accounting::RenderAccountingContext, paint_gradient::PaintGradientError,
+        paint_gradient::prepare_linear_gradient, paint_gradient::prepare_radial_gradient,
+        renderer::EffectQualityPolicy,
     };
 
     fn options() -> PaintOptions {
@@ -724,7 +726,7 @@ mod paint {
 
 #[test]
 fn tiny_radial_step_keeps_the_first_color_far_below_its_threshold() {
-    use surgeist_render::EffectQualityPolicy;
+    use surgeist_render::renderer::EffectQualityPolicy;
     let red = rgba(1.0, 0.0, 0.0, 1.0);
     let blue = rgba(0.0, 0.0, 1.0, 1.0);
     let gradient = Gradient::try_radial(

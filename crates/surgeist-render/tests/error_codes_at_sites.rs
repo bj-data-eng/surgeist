@@ -5,8 +5,10 @@
 //! code: it must read true for what the operation did. `Error` itself prints only its message.
 
 use surgeist_render::{
-    BackgroundAttachment, BlendMode, CoordinateSpaceKind, CoordinateSpaceTag, ErrorCode, Image,
-    ImageAttachmentPlan, LayerComposition, PorterDuffOperator, Rect, Size, Transform,
+    ErrorCode, geometry::CoordinateSpaceKind, geometry::CoordinateSpaceTag, geometry::Rect,
+    geometry::Size, geometry::Transform, image::Image, scene::BlendMode, scene::LayerComposition,
+    scene::PorterDuffOperator, style::image::BackgroundAttachment,
+    style::image::ImageAttachmentPlan,
 };
 
 #[test]

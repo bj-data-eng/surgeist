@@ -506,22 +506,22 @@ fn assert_computed_scope_before(
     assert_eq!(caret.origin, text::Point::new(10.0, 10.0));
     assert_eq!(caret.size.height, 10.0);
     drop(system);
-    let paint = render::prepare_text_layout(
+    let paint = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::identity(),
-        render::TextLayoutLimits::new(
-            render::GlyphRunLimits::new(8, 1024, 8 << 20, 8 << 20),
+        render::geometry::Transform::identity(),
+        render::text_layout::TextLayoutLimits::new(
+            render::text::GlyphRunLimits::new(8, 1024, 8 << 20, 8 << 20),
             8,
             8,
             0,
         ),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(paint.scene().len(), 2);
     let summary = paint
         .scene()
-        .inspect(&mut render::RenderAccountingContext::default())
+        .inspect(&mut render::accounting::RenderAccountingContext::default())
         .unwrap();
     assert_eq!((summary.commands, summary.glyphs), (2, 2));
     assert_eq!(paint.layout().lines(), placed.lines());

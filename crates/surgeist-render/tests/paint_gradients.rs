@@ -16,12 +16,16 @@ use surgeist_paint::radial_gradient::{
     RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
 };
 use surgeist_render::{
-    Color, Error, ErrorCode, GradientStop, PaintGradientError, RenderAccountingContext,
-    RenderAccountingError, RenderAccountingOptions, RenderAttemptKind, RenderAttemptReport,
-    RenderAttemptStatus, RenderClock, RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter,
-    RenderProfile, RenderQuantity, RenderResource, RenderWork, RepeatingGradient,
-    prepare_linear_gradient, prepare_radial_gradient, prepare_repeating_linear_gradient,
-    prepare_repeating_radial_gradient,
+    Error, ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptReport, accounting::RenderAttemptStatus, accounting::RenderClock,
+    accounting::RenderEvent, accounting::RenderLimits, accounting::RenderPhase,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
+    accounting::RenderResource, accounting::RenderWork, paint::Color, paint::GradientStop,
+    paint::RepeatingGradient, paint_gradient::PaintGradientError,
+    paint_gradient::prepare_linear_gradient, paint_gradient::prepare_radial_gradient,
+    paint_gradient::prepare_repeating_linear_gradient,
+    paint_gradient::prepare_repeating_radial_gradient,
 };
 
 fn red() -> Color {
@@ -179,7 +183,7 @@ fn returned_gradient_and_its_clone_outlive_all_source_storage_and_the_context() 
     assert_eq!(observed(&cloned), [(0.0, red()), (1.0, blue())]);
     let (_, end) = cloned.linear_points().unwrap();
     assert_eq!(end.x(), 8.0);
-    let _: surgeist_render::Paint = cloned.into();
+    let _: surgeist_render::paint::Paint = cloned.into();
 }
 
 #[test]
@@ -821,10 +825,12 @@ fn off_untimed_timed_and_filtered_profiles_preserve_output_admission_and_usage()
 mod gpu {
     use super::*;
     use surgeist_render::{
-        EffectQualityPolicy, FontData, FontRef, GlyphRunLimits, GlyphSynthesis, Image, ImageBuffer,
-        Layer, Options, Parameters, Rect, RenderRoute, Renderer, ResolvedLayerAlphaMask, Scene,
-        Shape, Size, Stroke, Surface, TextGlyph, TextInstance, TextPaint, TextRun, TextRunBounds,
-        Transform,
+        geometry::Rect, geometry::Size, geometry::Transform, image::Image, image::ImageBuffer,
+        renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute,
+        renderer::Renderer, scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene,
+        shape::Shape, shape::Stroke, surface::Parameters, surface::Surface, text::FontData,
+        text::FontRef, text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph,
+        text::TextInstance, text::TextPaint, text::TextRun, text::TextRunBounds,
     };
 
     fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {

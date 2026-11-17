@@ -6,10 +6,11 @@ use surgeist_font::{
     DecodeError, DecodeLimits, FontResource, InvalidKind, LimitKind, SourceFormat,
 };
 use surgeist_render::{
-    Color, Error, ErrorCode, FontData, GlyphCapability, GlyphNumericPhase, GlyphPreparationError,
-    GlyphResource, GlyphRunLimits, GlyphSynthesis, NormalizedCoordinate, PathElement,
-    PreparedGlyphRun, Rect, Scene, TextGlyph, TextInstance, TextPaint, TextRunBoundsKind,
-    Transform, VariationTable,
+    Error, ErrorCode, geometry::Rect, geometry::Transform, paint::Color, scene::Scene,
+    shape::PathElement, text::FontData, text::GlyphCapability, text::GlyphNumericPhase,
+    text::GlyphPreparationError, text::GlyphResource, text::GlyphRunLimits, text::GlyphSynthesis,
+    text::NormalizedCoordinate, text::PreparedGlyphRun, text::TextGlyph, text::TextInstance,
+    text::TextPaint, text::TextRunBoundsKind, text::VariationTable,
 };
 use surgeist_test::fixtures::FONT_LIMITS;
 
@@ -50,7 +51,7 @@ fn prepare(bytes: &[u8], instance: &TextInstance) -> PreparedGlyphRun {
             instance,
             &[glyph()],
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap()
 }
@@ -78,7 +79,7 @@ fn prepare_em_square(font: &FontData, glyph_id: u32) -> PreparedGlyphRun {
             &instance,
             &[glyph],
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     // X is an em square from y=-200 to y=800 at UPEM 1000. Render reflects y.
@@ -212,7 +213,7 @@ fn decode_and_selected_outline_refusals_preserve_prior_accepted_glyph_ink() {
             &instance(20.0, vec![], 0.0),
             &[glyph],
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert_eq!(
@@ -245,7 +246,7 @@ fn prepared_glyph_run_true_empty_and_empty_input_have_no_authored_bounds_escape(
                 &instance,
                 &glyphs,
                 limits(),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(prepared.bounds().kind(), TextRunBoundsKind::Empty);
@@ -292,7 +293,7 @@ fn prepared_glyph_run_exact_coordinate_lattice_rejects_loss_and_wrong_axis_inven
                     &extra,
                     &[glyph()],
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -333,7 +334,7 @@ fn prepared_glyph_run_real_nondefault_variation_changes_exact_geometry_and_retai
                     &missing,
                     &[glyph()],
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -346,7 +347,7 @@ fn prepared_glyph_run_real_nondefault_variation_changes_exact_geometry_and_retai
 
 #[test]
 fn variation_report_counts_each_qualifier_axis_and_converted_coordinate() {
-    use surgeist_render::{RenderAccountingContext, RenderWork};
+    use surgeist_render::{accounting::RenderAccountingContext, accounting::RenderWork};
     let mut context = RenderAccountingContext::default();
     let instance = instance(
         1000.0,
@@ -366,8 +367,9 @@ fn variation_report_counts_each_qualifier_axis_and_converted_coordinate() {
 #[test]
 fn intermediate_region_preserves_literal_geometry_and_axis_work_across_profiles() {
     use surgeist_render::{
-        RenderAccountingContext, RenderAccountingOptions, RenderPhase, RenderPhaseFilter,
-        RenderProfile, RenderWork,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderProfile,
+        accounting::RenderWork,
     };
     let face = font(&variable_ahem_with_intermediate(0, 8192, 16384));
     for (bits, width) in [
@@ -440,7 +442,9 @@ fn intermediate_region_preserves_literal_geometry_and_axis_work_across_profiles(
 
 #[test]
 fn malformed_intermediate_region_keeps_typed_failure_and_releases_custody() {
-    use surgeist_render::{RenderAccountingContext, RenderResource, RenderWork};
+    use surgeist_render::{
+        accounting::RenderAccountingContext, accounting::RenderResource, accounting::RenderWork,
+    };
     let selected = instance(
         1000.0,
         vec![NormalizedCoordinate::try_from_bits(8192).unwrap()],
@@ -470,8 +474,9 @@ fn malformed_intermediate_region_keeps_typed_failure_and_releases_custody() {
 #[test]
 fn intermediate_region_comparison_refuses_three_visits_atomically_and_retries() {
     use surgeist_render::{
-        RenderAccountingContext, RenderAccountingError, RenderAccountingOptions, RenderLimits,
-        RenderPhase, RenderQuantity, RenderResource, RenderWork,
+        accounting::RenderAccountingContext, accounting::RenderAccountingError,
+        accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderQuantity, accounting::RenderResource, accounting::RenderWork,
     };
     let face = font(&variable_ahem_with_intermediate(0, 8192, 16384));
     let selected = instance(
@@ -542,7 +547,7 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
                         &instance(1000.0, coordinate.clone(), 0.0),
                         &[glyph()],
                         limits(),
-                        &mut surgeist_render::RenderAccountingContext::default()
+                        &mut surgeist_render::accounting::RenderAccountingContext::default()
                     )
                     .unwrap_err()
             ),
@@ -574,7 +579,7 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
                     &instance(1000.0, coordinate, 0.0),
                     &[glyph()],
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -592,7 +597,7 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
                     &instance(1000.0, vec![], 0.0),
                     &[glyph()],
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -628,7 +633,7 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
         ),
     ] {
         assert!(
-            matches!(diagnostic(&font.prepare_glyph_run(&instance, &glyphs, limits, &mut surgeist_render::RenderAccountingContext::default()).unwrap_err()), GlyphPreparationError::Limit { resource: actual, .. } if actual == resource)
+            matches!(diagnostic(&font.prepare_glyph_run(&instance, &glyphs, limits, &mut surgeist_render::accounting::RenderAccountingContext::default()).unwrap_err()), GlyphPreparationError::Limit { resource: actual, .. } if actual == resource)
         );
     }
     let prepared = font
@@ -636,7 +641,7 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
             &instance,
             &glyphs,
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(prepared.glyphs(), glyphs);
@@ -654,7 +659,7 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
                 &instance,
                 &[],
                 GlyphRunLimits::new(0, 0, 0, 0),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap_err(),
     ) {
@@ -683,7 +688,7 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
                 &instance,
                 &[],
                 GlyphRunLimits::new(0, 0, 0, expected - 1),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap_err();
         assert!(
@@ -694,7 +699,7 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
                 &instance,
                 &[],
                 GlyphRunLimits::new(0, 0, 0, expected),
-                &mut surgeist_render::RenderAccountingContext::default()
+                &mut surgeist_render::accounting::RenderAccountingContext::default()
             )
             .is_ok()
         );
@@ -713,7 +718,7 @@ fn prepared_glyph_run_numeric_and_invalid_synthesis_refusals_do_not_publish_empt
                         &instance(size, vec![], skew),
                         &[TextGlyph::try_new(X, 0.0, 0.0, 1.0).unwrap()],
                         limits(),
-                        &mut surgeist_render::RenderAccountingContext::default()
+                        &mut surgeist_render::accounting::RenderAccountingContext::default()
                     )
                     .unwrap_err()
             ),
@@ -728,7 +733,7 @@ fn prepared_glyph_run_numeric_and_invalid_synthesis_refusals_do_not_publish_empt
                     &instance(1000.0, vec![], 0.0),
                     &[huge],
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -748,7 +753,7 @@ fn prepared_glyph_run_numeric_and_invalid_synthesis_refusals_do_not_publish_empt
                     &instance(1000.0, vec![], 0.0),
                     &[invalid],
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -803,7 +808,7 @@ fn prepared_glyph_run_harfbuzz_first_offcurve_contour_has_literal_start_and_cont
             &instance(1000.0, vec![], 0.0),
             &[TextGlyph::try_new(X, 0.0, 0.0, 0.0).unwrap()],
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     let elements: Vec<_> = prepared.path_elements().collect();
@@ -830,7 +835,7 @@ fn prepared_glyph_run_composite_and_sparse_variation_refuse_the_whole_run() {
                     &instance(1000.0, vec![], 0.0),
                     &valid_then_composite,
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -856,7 +861,7 @@ fn prepared_glyph_run_composite_and_sparse_variation_refuse_the_whole_run() {
                     ),
                     &[glyph()],
                     limits(),
-                    &mut surgeist_render::RenderAccountingContext::default()
+                    &mut surgeist_render::accounting::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -894,7 +899,7 @@ fn prepared_glyph_run_active_partial_delta_fixed_overflow_is_not_default_success
             ),
             &[glyph()],
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert!(matches!(
@@ -916,7 +921,7 @@ fn prepared_glyph_run_shared_identity_and_scene_survive_original_input_drop() {
             &instance(1000.0, vec![], 0.0),
             &glyphs,
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap()
     };
@@ -933,7 +938,7 @@ fn prepared_glyph_run_shared_identity_and_scene_survive_original_input_drop() {
     drop(cloned);
     assert_eq!(
         scene
-            .inspect(&mut surgeist_render::RenderAccountingContext::default())
+            .inspect(&mut surgeist_render::accounting::RenderAccountingContext::default())
             .unwrap()
             .glyphs,
         1
@@ -942,7 +947,7 @@ fn prepared_glyph_run_shared_identity_and_scene_survive_original_input_drop() {
     drop(scene);
     assert_eq!(
         moved
-            .inspect(&mut surgeist_render::RenderAccountingContext::default())
+            .inspect(&mut surgeist_render::accounting::RenderAccountingContext::default())
             .unwrap()
             .glyphs,
         1

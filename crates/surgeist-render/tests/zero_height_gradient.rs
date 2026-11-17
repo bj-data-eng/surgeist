@@ -13,10 +13,12 @@ use surgeist_paint::zero_height_gradient::{
     GradientRepeat, ZeroHeightGradientColors, resolve_zero_height_gradient_colors,
 };
 use surgeist_render::{
-    Color, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-    RenderAttemptKind, RenderAttemptStatus, RenderClock, RenderLimits, RenderPhase,
-    RenderPhaseFilter, RenderProfile, RenderResource, RenderWork,
-    prepare_zero_height_gradient_color,
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus, accounting::RenderClock, accounting::RenderLimits,
+    accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderProfile,
+    accounting::RenderResource, accounting::RenderWork, paint::Color,
+    paint_gradient::prepare_zero_height_gradient_color,
 };
 
 fn color(r: f32, g: f32, b: f32, a: f32) -> Color {
@@ -331,10 +333,12 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
 mod gpu {
     use super::*;
     use surgeist_render::{
-        EffectQualityPolicy, FontData, FontRef, GlyphRunLimits, GlyphSynthesis, Image, ImageBuffer,
-        Layer, Options, Parameters, Rect, RenderQuantity, RenderRoute, Renderer,
-        ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke, Surface, TextGlyph, TextInstance,
-        TextPaint, TextRun, TextRunBounds, Transform,
+        accounting::RenderQuantity, geometry::Rect, geometry::Size, geometry::Transform,
+        image::Image, image::ImageBuffer, renderer::EffectQualityPolicy, renderer::Options,
+        renderer::RenderRoute, renderer::Renderer, scene::Layer, scene::ResolvedLayerAlphaMask,
+        scene::Scene, shape::Shape, shape::Stroke, surface::Parameters, surface::Surface,
+        text::FontData, text::FontRef, text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph,
+        text::TextInstance, text::TextPaint, text::TextRun, text::TextRunBounds,
     };
 
     fn bounds() -> Rect {

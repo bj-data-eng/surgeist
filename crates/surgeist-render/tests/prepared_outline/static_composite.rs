@@ -154,7 +154,7 @@ fn expect_ink(
         &instance,
         glyphs,
         limits(),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     );
     assert_eq!(font, retained);
     assert_eq!(instance, kept);
@@ -191,7 +191,7 @@ fn expect_error(
         &instance,
         glyphs,
         limits(),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     );
     assert_eq!(font, retained);
     assert_eq!(instance, kept);
@@ -503,7 +503,7 @@ fn composite_children_share_raw_and_provider_qualification_after_a_valid_glyph()
             &instance(1000.0, vec![], 0.0),
             &[at_origin()],
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         ) {
             Ok(prepared) => {
                 assert_eq!(
@@ -576,7 +576,7 @@ fn unsupported_component_controls_and_whole_run_limit_retry_preserve_inputs() {
             &instance,
             &glyphs,
             low,
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         ) {
             Err(error) if matches!(diagnostic(&error),GlyphPreparationError::Limit{resource:actual,..} if actual==resource) =>
                 {}
@@ -592,7 +592,7 @@ fn unsupported_component_controls_and_whole_run_limit_retry_preserve_inputs() {
         &instance,
         &glyphs,
         limits(),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     ) {
         Ok(prepared) => {
             assert_eq!(

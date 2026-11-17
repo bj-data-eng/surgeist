@@ -494,21 +494,21 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
     // The exact immutable batch owns its fonts and geometry after the Text
     // system is gone. Render cannot query it or apply another BASE correction.
     drop(system);
-    let limits = render::TextLayoutLimits::new(
-        render::GlyphRunLimits::new(8, 1024, 8 << 20, 8 << 20),
+    let limits = render::text_layout::TextLayoutLimits::new(
+        render::text::GlyphRunLimits::new(8, 1024, 8 << 20, 8 << 20),
         8,
         8,
         8,
     );
     for outer in [
-        render::Transform::identity(),
-        render::Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
+        render::geometry::Transform::identity(),
+        render::geometry::Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
     ] {
-        let paint = render::prepare_text_layout(
+        let paint = render::text_layout::prepare_text_layout(
             placed,
             outer,
             limits,
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(paint.layout(), placed));
@@ -539,21 +539,31 @@ fn actual_used_alphabetic_script_origins_reach_render_from_named_layout() {
     qualify_font(&bytes);
     // Confirm real asymmetric ink through Render's public headless owner before
     // composing Layout geometry; neither expected bound comes from Text output.
-    let render_font =
-        render::FontData::try_from_bytes(bytes.clone(), 0, surgeist_test::fixtures::FONT_LIMITS)
-            .unwrap();
+    let render_font = render::text::FontData::try_from_bytes(
+        bytes.clone(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let instance =
-        render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
+        render::text::TextInstance::try_new(10.0, vec![], render::text::GlyphSynthesis::none())
+            .unwrap();
     for (glyph, expected) in [
-        (35, render::Rect::try_new(0.0, -8.0, 10.0, 10.0).unwrap()),
-        (274, render::Rect::try_new(0.0, -6.0, 10.0, 2.0).unwrap()),
+        (
+            35,
+            render::geometry::Rect::try_new(0.0, -8.0, 10.0, 10.0).unwrap(),
+        ),
+        (
+            274,
+            render::geometry::Rect::try_new(0.0, -6.0, 10.0, 2.0).unwrap(),
+        ),
     ] {
         let admitted = render_font
             .prepare_glyph_run(
                 &instance,
-                &[render::TextGlyph::try_new(glyph, 0.0, 0.0, 10.0).unwrap()],
-                render::GlyphRunLimits::new(1, 64, 1 << 20, 1 << 20),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &[render::text::TextGlyph::try_new(glyph, 0.0, 0.0, 10.0).unwrap()],
+                render::text::GlyphRunLimits::new(1, 64, 1 << 20, 1 << 20),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(admitted.bounds().ink_rect(), Some(expected));

@@ -197,9 +197,9 @@ fn px(value: f32) -> layout::PreferredSize {
     layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(value).unwrap())
 }
 
-fn limits() -> render::TextLayoutLimits {
-    render::TextLayoutLimits::new(
-        render::GlyphRunLimits::new(16, 1024, 8 << 20, 8 << 20),
+fn limits() -> render::text_layout::TextLayoutLimits {
+    render::text_layout::TextLayoutLimits::new(
+        render::text::GlyphRunLimits::new(16, 1024, 8 << 20, 8 << 20),
         8,
         8,
         8,
@@ -462,15 +462,15 @@ fn assert_composition(kind: text::InlineBoxKind) {
     );
     let before_render = system.stats();
     for outer in [
-        render::Transform::identity(),
-        render::Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
+        render::geometry::Transform::identity(),
+        render::geometry::Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
     ] {
         for actual in [parent_layout, child_layout] {
-            let paint = render::prepare_text_layout(
+            let paint = render::text_layout::prepare_text_layout(
                 actual,
                 outer,
                 limits(),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(paint.layout(), actual));
@@ -495,25 +495,29 @@ fn sideways_out_of_flow_child_keeps_horizontal_content_through_layout_and_render
 
 #[test]
 fn registered_chi_ink_is_asymmetric_before_clockwise_or_horizontal_placement() {
-    let font =
-        render::FontData::try_from_bytes(AHEM.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS)
-            .unwrap();
+    let font = render::text::FontData::try_from_bytes(
+        AHEM.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let instance =
-        render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
-    let glyphs = [render::TextGlyph::try_new(274, 0.0, 0.0, 10.0).unwrap()];
+        render::text::TextInstance::try_new(10.0, vec![], render::text::GlyphSynthesis::none())
+            .unwrap();
+    let glyphs = [render::text::TextGlyph::try_new(274, 0.0, 0.0, 10.0).unwrap()];
     let admitted = font
         .prepare_glyph_run(
             &instance,
             &glyphs,
-            render::GlyphRunLimits::new(1, 64, 1 << 20, 1 << 20),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            render::text::GlyphRunLimits::new(1, 64, 1 << 20, 1 << 20),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(admitted.instance(), &instance);
     assert_eq!(admitted.glyphs(), glyphs);
     assert_eq!(
         admitted.bounds().ink_rect(),
-        Some(render::Rect::try_new(0.0, -6.0, 10.0, 2.0).unwrap())
+        Some(render::geometry::Rect::try_new(0.0, -6.0, 10.0, 2.0).unwrap())
     );
     // Scene command transforms are private to Render. Its owning sideways
     // tests execute this stripe's CW transform and noncommuting outer scale;

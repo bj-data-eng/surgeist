@@ -2,7 +2,10 @@
 #![cfg(not(target_family = "wasm"))]
 
 use std::sync::{Arc, Weak};
-use surgeist_render::{Color, Image, ImageFit, Layer, Rect, RenderAccountingContext, Scene, Size};
+use surgeist_render::{
+    accounting::RenderAccountingContext, geometry::Rect, geometry::Size, image::Image,
+    image::ImageFit, paint::Color, scene::Layer, scene::Scene,
+};
 
 fn nested_scene(with_siblings: bool) -> (Scene, Weak<[u8]>) {
     let rect = Rect::try_new(0.0, 0.0, 1.0, 1.0).unwrap();

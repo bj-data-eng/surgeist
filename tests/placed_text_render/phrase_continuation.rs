@@ -455,16 +455,16 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         copied.extend_from_slice(whole.source_text().code_units());
         // System has already been dropped by capture; Render consumes retained
         // exact finalized lines and font bytes without asking Text to rewrap.
-        let scene = render::prepare_text_layout(
+        let scene = render::text_layout::prepare_text_layout(
             placed,
-            render::Transform::identity(),
-            render::TextLayoutLimits::new(
-                render::GlyphRunLimits::new(64, 4096, 8 << 20, 8 << 20),
+            render::geometry::Transform::identity(),
+            render::text_layout::TextLayoutLimits::new(
+                render::text::GlyphRunLimits::new(64, 4096, 8 << 20, 8 << 20),
                 16,
                 64,
                 8,
             ),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(scene.layout(), placed));

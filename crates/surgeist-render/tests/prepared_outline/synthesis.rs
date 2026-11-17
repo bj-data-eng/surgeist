@@ -32,7 +32,7 @@ fn explicit_positive_bold_appends_two_literal_contours_without_changing_glyph_fa
                 &instance,
                 &glyphs,
                 limits(),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(prepared.font(), &font);
@@ -77,7 +77,7 @@ fn explicit_bold_after_existing_x_shear_keeps_local_displacement_and_literal_bou
             &instance,
             &glyphs,
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     // x*s + k*y*s + gx, then +j*b. Top y800 contributes +144,
@@ -111,7 +111,7 @@ fn positive_bold_preserves_source_proved_empty_glyphs_and_empty_input() {
                 &instance,
                 &glyphs,
                 limits(),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(prepared.bounds().kind(), TextRunBoundsKind::Empty);
@@ -151,7 +151,7 @@ fn bold_copy_uses_existing_limits_and_same_input_raised_retry_is_atomic() {
             &instance,
             &glyphs,
             low,
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         ) {
             Err(error) if matches!(diagnostic(&error),GlyphPreparationError::Limit{resource:actual,..} if actual==resource) =>
                 {}
@@ -166,7 +166,7 @@ fn bold_copy_uses_existing_limits_and_same_input_raised_retry_is_atomic() {
         &instance,
         &glyphs,
         GlyphRunLimits::new(1, 10, 1 << 20, 1 << 20),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     ) {
         Ok(prepared) => {
             assert_eq!(prepared.path_elements().count(), 10);
@@ -195,7 +195,7 @@ fn positive_copy_displacement_lost_at_canonical_point_conversion_refuses_whole_r
             &plain,
             &[far],
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(original.bounds().ink_rect().unwrap().width(), 36.0);
@@ -209,7 +209,7 @@ fn positive_copy_displacement_lost_at_canonical_point_conversion_refuses_whole_r
             &bold,
             &glyphs,
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert!(

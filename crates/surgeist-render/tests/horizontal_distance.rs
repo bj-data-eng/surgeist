@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
-use surgeist_render::{Color, Gradient, GradientHint, GradientStop, Point, RepeatingGradient};
+use surgeist_render::{
+    geometry::Point, paint::Color, paint::Gradient, paint::GradientHint, paint::GradientStop,
+    paint::RepeatingGradient,
+};
 
 fn color(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::try_rgba(r, g, b, a).unwrap()
@@ -53,11 +56,11 @@ fn physical_distance_models_preserve_controls_and_expose_only_their_actual_geome
     for (stops, expected) in [
         (
             records(&[(0.0, red, Some(3.0)), (2.0, blue, None)]),
-            surgeist_render::GradientHintError::HintOutsideInterval { stop_index: 0 },
+            surgeist_render::paint::GradientHintError::HintOutsideInterval { stop_index: 0 },
         ),
         (
             records(&[(0.0, red, None), (2.0, blue, Some(2.0))]),
-            surgeist_render::GradientHintError::TrailingHint { stop_index: 1 },
+            surgeist_render::paint::GradientHintError::TrailingHint { stop_index: 1 },
         ),
     ] {
         for error in [
@@ -83,8 +86,10 @@ fn physical_distance_models_preserve_controls_and_expose_only_their_actual_geome
 mod gpu {
     use super::*;
     use surgeist_render::{
-        EffectQualityPolicy, Image, ImageBuffer, Layer, Options, Paint, Parameters, Rect,
-        RenderRoute, Renderer, ResolvedLayerAlphaMask, Scene, Size, Surface, Transform,
+        geometry::Rect, geometry::Size, geometry::Transform, image::Image, image::ImageBuffer,
+        paint::Paint, renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute,
+        renderer::Renderer, scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene,
+        surface::Parameters, surface::Surface,
     };
 
     fn bounds() -> Rect {
@@ -414,8 +419,8 @@ mod gpu {
     #[test]
     fn native_control_and_phase_losses_refuse_without_publication_and_allow_retry() {
         use surgeist_render::{
-            ErrorCode, GradientRealizationError, RenderAccountingOptions, RenderAttemptStatus,
-            RenderProfile, RenderWork,
+            ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+            accounting::RenderProfile, accounting::RenderWork, paint::GradientRealizationError,
         };
         let r = color(1.0, 0.0, 0.0, 1.0);
         let b = color(0.0, 0.0, 1.0, 1.0);
@@ -507,8 +512,10 @@ mod gpu {
     #[test]
     fn distance_program_copy_caps_and_profiles_preserve_publication_and_fresh_retry() {
         use surgeist_render::{
-            RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
-            RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderWork,
+            accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+            accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+            accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
+            accounting::RenderWork,
         };
         let r = color(1.0, 0.0, 0.0, 1.0);
         let b = color(0.0, 0.0, 1.0, 1.0);
@@ -632,7 +639,7 @@ mod gpu {
 
     #[test]
     fn step_power_and_phase_fixtures_execute_in_every_fine_antialiasing_variant() {
-        use surgeist_render::Antialiasing;
+        use surgeist_render::renderer::Antialiasing;
         let r = color(1.0, 0.0, 0.0, 1.0);
         let b = color(0.0, 0.0, 1.0, 1.0);
         let cases = [

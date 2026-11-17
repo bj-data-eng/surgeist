@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, Rect, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
-    RenderAttemptStatus, RenderLimits, RenderPhaseFilter, RenderProfile, RenderResource,
-    RenderStandaloneReport, RenderWork, Scene,
+    accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptKind, accounting::RenderAttemptStatus, accounting::RenderLimits,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderResource,
+    accounting::RenderStandaloneReport, accounting::RenderWork, geometry::Rect, paint::Color,
+    scene::Scene,
 };
 
 fn scene() -> Scene {

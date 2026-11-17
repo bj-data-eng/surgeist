@@ -3,14 +3,19 @@
 
 use std::{cell::Cell, time::Duration};
 use surgeist_render::{
-    Antialiasing, Color, EffectQualityPolicy, FontData, FontRef, GlyphRunLimits, GlyphSynthesis,
-    Gradient, GradientStop, Image, ImageBuffer, ImageFit, Layer, Options, Parameters, Point,
-    PreparedGlyphRun, Rect, RenderAccountingContext, RenderAccountingError,
-    RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderCpuScope, RenderEvent,
-    RenderFrameReport, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
-    RenderResource, RenderRoute, RenderWork, Renderer, RepeatingGradient, ResolvedLayerAlphaMask,
-    Scene, Shape, Size, Stroke, Surface, TextGlyph, TextInstance, TextPaint, TextRun,
-    TextRunBounds, Transform,
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus, accounting::RenderClock,
+    accounting::RenderCpuScope, accounting::RenderEvent, accounting::RenderFrameReport,
+    accounting::RenderLimits, accounting::RenderPhase, accounting::RenderPhaseFilter,
+    accounting::RenderProfile, accounting::RenderQuantity, accounting::RenderResource,
+    accounting::RenderWork, geometry::Point, geometry::Rect, geometry::Size, geometry::Transform,
+    image::Image, image::ImageBuffer, image::ImageFit, paint::Color, paint::Gradient,
+    paint::GradientStop, paint::RepeatingGradient, renderer::Antialiasing,
+    renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute, renderer::Renderer,
+    scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene, shape::Shape, shape::Stroke,
+    surface::Parameters, surface::Surface, text::FontData, text::FontRef, text::GlyphRunLimits,
+    text::GlyphSynthesis, text::PreparedGlyphRun, text::TextGlyph, text::TextInstance,
+    text::TextPaint, text::TextRun, text::TextRunBounds,
 };
 
 fn color(r: f32, g: f32, b: f32) -> Color {

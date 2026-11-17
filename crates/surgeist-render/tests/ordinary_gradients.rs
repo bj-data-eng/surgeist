@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 #![forbid(unsafe_code)]
 
-use surgeist_render::{Color, Gradient, GradientStop, Point};
+use surgeist_render::{geometry::Point, paint::Color, paint::Gradient, paint::GradientStop};
 
 #[derive(Clone, Copy, Debug)]
 enum Field {
@@ -51,8 +51,10 @@ fn assert_rgba(actual: [u8; 4], expected: [u8; 4], tolerance: u8, context: &str)
 mod gpu {
     use super::*;
     use surgeist_render::{
-        EffectQualityPolicy, Image, ImageBuffer, Layer, Options, Parameters, Rect, RenderRoute,
-        Renderer, ResolvedLayerAlphaMask, Scene, Size, Surface,
+        geometry::Rect, geometry::Size, image::Image, image::ImageBuffer,
+        renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute,
+        renderer::Renderer, scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene,
+        surface::Parameters, surface::Surface,
     };
 
     fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
@@ -222,8 +224,10 @@ mod gpu {
     #[test]
     fn native_record_work_refusal_preserves_publication_and_allows_smaller_retry() {
         use surgeist_render::{
-            RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
-            RenderPhase, RenderProfile, RenderQuantity, RenderRefusalReason, RenderWork,
+            accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+            accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+            accounting::RenderProfile, accounting::RenderQuantity, accounting::RenderRefusalReason,
+            accounting::RenderWork,
         };
 
         let bounds = rect(0.0, 0.0, 8.0, 4.0);

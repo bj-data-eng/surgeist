@@ -2,9 +2,10 @@ use surgeist_color::{
     Color as ResolvedColor, ColorSpace, Finite, PredefinedColorSpace, UnitInterval,
 };
 use surgeist_render::{
-    Color, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
-    RenderAttemptStatus, RenderLimits, RenderPhase, RenderProfile, RenderQuantity, RenderWork,
-    prepare_sdr_srgb_color,
+    accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptKind, accounting::RenderAttemptStatus, accounting::RenderLimits,
+    accounting::RenderPhase, accounting::RenderProfile, accounting::RenderQuantity,
+    accounting::RenderWork, paint::Color, paint::prepare_sdr_srgb_color,
 };
 
 fn oklch(l: f64, c: f64, h: f64, alpha: f64) -> ResolvedColor {
@@ -138,7 +139,10 @@ fn sdr_color_reports_the_accepted_prefix_and_times_the_retry() {
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn sdr_color_reaches_native_scene_paint_with_source_over_alpha() {
-    use surgeist_render::{Layer, Options, Parameters, Rect, RenderRoute, Renderer, Scene, Size};
+    use surgeist_render::{
+        geometry::Rect, geometry::Size, renderer::Options, renderer::RenderRoute,
+        renderer::Renderer, scene::Layer, scene::Scene, surface::Parameters,
+    };
 
     let mut accounting = RenderAccountingContext::default();
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();

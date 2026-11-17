@@ -9,9 +9,10 @@
 
 use core::error::Error as StdError;
 use surgeist_render::{
-    DegradedQuality, DegradedQualityKind, Error, ErrorCode, InvalidValue, PrimitiveFamily,
-    PrimitiveOperation, Rect, Size, UnresolvedResource, UnresolvedResourceKind,
-    UnsupportedPrimitive,
+    Error, ErrorCode, diagnostic::DegradedQuality, diagnostic::DegradedQualityKind,
+    diagnostic::InvalidValue, diagnostic::PrimitiveFamily, diagnostic::PrimitiveOperation,
+    diagnostic::UnresolvedResource, diagnostic::UnresolvedResourceKind,
+    diagnostic::UnsupportedPrimitive, geometry::Rect, geometry::Size,
 };
 
 #[test]

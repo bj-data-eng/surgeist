@@ -12,6 +12,7 @@ pub(crate) use test_support::{
 };
 
 use crate::error::{SurfaceDiagnosticOperation, SurfaceIoOperation};
+pub use crate::stats::{EffectPrecision, RenderRoute, Stats};
 use dispatch::runtime_surface_format;
 pub use options::{Antialiasing, EffectQualityPolicy, Options, ResourceCacheBudget};
 
@@ -40,7 +41,7 @@ use crate::{
     capability::RuntimeCapabilities, error::BackendErrorCode, error::RuntimeCapabilityUnavailable,
     error::RuntimeCapabilityUnavailableReason, error::RuntimeOperation,
     error::SurfaceIdentityMismatchKind, geometry::Size, image::ImageBuffer, scene::Scene,
-    stats::Stats, surface::Attachment, surface::Format, surface::Parameters, surface::Surface,
+    surface::Attachment, surface::Format, surface::Parameters, surface::Surface,
     surface::SurfaceOptions, surface::WebCanvas,
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]

@@ -10,14 +10,18 @@
 use core::error::Error as StdError;
 use core::fmt::Debug;
 use surgeist_render::{
-    ConvolutionNumericPhase, ConvolutionParameter, ConvolutionPreparationError,
-    DisplacementNumericPhase, DisplacementParameter, DisplacementPreparationError,
-    DropShadowNumericPhase, DropShadowPreparationError, GaussianNumericPhase, GaussianParameter,
-    GaussianPreparationError, GeometryRealizationError, GlyphCapability, GlyphNumericPhase,
-    GlyphPreparationError, GlyphResource, GradientHintError, GradientRealizationError,
-    MorphologyNumericPhase, MorphologyParameter, MorphologyPreparationError, OffsetNumericPhase,
-    OffsetParameter, OffsetPreparationError, Rect, RenderAccountingSetupError, Size,
-    VariationTable,
+    accounting::RenderAccountingSetupError, convolution::ConvolutionNumericPhase,
+    convolution::ConvolutionParameter, convolution::ConvolutionPreparationError,
+    diagnostic::GeometryRealizationError, displacement::DisplacementNumericPhase,
+    displacement::DisplacementParameter, displacement::DisplacementPreparationError,
+    gaussian::GaussianNumericPhase, gaussian::GaussianParameter,
+    gaussian::GaussianPreparationError, geometry::Rect, geometry::Size,
+    morphology::MorphologyNumericPhase, morphology::MorphologyParameter,
+    morphology::MorphologyPreparationError, native_shadow::DropShadowNumericPhase,
+    native_shadow::DropShadowPreparationError, offset::OffsetNumericPhase, offset::OffsetParameter,
+    offset::OffsetPreparationError, paint::GradientHintError, paint::GradientRealizationError,
+    text::GlyphCapability, text::GlyphNumericPhase, text::GlyphPreparationError,
+    text::GlyphResource, text::VariationTable,
 };
 
 /// Checks one table: message, no Debug form, no struct syntax, `source()` presence, row coverage.

@@ -13,10 +13,14 @@ use surgeist_paint::linear_gradient::{
 };
 use surgeist_paint::radial_gradient::{RadialGradientSize, resolve_radial_gradient};
 use surgeist_render::{
-    Color, EffectQualityPolicy, Gradient, GradientHint, GradientStop, Image, ImageBuffer, Layer,
-    Options, Paint, Parameters, Point, Rect, RenderAccountingContext, RenderRoute, Renderer,
-    RepeatingGradient, ResolvedLayerAlphaMask, Scene, Size, Surface, prepare_linear_gradient,
-    prepare_radial_gradient, prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    accounting::RenderAccountingContext, geometry::Point, geometry::Rect, geometry::Size,
+    image::Image, image::ImageBuffer, paint::Color, paint::Gradient, paint::GradientHint,
+    paint::GradientStop, paint::Paint, paint::RepeatingGradient,
+    paint_gradient::prepare_linear_gradient, paint_gradient::prepare_radial_gradient,
+    paint_gradient::prepare_repeating_linear_gradient,
+    paint_gradient::prepare_repeating_radial_gradient, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::RenderRoute, renderer::Renderer, scene::Layer,
+    scene::ResolvedLayerAlphaMask, scene::Scene, surface::Parameters, surface::Surface,
 };
 
 fn options() -> PaintOptions {
@@ -300,7 +304,7 @@ fn repeating_hints_use_power_colors_when_resolved_and_stop_only_average_when_unr
 
 #[test]
 fn outgoing_hint_model_preserves_positions_and_reports_the_invalid_interval() {
-    use surgeist_render::{ErrorCode, GradientHintError};
+    use surgeist_render::{ErrorCode, paint::GradientHintError};
 
     let red = color(1.0, 0.0, 0.0, 1.0);
     let blue = color(0.0, 0.0, 1.0, 1.0);
@@ -481,7 +485,7 @@ fn admitted_hint_witnesses_and_negative_radial_colors_follow_the_power_reference
 
 #[test]
 fn overflowing_source_spans_keep_finite_geometry_and_hint_ratios() {
-    use surgeist_render::Transform;
+    use surgeist_render::geometry::Transform;
 
     let field = Gradient::try_linear(
         point(0.0, 0.0),
@@ -514,8 +518,8 @@ fn overflowing_source_spans_keep_finite_geometry_and_hint_ratios() {
 #[test]
 fn lost_hint_controls_and_uncertified_arithmetic_refuse_atomically_then_retry() {
     use surgeist_render::{
-        ErrorCode, GradientRealizationError, RenderAccountingOptions, RenderAttemptStatus,
-        RenderProfile, RenderWork,
+        ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderProfile, accounting::RenderWork, paint::GradientRealizationError,
     };
 
     let before_one = f64::from_bits(1.0_f64.to_bits() - 1);
@@ -607,8 +611,9 @@ fn lost_hint_controls_and_uncertified_arithmetic_refuse_atomically_then_retry() 
 #[test]
 fn analytic_hints_follow_strokes_prepared_and_native_glyphs_through_final_transforms() {
     use surgeist_render::{
-        FontData, FontRef, GlyphRunLimits, GlyphSynthesis, Shape, Stroke, TextGlyph, TextInstance,
-        TextPaint, TextRun, TextRunBounds, Transform,
+        geometry::Transform, shape::Shape, shape::Stroke, text::FontData, text::FontRef,
+        text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph, text::TextInstance,
+        text::TextPaint, text::TextRun, text::TextRunBounds,
     };
 
     let field = |length, repeating| -> Paint {
@@ -735,9 +740,10 @@ fn forbidden_hint_clock() -> std::time::Duration {
 #[test]
 fn actual_hinted_paint_preparation_preserves_caps_cleanup_retry_and_profile_invariance() {
     use surgeist_render::{
-        RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderClock,
-        RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
-        RenderResource, RenderWork,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus, accounting::RenderClock, accounting::RenderLimits,
+        accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderProfile,
+        accounting::RenderQuantity, accounting::RenderResource, accounting::RenderWork,
     };
 
     let geometry = line(16.0);
@@ -832,8 +838,10 @@ fn actual_hinted_paint_preparation_preserves_caps_cleanup_retry_and_profile_inva
 #[test]
 fn hinted_frames_preserve_publication_under_program_caps_and_profiles() {
     use surgeist_render::{
-        RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderClock,
-        RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderWork,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus, accounting::RenderClock, accounting::RenderLimits,
+        accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderProfile,
+        accounting::RenderQuantity, accounting::RenderWork,
     };
 
     let make = |accounting| {
