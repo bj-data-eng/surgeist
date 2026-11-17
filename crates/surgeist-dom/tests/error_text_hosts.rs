@@ -124,15 +124,15 @@ fn base_facts_errors_state_the_refused_facts() {
     let rows = vec![
         (
             DomBaseFactsError::EnvironmentMismatch,
-            "base URL facts were captured for a different document environment",
+            "base URL facts do not describe this document's environment",
         ),
         (
             DomBaseFactsError::ForeignProducer,
-            "base URL facts came from a producer that does not belong to this document",
+            "base URL facts came from a different producer than the facts already bound to this document",
         ),
         (
             DomBaseFactsError::InputsMismatch,
-            "base URL facts were computed from inputs that differ from the document's current inputs",
+            "base URL facts were computed from inconsistent inputs",
         ),
         (
             DomBaseFactsError::BasisRevisionMismatch,
@@ -144,7 +144,7 @@ fn base_facts_errors_state_the_refused_facts() {
         ),
         (
             DomBaseFactsError::PolicyMismatch,
-            "base URL facts were produced under a different policy",
+            "base URL facts were produced under a Content Security Policy that differs from the document's",
         ),
     ];
     check_table(
@@ -173,7 +173,7 @@ fn document_constructor_errors_state_the_refused_context() {
         vec![
             (
                 DomDocumentConstructorError::ForeignIssuer,
-                "the Document constructor context was issued for a different DOM owner",
+                "the Document constructor context was issued by a different hosted source",
             ),
             (
                 DomDocumentConstructorError::ExpiredIssuer,
@@ -185,11 +185,11 @@ fn document_constructor_errors_state_the_refused_context() {
             ),
             (
                 DomDocumentConstructorError::StaleAssociation,
-                "the Document constructor context's Global association is stale or in the wrong phase",
+                "the Document constructor context's Global association is missing, stale or retired",
             ),
             (
                 DomDocumentConstructorError::IncompleteAssociation,
-                "the Document constructor context's association has an incomplete operation",
+                "the Document constructor context's association is not in the live initial-entry phase",
             ),
             (
                 DomDocumentConstructorError::Unavailable,
@@ -218,7 +218,7 @@ fn encoding_url_facts_errors_state_the_refused_facts_and_chain_the_producer() {
             ),
             (
                 DomEncodingUrlFactsError::EnvironmentMismatch,
-                "encoding and URL facts were computed for a different document environment",
+                "encoding and URL facts do not describe this document's environment",
             ),
             (
                 DomEncodingUrlFactsError::Base(HtmlBaseMissing::DocumentUrl),
@@ -268,7 +268,7 @@ fn meta_errors_state_the_refused_processing() {
             ),
             (
                 DomMetaError::DefaultStyleUnsupported,
-                "the preferred stylesheet-set operation requires its CSSOM owner",
+                "the preferred stylesheet-set operation is not supported by this mutation route for this Document",
             ),
             (
                 DomMetaError::ContentSecurityPolicyUnsupported,
@@ -282,17 +282,17 @@ fn meta_errors_state_the_refused_processing() {
                 DomMetaError::ThemeColorUnavailable(
                     surgeist_css::color::CssColorUnavailable::CurrentColor,
                 ),
-                "the theme-color value is unavailable",
+                "a fact needed to parse the theme-color value was not supplied",
             ),
             (
                 DomMetaError::ThemeColorUnsupported(
                     surgeist_css::color::CssColorUnsupported::ProfileConversion,
                 ),
-                "the theme-color value is not supported",
+                "the theme-color value needs a color capability that is not supported",
             ),
             (
                 DomMetaError::ThemeColorFacts(surgeist_css::color::CssColorFactDefect::Foreign),
-                "the theme-color facts are defective",
+                "the supplied theme-color facts are defective",
             ),
             (
                 DomMetaError::ThemeColorScratchLimit { limit: 4096 },
@@ -304,7 +304,7 @@ fn meta_errors_state_the_refused_processing() {
             ),
             (
                 DomMetaError::ColorSchemeLimit(surgeist_css::source::CssUtf16Resource::InputUnits),
-                "color-scheme processing exceeded an input limit",
+                "color-scheme processing exceeded its limit on original UTF16 units",
             ),
             (
                 DomMetaError::CssProcessingProtocol,
@@ -331,6 +331,16 @@ fn meta_errors_state_the_refused_processing() {
         },
         |_| false,
     );
+    for (resource, name) in [
+        (CssUtf16Resource::OutputBytes, "normalized UTF8 bytes"),
+        (CssUtf16Resource::Work, "preparation work"),
+        (CssUtf16Resource::ComponentDepth, "property component depth"),
+    ] {
+        assert_eq!(
+            DomMetaError::ColorSchemeLimit(resource).to_string(),
+            format!("color-scheme processing exceeded its limit on {name}")
+        );
+    }
 }
 
 #[test]
@@ -339,11 +349,11 @@ fn view_transition_cssom_errors_state_the_rejected_association() {
         vec![
             (
                 DomViewTransitionCssomError::ForeignOwner,
-                "view transition CSSOM association rejected: the CSSOM object belongs to a different DOM owner",
+                "view transition CSSOM association rejected: the CSSOM object or revision belongs to a different CSSOM owner",
             ),
             (
                 DomViewTransitionCssomError::MissingObject,
-                "view transition CSSOM association rejected: the CSSOM object does not exist",
+                "view transition CSSOM association rejected: the CSSOM snapshot could not provide the selected rule",
             ),
             (
                 DomViewTransitionCssomError::WrongKind,
@@ -351,19 +361,19 @@ fn view_transition_cssom_errors_state_the_rejected_association() {
             ),
             (
                 DomViewTransitionCssomError::WrongSheet,
-                "view transition CSSOM association rejected: the rule belongs to a different style sheet",
+                "view transition CSSOM association rejected: the rule or captured input belongs to a different style sheet",
             ),
             (
                 DomViewTransitionCssomError::DuplicateRule,
-                "view transition CSSOM association rejected: the style sheet already contains this rule",
+                "view transition CSSOM association rejected: the same rule is selected for more than one role",
             ),
             (
                 DomViewTransitionCssomError::RuleOrder,
-                "view transition CSSOM association rejected: the rule is out of the required order",
+                "view transition CSSOM association rejected: the selected rules are out of the required order",
             ),
             (
                 DomViewTransitionCssomError::StaleRevision,
-                "view transition CSSOM association rejected: the CSSOM object's revision is stale",
+                "view transition CSSOM association rejected: the CSSOM revision is older than the one already recorded",
             ),
         ],
         |error| match error {
@@ -520,7 +530,7 @@ fn rebinding_different_base_facts_returns_messages_naming_the_mismatch() {
     assert_eq!(error, DomBaseFactsError::InputsMismatch);
     assert_eq!(
         error.to_string(),
-        "base URL facts were computed from inputs that differ from the document's current inputs"
+        "base URL facts were computed from inconsistent inputs"
     );
 
     let foreign = base_facts(&revision(), "x");
@@ -530,7 +540,7 @@ fn rebinding_different_base_facts_returns_messages_naming_the_mismatch() {
     assert_eq!(error, DomBaseFactsError::ForeignProducer);
     assert_eq!(
         error.to_string(),
-        "base URL facts came from a producer that does not belong to this document"
+        "base URL facts came from a different producer than the facts already bound to this document"
     );
 }
 
@@ -615,11 +625,11 @@ fn hosted_errors_state_the_refused_hosted_operation() {
         ),
         (
             DomHostedError::ForeignSource,
-            "the identity or request was issued by a different hosted source",
+            "the identity, request or binding belongs to a different hosted source, DOM owner or Global",
         ),
         (
             DomHostedError::SourceExpired,
-            "the hosted source that issued the identity no longer exists",
+            "the hosted source that issued the identity has expired",
         ),
         (
             DomHostedError::SourcePoisoned,
@@ -627,27 +637,27 @@ fn hosted_errors_state_the_refused_hosted_operation() {
         ),
         (
             DomHostedError::StaleIdentity,
-            "the hosted identity is stale or retired",
+            "the hosted identity is unknown, stale or retired",
         ),
         (
             DomHostedError::WrongPhase,
-            "the hosted operation is not in a phase that permits this step",
+            "the hosted state does not permit this step",
         ),
         (
             DomHostedError::MissingPublication,
-            "the hosted operation has no pending preparation or publication",
+            "a hosted preparation, publication or history record that the operation needs is missing",
         ),
         (
             DomHostedError::StaleBasis,
-            "the hosted request no longer matches the current hosted state",
+            "the supplied basis does not match the current hosted or DOM state",
         ),
         (
             DomHostedError::IncompleteOperation,
-            "an earlier hosted operation or association is incomplete",
+            "a hosted operation, job or association has not completed",
         ),
         (
             DomHostedError::UnsupportedProfile,
-            "the hosted profile does not support this operation",
+            "the selected hosted profile does not support this operation or lacks the hosted state it needs",
         ),
         (
             DomHostedError::ScriptingDisabled,
@@ -664,7 +674,7 @@ fn hosted_errors_state_the_refused_hosted_operation() {
         ),
         (
             DomHostedError::ClockRegression,
-            "the clock reading does not follow the navigation start",
+            "the finish-loading clock reading is from another source or precedes the navigation start",
         ),
         (
             DomHostedError::InvalidClockSample,
@@ -672,11 +682,11 @@ fn hosted_errors_state_the_refused_hosted_operation() {
         ),
         (
             DomHostedError::InvalidEntryInitialization,
-            "the entry initialization does not hold canonical version 4 UUIDs",
+            "the entry initialization's navigation key or id is not a canonical version 4 UUID",
         ),
         (
             DomHostedError::RepresentationExhausted,
-            "a hosted counter or retained-byte credit cannot represent the requested amount",
+            "a hosted counter, size or credit cannot represent or cover the requested amount",
         ),
         (
             DomHostedError::AllocationFailed,
@@ -729,6 +739,14 @@ fn hosted_errors_state_the_refused_hosted_operation() {
         },
         &[14],
     );
+    // `CspProtocol` wraps the HTML crate's protocol error, which has no public
+    // constructor; this proves the wrapped type is a `core::error::Error`, the
+    // condition under which `source()` returns it.
+    fn _csp_protocol_error_is_an_error(
+        error: &surgeist_html::security::csp::HtmlCspProtocolError,
+    ) -> &dyn Error {
+        error
+    }
     for (resource, name) in [
         (DomHostedResource::Hosts, "hosts"),
         (DomHostedResource::BrowsingContexts, "browsing contexts"),
@@ -784,18 +802,18 @@ fn host_errors_state_the_refused_publication_or_stamp() {
     let rows = vec![
         (
             DomHostError::ForeignOwner,
-            "the Document belongs to a different DOM owner",
+            "the compared document stamps belong to different DOM owners",
         ),
         (
             DomHostError::WrongDocument,
-            "the observations belong to a different Document",
+            "the compared document stamps refer to different Documents",
         ),
         (
             DomHostError::DomRevisionMismatch {
                 expected: revision,
                 actual: revision,
             },
-            "the observations and the canonical view have different DOM revisions",
+            "the compared document stamps have different DOM revisions",
         ),
         (
             DomHostError::StaleDomRevision {
@@ -873,6 +891,38 @@ fn publisher_refusals_return_messages_naming_the_cause() {
     let current = snapshot.document(document).unwrap();
     let mut publisher = DomHostPublisher::new(DomHostDomains::Focus);
 
+    // A stamp checked against another owner's or another Document's view.
+    let focus_observations = DomHostObservations::Focus(Observed::Unsupported);
+    let capture = publisher
+        .publish(current, current.stamp(), focus_observations)
+        .unwrap();
+    let (other_dom, other_document, _, _) = fixture(1_000_000);
+    let other_snapshot = other_dom.snapshot();
+    let error = capture
+        .capture()
+        .validate_for(other_snapshot.document(other_document).unwrap())
+        .unwrap_err();
+    assert_eq!(error, DomHostError::ForeignOwner);
+    assert_eq!(
+        error.to_string(),
+        "the compared document stamps belong to different DOM owners"
+    );
+    let mut batch = DomBatch::new();
+    let second = batch.create_document();
+    let commit = dom.apply(batch, &cancel()).unwrap();
+    let second = commit.document(&second).unwrap();
+    let latest = dom.snapshot();
+    let error = capture
+        .capture()
+        .validate_for(latest.document(second).unwrap())
+        .unwrap_err();
+    assert_eq!(error, DomHostError::WrongDocument);
+    assert_eq!(
+        error.to_string(),
+        "the compared document stamps refer to different Documents"
+    );
+    let mut publisher = DomHostPublisher::new(DomHostDomains::Focus);
+
     let error = publisher.changes_since(None).unwrap_err();
     assert_eq!(error, DomHostError::Unpublished);
     assert_eq!(
@@ -909,7 +959,7 @@ fn publisher_refusals_return_messages_naming_the_cause() {
     assert!(matches!(error, DomHostError::DomRevisionMismatch { .. }));
     assert_eq!(
         error.to_string(),
-        "the observations and the canonical view have different DOM revisions"
+        "the compared document stamps have different DOM revisions"
     );
 }
 
@@ -919,7 +969,7 @@ fn html_capture_errors_state_the_refused_capture_and_chain_their_cause() {
         vec![
             (
                 DomHtmlCaptureError::Source(some_dom_error()),
-                "the DOM refused the capture's read of canonical state",
+                "the canonical DOM refused the HTML capture",
             ),
             (
                 DomHtmlCaptureError::Host(DomHostError::Unpublished),
@@ -997,7 +1047,7 @@ fn html_capture_errors_state_the_refused_capture_and_chain_their_cause() {
             ),
             (
                 DomHtmlCaptureError::UnmappedSubject,
-                "the node or subject is not part of this capture",
+                "a node, subject or registry could not be mapped within the capture",
             ),
         ]
     };
@@ -1146,7 +1196,7 @@ fn inline_style_errors_state_the_refused_operation_and_chain_their_cause() {
         ),
         (
             DomInlineStyleError::StaleContext,
-            "the supplied Document observation is no longer current",
+            "the supplied observation or owner effect no longer matches the current state",
         ),
         (
             DomInlineStyleError::ParserModeMismatch,
@@ -1162,7 +1212,7 @@ fn inline_style_errors_state_the_refused_operation_and_chain_their_cause() {
         ),
         (
             DomInlineStyleError::Unbound,
-            "the Element has no allocated inline declaration block",
+            "the inline declaration block or parked feedback operation the operation needs is absent or does not match",
         ),
         (
             DomInlineStyleError::OperationPending { element: node },
@@ -1327,15 +1377,15 @@ fn meta_composition_errors_state_the_refused_root_operation_and_chain_their_caus
         ),
         (
             DomMetaAtomicError::MissingOwner { root },
-            "no CSSOM owner was supplied for the root's Document",
+            "no CSSOM owner was supplied or held for the root's Document",
         ),
         (
             DomMetaAtomicError::MismatchedOwner { root },
-            "the CSSOM owners supplied for the root's Document are not one owner",
+            "the CSSOM owner supplied for the root's Document differs from the owner already bound or supplied for it",
         ),
         (
             DomMetaAtomicError::StaleProducer { root },
-            "the sheet is not a member of the root's producer snapshot",
+            "the root's producer snapshot is stale or does not contain the sheet",
         ),
     ];
     check_table(
