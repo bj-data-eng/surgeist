@@ -1,4 +1,9 @@
 //! Admitted native rectangular component extrema and authentic source declarations.
+//!
+//! [`prepare_morphology`] admits a [`MorphologyInput`] as a [`PreparedMorphology`]. The operator is a
+//! [`MorphologyOperator`] and [`MorphologySource`] is the finite, constant or periodic source. A
+//! refusal is a [`MorphologyPreparationError`] that can name a [`MorphologyParameter`] or a
+//! [`MorphologyNumericPhase`].
 use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
 use crate::filter_source::FilterSourceDescriptor;
 use crate::number_text::Number;

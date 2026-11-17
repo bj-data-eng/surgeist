@@ -1,4 +1,11 @@
 //! Render owns names, units and attempt outcomes; Ledger owns numeric accounting.
+//!
+//! Contexts, options and limits ([`RenderAccountingContext`], [`RenderAccountingOptions`],
+//! [`RenderLimits`]) configure accounting. The named units are [`RenderWork`], [`RenderResource`]
+//! and [`RenderPhase`]. Reports are [`RenderAttemptReport`], [`RenderStandaloneReport`],
+//! [`RenderFrameReport`] and [`RenderReadbackReport`], with lifetime observations in
+//! [`RenderCpuSnapshot`] and [`RenderDeviceSnapshot`]. Failures are [`RenderAccountingError`] and
+//! [`RenderAccountingSetupError`].
 mod frame;
 mod readback;
 mod renderer_attempt;

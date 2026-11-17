@@ -1,3 +1,14 @@
+//! Authored text runs and glyph-run preparation.
+//!
+//! [`TextRun`] is an authored run of [`TextGlyph`] values with a [`FontRef`], a [`TextPaint`] and
+//! [`TextRunBounds`]. [`TextShadowRun`] pairs a run with shadows, and [`TextDecorationLine`] (with
+//! [`TextDecorationLineStyle`]) is an explicit decoration line. [`FontData`] retains an admitted
+//! OpenType face; its `prepare_glyph_run` takes a [`TextInstance`] and [`GlyphRunLimits`] and returns
+//! a [`PreparedGlyphRun`]. [`NormalizedCoordinate`] and [`GlyphSynthesis`] are parts of a
+//! [`TextInstance`]. [`GlyphPreparationError`] reports refusals, with [`GlyphResource`],
+//! [`GlyphNumericPhase`], [`GlyphCapability`] and [`VariationTable`] as its details. [`FontId`] is an
+//! opaque caller-defined font identity.
+
 use super::{Result, validation::*};
 use crate::{
     error::PrimitiveFamily, error::PrimitiveOperation, error::UnsupportedPrimitive,

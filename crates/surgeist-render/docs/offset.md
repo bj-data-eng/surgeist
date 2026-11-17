@@ -7,8 +7,12 @@ includes a supported same-Layer backdrop, and executes through the GPU graph.
 
 ```rust
 use surgeist_render::{
-    FilterDomains, ImageRendering, Layer, OffsetInput, Rect,
-    RenderAccountingContext, prepare_offset,
+    accounting::RenderAccountingContext,
+    effect::FilterDomains,
+    geometry::Rect,
+    image::ImageRendering,
+    offset::{OffsetInput, prepare_offset},
+    scene::Layer,
 };
 
 # fn example() -> surgeist_render::Result<()> {

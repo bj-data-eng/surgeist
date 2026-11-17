@@ -1,4 +1,8 @@
 //! Admitted native Gaussian parameters and authentic source declarations.
+//!
+//! [`prepare_gaussian`] admits a [`GaussianInput`] as a [`PreparedGaussian`]. [`GaussianSource`] is
+//! the owned finite, constant or periodic source. A refusal is a [`GaussianPreparationError`] that can
+//! name a [`GaussianParameter`] or a [`GaussianNumericPhase`].
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };

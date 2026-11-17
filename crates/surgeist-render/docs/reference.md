@@ -4,25 +4,26 @@
 
 [Cargo.toml](../Cargo.toml) defines package `surgeist-render`, version `0.1.0`,
 Rust edition 2024, and library import name `surgeist_render`. The public front
-door is [src/lib.rs](../src/lib.rs); its reexports and their rustdoc own the
-current source API.
+door is [src/lib.rs](../src/lib.rs). The crate root holds `Error`, `ErrorCode` and
+`Result`; every other item is public through one module, and the rustdoc of
+those modules owns the current source API.
 
 | Area | Public entry points | Source |
 | --- | --- | --- |
-| Renderer and options | `Renderer`, `Options`, `Parameters`, `EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
-| Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
-| Native morphology | `MorphologyInput`, `MorphologyOperator`, `PreparedMorphology`, `MorphologySource`, `prepare_morphology`, `Scene::morphology_layer` | [Native morphology](morphology.md), [admitted model](../src/morphology.rs) |
-| Gradient paints | `Gradient`, `RepeatingGradient`, `GradientStop`, `GradientHint`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
-| Native Paint consumer (`render-paint`) | `prepare_linear_gradient`, `prepare_radial_gradient`, `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
-| Native zero-height Paint colors (`render-paint`) | `prepare_zero_height_gradient_color` | [Color preparation](#zero-height-paint-colors) |
-| Leader-pattern admission (`render-text`) | `prepare_leader_pattern`, `PreparedLeaderPattern`, `PreparedLeaderRun`, `PreparedLeaderGroup`, `LeaderPatternError` | [Adapter](../src/text_layout/leader.rs) |
-| Placed Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
-| Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
-| Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
-| Successful frame observations | `Stats`, `RenderRoute`, `EffectPrecision` | [Statistics](../src/stats.rs) |
-| Frame and lifetime accounting | `RenderFrameReport`, `RenderCpuSnapshot`, `RenderDeviceSnapshot`, named scopes and typed intervals | [Frame accounting](#frame-accounting), [generation custody](#device-generation-custody) |
-| Preparation accounting | `RenderAccountingContext`, `RenderStandaloneReport`, `RenderAccountingOptions`, `RenderLimits`, `RenderAttemptReport`, named work/resources/phases | [Accounting](../src/accounting/mod.rs), [units and reports](../src/accounting/model.rs) |
-| Current style-facing models | Background, border, outline, image-placement, mask, clip, and filter values | [Style module](../src/style/mod.rs), [public reexports](../src/lib.rs) |
+| Renderer and options | `renderer::Renderer`, `renderer::Options`, `surface::Parameters`, `renderer::EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
+| Draw data | `scene::Scene` and `scene::Layer`, with the `geometry`, `shape`, `paint`, `image` and `text` modules | [Scene](../src/scene.rs), [public modules](../src/lib.rs) |
+| Native morphology | `morphology::MorphologyInput`, `morphology::MorphologyOperator`, `morphology::PreparedMorphology`, `morphology::MorphologySource`, `morphology::prepare_morphology`, `Scene::morphology_layer` | [Native morphology](morphology.md), [admitted model](../src/morphology.rs) |
+| Gradient paints | `paint::Gradient`, `paint::RepeatingGradient`, `paint::GradientStop`, `paint::GradientHint`, `paint::Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
+| Native Paint consumer (`render-paint`) | `paint_gradient::prepare_linear_gradient`, `paint_gradient::prepare_radial_gradient`, `paint_gradient::prepare_repeating_linear_gradient`, `paint_gradient::prepare_repeating_radial_gradient`, `paint_gradient::PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
+| Native zero-height Paint colors (`render-paint`) | `paint_gradient::prepare_zero_height_gradient_color` | [Color preparation](#zero-height-paint-colors) |
+| Leader-pattern admission (`render-text`) | `text_layout::prepare_leader_pattern`, `text_layout::PreparedLeaderPattern`, `text_layout::PreparedLeaderRun`, `text_layout::PreparedLeaderGroup`, `text_layout::LeaderPatternError` | [Adapter](../src/text_layout/leader.rs) |
+| Placed Text consumer (`render-text`) | `text_layout::prepare_text_layout`, `text_layout::PreparedTextScene`, `text_layout::TextLayoutLimits`, `text_layout::TextLayoutError` | [Adapter](../src/text_layout.rs) |
+| Surface and pixels | `surface::Surface`, `surface::SurfaceOptions`, `surface::Attachment`, `image::ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
+| Support and diagnostics | `capability::Capabilities`, `capability::RuntimeCapabilities`, `Error`, `ErrorCode`, and the `diagnostic` payloads | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
+| Successful frame observations | `renderer::Stats`, `renderer::RenderRoute`, `renderer::EffectPrecision` | [Statistics](../src/stats.rs) |
+| Frame and lifetime accounting | `accounting::RenderFrameReport`, `accounting::RenderCpuSnapshot`, `accounting::RenderDeviceSnapshot`, named scopes and typed intervals | [Frame accounting](#frame-accounting), [generation custody](#device-generation-custody) |
+| Preparation accounting | `accounting::RenderAccountingContext`, `accounting::RenderStandaloneReport`, `accounting::RenderAccountingOptions`, `accounting::RenderLimits`, `accounting::RenderAttemptReport`, named work/resources/phases | [Accounting](../src/accounting/mod.rs), [units and reports](../src/accounting/model.rs) |
+| Current style-facing models | Background, border, outline, image-placement, mask, clip, and filter values in the `style::background`, `style::decoration`, `style::image`, `style::mask`, `style::clip` and `style::filter` modules | [Style module](../src/style/mod.rs), [public modules](../src/lib.rs) |
 
 The `Renderer` methods `new`, `create_surface`, `create_headless`,
 `resume_surface`, `render`, and `read_headless` are asynchronous GPU operations.

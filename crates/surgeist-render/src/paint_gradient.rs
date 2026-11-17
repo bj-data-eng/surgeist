@@ -1,4 +1,9 @@
 //! Accounted consumer of authentic native Paint geometry and used positions.
+//!
+//! [`prepare_linear_gradient`], [`prepare_radial_gradient`], [`prepare_repeating_linear_gradient`] and
+//! [`prepare_repeating_radial_gradient`] prepare owned gradient fields, and
+//! [`prepare_zero_height_gradient_color`] reduces a zero-height color measure to an owned color.
+//! A refusal is a [`PaintGradientError`].
 
 use crate::{
     Result,

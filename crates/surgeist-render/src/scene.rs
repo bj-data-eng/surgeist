@@ -1,3 +1,13 @@
+//! Authored scenes and layers.
+//!
+//! [`Scene`] is an ordered tree of renderer-facing draw commands, and [`SceneSummary`] reports its
+//! structural facts. A [`Layer`] groups a nested scene and can carry a clip, a mask, a [`Filter`], a
+//! backdrop filter and a [`LayerComposition`], which pairs a [`BlendMode`] with a
+//! [`PorterDuffOperator`]; PlusLighter is a complete operation. Resolved masks are [`ResolvedMaskLayer`] values over a
+//! [`ResolvedMaskSource`], with [`ResolvedLayerAlphaMask`], [`ResolvedLayerLuminanceMask`] and
+//! [`MaskLuminanceSpace`]. [`Shadow`] and [`ShadowList`] describe authored shadows, placed by
+//! [`ShadowKind`].
+
 use super::command::{RenderCommands, normalize_commands};
 use crate::{
     Result, accounting::RenderAccountingContext, accounting::RenderAttemptKind,

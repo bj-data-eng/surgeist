@@ -1,4 +1,7 @@
 //! Centrally admitted native image-space translation parameters.
+//!
+//! [`prepare_offset`] admits an [`OffsetInput`] as a [`PreparedOffset`]. A refusal is an
+//! [`OffsetPreparationError`] that can name an [`OffsetParameter`] or an [`OffsetNumericPhase`].
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };

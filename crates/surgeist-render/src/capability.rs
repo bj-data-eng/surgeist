@@ -1,3 +1,13 @@
+//! Semantic and runtime capability reports.
+//!
+//! [`Capabilities`] (see [`Capabilities::CURRENT`]) reports semantic support for authored operations
+//! through one struct per domain, such as [`PaintSourceCapabilities`], [`FilterCapabilities`] and
+//! [`CompositingCapabilities`]. [`RuntimeCapabilities`] reports runtime-phase facts for a selected
+//! device and surface; when they are available they are an [`AvailableRuntimeCapabilities`] with its
+//! [`EffectPrecisionCapabilities`]. [`SymbolicColorPolicy`], [`ImageOrientationPolicy`],
+//! [`ImageColorProfilePolicy`], [`BackgroundAttachmentCoordinatePolicy`] and [`HitTestOwnership`] name
+//! the boundary's policy choices.
+
 use super::{Error, Result};
 use crate::{
     error::PrimitiveFamily, error::PrimitiveOperation, error::RuntimeCapabilityUnavailableReason,

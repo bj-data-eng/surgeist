@@ -1,3 +1,9 @@
+//! Authored mask stacks.
+//!
+//! [`MaskLayerStack`] is a non-empty ordered stack of [`MaskLayer`] values. Each has a [`MaskInput`]
+//! and a [`MaskCompositeMode`]. A [`MaskInput`] holds a [`MaskSource`] with its [`MaskSourceKind`] and
+//! a [`MaskMode`].
+
 use super::super::{Error, Result, validation::validate_shape};
 use super::image::{StyleImageLayer, StyleResourceRef};
 use crate::{

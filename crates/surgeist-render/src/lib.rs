@@ -31,6 +31,31 @@
 //! Render owns its optional `render-text` consumer of authentic standalone Text
 //! layouts. The root `surgeist` repository owns the facade, workspace wiring,
 //! generated API artifacts and browser integration evidence.
+//!
+//! # Where things live
+//!
+//! The crate root holds [`Error`], [`ErrorCode`] and [`Result`]. Every other public item lives in
+//! one module:
+//!
+//! | Module | Contents |
+//! | --- | --- |
+//! | [`accounting`] | Accounting contexts, limits, units and reports |
+//! | [`capability`] | Semantic and runtime capability reports |
+//! | [`convolution`], [`gaussian`], [`morphology`], [`displacement`], [`offset`], [`native_shadow`] | Native filter preparation and its typed refusals |
+//! | [`diagnostic`] | Typed diagnostics that an [`Error`] carries |
+//! | [`effect`] | Inputs shared by the filter-primitive modules |
+//! | [`geometry`] | Logical and physical geometry and coordinate spaces |
+//! | [`image`] | Images and their sampling choices |
+//! | [`paint`] | Paint sources, colors and gradients |
+//! | [`renderer`] | The GPU renderer, its options and frame statistics |
+//! | [`scene`] | Scenes, layers, masks and shadows |
+//! | [`shape`] | Paths, shapes and strokes |
+//! | [`style`] | Style-facing models: background, clip, decoration, filter, image and mask |
+//! | [`surface`] | Surfaces, their options and per-frame parameters |
+//! | [`text`] | Text runs and glyph-run preparation |
+//!
+//! With `render-paint` the `paint_gradient` module prepares native gradient fields, and with
+//! `render-text` the `text_layout` module consumes placed Text layouts and leader patterns.
 
 pub mod accounting;
 pub mod capability;

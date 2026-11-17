@@ -1,3 +1,13 @@
+//! Authored image layers and their placement, repetition and attachment.
+//!
+//! [`StyleImageLayer`] combines a [`StyleImageSource`] (with its [`StyleImageSourceKind`], which can
+//! hold a [`ResolvedImageResource`] or a symbolic [`StyleResourceRef`]) with a
+//! [`BackgroundPosition`], a [`BackgroundSize`], a [`BackgroundRepeat`], a
+//! [`BackgroundAttachment`] and two [`BackgroundBox`] values. [`ImagePlacementInput`] is the
+//! context for resolving placement into a [`ResolvedImagePlacement`], and [`ResolvedImageRepeat`]
+//! holds the resolved repetition geometry. The remaining items are the components of those
+//! values, such as [`PositionComponent`], [`PositionEdge`], [`SizeComponent`] and [`RepeatMode`].
+
 use super::super::{
     Error, Result,
     geometry::validate_rect_maxima,

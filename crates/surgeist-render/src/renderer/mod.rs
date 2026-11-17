@@ -1,3 +1,10 @@
+//! The GPU renderer and its configuration.
+//!
+//! [`Renderer`] owns device-scoped resources and frame transactions. [`Options`] fixes its
+//! configuration when it is created, using [`Antialiasing`], [`EffectQualityPolicy`] and
+//! [`ResourceCacheBudget`]. [`Stats`] describes the last successful frame, including the
+//! [`RenderRoute`] and the [`EffectPrecision`] it used.
+
 mod dispatch;
 mod options;
 mod publication;
@@ -53,9 +60,9 @@ use crate::{frame, pass};
 
 /// GPU-only renderer and owner of device-scoped resources and frame transactions.
 ///
-/// Effect-free scenes select [`RenderRoute::DirectVello`](crate::stats::RenderRoute::DirectVello). Scenes requiring the
+/// Effect-free scenes select [`RenderRoute::DirectVello`]. Scenes requiring the
 /// implemented resolved-alpha-mask, composition, or bounded-backdrop subset
-/// select [`RenderRoute::GpuGraph`](crate::stats::RenderRoute::GpuGraph). Both routes encode into one
+/// select [`RenderRoute::GpuGraph`]. Both routes encode into one
 /// transaction-owned submission. The renderer never retries pixels on a CPU
 /// path and never performs implicit readback.
 pub struct Renderer {

@@ -1,3 +1,13 @@
+//! Paint sources and colors.
+//!
+//! [`Paint`] is a solid color, gradient or image. [`Color`] is a validated numeric-sRGB color, and
+//! [`PaintColor`] preserves an authored sRGB or HSL representation named by [`PaintColorSpace`].
+//! [`Gradient`] and [`RepeatingGradient`] are gradient fields with [`GradientStop`] values, and a
+//! [`GradientHint`] positions a transition inside one stop's outgoing interval;
+//! [`GradientHintError`] and [`GradientRealizationError`] report refusals. [`NormalizedPaintLayer`] is a paint layer whose source has passed canonical paint
+//! validation, and [`prepare_sdr_srgb_color`] prepares one resolved color for an SDR sRGB
+//! destination.
+
 mod repeating;
 
 pub use crate::color_mapping::prepare_sdr_srgb_color;

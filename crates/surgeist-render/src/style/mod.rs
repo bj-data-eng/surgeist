@@ -1,3 +1,8 @@
+//! Style-facing authored models.
+//!
+//! [`StyleColor`] is a concrete color accepted by the style-facing model. The submodules are
+//! [`background`], [`clip`], [`decoration`], [`filter`], [`image`] and [`mask`].
+
 use crate::{capability::SymbolicColorPolicy, paint::Color};
 
 pub mod background;

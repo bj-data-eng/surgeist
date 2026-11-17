@@ -1,3 +1,10 @@
+//! Images and their sampling choices.
+//!
+//! [`Image`] is a validated, shareable RGBA8 image with its sampling configuration. [`ImageId`] is a
+//! compact fingerprint or caller-supplied handle. [`Extend`], [`ImageFit`], [`ImageQuality`] and
+//! [`ImageRendering`] select sampling and fitting behavior, and [`ImageBuffer`] holds the
+//! straight-alpha RGBA8 pixels of a headless readback.
+
 use super::{Error, Result};
 use crate::accounting::{
     Account, AccountedVec, CpuAccount, RenderCpuScope, RenderWork, SharedValue, StorageAccount,

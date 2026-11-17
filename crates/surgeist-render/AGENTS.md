@@ -18,7 +18,8 @@ CPU-visible headless pixels require explicit readback.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door and exported contracts | [src/lib.rs](src/lib.rs) and the reexported definitions |
+| Public modules and the root `Error`, `ErrorCode` and `Result` | [src/lib.rs](src/lib.rs) |
+| Facade modules over private definitions | [src/diagnostic.rs](src/diagnostic.rs), [src/effect.rs](src/effect.rs) and the `pub use` lines of [src/scene.rs](src/scene.rs), [src/paint.rs](src/paint.rs) and [src/renderer/mod.rs](src/renderer/mod.rs) |
 | Headless glyph admission and placed Text adapter | [Prepared glyphs](src/text/prepared.rs) and [Text adapter](src/text_layout.rs) |
 | Authored commands and normalization | [src/scene.rs](src/scene.rs), [src/command.rs](src/command.rs), and [src/style/](src/style/) |
 | Planning, execution, and publication | [src/frame/](src/frame/), [src/renderer/](src/renderer/), [src/pass/](src/pass/), [src/gpu_transaction/](src/gpu_transaction/), and [src/backend/](src/backend/) |

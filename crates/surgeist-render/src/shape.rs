@@ -1,3 +1,9 @@
+//! Authored vector geometry.
+//!
+//! [`Shape`] selects one member of a fixed set of geometry kinds. [`Path`] is an ordered sequence of
+//! [`PathElement`] values, and [`FilledPath`] pairs a validated path with a [`FillRule`]. [`Stroke`],
+//! [`StrokeAlign`], [`LineCap`], [`LineJoin`] and [`Dash`] describe stroke parameters.
+
 use super::{
     Result,
     validation::{

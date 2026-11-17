@@ -8,8 +8,13 @@ CSS `FilterDropShadow` and shape/box `Shadow`.
 
 ```rust
 use surgeist_render::{
-    Color, DropShadowInput, DropShadowSource, FilterColorSpace, FilterDomains,
-    Layer, Rect, RenderAccountingContext, Result, Scene, prepare_drop_shadow,
+    Result,
+    accounting::RenderAccountingContext,
+    effect::{FilterColorSpace, FilterDomains},
+    geometry::Rect,
+    native_shadow::{DropShadowInput, DropShadowSource, prepare_drop_shadow},
+    paint::Color,
+    scene::{Layer, Scene},
 };
 
 fn shadowed_scene(accounting: &mut RenderAccountingContext) -> Result<Scene> {

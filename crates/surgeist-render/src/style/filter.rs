@@ -1,3 +1,12 @@
+//! Authored filter lists and their validated operations.
+//!
+//! [`FilterList`] is either `none` or a non-empty list of [`FilterOp`] values with a [`FilterOpKind`].
+//! Their payloads are [`FilterAmount`], [`UnitFilterAmount`], [`FilterAngle`], [`FilterBlur`] and
+//! [`FilterDropShadow`]. [`FilterList::color_filter_pipeline`] projects the color-only operations as a
+//! [`ColorFilterPipeline`] of [`ColorFilterOp`] values. [`BackdropFilterInput`] filters an explicit
+//! [`BackdropCaptureBounds`] region, and [`FilteredImagePaint`] pairs an image resource with a filter
+//! list.
+
 use super::super::{
     Error, Result,
     paint::PaintKind,

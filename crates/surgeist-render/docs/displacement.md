@@ -11,9 +11,15 @@ foreground effect while retaining its transform and outer composition.
 ```rust
 use std::sync::Arc;
 use surgeist_render::{
-    Color, DisplacementChannel, DisplacementInput, DisplacementSource,
-    FilterColorSpace, FilterDomains, Layer, Rect, RenderAccountingContext,
-    Scene, Size, prepare_displacement, prepare_native_displacement_map,
+    accounting::RenderAccountingContext,
+    displacement::{
+        DisplacementChannel, DisplacementInput, DisplacementSource, prepare_displacement,
+        prepare_native_displacement_map,
+    },
+    effect::{FilterColorSpace, FilterDomains},
+    geometry::{Rect, Size},
+    paint::Color,
+    scene::{Layer, Scene},
 };
 
 fn displaced_scene() -> surgeist_render::Result<Scene> {
