@@ -1,6 +1,25 @@
+//! Native event payloads and input.
+//!
+//! [`EventKind`] is the event a handler's `event` callback receives. Input
+//! arrives as an [`InputEvent`]: pointer, wheel, touch, magnification and key
+//! events, plus input-method events. Input-method requests and their
+//! configuration ([`ImeRequest`], [`ImeConfig`]) are authored here too.
+//!
+//! The `keyboard_types` crate is re-exported because [`KeyEvent`] has public
+//! fields of its `Key`, `Code` and `Location` types, which are the W3C UI
+//! Events key vocabulary shared across the ecosystem. The manifest pins the
+//! dependency to an exact version, so a caller's own copy at another version
+//! would be a different type.
+
+pub use super::pointer_coordinates::NativePointerCoordinates;
+pub use keyboard_types;
+
+use super::Instant;
 #[cfg(feature = "accessibility")]
-use super::AccessibilityEvent;
-use super::{Id, Instant, Metrics, PhysicalPoint, Point, Rect, Theme, WindowSnapshot};
+use crate::accessibility::AccessibilityEvent;
+use crate::descriptor::{Metrics, Theme, WindowSnapshot};
+use crate::geometry::{PhysicalPoint, Point, Rect};
+use crate::registry::Id;
 use std::path::PathBuf;
 
 /// Native window event payload emitted by this crate.
@@ -10,14 +29,14 @@ use std::path::PathBuf;
 /// [`Handler::closed`](crate::Handler::closed) callbacks rather than generic
 /// events.
 ///
-/// ```compile_fail
-/// use surgeist_window::{EventKind, Id};
+/// ```compile_fail,E0599
+/// use surgeist_window::{event::EventKind, registry::Id};
 ///
 /// let _ = EventKind::Destroyed(Id::from_u64(1));
 /// ```
 ///
-/// ```compile_fail
-/// use surgeist_window::{EventKind, Id};
+/// ```compile_fail,E0599
+/// use surgeist_window::{event::EventKind, registry::Id};
 ///
 /// let _ = EventKind::CloseRequested(Id::from_u64(1));
 /// ```
@@ -66,7 +85,7 @@ pub enum EventKind {
         /// Identity of the affected window.
         id: Id,
         /// Complete baseline host observations after the change.
-        environment: crate::HostEnvironment,
+        environment: crate::environment::HostEnvironment,
     },
     /// Produced by lossless native file-drag transitions.
     FileDrag(FileDragEvent),

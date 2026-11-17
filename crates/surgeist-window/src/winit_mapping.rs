@@ -1,10 +1,11 @@
 #[cfg(target_os = "macos")]
 use super::Instant;
 use super::{
-    Controls, DrawScheduler, Error, ErrorCode, Fullscreen, Level, Rect, Result, Role, Theme,
-    WindowRequest,
+    DrawScheduler, Error, ErrorCode, Result,
     planning::{ResolvedImePurpose, ResolvedImeRequest},
 };
+use crate::descriptor::{Controls, Fullscreen, Level, Role, Theme, WindowRequest};
+use crate::geometry::Rect;
 
 pub(crate) fn window_attributes_from_request(
     request: &WindowRequest,

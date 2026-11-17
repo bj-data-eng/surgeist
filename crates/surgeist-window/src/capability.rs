@@ -1,4 +1,14 @@
-use super::{CursorGrab, Error, ErrorCode, ImeHint, ImePurpose};
+//! Host capability reports and the decisions made from them.
+//!
+//! A [`HostCapabilities`] report states which window roles, fullscreen modes,
+//! cursor features, window operations, input-method features and accessibility
+//! a host supports, each as a [`CapabilitySupport`]. Command planning evaluates
+//! each authored command against the report and records a
+//! [`CapabilityDecision`]. Build a report with [`HostCapabilities::builder`].
+
+use super::{Error, ErrorCode};
+use crate::cursor::CursorGrab;
+use crate::event::{ImeHint, ImePurpose};
 
 const ROLE_COUNT: usize = 4;
 const FULLSCREEN_COUNT: usize = 3;

@@ -1,9 +1,28 @@
+//! Window identity, the live-window registry, native handles and the proxy.
+//!
+//! [`Id`] names one window generation. The [`Registry`] owns identity
+//! reservation and lifecycle, an [`Instance`] is an entry prepared for
+//! insertion, and a [`Handle`] or [`Ref`] gives access to the live native
+//! window. [`Access`] is the shared accessor those two implement, and a
+//! [`Proxy`] queues work for the owning event loop from another thread.
+//!
+//! The `raw_window_handle` crate is re-exported because [`Handle`] implements
+//! its `HasWindowHandle` and `HasDisplayHandle` traits and [`Access`] returns
+//! its handle types. Renderers attach to a window through them. The manifest
+//! pins the dependency to an exact version, so a caller's own copy at another
+//! version would be a different type.
+
+pub use raw_window_handle;
+
 use super::{
-    Command, Error, ErrorCode, Id, Metrics, Result, Size, WindowSnapshot,
-    command::Action,
+    Error, ErrorCode, Result,
+    action::Action,
     lease::{Lease, LeaseWeak, ReleaseNotifier},
     normalization::{NormalizedCommand, normalize_command},
 };
+use crate::command::Command;
+use crate::descriptor::{Metrics, WindowSnapshot};
+use crate::geometry::Size;
 #[cfg(feature = "accessibility")]
 use crate::planning::AccessibilityPhase;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -11,6 +30,24 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
+
+/// Opaque native window identifier.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Id(u64);
+
+impl Id {
+    /// Creates an opaque identifier from its raw numeric representation.
+    #[must_use]
+    pub const fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Returns the raw numeric representation of this identifier.
+    #[must_use]
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
+}
 
 /// Owned registry entry prepared for one window generation.
 ///
@@ -131,7 +168,7 @@ pub struct Ref<'a> {
 impl Ref<'_> {
     /// Borrows coherent baseline host observations for this live window.
     #[must_use]
-    pub fn environment(&self) -> &crate::HostEnvironment {
+    pub fn environment(&self) -> &crate::environment::HostEnvironment {
         self.instance.state().environment()
     }
 }

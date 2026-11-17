@@ -1,8 +1,9 @@
 //! Native baseline observations, independent of application or origin overrides.
 
+use crate::descriptor::Theme;
+use crate::environment::UserPreferences;
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
-use crate::{ContrastPreference, ReductionPreference};
-use crate::{Theme, UserPreferences};
+use crate::environment::{ContrastPreference, ReductionPreference};
 
 #[cfg(any(target_os = "windows", test))]
 mod windows_connection_cost;

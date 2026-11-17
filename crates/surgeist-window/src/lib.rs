@@ -6,13 +6,46 @@
 //! and live native handles for renderer integration. It does not own renderers,
 //! surfaces, UI semantics, layout, hit testing, or application behavior.
 //!
+//! ## Where things live
+//!
+//! The crate root holds the minimal program and its failure type: [`app`] and
+//! [`App`] run a handler, [`open`] and [`Open`] author a window, [`Handler`]
+//! receives the callbacks, [`Error`], [`ErrorCode`] and [`Result`] describe
+//! failure, and [`Instant`] is the clock for deadlines. Every other public item
+//! has exactly one path, in the module that owns its domain, and a root path to
+//! a module item does not resolve.
+//!
+//! | Module | Domain |
+//! | --- | --- |
+//! | [`callback`] | Scope values handed to handler callbacks, window targets and context. |
+//! | [`descriptor`] | Window requests, controls, level, theme, snapshot and metrics. |
+//! | [`command`] | Authored commands and resolved host command plans. |
+//! | [`event`] | Event, pointer, wheel, key, magnification, file-drag and input-method payloads. |
+//! | [`geometry`] | Logical and physical points, sizes, rectangles and insets. |
+//! | [`registry`] | Window identity, the live registry, handles, native handle access and the proxy. |
+//! | [`capability`] | Host capability reports and decisions. |
+//! | [`environment`] | Scale, viewport, screen, input and preference observations. |
+//! | [`cursor`] | Cursor icons, custom cursors and grabs. |
+//! | [`clipboard`] | The clipboard contract and its in-memory fallback. |
+//! | [`host`] | The native event loop and native state transitions. |
+//! | [`native_geometry`] | Host-authorized CSS-pixel geometry requests. |
+//! | [`system_fonts`] | Host UI font observations. |
+//! | `accessibility` | With the `accessibility` feature: typed events and the `accesskit` types. |
+//! | [`testing`] | The display-free `Runner` and `Host`. |
+//!
+//! Four crates that appear in public signatures are re-exported where their
+//! types are used, because the manifest pins each to an exact version:
+//! `keyboard_types` in [`event`], `raw_window_handle` in [`registry`],
+//! `CursorIcon` in [`cursor`] and, with the feature, `accesskit` in
+//! `accessibility`.
+//!
 //! ## Migration
 //!
 //! `Open::modal` now directly authors a dialog. Replace
 //! `.dialog(parent).modal(modality)` with `.modal(parent, modality)`.
 //! The scope resizing-status accessor has been removed; observe resize callbacks instead.
-//! Host capability reports are built explicitly with [`HostCapabilities::builder`],
-//! and handlers inspect the resolved target report with [`Context::capabilities`].
+//! Host capability reports are built explicitly with [`HostCapabilities::builder`](capability::HostCapabilities::builder),
+//! and handlers inspect the resolved target report with [`Context::capabilities`](callback::Context::capabilities).
 //!
 //! ## Deterministic lifecycle
 //!
@@ -23,7 +56,11 @@
 //!
 //! ```
 //! use surgeist_window::{
-//!     Close, Closed, Event, EventKind, Frame, Handler, Id, Ready, Result, open,
+//!     Handler, Result,
+//!     callback::{Close, Closed, Event, Frame, Ready},
+//!     event::EventKind,
+//!     open,
+//!     registry::Id,
 //!     testing::Runner,
 //! };
 //!
@@ -98,16 +135,20 @@
 //!
 //! Enable the `accessibility` feature to receive typed accessibility events and
 //! submit AccessKit tree updates through `Context::update_accessibility`.
-//! Semantic AccessKit types are available through the `accesskit` re-export; the native
-//! adapter remains an implementation detail.
+//! Semantic AccessKit types are available through the `accessibility::accesskit`
+//! re-export; the native adapter remains an implementation detail.
 //!
 //! ```
 //! # #[cfg(feature = "accessibility")]
 //! # {
 //! use surgeist_window::{
-//!     AccessibilityEvent, CapabilitySupport, Event, EventKind, FullscreenMode,
-//!     Command, Handler, HostCapabilities, Result, RoleKind,
-//!     accesskit::{Node, NodeId, Role, Tree, TreeId, TreeUpdate}, open,
+//!     Handler, Result,
+//!     accessibility::{AccessibilityEvent, accesskit::{Node, NodeId, Role, Tree, TreeId, TreeUpdate}},
+//!     callback::Event,
+//!     capability::{CapabilitySupport, FullscreenMode, HostCapabilities, RoleKind},
+//!     command::Command,
+//!     event::EventKind,
+//!     open,
 //!     testing::Runner,
 //! };
 //!
@@ -123,7 +164,7 @@
 //!
 //! struct AccessibilityHandler {
 //!     initial_tree: TreeUpdate,
-//!     submitted_for: Option<surgeist_window::Id>,
+//!     submitted_for: Option<surgeist_window::registry::Id>,
 //! }
 //!
 //! impl Handler for AccessibilityHandler {
@@ -180,35 +221,31 @@
 //! may omit `TreeUpdate::tree`; after deactivation, wait for another initial-tree
 //! request and submit a full update again.
 
-/// AccessKit semantic types used by the optional accessibility contract.
-///
-/// This re-export is available only with the `accessibility` feature; it keeps
-/// application tree construction independent from the crate's private native adapter.
 #[cfg(feature = "accessibility")]
-pub use accesskit;
-pub use cursor_icon::CursorIcon;
-pub use keyboard_types;
-pub use keyboard_types::Code;
-pub use raw_window_handle;
+pub mod accessibility;
+pub mod callback;
+pub mod capability;
+pub mod clipboard;
+pub mod command;
+pub mod cursor;
+pub mod descriptor;
+pub mod environment;
+pub mod event;
+pub mod geometry;
+pub mod host;
+pub mod native_geometry;
+pub mod registry;
+pub mod system_fonts;
+pub mod testing;
 
-#[cfg(feature = "accessibility")]
-mod accessibility;
-mod capability;
-mod clipboard;
-mod command;
+mod action;
 mod context;
-mod cursor;
-mod descriptor;
 mod dsl;
-mod environment;
 mod environment_native;
 mod error;
-mod event;
-mod geometry;
 mod handler;
 mod lease;
 mod loop_;
-mod native_geometry;
 mod native_input;
 mod native_monitor;
 mod native_preferences;
@@ -216,60 +253,14 @@ mod normalization;
 mod planning;
 mod pointer_coordinates;
 mod pump;
-mod registry;
 mod scheduler;
-mod system_fonts;
-pub mod testing;
 mod transition;
 mod winit_adapter;
 mod winit_mapping;
 
-#[cfg(feature = "accessibility")]
-pub use accessibility::{AccessibilityActionRequest, AccessibilityEvent};
-pub use capability::{
-    CapabilityDecision, CapabilityKind, CapabilitySupport, CursorCapability, FullscreenMode,
-    HostCapabilities, HostCapabilitiesBuilder, ImeCapability, RoleKind, WindowOperation,
-};
-pub use clipboard::{Clipboard, ClipboardImage, ClipboardImageRef, MemoryClipboard};
-pub use command::{Command, CommandKind};
-pub use context::Context;
-pub use cursor::{Cursor, CursorGrab, CustomCursorId};
-pub use descriptor::{
-    Controls, Fullscreen, Level, Metrics, Modality, Role, Theme, WindowRequest,
-    WindowRequestBuilder, WindowSnapshot,
-};
-pub use dsl::{
-    App, Close, Closed, ControlsBuilder, Event, Frame, Input, Open, Ready, Resize, Scope, Selector,
-    Target, app, controls, open, point, rect, size,
-};
-pub use environment::{
-    ClientWindowMetrics, ContrastPreference, DisplayMode, EnvironmentBlending, HostEnvironment,
-    InputCapabilities, NavigationControls, OutputDevice, OutputResolution, PointerAccuracy,
-    PointerCapability, ReductionPreference, ScaleFactor, ScreenAreaSource, ScreenMetrics,
-    UserPreferences, ViewportMetrics, ViewportSizes, VisualViewportMetrics,
-};
+pub use dsl::{App, Open, app, open};
 pub use error::{Error, ErrorCode, Result};
-pub use event::{
-    EventKind, FileDragEvent, ImeConfig, ImeEvent, ImeHint, ImePurpose, ImeRequest,
-    ImeSurroundingText, InputEvent, KeyEvent, KeyState, MagnificationDelta, MagnificationEvent,
-    MagnificationGesture, ModifierState, PointerButton, PointerDeviceData, PointerEvent,
-    PointerKind, PointerPhase, StandardKeyBindingEvent, TouchPhase, WheelDelta, WheelEvent,
-};
-pub use geometry::{Id, Insets, PhysicalPoint, PhysicalSize, Point, Rect, Size};
 pub use handler::Handler;
-pub use loop_::Loop;
-pub use native_geometry::{
-    NativeGeometryAuthorization, NativeGeometryBasis, NativeGeometryDisposition,
-    NativeGeometryNoAction, NativeGeometryOutcome, NativeGeometryRequest, NativeOpenFeatures,
-};
-pub use planning::HostCommandPlan;
-pub use pointer_coordinates::NativePointerCoordinates;
-pub use registry::{Access, Handle, Instance, Proxy, Ref, Registry};
-pub use system_fonts::{
-    AppKitFontMetrics, AppKitFontTraits, AppKitFontWeight, AppKitSystemFont, SystemFont,
-    SystemFontEnvironment, SystemFontError, SystemFontRole, WindowsSystemFont,
-};
-pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
 
 /// Platform monotonic clock shared by Window deadlines and input receipt times.
 ///
@@ -278,6 +269,11 @@ pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
 /// object. This is not a DOM timestamp or a universal epoch shared by unrelated
 /// contexts; atomics-enabled browser workers use the upstream time-origin
 /// adjustment. Callers must create deadlines in the owning host clock domain.
+///
+/// The type is re-exported so that deadline callers on every target name one
+/// type without a target-conditional dependency on `web-time`. The manifest
+/// pins that dependency to an exact version, so a caller's own copy at another
+/// version would be a different type on browser Wasm.
 pub use web_time::Instant;
 
 pub(crate) use registry::UserEvent;

@@ -1,9 +1,16 @@
+use crate::descriptor::{Metrics, WindowSnapshot};
+use crate::environment::{
+    HostEnvironment, ScaleFactor, ViewportMetrics, ViewportSizes, VisualViewportMetrics,
+};
+use crate::event::{
+    EventKind, InputEvent, MagnificationDelta, MagnificationEvent, MagnificationGesture,
+    ModifierState, TouchPhase,
+};
+use crate::geometry::{PhysicalPoint, PhysicalSize, Point, Size};
+use crate::host::NativeEventTransition;
+use crate::registry::{Access, Id};
 use crate::{
-    Access, EventKind, Handler, HostEnvironment, Id, InputEvent, Instant, MagnificationDelta,
-    MagnificationEvent, MagnificationGesture, Metrics, ModifierState, NativeEventTransition,
-    PhysicalPoint, PhysicalSize, Point, Result, ScaleFactor, Size, TouchPhase, ViewportMetrics,
-    ViewportSizes, VisualViewportMetrics, WindowSnapshot, open, testing::Runner,
-    winit_adapter::magnification_from_winit,
+    Handler, Instant, Result, open, testing::Runner, winit_adapter::magnification_from_winit,
 };
 use winit::event::{DeviceId, TouchPhase as NativePhase, WindowEvent};
 
@@ -156,18 +163,18 @@ struct Observer {
 }
 
 impl Handler for Observer {
-    fn ready(&mut self, ready: &mut crate::Ready<'_>) -> Result<()> {
+    fn ready(&mut self, ready: &mut crate::callback::Ready<'_>) -> Result<()> {
         self.snapshot = Some(ready.state().clone());
         Ok(())
     }
 
-    fn resize(&mut self, resize: &mut crate::Resize<'_>) -> Result<()> {
+    fn resize(&mut self, resize: &mut crate::callback::Resize<'_>) -> Result<()> {
         self.snapshot = Some(resize.state().clone());
         self.resize_count += 1;
         Ok(())
     }
 
-    fn input(&mut self, input: &mut crate::Input<'_>) -> Result<()> {
+    fn input(&mut self, input: &mut crate::callback::Input<'_>) -> Result<()> {
         self.inputs.push(input.event().clone());
         self.positions.push(input.position());
         self.modifiers.push(input.modifiers());
@@ -175,7 +182,7 @@ impl Handler for Observer {
         Ok(())
     }
 
-    fn event(&mut self, event: &mut crate::Event<'_>) -> Result<()> {
+    fn event(&mut self, event: &mut crate::callback::Event<'_>) -> Result<()> {
         self.generic_events.push(event.event().clone());
         Ok(())
     }

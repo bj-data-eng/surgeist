@@ -15,8 +15,12 @@ fn main() {
     use objc2_foundation::{NSNumber, NSString};
     use std::{cell::RefCell, rc::Rc};
     use surgeist_window::{
-        ContrastPreference, Handler, Point, Ready, Rect, ReductionPreference, Result, Size,
-        WindowSnapshot, app, open,
+        Handler, Result, app,
+        callback::Ready,
+        descriptor::WindowSnapshot,
+        environment::{ContrastPreference, ReductionPreference},
+        geometry::{Point, Rect, Size},
+        open,
     };
 
     if std::env::var("SURGEIST_RUN_NATIVE_PREFERENCES_PROBE").as_deref() != Ok("1") {
@@ -204,8 +208,15 @@ fn main() {
     use std::{cell::RefCell, rc::Rc};
     use surgeist_typed_winsafe as native;
     use surgeist_window::{
-        ContrastPreference, Handler, InputCapabilities, Point, PointerAccuracy, PointerCapability,
-        Ready, Rect, ReductionPreference, Result, Size, WindowSnapshot, app, open,
+        Handler, Result, app,
+        callback::Ready,
+        descriptor::WindowSnapshot,
+        environment::{
+            ContrastPreference, InputCapabilities, PointerAccuracy, PointerCapability,
+            ReductionPreference,
+        },
+        geometry::{Point, Rect, Size},
+        open,
     };
     use windows::Devices::Display::Core::{
         DisplayManager, DisplayManagerOptions, DisplayManagerResult, DisplayWireFormatPixelEncoding,

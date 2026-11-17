@@ -1,4 +1,5 @@
-use super::{CommandKind, Id};
+use crate::command::CommandKind;
+use crate::registry::Id;
 use std::{error, fmt};
 
 /// Result returned by public window operations.

@@ -1,7 +1,8 @@
 //! Exact native monitor identity and checked desktop work-area conversion.
 
 use super::{ColorEstimate, MonitorFacts};
-use crate::{Point, Rect, ScaleFactor, Size};
+use crate::environment::ScaleFactor;
+use crate::geometry::{Point, Rect, Size};
 
 #[cfg(target_os = "windows")]
 mod color;

@@ -1,4 +1,5 @@
-use super::{Close, Closed, Context, Event, Frame, Input, Ready, Resize, Result};
+use super::Result;
+use crate::callback::{Close, Closed, Context, Event, Frame, Input, Ready, Resize};
 
 /// Consumer callbacks delivered by the shared native and deterministic lifecycle pump.
 ///
@@ -44,7 +45,7 @@ pub trait Handler {
 
     /// Receives normalized input for its live target window.
     ///
-    /// The pump routes [`crate::EventKind::Input`] here, rather than through
+    /// The pump routes [`crate::event::EventKind::Input`] here, rather than through
     /// [`Handler::event`], after native input lowering. Input itself does not
     /// mutate the snapshot; the scope exposes the target's committed state at
     /// dispatch. The default does nothing.
@@ -54,7 +55,7 @@ pub trait Handler {
 
     /// Receives remaining normalized host events after their observed transition.
     ///
-    /// The pump routes every retained [`crate::EventKind`] except input and
+    /// The pump routes every retained [`crate::event::EventKind`] except input and
     /// metric changes here: input uses [`Handler::input`] and resize or scale
     /// changes use [`Handler::resize`]. Producer transitions such as focus,
     /// position, occlusion, theme, and creation have
@@ -67,7 +68,7 @@ pub trait Handler {
 
     /// Receives a close request and decides whether to begin closing the window.
     ///
-    /// The default accepts the request. Calling [`Close::cancel`](super::Close::cancel)
+    /// The default accepts the request. Calling [`Close::cancel`](crate::callback::Close::cancel)
     /// leaves the window live; accepted close begins shared teardown and eventually
     /// delivers [`Handler::closed`] exactly once when ownership ends.
     fn close(&mut self, close: &mut Close<'_>) -> Result<()> {

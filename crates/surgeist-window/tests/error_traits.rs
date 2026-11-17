@@ -4,7 +4,7 @@
 //! carry no `Debug` rendering of the code.
 
 use std::error::Error as StdError;
-use surgeist_window::{Error, ErrorCode, Id, SystemFontError};
+use surgeist_window::{Error, ErrorCode, registry::Id, system_fonts::SystemFontError};
 
 fn assert_error_traits<T: StdError + Send + Sync + 'static>() {}
 

@@ -1,8 +1,8 @@
 //! Native pointer observations and the native content host's primary policy.
 
-use crate::HostEnvironment;
+use crate::environment::HostEnvironment;
 #[cfg(any(target_os = "windows", test))]
-use crate::InputCapabilities;
+use crate::environment::InputCapabilities;
 use crate::environment_native::CaptureProfile;
 
 /// Distinguishes a native-owned observation (including unavailable) from facts
@@ -70,7 +70,7 @@ enum NativePointer {
 fn capabilities(
     devices: impl IntoIterator<Item = Option<NativePointer>>,
 ) -> Option<InputCapabilities> {
-    use crate::{PointerAccuracy, PointerCapability};
+    use crate::environment::{PointerAccuracy, PointerCapability};
 
     let mut pointers = Vec::new();
     let mut primary = PointerCapability {
@@ -119,7 +119,7 @@ fn capabilities(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{NavigationControls, PointerAccuracy, PointerCapability};
+    use crate::environment::{NavigationControls, PointerAccuracy, PointerCapability};
 
     #[test]
     fn each_device_reports_its_accuracy_and_convenient_hover() {

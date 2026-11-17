@@ -1,4 +1,16 @@
-use super::{CursorCapability, CursorIcon};
+//! Cursor presentation and cursor grabs.
+//!
+//! A [`Cursor`] is the requested presentation for a window, and
+//! [`CursorGrab`] the requested confinement of the pointer.
+//!
+//! The `cursor_icon` crate is not re-exported; [`CursorIcon`] is, because it
+//! is the payload of [`Cursor::Icon`] and the cursor enum shared by the
+//! windowing ecosystem. The manifest pins the dependency to an exact version,
+//! so a caller's own copy at another version would be a different type.
+
+pub use cursor_icon::CursorIcon;
+
+use crate::capability::CursorCapability;
 
 /// Requested cursor presentation for a window.
 ///

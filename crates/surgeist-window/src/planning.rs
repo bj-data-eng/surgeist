@@ -1,14 +1,20 @@
-#[cfg(feature = "accessibility")]
-use super::CapabilitySupport;
 use super::{
-    CapabilityDecision, CapabilityKind, Command, CommandKind, Error, ErrorCode, Fullscreen,
-    HostCapabilities, Id, ImeCapability, ImeConfig, ImeHint, ImePurpose, ImeRequest, Metrics,
-    PhysicalSize, Rect, Registry, Result, Size, WindowOperation, WindowRequest, WindowSnapshot,
+    Error, ErrorCode, Result,
     descriptor::WindowSnapshotSeed,
     normalization::{NormalizedCommand, normalize_command},
     pump::WorkOrigin,
     registry::{InnerSizeBounds, LifecycleState, RegistryProjection},
 };
+#[cfg(feature = "accessibility")]
+use crate::capability::CapabilitySupport;
+use crate::capability::{
+    CapabilityDecision, CapabilityKind, HostCapabilities, ImeCapability, WindowOperation,
+};
+use crate::command::{Command, CommandKind};
+use crate::descriptor::{Fullscreen, Metrics, WindowRequest, WindowSnapshot};
+use crate::event::{ImeConfig, ImeHint, ImePurpose, ImeRequest};
+use crate::geometry::{PhysicalSize, Rect, Size};
+use crate::registry::{Id, Registry};
 use std::collections::HashMap;
 use std::fmt;
 

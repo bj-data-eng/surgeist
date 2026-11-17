@@ -1,8 +1,9 @@
-use crate::{
-    ClientWindowMetrics, HostEnvironment, OutputDevice, OutputResolution, PhysicalPoint,
-    PhysicalSize, Point, Rect, Result, ScaleFactor, ScreenAreaSource, ScreenMetrics, Size,
-    UserPreferences, ViewportMetrics, ViewportSizes,
+use crate::Result;
+use crate::environment::{
+    ClientWindowMetrics, HostEnvironment, OutputDevice, OutputResolution, ScaleFactor,
+    ScreenAreaSource, ScreenMetrics, UserPreferences, ViewportMetrics, ViewportSizes,
 };
+use crate::geometry::{PhysicalPoint, PhysicalSize, Point, Rect, Size};
 
 /// Determines whether winit observations describe native content or a browser canvas.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,7 +28,7 @@ pub(crate) enum CaptureScope {
 /// system scheme. Event metrics supply scale/size even if getters lag.
 pub(crate) fn observe_environment(
     window: &winit::window::Window,
-    metrics: &crate::Metrics,
+    metrics: &crate::descriptor::Metrics,
     preferences: UserPreferences,
     profile: CaptureProfile,
     scope: CaptureScope,
@@ -163,7 +164,7 @@ impl NativeObservation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Theme;
+    use crate::descriptor::Theme;
 
     #[test]
     fn native_capture_converts_screen_and_client_origin_in_one_coordinate_space() {
@@ -257,9 +258,9 @@ mod tests {
     fn geometry_capture_keeps_the_complete_independent_baseline() {
         let preferences = UserPreferences {
             color_scheme: Some(Theme::Dark),
-            reduced_motion: Some(crate::ReductionPreference::Reduce),
-            reduced_transparency: Some(crate::ReductionPreference::NoPreference),
-            contrast: Some(crate::ContrastPreference::More),
+            reduced_motion: Some(crate::environment::ReductionPreference::Reduce),
+            reduced_transparency: Some(crate::environment::ReductionPreference::NoPreference),
+            contrast: Some(crate::environment::ContrastPreference::More),
             reduced_data: None,
         };
         for profile in [CaptureProfile::NativeContent, CaptureProfile::BrowserCanvas] {

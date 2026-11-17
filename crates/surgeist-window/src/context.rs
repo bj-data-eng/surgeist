@@ -1,7 +1,10 @@
-use super::{
-    Clipboard, Command, Error, ErrorCode, Handle, HostCapabilities, Id, Instant, Metrics, Open,
-    Proxy, Ref, Registry, Selector, Target, command::Action,
-};
+use super::{Error, ErrorCode, Instant, Open, action::Action};
+use crate::callback::{Selector, Target};
+use crate::capability::HostCapabilities;
+use crate::clipboard::Clipboard;
+use crate::command::Command;
+use crate::descriptor::Metrics;
+use crate::registry::{Handle, Id, Proxy, Ref, Registry};
 
 /// Callback-local access to the live registry, host services, and queued work.
 ///
@@ -88,7 +91,7 @@ impl<'a> Context<'a> {
     /// submission until the enclosing callback returns `Ok`; the live target,
     /// accessibility capability, and tree phase are validated during later
     /// planning and backend application. Call it from the handler callback that
-    /// received [`crate::AccessibilityEvent::InitialTreeRequested`] and pass
+    /// received [`crate::accessibility::AccessibilityEvent::InitialTreeRequested`] and pass
     /// that event's live target id. The first update after that request must be
     /// a complete AccessKit update: `TreeUpdate::tree` is present, its root node
     /// is included in `TreeUpdate::nodes`, `TreeUpdate::tree_id` identifies the
@@ -150,7 +153,7 @@ impl<'a> Context<'a> {
     ///
     /// Lookup failure, including a closing or destroyed target no longer in the
     /// live registry, returns `None`.
-    pub fn state(&self, target: impl Into<Selector>) -> Option<&super::WindowSnapshot> {
+    pub fn state(&self, target: impl Into<Selector>) -> Option<&crate::descriptor::WindowSnapshot> {
         match target.into() {
             Selector::Id(id) => self.registry.get(id).map(|window| window.instance.state()),
             Selector::Name(name) => self
@@ -175,7 +178,7 @@ impl<'a> Context<'a> {
     /// Unknown ids return [`ErrorCode::HandleUnavailable`](super::ErrorCode::HandleUnavailable);
     /// a retained handle can remain usable through resource-owning closing.
     pub fn handle(&self, id: Id) -> super::Result<Handle> {
-        use super::Access;
+        use crate::registry::Access;
 
         self.access(id)?.handle()
     }
@@ -184,7 +187,7 @@ impl<'a> Context<'a> {
     ///
     /// Unknown ids return [`ErrorCode::HandleUnavailable`](super::ErrorCode::HandleUnavailable).
     pub fn metrics(&self, id: Id) -> super::Result<Metrics> {
-        use super::Access;
+        use crate::registry::Access;
 
         Ok(self.access(id)?.metrics())
     }

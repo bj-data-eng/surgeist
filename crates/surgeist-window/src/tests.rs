@@ -1,4 +1,4 @@
-use super::command::Action;
+use super::action::Action;
 use super::testing::{Effect, Event as HostEvent};
 #[cfg(feature = "accessibility")]
 use super::winit_adapter::{
@@ -10,10 +10,32 @@ use super::winit_adapter::{
     ime_event_from_winit, key_from_winit, location_from_winit, native_transition_route,
 };
 use super::*;
+#[cfg(feature = "accessibility")]
+use crate::accessibility::{AccessibilityActionRequest, AccessibilityEvent};
+use crate::callback::{Close, Closed, Context, Event, Frame, Input, Ready, Resize, Scope};
+use crate::capability::{
+    CapabilityDecision, CapabilityKind, CapabilitySupport, CursorCapability, FullscreenMode,
+    HostCapabilities, ImeCapability, RoleKind, WindowOperation,
+};
+use crate::clipboard::{Clipboard, ClipboardImage, ClipboardImageRef, MemoryClipboard};
+use crate::command::{Command, CommandKind, HostCommandPlan};
+use crate::cursor::{Cursor, CursorGrab, CursorIcon, CustomCursorId};
 use crate::descriptor::WindowSnapshotSeed;
+use crate::descriptor::{
+    Controls, Fullscreen, Level, Metrics, Modality, Role, Theme, WindowRequest,
+    WindowRequestBuilder, WindowSnapshot, controls,
+};
+use crate::event::{
+    EventKind, ImeConfig, ImeEvent, ImeHint, ImePurpose, ImeRequest, ImeSurroundingText,
+    InputEvent, KeyEvent, KeyState, MagnificationEvent, MagnificationGesture, ModifierState,
+    PointerButton, PointerEvent, PointerPhase, WheelDelta,
+};
+use crate::geometry::{Insets, PhysicalPoint, PhysicalSize, Point, Rect, Size, point, rect, size};
+use crate::host::{Loop, MetricsEvent, NativeEventTransition, WindowStatePatch};
 use crate::loop_::PreparedLoop;
 use crate::planning::{ResolvedImePurpose, take_planned_command, take_planned_ime_request};
 use crate::registry::ProxyQueue;
+use crate::registry::{Access, Id, Instance, Proxy, Registry};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 fn conservative_capabilities() -> HostCapabilities {
@@ -4926,12 +4948,13 @@ fn host_command_plan_keeps_backend_capability_rejections_before_application() {
 #[test]
 fn host_command_enum_is_not_part_of_public_front_door() {
     let lib = include_str!("lib.rs");
+    let command = include_str!("command.rs");
     let duplicate_name = ["Host", "Command"].concat();
-    let planning_export = "pub use planning::HostCommandPlan;";
+    let planning_export = "pub use super::planning::HostCommandPlan;";
 
-    assert!(lib.contains(planning_export));
-    assert!(!lib.contains("pub use transition::{HostCommandPlan"));
-    assert!(!lib.contains(&format!("pub use command::{{{duplicate_name}")));
+    assert!(command.contains(planning_export));
+    assert!(!lib.contains("HostCommandPlan"));
+    assert!(!command.contains(&format!("pub use super::planning::{duplicate_name};")));
 }
 
 #[test]
