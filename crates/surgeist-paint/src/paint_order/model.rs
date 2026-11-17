@@ -875,7 +875,7 @@ impl fmt::Display for PaintInputError {
                 record_order,
             } => write!(
                 f,
-                "primitives {} and {} share record order {record_order}",
+                "primitives {} and {} have the same record order {record_order} for the same target and paint role (and applying box, for a decoration)",
                 first.get(),
                 other.get()
             ),

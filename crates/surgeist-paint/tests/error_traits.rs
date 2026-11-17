@@ -830,7 +830,7 @@ fn gradient_stop_errors_name_the_item_and_position_at_fault() {
                 left_source_index: 1,
                 right_source_index: 7,
             },
-            "positions between gradient items 1 and 7 cannot be distributed in f64",
+            "the used positions from gradient item 1 to gradient item 7 cannot be kept finite and non-decreasing in f64",
         ),
     ];
     assert_table(&table, stops_row, 7);

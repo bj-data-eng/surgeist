@@ -131,7 +131,7 @@ impl fmt::Display for GradientStopsError {
                 right_source_index,
             } => write!(
                 f,
-                "positions between gradient items {left_source_index} and {right_source_index} cannot be distributed in f64"
+                "the used positions from gradient item {left_source_index} to gradient item {right_source_index} cannot be kept finite and non-decreasing in f64"
             ),
         }
     }
