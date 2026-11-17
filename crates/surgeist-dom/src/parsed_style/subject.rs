@@ -39,13 +39,21 @@ impl std::fmt::Display for DomParsedHtmlStyleSubjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Style(_) => "the original Style prefix refused the next subject",
-            Self::Remaining(_) => {
-                "other influencing original work must run before the next Style subject"
-            }
+            Self::Remaining(requirement) => match requirement {
+                DomParsedHtmlStyleNotificationRequirement::Invocation { .. }
+                | DomParsedHtmlStyleNotificationRequirement::Occurrence { .. } => {
+                    "other influencing original work must run before the next Style subject"
+                }
+                DomParsedHtmlStyleNotificationRequirement::Unavailable { .. } => {
+                    "the original inventory cannot establish the next Style subject"
+                }
+            },
             Self::WrongOccurrence => {
                 "the supplied occurrence is not the next original Style subject"
             }
-            Self::AlreadySelected => "the supplied occurrence was already selected",
+            Self::AlreadySelected => {
+                "the supplied occurrence was already selected or passed by the original sequence"
+            }
         })
     }
 }

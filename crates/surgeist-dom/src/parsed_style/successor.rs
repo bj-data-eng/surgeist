@@ -51,16 +51,22 @@ impl std::fmt::Display for DomParsedHtmlStyleSuccessorError {
                 "no CSSOM owner was supplied for the sheet that the predecessor created"
             }
             Self::MismatchedOwner { .. } => {
-                "the supplied CSSOM owner is not the owner bound to the destination root"
+                "the supplied CSSOM owner does not match the owner of the destination root"
             }
             Self::OwnerBusy { .. } => "the CSSOM owner of the destination root is already borrowed",
             Self::OwnerPoisoned { .. } => {
                 "the CSSOM owner of the destination root was poisoned by an earlier failure"
             }
             Self::Cssom(_) => "the CSSOM producer refused the Style successor",
-            Self::Remaining(_) => {
-                "the next influencing original work is outside this ParserPopped successor"
-            }
+            Self::Remaining(requirement) => match requirement {
+                DomParsedHtmlStyleNotificationRequirement::Invocation { .. }
+                | DomParsedHtmlStyleNotificationRequirement::Occurrence { .. } => {
+                    "the next influencing original work is outside this ParserPopped successor"
+                }
+                DomParsedHtmlStyleNotificationRequirement::Unavailable { .. } => {
+                    "the original inventory cannot establish the successor"
+                }
+            },
         })
     }
 }

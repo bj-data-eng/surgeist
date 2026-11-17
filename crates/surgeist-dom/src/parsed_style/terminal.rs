@@ -38,9 +38,7 @@ impl From<crate::DomParsedHtmlAssociationAdmissionError> for DomParsedHtmlTermin
 impl std::fmt::Display for DomParsedHtmlTerminalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Frontier(_) => {
-                f.write_str("the original synchronous end could not be established")
-            }
+            Self::Frontier(_) => f.write_str("the original contribution settlement was refused"),
             Self::SynchronousEndRequired { .. } => f.write_str(
                 "the original synchronous end must be reached before the contribution settles",
             ),
