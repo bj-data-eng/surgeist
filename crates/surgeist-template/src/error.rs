@@ -12,6 +12,44 @@ pub enum ParseErrorKind {
     UnsupportedTemplateTag { tag: String },
 }
 
+impl core::fmt::Display for ParseErrorKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnexpectedEof => f.write_str("unexpected end of template source"),
+            Self::UnexpectedToken { expected } => {
+                write!(f, "unexpected token, expected {expected}")
+            }
+            Self::UnclosedElement { name } => {
+                write!(f, "element \"{}\" is not closed", name.escape_debug())
+            }
+            Self::MismatchedCloseTag { expected, found } => write!(
+                f,
+                "closing tag \"{}\" does not match open element \"{}\"",
+                found.escape_debug(),
+                expected.escape_debug()
+            ),
+            Self::InvalidName { name } => write!(
+                f,
+                "\"{}\" is not a valid element or attribute name",
+                name.escape_debug()
+            ),
+            Self::InvalidExpression { reason } => write!(f, "invalid expression: {reason}"),
+            Self::StrayTemplateTag { tag } => write!(
+                f,
+                "template tag \"{}\" has no matching opening tag",
+                tag.escape_debug()
+            ),
+            Self::UnsupportedTemplateTag { tag } => {
+                write!(
+                    f,
+                    "template tag \"{}\" is not supported",
+                    tag.escape_debug()
+                )
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
     kind: ParseErrorKind,
@@ -33,6 +71,15 @@ impl ParseError {
     }
 }
 
+impl core::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{} at ", self.kind)?;
+        self.span.write_start(f)
+    }
+}
+
+impl core::error::Error for ParseError {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationErrorKind {
     UnknownNativeElement { name: String },
@@ -40,6 +87,36 @@ pub enum ValidationErrorKind {
     DuplicateAttribute { name: String },
     InvalidAttribute { element: String, attribute: String },
     InvalidAttributeValue { element: String, attribute: String },
+}
+
+impl core::fmt::Display for ValidationErrorKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnknownNativeElement { name } => {
+                write!(f, "unknown native element \"{}\"", name.escape_debug())
+            }
+            Self::UnknownComponent { name } => {
+                write!(f, "unknown component \"{}\"", name.escape_debug())
+            }
+            Self::DuplicateAttribute { name } => write!(
+                f,
+                "attribute \"{}\" appears more than once on one element",
+                name.escape_debug()
+            ),
+            Self::InvalidAttribute { element, attribute } => write!(
+                f,
+                "attribute \"{}\" is not allowed on \"{}\"",
+                attribute.escape_debug(),
+                element.escape_debug()
+            ),
+            Self::InvalidAttributeValue { element, attribute } => write!(
+                f,
+                "attribute \"{}\" on \"{}\" does not accept this value form",
+                attribute.escape_debug(),
+                element.escape_debug()
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +139,15 @@ impl ValidationError {
         self.span
     }
 }
+
+impl core::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{} at ", self.kind)?;
+        self.span.write_start(f)
+    }
+}
+
+impl core::error::Error for ValidationError {}
 
 #[cfg(test)]
 mod tests {

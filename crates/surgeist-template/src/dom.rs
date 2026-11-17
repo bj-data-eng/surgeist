@@ -44,6 +44,42 @@ pub enum TemplateDomError {
     RepresentationExhausted,
 }
 
+impl core::fmt::Display for TemplateDomUnresolvedKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Component => "component element",
+            Self::Interpolation => "interpolation",
+            Self::Conditional => "conditional block",
+            Self::Iteration => "foreach block",
+            Self::AttributeExpression => "attribute expression",
+            Self::AttributeInterpolation => "interpolated attribute",
+        })
+    }
+}
+
+impl core::fmt::Display for TemplateDomError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Unresolved { span, kind } => {
+                write!(f, "{kind} at ")?;
+                span.write_start(f)?;
+                f.write_str(" is symbolic and cannot become a DOM node")
+            }
+            Self::UnsupportedTemplateContentsTarget { span } => {
+                f.write_str("template element at ")?;
+                span.write_start(f)?;
+                f.write_str(" needs a template-contents association that is not supported")
+            }
+            Self::Allocation => f.write_str("allocation failed while preparing the DOM batch"),
+            Self::RepresentationExhausted => {
+                f.write_str("the DOM command count exceeds the representable range")
+            }
+        }
+    }
+}
+
+impl core::error::Error for TemplateDomError {}
+
 enum PlannedKind {
     Element {
         name: DocumentString,

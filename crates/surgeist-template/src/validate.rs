@@ -394,6 +394,41 @@ impl From<NameError> for RegistryError {
     }
 }
 
+impl core::fmt::Display for RegistryError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // The wrapped name error is reported through `source`, not repeated here.
+        match self {
+            Self::Name(_) => f.write_str("invalid name in registry specification"),
+            Self::DuplicateNativeElement { name } => write!(
+                f,
+                "native element \"{}\" is registered more than once",
+                name.escape_debug()
+            ),
+            Self::DuplicateComponent { name } => write!(
+                f,
+                "component \"{}\" is registered more than once",
+                name.escape_debug()
+            ),
+            Self::DuplicateAttributeSpec { name } => write!(
+                f,
+                "attribute \"{}\" is specified more than once for one element",
+                name.escape_debug()
+            ),
+        }
+    }
+}
+
+impl core::error::Error for RegistryError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Name(error) => Some(error),
+            Self::DuplicateNativeElement { .. }
+            | Self::DuplicateComponent { .. }
+            | Self::DuplicateAttributeSpec { .. } => None,
+        }
+    }
+}
+
 pub fn validate_template(
     document: &TemplateDocument,
     native_registry: &NativeElementRegistry,

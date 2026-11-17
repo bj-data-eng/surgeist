@@ -16,6 +16,38 @@ pub enum NameError {
     InvalidComponentName { name: String },
 }
 
+impl core::fmt::Display for NameError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Variable paths also report reserved roots and adjacent indexes through
+        // `InvalidVariableName`, so its message states no shape.
+        match self {
+            Self::InvalidVariableName { name } => {
+                write!(f, "invalid variable name \"{}\"", name.escape_debug())
+            }
+            Self::InvalidAttributeName { name } => write!(
+                f,
+                "invalid attribute name \"{}\": expected an ASCII letter or underscore followed by \
+                 ASCII letters, digits, underscores or hyphens",
+                name.escape_debug()
+            ),
+            Self::InvalidNativeElementName { name } => write!(
+                f,
+                "invalid native element name \"{}\": expected a lowercase ASCII letter followed \
+                 by lowercase ASCII letters, digits, underscores or hyphens",
+                name.escape_debug()
+            ),
+            Self::InvalidComponentName { name } => write!(
+                f,
+                "invalid component name \"{}\": expected an uppercase ASCII letter followed by \
+                 ASCII letters, digits or underscores",
+                name.escape_debug()
+            ),
+        }
+    }
+}
+
+impl core::error::Error for NameError {}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariableName(String);
 

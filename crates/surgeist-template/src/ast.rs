@@ -107,6 +107,16 @@ pub enum AstConstructionError {
     EmptyIfBranches,
 }
 
+impl core::fmt::Display for AstConstructionError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::EmptyIfBranches => f.write_str("an if block requires at least one branch"),
+        }
+    }
+}
+
+impl core::error::Error for AstConstructionError {}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElementNode {
     name: ElementName,
