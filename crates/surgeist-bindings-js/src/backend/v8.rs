@@ -318,7 +318,10 @@ impl Roots {
             .transpose()
     }
 
-    fn capture_buffer<'scope>(&self, count: usize) -> Result<crate::ArgumentValues<'scope>, Error> {
+    fn capture_buffer<'scope>(
+        &self,
+        count: usize,
+    ) -> Result<crate::preparation::ArgumentValues<'scope>, Error> {
         let bytes = count
             .checked_mul(size_of::<Value<'_>>())
             .ok_or(Error::Allocation)?;
@@ -331,7 +334,7 @@ impl Roots {
         values
             .try_reserve_exact(count)
             .map_err(|_| Error::Allocation)?;
-        Ok(crate::ArgumentValues { values, backing })
+        Ok(crate::preparation::ArgumentValues { values, backing })
     }
 
     fn local<'s>(

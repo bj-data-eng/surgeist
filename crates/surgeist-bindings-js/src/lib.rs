@@ -101,7 +101,7 @@ pub use native_object::{
     NativeObject, NativeObjectToken, NativeProjectionFunding, NativeProjectionPrototype,
     PreparedNativeProjection,
 };
-pub use preparation::{Admitted, ArgumentValues, ArgumentValuesIntoIter};
+use preparation::{Admitted, ArgumentValues};
 pub use promise::PromiseResolver;
 pub use trusted_types::{
     TrustedAttributeValue, TrustedPolicyCallback, TrustedType, TrustedTypeData, TrustedTypeKind,
