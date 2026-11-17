@@ -144,7 +144,7 @@ impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::InvalidRequest => "invalid request",
-            Self::DuplicateIdentity => "duplicate window identity",
+            Self::DuplicateIdentity => "duplicate window identity or name",
             Self::IdentityExhausted => "window identities exhausted",
             Self::StaleWindow => "stale window",
             Self::WindowClosing => "window is closing",
