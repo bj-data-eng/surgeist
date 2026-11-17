@@ -635,3 +635,21 @@ and [family attribute tests](tests/font_family_operations.rs) exercise these pub
 owners, including stable identities, raw keys, independent map cardinality,
 exact authored conversion limitations, source no-ops/recovery, cumulative budgets,
 support decisions, atomic failures and owning captures after store drop.
+
+## Benchmarks
+
+`benches/store_edits.rs` times, in a release build, creating a parsed sheet of
+100, 1 000 and 10 000 style rules in a store and committing it, and committing
+one `set_disabled` edit to a store that holds the sheet, over fewer rounds for
+the larger sizes. It prints the rounds, the median, minimum and maximum time of
+one call, the time per rule for creation, the input bytes, the rule count, which
+each creation checks against the committed snapshot, and, for the two smaller
+sizes, the smallest `max_objects`, `max_entries` and `max_string_bytes` at which
+creation still succeeds. The state census runs once per adopted rule, so
+creation grows faster than linearly; the table lists 100 000 rules as an
+estimate from the growth between the two largest measured sizes. The limits are
+raised so that every size is admitted.
+
+```sh
+cargo bench --offline --locked -j 1 -p surgeist-cssom --bench store_edits
+```
