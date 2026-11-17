@@ -106,6 +106,8 @@ pub(crate) mod source;
 pub(crate) mod style;
 mod style_custody;
 #[cfg(test)]
+mod error_text_tests;
+#[cfg(test)]
 mod style_custody_tests;
 mod svg_script;
 mod template;
