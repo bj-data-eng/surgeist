@@ -73,11 +73,11 @@ fn dispatch_errors_state_the_refused_dispatch_step() {
         vec![
             (
                 DomEventDispatchError::Dom(DomError::StaleRange),
-                "canonical identity or source validation refused the native DOM event dispatch",
+                "the canonical DOM refused the native DOM event dispatch",
             ),
             (
                 DomEventDispatchError::Hosted(DomHostedError::ForeignSource),
-                "the hosted source or Global association of the native DOM event could not be qualified",
+                "the hosted source or Global state refused the native DOM event dispatch",
             ),
             (
                 DomEventDispatchError::Admission(DomEventResource::Storage),
