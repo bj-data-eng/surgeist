@@ -2,9 +2,12 @@
 //!
 //! Each expected message is written from the documented meaning of the variant
 //! and from every place the crate raises it. `DomEventDispatchError` is
-//! `#[non_exhaustive]`, so its index function panics on an unlisted variant
-//! instead of failing to compile. A wrapping variant states only its own
-//! context and returns the wrapped error from `source()`.
+//! `#[non_exhaustive]`, so an integration test cannot match it exhaustively:
+//! its index function has a wildcard arm and runs only on the rows that exist,
+//! so a variant added without a row passes this file. The exhaustive `Display`
+//! match inside the crate is what forces a message for a new variant. A
+//! wrapping variant states only its own context and returns the wrapped error
+//! from `source()`.
 #![forbid(unsafe_code)]
 
 use std::error::Error;
@@ -16,7 +19,7 @@ use surgeist_runtime::{
     DomEventResource, DomEventTimestampUnavailable,
 };
 
-/// Checks one type's table: row order against the exhaustive `index`, the exact
+/// Checks one type's table: row order against `index` (an exhaustive match where the type allows one), the exact
 /// message, no trailing period, no `Debug` form, and `source()` present exactly
 /// for the wrapping variants. `skipped` lists row numbers whose payload cannot be
 /// built through the public API.
@@ -134,8 +137,9 @@ fn dispatch_errors_state_the_refused_dispatch_step() {
             DomEventDispatchError::HostRefused(_) => 10,
             DomEventDispatchError::IdentityExhausted => 11,
             DomEventDispatchError::CyclicPath => 12,
-            // `#[non_exhaustive]`: a variant added later must get a row here.
-            _ => unreachable!("a new DomEventDispatchError variant needs a table row"),
+            // `#[non_exhaustive]`: this arm is never reached by the rows above; the
+            // in-crate exhaustive `Display` match forces a message for a new variant.
+            _ => unreachable!("every constructed DomEventDispatchError row is listed"),
         },
         |error| {
             matches!(

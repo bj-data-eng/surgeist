@@ -2,11 +2,14 @@
 //!
 //! Each expected message is written from the documented meaning of its variant
 //! and from every place that raises it (see the raise-site list of the change
-//! that introduced this file), never from the `Debug` form. An exhaustive
-//! `match` per type maps a variant to its table row, so a new variant of a
-//! type that is not `#[non_exhaustive]` does not compile until it has a row; the
-//! four `#[non_exhaustive]` enums cannot be matched exhaustively from outside
-//! the crate, so their index function panics on an unlisted variant instead.
+//! that introduced this file), never from the `Debug` form. For an enum that
+//! is not `#[non_exhaustive]` an exhaustive `match` maps each variant to its
+//! table row, so a new variant does not compile until it has a row. The one
+//! `#[non_exhaustive]` enum here, `DomHostedRuntimeError`, cannot be matched
+//! exhaustively from outside the crate: its index function has a wildcard arm
+//! and runs only on the rows that exist, so a variant added without a row
+//! passes this file. The exhaustive `Display` match inside the crate is what
+//! forces a message for a new variant.
 //! A variant that wraps an error states only its own context and returns the
 //! wrapped error from `source()`.
 #![forbid(unsafe_code)]
@@ -72,7 +75,7 @@ fn some_dom_error() -> DomError {
     DomError::StaleRange
 }
 
-/// Checks one type's table: row order against the exhaustive `index`, the exact
+/// Checks one type's table: row order against `index` (an exhaustive match where the type allows one), the exact
 /// message, no trailing period, no `Debug` form, and `source()` present exactly
 /// for the wrapping variants. `skipped` lists row numbers whose payload cannot be
 /// built through the public API.
@@ -340,8 +343,9 @@ fn hosted_lifecycle_errors_state_the_refused_operation() {
             DomHostedRuntimeError::Inactive => 14,
             DomHostedRuntimeError::CheckpointUnavailable => 15,
             DomHostedRuntimeError::UrlUnavailable => 16,
-            // `#[non_exhaustive]`: a variant added later must get a row here.
-            _ => unreachable!("a new DomHostedRuntimeError variant needs a table row"),
+            // `#[non_exhaustive]`: this arm is never reached by the rows above; the
+            // in-crate exhaustive `Display` match forces a message for a new variant.
+            _ => unreachable!("every constructed DomHostedRuntimeError row is listed"),
         },
         |error| matches!(error, DomHostedRuntimeError::Dom(_)),
         &[],

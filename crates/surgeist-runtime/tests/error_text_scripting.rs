@@ -1,10 +1,13 @@
 //! Message text and `Error` contract of the document scripting error types.
 //!
 //! Each expected message is written from the documented meaning of the variant
-//! and from every place the crate raises it. Both enums are
-//! `#[non_exhaustive]`, so their index functions panic on an unlisted variant
-//! instead of failing to compile. A wrapping variant states only its own
-//! context and returns the wrapped error from `source()`.
+//! and from every place the crate raises it. The enums here are
+//! `#[non_exhaustive]`, so an integration test cannot match them exhaustively:
+//! each index function has a wildcard arm and runs only on the rows that exist,
+//! so a variant added without a row passes this file. The exhaustive `Display`
+//! match inside the crate is what forces a message for a new variant. A
+//! wrapping variant states only its own context and returns the wrapped error
+//! from `source()`.
 #![cfg(feature = "document-scripting")]
 #![forbid(unsafe_code)]
 
@@ -22,7 +25,7 @@ use surgeist_runtime::{
     },
 };
 
-/// Checks one type's table: row order against the exhaustive `index`, the exact
+/// Checks one type's table: row order against `index` (an exhaustive match where the type allows one), the exact
 /// message, no trailing period, no `Debug` form, and `source()` present exactly
 /// for the wrapping variants. `skipped` lists row numbers whose payload cannot be
 /// built through the public API.
@@ -131,8 +134,9 @@ fn guest_event_errors_state_the_refused_guest_operation() {
             DocumentGuestEventError::HostRouteUnavailable => 9,
             DocumentGuestEventError::SourcePending(_) => 10,
             DocumentGuestEventError::HostedPending(_) => 11,
-            // `#[non_exhaustive]`: a variant added later must get a row here.
-            _ => unreachable!("a new DocumentGuestEventError variant needs a table row"),
+            // `#[non_exhaustive]`: this arm is never reached by the rows above; the
+            // in-crate exhaustive `Display` match forces a message for a new variant.
+            _ => unreachable!("every constructed DocumentGuestEventError row is listed"),
         },
         |error| {
             matches!(
@@ -247,8 +251,9 @@ fn native_scripting_errors_state_the_refused_native_operation() {
             DocumentScriptNativeError::RepresentationExhausted => 13,
             DocumentScriptNativeError::WindowTimersDisabled => 14,
             DocumentScriptNativeError::TrustedTypesPolicyUnavailable => 15,
-            // `#[non_exhaustive]`: a variant added later must get a row here.
-            _ => unreachable!("a new DocumentScriptNativeError variant needs a table row"),
+            // `#[non_exhaustive]`: this arm is never reached by the rows above; the
+            // in-crate exhaustive `Display` match forces a message for a new variant.
+            _ => unreachable!("every constructed DocumentScriptNativeError row is listed"),
         },
         |error| {
             matches!(
@@ -425,8 +430,8 @@ fn script_outcome_and_event_errors_state_their_own_context() {
         |error| match error {
             DocumentScriptError::Native(_) => 0,
             DocumentScriptError::Script(_) => 1,
-            // `#[non_exhaustive]`: the in-crate exhaustive Display match forces a message.
-            _ => unreachable!("a new DocumentScriptError variant needs a table row"),
+            // `#[non_exhaustive]`: the in-crate exhaustive `Display` match forces a message.
+            _ => unreachable!("every constructed DocumentScriptError row is listed"),
         },
         |_| true,
         &[],
@@ -458,8 +463,8 @@ fn script_outcome_and_event_errors_state_their_own_context() {
             DocumentScriptEventError::Service(_) => 1,
             DocumentScriptEventError::Task(_) => 2,
             DocumentScriptEventError::Guest(_) => 3,
-            // `#[non_exhaustive]`: the in-crate exhaustive Display match forces a message.
-            _ => unreachable!("a new DocumentScriptEventError variant needs a table row"),
+            // `#[non_exhaustive]`: the in-crate exhaustive `Display` match forces a message.
+            _ => unreachable!("every constructed DocumentScriptEventError row is listed"),
         },
         |_| true,
         &[],

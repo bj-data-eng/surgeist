@@ -39,7 +39,7 @@ use surgeist_runtime::{
     trusted_types_csp::{AttributePolicyError, PolicyListCapacity, PolicyListError},
 };
 
-/// Checks one type's table: row order against the exhaustive `index`, the exact
+/// Checks one type's table: row order against `index` (an exhaustive match where the type allows one), the exact
 /// message, no trailing period, no `Debug` form, and `source()` present exactly
 /// for the wrapping variants. `skipped` lists row numbers whose payload cannot be
 /// built through the public API.
