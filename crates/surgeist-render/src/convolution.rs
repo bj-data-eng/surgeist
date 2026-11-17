@@ -64,6 +64,51 @@ pub enum ConvolutionPreparationError {
     },
 }
 
+impl ConvolutionParameter {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::OrderX => "horizontal order",
+            Self::OrderY => "vertical order",
+            Self::TargetX => "horizontal target",
+            Self::TargetY => "vertical target",
+            Self::Coefficient => "kernel coefficient",
+            Self::Divisor => "divisor",
+            Self::Bias => "bias",
+        }
+    }
+}
+
+impl ConvolutionNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::TapCount => "tap count",
+            Self::DivisorSum => "divisor sum",
+            Self::WeightNormalization => "weight normalization",
+            Self::BiasNarrowing => "bias narrowing",
+            Self::AccumulationBound => "accumulation bound",
+            Self::GridIndex => "grid index",
+            Self::GridMapping => "grid mapping",
+        }
+    }
+}
+
+impl core::fmt::Display for ConvolutionPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidParameter { parameter, value } => write!(
+                f,
+                "convolution parameter {} has the invalid value {value}",
+                parameter.label()
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "convolution numeric check failed at {}", phase.label())
+            }
+        }
+    }
+}
+
+impl core::error::Error for ConvolutionPreparationError {}
+
 /// Borrowed untrusted numeric attributes. Builders retain no coefficient allocation.
 #[derive(Clone, Copy, Debug)]
 pub struct ConvolutionInput<'a> {

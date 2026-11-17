@@ -1027,3 +1027,66 @@ fn reports_refuse_ledger_intervals_that_lack_the_fixed_scopes() {
         RenderAccountingError::Invariant
     );
 }
+
+#[test]
+fn work_and_resource_labels_are_distinct_lowercase_words() {
+    use surgeist_ledger::Dimension;
+    let mut seen = std::collections::BTreeSet::new();
+    for &work in RenderWork::ALL {
+        let label = work.label();
+        assert!(
+            !label.is_empty() && label.chars().all(|c| c.is_ascii_lowercase() || c == ' '),
+            "{label:?}"
+        );
+        assert!(seen.insert(label), "{label:?} labels two work units");
+    }
+    assert_eq!(seen.len(), RenderWork::ALL.len());
+    let mut seen = std::collections::BTreeSet::new();
+    for &resource in RenderResource::ALL {
+        let label = resource.label();
+        assert!(
+            !label.is_empty() && label.chars().all(|c| c.is_ascii_lowercase() || c == ' '),
+            "{label:?}"
+        );
+        assert!(seen.insert(label), "{label:?} labels two resources");
+    }
+    assert_eq!(seen.len(), RenderResource::ALL.len());
+}
+
+#[test]
+fn a_refusal_prints_its_quantity_amount_phase_usage_and_reason() {
+    use std::error::Error as _;
+    let refusal = |quantity, reason| RenderRefusal {
+        phase: RenderPhase::Preparation,
+        quantity,
+        current: 3,
+        amount: 2,
+        reason,
+    };
+    for (quantity, name) in [
+        (
+            RenderQuantity::Work(RenderWork::GlyphInputs),
+            "glyph inputs work",
+        ),
+        (
+            RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+            "scratch cpu bytes",
+        ),
+    ] {
+        for (reason, tail) in [
+            (RenderRefusalReason::Limit { limit: 4 }, "the limit is 4"),
+            (RenderRefusalReason::Overflow, "the total would overflow"),
+            (
+                RenderRefusalReason::Underflow,
+                "the release exceeds the held amount",
+            ),
+        ] {
+            let refusal = refusal(quantity, reason);
+            assert_eq!(
+                refusal.to_string(),
+                format!("{name} refused 2 in the preparation phase at usage 3: {tail}")
+            );
+            assert!(refusal.source().is_none());
+        }
+    }
+}

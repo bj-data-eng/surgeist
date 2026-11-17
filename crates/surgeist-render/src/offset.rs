@@ -41,6 +41,41 @@ pub enum OffsetPreparationError {
     },
 }
 
+impl OffsetParameter {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Dx => "horizontal displacement",
+            Self::Dy => "vertical displacement",
+        }
+    }
+}
+
+impl OffsetNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::GridMapping => "grid mapping",
+            Self::GridIndex => "grid index",
+        }
+    }
+}
+
+impl core::fmt::Display for OffsetPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidParameter { parameter, value } => write!(
+                f,
+                "offset parameter {} has the invalid value {value}",
+                parameter.label()
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "offset numeric check failed at {}", phase.label())
+            }
+        }
+    }
+}
+
+impl core::error::Error for OffsetPreparationError {}
+
 /// Untrusted resolved displacement and captured-input reconstruction intent.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OffsetInput {

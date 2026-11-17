@@ -332,6 +332,123 @@ pub enum GlyphPreparationError {
     },
 }
 
+impl GlyphResource {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Glyphs => "glyphs",
+            Self::PathElements => "path elements",
+            Self::ScratchBytes => "scratch bytes",
+            Self::RetainedBytes => "retained bytes",
+        }
+    }
+}
+
+impl GlyphNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Size => "canonical size",
+            Self::ProviderPoint => "provider point arithmetic",
+            Self::PathPoint => "path point conversion",
+            Self::InkExtent => "ink extent",
+            Self::Placement => "placement",
+            Self::Synthesis => "synthesis displacement",
+            Self::BitmapColor => "bitmap color",
+        }
+    }
+}
+
+impl VariationTable {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Fvar => "fvar",
+            Self::Gvar => "gvar",
+            Self::Hvar => "HVAR",
+        }
+    }
+}
+
+impl GlyphCapability {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::CompositeGlyph => "composite glyphs outside the static XY domain",
+            Self::PostScript => "PostScript outlines",
+            Self::PostScriptVariation => "variable PostScript outlines",
+            Self::VariableComposite => "variable composite glyphs",
+            Self::SparseVariation => "sparse variation tuples",
+        }
+    }
+}
+
+impl core::fmt::Display for GlyphPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnsupportedOutline { capability } => write!(
+                f,
+                "glyph outline processing for {} is not supported",
+                capability.label()
+            ),
+            Self::InvalidFont => f.write_str("font, outline, color or bitmap data is invalid"),
+            Self::GlyphRange { glyph, count } => {
+                write!(f, "glyph {glyph} is outside the face's {count} glyphs")
+            }
+            Self::CoordinateCount { supplied, required } => write!(
+                f,
+                "{supplied} variation coordinates were supplied but the face has {required} axes"
+            ),
+            Self::CoordinateValue { value } => write!(
+                f,
+                "variation coordinate value {value} is outside the normalized domain"
+            ),
+            Self::CoordinateLoss { value } => write!(
+                f,
+                "variation coordinate {value} would change during quantization"
+            ),
+            Self::InvalidVariation { table } => {
+                write!(f, "the {} variation table is malformed", table.label())
+            }
+            Self::UnsupportedColor => {
+                f.write_str("the selected COLR drawing is outside the supported domain")
+            }
+            Self::UnsupportedColorPaint { format } => write!(
+                f,
+                "COLRv1 paint format {format} is outside the supported graph"
+            ),
+            Self::UnsupportedImageInstance => f.write_str(
+                "color and bitmap glyphs require default variation coordinates and no synthesis",
+            ),
+            Self::UnsupportedPng => f.write_str(
+                "the selected PNG image or its color metadata is outside the supported decoder profile",
+            ),
+            Self::UnsupportedBitmap => {
+                f.write_str("the selected bitmap drawing is outside the supported domain")
+            }
+            Self::InvalidSynthesis => f.write_str(
+                "synthesis skew or embolden is not finite, or embolden is negative",
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "glyph numeric check failed at {}", phase.label())
+            }
+            Self::Provider { glyph } => write!(
+                f,
+                "the provider refused glyph {glyph}, or cannot faithfully decode its encoding"
+            ),
+            Self::Limit {
+                resource,
+                required,
+                limit,
+            } => write!(
+                f,
+                "{} requires {required}, above the limit of {limit}",
+                resource.label()
+            ),
+            Self::CapacityOverflow => f.write_str("a size or count calculation overflowed"),
+            Self::Allocation { resource } => write!(f, "allocating {} failed", resource.label()),
+        }
+    }
+}
+
+impl core::error::Error for GlyphPreparationError {}
+
 /// Owner-issued immutable run whose retained canonical representation is its GPU draw source.
 /// Clones share one preparation identity and actual font/instance/geometry backing.
 #[derive(Clone, Debug)]

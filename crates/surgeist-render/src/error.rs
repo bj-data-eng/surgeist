@@ -799,6 +799,79 @@ pub enum GradientHintError {
     UnsupportedSweep { stop_index: usize },
 }
 
+impl fmt::Display for GradientHintError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TrailingHint { stop_index } => write!(
+                f,
+                "stop {stop_index} is the last stop and cannot carry an outgoing hint"
+            ),
+            Self::HintOutsideInterval { stop_index } => write!(
+                f,
+                "the hint after stop {stop_index} lies outside the interval of its adjacent colors"
+            ),
+            Self::UnsupportedSweep { stop_index } => write!(
+                f,
+                "a hinted full-turn sweep after stop {stop_index} is not supported"
+            ),
+        }
+    }
+}
+
+impl error::Error for GradientHintError {}
+
+impl fmt::Display for GeometryRealizationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnrepresentableTransform => {
+                f.write_str("a transform coefficient cannot be represented natively")
+            }
+            Self::UnrepresentablePath { element_index } => write!(
+                f,
+                "path element {element_index} cannot be converted or retained natively"
+            ),
+            Self::UnrepresentableStroke => {
+                f.write_str("a stroke parameter cannot be used natively")
+            }
+            Self::UnrepresentableGlyph { glyph_index } => {
+                write!(f, "glyph {glyph_index} cannot be represented natively")
+            }
+            Self::UnrepresentableBlur => {
+                f.write_str("a blur parameter cannot be represented natively")
+            }
+            Self::InsufficientNativeCapacity => f.write_str(
+                "native geometry cannot meet the required rank, precision, range or dash behavior",
+            ),
+        }
+    }
+}
+
+impl error::Error for GeometryRealizationError {}
+
+impl fmt::Display for GradientRealizationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DegenerateLinearField => f.write_str("a linear gradient field has no direction"),
+            Self::UnrepresentableGeometry => {
+                f.write_str("gradient range or transformed geometry cannot be represented natively")
+            }
+            Self::UnrepresentableStop { stop_index } => write!(
+                f,
+                "stop {stop_index} cannot keep its source ordering, separation or finiteness natively"
+            ),
+            Self::UnrepresentableHint { stop_index } => write!(
+                f,
+                "the hint after stop {stop_index} cannot be represented natively with its source equality and containment"
+            ),
+            Self::InsufficientNativeCapacity => {
+                f.write_str("native gradient arithmetic cannot meet the required accuracy or range")
+            }
+        }
+    }
+}
+
+impl error::Error for GradientRealizationError {}
+
 impl From<GeometryRealizationError> for Error {
     fn from(value: GeometryRealizationError) -> Self {
         Self::context(ErrorContext {

@@ -43,6 +43,50 @@ pub enum PaintGradientError {
     },
 }
 
+impl core::fmt::Display for PaintGradientError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnsupportedZeroLengthLinear => {
+                f.write_str("a linear gradient of zero length cannot be prepared")
+            }
+            Self::UnsupportedRadialCase { case } => write!(
+                f,
+                "a radial gradient of the {} case cannot be prepared as a native field",
+                match case {
+                    RadialGradientCase::Ellipse { .. } => "ellipse",
+                    RadialGradientCase::ZeroWidth => "zero-width",
+                    RadialGradientCase::ZeroCircle => "zero-circle",
+                    RadialGradientCase::ZeroHeight => "zero-height",
+                }
+            ),
+            Self::BasisMismatch { expected, actual } => write!(
+                f,
+                "the used stops are measured on a line of length {actual}, but the geometry's basis is {expected}"
+            ),
+            Self::UnrepresentablePosition {
+                source_index,
+                position_index,
+            } => write!(
+                f,
+                "position {position_index} of item {source_index} cannot be represented as a finite native position that keeps its order"
+            ),
+            Self::UnrepresentableSpan {
+                first_source_index,
+                last_source_index,
+            } => write!(
+                f,
+                "the span from item {first_source_index} to item {last_source_index} of a repeating gradient is negative or not finite"
+            ),
+            Self::Allocation { resource } => write!(f, "allocating {} failed", resource.label()),
+            Self::CapacityOverflow { resource } => {
+                write!(f, "the size of {} cannot be represented", resource.label())
+            }
+        }
+    }
+}
+
+impl core::error::Error for PaintGradientError {}
+
 /// Prepares an owned ordinary field from a positive native Paint line and its
 /// actual used stops and transition hints. Zero length refuses; positions are neither clamped
 /// nor repeated, and no authored CSS or color evaluation is performed.

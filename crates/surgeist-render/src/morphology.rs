@@ -63,6 +63,50 @@ pub enum MorphologyPreparationError {
     InfiniteSourceBackdrop,
 }
 
+impl MorphologyParameter {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::RadiusX => "horizontal radius",
+            Self::RadiusY => "vertical radius",
+        }
+    }
+}
+
+impl MorphologyNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::RadiusGrid => "radius grid",
+            Self::EndpointMapping => "endpoint mapping",
+            Self::TableLayout => "table layout",
+            Self::GridIndex => "grid index",
+            Self::Sampling => "sampling",
+        }
+    }
+}
+
+impl core::fmt::Display for MorphologyPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidParameter { parameter, value } => write!(
+                f,
+                "morphology parameter {} has the invalid value {value}",
+                parameter.label()
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "morphology numeric check failed at {}", phase.label())
+            }
+            Self::EmptyPeriod => {
+                f.write_str("a periodic source must have positive width and height")
+            }
+            Self::InfiniteSourceBackdrop => f.write_str(
+                "a same-layer backdrop cannot be combined with a declared infinite source",
+            ),
+        }
+    }
+}
+
+impl core::error::Error for MorphologyPreparationError {}
+
 /// Untrusted resolved independent morphology radii and component operator.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MorphologyInput {

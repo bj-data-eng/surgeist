@@ -40,6 +40,38 @@ pub enum DropShadowPreparationError {
     },
 }
 
+impl DropShadowNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::MergeMapping => "merge mapping",
+            Self::GridIndex => "grid index",
+            Self::Sampling => "sampling",
+        }
+    }
+}
+
+impl core::fmt::Display for DropShadowPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidFloodOpacity { value } => write!(
+                f,
+                "drop shadow flood opacity {value} is not finite or is outside 0 to 1"
+            ),
+            Self::EmptyPeriod => {
+                f.write_str("a periodic source must have positive width and height")
+            }
+            Self::InfiniteSourceBackdrop => f.write_str(
+                "a same-layer backdrop cannot be combined with a declared infinite source",
+            ),
+            Self::Numeric { phase, .. } => {
+                write!(f, "drop shadow numeric check failed at {}", phase.label())
+            }
+        }
+    }
+}
+
+impl core::error::Error for DropShadowPreparationError {}
+
 /// Untrusted resolved native shadow request, in layer-local primitive units.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DropShadowInput {

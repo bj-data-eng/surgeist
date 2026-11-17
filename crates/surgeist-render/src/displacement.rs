@@ -101,6 +101,68 @@ pub enum DisplacementPreparationError {
     InfiniteSourceBackdrop,
 }
 
+impl DisplacementParameter {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Scale => "scale",
+        }
+    }
+}
+
+impl DisplacementNumericPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::GridMapping => "grid mapping",
+            Self::MapMapping => "map mapping",
+            Self::TableLayout => "table layout",
+            Self::GridIndex => "grid index",
+            Self::Sampling => "sampling",
+        }
+    }
+}
+
+impl core::fmt::Display for DisplacementPreparationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidParameter { parameter, value } => write!(
+                f,
+                "displacement parameter {} has the invalid value {value}",
+                parameter.label()
+            ),
+            Self::InvalidMapDimensions { size } => write!(
+                f,
+                "displacement map size {} by {} is not a pair of finite nonnegative integers that fit in u32",
+                size.width(),
+                size.height()
+            ),
+            Self::MapPayloadOverflow { size } => write!(
+                f,
+                "the byte length of a displacement map of {} by {} pixels cannot be represented",
+                size.width(),
+                size.height()
+            ),
+            Self::InvalidMapPayload { expected, actual } => write!(
+                f,
+                "displacement map has {actual} bytes but its dimensions require {expected}"
+            ),
+            Self::InvalidMapDomain { .. } => {
+                f.write_str("displacement map rectangle has an invalid extent, origin or maximum")
+            }
+            Self::Numeric { phase, .. } => {
+                write!(f, "displacement numeric check failed at {}", phase.label())
+            }
+            Self::EmptyPeriod => {
+                f.write_str("a periodic source must have positive width and height")
+            }
+            Self::InfiniteSourceBackdrop => f.write_str(
+                "a same-layer backdrop cannot be combined with a declared infinite source",
+            ),
+        }
+    }
+}
+
+impl core::error::Error for DisplacementPreparationError {}
+
 /// Untrusted resolved displacement scale and independent map channels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DisplacementInput {
