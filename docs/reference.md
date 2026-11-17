@@ -61,6 +61,7 @@ listed below through their public front doors. It also exposes
 | `html_parser` | [surgeist-html-parser](../crates/surgeist-html-parser/src/lib.rs) |
 | `html_semantics` | [surgeist-html-semantics](../crates/surgeist-html-semantics/src/lib.rs) |
 | `layout` | [surgeist-layout](../crates/surgeist-layout/src/lib.rs) |
+| `ledger` | [surgeist-ledger](../crates/surgeist-ledger/src/lib.rs) |
 | `paint` | [surgeist-paint](../crates/surgeist-paint/src/lib.rs) |
 | `render` | [surgeist-render](../crates/surgeist-render/src/lib.rs) |
 | `shape` | [surgeist-shape](../crates/surgeist-shape/src/lib.rs) |
