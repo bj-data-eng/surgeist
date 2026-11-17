@@ -193,7 +193,7 @@ fn actual_frame_finalization_failure_keeps_ready_history_rollback_armed_after_re
     assert_eq!(fault, cpu.fault());
     assert_eq!(
         report.status(),
-        crate::RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
+        crate::accounting::RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
     );
     assert_eq!(report.cleanup_fault(), fault);
     let ready = result.unwrap();

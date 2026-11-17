@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
-    RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
-    RenderProfile, RenderQuantity, RenderResource, TextRunBoundsKind,
+    accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderProfile,
+    accounting::RenderQuantity, accounting::RenderResource, text::TextRunBoundsKind,
 };
 use surgeist_ledger::Dimension;
 use surgeist_text as text;
@@ -467,8 +468,8 @@ fn late_unsupported_actual_run_preserves_typed_cause_without_a_receipt() {
     assert_eq!(*run, bad_run);
     assert_eq!(
         cause.glyph_preparation_diagnostic(),
-        Some(&crate::GlyphPreparationError::UnsupportedOutline {
-            capability: crate::GlyphCapability::CompositeGlyph
+        Some(&crate::text::GlyphPreparationError::UnsupportedOutline {
+            capability: crate::text::GlyphCapability::CompositeGlyph
         })
     );
     assert_eq!(
@@ -649,7 +650,9 @@ fn bitmap_callback_reports_admitted_rectangle_and_transparent_selection_empty() 
 
 #[test]
 fn one_resource_shared_by_multiple_actual_runs_is_retained_once() {
-    use crate::{RenderChangeKind, RenderEvent, RenderPhaseFilter};
+    use crate::{
+        accounting::RenderChangeKind, accounting::RenderEvent, accounting::RenderPhaseFilter,
+    };
     let pattern = pattern("AאA");
     assert!(pattern.run_views().len() > 1);
     let font_bytes = pattern
@@ -679,7 +682,10 @@ fn one_resource_shared_by_multiple_actual_runs_is_retained_once() {
 
 #[test]
 fn real_gpu_overlapping_leader_outlines_keep_nonzero_spans_and_empty_barriers() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+        crate::renderer::Options::default(),
+    ))
+    .unwrap();
     let precisions = renderer
         .default_device_capabilities_for_test()
         .effect_precisions();
@@ -690,7 +696,8 @@ fn real_gpu_overlapping_leader_outlines_keep_nonzero_spans_and_empty_barriers() 
         crate::resource::WorkingFormat::ReducedPrecision
     };
     let mut surface =
-        pollster::block_on(renderer.create_headless(crate::Size::new(2.0, 2.0), 1.0)).unwrap();
+        pollster::block_on(renderer.create_headless(crate::geometry::Size::new(2.0, 2.0), 1.0))
+            .unwrap();
     for (font, source, spacing, paints, alpha) in [
         (fixtures::zero_advance(), "AA", 0.0, 1, 128_u8),
         (fixtures::empty_color(), "AXA", -2.0, 2, 192_u8),
@@ -704,7 +711,7 @@ fn real_gpu_overlapping_leader_outlines_keep_nonzero_spans_and_empty_barriers() 
         let run = ready.runs().next().unwrap();
         assert!(run.run().glyphs().iter().all(|g| g.x() == 0.0));
         assert_eq!(run.run().paints().len(), paints);
-        let mut scene = crate::Scene::new();
+        let mut scene = crate::scene::Scene::new();
         // Replay the actual canonical run once. The independent baseline maps
         // size2 Ahem's font-space top800/bottom-200 onto the tiny target.
         scene.prepared_glyph_run(
@@ -717,7 +724,7 @@ fn real_gpu_overlapping_leader_outlines_keep_nonzero_spans_and_empty_barriers() 
                 pollster::block_on(renderer.render_forced_base_graph_for_test(
                     &mut surface,
                     &scene,
-                    crate::Parameters::default(),
+                    crate::surface::Parameters::default(),
                     format,
                 ))
                 .unwrap();
@@ -725,7 +732,7 @@ fn real_gpu_overlapping_leader_outlines_keep_nonzero_spans_and_empty_barriers() 
                 pollster::block_on(renderer.render(
                     &mut surface,
                     &scene,
-                    crate::Parameters::default(),
+                    crate::surface::Parameters::default(),
                 ))
                 .unwrap();
             }
@@ -893,8 +900,8 @@ fn proved_empty_envelope_has_no_native_placement_operands() {
         )
         .unwrap_err();
     assert!(
-        matches!(error.glyph_preparation_diagnostic(),Some(crate::GlyphPreparationError::Numeric {
-        phase:crate::GlyphNumericPhase::Placement,value,
+        matches!(error.glyph_preparation_diagnostic(),Some(crate::text::GlyphPreparationError::Numeric {
+        phase:crate::text::GlyphNumericPhase::Placement,value,
     }) if *value==1e100)
     );
     assert_released(&context);

@@ -4,8 +4,9 @@
 //! Shared native scalar-field geometry and permitted-WGSL arithmetic certificates.
 use super::BrushTransform;
 use crate::{
-    Error, PhysicalSize, Result,
+    Error, Result,
     accounting::{Account, RenderWork},
+    geometry::PhysicalSize,
 };
 
 mod sweep;
@@ -1067,7 +1068,10 @@ pub(super) fn check_native_linear(
 mod accounting_tests {
     use super::*;
     use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
-    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits,
+    };
 
     #[test]
     fn identity_native_projection_accounts_each_executed_scalar_action() {

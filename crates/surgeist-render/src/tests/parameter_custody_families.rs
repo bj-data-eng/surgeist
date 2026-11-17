@@ -2,20 +2,50 @@
 //! descriptors/identities are observed; no buffer handle extends its lifetime.
 use super::convolution::{assert_pixel, bounds, image};
 use crate::{
-    BackdropCaptureBounds, BackdropFilterInput, ClipInput, Color, ConvolutionInput,
-    DisplacementChannel, DropShadowInput, FilterAmount, FilterBlur, FilterColorSpace,
-    FilterDomains, FilterDropShadow, FilterEdgeMode, FilterList, FilterOp, ImageFit, Layer,
-    MorphologyInput, MorphologyOperator, OffsetInput, Options, Parameters, Point, Rect,
-    RenderAccountingOptions, RenderGenerationScope, RenderProfile, RenderResource, RenderRoute,
-    Renderer, ResolvedLayerAlphaMask, ResourceCacheBudget, Scene, Shape, Size, UnitFilterAmount,
+    accounting::RenderAccountingOptions,
+    accounting::RenderGenerationScope,
+    accounting::RenderProfile,
+    accounting::RenderResource,
+    convolution::ConvolutionInput,
+    displacement::DisplacementChannel,
+    filter_domains::FilterDomains,
+    filter_model::FilterColorSpace,
+    filter_model::FilterEdgeMode,
+    geometry::Point,
+    geometry::Rect,
+    geometry::Size,
     gpu_transaction::test_support::{
         GraphBeforeSubmissionGateGuardForTest, GraphSubmissionGateGuardForTest,
     },
+    image::ImageFit,
+    layer::Layer,
+    layer::ResolvedLayerAlphaMask,
+    morphology::MorphologyInput,
+    morphology::MorphologyOperator,
+    native_shadow::DropShadowInput,
+    offset::OffsetInput,
+    paint::Color,
     pass::{
         ParameterFamilyForTest as Family, ParameterProbeForTest, ParameterSnapshotForTest,
         ParameterStageForTest as Stage,
     },
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
     resource::WorkingFormat,
+    scene::Scene,
+    shape::Shape,
+    stats::RenderRoute,
+    style::clip::ClipInput,
+    style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput,
+    style::filter::FilterAmount,
+    style::filter::FilterBlur,
+    style::filter::FilterDropShadow,
+    style::filter::FilterList,
+    style::filter::FilterOp,
+    style::filter::UnitFilterAmount,
+    surface::Parameters,
 };
 use std::{
     future::Future,
@@ -299,7 +329,7 @@ fn mixed_fixture() -> Fixture {
     let row = [
         255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
     ];
-    let source = crate::DisplacementSource::finite(
+    let source = crate::displacement::DisplacementSource::finite(
         super::displacement::source_scene(image(4, 3, row.repeat(3)), full),
         FilterDomains::try_new(full, full, output).unwrap(),
     );

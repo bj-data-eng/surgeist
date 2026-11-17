@@ -1,14 +1,25 @@
 //! Existing native parameters stay owned while real encoded commands need them.
 use super::convolution::{assert_pixel, bounds, image};
 use crate::{
-    Color, OffsetInput, Options, Parameters, RenderAccountingOptions, RenderGenerationScope,
-    RenderProfile, RenderResource, RenderRoute, Renderer, ResourceCacheBudget, Scene, Size,
+    accounting::RenderAccountingOptions,
+    accounting::RenderGenerationScope,
+    accounting::RenderProfile,
+    accounting::RenderResource,
+    geometry::Size,
     gpu_transaction::test_support::{
         GraphBeforeSubmissionGateGuardForTest, GraphSubmissionGateGuardForTest,
     },
+    offset::OffsetInput,
+    paint::Color,
     pass::{
         ParameterFamilyForTest as Family, ParameterProbeForTest, ParameterStageForTest as Stage,
     },
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
+    scene::Scene,
+    stats::RenderRoute,
+    surface::Parameters,
 };
 use std::{
     future::Future,

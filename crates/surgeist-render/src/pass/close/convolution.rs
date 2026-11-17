@@ -1,8 +1,9 @@
 //! Closure proof for the complete, unclamped float32 convolution chain.
 use super::*;
 use crate::{
-    PreparedConvolution, Rect,
+    convolution::PreparedConvolution,
     frame::{ConvolutionMapping, ConvolutionStage, GraphLoweringConvolution},
+    geometry::Rect,
 };
 
 struct Chain {
@@ -634,11 +635,19 @@ fn capture_spatial_is_exact(spatial: RuntimeSpatialDescriptor) -> bool {
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, Color, ConvolutionInput, FilterColorSpace, FilterDomains, Layer,
-        RenderAccountingContext, RenderAccountingOptions, Scene, Size,
+        accounting::RenderAccountingContext,
+        accounting::RenderAccountingOptions,
         backend::DeviceCapabilities,
+        capability::Capabilities,
+        convolution::ConvolutionInput,
+        convolution::prepare_convolution,
+        filter_domains::FilterDomains,
+        filter_model::FilterColorSpace,
         frame::{FrameContext, FramePlan},
-        prepare_convolution,
+        geometry::Size,
+        layer::Layer,
+        paint::Color,
+        scene::Scene,
     };
     use surgeist_ledger::Dimension;
 
@@ -822,7 +831,10 @@ mod tests {
 
     #[test]
     fn backdrop_union_rebase_closes_only_as_an_exact_crop_before_the_same_convolution() {
-        use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+        use crate::{
+            style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+            style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
+        };
         let domain = Rect::new(1.0, 0.0, 2.0, 1.0);
         let root = Rect::new(0.0, 0.0, 6.0, 1.0);
         let operation = prepare_convolution(
@@ -987,7 +999,9 @@ mod tests {
     }
 
     fn classification_chain(convolution: Option<bool>) -> LoweredGraphPlan {
-        use crate::{FilterAmount, FilterList, FilterOp};
+        use crate::{
+            style::filter::FilterAmount, style::filter::FilterList, style::filter::FilterOp,
+        };
         fn colors(scene: &mut Scene, count: usize, domain: Rect) {
             if count == 0 {
                 scene.fill(domain, Color::BLACK);
@@ -1024,8 +1038,10 @@ mod tests {
     fn measured_proof<T>(
         limit: Option<u64>,
         run: impl FnOnce(&Account) -> Result<T>,
-    ) -> (Result<T>, crate::RenderStandaloneReport) {
-        use crate::{RenderAttemptKind, RenderLimits, RenderPhase};
+    ) -> (Result<T>, crate::accounting::RenderStandaloneReport) {
+        use crate::{
+            accounting::RenderAttemptKind, accounting::RenderLimits, accounting::RenderPhase,
+        };
         let mut limits = RenderLimits::new();
         if let Some(limit) = limit {
             limits = limits
@@ -1044,7 +1060,7 @@ mod tests {
     /// apply to that correction; these cases establish the existing boundaries.
     #[test]
     fn pure_color_and_late_convolution_routes_preserve_exact_accounted_proof_limits() {
-        use crate::{RenderQuantity, RenderWork};
+        use crate::{accounting::RenderQuantity, accounting::RenderWork};
         for convolution in [None, Some(false), Some(true)] {
             let plan = classification_chain(convolution);
             let spatial = convolution.is_some();
@@ -1156,7 +1172,7 @@ mod tests {
 
     #[test]
     fn retained_convolution_presence_is_checked_at_the_accounted_step_boundary() {
-        use crate::RenderQuantity;
+        use crate::accounting::RenderQuantity;
         for convolution in [None, Some(false), Some(true)] {
             let closed = ClosedExecutableGraph::try_from_lowered(
                 classification_chain(convolution),

@@ -28,10 +28,11 @@ pub(crate) use test_support::DisplacementResourceDescriptorForTest;
 #[cfg(test)]
 pub(crate) use test_support::{ResourceLeaseTokenForTest, ResourceManagerObservationForTest};
 
-use super::{Error, ResourceCacheBudget, Result};
+use super::{Error, Result};
 use crate::accounting::{Account, CpuAccount, Generation};
 #[cfg(test)]
 use crate::accounting::{RenderAccountingOptions, RenderCpuScope, RendererCpu};
+use crate::renderer::ResourceCacheBudget;
 use manager::ResourceManagerState;
 use std::sync::{Arc, Mutex, MutexGuard};
 

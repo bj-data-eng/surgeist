@@ -64,7 +64,7 @@ impl SemanticFrameGraphPlanner<'_> {
         if shadow_enabled {
             let filter = foreground.source.filter();
             let alpha_spatial = grid::require_spatial(self.context, filter, transform)?;
-            let domains = crate::FilterDomains::try_new(filter, filter, output)?;
+            let domains = crate::filter_domains::FilterDomains::try_new(filter, filter, output)?;
             let offset = foreground.operation.offset(domains);
             if let Some(mapping) =
                 OffsetMapping::try_covered_alpha(&offset, alpha_spatial, result, self.account)?

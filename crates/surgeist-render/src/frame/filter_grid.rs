@@ -6,10 +6,11 @@ use super::{
     graph::{SemanticResourceDescriptor, SemanticResourceRole},
 };
 use crate::{
-    Rect, Transform,
     accounting::{Account, RenderWork},
     error::{Error, Result},
     filter_source::FilterSourceDescriptor,
+    geometry::Rect,
+    geometry::Transform,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -21,18 +22,18 @@ pub(super) enum FilterGridOwner {
 impl FilterGridOwner {
     fn mapping_error(self, value: f64) -> Error {
         match self {
-            Self::Displacement => crate::DisplacementPreparationError::Numeric {
-                phase: crate::DisplacementNumericPhase::GridMapping,
+            Self::Displacement => crate::displacement::DisplacementPreparationError::Numeric {
+                phase: crate::displacement::DisplacementNumericPhase::GridMapping,
                 value,
             }
             .into(),
-            Self::Gaussian => crate::GaussianPreparationError::Numeric {
-                phase: crate::GaussianNumericPhase::GridMapping,
+            Self::Gaussian => crate::gaussian::GaussianPreparationError::Numeric {
+                phase: crate::gaussian::GaussianNumericPhase::GridMapping,
                 value,
             }
             .into(),
-            Self::Morphology => crate::MorphologyPreparationError::Numeric {
-                phase: crate::MorphologyNumericPhase::EndpointMapping,
+            Self::Morphology => crate::morphology::MorphologyPreparationError::Numeric {
+                phase: crate::morphology::MorphologyNumericPhase::EndpointMapping,
                 value,
             }
             .into(),
@@ -40,18 +41,18 @@ impl FilterGridOwner {
     }
     fn index_error(self, value: f64) -> Error {
         match self {
-            Self::Displacement => crate::DisplacementPreparationError::Numeric {
-                phase: crate::DisplacementNumericPhase::GridIndex,
+            Self::Displacement => crate::displacement::DisplacementPreparationError::Numeric {
+                phase: crate::displacement::DisplacementNumericPhase::GridIndex,
                 value,
             }
             .into(),
-            Self::Gaussian => crate::GaussianPreparationError::Numeric {
-                phase: crate::GaussianNumericPhase::GridIndex,
+            Self::Gaussian => crate::gaussian::GaussianPreparationError::Numeric {
+                phase: crate::gaussian::GaussianNumericPhase::GridIndex,
                 value,
             }
             .into(),
-            Self::Morphology => crate::MorphologyPreparationError::Numeric {
-                phase: crate::MorphologyNumericPhase::GridIndex,
+            Self::Morphology => crate::morphology::MorphologyPreparationError::Numeric {
+                phase: crate::morphology::MorphologyNumericPhase::GridIndex,
                 value,
             }
             .into(),
@@ -59,14 +60,14 @@ impl FilterGridOwner {
     }
     fn sampling_error(self, value: f64) -> Error {
         match self {
-            Self::Displacement => crate::DisplacementPreparationError::Numeric {
-                phase: crate::DisplacementNumericPhase::Sampling,
+            Self::Displacement => crate::displacement::DisplacementPreparationError::Numeric {
+                phase: crate::displacement::DisplacementNumericPhase::Sampling,
                 value,
             }
             .into(),
             Self::Gaussian => self.mapping_error(value),
-            Self::Morphology => crate::MorphologyPreparationError::Numeric {
-                phase: crate::MorphologyNumericPhase::Sampling,
+            Self::Morphology => crate::morphology::MorphologyPreparationError::Numeric {
+                phase: crate::morphology::MorphologyNumericPhase::Sampling,
                 value,
             }
             .into(),
@@ -85,7 +86,7 @@ pub(crate) struct FilterGridMapping {
     periodic: bool,
     direct: bool,
     converted: bool,
-    color: crate::Color,
+    color: crate::paint::Color,
     owner: FilterGridOwner,
 }
 impl FilterGridMapping {
@@ -104,10 +105,10 @@ impl FilterGridMapping {
     pub(super) fn output_footprint(self) -> super::FilterOutputFootprint {
         super::FilterOutputFootprint::from_qualified_grid(self.target_spatial(), self.output_clip)
     }
-    pub(crate) const fn color(self) -> crate::Color {
+    pub(crate) const fn color(self) -> crate::paint::Color {
         self.color
     }
-    pub(super) const fn with_color(mut self, color: crate::Color) -> Self {
+    pub(super) const fn with_color(mut self, color: crate::paint::Color) -> Self {
         self.color = color;
         self
     }
@@ -151,7 +152,7 @@ impl FilterGridMapping {
             periodic: false,
             direct: false,
             converted: false,
-            color: crate::Color::TRANSPARENT,
+            color: crate::paint::Color::TRANSPARENT,
             owner,
         }
     }

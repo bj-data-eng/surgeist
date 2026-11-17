@@ -3,7 +3,7 @@
 // Modified for surgeist-render; see NOTICE-VELLO.md for provenance and adaptations.
 
 use crate::{
-    BackendErrorCode, Error, PhysicalSize, Result,
+    error::BackendErrorCode, Error, geometry::PhysicalSize, Result,
     accounting::{AccountedVec, RenderResource},
     gpu_transaction::VelloResourceCommitProof,
     resource::{FrameCleanup, FrameResourceScope, ResourceLease, ResourceManager},
@@ -320,7 +320,7 @@ impl PendingVelloResourceCommit {
         let mut leases = crate::accounting::AccountedVec::new_in(
             &storage,
             1,
-            crate::RenderResource::ScratchCpuBytes,
+            crate::accounting::RenderResource::ScratchCpuBytes,
         )?;
         lease.consume_pending_atlas_recovery();
         leases.push(lease.lease)?;
@@ -608,7 +608,7 @@ impl VelloResourceLeaseAggregate {
                 crate::accounting::AccountedVec::new(
                     account,
                     capacity,
-                    crate::RenderResource::ScratchCpuBytes,
+                    crate::accounting::RenderResource::ScratchCpuBytes,
                 )?,
                 dispose_vello_leases,
             ),
@@ -1235,7 +1235,7 @@ mod gradient_extent_tests {
 
     #[test]
     fn expanded_gradient_extent_refuses_before_any_resource_allocation() {
-        let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default()))
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default()))
             .expect("host adapter for actual device-limit preflight");
         let (device, _) = renderer.default_wgpu_device_queue().unwrap();
         let height = device

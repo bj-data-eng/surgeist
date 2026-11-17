@@ -1,7 +1,9 @@
 //! Runtime preparation of the checked convolution graph payload.
 use crate::{
-    FilterColorSpace, FilterEdgeMode, Result,
+    Result,
     accounting::Account,
+    filter_model::FilterColorSpace,
+    filter_model::FilterEdgeMode,
     frame::{ConvolutionStage, GraphLoweringConvolution},
     shader::{ConvolutionParameterBytes, ConvolutionParameterFacts},
 };

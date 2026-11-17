@@ -128,7 +128,7 @@ fn malformed_and_overflowing_output_preserve_the_numeric_source_and_release_capa
         (PhysicalSize::new(0, 7), 1),
     ] {
         let options = RenderAccountingOptions::new()
-            .with_profile(crate::RenderProfile::Summary { timing: false });
+            .with_profile(crate::accounting::RenderProfile::Summary { timing: false });
         let cpu = RendererCpu::new(options).unwrap();
         let (_, _, _report, fault) = ReadbackFixture::new(&cpu, options)
             .run_sync(|attempt| {
@@ -191,7 +191,7 @@ fn rejected_length_ends_validation_before_separate_real_vector_disposal() {
     assert!(matches!(events.as_slice(), [
         RenderCpuEvent::Phase { scope: RenderCpuScope::ReadbackOutput, duration: None, .. },
         RenderCpuEvent::Change { scope: RenderCpuScope::ReadbackOutput,
-            kind: RenderChangeKind::Release, quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes), amount, .. },
+            kind: RenderChangeKind::Release, quantity: crate::accounting::RenderQuantity::Resource(RenderResource::RetainedCpuBytes), amount, .. },
         RenderCpuEvent::Phase { scope: RenderCpuScope::ReadbackOutput, duration: None, .. },
     ] if *amount == actual));
 

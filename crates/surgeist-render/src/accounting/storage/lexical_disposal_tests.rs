@@ -395,7 +395,7 @@ fn import_only_lexical_disposal_keeps_original_custody_then_releases_separately(
     use crate::accounting::{RenderCpuEvent, RenderPhaseFilter};
     let _clock = CLOCK_LOCK.lock().unwrap();
     struct ImportedProbe<'a> {
-        image: Option<crate::Image>,
+        image: Option<crate::image::Image>,
         cpu: &'a RendererCpu,
         admitted: u64,
         drops: &'a AtomicUsize,
@@ -425,8 +425,11 @@ fn import_only_lexical_disposal_keeps_original_custody_then_releases_separately(
             })
             .with_clock(RenderClock::Host(clock));
         let cpu = RendererCpu::new(options).unwrap();
-        let image =
-            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![1, 2, 3, 255]).unwrap();
+        let image = crate::image::Image::from_rgba(
+            crate::geometry::Size::new(1.0, 1.0),
+            vec![1, 2, 3, 255],
+        )
+        .unwrap();
         let import = cpu
             .at(RenderCpuScope::FrameBacking)
             .import_image(&image, None)
@@ -481,7 +484,7 @@ fn import_only_lexical_disposal_keeps_original_custody_then_releases_separately(
             event,
             RenderCpuEvent::Change {
                 scope: RenderCpuScope::ImagePayloads,
-                kind: crate::RenderChangeKind::Release,
+                kind: crate::accounting::RenderChangeKind::Release,
                 ..
             }
         )));
@@ -580,7 +583,7 @@ fn shared_factory_allocation_refusal_disposes_after_its_forward_phase() {
         RenderAccountingOptions::new()
             .with_profile(RenderProfile::Summary { timing: true })
             .with_clock(RenderClock::Host(clock))
-            .with_limits(crate::RenderLimits::new().with_retained_bytes(limit)),
+            .with_limits(crate::accounting::RenderLimits::new().with_retained_bytes(limit)),
     )
     .unwrap();
     let account = cpu.at(RenderCpuScope::FrameBacking);
@@ -605,10 +608,10 @@ fn shared_factory_allocation_refusal_disposes_after_its_forward_phase() {
         error.accounting_diagnostic(),
         Some(RenderAccountingError::CpuRefused {
             scope: RenderCpuScope::Root,
-            quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+            quantity: crate::accounting::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
             current: limit,
             amount: std::mem::size_of::<SharedValueData<DropProbe>>() as u64,
-            reason: crate::RenderRefusalReason::Limit { limit },
+            reason: crate::accounting::RenderRefusalReason::Limit { limit },
         })
     );
     assert_eq!(drops.load(Ordering::SeqCst), 1);
@@ -630,7 +633,7 @@ fn shared_factory_allocation_refusal_disposes_after_its_forward_phase() {
 fn shared_factory_health_refusal_keeps_import_only_custody_through_value_disposal() {
     let _clock = CLOCK_LOCK.lock().unwrap();
     struct ImportedProbe {
-        image: Option<crate::Image>,
+        image: Option<crate::image::Image>,
         cpu: RendererCpu,
         drops: Arc<AtomicUsize>,
         observed_live: Arc<AtomicU64>,
@@ -657,7 +660,9 @@ fn shared_factory_health_refusal_keeps_import_only_custody_through_value_disposa
             .with_clock(RenderClock::Host(clock)),
     )
     .unwrap();
-    let image = crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 0, 255]).unwrap();
+    let image =
+        crate::image::Image::from_rgba(crate::geometry::Size::new(1.0, 1.0), vec![0, 0, 0, 255])
+            .unwrap();
     let account = cpu.at(RenderCpuScope::FrameBacking);
     let import = account.import_image(&image, None).unwrap();
     let imported_live = cpu

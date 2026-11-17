@@ -169,7 +169,11 @@ fn entry_bytes() -> u64 {
     size_of::<Entry>() as u64
 }
 fn image(bytes: [u8; 4]) -> Image {
-    Image::from_rgba(crate::Size::new(1.0, 1.0), Arc::<[u8]>::from(bytes)).unwrap()
+    Image::from_rgba(
+        crate::geometry::Size::new(1.0, 1.0),
+        Arc::<[u8]>::from(bytes),
+    )
+    .unwrap()
 }
 
 fn warm_image_registry(cpu: &RendererCpu) {
@@ -190,9 +194,9 @@ fn native_raw_map_and_source_image_imports_share_only_the_actual_pixel_allocatio
     let background = retained(&cpu);
     let account = cpu.at(RenderCpuScope::ImagePayloads);
     let pixels = Arc::<[u8]>::from([255, 128, 64, 1]);
-    let source = Image::from_rgba(crate::Size::new(1.0, 1.0), pixels.clone()).unwrap();
+    let source = Image::from_rgba(crate::geometry::Size::new(1.0, 1.0), pixels.clone()).unwrap();
     let raw = crate::image::RawImageUploadDescriptor::prepare_native_in(
-        crate::Size::new(1.0, 1.0),
+        crate::geometry::Size::new(1.0, 1.0),
         pixels,
         &super::super::Account::for_test(),
     )
@@ -265,8 +269,8 @@ fn image_adapter_independent_values_share_pixels_but_not_typed_payloads() {
     let checkpoint = cpu.begin_interval().unwrap();
     let account = cpu.at(RenderCpuScope::ImagePayloads);
     let pixels = Arc::<[u8]>::from([1, 2, 3, 4]);
-    let first = Image::from_rgba(crate::Size::new(1.0, 1.0), pixels.clone()).unwrap();
-    let second = Image::from_rgba(crate::Size::new(1.0, 1.0), pixels.clone()).unwrap();
+    let first = Image::from_rgba(crate::geometry::Size::new(1.0, 1.0), pixels.clone()).unwrap();
+    let second = Image::from_rgba(crate::geometry::Size::new(1.0, 1.0), pixels.clone()).unwrap();
     assert!(Arc::ptr_eq(&first.bytes, &second.bytes));
     assert_ne!(first.data.data.id(), second.data.data.id());
     let first_import = account.import_image(&first, None).unwrap();
@@ -297,7 +301,8 @@ fn image_adapter_empty_sources_keep_known_blob_provenance_through_account_bridge
     warm_image_registry(&cpu);
     let background = retained(&cpu);
     let checkpoint = cpu.begin_interval().unwrap();
-    let source = Image::from_rgba(crate::Size::new(0.0, 0.0), Arc::<[u8]>::from([])).unwrap();
+    let source =
+        Image::from_rgba(crate::geometry::Size::new(0.0, 0.0), Arc::<[u8]>::from([])).unwrap();
     let data = source.data.clone();
     let original = account.import_image(&source, None).unwrap();
     let adapter = size_of::<Arc<[u8]>>() as u64;
@@ -331,7 +336,8 @@ fn image_adapter_empty_sources_keep_known_blob_provenance_through_account_bridge
     assert_eq!(cpu.fault(), None);
 
     // Equal dangling empty-slice addresses do not establish Blob provenance.
-    let unknown = Image::from_rgba(crate::Size::new(0.0, 0.0), Arc::<[u8]>::from([])).unwrap();
+    let unknown =
+        Image::from_rgba(crate::geometry::Size::new(0.0, 0.0), Arc::<[u8]>::from([])).unwrap();
     assert_ne!(unknown.data.data.id(), data.data.id());
     assert!(forward.import_image_data(&unknown.data).is_err());
     assert_eq!(cpu.fault(), Some(RenderAccountingError::Invariant));
@@ -623,16 +629,17 @@ fn imports_keep_lifetime_custody_without_owner_cycles_or_caller_tokens() {
 
 #[test]
 fn distinct_preparations_share_font_payload_and_cloned_preparation_shares_own_backing() {
-    let font = crate::FontData::try_from_bytes(
+    let font = crate::text::FontData::try_from_bytes(
         include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
         0,
         surgeist_test::fixtures::FONT_LIMITS,
     )
     .unwrap();
     let instance =
-        crate::TextInstance::try_new(20.0, vec![], crate::GlyphSynthesis::none()).unwrap();
+        crate::text::TextInstance::try_new(20.0, vec![], crate::text::GlyphSynthesis::none())
+            .unwrap();
     let mut preparation = super::super::RenderAccountingContext::default();
-    let limits = crate::GlyphRunLimits::new(0, 0, 0, usize::MAX);
+    let limits = crate::text::GlyphRunLimits::new(0, 0, 0, usize::MAX);
     let first = font
         .prepare_glyph_run(&instance, &[], limits, &mut preparation)
         .unwrap();
@@ -1154,7 +1161,8 @@ fn native_import_registry_growth_charges_existing_entries_once_to_actual_cpu_own
     )
     .unwrap();
     let account = cpu.at(RenderCpuScope::ImagePayloads);
-    let image = Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255, 0, 0, 255]).unwrap();
+    let image =
+        Image::from_rgba(crate::geometry::Size::new(1.0, 1.0), vec![255, 0, 0, 255]).unwrap();
     let baseline = retained(&cpu);
     let import = account.import_image(&image, None).unwrap();
     let opening = cpu.snapshot().unwrap();
@@ -1214,20 +1222,20 @@ fn native_import_registry_growth_charges_existing_entries_once_to_actual_cpu_own
 
 #[test]
 fn convolution_import_deduplicates_shared_backing_and_releases_last_lease() {
-    let rect = crate::Rect::try_new(0.0, 0.0, 2.0, 2.0).unwrap();
-    let domains = crate::FilterDomains::try_new(rect, rect, rect).unwrap();
+    let rect = crate::geometry::Rect::try_new(0.0, 0.0, 2.0, 2.0).unwrap();
+    let domains = crate::filter_domains::FilterDomains::try_new(rect, rect, rect).unwrap();
     let mut context = super::super::RenderAccountingContext::default();
-    let first = crate::prepare_convolution(
-        crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+    let first = crate::convolution::prepare_convolution(
+        crate::convolution::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
         domains,
-        crate::FilterColorSpace::Srgb,
+        crate::filter_model::FilterColorSpace::Srgb,
         &mut context,
     )
     .unwrap();
-    let second = crate::prepare_convolution(
-        crate::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
+    let second = crate::convolution::prepare_convolution(
+        crate::convolution::ConvolutionInput::new(&[1.0]).with_order(1.0, None),
         domains,
-        crate::FilterColorSpace::Srgb,
+        crate::filter_model::FilterColorSpace::Srgb,
         &mut context,
     )
     .unwrap();

@@ -881,7 +881,7 @@ fn nested_resource_scopes_reserve_cleanup_before_sealing_and_merge_without_acqui
     let cpu = RendererCpu::new(options).unwrap();
     let generation = Generation::new(options).unwrap();
     let manager = ResourceManager::with_generation(
-        crate::ResourceCacheBudget::DISABLED,
+        crate::renderer::ResourceCacheBudget::DISABLED,
         generation,
         cpu.at(RenderCpuScope::DeviceBacking),
     );
@@ -1164,7 +1164,10 @@ fn classified_cache_preview_sums_repeated_class_bytes_with_checked_overflow_befo
 
 #[test]
 fn classified_cache_preview_admits_each_new_inspection_before_its_work_and_never_creates() {
-    use crate::{RenderAccountingContext, RenderAttemptKind, RenderLimits, RenderPhase};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAttemptKind,
+        accounting::RenderLimits, accounting::RenderPhase,
+    };
     let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     for limit in [0, 1, 2, 3, 4] {
         let options = RenderAccountingOptions::new().with_limits(
@@ -1493,7 +1496,10 @@ fn displacement_graph_preview_checks_combined_creation_work_without_recording_cr
 
 #[test]
 fn displacement_graph_preview_admits_every_new_inspection_before_atomic_preview() {
-    use crate::{RenderAccountingContext, RenderAttemptKind, RenderLimits, RenderPhase};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAttemptKind,
+        accounting::RenderLimits, accounting::RenderPhase,
+    };
     let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     // Four descriptor visits, Root inspection, the cache grouping's two tuple
     // visits plus Cache and two children, then the PassBuffers leaf:11.
@@ -1576,7 +1582,10 @@ fn displacement_graph_preview_rejects_descriptor_sum_overflow_and_preserves_cach
         0
     );
     generation.ensure_healthy().unwrap();
-    use crate::{RenderAccountingContext, RenderAttemptKind, RenderLimits, RenderPhase};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAttemptKind,
+        accounting::RenderLimits, accounting::RenderPhase,
+    };
     let mut context = RenderAccountingContext::new(
         RenderAccountingOptions::new().with_limits(
             RenderLimits::new()

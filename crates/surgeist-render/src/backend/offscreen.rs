@@ -6,12 +6,18 @@ use super::{Backend, DeviceSlotIdentity};
 use crate::accounting::Account;
 #[cfg(test)]
 use crate::{
-    BackendErrorCode, Error, Format, Options, Parameters, PhysicalSize, Result,
-    RuntimeCapabilityUnavailable, RuntimeOperation,
+    Error, Result,
     command::OffscreenBounds,
+    error::BackendErrorCode,
+    error::RuntimeCapabilityUnavailable,
+    error::RuntimeOperation,
+    geometry::PhysicalSize,
     geometry::physical_size,
     gpu_transaction::GpuOperationStage,
+    renderer::Options,
     resource::{FrameResourceScope, ResourceIdentity, ResourceLease},
+    surface::Format,
+    surface::Parameters,
     texture::EffectTextureDescriptor,
     vello_engine::scene::VelloScene,
 };

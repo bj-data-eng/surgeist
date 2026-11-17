@@ -5,12 +5,33 @@
 use super::convolution::{assert_pixel, bounds, image, renderer_and_surface};
 use super::native_shadow::{finite_scene, operation, render, sigma, source_scene};
 use crate::{
-    Color, DropShadowInput, DropShadowSource, ErrorCode, FilterColorSpace, FilterDomains,
-    GpuFaultKind, Layer, Options, Parameters, RenderAccountingOptions, RenderAttemptStatus,
-    RenderLimits, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderResource, RenderRoute,
-    RenderWork, Renderer, ResourceCacheBudget, RuntimeCapabilityUnavailableReason,
-    RuntimeOperation, Scene, Size, Surface,
+    ErrorCode,
+    accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus,
+    accounting::RenderLimits,
+    accounting::RenderPhaseFilter,
+    accounting::RenderProfile,
+    accounting::RenderQuantity,
+    accounting::RenderResource,
+    accounting::RenderWork,
+    error::GpuFaultKind,
+    error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation,
+    filter_domains::FilterDomains,
+    filter_model::FilterColorSpace,
+    geometry::Size,
     gpu_transaction::test_support::GraphSubmissionGateGuardForTest,
+    layer::Layer,
+    native_shadow::DropShadowInput,
+    native_shadow::DropShadowSource,
+    paint::Color,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
+    scene::Scene,
+    stats::RenderRoute,
+    surface::Parameters,
+    surface::Surface,
     surface::{HeadlessResources, SurfaceBackend},
 };
 use std::{
@@ -37,7 +58,7 @@ fn scenes() -> (Scene, Scene) {
             source_scene(image(2, 1, rgba), domain),
             domains,
             effect,
-            crate::Layer::new(),
+            crate::layer::Layer::new(),
         )
     };
     (
@@ -283,7 +304,7 @@ fn public_native_shadow_first_terminal_fault_aborts_publication_and_retires_once
     );
     assert_eq!(
         first
-            .error(crate::RuntimeOperation::SurfaceRendering)
+            .error(crate::error::RuntimeOperation::SurfaceRendering)
             .runtime_capability_unavailable_diagnostic()
             .expect("first signal retains its terminal reason")
             .reason(),

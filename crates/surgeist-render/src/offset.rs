@@ -3,7 +3,7 @@ use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };
 use crate::number_text::Number;
-use crate::{Error, FilterDomains, ImageRendering, Result};
+use crate::{Error, Result, filter_domains::FilterDomains, image::ImageRendering};
 
 /// Offset parameter whose resolved value is invalid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -240,8 +240,9 @@ pub fn prepare_offset(
 mod tests {
     use super::*;
     use crate::{
-        ErrorCode, Filter, FilterList, Layer, Rect, RenderAccountingOptions, RenderAttemptStatus,
-        RenderLimits, RenderQuantity, RenderResource,
+        ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderResource,
+        geometry::Rect, layer::Filter, layer::Layer, style::filter::FilterList,
     };
 
     fn domains() -> FilterDomains {
@@ -352,7 +353,7 @@ mod tests {
                 .set_options(options.with_limits(exact.with_work_limit(work, limit).unwrap()));
             let error = prepare_offset(OffsetInput::new(), domains(), &mut accounting).unwrap_err();
             assert!(
-                matches!(error.accounting_diagnostic(), Some(crate::RenderAccountingError::Refused(refusal))
+                matches!(error.accounting_diagnostic(), Some(crate::accounting::RenderAccountingError::Refused(refusal))
                 if refusal.quantity() == RenderQuantity::Work(work))
             );
             let report = accounting.last_attempt().unwrap();

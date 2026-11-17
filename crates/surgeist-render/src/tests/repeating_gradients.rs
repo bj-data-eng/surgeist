@@ -4,12 +4,16 @@ use super::support::{
     AHEM_FONT_BYTES, AHEM_GLYPH_X, ahem_font, graph_supported_working_formats_for_test, pixel_rgba,
 };
 use crate::{
-    Antialiasing, Color, ErrorCode, FontData, GlyphRunLimits, GlyphSynthesis, Gradient,
-    GradientStop, Image, ImageBuffer, Layer, Options, Paint, Parameters, Point, Rect,
-    RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderPhase,
-    RenderProfile, RenderQuantity, RenderRoute, RenderWork, Renderer, RepeatingGradient,
-    ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke, Surface, TextGlyph, TextInstance,
-    TextPaint, TextRun, TextRunBounds, Transform, resource::WorkingFormat,
+    ErrorCode, accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+    accounting::RenderProfile, accounting::RenderQuantity, accounting::RenderWork, geometry::Point,
+    geometry::Rect, geometry::Size, geometry::Transform, image::Image, image::ImageBuffer,
+    layer::Layer, layer::ResolvedLayerAlphaMask, paint::Color, paint::Gradient,
+    paint::GradientStop, paint::Paint, paint::RepeatingGradient, renderer::Antialiasing,
+    renderer::Options, renderer::Renderer, resource::WorkingFormat, scene::Scene, shape::Shape,
+    shape::Stroke, stats::RenderRoute, surface::Parameters, surface::Surface, text::FontData,
+    text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph, text::TextInstance,
+    text::TextPaint, text::TextRun, text::TextRunBounds,
 };
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> Color {
@@ -576,7 +580,7 @@ fn prepared_and_native_text_keep_run_local_repeating_paint_and_final_scale() {
             &TextInstance::try_new(1.0, vec![], GlyphSynthesis::none()).unwrap(),
             &glyphs,
             GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     let paint = TextPaint::try_fill(linear(0.7, &[(0.0, red()), (1.0, blue())]).into()).unwrap();

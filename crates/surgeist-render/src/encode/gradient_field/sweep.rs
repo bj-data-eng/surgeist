@@ -407,9 +407,10 @@ pub(in crate::encode) fn qualify_sweep(
 mod tests {
     use super::*;
     use crate::{
-        ErrorCode, GradientRealizationError, RenderAccountingContext, RenderAccountingOptions,
-        RenderAttemptKind, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile,
-        RenderResource,
+        ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderResource,
+        error::GradientRealizationError,
     };
 
     fn sweep(center: (f64, f64)) -> peniko::SweepGradientPosition {
@@ -660,7 +661,10 @@ mod tests {
 
     #[test]
     fn receiving_proof_quota_and_real_stop_backing_refusals_release_custody_and_retry() {
-        use crate::{Capabilities, Color, Gradient, GradientStop, Point, Rect, Scene};
+        use crate::{
+            capability::Capabilities, geometry::Point, geometry::Rect, paint::Color,
+            paint::Gradient, paint::GradientStop, scene::Scene,
+        };
         let gradient = Gradient::try_sweep(
             Point::new(16.0, 8.0),
             (0..8)

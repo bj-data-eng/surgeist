@@ -20,10 +20,12 @@ use surgeist_test::fixtures::FONT_LIMITS;
 use surgeist_text as text;
 
 use crate::{
-    Color, Error, GlyphCapability, GlyphNumericPhase, GlyphPreparationError, GlyphResource,
-    GlyphRunLimits, GlyphSynthesis, PreparedGlyphRun, Rect, TextGlyph, TextLayoutCause,
-    TextLayoutError, TextLayoutLimits, TextLayoutLocation, TextLayoutResource, Transform,
-    prepare_text_layout, scene::Command,
+    Error, geometry::Rect, geometry::Transform, paint::Color, scene::Command,
+    text::GlyphCapability, text::GlyphNumericPhase, text::GlyphPreparationError,
+    text::GlyphResource, text::GlyphRunLimits, text::GlyphSynthesis, text::PreparedGlyphRun,
+    text::TextGlyph, text_layout::TextLayoutCause, text_layout::TextLayoutError,
+    text_layout::TextLayoutLimits, text_layout::TextLayoutLocation,
+    text_layout::TextLayoutResource, text_layout::prepare_text_layout,
 };
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -110,7 +112,7 @@ fn refuse(layout: &text::Layout, placement: Transform, limits: TextLayoutLimits)
         layout,
         placement,
         limits,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     ) {
         Ok(_) => panic!("the whole invocation must refuse without a prepared scene"),
         Err(error) => error,
@@ -166,7 +168,7 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
         &input,
         placement,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(prepared.layout(), &input));
@@ -251,7 +253,7 @@ fn compressed_text_layouts_keep_exact_faces_through_render_admission_and_refresh
                 layout,
                 Transform::identity(),
                 limits(),
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(prepared.layout(), layout));
@@ -307,7 +309,7 @@ fn actual_fractional_logical_pens_preserve_provider_advances() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (run, transform) = outline(&prepared.scene().commands[0]);
@@ -346,7 +348,7 @@ fn actual_run_origin_is_outer_and_placement_order_preserves_decorations() {
         &input,
         placement,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (run, transform) = outline(&prepared.scene().commands[0]);
@@ -367,7 +369,10 @@ fn actual_run_origin_is_outer_and_placement_order_preserves_decorations() {
     let Command::Fill { shape, .. } = &children[0] else {
         panic!("underline fill")
     };
-    assert_eq!(shape, &crate::Shape::rect(Rect::new(5.0, 18.0, 20.0, 1.0)));
+    assert_eq!(
+        shape,
+        &crate::shape::Shape::rect(Rect::new(5.0, 18.0, 20.0, 1.0))
+    );
 }
 
 #[test]
@@ -380,7 +385,7 @@ fn transformed_decoration_transfers_its_actual_layer_metadata_box() {
         (Transform::identity(), 3),
         (Transform::translation(1.0, 2.0).unwrap(), 2),
     ] {
-        let mut context = crate::RenderAccountingContext::default();
+        let mut context = crate::accounting::RenderAccountingContext::default();
         let prepared = prepare_text_layout(&input, placement, limits(), &mut context).unwrap();
         assert_eq!(prepared.scene().commands.len(), root_count);
         transferred.push(
@@ -390,7 +395,7 @@ fn transformed_decoration_transfers_its_actual_layer_metadata_box() {
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::PreparedTransferredBytes),
+                .work(crate::accounting::RenderWork::PreparedTransferredBytes),
         );
     }
     // Both scenes have identical glyph backing and two decoration commands.
@@ -398,7 +403,7 @@ fn transformed_decoration_transfers_its_actual_layer_metadata_box() {
     // actual boxed metadata; the two fills move into the child vector.
     assert_eq!(
         transferred[1] - transferred[0],
-        (std::mem::size_of::<Command>() + std::mem::size_of::<crate::Layer>()) as u64
+        (std::mem::size_of::<Command>() + std::mem::size_of::<crate::layer::Layer>()) as u64
     );
 }
 
@@ -422,7 +427,7 @@ fn actual_large_run_origin_never_enters_canonical_outline_points() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (run, transform) = outline(&prepared.scene().commands[0]);
@@ -481,7 +486,7 @@ fn actual_registered_fallback_runs_keep_each_face_and_outer_origin() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (first, first_transform) = outline(&prepared.scene().commands[0]);
@@ -538,7 +543,7 @@ fn real_multiline_alignment_and_indent_are_preserved_by_run_placement() {
             &input,
             placement,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         let mut actual = Vec::new();
@@ -563,7 +568,7 @@ fn returned_borrow_retains_exact_utf16_layout_interactions() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let same = prepared.layout();
@@ -633,7 +638,7 @@ fn actual_decorations_follow_glyphs_and_have_one_shared_placement_layer() {
             &input,
             placement,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         let commands = &prepared.scene().commands;
@@ -666,7 +671,7 @@ fn actual_decorations_follow_glyphs_and_have_one_shared_placement_layer() {
             let Command::Fill { shape, paint } = command else {
                 panic!("the actual decoration rectangle must remain a fill");
             };
-            assert_eq!(shape, &crate::Shape::rect(rect));
+            assert_eq!(shape, &crate::shape::Shape::rect(rect));
             let color = if index == 0 {
                 Color::BLACK
             } else {
@@ -707,7 +712,7 @@ fn actual_zero_area_decoration_is_noop_but_positive_extent_cannot_disappear() {
             &zero,
             placement,
             limits(),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -725,7 +730,7 @@ fn actual_zero_area_decoration_is_noop_but_positive_extent_cannot_disappear() {
             &positive,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -742,7 +747,7 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
         &input,
         Transform::identity(),
         exact,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(prepared.scene().commands.len(), 2);
@@ -793,7 +798,7 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
                 &input,
                 Transform::identity(),
                 exact,
-                &mut crate::RenderAccountingContext::default()
+                &mut crate::accounting::RenderAccountingContext::default()
             )
             .is_ok()
         );
@@ -835,7 +840,7 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
             &decorated,
             Transform::identity(),
             bounded(2, 10, ROOM, 1, 0, 2),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -852,7 +857,7 @@ fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(prepared.layout(), &input));
@@ -869,7 +874,7 @@ fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
         [TextGlyph::try_new(58, 0.0, 0.0, 20.0).unwrap()]
     );
     assert!(
-        matches!(composite.path_elements().next(),Some(crate::PathElement::MoveTo(p)) if p.x()==0.0 && p.y()==-16.0)
+        matches!(composite.path_elements().next(),Some(crate::shape::PathElement::MoveTo(p)) if p.x()==0.0 && p.y()==-16.0)
     );
     assert_eq!(
         composite.bounds().ink_rect(),
@@ -881,7 +886,7 @@ fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
             &input,
             Transform::identity(),
             bounded(2, 9, ROOM, 2, 0, 0),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_err()
     );
@@ -889,7 +894,7 @@ fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(retry.scene().commands.len(), 2);
@@ -921,7 +926,7 @@ fn actual_late_nonidentity_composite_refusal_exposes_no_batch_and_keeps_input_fo
             &good,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -949,7 +954,7 @@ fn actual_italic_synthesis_is_executed_from_the_same_effective_instance() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (italic, transform) = outline(&prepared.scene().commands[1]);
@@ -985,7 +990,7 @@ fn actual_same_face_runs_share_text_backing_after_system_and_layout_drop() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let first = outline(&prepared.scene().commands[0]).0;
@@ -1040,7 +1045,7 @@ fn split_text_runs_charge_actual_font_capacity_once_at_the_retained_cap() {
             &input,
             Transform::identity(),
             bounded(32, 1024, expected, 32, 32, 32),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(accepted.scene().commands.len(), 2);
@@ -1054,7 +1059,7 @@ fn minimum_retained(input: &text::Layout, placement: Transform) -> usize {
             input,
             placement,
             bounded(32, 1024, high, 32, 32, 32),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -1064,7 +1069,7 @@ fn minimum_retained(input: &text::Layout, placement: Transform) -> usize {
             input,
             placement,
             bounded(32, 1024, mid, 32, 32, 32),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .is_ok()
         {
@@ -1098,7 +1103,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
         &empty,
         Transform::identity(),
         TextLayoutLimits::new(GlyphRunLimits::new(0, 0, ROOM, ROOM), 0, 0, 0),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(prepared.scene().commands.is_empty());
@@ -1115,7 +1120,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
         &decorated,
         Transform::identity(),
         bounded(0, 0, ROOM, 0, 0, 2),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(prepared.scene().commands.len(), 2);
@@ -1126,14 +1131,14 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
         let Command::Fill { shape, .. } = command else {
             panic!("metric-only rows retain decorations without a glyph paint command");
         };
-        assert_eq!(shape, &crate::Shape::rect(expected));
+        assert_eq!(shape, &crate::shape::Shape::rect(expected));
     }
     let space = layout(" ");
     let prepared = prepare_text_layout(
         &space,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(prepared.scene().commands.len(), 1);
@@ -1142,7 +1147,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
         run.glyphs(),
         [TextGlyph::try_new(3, 0.0, 0.0, 20.0).unwrap()]
     );
-    assert_eq!(run.bounds().kind(), crate::TextRunBoundsKind::Empty);
+    assert_eq!(run.bounds().kind(), crate::text::TextRunBoundsKind::Empty);
     assert_eq!(run.path_elements().count(), 0);
     let mut draws = prepared.glyph_draws();
     assert!(std::ptr::eq(draws.next().unwrap().run(), run));
@@ -1170,7 +1175,7 @@ fn variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
             &input,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         let (run, _) = outline(&prepared.scene().commands[0]);
@@ -1188,7 +1193,7 @@ fn variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
                     &input,
                     Transform::identity(),
                     bounded(1, 5, ROOM, 1, 1, 0),
-                    &mut crate::RenderAccountingContext::default()
+                    &mut crate::accounting::RenderAccountingContext::default()
                 )
                 .is_ok()
             );
@@ -1199,7 +1204,10 @@ fn variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
 #[test]
 fn adapter_scene_real_gpu_direct_and_base_graph_use_the_same_layout_resources() {
     use super::support::{default_graph_working_format_for_test, pixel_rgba};
-    use crate::{Options, Parameters, RenderRoute, Renderer, Size};
+    use crate::{
+        geometry::Size, renderer::Options, renderer::Renderer, stats::RenderRoute,
+        surface::Parameters,
+    };
 
     // At size 2, Ahem X covers local (0,-1.6)..(2,0.4), then its actual
     // baseline is composed through the run transform. The explicit underline
@@ -1235,7 +1243,7 @@ fn adapter_scene_real_gpu_direct_and_base_graph_use_the_same_layout_resources() 
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(prepared.layout(), &input));
@@ -1454,9 +1462,10 @@ fn variable_ahem() -> Vec<u8> {
 #[test]
 fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
     use crate::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptStatus, RenderChangeKind,
-        RenderEvent, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderResource,
-        RenderWork,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus, accounting::RenderChangeKind, accounting::RenderEvent,
+        accounting::RenderPhase, accounting::RenderPhaseFilter, accounting::RenderProfile,
+        accounting::RenderQuantity, accounting::RenderResource, accounting::RenderWork,
     };
     let input = system(AHEM.to_vec())
         .layout(split_source(), style(), options())
@@ -1572,7 +1581,10 @@ fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
 
 #[test]
 fn text_placement_paint_visits_include_the_retained_foreground_inspection() {
-    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits, RenderWork};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits, accounting::RenderWork,
+    };
     let input = layout("X");
     let caps = RenderLimits::new()
         .with_work_limit(RenderWork::PaintVisits, 2)
@@ -1599,9 +1611,10 @@ fn text_placement_paint_visits_include_the_retained_foreground_inspection() {
 #[test]
 fn text_placement_paint_limit_refuses_the_second_visit_and_retries_atomically() {
     use crate::{
-        RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-        RenderAttemptStatus, RenderLimits, RenderQuantity, RenderRefusalReason, RenderResource,
-        RenderWork,
+        accounting::RenderAccountingContext, accounting::RenderAccountingError,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderRefusalReason,
+        accounting::RenderResource, accounting::RenderWork,
     };
     let input = layout("X");
     let caps = RenderLimits::new()

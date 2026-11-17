@@ -46,21 +46,26 @@ mod repeated_proof_edge_tests {
         count: usize,
         setup: &Account,
     ) -> crate::accounting::OwnedBox<GpuRenderGraph> {
-        let mut scene = crate::Scene::new();
+        let mut scene = crate::scene::Scene::new();
         for _ in 0..count {
-            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
-                crate::FilterAmount::try_new(1.25).unwrap(),
-            )])
+            let filters = crate::style::filter::FilterList::try_ops(vec![
+                crate::style::filter::FilterOp::brightness(
+                    crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+                ),
+            ])
             .unwrap();
-            scene.layer(crate::Layer::new().with_filter_list(filters), |child| {
-                child.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
-            });
+            scene.layer(
+                crate::layer::Layer::new().with_filter_list(filters),
+                |child| {
+                    child.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+                },
+            );
         }
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, setup)
+            .normalize(crate::capability::Capabilities::CURRENT, setup)
             .unwrap();
         let context = crate::frame::FrameContext::try_new(
-            crate::Size::new(4.0, 4.0),
+            crate::geometry::Size::new(4.0, 4.0),
             1.0,
             Antialiasing::Area,
             Color::TRANSPARENT,
@@ -76,7 +81,9 @@ mod repeated_proof_edge_tests {
 
     #[test]
     fn last_color_filter_lookup_uses_a_bounded_step_search() {
-        use crate::{RenderAttemptStatus, RenderQuantity, RenderResource};
+        use crate::{
+            accounting::RenderAttemptStatus, accounting::RenderQuantity, accounting::RenderResource,
+        };
 
         let setup = Account::for_test();
         let graph = color_filter_lookup_graph(16, &setup);
@@ -158,21 +165,23 @@ mod repeated_proof_edge_tests {
     #[test]
     fn repeated_proof_filter_spatial_mapping_admits_its_source_read() {
         let setup = Account::for_test();
-        let mut scene = crate::Scene::new();
+        let mut scene = crate::scene::Scene::new();
         scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &setup)
+            .normalize(crate::capability::Capabilities::CURRENT, &setup)
             .unwrap();
         let context = crate::frame::FrameContext::try_new(
-            crate::Size::new(4.0, 4.0),
+            crate::geometry::Size::new(4.0, 4.0),
             1.0,
             Antialiasing::Area,
             Color::TRANSPARENT,
         )
         .unwrap();
-        let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
-            crate::FilterAmount::try_new(1.25).unwrap(),
-        )])
+        let filters = crate::style::filter::FilterList::try_ops(vec![
+            crate::style::filter::FilterOp::brightness(
+                crate::style::filter::FilterAmount::try_new(1.25).unwrap(),
+            ),
+        ])
         .unwrap();
         let graph =
             crate::frame::authored_filter_graph_for_test(vec![filters], commands, context, &setup)
@@ -218,7 +227,7 @@ mod repeated_proof_edge_tests {
                 let refusal = report.refusal().unwrap();
                 assert_eq!(
                     refusal.quantity,
-                    crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                    crate::accounting::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
                 );
                 assert_eq!((refusal.current, refusal.amount), (0, 1));
                 assert_eq!(report.usage().work(RenderWork::GraphNodeVisits), 0);
@@ -876,13 +885,13 @@ impl GraphLoweringComposite {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct GraphLoweringConvolution {
-    operation: crate::PreparedConvolution,
+    operation: crate::convolution::PreparedConvolution,
     mapping: ConvolutionMapping,
     stage: ConvolutionStage,
 }
 
 impl GraphLoweringConvolution {
-    pub(crate) fn operation(&self) -> &crate::PreparedConvolution {
+    pub(crate) fn operation(&self) -> &crate::convolution::PreparedConvolution {
         &self.operation
     }
     pub(crate) const fn mapping(&self) -> ConvolutionMapping {
@@ -895,7 +904,7 @@ impl GraphLoweringConvolution {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct GraphLoweringOffset {
-    operation: crate::PreparedOffset,
+    operation: crate::offset::PreparedOffset,
     mapping: OffsetMapping,
     stage: OffsetStage,
     purpose: OffsetPurpose,
@@ -912,7 +921,7 @@ impl GraphLoweringOffset {
     pub(crate) const fn purpose(&self) -> OffsetPurpose {
         self.purpose
     }
-    pub(crate) fn operation(&self) -> &crate::PreparedOffset {
+    pub(crate) fn operation(&self) -> &crate::offset::PreparedOffset {
         &self.operation
     }
     pub(crate) const fn mapping(&self) -> OffsetMapping {
@@ -2203,8 +2212,9 @@ fn matching<'a, T>(
 mod metadata_match_tests {
     use super::*;
     use crate::{
-        RenderAccountingContext, RenderAccountingError, RenderAccountingOptions, RenderAttemptKind,
-        RenderLimits, RenderQuantity, RenderRefusalReason,
+        accounting::RenderAccountingContext, accounting::RenderAccountingError,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderRefusalReason,
     };
 
     #[test]
@@ -2278,9 +2288,11 @@ fn temp_array<T: Clone>(values: &[T], account: &Account) -> Result<AccountedVec<
 mod resource_binding_tests {
     use super::*;
     use crate::{
-        Image, Layer, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-        RenderAttemptKind, RenderLimits, RenderQuantity, RenderRefusalReason, RenderResource,
-        ResolvedLayerAlphaMask, Scene, Size,
+        accounting::RenderAccountingContext, accounting::RenderAccountingError,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderRefusalReason,
+        accounting::RenderResource, geometry::Size, image::Image, layer::Layer,
+        layer::ResolvedLayerAlphaMask, scene::Scene,
     };
 
     fn masked_graph(setup: &Account) -> crate::accounting::OwnedBox<GpuRenderGraph> {
@@ -2292,7 +2304,7 @@ mod resource_binding_tests {
             child.fill(bounds, Color::BLACK);
         });
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, setup)
+            .normalize(crate::capability::Capabilities::CURRENT, setup)
             .unwrap();
         let frame = crate::frame::FrameContext::try_new(
             Size::new(2.0, 2.0),

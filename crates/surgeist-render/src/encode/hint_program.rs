@@ -1,8 +1,10 @@
 //! Accounted analytic colour programmes and their whole-segment certificates.
 use super::gradient_field::{ShaderScalar as Bound, scalar};
 use crate::{
-    Error, GradientRealizationError as Refusal, GradientStop, Result,
+    Error, Result,
     accounting::{Account, AccountedVec, RenderWork},
+    error::GradientRealizationError as Refusal,
+    paint::GradientStop,
     vello_engine::gradient_endpoints::{
         PadEndpoints, ProgramCoordinates, ProgramRecord, ProgramSegment,
     },
@@ -428,7 +430,8 @@ mod tests {
     use super::*;
     use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
     use crate::{
-        Color, GradientHint, RenderAccountingContext, RenderAccountingOptions, RenderLimits,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits, paint::Color, paint::GradientHint,
     };
 
     #[test]

@@ -240,7 +240,7 @@ impl PreparedGraph<'_> {
         };
         let samples = scheduled_region_texels(region)
             .checked_mul(footprint)
-            .ok_or(crate::RenderAccountingError::Invariant)?;
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
         account.work_batch([(RenderWork::ScheduledGaussianSamples, samples)])?;
         encode_spatial_filter_full_target_pass(
             encoder,

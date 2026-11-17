@@ -1,8 +1,10 @@
 //! Whole-record preservation through the public Paint integration front door.
 use crate::{
-    Color, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-    RenderAccountingSetupError, RenderAttemptStatus, RenderLimits, RenderPhaseFilter,
-    RenderProfile, RenderWork, prepare_repeating_linear_gradient,
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAccountingSetupError,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhaseFilter,
+    accounting::RenderProfile, accounting::RenderWork, paint::Color,
+    paint_gradient::prepare_repeating_linear_gradient,
 };
 use std::{cell::Cell, mem::size_of, time::Duration};
 use surgeist_layout as layout;
@@ -122,8 +124,9 @@ fn invalid_limit_and_report_setup_failure_preserve_the_previous_completed_attemp
 #[test]
 fn mandatory_head_hint_and_final_output_frontiers_preserve_reports_across_profiles() {
     use crate::{
-        Gradient, GradientStop, RenderClock, RenderPhase, RenderQuantity, RenderResource,
-        paint::GradientKind, prepare_linear_gradient,
+        accounting::RenderClock, accounting::RenderPhase, accounting::RenderQuantity,
+        accounting::RenderResource, paint::Gradient, paint::GradientKind, paint::GradientStop,
+        paint_gradient::prepare_linear_gradient,
     };
     let geometry = line(1.0);
     let source = [

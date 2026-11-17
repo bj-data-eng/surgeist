@@ -1793,7 +1793,8 @@ pub(crate) fn spatial_primitives_for_test(
 mod operation_domain_tests {
     use super::*;
     use crate::{
-        BlendMode, Capabilities, Layer, LayerComposition, PorterDuffOperator, Scene, Shape,
+        capability::Capabilities, layer::BlendMode, layer::Layer, layer::LayerComposition,
+        layer::PorterDuffOperator, scene::Scene, shape::Shape,
     };
 
     fn contribution(layer: Layer) -> SemanticSourceContribution {
@@ -1935,8 +1936,9 @@ mod operation_domain_tests {
 mod command_contribution_tests {
     use super::*;
     use crate::{
-        Capabilities, FontData, FontRef, GlyphRunLimits, GlyphSynthesis, Layer,
-        RenderAccountingContext, Scene, TextGlyph, TextInstance, TextPaint, TextRun, TextRunBounds,
+        accounting::RenderAccountingContext, capability::Capabilities, layer::Layer, scene::Scene,
+        text::FontData, text::FontRef, text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph,
+        text::TextInstance, text::TextPaint, text::TextRun, text::TextRunBounds,
     };
 
     fn context() -> FrameContext {
@@ -1967,8 +1969,9 @@ mod command_contribution_tests {
     #[test]
     fn layer_bounds_composition_admits_coordinates_before_contributing() {
         use crate::{
-            RenderAccountingError, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
-            RenderPhase, RenderQuantity,
+            accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+            accounting::RenderAttemptKind, accounting::RenderLimits, accounting::RenderPhase,
+            accounting::RenderQuantity,
         };
 
         let mut scene = Scene::new();

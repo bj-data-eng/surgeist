@@ -22,13 +22,21 @@ use crate::vello_engine::{
     TransactionTargetIntent, scene::VelloScene,
 };
 use crate::{
-    Antialiasing, BackendErrorCode, Color, Error, Format, Parameters, PhysicalSize, Result,
-    RuntimeCapabilityUnavailable, RuntimeOperation, Surface,
+    Error, Result,
+    error::BackendErrorCode,
+    error::RuntimeCapabilityUnavailable,
+    error::RuntimeOperation,
+    geometry::PhysicalSize,
     gpu_transaction::{
         GpuOperationStage, GpuOperationTransaction, GraphOutputCommit, GraphSubmissionPayload,
         InternalVelloPayload,
     },
+    paint::Color,
+    renderer::Antialiasing,
     shader::ProvisionalDevicePassCacheUpdate,
+    surface::Format,
+    surface::Parameters,
+    surface::Surface,
 };
 use std::sync::Arc;
 
@@ -337,7 +345,7 @@ impl Backend {
         &mut self,
         identity: DeviceSlotIdentity,
         lowered: crate::pass::LoweredGraphPlan,
-        policy: crate::EffectQualityPolicy,
+        policy: crate::renderer::EffectQualityPolicy,
         account: &Account,
     ) -> Result<PreparedGraph<'_>> {
         let state = self.device_states.get_mut(identity.slot()).ok_or_else(|| {

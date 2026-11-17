@@ -36,7 +36,7 @@ fn cleanup_tail_rejects_foreign_completion_without_replacing_an_originating_faul
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn rejected_cleanup_entry_still_drops_actual_staging_and_preserves_backend_or_refusal_cause() {
-    use crate::{RuntimeOperation, backend::Backend, gpu_transaction::GpuOperationStage};
+    use crate::{backend::Backend, error::RuntimeOperation, gpu_transaction::GpuOperationStage};
     pollster::block_on(async {
         for invalid_copy in [false, true] {
             let mut options = RenderAccountingOptions::new()
@@ -49,8 +49,12 @@ fn rejected_cleanup_entry_still_drops_actual_staging_and_preserves_backend_or_re
                 );
             }
             let cpu = RendererCpu::new(options).unwrap();
-            let mut backend =
-                Backend::new(crate::ResourceCacheBudget::DISABLED, cpu.clone(), options).unwrap();
+            let mut backend = Backend::new(
+                crate::renderer::ResourceCacheBudget::DISABLED,
+                cpu.clone(),
+                options,
+            )
+            .unwrap();
             let identity = backend.select_device(None).await.unwrap().unwrap();
             let generation = backend.generation(identity).unwrap().clone();
             let texture = {
@@ -99,7 +103,7 @@ fn rejected_cleanup_entry_still_drops_actual_staging_and_preserves_backend_or_re
                         &mut backend,
                         identity,
                         &texture,
-                        crate::PhysicalSize::new(1, 2),
+                        crate::geometry::PhysicalSize::new(1, 2),
                         RuntimeOperation::SurfaceReadback,
                         &account,
                     )

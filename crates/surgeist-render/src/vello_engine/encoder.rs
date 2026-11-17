@@ -5,7 +5,7 @@
 use crate::accounting::{Account, CpuAccount, RenderPhase, RenderWork};
 use peniko::ImageFormat;
 
-use crate::{BackendErrorCode, Error, PhysicalSize, Result, resource::ResourceManager};
+use crate::{error::BackendErrorCode, Error, geometry::PhysicalSize, Result, resource::ResourceManager};
 
 use super::super::shaders::{CheckedShaderSet, CheckedWgpuScope};
 use super::resources::{

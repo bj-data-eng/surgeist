@@ -1,5 +1,5 @@
 use crate::accounting::{RenderFrameReport, RenderPhase, RenderWork};
-use crate::{RenderAccountingError, Result};
+use crate::{Result, accounting::RenderAccountingError};
 use std::time::Duration;
 
 /// GPU execution route used by one successfully published frame.
@@ -135,9 +135,10 @@ pub(crate) use diagnostic::collect_render_stats;
 mod diagnostic {
     use super::*;
     use crate::{
-        Image, Paint,
         command::{RenderCommand, RenderPaint},
+        image::Image,
         image::ImageContentIdentity,
+        paint::Paint,
         paint::PaintKind,
     };
     fn collect_paint_stats(

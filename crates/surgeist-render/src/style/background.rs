@@ -1,7 +1,4 @@
-use super::super::{
-    Capabilities, Color, Error, Image, Paint, PrimitiveFamily, PrimitiveOperation, Rect, Result,
-    UnsupportedPrimitive,
-};
+use super::super::{Error, Result};
 use super::image::{
     BackgroundAreas, BackgroundClipGeometry, ImageAttachmentPlan, ImagePlacementInput,
     ImageRepeatPlan, ResolvedImagePlacement, ResolvedImageRepeat, ResolvedImageResource,
@@ -13,6 +10,10 @@ use crate::{
         RenderResource, RenderWork,
     },
     paint::PaintKind,
+};
+use crate::{
+    capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnsupportedPrimitive, geometry::Rect, image::Image, paint::Color, paint::Paint,
 };
 
 /// Operation-local custody for the plain standalone output. It is disarmed only
@@ -520,7 +521,7 @@ impl NormalizedBackgroundLayer {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
-    use crate::{BackgroundRepeat, Size, StyleImageSource};
+    use crate::{geometry::Size, style::image::BackgroundRepeat, style::image::StyleImageSource};
 
     #[test]
     fn nested_repeats_join_background_attempt_and_share_source_backing() {
@@ -552,7 +553,7 @@ mod accounting_tests {
 
     #[test]
     fn scene_normalization_counts_emissions_once_and_shared_clones_add_no_emissions() {
-        use crate::{Color, ImageFit, Layer, Scene};
+        use crate::{image::ImageFit, layer::Layer, paint::Color, scene::Scene};
         let image = Image::from_rgba(Size::new(1.0, 1.0), vec![10, 20, 30, 255]).unwrap();
         let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
         let mut scene = Scene::new();

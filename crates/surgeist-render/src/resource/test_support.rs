@@ -10,8 +10,9 @@ use super::{
     },
 };
 use crate::{
-    PhysicalSize, RenderWork,
+    accounting::RenderWork,
     backend::DeviceCapabilities,
+    geometry::PhysicalSize,
     image::{ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey},
     texture::EffectTextureDescriptor,
     vello_engine::VelloAtlasOutcome,
@@ -342,9 +343,10 @@ fn observe_resource_manager_state_for_test(
     ResourceManagerObservationForTest {
         effect_textures,
         displacement_resources,
-        effects_gpu_bytes: effects.live(crate::RenderResource::GpuBytes),
-        effects_registered_bytes: effects.live(crate::RenderResource::RegisteredCacheGpuBytes),
-        effects_idle_bytes: effects.live(crate::RenderResource::IdleCacheGpuBytes),
+        effects_gpu_bytes: effects.live(crate::accounting::RenderResource::GpuBytes),
+        effects_registered_bytes: effects
+            .live(crate::accounting::RenderResource::RegisteredCacheGpuBytes),
+        effects_idle_bytes: effects.live(crate::accounting::RenderResource::IdleCacheGpuBytes),
         effects_allocations: effects.work(RenderWork::ResourceAllocations),
         idle_count,
         leased_count: state.entries.len().saturating_sub(idle_count),

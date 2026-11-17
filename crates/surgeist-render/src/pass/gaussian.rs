@@ -1,7 +1,9 @@
 //! Serialization of the frame-owned, numerically qualified Gaussian payload.
 use crate::{
-    FilterColorSpace, FilterEdgeMode, Result,
+    Result,
     accounting::Account,
+    filter_model::FilterColorSpace,
+    filter_model::FilterEdgeMode,
     filter_source::FilterSourceDescriptor,
     frame::{GaussianPassFacts, GaussianStage},
     shader::{

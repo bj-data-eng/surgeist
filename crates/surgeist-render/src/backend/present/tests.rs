@@ -1,8 +1,7 @@
 //! Characterizations of the real acquire owners and their pending scope finish.
 use super::*;
 use crate::{
-    Antialiasing, Capabilities, Color, EffectQualityPolicy, ErrorCode, Options, Rect, Renderer,
-    ResourceCacheBudget, Scene, Size,
+    ErrorCode,
     accounting::{
         FrameFixture, RenderAccountingOptions, RenderCpuScope, RenderLimits, RenderProfile,
         RendererCpu,
@@ -12,12 +11,22 @@ use crate::{
         presented_lifecycle_for_test, presented_observation_handle_for_test,
         set_presented_acquire_outcome_for_test,
     },
+    capability::Capabilities,
     frame::{FrameContext, forced_base_graph_for_test},
+    geometry::Rect,
+    geometry::Size,
     gpu_transaction::test_support::{
         LeaseDropObserverGuardForTest, ScopePopGate, ScopePopPosition,
     },
+    paint::Color,
     pass::LoweredGraphPlan,
+    renderer::Antialiasing,
+    renderer::EffectQualityPolicy,
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
     resource::ResourceManager,
+    scene::Scene,
     shader::DevicePassCache,
     surface::PresentedAcquireOutcomeForTest,
 };
@@ -289,11 +298,11 @@ fn refused_exact_acquire_drops_transaction_before_initialized_prepared_local() {
     assert_eq!(refusal.phase(), RenderPhase::Attempt);
     assert_eq!(
         refusal.quantity(),
-        crate::RenderQuantity::Work(RenderWork::SurfaceAcquisitions)
+        crate::accounting::RenderQuantity::Work(RenderWork::SurfaceAcquisitions)
     );
     assert_eq!(
         refusal.reason(),
-        crate::RenderRefusalReason::Limit { limit: 0 }
+        crate::accounting::RenderRefusalReason::Limit { limit: 0 }
     );
     let recorded = at_drop.borrow();
     assert_eq!(recorded.len(), 1);
@@ -453,12 +462,12 @@ fn acquire_scope_failure_keeps_first_cause_and_applies_lifecycle_only_after_fini
             );
             let first = if terminal {
                 fixture.signal.record_uncaptured_fault_for_test(
-                    crate::GpuFaultKind::Internal,
+                    crate::error::GpuFaultKind::Internal,
                     "actual acquire first terminal fault",
                 );
                 let first = fixture.signal.first_terminal().unwrap();
                 fixture.signal.record_uncaptured_fault_for_test(
-                    crate::GpuFaultKind::OutOfMemory,
+                    crate::error::GpuFaultKind::OutOfMemory,
                     "later acquire terminal fault",
                 );
                 Some(first)

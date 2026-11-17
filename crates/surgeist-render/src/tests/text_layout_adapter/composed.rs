@@ -102,7 +102,7 @@ fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
         &input,
         Transform::translation(7.0, 9.0).unwrap(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(scene.layout(), &input));
@@ -142,7 +142,7 @@ fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
         &translated,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let (translated_paint, transform) = outline(&translated_scene.scene().commands[0]);
@@ -255,7 +255,7 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(system.stats(), stats);
@@ -285,7 +285,7 @@ fn aggregate_placed_run_refusal_preserves_an_already_admitted_scene() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(accepted.scene().commands.len(), 2);
@@ -411,7 +411,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
         &input,
         placement,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(scene.layout(), &input));
@@ -447,7 +447,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
     assert_eq!(
         paint
             .path_elements()
-            .filter(|element| matches!(element, crate::PathElement::Close))
+            .filter(|element| matches!(element, crate::shape::PathElement::Close))
             .count(),
         2
     );

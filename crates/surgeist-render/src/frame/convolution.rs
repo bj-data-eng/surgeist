@@ -6,9 +6,11 @@ use super::{
     bounds::{FrameSpatialPlan, LogicalBounds, NonEmptyFrameSpatialPlan, PositiveDeviceExtent},
 };
 use crate::{
-    PreparedConvolution, Rect, Transform,
     accounting::{Account, RenderWork},
+    convolution::PreparedConvolution,
     error::{Error, Result},
+    geometry::Rect,
+    geometry::Transform,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -585,17 +587,17 @@ fn qualify_coverage(points: [f32; 2], scale: f32, domain: [f32; 2]) -> Result<()
 
 fn mapping_error(name: &'static str, value: f64) -> Error {
     let phase = if name == "kernel grid index" {
-        crate::ConvolutionNumericPhase::GridIndex
+        crate::convolution::ConvolutionNumericPhase::GridIndex
     } else {
-        crate::ConvolutionNumericPhase::GridMapping
+        crate::convolution::ConvolutionNumericPhase::GridMapping
     };
-    crate::ConvolutionPreparationError::Numeric { phase, value }.into()
+    crate::convolution::ConvolutionPreparationError::Numeric { phase, value }.into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Color, Size, renderer::Antialiasing};
+    use crate::{geometry::Size, paint::Color, renderer::Antialiasing};
 
     fn context(scale: f64) -> FrameContext {
         FrameContext::try_new(
@@ -695,8 +697,8 @@ mod tests {
         let error = grid_range(0.0, 10.0, 0.0, 1.0e-8, false).unwrap_err();
         assert!(matches!(
             error.convolution_diagnostic(),
-            Some(crate::ConvolutionPreparationError::Numeric {
-                phase: crate::ConvolutionNumericPhase::GridIndex,
+            Some(crate::convolution::ConvolutionPreparationError::Numeric {
+                phase: crate::convolution::ConvolutionNumericPhase::GridIndex,
                 ..
             })
         ));
@@ -715,8 +717,8 @@ mod tests {
         .unwrap_err();
         assert!(matches!(
             error.convolution_diagnostic(),
-            Some(crate::ConvolutionPreparationError::Numeric {
-                phase: crate::ConvolutionNumericPhase::GridMapping,
+            Some(crate::convolution::ConvolutionPreparationError::Numeric {
+                phase: crate::convolution::ConvolutionNumericPhase::GridMapping,
                 ..
             })
         ));
@@ -742,10 +744,22 @@ mod tests {
         .unwrap();
         assert_eq!(valid.source_grid_extent(), [1, 1]);
         for (unit, phase) in [
-            (268_435_456.0, crate::ConvolutionNumericPhase::GridIndex),
-            (1.0e10, crate::ConvolutionNumericPhase::GridIndex),
-            (1.0e38, crate::ConvolutionNumericPhase::GridMapping),
-            (2.0e38, crate::ConvolutionNumericPhase::GridMapping),
+            (
+                268_435_456.0,
+                crate::convolution::ConvolutionNumericPhase::GridIndex,
+            ),
+            (
+                1.0e10,
+                crate::convolution::ConvolutionNumericPhase::GridIndex,
+            ),
+            (
+                1.0e38,
+                crate::convolution::ConvolutionNumericPhase::GridMapping,
+            ),
+            (
+                2.0e38,
+                crate::convolution::ConvolutionNumericPhase::GridMapping,
+            ),
         ] {
             let error = ConvolutionMapping::try_from_parts(
                 bounds,
@@ -759,7 +773,7 @@ mod tests {
             .unwrap_err();
             assert!(
                 matches!(error.convolution_diagnostic(),
-                Some(crate::ConvolutionPreparationError::Numeric { phase: actual, .. }) if *actual == phase),
+                Some(crate::convolution::ConvolutionPreparationError::Numeric { phase: actual, .. }) if *actual == phase),
                 "unit{unit}: {error:?}"
             );
         }
@@ -804,18 +818,19 @@ mod tests {
         assert_eq!(empty.source_grid_extent(), [0; 2]);
         assert_eq!(dummy.device_extent.width, 1);
         assert_eq!(dummy.device_extent.height, 1);
-        let mut accounting = crate::RenderAccountingContext::default();
-        let operation = |kernel: &[f64], accounting: &mut crate::RenderAccountingContext| {
-            crate::prepare_convolution(
-                crate::ConvolutionInput::new(kernel)
-                    .with_order(1.0, None)
-                    .with_unit_length(2.0e38, None),
-                crate::FilterDomains::try_new(domain, domain, domain).unwrap(),
-                crate::FilterColorSpace::Srgb,
-                accounting,
-            )
-            .unwrap()
-        };
+        let mut accounting = crate::accounting::RenderAccountingContext::default();
+        let operation =
+            |kernel: &[f64], accounting: &mut crate::accounting::RenderAccountingContext| {
+                crate::convolution::prepare_convolution(
+                    crate::convolution::ConvolutionInput::new(kernel)
+                        .with_order(1.0, None)
+                        .with_unit_length(2.0e38, None),
+                    crate::filter_domains::FilterDomains::try_new(domain, domain, domain).unwrap(),
+                    crate::filter_model::FilterColorSpace::Srgb,
+                    accounting,
+                )
+                .unwrap()
+            };
         let passthrough = operation(&[], &mut accounting);
         assert!(passthrough.is_passthrough());
         assert_eq!(
@@ -854,18 +869,21 @@ mod tests {
         assert!(qualify_coverage([-2.0e38, 0.0], 1.0, [2.0e38, 2.0e38]).is_err());
     }
     fn planned(
-        operation: crate::PreparedConvolution,
+        operation: crate::convolution::PreparedConvolution,
         draw: bool,
     ) -> crate::accounting::OwnedBox<super::super::GpuRenderGraph> {
         let account = Account::for_test();
-        let mut scene = crate::Scene::new();
-        scene.layer(crate::Layer::new().with_convolution(operation), |scene| {
-            if draw {
-                scene.fill(Rect::new(0.0, 0.0, 8.0, 8.0), Color::BLACK);
-            }
-        });
+        let mut scene = crate::scene::Scene::new();
+        scene.layer(
+            crate::layer::Layer::new().with_convolution(operation),
+            |scene| {
+                if draw {
+                    scene.fill(Rect::new(0.0, 0.0, 8.0, 8.0), Color::BLACK);
+                }
+            },
+        );
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &account)
+            .normalize(crate::capability::Capabilities::CURRENT, &account)
             .unwrap();
         let super::super::FramePlan::GpuGraph(graph) =
             super::super::FramePlan::try_from_commands(commands, context(1.0), &account).unwrap()
@@ -875,16 +893,26 @@ mod tests {
         graph
     }
 
-    fn prepare(kernel: &[f64], source: Rect, result: Rect) -> crate::PreparedConvolution {
-        let mut accounting =
-            crate::RenderAccountingContext::new(crate::RenderAccountingOptions::new());
-        crate::prepare_convolution(
-            crate::ConvolutionInput::new(kernel)
+    fn prepare(
+        kernel: &[f64],
+        source: Rect,
+        result: Rect,
+    ) -> crate::convolution::PreparedConvolution {
+        let mut accounting = crate::accounting::RenderAccountingContext::new(
+            crate::accounting::RenderAccountingOptions::new(),
+        );
+        crate::convolution::prepare_convolution(
+            crate::convolution::ConvolutionInput::new(kernel)
                 .with_order(kernel.len() as f64, Some(1.0))
                 .with_divisor(1.0)
                 .with_bias(0.25),
-            crate::FilterDomains::try_new(source, Rect::new(0.0, 0.0, 16.0, 16.0), result).unwrap(),
-            crate::FilterColorSpace::Srgb,
+            crate::filter_domains::FilterDomains::try_new(
+                source,
+                Rect::new(0.0, 0.0, 16.0, 16.0),
+                result,
+            )
+            .unwrap(),
+            crate::filter_model::FilterColorSpace::Srgb,
             &mut accounting,
         )
         .unwrap()
@@ -934,13 +962,13 @@ mod tests {
             Rect::new(1.0e200, 0.0, 0.0, 1.0e200),
             Rect::new(0.0, 1.0e200, 1.0e200, 0.0),
         ] {
-            let mut accounting = crate::RenderAccountingContext::default();
-            let operation = crate::prepare_convolution(
-                crate::ConvolutionInput::new(&[1.0])
+            let mut accounting = crate::accounting::RenderAccountingContext::default();
+            let operation = crate::convolution::prepare_convolution(
+                crate::convolution::ConvolutionInput::new(&[1.0])
                     .with_order(1.0, None)
                     .with_bias(0.5),
-                crate::FilterDomains::try_new(source, filter, result).unwrap(),
-                crate::FilterColorSpace::Srgb,
+                crate::filter_domains::FilterDomains::try_new(source, filter, result).unwrap(),
+                crate::filter_model::FilterColorSpace::Srgb,
                 &mut accounting,
             )
             .unwrap();
@@ -970,13 +998,13 @@ mod tests {
         let account = Account::for_test();
         let union = Rect::new(0.0, 0.0, 6.0, 1.0);
         let domain = Rect::new(1.0, 0.0, 2.0, 1.0);
-        let mut accounting = crate::RenderAccountingContext::default();
-        let operation = crate::prepare_convolution(
-            crate::ConvolutionInput::new(&[1.0])
+        let mut accounting = crate::accounting::RenderAccountingContext::default();
+        let operation = crate::convolution::prepare_convolution(
+            crate::convolution::ConvolutionInput::new(&[1.0])
                 .with_order(1.0, None)
                 .with_unit_length(2.0, Some(1.0)),
-            crate::FilterDomains::try_new(domain, union, domain).unwrap(),
-            crate::FilterColorSpace::Srgb,
+            crate::filter_domains::FilterDomains::try_new(domain, union, domain).unwrap(),
+            crate::filter_model::FilterColorSpace::Srgb,
             &mut accounting,
         )
         .unwrap();

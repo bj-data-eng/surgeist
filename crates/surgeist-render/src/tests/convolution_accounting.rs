@@ -1,8 +1,10 @@
 use super::convolution::*;
 use crate::{
-    ConvolutionInput, FilterColorSpace, Options, Parameters, RenderAccountingOptions,
-    RenderAttemptStatus, RenderLimits, RenderPhaseFilter, RenderProfile, RenderQuantity,
-    RenderWork, Renderer, ResourceCacheBudget, Scene, Size,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus, accounting::RenderLimits,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderQuantity,
+    accounting::RenderWork, convolution::ConvolutionInput, filter_model::FilterColorSpace,
+    geometry::Size, renderer::Options, renderer::Renderer, renderer::ResourceCacheBudget,
+    scene::Scene, surface::Parameters,
 };
 
 fn fixture() -> Scene {
@@ -96,7 +98,7 @@ fn exact_tap_cap_one_under_preserves_publication_and_higher_budget_retries() {
                 assert_eq!((refusal.current(), refusal.amount()), (0, 12));
                 assert_eq!(
                     error.accounting_diagnostic(),
-                    Some(crate::RenderAccountingError::Refused(refusal))
+                    Some(crate::accounting::RenderAccountingError::Refused(refusal))
                 );
                 assert_eq!(renderer.stats(), baseline);
                 assert_eq!(

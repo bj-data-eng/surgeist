@@ -6,7 +6,7 @@ use super::{
     RenderResource, RenderResourceFields, RenderResourceTable, RenderWork, RenderWorkTable,
     ReportBacking, StorageAccount, map_ledger_failure,
 };
-use crate::{Error, Image, PreparedGlyphRun, Result, image::ImageContentIdentity};
+use crate::{Error, Result, image::Image, image::ImageContentIdentity, text::PreparedGlyphRun};
 use std::{
     fmt,
     ops::AsyncFnOnce,
@@ -537,7 +537,7 @@ impl CpuAccount {
     }
     pub(crate) fn import_convolution(
         &self,
-        prepared: &crate::PreparedConvolution,
+        prepared: &crate::convolution::PreparedConvolution,
         forward: Option<&Account>,
     ) -> Result<CpuImport> {
         let account = self.at(RenderCpuScope::PreparedValues);
@@ -793,7 +793,7 @@ enum Payload {
     },
     Font(surgeist_font::ResourceId),
     Prepared(PreparedGlyphRun),
-    Convolution(crate::PreparedConvolution),
+    Convolution(crate::convolution::PreparedConvolution),
 }
 struct Entry {
     key: Key,

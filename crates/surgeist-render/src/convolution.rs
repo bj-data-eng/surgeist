@@ -4,9 +4,9 @@ use crate::accounting::{
     SharedValue,
 };
 use crate::number_text::Number;
-use crate::{Error, FilterDomains, Result};
+use crate::{Error, Result, filter_domains::FilterDomains};
 
-use crate::{FilterColorSpace, FilterEdgeMode};
+use crate::{filter_model::FilterColorSpace, filter_model::FilterEdgeMode};
 
 /// Parameter whose resolved value is invalid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

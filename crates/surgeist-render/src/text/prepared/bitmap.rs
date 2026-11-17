@@ -98,14 +98,14 @@ pub(super) fn prepare(
     account.preview(RenderResource::RetainedCpuBytes, output.len())?;
     let pixels: Arc<[u8]> = Arc::from(output.as_slice());
     account.retain(pixels.len())?;
-    let image = crate::Image::from_rgba(
-        crate::Size::try_new(f64::from(width), f64::from(height))?,
+    let image = crate::image::Image::from_rgba(
+        crate::geometry::Size::try_new(f64::from(width), f64::from(height))?,
         pixels,
     )?;
     let brush_transform = crate::encode::image_transform(
         image.size(),
         rect,
-        crate::ImageFit::Fill,
+        crate::image::ImageFit::Fill,
         &account.at(RenderPhase::Bitmap),
     )?;
     qualify_preparation_bounds(brush_transform, None, account)?;

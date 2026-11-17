@@ -11,7 +11,7 @@ use super::bounded;
 use crate::accounting::{
     Account, AccountedVec, LocalQuota, RenderPhase, RenderResource, RenderWork,
 };
-use crate::{Antialiasing, Error, PhysicalSize, Result};
+use crate::{renderer::Antialiasing, Error, geometry::PhysicalSize, Result};
 
 #[cfg(test)]
 use super::PreparedVelloPassObservation;
@@ -913,7 +913,7 @@ fn mask_lut(variant: FineRasterVariant, account: &Account) -> Result<AccountedVe
         FineRasterVariant::Msaa16 => (8192, 4096 * 16, make_mask_lut_16),
         FineRasterVariant::Area => {
             return Err(Error::new(
-                crate::BackendErrorCode::RenderFailed,
+                crate::error::BackendErrorCode::RenderFailed,
                 "area rasterization has no mask LUT",
             ));
         }
@@ -926,7 +926,7 @@ fn mask_lut(variant: FineRasterVariant, account: &Account) -> Result<AccountedVe
     })?;
     if values.len() != count {
         return Err(Error::new(
-            crate::BackendErrorCode::RenderFailed,
+            crate::error::BackendErrorCode::RenderFailed,
             "locked Vello mask LUT format changed",
         ));
     }
@@ -949,7 +949,7 @@ mod lut_tests {
         context
             .prepare(
                 RenderAttemptKind::GlyphRun,
-                crate::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+                crate::text::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
                 #[cfg(feature = "render-text")]
                 None,
                 |account| {
@@ -982,7 +982,7 @@ mod lut_tests {
         context
             .prepare(
                 RenderAttemptKind::GlyphRun,
-                crate::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, 1023),
+                crate::text::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, 1023),
                 #[cfg(feature = "render-text")]
                 None,
                 |account| {
@@ -1024,7 +1024,7 @@ mod lut_tests {
             context
                 .prepare(
                     RenderAttemptKind::GlyphRun,
-                    crate::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+                    crate::text::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
                     #[cfg(feature = "render-text")]
                     None,
                     |account| {
@@ -1055,7 +1055,7 @@ mod image_accounting_tests {
         RenderAttemptStatus, RenderFrameReport, RenderLimits, RenderQuantity, RenderRefusalReason,
         RendererCpu,
     };
-    use crate::{Image, Size};
+    use crate::{image::Image, geometry::Size};
 
     fn image() -> Image {
         Image::from_rgba(Size::new(1.0, 1.0), vec![7, 11, 13, 255]).unwrap()

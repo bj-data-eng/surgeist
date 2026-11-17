@@ -1,6 +1,8 @@
-use super::{
-    Paint, Point, PrimitiveFamily, PrimitiveOperation, Rect, Result, ShadowList, Stroke, Transform,
-    UnsupportedPrimitive, validation::*,
+use super::{Result, validation::*};
+use crate::{
+    error::PrimitiveFamily, error::PrimitiveOperation, error::UnsupportedPrimitive,
+    geometry::Point, geometry::Rect, geometry::Transform, layer::ShadowList, paint::Paint,
+    shape::Stroke,
 };
 use std::borrow::Cow;
 

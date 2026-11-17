@@ -81,11 +81,12 @@ pub(crate) use texture::create_headless_texture;
 pub(crate) use texture::create_texture;
 
 use crate::{
-    ResourceCacheBudget, Result,
+    Result,
     accounting::{
         AccountedVec, RenderAccountingOptions, RenderCpuScope, RenderResource, RendererCpu,
         StorageAccount,
     },
+    renderer::ResourceCacheBudget,
 };
 
 pub(crate) struct Backend {

@@ -65,14 +65,14 @@ fn source_font(case: &ColorCase, alpha: u8) -> Vec<u8> {
     ahem_with_tables(vec![(*b"sbix", sbix)])
 }
 
-fn prepare(bytes: Vec<u8>) -> crate::PreparedGlyphRun {
+fn prepare(bytes: Vec<u8>) -> crate::text::PreparedGlyphRun {
     FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap()
         .prepare_glyph_run(
             &instance(20.0),
             &one_glyph(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap()
 }
@@ -105,7 +105,7 @@ fn selected_png_colors_retain_converted_pixels_original_font_and_strike_placemen
 #[test]
 fn real_gpu_selected_png_colors_and_straight_alpha_reach_direct_and_graph_pixels() {
     use crate::tests::support::{default_graph_working_format_for_test, pixel_rgba};
-    use crate::{Options, Parameters, Renderer};
+    use crate::{renderer::Options, renderer::Renderer, surface::Parameters};
 
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let format = default_graph_working_format_for_test(&mut renderer);

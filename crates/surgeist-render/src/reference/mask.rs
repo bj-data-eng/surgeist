@@ -4,8 +4,9 @@ use super::{
     straight_rgba8_image_buffer_to_premultiplied_rgba8_reference,
 };
 use crate::{
-    Error, Extend, Image, ImageBuffer, ImageQuality, ImageRendering, Rect, ResolvedLayerAlphaMask,
-    Result, image::validate_image_buffer_rgba_len, layer::BlendMode,
+    Error, Result, geometry::Rect, image::Extend, image::Image, image::ImageBuffer,
+    image::ImageQuality, image::ImageRendering, image::validate_image_buffer_rgba_len,
+    layer::BlendMode, layer::ResolvedLayerAlphaMask,
 };
 
 impl PremultipliedRgba8 {

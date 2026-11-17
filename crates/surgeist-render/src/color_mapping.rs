@@ -1,7 +1,10 @@
 use surgeist_color::{Color as ResolvedColor, ColorSpace, Finite, PredefinedColorSpace};
 
 use crate::accounting::Account;
-use crate::{Color, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork, Result};
+use crate::{
+    Result, accounting::RenderAccountingContext, accounting::RenderAttemptKind,
+    accounting::RenderPhase, accounting::RenderWork, paint::Color,
+};
 
 const SRGB: ColorSpace = ColorSpace::Predefined(PredefinedColorSpace::Srgb);
 const JUST_NOTICEABLE_DIFFERENCE: f64 = 0.02;

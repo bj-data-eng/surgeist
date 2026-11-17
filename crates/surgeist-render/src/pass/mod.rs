@@ -187,7 +187,7 @@ mod accounting_tests {
         context
             .prepare(
                 RenderAttemptKind::GlyphRun,
-                crate::GlyphRunLimits::new(0, 0, 0, 24),
+                crate::text::GlyphRunLimits::new(0, 0, 0, 24),
                 #[cfg(feature = "render-text")]
                 None,
                 |account| {

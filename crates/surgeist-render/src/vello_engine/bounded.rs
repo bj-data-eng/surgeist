@@ -511,7 +511,9 @@ mod tests {
         use crate::accounting::{
             FrameFixture, RenderAccountingOptions, RenderCpuScope, RenderLimits, RendererCpu,
         };
-        let image = crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
+        let image =
+            crate::image::Image::from_rgba(crate::geometry::Size::new(0.0, 3.0), Vec::<u8>::new())
+                .unwrap();
         let mut encoding = Encoding::new();
         encoding.encode_image(&image.data, 1.0);
         assert_eq!(
@@ -552,7 +554,7 @@ mod tests {
             if limit < 5 {
                 assert_eq!(
                     observed.refusal().unwrap().quantity,
-                    crate::RenderQuantity::Work(RenderWork::EncodingStreamCopies)
+                    crate::accounting::RenderQuantity::Work(RenderWork::EncodingStreamCopies)
                 );
             }
             let closing = report.renderer_cpu().unwrap();
@@ -574,7 +576,7 @@ mod tests {
         context
             .prepare(
                 RenderAttemptKind::GlyphRun,
-                crate::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, cap),
+                crate::text::GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, cap),
                 #[cfg(feature = "render-text")]
                 None,
                 run,
@@ -1108,7 +1110,7 @@ mod tests {
             context
                 .prepare(
                     RenderAttemptKind::GlyphRun,
-                    crate::GlyphRunLimits::new(usize::MAX, usize::MAX, allowed, usize::MAX),
+                    crate::text::GlyphRunLimits::new(usize::MAX, usize::MAX, allowed, usize::MAX),
                     #[cfg(feature = "render-text")]
                     None,
                     |account| {
@@ -1204,10 +1206,12 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             error.accounting_diagnostic(),
-            Some(crate::RenderAccountingError::CpuCapacityOverflow {
-                scope: crate::RenderCpuScope::FrameBacking,
-                resource: RenderResource::RetainedCpuBytes
-            })
+            Some(
+                crate::accounting::RenderAccountingError::CpuCapacityOverflow {
+                    scope: crate::accounting::RenderCpuScope::FrameBacking,
+                    resource: RenderResource::RetainedCpuBytes
+                }
+            )
         );
     }
 

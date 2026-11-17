@@ -10,11 +10,33 @@ use super::{
     shape::ShapeKind,
     style::{ClipGeometryKind, FilterBlur, FilterList, FilterOp},
     validation::*,
-    *,
 };
 use crate::accounting::{
     Account, AccountedIntoIter, AccountedVec, CpuImport, DisposalCompletion, Hold, OwnedBox,
     RenderPhase, RenderWork, SharedValue,
+};
+use crate::{
+    Error, Result, capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnsupportedPrimitive, geometry, geometry::CoordinateSpaceTag, geometry::Point,
+    geometry::Radii, geometry::Rect, geometry::Size, geometry::Transform, image::Image,
+    image::ImageFit, layer::BlendMode, layer::Layer, layer::LayerComposition, layer::Shadow,
+    layer::ShadowKind, layer::ShadowList, paint::Color, paint::Gradient, paint::Paint,
+    paint::RepeatingGradient, shape::Dash, shape::FillRule, shape::LineCap, shape::LineJoin,
+    shape::Path, shape::Shape, shape::Stroke, shape::StrokeAlign, style::clip::ClipInput,
+    style::filter::BackdropFilterInput, text::FontRef, text::PreparedGlyphRun, text::TextGlyph,
+    text::TextPaint, text::TextRunBounds, text::TextRunBoundsKind,
+};
+#[cfg(test)]
+use crate::{
+    ErrorCode, accounting::RenderCpuScope, accounting::RenderProfile,
+    accounting::RenderRefusalReason, paint::GradientStop, stats::Stats, text::FontData,
+};
+#[cfg(test)]
+use crate::{
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderQuantity,
+    accounting::RenderResource, scene::Scene, text::TextRun, text::TextShadowRun,
 };
 use kurbo::Shape as KurboShape;
 
@@ -329,8 +351,8 @@ pub(crate) struct NormalizedLayer {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum NormalizedForegroundEffect {
     Css(SharedValue<FilterList>),
-    Convolution(crate::PreparedConvolution),
-    Offset(crate::PreparedOffset),
+    Convolution(crate::convolution::PreparedConvolution),
+    Offset(crate::offset::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
     Morphology(crate::morphology::MorphologyForeground),
     Displacement(crate::displacement::NormalizedDisplacementForeground),
@@ -562,7 +584,7 @@ impl LayerPassPlan {
         let composition = layer.composition();
         if !composition.is_source_over() && !composition.is_plus() {
             let operation =
-                if composition.operator() == Some(crate::PorterDuffOperator::PlusLighter) {
+                if composition.operator() == Some(crate::layer::PorterDuffOperator::PlusLighter) {
                     PrimitiveOperation::PlusLighterComposition
                 } else {
                     PrimitiveOperation::BasicPorterDuffCompositeMode
@@ -923,7 +945,9 @@ fn normalize_leaf(
                 account,
             )?));
         }
-        Command::Layer { .. } => return Err(crate::RenderAccountingError::Invariant.into()),
+        Command::Layer { .. } => {
+            return Err(crate::accounting::RenderAccountingError::Invariant.into());
+        }
     })
 }
 fn emit_command(command: &RenderCommand, account: &Account) -> Result<()> {

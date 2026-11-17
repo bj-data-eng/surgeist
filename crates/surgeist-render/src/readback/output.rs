@@ -1,7 +1,9 @@
 use crate::{
-    ImageBuffer, PhysicalSize, Result,
+    Result,
     accounting::{Account, AccountedVec},
+    geometry::PhysicalSize,
     image::AccountedImageBuffer,
+    image::ImageBuffer,
 };
 
 /// Complete decoded bytes remain paired with CPU custody until final handoff.

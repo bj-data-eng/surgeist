@@ -391,10 +391,14 @@ impl AcquiredGraphBindings {
 mod tests {
     use super::*;
     use crate::{
-        EffectQualityPolicy, FilterAmount, FilterList, FilterOp, ResourceCacheBudget,
         accounting::{RenderAccountingOptions, RenderResource, RendererCpu},
         backend::Backend,
         pass::test_support::lower_filter_proof_fixture,
+        renderer::EffectQualityPolicy,
+        renderer::ResourceCacheBudget,
+        style::filter::FilterAmount,
+        style::filter::FilterList,
+        style::filter::FilterOp,
     };
 
     #[test]

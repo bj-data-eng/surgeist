@@ -1,33 +1,121 @@
 use std::sync::Arc;
 
 use crate::{
-    BackdropCaptureBounds, BackdropFilterInput, BackgroundAreas, BackgroundAttachment,
-    BackgroundAttachmentCoordinatePolicy, BackgroundBlendList, BackgroundBlendMode, BackgroundBox,
-    BackgroundClipGeometry, BackgroundClipGeometryKind, BackgroundLayer,
-    BackgroundNormalizationInput, BackgroundPosition, BackgroundRepeat, BackgroundSize,
-    BackgroundStack, BorderEdges, BorderSide, BorderStyle, BoxDecorationBreak,
-    BoxDecorationFragment, BoxDecorationInput, BoxSide, Capabilities, ClipGeometryKind, ClipInput,
-    Color, CoordinateSpaceKind, CoordinateSpaceTag, ErrorCode, FillRule, FilledPath, Filter,
-    FilterAmount, FilterAngle, FilterBlur, FilterDropShadow, FilterList, FilterOp, FilterOpKind,
-    FilteredImagePaint, FontRef, Gradient, GradientStop, Image, ImageAttachmentPlan,
-    ImageColorProfilePolicy, ImageId, ImageOrientationPolicy, ImagePlacementInput, ImageRepeatMode,
-    ImageRepeatPlan, ImageResourceDensity, InvalidValue, Layer, MaskCompositeMode, MaskInput,
-    MaskLayer, MaskLayerStack, MaskMode, MaskSourceKind, NormalizedBackgroundCommandKind,
-    NormalizedBackgroundLayerSource, NormalizedBorderCommand, NormalizedBorderStyle,
-    NormalizedBoxDecorationCommand, NormalizedBoxDecorationCommandKind,
-    NormalizedDoubleBorderBands, NormalizedOutlineCommand, NormalizedOutlineStyle, Outline,
-    OutlineStyle, Paint, Path, Point, PositionComponentKind, PositionEdgeOffset, PrimitiveFamily,
-    PrimitiveOperation, Radii, Rect, RepeatMode, ResolvedImagePlacement, ResolvedImageResource,
-    Scene, Shadow, ShadowList, Shape, Size, SizeComponent, Stroke, StrokeAlign, StyleColor,
-    StyleImageLayer, StyleImageSource, StyleImageSourceKind, StyleResourceRef, SymbolicColorPolicy,
-    TextGlyph, TextPaint, TextRun, TextRunBounds, TextShadowRun, Transform, UnitFilterAmount,
-    UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive, command,
+    ErrorCode,
+    capability::BackgroundAttachmentCoordinatePolicy,
+    capability::Capabilities,
+    capability::ImageColorProfilePolicy,
+    capability::ImageOrientationPolicy,
+    capability::SymbolicColorPolicy,
+    command,
+    error::InvalidValue,
+    error::PrimitiveFamily,
+    error::PrimitiveOperation,
+    error::UnresolvedResource,
+    error::UnresolvedResourceKind,
+    error::UnsupportedPrimitive,
     filter::{
         BlurPolicy, BlurRadiusInterpretation, FilterClipBounds, FilterOutset, FilterRegionPlan,
         FilterSourceBounds, KernelSupportRadius, LargeBlurRadiusAction, LargeBlurRadiusPolicy,
         TransparentEdgeSamplingPolicy,
     },
+    geometry::CoordinateSpaceKind,
+    geometry::CoordinateSpaceTag,
+    geometry::Point,
+    geometry::Radii,
+    geometry::Rect,
+    geometry::Size,
+    geometry::Transform,
+    image::Image,
+    image::ImageId,
+    layer::Filter,
+    layer::Layer,
+    layer::Shadow,
+    layer::ShadowList,
+    paint::Color,
+    paint::Gradient,
+    paint::GradientStop,
+    paint::Paint,
+    scene::Scene,
+    shape::FillRule,
+    shape::FilledPath,
+    shape::Path,
+    shape::Shape,
+    shape::Stroke,
+    shape::StrokeAlign,
     style::ColorFilterOp,
+    style::StyleColor,
+    style::background::BackgroundBlendList,
+    style::background::BackgroundBlendMode,
+    style::background::BackgroundLayer,
+    style::background::BackgroundNormalizationInput,
+    style::background::BackgroundStack,
+    style::background::NormalizedBackgroundCommandKind,
+    style::background::NormalizedBackgroundLayerSource,
+    style::clip::ClipGeometryKind,
+    style::clip::ClipInput,
+    style::decoration::BorderEdges,
+    style::decoration::BorderSide,
+    style::decoration::BorderStyle,
+    style::decoration::BoxDecorationBreak,
+    style::decoration::BoxDecorationFragment,
+    style::decoration::BoxDecorationInput,
+    style::decoration::BoxSide,
+    style::decoration::NormalizedBorderCommand,
+    style::decoration::NormalizedBorderStyle,
+    style::decoration::NormalizedBoxDecorationCommand,
+    style::decoration::NormalizedBoxDecorationCommandKind,
+    style::decoration::NormalizedDoubleBorderBands,
+    style::decoration::NormalizedOutlineCommand,
+    style::decoration::NormalizedOutlineStyle,
+    style::decoration::Outline,
+    style::decoration::OutlineStyle,
+    style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput,
+    style::filter::FilterAmount,
+    style::filter::FilterAngle,
+    style::filter::FilterBlur,
+    style::filter::FilterDropShadow,
+    style::filter::FilterList,
+    style::filter::FilterOp,
+    style::filter::FilterOpKind,
+    style::filter::FilteredImagePaint,
+    style::filter::UnitFilterAmount,
+    style::image::BackgroundAreas,
+    style::image::BackgroundAttachment,
+    style::image::BackgroundBox,
+    style::image::BackgroundClipGeometry,
+    style::image::BackgroundClipGeometryKind,
+    style::image::BackgroundPosition,
+    style::image::BackgroundRepeat,
+    style::image::BackgroundSize,
+    style::image::ImageAttachmentPlan,
+    style::image::ImagePlacementInput,
+    style::image::ImageRepeatMode,
+    style::image::ImageRepeatPlan,
+    style::image::ImageResourceDensity,
+    style::image::PositionComponentKind,
+    style::image::PositionEdgeOffset,
+    style::image::RepeatMode,
+    style::image::ResolvedImagePlacement,
+    style::image::ResolvedImageResource,
+    style::image::SizeComponent,
+    style::image::StyleImageLayer,
+    style::image::StyleImageSource,
+    style::image::StyleImageSourceKind,
+    style::image::StyleResourceRef,
+    style::mask::MaskCompositeMode,
+    style::mask::MaskInput,
+    style::mask::MaskLayer,
+    style::mask::MaskLayerStack,
+    style::mask::MaskMode,
+    style::mask::MaskSourceKind,
+    text::FontRef,
+    text::TextGlyph,
+    text::TextPaint,
+    text::TextRun,
+    text::TextRunBounds,
+    text::TextShadowRun,
 };
 
 use super::{
@@ -259,7 +347,10 @@ fn image_repeat_plan_resolves_tile_rects_inside_clip_rect() {
 
     let repeat_x = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(repeat_x.clip_rect(), Rect::new(0.0, 0.0, 70.0, 40.0));
     assert_eq!(
@@ -274,7 +365,10 @@ fn image_repeat_plan_resolves_tile_rects_inside_clip_rect() {
 
     let repeat_y = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_y(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(
         repeat_y.tile_rects(),
@@ -298,7 +392,10 @@ fn image_repeat_plan_includes_tiles_before_the_anchor_when_visible() {
 
     let repeated = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
 
     assert_eq!(
@@ -329,7 +426,10 @@ fn image_repeat_keeps_phase_from_distant_signed_anchors() {
         )
         .unwrap();
         let repeated = repeat
-            .resolve(placement, &mut crate::RenderAccountingContext::default())
+            .resolve(
+                placement,
+                &mut crate::accounting::RenderAccountingContext::default(),
+            )
             .unwrap();
         let positions: Vec<_> = repeated.tile_rects().iter().map(|tile| tile.x()).collect();
         assert_eq!(positions, expected, "anchor {anchor}, clip {origin}");
@@ -349,7 +449,10 @@ fn image_repeat_does_not_need_the_full_distance_between_origins() {
     let repeat =
         ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
     let repeated = repeat
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(
         repeated.tile_rects(),
@@ -372,7 +475,10 @@ fn image_repeat_counts_tiles_across_an_overflowing_span() {
     let repeat =
         ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
     let repeated = repeat
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     // The next tile starts at the clip end and is excluded.
     assert_eq!(
@@ -388,7 +494,10 @@ fn image_repeat_counts_tiles_across_an_overflowing_span() {
 
 #[test]
 fn image_repeat_resolves_finite_positions_with_overflowing_offsets() {
-    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+    use crate::{
+        accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderRefusal,
+        accounting::RenderRefusalReason, accounting::RenderWork,
+    };
 
     let unit = 2.0_f64.powi(1023);
     let period = 0.75 * unit;
@@ -477,7 +586,10 @@ fn image_repeat_preserves_the_authored_phase_across_an_overflowing_span() {
         let placement =
             ResolvedImagePlacement::from_parts(clip, Rect::new(anchor, 0.0, period, 1.0)).unwrap();
         let repeated = repeat
-            .resolve(placement, &mut crate::RenderAccountingContext::default())
+            .resolve(
+                placement,
+                &mut crate::accounting::RenderAccountingContext::default(),
+            )
             .unwrap();
         assert_eq!(
             repeated.tile_rects(),
@@ -489,7 +601,7 @@ fn image_repeat_preserves_the_authored_phase_across_an_overflowing_span() {
 
 #[test]
 fn image_repeat_preserves_refusal_for_invalid_tiles_across_an_overflowing_span() {
-    use crate::{RenderResource, RenderWork};
+    use crate::{accounting::RenderResource, accounting::RenderWork};
 
     let unit = 2.0_f64.powi(1023);
     let clip = Rect::new(-unit + unit * 2.0_f64.powi(-22), 0.0, f64::MAX, 1.0);
@@ -504,7 +616,7 @@ fn image_repeat_preserves_refusal_for_invalid_tiles_across_an_overflowing_span()
     ] {
         let placement =
             ResolvedImagePlacement::from_parts(clip, Rect::new(0.0, 0.0, period, 1.0)).unwrap();
-        let mut accounting = crate::RenderAccountingContext::default();
+        let mut accounting = crate::accounting::RenderAccountingContext::default();
         let error = repeat.resolve(placement, &mut accounting).unwrap_err();
         assert_eq!(error.code(), ErrorCode::InvalidInput);
         assert_eq!(
@@ -534,7 +646,10 @@ fn image_repeat_restores_a_finite_origin_after_phase_rounding() {
     let repeat =
         ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
     let repeated = repeat
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(
         repeated.tile_rects(),
@@ -557,7 +672,10 @@ fn image_repeat_keeps_a_subnormal_correction_at_the_overflow_boundary() {
     let repeat =
         ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
     let repeated = repeat
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     // The preceding tile's represented end is the clip start.
     assert_eq!(repeated.tile_rects(), [Rect::new(origin, 0.0, period, 1.0)]);
@@ -575,7 +693,10 @@ fn image_repeat_retains_both_phase_residuals_at_the_overflow_midpoint() {
             Rect::new(anchor, 0.0, f64::MAX, 1.0),
         )
         .unwrap();
-        repeat.resolve(placement, &mut crate::RenderAccountingContext::default())
+        repeat.resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
     };
     let tie = -0.5 * step;
     let repeated = resolve(tie.next_up()).unwrap();
@@ -601,7 +722,10 @@ fn image_repeat_resolves_an_odd_subnormal_period() {
     let repeat =
         ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
     let repeated = repeat
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     let positions: Vec<_> = repeated.tile_rects().iter().map(|tile| tile.x()).collect();
     assert_eq!(positions, [unit, 4.0 * unit, 7.0 * unit]);
@@ -616,7 +740,7 @@ fn image_repeat_refuses_an_unrepresentable_first_tile() {
     .unwrap();
     let repeat =
         ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
-    let mut accounting = crate::RenderAccountingContext::default();
+    let mut accounting = crate::accounting::RenderAccountingContext::default();
     let error = repeat.resolve(placement, &mut accounting).unwrap_err();
     assert_eq!(error.code(), ErrorCode::InvalidInput);
     assert_eq!(
@@ -628,7 +752,10 @@ fn image_repeat_refuses_an_unrepresentable_first_tile() {
 
 #[test]
 fn background_repeat_preserves_distant_tile_phase_after_budget_retry() {
-    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+    use crate::{
+        accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderRefusal,
+        accounting::RenderRefusalReason, accounting::RenderWork,
+    };
 
     let rect = Rect::new(0.0, 0.0, 8.0, 1.0);
     let image = ResolvedImageResource::try_new(ImageId::new(7), Size::new(3.0, 1.0)).unwrap();
@@ -670,7 +797,7 @@ fn background_repeat_preserves_distant_tile_phase_after_budget_retry() {
     assert_eq!(attempt.usage().work(RenderWork::CommandsEmitted), 0);
     assert_style_failure_releases_backing(report);
 
-    accounting.set_options(crate::RenderAccountingOptions::default());
+    accounting.set_options(crate::accounting::RenderAccountingOptions::default());
     let normalized = input
         .normalize(Capabilities::CURRENT, &mut accounting)
         .unwrap();
@@ -699,7 +826,10 @@ fn image_repeat_plan_fast_forwards_from_huge_negative_tile_origin() {
 
     let repeated = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
 
     assert_eq!(
@@ -715,7 +845,10 @@ fn image_repeat_plan_fast_forwards_from_huge_negative_tile_origin() {
 
 #[test]
 fn repeat_planning_admits_a_disjoint_nonrepeated_axis() {
-    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+    use crate::{
+        accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderRefusal,
+        accounting::RenderRefusalReason, accounting::RenderWork,
+    };
 
     let placement = ResolvedImagePlacement::from_parts(
         Rect::new(0.0, 0.0, 4.0, 4.0),
@@ -740,7 +873,7 @@ fn repeat_planning_admits_a_disjoint_nonrepeated_axis() {
     );
     assert_style_failure_releases_backing(report);
 
-    accounting.set_options(crate::RenderAccountingOptions::default());
+    accounting.set_options(crate::accounting::RenderAccountingOptions::default());
     let repeat = plan.resolve(placement, &mut accounting).unwrap();
     assert_eq!(repeat.clip_rect(), Rect::new(0.0, 0.0, 4.0, 4.0));
     assert!(repeat.tile_rects().is_empty());
@@ -756,7 +889,8 @@ fn repeat_planning_admits_a_disjoint_nonrepeated_axis() {
 #[test]
 fn repeat_planning_admits_the_axis_count_before_its_semantic_limit() {
     use crate::{
-        RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderResource, RenderWork,
+        accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderRefusal,
+        accounting::RenderRefusalReason, accounting::RenderResource, accounting::RenderWork,
     };
 
     let placement = ResolvedImagePlacement::from_parts(
@@ -795,7 +929,7 @@ fn repeat_planning_admits_the_axis_count_before_its_semantic_limit() {
     assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
     assert_style_failure_releases_backing(report);
 
-    accounting.set_options(crate::RenderAccountingOptions::default());
+    accounting.set_options(crate::accounting::RenderAccountingOptions::default());
     let invalid = plan.resolve(placement, &mut accounting).unwrap_err();
     assert_eq!(invalid.code(), ErrorCode::InvalidInput);
     assert_eq!(
@@ -809,7 +943,10 @@ fn repeat_planning_admits_the_axis_count_before_its_semantic_limit() {
 
 #[test]
 fn background_repeat_planning_admits_empty_axes_before_publication() {
-    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+    use crate::{
+        accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderRefusal,
+        accounting::RenderRefusalReason, accounting::RenderWork,
+    };
 
     let rect = Rect::new(0.0, 0.0, 4.0, 4.0);
     let image = ResolvedImageResource::try_new(ImageId::new(7), Size::new(1.0, 1.0)).unwrap();
@@ -845,7 +982,7 @@ fn background_repeat_planning_admits_empty_axes_before_publication() {
     assert_eq!(usage.work(RenderWork::CommandsEmitted), 0);
     assert_style_failure_releases_backing(report);
 
-    accounting.set_options(crate::RenderAccountingOptions::default());
+    accounting.set_options(crate::accounting::RenderAccountingOptions::default());
     let normalized = input
         .normalize(Capabilities::CURRENT, &mut accounting)
         .unwrap();
@@ -875,7 +1012,10 @@ fn image_repeat_plan_rejects_excessive_resolved_tile_count() {
 
     let error = ImageRepeatPlan::try_new(BackgroundRepeat::repeat(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .expect_err("excessive repeat tiling must be rejected before allocation");
 
     assert_eq!(error.code(), ErrorCode::InvalidInput);
@@ -912,7 +1052,10 @@ fn css_image_layer_normalizes_placement_repeat_and_attachment_together() {
     .unwrap();
     let repeat = ImageRepeatPlan::try_new(layer.repeat(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .resolve(
+            placement,
+            &mut crate::accounting::RenderAccountingContext::default(),
+        )
         .unwrap();
     let attachment =
         ImageAttachmentPlan::try_new(layer.attachment(), layer.coordinate_space()).unwrap();
@@ -1235,7 +1378,7 @@ fn background_stack_normalization_paints_color_behind_layers() {
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(normalized.commands().len(), 3);
@@ -1280,7 +1423,7 @@ fn background_normalization_mixes_color_paint_and_image_layers_in_render_order()
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -1334,7 +1477,7 @@ fn background_stack_normalization_preserves_top_layer_as_last_render_command() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -1370,7 +1513,7 @@ fn background_stack_normalization_preserves_paint_layer_sampling_semantics() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -1428,7 +1571,7 @@ fn background_stack_normalizes_image_layers_with_origin_clip_repeat_and_attachme
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -1487,7 +1630,7 @@ fn background_stack_normalizes_resolved_image_layers_with_intrinsic_size() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -1521,7 +1664,7 @@ fn background_stack_reports_unresolved_image_layers() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .expect_err("unresolved image layer should fail normalization");
 
@@ -1534,8 +1677,8 @@ fn background_stack_reports_unresolved_image_layers() {
 #[test]
 fn background_unresolved_source_follows_clip_admission() {
     use crate::{
-        RenderAttemptStatus, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
-        RenderWork,
+        accounting::RenderAttemptStatus, accounting::RenderPhase, accounting::RenderQuantity,
+        accounting::RenderRefusal, accounting::RenderRefusalReason, accounting::RenderWork,
     };
 
     let mut path = Path::new();
@@ -1604,15 +1747,15 @@ fn background_unresolved_source_follows_clip_admission() {
 #[test]
 fn background_normalization_checks_placement_then_repeat_then_attachment() {
     use crate::{
-        RenderAttemptStatus, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
-        RenderWork,
+        accounting::RenderAttemptStatus, accounting::RenderPhase, accounting::RenderQuantity,
+        accounting::RenderRefusal, accounting::RenderRefusalReason, accounting::RenderWork,
     };
 
     let mixed_repeat = BackgroundRepeat::new(RepeatMode::Space, RepeatMode::Round);
     let no_repeat = BackgroundRepeat::new(RepeatMode::NoRepeat, RepeatMode::NoRepeat);
     let rect = Rect::new(0.0, 0.0, 20.0, 20.0);
     let areas = BackgroundAreas::try_new(rect, rect, rect).unwrap();
-    let normalize = |width, repeat, accounting: &mut crate::RenderAccountingContext| {
+    let normalize = |width, repeat, accounting: &mut crate::accounting::RenderAccountingContext| {
         let image = ResolvedImageResource::try_new(ImageId::new(7), Size::new(width, 4.0)).unwrap();
         let layer = StyleImageLayer::try_new(StyleImageSource::resolved(image))
             .unwrap()
@@ -1639,7 +1782,7 @@ fn background_normalization_checks_placement_then_repeat_then_attachment() {
             reason: RenderRefusalReason::Limit { limit: 1 },
         },
     );
-    let assert_prefix = |report: &crate::RenderStandaloneReport, coordinates, tiles| {
+    let assert_prefix = |report: &crate::accounting::RenderStandaloneReport, coordinates, tiles| {
         let usage = report.attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CommandVisits), 1);
         assert_eq!(usage.work(RenderWork::CoordinateVisits), coordinates);
@@ -1649,7 +1792,7 @@ fn background_normalization_checks_placement_then_repeat_then_attachment() {
     };
     assert_prefix(report, 0, 0);
 
-    let mut accounting = crate::RenderAccountingContext::default();
+    let mut accounting = crate::accounting::RenderAccountingContext::default();
     for (width, repeat, coordinates, tiles, field) in [
         (
             0.0,
@@ -1694,8 +1837,14 @@ fn background_normalization_checks_placement_then_repeat_then_attachment() {
     }
 }
 
-fn style_work_limit(work: crate::RenderWork, limit: u64) -> crate::RenderAccountingContext {
-    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+fn style_work_limit(
+    work: crate::accounting::RenderWork,
+    limit: u64,
+) -> crate::accounting::RenderAccountingContext {
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits,
+    };
 
     let limits = RenderLimits::new().with_work_limit(work, limit).unwrap();
     RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits))
@@ -1703,10 +1852,10 @@ fn style_work_limit(work: crate::RenderWork, limit: u64) -> crate::RenderAccount
 
 fn assert_style_refusal(
     error: &crate::Error,
-    report: &crate::RenderStandaloneReport,
-    refusal: crate::RenderRefusal,
+    report: &crate::accounting::RenderStandaloneReport,
+    refusal: crate::accounting::RenderRefusal,
 ) {
-    use crate::{RenderAccountingError, RenderAttemptStatus};
+    use crate::{accounting::RenderAccountingError, accounting::RenderAttemptStatus};
 
     assert_eq!(error.code(), ErrorCode::Accounting);
     assert_eq!(
@@ -1717,8 +1866,8 @@ fn assert_style_refusal(
     assert_eq!(report.attempt().unwrap().refusal(), Some(refusal));
 }
 
-fn assert_style_failure_releases_backing(report: &crate::RenderStandaloneReport) {
-    use crate::{RenderResource, RenderWork};
+fn assert_style_failure_releases_backing(report: &crate::accounting::RenderStandaloneReport) {
+    use crate::{accounting::RenderResource, accounting::RenderWork};
 
     let usage = report.attempt().unwrap().usage();
     assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
@@ -1788,7 +1937,7 @@ fn background_normalization_preserves_authored_clip_override_geometry() {
         .unwrap()
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -1950,8 +2099,8 @@ fn normalized_outline_command(
 #[test]
 fn box_decoration_reports_the_ordered_border_and_outline_prefix() {
     use crate::{
-        RenderAttemptStatus, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
-        RenderWork,
+        accounting::RenderAttemptStatus, accounting::RenderPhase, accounting::RenderQuantity,
+        accounting::RenderRefusal, accounting::RenderRefusalReason, accounting::RenderWork,
     };
 
     enum Expected {
@@ -2005,7 +2154,7 @@ fn box_decoration_reports_the_ordered_border_and_outline_prefix() {
         let mut accounting = if matches!(expected, CommandRefusal) {
             style_work_limit(RenderWork::CommandsEmitted, 0)
         } else {
-            crate::RenderAccountingContext::default()
+            crate::accounting::RenderAccountingContext::default()
         };
         let result = input.normalize(Capabilities::CURRENT, &mut accounting);
         let report = accounting.last_attempt().unwrap();
@@ -2102,7 +2251,7 @@ fn box_decoration_normalization_emits_four_independent_border_sides_in_order() {
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     let commands = normalized.commands();
@@ -2168,7 +2317,7 @@ fn box_decoration_normalization_suppresses_none_hidden_and_zero_width_borders() 
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -2202,7 +2351,7 @@ fn box_decoration_normalization_preserves_dashed_and_dotted_styles() {
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -2251,7 +2400,7 @@ fn box_decoration_normalization_computes_double_bands_for_thin_medium_and_large_
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -2309,7 +2458,7 @@ fn box_decoration_normalization_reports_unsupported_border_styles() {
         let error = input
             .normalize(
                 Capabilities::CURRENT,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .expect_err("unsupported border styles should report typed diagnostics");
 
@@ -2360,7 +2509,7 @@ fn box_decoration_normalization_emits_borders_for_multiple_fragments_in_order() 
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     let commands: Vec<_> = normalized
@@ -2402,7 +2551,7 @@ fn box_decoration_normalization_expands_outline_target_by_offset_only() {
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -2439,7 +2588,7 @@ fn box_decoration_normalization_keeps_outline_width_out_of_geometry() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let thick = BoxDecorationInput::try_new(
@@ -2457,7 +2606,7 @@ fn box_decoration_normalization_keeps_outline_width_out_of_geometry() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -2498,7 +2647,7 @@ fn box_decoration_normalization_preserves_dashed_and_dotted_outline_styles() {
         let normalized = input
             .normalize(
                 Capabilities::CURRENT,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
 
@@ -2532,7 +2681,7 @@ fn box_decoration_normalization_reports_unsupported_outline_styles() {
         let error = input
             .normalize(
                 Capabilities::CURRENT,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .expect_err("unsupported outline styles should report typed diagnostics");
 
@@ -2569,7 +2718,7 @@ fn box_decoration_normalization_suppresses_none_and_zero_width_outlines() {
         let normalized = input
             .normalize(
                 Capabilities::CURRENT,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
 
@@ -2594,7 +2743,7 @@ fn box_decoration_normalization_handles_negative_outline_offsets_deterministical
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -2619,7 +2768,7 @@ fn box_decoration_normalization_handles_negative_outline_offsets_deterministical
     let error = invalid
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .expect_err("over-contracted outline target rects should be invalid");
 
@@ -2665,7 +2814,7 @@ fn box_decoration_normalization_emits_outline_after_borders_for_each_fragment() 
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -2713,7 +2862,7 @@ fn background_and_box_decoration_normalization_reuse_border_box_area() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let fragment = BoxDecorationFragment::try_new(
@@ -2735,7 +2884,7 @@ fn background_and_box_decoration_normalization_reuse_border_box_area() {
     .unwrap()
     .normalize(
         Capabilities::CURRENT,
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
 
@@ -2801,13 +2950,13 @@ fn background_box_decoration_integration_preserves_command_boundaries_across_fra
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     let repeated = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -3156,7 +3305,7 @@ fn filter_lists_classify_ordered_color_filter_pipelines() {
     .unwrap();
 
     let pipeline = list
-        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+        .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
         .expect("color-only filter lists should classify")
         .expect("color-only filter lists should produce a pipeline");
 
@@ -3179,7 +3328,7 @@ fn filter_lists_classify_ordered_color_filter_pipelines() {
 fn filter_none_has_no_executable_color_pipeline() {
     assert!(
         FilterList::none()
-            .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
+            .color_filter_pipeline(&mut crate::accounting::RenderAccountingContext::default())
             .unwrap()
             .is_none()
     );
@@ -3188,9 +3337,10 @@ fn filter_none_has_no_executable_color_pipeline() {
 #[test]
 fn color_filter_projection_accounts_for_exact_output_and_work_limits() {
     use crate::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
-        RenderClock, RenderLimits, RenderPhase, RenderProfile, RenderQuantity, RenderResource,
-        RenderWork,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderAttemptStatus, accounting::RenderClock,
+        accounting::RenderLimits, accounting::RenderPhase, accounting::RenderProfile,
+        accounting::RenderQuantity, accounting::RenderResource, accounting::RenderWork,
     };
     use std::{
         sync::atomic::{AtomicU64, Ordering},
@@ -3560,7 +3710,7 @@ fn color_filter_pipeline_rejects_pixel_moving_operations_with_typed_diagnostics(
     ];
 
     for (case, list, operation, label) in cases {
-        let mut accounting = crate::RenderAccountingContext::default();
+        let mut accounting = crate::accounting::RenderAccountingContext::default();
         let error = list
             .color_filter_pipeline(&mut accounting)
             .expect_err("pixel-moving operations are not color-only filters");
@@ -3579,22 +3729,24 @@ fn color_filter_pipeline_rejects_pixel_moving_operations_with_typed_diagnostics(
         let report = accounting.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(
             report.status(),
-            crate::RenderAttemptStatus::Failed(crate::ErrorCode::UnsupportedPrimitive)
+            crate::accounting::RenderAttemptStatus::Failed(crate::ErrorCode::UnsupportedPrimitive)
         );
         assert_eq!(
             report
                 .usage()
-                .work(crate::RenderWork::FilterOperationVisits),
+                .work(crate::accounting::RenderWork::FilterOperationVisits),
             2
         );
         assert_eq!(
-            report.usage().live(crate::RenderResource::RetainedCpuBytes),
+            report
+                .usage()
+                .live(crate::accounting::RenderResource::RetainedCpuBytes),
             0
         );
         assert_eq!(
             report
                 .usage()
-                .work(crate::RenderWork::PreparedTransferredBytes),
+                .work(crate::accounting::RenderWork::PreparedTransferredBytes),
             0
         );
     }
@@ -4314,14 +4466,14 @@ fn mask_layer_stack_model_does_not_change_unmasked_render_paths() {
 
     assert_eq!(
         scene
-            .inspect(&mut crate::RenderAccountingContext::default())
+            .inspect(&mut crate::accounting::RenderAccountingContext::default())
             .unwrap()
             .fills,
         2
     );
     assert_eq!(
         scene
-            .inspect(&mut crate::RenderAccountingContext::default())
+            .inspect(&mut crate::accounting::RenderAccountingContext::default())
             .unwrap()
             .layers,
         1
@@ -4459,7 +4611,7 @@ fn unresolved_and_unmaterialized_clip_mask_inputs_return_typed_diagnostics() {
     let clip_error = clip
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .expect_err("unresolved clip references remain root-owned");
     assert_eq!(clip_error.code(), ErrorCode::UnresolvedResource);
@@ -4595,7 +4747,7 @@ fn clip_input_normalization_lowers_concrete_shape_geometry() {
         let normalized = input
             .normalize(
                 Capabilities::CURRENT,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
 
@@ -4617,7 +4769,7 @@ fn clip_input_normalization_preserves_path_fill_rules_and_bounds() {
     let normalized = input
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -4665,7 +4817,7 @@ fn clip_input_normalization_reports_reference_and_invalid_path_diagnostics() {
     let error = reference
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .expect_err("unresolved clip references should stay a typed diagnostic");
 
@@ -4701,7 +4853,7 @@ fn clip_input_normalization_preserves_coordinate_space_tags_and_rejects_nonfinit
         .with_coordinate_space(tag)
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
 
@@ -4715,7 +4867,7 @@ fn clip_input_normalization_preserves_coordinate_space_tags_and_rejects_nonfinit
     let error = huge
         .normalize(
             Capabilities::CURRENT,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .expect_err("transformed clip bounds must remain finite");
 

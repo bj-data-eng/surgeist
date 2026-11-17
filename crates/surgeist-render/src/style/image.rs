@@ -1,13 +1,18 @@
 use super::super::{
-    Capabilities, CoordinateSpaceKind, CoordinateSpaceTag, Error, Image, ImageColorProfilePolicy,
-    ImageId, ImageOrientationPolicy, Paint, PrimitiveFamily, PrimitiveOperation, Rect, Result,
-    Shape, Size, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
+    Error, Result,
     geometry::validate_rect_maxima,
     validation::{validate_finite_f64, validate_paint, validate_shape, validate_size},
 };
 use crate::accounting::{
     Account, AccountedVec, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase,
     RenderResource, RenderWork,
+};
+use crate::{
+    capability::Capabilities, capability::ImageColorProfilePolicy,
+    capability::ImageOrientationPolicy, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnresolvedResource, error::UnresolvedResourceKind, error::UnsupportedPrimitive,
+    geometry::CoordinateSpaceKind, geometry::CoordinateSpaceTag, geometry::Rect, geometry::Size,
+    image::Image, image::ImageId, paint::Paint, shape::Shape,
 };
 
 const MAX_IMAGE_REPEAT_TILES: usize = 1_000_000;
@@ -1705,7 +1710,7 @@ impl ImageAttachmentPlan {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
-    use crate::{RenderAccountingOptions, RenderLimits};
+    use crate::{accounting::RenderAccountingOptions, accounting::RenderLimits};
 
     #[test]
     fn repeat_resolution_emits_literal_row_order_and_transfers_actual_output() {

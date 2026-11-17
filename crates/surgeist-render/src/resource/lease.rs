@@ -11,12 +11,13 @@ use super::{
     },
 };
 use crate::{
-    BackendErrorCode, Error, Result,
+    Error, Result,
     accounting::{
         Account, AccountedVec, CpuAccount, Generation, GenerationClass, RenderAccountingError,
         RenderCpuScope, RenderResource, RenderWork, StorageAccount,
     },
     backend::DeviceCapabilities,
+    error::BackendErrorCode,
     image::{RawImageUploadDescriptor, ResolvedMaskUploadDescriptor},
     texture::EffectTextureDescriptor,
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
@@ -1863,7 +1864,8 @@ mod proof_tests;
 mod tests {
     use super::*;
     use crate::{
-        PhysicalSize, RenderResource, RenderWork, ResourceCacheBudget, resource::ResourceManager,
+        accounting::RenderResource, accounting::RenderWork, geometry::PhysicalSize,
+        renderer::ResourceCacheBudget, resource::ResourceManager,
     };
 
     fn effect_key(width: u32) -> ResourceCacheKey {
@@ -1880,7 +1882,7 @@ mod tests {
     #[test]
     fn a_key_outside_the_modeled_namespaces_is_named_by_its_namespace() {
         use crate::accounting::{RenderAccountingOptions, RenderProfile, RendererCpu};
-        use crate::{Image, Size, image::ResolvedMaskUploadDescriptor};
+        use crate::{geometry::Size, image::Image, image::ResolvedMaskUploadDescriptor};
 
         let options =
             RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
@@ -2150,7 +2152,7 @@ mod tests {
         assert_eq!(
             error
                 .invalid_value_diagnostic()
-                .map(crate::InvalidValue::field),
+                .map(crate::error::InvalidValue::field),
             Some("retained resource byte length")
         );
         assert_eq!(manager.generation().cache_bytes().unwrap(), u64::MAX - 4);

@@ -1,8 +1,10 @@
-use super::super::{
-    Capabilities, CoordinateSpaceTag, Error, PrimitiveFamily, PrimitiveOperation, Result, Shape,
-    UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive, validation::validate_shape,
-};
+use super::super::{Error, Result, validation::validate_shape};
 use super::image::{StyleImageLayer, StyleResourceRef};
+use crate::{
+    capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
+    error::UnresolvedResource, error::UnresolvedResourceKind, error::UnsupportedPrimitive,
+    geometry::CoordinateSpaceTag, shape::Shape,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 /// An authored mask source, interpretation mode, and optional coordinate space.

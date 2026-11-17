@@ -171,7 +171,7 @@ fn assert_latched_underflow(account: &Account, phase: RenderPhase, resource: Ren
 #[test]
 fn drop_fault_cancellation_replaces_prior_attempt_report() {
     let mut context = RenderAccountingContext::default();
-    crate::Scene::new().inspect(&mut context).unwrap();
+    crate::scene::Scene::new().inspect(&mut context).unwrap();
     assert_eq!(
         context.last_attempt().unwrap().attempt().unwrap().kind(),
         RenderAttemptKind::SceneInspection
@@ -195,7 +195,7 @@ fn drop_fault_cancellation_does_not_fail_next_attempt() {
     let mut context = RenderAccountingContext::default();
     cancel_image_repeat_after_hold_underflow(&mut context);
 
-    crate::Scene::new()
+    crate::scene::Scene::new()
         .inspect(&mut context)
         .expect("a canceled attempt's drop fault must not fail an unrelated inspection");
     let report = context.last_attempt().unwrap().attempt().unwrap();
@@ -521,7 +521,7 @@ fn standalone_failed_setup_preserves_the_faulted_terminal_record() {
         .unwrap();
     context.set_options(RenderAccountingOptions::new().with_limits(limits));
     assert_eq!(
-        crate::Scene::new()
+        crate::scene::Scene::new()
             .inspect(&mut context)
             .unwrap_err()
             .accounting_diagnostic(),
@@ -533,7 +533,7 @@ fn standalone_failed_setup_preserves_the_faulted_terminal_record() {
 #[test]
 fn standalone_checkpoint_extraction_failure_publishes_its_own_terminal_record() {
     let mut context = RenderAccountingContext::default();
-    crate::Scene::new().inspect(&mut context).unwrap();
+    crate::scene::Scene::new().inspect(&mut context).unwrap();
     let attempt = Attempt::begin(
         &mut context,
         RenderAttemptKind::ImageRepeat,
@@ -861,7 +861,7 @@ fn failed_allocator_reservation_does_not_create_a_live_peak() {
 
 #[test]
 fn standalone_setup_rejects_foreign_work_and_preserves_the_previous_report() {
-    let scene = crate::Scene::new();
+    let scene = crate::scene::Scene::new();
     let mut context = RenderAccountingContext::default();
     scene.inspect(&mut context).unwrap();
     let prior = terminal_summary(&context);
@@ -895,7 +895,7 @@ fn standalone_setup_rejects_foreign_work_and_preserves_the_previous_report() {
 
 #[test]
 fn standalone_inspection_rejects_a_renderer_readback_limit_without_replacing_its_report() {
-    let scene = crate::Scene::new();
+    let scene = crate::scene::Scene::new();
     let mut context = RenderAccountingContext::default();
     scene.inspect(&mut context).unwrap();
     let prior = terminal_summary(&context);
@@ -925,8 +925,8 @@ fn renderer_setup_accepts_frame_and_readback_units_in_one_fixed_configuration() 
         .expect("logical row payload bytes have a readback producer")
         .with_work_limit(RenderWork::Submissions, 0)
         .unwrap();
-    let renderer = pollster::block_on(crate::Renderer::new(
-        crate::Options::default()
+    let renderer = pollster::block_on(crate::renderer::Renderer::new(
+        crate::renderer::Options::default()
             .with_accounting(RenderAccountingOptions::new().with_limits(limits)),
     ));
     assert!(
@@ -941,8 +941,8 @@ fn renderer_setup_rejects_authored_inspection_units_before_initialization() {
     let limits = RenderLimits::new()
         .with_work_limit(RenderWork::AuthoredCommands, 0)
         .unwrap();
-    let result = pollster::block_on(crate::Renderer::new(
-        crate::Options::default()
+    let result = pollster::block_on(crate::renderer::Renderer::new(
+        crate::renderer::Options::default()
             .with_accounting(RenderAccountingOptions::new().with_limits(limits)),
     ));
     let Err(error) = result else {

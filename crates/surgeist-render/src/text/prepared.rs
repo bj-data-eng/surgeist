@@ -15,7 +15,10 @@ use skrifa::{
 };
 
 use crate::number_text::Number;
-use crate::{Error, FontData, PathElement, Point, Rect, Result, TextGlyph, TextRunBounds};
+use crate::{
+    Error, Result, geometry::Point, geometry::Rect, shape::PathElement, text::FontData,
+    text::TextGlyph, text::TextRunBounds,
+};
 
 mod bitmap;
 mod color;
@@ -476,11 +479,11 @@ struct PreparedGlyphRunData {
 pub(crate) enum GlyphPaint {
     Fill {
         elements: std::ops::Range<usize>,
-        color: Option<crate::Color>,
+        color: Option<crate::paint::Color>,
         clip: Option<Rect>,
     },
     Bitmap {
-        image: crate::Image,
+        image: crate::image::Image,
         rect: Rect,
         brush_transform: kurbo::Affine,
     },
@@ -1306,7 +1309,7 @@ impl CollectingPen {
     fn paint_fill(
         &mut self,
         start: usize,
-        color: Option<crate::Color>,
+        color: Option<crate::paint::Color>,
         clip: Option<Rect>,
         coalesce: bool,
     ) -> Result<()> {
@@ -2032,7 +2035,10 @@ mod tests {
 
     #[test]
     fn callback_refusals_keep_exact_prefix_and_suppress_later_callbacks() {
-        use crate::{RenderAccountingOptions, RenderLimits, RenderPhaseFilter, RenderProfile};
+        use crate::{
+            accounting::RenderAccountingOptions, accounting::RenderLimits,
+            accounting::RenderPhaseFilter, accounting::RenderProfile,
+        };
         // Move + Line consume two points/elements. Quad first consumes both
         // points, then visits/grows/emits its one element. These independent
         // prefixes distinguish the three admission boundaries.
@@ -2083,7 +2089,10 @@ mod tests {
                 assert_eq!(standalone.cleanup_fault(), None);
                 let report = standalone.attempt().unwrap();
                 let refusal = report.refusal().unwrap();
-                assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(quantity));
+                assert_eq!(
+                    refusal.quantity(),
+                    crate::accounting::RenderQuantity::Work(quantity)
+                );
                 assert_eq!(refusal.current(), 2);
                 assert_eq!(refusal.amount(), 1);
                 assert_eq!(refusal.phase(), RenderPhase::Attempt);
@@ -2188,8 +2197,8 @@ mod tests {
         const ACTIONS: u64 = 6 + 2 * 5 + 4 * 4 + 3 + 12 + 3 + 2;
         assert_eq!(ACTIONS, 52);
         let mut limited = RenderAccountingContext::new(
-            crate::RenderAccountingOptions::new().with_limits(
-                crate::RenderLimits::new()
+            crate::accounting::RenderAccountingOptions::new().with_limits(
+                crate::accounting::RenderLimits::new()
                     .with_work_limit(RenderWork::CoordinateVisits, ACTIONS - 1)
                     .unwrap(),
             ),

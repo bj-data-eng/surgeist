@@ -1,11 +1,17 @@
 use crate::{
-    Antialiasing, BackdropCaptureBounds, BackdropFilterInput, BlendMode, Capabilities, ClipInput,
-    Color, CoordinateSpaceTag, EffectQualityPolicy, ErrorCode, FillRule, FilledPath, FilterAmount,
-    FilterAngle, FilterBlur, FilterDropShadow, FilterList, FilterOp, Format, Image, ImageFit,
-    Layer, Options, Path, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii, Rect,
-    Renderer, ResolvedLayerAlphaMask, ResourceCacheBudget, Scene, Shadow, Shape, Size, Stroke,
-    TextGlyph, TextPaint, TextRun, TextRunBounds, Transform, UnitFilterAmount,
-    UnresolvedResourceKind, UnsupportedPrimitive, command, error::Result, style::ColorFilterOp,
+    ErrorCode, capability::Capabilities, command, error::PrimitiveFamily,
+    error::PrimitiveOperation, error::Result, error::UnresolvedResourceKind,
+    error::UnsupportedPrimitive, geometry::CoordinateSpaceTag, geometry::PhysicalSize,
+    geometry::Point, geometry::Radii, geometry::Rect, geometry::Size, geometry::Transform,
+    image::Image, image::ImageFit, layer::BlendMode, layer::Layer, layer::ResolvedLayerAlphaMask,
+    layer::Shadow, paint::Color, renderer::Antialiasing, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::Renderer, renderer::ResourceCacheBudget, scene::Scene,
+    shape::FillRule, shape::FilledPath, shape::Path, shape::Shape, shape::Stroke,
+    style::ColorFilterOp, style::clip::ClipInput, style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput, style::filter::FilterAmount, style::filter::FilterAngle,
+    style::filter::FilterBlur, style::filter::FilterDropShadow, style::filter::FilterList,
+    style::filter::FilterOp, style::filter::UnitFilterAmount, surface::Format, text::TextGlyph,
+    text::TextPaint, text::TextRun, text::TextRunBounds,
 };
 
 use crate::{
@@ -917,8 +923,9 @@ fn zero_opacity_backdrop_preserves_foreground_without_graph_boundary() {
 #[test]
 fn transparent_backdrop_planning_admits_only_one_algorithm_walk() {
     use crate::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
-        RenderLimits, RenderPhase, RenderQuantity, RenderWork,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderAttemptStatus, accounting::RenderLimits,
+        accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderWork,
     };
 
     let filters = FilterList::try_ops(vec![
@@ -1612,8 +1619,13 @@ fn color_filter_graph_preserves_authored_order_clamps_and_exact_lifetimes() {
 #[test]
 fn runtime_lowering_projects_color_filter_operations_once_per_visit() {
     use crate::{
-        RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope, RenderLimits, RenderQuantity,
-        RenderResource, RenderWork,
+        accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus,
+        accounting::RenderCpuScope,
+        accounting::RenderLimits,
+        accounting::RenderQuantity,
+        accounting::RenderResource,
+        accounting::RenderWork,
         accounting::{Account, FrameFixture, RendererCpu},
         resource::WorkingFormat,
     };
@@ -1706,8 +1718,9 @@ fn gpu_graph_executor_accepts_only_color_blur_and_drop_shadow_filter_graphs() {
 #[test]
 fn semantic_filter_steps_reserve_only_their_pass_id_count() {
     use crate::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
-        RenderLimits, RenderPhase, RenderQuantity, RenderResource,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptKind, accounting::RenderAttemptStatus, accounting::RenderLimits,
+        accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderResource,
     };
 
     let operations = spatial_filter_authored_filter_steps_for_test()
@@ -2731,11 +2744,11 @@ fn graph_preparation_rejects_unsupported_passes_without_resource_or_cache_mutati
     .unwrap_or_panic_for_test("the unsupported-pass fixture must reach runtime lowering");
     let resources = ResourceManager::new(ResourceCacheBudget::new(1024 * 1024));
     let mut pass_cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
-        crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())
+        crate::accounting::RendererCpu::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture CPU")
-            .at(crate::RenderCpuScope::DeviceBacking),
+            .at(crate::accounting::RenderCpuScope::DeviceBacking),
     );
     let _ = pass_cache.seed_sampler_for_test(ready.device_for_test());
     let resources_before = resources.observation_for_test();
@@ -2820,11 +2833,11 @@ fn zero_capture_graph_spine_is_rejected_before_preparation() {
         DeviceCapabilities::from_device(ready.adapter_for_test(), ready.device_for_test());
     let resources = ResourceManager::new(ResourceCacheBudget::new(1024 * 1024));
     let mut pass_cache = DevicePassCache::new(
-        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+        crate::accounting::Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture generation"),
-        crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())
+        crate::accounting::RendererCpu::new(crate::accounting::RenderAccountingOptions::default())
             .expect("fixture CPU")
-            .at(crate::RenderCpuScope::DeviceBacking),
+            .at(crate::accounting::RenderCpuScope::DeviceBacking),
     );
     let _ = pass_cache.seed_sampler_for_test(ready.device_for_test());
     let resources_before = resources.observation_for_test();

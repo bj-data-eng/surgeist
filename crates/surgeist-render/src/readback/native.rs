@@ -4,10 +4,10 @@ use super::{
     output::ReadbackOutput,
 };
 use crate::{
-    RuntimeOperation,
     accounting::{
         Account, Generation, GenerationClass, GpuObjectKind, OwnedGpu, RenderPhase, RenderWork,
     },
+    error::RuntimeOperation,
     gpu_transaction::{GpuOperationTransaction, PendingReadbackSubmission},
 };
 use std::{
@@ -558,7 +558,8 @@ mod custody_tests {
 
     #[test]
     fn canceled_callback_retains_staging_custody_until_delivery() {
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let callback = pending_tests::canceled_callback(&generation);
         assert_eq!(
             generation.usage().unwrap().live(RenderResource::GpuBytes),
@@ -581,7 +582,8 @@ mod custody_tests {
 
     #[test]
     fn retired_staging_custody_ignores_late_callback_drop() {
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let callback = pending_tests::canceled_callback(&generation);
         generation.retire();
         assert_eq!(

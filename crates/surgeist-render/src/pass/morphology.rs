@@ -1,8 +1,10 @@
 //! Serialization of the checked native morphology route without kernel resources.
 use crate::{
-    FilterColorSpace, MorphologyOperator, Result,
+    Result,
     accounting::{Account, RenderWork},
+    filter_model::FilterColorSpace,
     frame::{MorphologyPassFacts, MorphologyStage},
+    morphology::MorphologyOperator,
     shader::{
         MorphologyParameterBytes, MorphologyParameterFacts, ShaderMorphologyStageKey,
         ShaderProgramKey,

@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use crate::{
-    Color, Image, ImageFit, ImageQuality, ImageRendering, Layer, Options, Parameters, Rect,
-    Renderer, Scene, Size, Transform, image::pixelated_multipliers,
+    geometry::Rect, geometry::Size, geometry::Transform, image::Image, image::ImageFit,
+    image::ImageQuality, image::ImageRendering, image::pixelated_multipliers, layer::Layer,
+    paint::Color, renderer::Options, renderer::Renderer, scene::Scene, surface::Parameters,
 };
 
 use super::support::pixel_rgba;
@@ -70,7 +71,12 @@ fn pixelated_axes_use_independent_nearest_positive_integer_multiples() {
     }
 }
 
-fn render(renderer: &mut Renderer, scene: &Scene, width: u32, height: u32) -> crate::ImageBuffer {
+fn render(
+    renderer: &mut Renderer,
+    scene: &Scene,
+    width: u32,
+    height: u32,
+) -> crate::image::ImageBuffer {
     let mut surface = pollster::block_on(
         renderer.create_headless(Size::new(f64::from(width), f64::from(height)), 1.0),
     )
@@ -90,7 +96,7 @@ fn assert_pixel(actual: [u8; 4], expected: [u8; 4]) {
 
 #[test]
 fn image_region_isolates_texels_and_keeps_fractional_source_mapping() {
-    let image = border_image_fixture().extend(crate::Extend::Repeat);
+    let image = border_image_fixture().extend(crate::image::Extend::Repeat);
     let mut scene = Scene::new();
     scene.image_region(
         image.clone(),
@@ -111,7 +117,7 @@ fn image_region_isolates_texels_and_keeps_fractional_source_mapping() {
     let output = render(&mut renderer, &scene, 6, 3);
     assert_eq!(
         renderer.stats().route,
-        Some(crate::RenderRoute::DirectVello)
+        Some(crate::stats::RenderRoute::DirectVello)
     );
     for (x, value) in [0, 32, 96, 159, 223, 255].into_iter().enumerate() {
         assert_pixel(pixel_rgba(&output, x as u32, 0), [0, 0, 255, 255]);
@@ -120,8 +126,11 @@ fn image_region_isolates_texels_and_keeps_fractional_source_mapping() {
     }
     let report = renderer.last_attempt().unwrap();
     let usage = report.attempt().unwrap().usage();
-    assert_eq!(usage.work(crate::RenderWork::AtlasTexels), 3);
-    assert_eq!(usage.work(crate::RenderWork::ImageSourceBytes), 64);
+    assert_eq!(usage.work(crate::accounting::RenderWork::AtlasTexels), 3);
+    assert_eq!(
+        usage.work(crate::accounting::RenderWork::ImageSourceBytes),
+        64
+    );
 }
 
 #[test]
@@ -144,7 +153,10 @@ fn image_region_keeps_a_texel_crossed_by_a_rounded_endpoint() {
     )
     .unwrap();
     assert_eq!(region.window().first_pixel(), 1);
-    assert_eq!(region.window().size(), crate::PhysicalSize::new(2, 1));
+    assert_eq!(
+        region.window().size(),
+        crate::geometry::PhysicalSize::new(2, 1)
+    );
     assert_eq!(region.local().x(), f64::EPSILON);
 }
 
@@ -187,8 +199,9 @@ fn image_region_rejects_invalid_source_and_keeps_the_published_frame() {
 #[test]
 fn image_region_atlas_refusal_keeps_the_prefix_and_allows_retry() {
     use crate::{
-        RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
-        RenderQuantity, RenderRefusalReason, RenderResource, RenderWork,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderQuantity,
+        accounting::RenderRefusalReason, accounting::RenderResource, accounting::RenderWork,
     };
 
     let image = border_image_fixture();
@@ -355,7 +368,9 @@ fn pixelated_image_paint_keeps_shape_geometry_while_scaling_its_brush() {
         |scene| {
             scene.fill(
                 Rect::new(0.0, 0.0, 2.0, 1.0),
-                crate::Paint::image(black_white_image().rendering(ImageRendering::Pixelated)),
+                crate::paint::Paint::image(
+                    black_white_image().rendering(ImageRendering::Pixelated),
+                ),
             );
         },
     );
@@ -371,7 +386,7 @@ fn pixelated_image_in_a_scaled_opacity_group_keeps_its_final_sampling_lattice() 
     assert_scaled_opacity_group_keeps_pixelated_lattice(|scene| {
         scene.fill(
             Rect::new(0.0, 0.0, 2.0, 1.0),
-            crate::Paint::image(black_white_image().rendering(ImageRendering::Pixelated)),
+            crate::paint::Paint::image(black_white_image().rendering(ImageRendering::Pixelated)),
         );
     });
 }
@@ -395,7 +410,7 @@ fn assert_scaled_opacity_group_keeps_pixelated_lattice(draw: impl FnOnce(&mut Sc
             .try_opacity(0.5)
             .unwrap()
             .with_resolved_alpha_mask(
-                crate::ResolvedLayerAlphaMask::try_new(
+                crate::layer::ResolvedLayerAlphaMask::try_new(
                     Image::from_rgba(Size::new(1.0, 1.0), Arc::<[u8]>::from([255; 4])).unwrap(),
                     Rect::new(0.0, 0.0, 2.0, 1.0),
                 )
@@ -405,7 +420,10 @@ fn assert_scaled_opacity_group_keeps_pixelated_lattice(draw: impl FnOnce(&mut Sc
     );
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let output = render(&mut renderer, &scene, 5, 1);
-    assert_eq!(renderer.stats().route, Some(crate::RenderRoute::GpuGraph));
+    assert_eq!(
+        renderer.stats().route,
+        Some(crate::stats::RenderRoute::GpuGraph)
+    );
     for (x, value) in [0, 0, 128, 255, 255].into_iter().enumerate() {
         assert_pixel(pixel_rgba(&output, x as u32, 0), [value, value, value, 128]);
     }
@@ -456,7 +474,7 @@ fn pixelated_graph_keeps_an_integer_source_axis_crisp_beside_a_fractional_axis()
     .unwrap()
     .rendering(ImageRendering::Pixelated);
     let bounds = Rect::new(0.0, 0.0, 2.0, 3.0);
-    let mask = crate::ResolvedLayerAlphaMask::try_new(
+    let mask = crate::layer::ResolvedLayerAlphaMask::try_new(
         Image::from_rgba(Size::new(1.0, 1.0), Arc::<[u8]>::from([255; 4])).unwrap(),
         bounds,
     )
@@ -467,12 +485,15 @@ fn pixelated_graph_keeps_an_integer_source_axis_crisp_beside_a_fractional_axis()
             .with_transform(Transform::scale(2.5, 2.0).unwrap())
             .with_resolved_alpha_mask(mask),
         |scene| {
-            scene.fill(bounds, crate::Paint::image(image));
+            scene.fill(bounds, crate::paint::Paint::image(image));
         },
     );
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let output = render(&mut renderer, &scene, 5, 6);
-    assert_eq!(renderer.stats().route, Some(crate::RenderRoute::GpuGraph));
+    assert_eq!(
+        renderer.stats().route,
+        Some(crate::stats::RenderRoute::GpuGraph)
+    );
     for (y, value) in [0, 0, 128, 128, 255, 255].into_iter().enumerate() {
         for x in 0..5 {
             assert_pixel(pixel_rgba(&output, x, y as u32), [value, value, value, 255]);

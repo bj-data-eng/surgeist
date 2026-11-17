@@ -2,9 +2,12 @@
 //! unchanged original over shadow, then one output coverage.
 use super::convolution::{assert_pixel, bounds, image, pixel, renderer_and_surface};
 use crate::{
-    Color, DropShadowInput, DropShadowSource, FilterColorSpace, FilterDomains, Image, ImageBuffer,
-    ImageFit, ImageRendering, Layer, Parameters, PreparedDropShadow, Rect, RenderAccountingContext,
-    Renderer, Scene, Surface, prepare_drop_shadow,
+    accounting::RenderAccountingContext, filter_domains::FilterDomains,
+    filter_model::FilterColorSpace, geometry::Rect, image::Image, image::ImageBuffer,
+    image::ImageFit, image::ImageRendering, layer::Layer, native_shadow::DropShadowInput,
+    native_shadow::DropShadowSource, native_shadow::PreparedDropShadow,
+    native_shadow::prepare_drop_shadow, paint::Color, renderer::Renderer, scene::Scene,
+    surface::Parameters, surface::Surface,
 };
 
 pub(super) fn operation(input: DropShadowInput, space: FilterColorSpace) -> PreparedDropShadow {
@@ -30,7 +33,7 @@ pub(super) fn finite_scene(
 pub(super) fn render(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) -> ImageBuffer {
     let stats = pollster::block_on(renderer.render(surface, scene, Parameters::default())).unwrap();
     assert_eq!(stats, renderer.stats());
-    assert_eq!(stats.route, Some(crate::RenderRoute::GpuGraph));
+    assert_eq!(stats.route, Some(crate::stats::RenderRoute::GpuGraph));
     pollster::block_on(renderer.read_headless(surface)).unwrap()
 }
 pub(super) fn sigma() -> f64 {
@@ -168,7 +171,7 @@ fn public_native_shadow_zero_and_negative_sigma_omit_only_blur() {
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::KernelSampleVisits),
+                .work(crate::accounting::RenderWork::KernelSampleVisits),
             0
         );
     }
@@ -492,7 +495,7 @@ fn public_native_shadow_periodic_alpha_becomes_finite_before_displacement() {
 
 #[test]
 fn public_native_shadow_fractional_period_uses_one_canvas_and_restores_following_contexts() {
-    use crate::{Options, Size, Transform};
+    use crate::{geometry::Size, geometry::Transform, renderer::Options};
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(10.0, 5.0), 1.5)).unwrap();
@@ -547,7 +550,10 @@ fn public_native_shadow_fractional_period_uses_one_canvas_and_restores_following
 
 #[test]
 fn public_native_shadow_backdrop_capture_is_shared_and_rebased_to_finite_source() {
-    use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+    use crate::{
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
+    };
     let (mut renderer, mut surface) = renderer_and_surface(6, 1);
     let full = bounds(6, 1);
     let source = Rect::new(1.0, 0.0, 2.0, 1.0);
@@ -586,7 +592,8 @@ fn public_native_shadow_backdrop_capture_is_shared_and_rebased_to_finite_source(
 #[test]
 fn public_native_shadow_empty_domains_exclude_unused_backdrop_kernel_and_displacement() {
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, FilterList, FilterOp, UnitFilterAmount,
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterList, style::filter::FilterOp, style::filter::UnitFilterAmount,
     };
     let (mut renderer, mut surface) = renderer_and_surface(3, 1);
     let full = bounds(3, 1);
@@ -630,10 +637,10 @@ fn public_native_shadow_empty_domains_exclude_unused_backdrop_kernel_and_displac
         }
         let usage = renderer.last_attempt().unwrap().attempt().unwrap().usage();
         for work in [
-            crate::RenderWork::KernelSampleVisits,
-            crate::RenderWork::ScheduledGaussianSamples,
-            crate::RenderWork::ScheduledOffsetSamples,
-            crate::RenderWork::ScheduledShadowSamples,
+            crate::accounting::RenderWork::KernelSampleVisits,
+            crate::accounting::RenderWork::ScheduledGaussianSamples,
+            crate::accounting::RenderWork::ScheduledOffsetSamples,
+            crate::accounting::RenderWork::ScheduledShadowSamples,
         ] {
             assert_eq!(usage.work(work), 0);
         }
@@ -681,7 +688,7 @@ fn public_native_shadow_merge_sample_opportunities_follow_actual_original_branch
                     .attempt()
                     .unwrap()
                     .usage()
-                    .work(crate::RenderWork::ScheduledShadowSamples),
+                    .work(crate::accounting::RenderWork::ScheduledShadowSamples),
                 expected,
                 "periodic={periodic},shadow={shadow}"
             );
@@ -691,7 +698,7 @@ fn public_native_shadow_merge_sample_opportunities_follow_actual_original_branch
 
 #[test]
 fn public_native_shadow_nested_vector_full_skew_keeps_original_and_local_displacement_separate() {
-    use crate::Transform;
+    use crate::geometry::Transform;
     let (mut renderer, mut surface) = renderer_and_surface(24, 24);
     let full = bounds(9, 7);
     let mut source = Scene::new();

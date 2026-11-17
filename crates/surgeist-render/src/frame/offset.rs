@@ -5,9 +5,12 @@ use super::{
     convolution::intersection,
 };
 use crate::{
-    ImageRendering, PreparedOffset, Rect, Transform,
     accounting::{Account, RenderWork},
     error::{Error, Result},
+    geometry::Rect,
+    geometry::Transform,
+    image::ImageRendering,
+    offset::PreparedOffset,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -419,15 +422,15 @@ pub(super) fn require_spatial(
 }
 
 fn mapping_error(value: f64) -> Error {
-    crate::OffsetPreparationError::Numeric {
-        phase: crate::OffsetNumericPhase::GridMapping,
+    crate::offset::OffsetPreparationError::Numeric {
+        phase: crate::offset::OffsetNumericPhase::GridMapping,
         value,
     }
     .into()
 }
 fn index_error(value: f64) -> Error {
-    crate::OffsetPreparationError::Numeric {
-        phase: crate::OffsetNumericPhase::GridIndex,
+    crate::offset::OffsetPreparationError::Numeric {
+        phase: crate::offset::OffsetNumericPhase::GridIndex,
         value,
     }
     .into()
@@ -437,7 +440,8 @@ fn index_error(value: f64) -> Error {
 mod tests {
     use super::*;
     use crate::{
-        Color, FilterDomains, OffsetInput, RenderAccountingContext, Size, renderer::Antialiasing,
+        accounting::RenderAccountingContext, filter_domains::FilterDomains, geometry::Size,
+        offset::OffsetInput, paint::Color, renderer::Antialiasing,
     };
 
     fn context(scale: f64) -> FrameContext {
@@ -457,7 +461,7 @@ mod tests {
         dy: f64,
         hint: ImageRendering,
     ) -> PreparedOffset {
-        crate::prepare_offset(
+        crate::offset::prepare_offset(
             OffsetInput::new()
                 .with_dx(dx)
                 .with_dy(dy)
@@ -613,8 +617,8 @@ mod tests {
         let error = mapping(&operation, 1.0, Transform::identity()).unwrap_err();
         assert!(matches!(
             error.offset_diagnostic(),
-            Some(crate::OffsetPreparationError::Numeric {
-                phase: crate::OffsetNumericPhase::GridMapping,
+            Some(crate::offset::OffsetPreparationError::Numeric {
+                phase: crate::offset::OffsetNumericPhase::GridMapping,
                 ..
             })
         ));
@@ -626,8 +630,8 @@ mod tests {
             OffsetMapping::try_new(&operation, source, result, &Account::for_test()).unwrap_err();
         assert!(matches!(
             error.offset_diagnostic(),
-            Some(crate::OffsetPreparationError::Numeric {
-                phase: crate::OffsetNumericPhase::GridIndex,
+            Some(crate::offset::OffsetPreparationError::Numeric {
+                phase: crate::offset::OffsetNumericPhase::GridIndex,
                 ..
             })
         ));
@@ -672,10 +676,10 @@ mod tests {
         assert_eq!(map.sampling(), OffsetSampling::Copy);
     }
 
-    fn plan(scene: crate::Scene) -> super::super::FramePlan {
+    fn plan(scene: crate::scene::Scene) -> super::super::FramePlan {
         let account = Account::for_test();
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &account)
+            .normalize(crate::capability::Capabilities::CURRENT, &account)
             .unwrap();
         super::super::FramePlan::try_from_commands(commands, context(1.0), &account).unwrap()
     }
@@ -686,9 +690,9 @@ mod tests {
         let result = Rect::new(3.0, 0.0, 2.0, 1.0);
         let operation = prepare(source, result, 0.5, 0.0, ImageRendering::Smooth);
         let transform = Transform::try_new([-1.0, 0.25, 0.5, 1.0, 12.0, 4.0]).unwrap();
-        let mut scene = crate::Scene::new();
+        let mut scene = crate::scene::Scene::new();
         scene.layer(
-            crate::Layer::new()
+            crate::layer::Layer::new()
                 .with_offset(operation)
                 .with_transform(transform),
             |child| {
@@ -724,12 +728,14 @@ mod tests {
             (full, Rect::new(0.0, 0.0, 0.0, 1.0e200)),
         ] {
             let operation = prepare(source, result, 0.0, 0.0, ImageRendering::Auto);
-            let mut scene = crate::Scene::new();
+            let mut scene = crate::scene::Scene::new();
             scene.fill(full, Color::BLACK);
             scene.layer(
-                crate::Layer::new().with_offset(operation).with_composition(
-                    crate::LayerComposition::normal_porter_duff(crate::PorterDuffOperator::Copy),
-                ),
+                crate::layer::Layer::new()
+                    .with_offset(operation)
+                    .with_composition(crate::layer::LayerComposition::normal_porter_duff(
+                        crate::layer::PorterDuffOperator::Copy,
+                    )),
                 |child| {
                     child.fill(full, Color::BLACK);
                 },
@@ -751,7 +757,7 @@ mod tests {
                     .iter()
                     .any(|composite| matches!(&composite.kind,
                 super::super::graph::SemanticCompositeKind::Layer { composition, .. }
-                if composition.operator() == Some(crate::PorterDuffOperator::Copy)))
+                if composition.operator() == Some(crate::layer::PorterDuffOperator::Copy)))
             );
             graph.lowering_view(&Account::for_test()).unwrap();
         }
@@ -759,7 +765,10 @@ mod tests {
 
     #[test]
     fn qualification_copies_shared_layer_metadata_before_pruning_empty_offset_input() {
-        use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+        use crate::{
+            style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+            style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
+        };
         let account = Account::for_test();
         let full = Rect::new(0.0, 0.0, 4.0, 1.0);
         let operation = prepare(
@@ -775,9 +784,9 @@ mod tests {
             None,
         )
         .unwrap();
-        let mut scene = crate::Scene::new();
+        let mut scene = crate::scene::Scene::new();
         scene.layer(
-            crate::Layer::new()
+            crate::layer::Layer::new()
                 .with_offset(operation)
                 .try_backdrop_filter(backdrop)
                 .unwrap(),
@@ -786,7 +795,7 @@ mod tests {
             },
         );
         let normalized = scene
-            .normalize(crate::Capabilities::CURRENT, &account)
+            .normalize(crate::capability::Capabilities::CURRENT, &account)
             .unwrap();
         let original = normalized.clone();
         let [
@@ -832,19 +841,19 @@ mod tests {
         let full = Rect::new(0.0, 0.0, 6.0, 1.0);
         let d = Rect::new(1.0, 0.0, 2.0, 1.0);
         let operation = prepare(d, d, 0.5, 0.0, ImageRendering::Auto);
-        let backdrop = crate::BackdropFilterInput::try_new(
-            crate::FilterList::try_ops(vec![crate::FilterOp::blur(
-                crate::FilterBlur::try_new(0.0).unwrap(),
+        let backdrop = crate::style::filter::BackdropFilterInput::try_new(
+            crate::style::filter::FilterList::try_ops(vec![crate::style::filter::FilterOp::blur(
+                crate::style::filter::FilterBlur::try_new(0.0).unwrap(),
             )])
             .unwrap(),
-            crate::BackdropCaptureBounds::try_new(full).unwrap(),
+            crate::style::filter::BackdropCaptureBounds::try_new(full).unwrap(),
             None,
         )
         .unwrap();
-        let mut scene = crate::Scene::new();
+        let mut scene = crate::scene::Scene::new();
         scene.fill(full, Color::BLACK);
         scene.layer(
-            crate::Layer::new()
+            crate::layer::Layer::new()
                 .with_offset(operation)
                 .try_backdrop_filter(backdrop)
                 .unwrap(),
@@ -865,8 +874,8 @@ mod tests {
     fn malformed_mapping_metadata_is_rejected_before_lowering() {
         let full = Rect::new(0.0, 0.0, 4.0, 1.0);
         let operation = prepare(full, full, 0.5, 0.0, ImageRendering::Auto);
-        let mut scene = crate::Scene::new();
-        scene.layer(crate::Layer::new().with_offset(operation), |child| {
+        let mut scene = crate::scene::Scene::new();
+        scene.layer(crate::layer::Layer::new().with_offset(operation), |child| {
             child.fill(full, Color::BLACK);
         });
         let super::super::FramePlan::GpuGraph(mut graph) = plan(scene) else {

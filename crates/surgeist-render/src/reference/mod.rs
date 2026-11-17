@@ -14,7 +14,8 @@ pub(crate) use filter::{
 };
 pub(crate) use mask::execute_transitional_resolved_mask_bridge_for_test;
 
-use super::{Error, PhysicalSize, Result};
+use super::{Error, Result};
+use crate::geometry::PhysicalSize;
 
 /// CPU reference pixel stored as premultiplied RGBA8.
 ///

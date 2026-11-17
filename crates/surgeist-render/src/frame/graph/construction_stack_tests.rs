@@ -7,9 +7,11 @@ use crate::vello_engine::scene::{
     VelloPathElementObservationForTest,
 };
 use crate::{
-    Capabilities, Color, Layer, RenderAccountingContext, RenderAccountingError,
-    RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus, RenderLimits, RenderPhase,
-    RenderQuantity, RenderResource, Scene, Size,
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+    accounting::RenderQuantity, accounting::RenderResource, capability::Capabilities,
+    geometry::Size, layer::Layer, paint::Color, scene::Scene,
 };
 
 fn normalized_scene(depth: u64) -> RenderCommands {
@@ -300,13 +302,19 @@ fn wrapper_and_clip_returns_restore_sibling_coordinates_clips_and_parent_localit
                         scene.fill(rect, Color::BLACK);
                     },
                 );
-                scene.layer(Layer::new().blend(crate::BlendMode::Multiply), |scene| {
+                scene.layer(
+                    Layer::new().blend(crate::layer::BlendMode::Multiply),
+                    |scene| {
+                        scene.fill(rect, Color::BLACK);
+                    },
+                );
+            });
+            scene.layer(
+                Layer::new().blend(crate::layer::BlendMode::Multiply),
+                |scene| {
                     scene.fill(rect, Color::BLACK);
-                });
-            });
-            scene.layer(Layer::new().blend(crate::BlendMode::Multiply), |scene| {
-                scene.fill(rect, Color::BLACK);
-            });
+                },
+            );
         },
     );
     let commands = scene
@@ -391,9 +399,9 @@ fn wrapper_and_clip_returns_restore_sibling_coordinates_clips_and_parent_localit
                         assert_eq!(
                             *composition,
                             crate::layer::LayerComposition::from_blend(if multiply {
-                                crate::BlendMode::Multiply
+                                crate::layer::BlendMode::Multiply
                             } else {
-                                crate::BlendMode::Normal
+                                crate::layer::BlendMode::Normal
                             })
                         );
                         assert!(clip.is_none() && alpha_mask.is_none());

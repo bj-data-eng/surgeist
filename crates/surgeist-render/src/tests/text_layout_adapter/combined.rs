@@ -462,7 +462,7 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
         &layout,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(system.stats(), before);
@@ -646,7 +646,7 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
             &layout,
             placement,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(rendered.layout(), &layout));
@@ -911,7 +911,7 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
             &layout,
             placement,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(system.stats(), before);

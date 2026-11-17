@@ -29,8 +29,8 @@ use super::bounded::{self, Growth, OwnedEncoding};
 use super::geometry::{self, QualifiedTransform};
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork};
 use crate::{
-    BackendErrorCode, Error, FontData, Result, TextGlyph, TextPaint, TextRun, Transform,
-    text::invalid_font_data,
+    Error, Result, error::BackendErrorCode, geometry::Transform, text::FontData, text::TextGlyph,
+    text::TextPaint, text::TextRun, text::invalid_font_data,
 };
 use vello_encoding::StreamOffsets;
 
@@ -317,7 +317,8 @@ pub(crate) fn preflight_selected_glyphs<'a>(
             SelectedGlyphRepresentation::Outline
         };
         if drawable {
-            let reason = crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index };
+            let reason =
+                crate::error::GeometryRealizationError::UnrepresentableGlyph { glyph_index };
             account.work(RenderWork::CoordinateVisits, 1)?;
             let x = glyph.x();
             account.work(RenderWork::CoordinateVisits, 1)?;
@@ -408,11 +409,11 @@ pub(crate) fn selected_color_format(
         .table_data(Tag::new(b"COLR"))
         .map(|_| {
             font.colr()
-                .map_err(|_| Error::from(crate::GlyphPreparationError::InvalidFont))
+                .map_err(|_| Error::from(crate::text::GlyphPreparationError::InvalidFont))
         })
         .transpose()?;
     selected_color_root(colr.as_ref(), glyph, data)
-        .map_err(|_| crate::GlyphPreparationError::InvalidFont.into())
+        .map_err(|_| crate::text::GlyphPreparationError::InvalidFont.into())
 }
 
 fn preflight_selected_image_head(font: &skrifa::FontRef<'_>, font_data: &FontData) -> Result<()> {
@@ -467,7 +468,7 @@ fn preflight_outline(
         drawn.map_err(|_| font_data_error(font_data))?;
         if geometry::has_segments(&witness.elements, account)? {
             return Err(
-                crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index }.into(),
+                crate::error::GeometryRealizationError::UnrepresentableGlyph { glyph_index }.into(),
             );
         }
         return Ok(StreamOffsets::default());
@@ -543,10 +544,10 @@ pub(crate) fn qualify_native_outline(
 pub(crate) fn glyph_geometry_error(error: Error, glyph_index: usize) -> Error {
     match error.geometry_realization_diagnostic() {
         Some(
-            crate::GeometryRealizationError::UnrepresentableTransform
-            | crate::GeometryRealizationError::UnrepresentablePath { .. }
-            | crate::GeometryRealizationError::UnrepresentableGlyph { .. },
-        ) => crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index }.into(),
+            crate::error::GeometryRealizationError::UnrepresentableTransform
+            | crate::error::GeometryRealizationError::UnrepresentablePath { .. }
+            | crate::error::GeometryRealizationError::UnrepresentableGlyph { .. },
+        ) => crate::error::GeometryRealizationError::UnrepresentableGlyph { glyph_index }.into(),
         _ => error,
     }
 }
@@ -1449,7 +1450,10 @@ impl ColorPainter for PreflightColorPainter<'_, '_> {
 mod receiving_tests {
     use super::*;
     use crate::accounting::{RenderAttemptKind, RenderResource};
-    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits,
+    };
 
     fn fixture() -> (FontData, u32, u32) {
         let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -1608,14 +1612,14 @@ mod receiving_tests {
             assert_eq!(backing.peak(RenderResource::ScratchCpuBytes), 8);
             assert_eq!(backing.live(RenderResource::ScratchCpuBytes), 0);
             if limit == 7 {
-                let Some(crate::RenderAccountingError::Refused(refusal)) =
+                let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
                     result.err().unwrap().accounting_diagnostic()
                 else {
                     panic!("one-short decode work must refuse");
                 };
                 assert_eq!(
                     refusal.quantity(),
-                    crate::RenderQuantity::Work(RenderWork::NativeBitmapDecodeBytes)
+                    crate::accounting::RenderQuantity::Work(RenderWork::NativeBitmapDecodeBytes)
                 );
                 assert_eq!(refusal.amount(), 8);
             } else if input.len() < png.len() {
@@ -1656,12 +1660,12 @@ mod receiving_tests {
             TextGlyph::try_new(visible, 11.0, 20.0, 16.0).unwrap(),
         ];
         let run = TextRun::try_new(
-            crate::FontRef::new(1_u64).with_data(font),
+            crate::text::FontRef::new(1_u64).with_data(font),
             16.0,
             Transform::identity(),
-            TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+            TextPaint::try_fill(crate::paint::Paint::color(crate::paint::Color::BLACK)).unwrap(),
             &glyphs,
-            crate::TextRunBounds::unspecified(),
+            crate::text::TextRunBounds::unspecified(),
         )
         .unwrap();
         // The first empty source glyph contributes its representation record.
@@ -1718,7 +1722,7 @@ mod receiving_tests {
             .unwrap_err();
         assert_eq!(
             error.geometry_realization_diagnostic(),
-            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 7 })
+            Some(&crate::error::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 7 })
         );
         assert_eq!(
             context

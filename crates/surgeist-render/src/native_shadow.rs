@@ -3,9 +3,10 @@ use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase,
 use crate::number_text::Number;
 use crate::offset::{OffsetDisplacement, prepare_offset_displacement_in};
 use crate::{
-    Color, FilterColorSpace, FilterDomains, GaussianInput, GaussianPreparationError,
-    GaussianSource, ImageRendering, OffsetInput, PreparedGaussian, PreparedOffset, Rect, Result,
-    Scene,
+    Result, filter_domains::FilterDomains, filter_model::FilterColorSpace, gaussian::GaussianInput,
+    gaussian::GaussianPreparationError, gaussian::GaussianSource, gaussian::PreparedGaussian,
+    geometry::Rect, image::ImageRendering, offset::OffsetInput, offset::PreparedOffset,
+    paint::Color, scene::Scene,
 };
 use crate::{filter_source::FilterSourceDescriptor, gaussian::prepare_gaussian_in};
 
@@ -260,13 +261,28 @@ pub(crate) struct DropShadowForeground {
 mod tests {
     use super::*;
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, Capabilities, Error, ErrorCode, Filter,
-        FilterList, FilterOp, GaussianParameter, Layer, LayerComposition, OffsetParameter,
-        OffsetPreparationError, PorterDuffOperator, RenderAccountingOptions, RenderAttemptStatus,
-        RenderLimits, RenderQuantity, RenderResource, Transform,
+        Error, ErrorCode,
+        accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus,
+        accounting::RenderLimits,
+        accounting::RenderQuantity,
+        accounting::RenderResource,
+        capability::Capabilities,
         command::{NormalizedForegroundEffect, RenderCommand},
+        gaussian::GaussianParameter,
+        geometry::Transform,
+        layer::Filter,
+        layer::Layer,
+        layer::LayerComposition,
         layer::LayerFilter,
+        layer::PorterDuffOperator,
+        offset::OffsetParameter,
+        offset::OffsetPreparationError,
         scene::Command,
+        style::filter::BackdropCaptureBounds,
+        style::filter::BackdropFilterInput,
+        style::filter::FilterList,
+        style::filter::FilterOp,
     };
 
     fn domains() -> FilterDomains {
@@ -295,7 +311,7 @@ mod tests {
             .try_backdrop_filter(
                 BackdropFilterInput::try_new(
                     FilterList::try_ops(vec![FilterOp::blur(
-                        crate::FilterBlur::try_new(1.0).unwrap(),
+                        crate::style::filter::FilterBlur::try_new(1.0).unwrap(),
                     )])
                     .unwrap(),
                     BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 4.0, 5.0)).unwrap(),
@@ -498,7 +514,7 @@ mod tests {
             )
             .unwrap_err();
             assert!(
-                matches!(error.accounting_diagnostic(), Some(crate::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(work))
+                matches!(error.accounting_diagnostic(), Some(crate::accounting::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(work))
             );
             let report = accounting.last_attempt().unwrap();
             assert_eq!(report.kind(), RenderAttemptKind::DropShadow);
@@ -524,7 +540,7 @@ mod tests {
             finite.descriptor(),
             FilterSourceDescriptor::Finite {
                 domains: domains(),
-                edge: crate::FilterEdgeMode::None
+                edge: crate::filter_model::FilterEdgeMode::None
             }
         );
         let filter = domains().filter();
@@ -724,12 +740,12 @@ mod tests {
                 .filters()
                 .supports_gpu_native_drop_shadow_filter_execution()
         );
-        let unavailable = crate::RuntimeCapabilityUnavailable::filter_float32_unavailable(
-            crate::RuntimeOperation::NativeDropShadowRendering,
+        let unavailable = crate::error::RuntimeCapabilityUnavailable::filter_float32_unavailable(
+            crate::error::RuntimeOperation::NativeDropShadowRendering,
         );
         assert_eq!(
             unavailable.operation(),
-            crate::RuntimeOperation::NativeDropShadowRendering
+            crate::error::RuntimeOperation::NativeDropShadowRendering
         );
     }
 }

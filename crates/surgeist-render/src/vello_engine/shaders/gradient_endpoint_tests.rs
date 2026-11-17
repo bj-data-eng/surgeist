@@ -13,7 +13,10 @@ fn load_word(texture: &[u8], index: usize) -> u32 {
 
 #[test]
 fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+        crate::renderer::Options::default(),
+    ))
+    .unwrap();
     let (device, queue) = renderer
         .default_wgpu_device_queue()
         .expect("the endpoint descriptor probe requires a native GPU adapter");

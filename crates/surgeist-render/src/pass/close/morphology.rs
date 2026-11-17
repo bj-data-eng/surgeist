@@ -398,11 +398,20 @@ fn stage<'a>(
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, FilterColorSpace, FilterDomains, Layer, MorphologyInput, MorphologyOperator,
-        MorphologySource, Rect, RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext,
         backend::DeviceCapabilities,
+        capability::Capabilities,
+        filter_domains::FilterDomains,
+        filter_model::FilterColorSpace,
         frame::{FrameContext, FramePlan},
-        prepare_morphology,
+        geometry::Rect,
+        geometry::Size,
+        layer::Layer,
+        morphology::MorphologyInput,
+        morphology::MorphologyOperator,
+        morphology::MorphologySource,
+        morphology::prepare_morphology,
+        scene::Scene,
     };
 
     fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {

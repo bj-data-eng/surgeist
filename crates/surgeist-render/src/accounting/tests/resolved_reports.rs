@@ -733,8 +733,8 @@ fn private_exact_snapshots_keep_the_complete_resolved_report() {
 fn off_forward_reports_keep_operation_identity_in_equality() {
     let mut first = RenderAccountingContext::default();
     let mut second = RenderAccountingContext::default();
-    crate::Scene::new().inspect(&mut first).unwrap();
-    crate::Scene::new().inspect(&mut second).unwrap();
+    crate::scene::Scene::new().inspect(&mut first).unwrap();
+    crate::scene::Scene::new().inspect(&mut second).unwrap();
     let first = first.take_last_attempt().unwrap();
     let second = second.take_last_attempt().unwrap();
     assert_eq!(

@@ -1,9 +1,11 @@
 use super::*;
 use crate::{
-    BlendMode, Capabilities, ErrorCode, FontRef, Layer, LayerComposition, PorterDuffOperator,
-    RenderAccountingContext, RenderAccountingError, RenderAccountingOptions, RenderAttemptKind,
-    RenderAttemptStatus, RenderLimits, RenderQuantity, RenderResource, Scene, TextGlyph, TextPaint,
-    TextRun, TextRunBounds,
+    ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderQuantity,
+    accounting::RenderResource, capability::Capabilities, layer::BlendMode, layer::Layer,
+    layer::LayerComposition, layer::PorterDuffOperator, scene::Scene, text::FontRef,
+    text::TextGlyph, text::TextPaint, text::TextRun, text::TextRunBounds,
 };
 
 fn normalized_scene(depth: u64) -> RenderCommands {

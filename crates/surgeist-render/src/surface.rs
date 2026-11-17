@@ -1,19 +1,25 @@
-use super::backend::DeviceSlotIdentity;
-use super::{
-    BackendErrorCode, Color, Error, PhysicalSize, Result, RuntimeCapabilityUnavailable, Size,
-    geometry::physical_size, validation::*,
-};
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
 ))]
-use super::{RuntimeOperation, backend::Backend};
+use super::backend::Backend;
+use super::backend::DeviceSlotIdentity;
+use super::{Error, Result, geometry::physical_size, validation::*};
 use crate::accounting::OwnedGpu;
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
 ))]
 use crate::accounting::{Account, Generation, GenerationClass, GpuObjectKind};
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+use crate::error::RuntimeOperation;
+use crate::{
+    error::BackendErrorCode, error::RuntimeCapabilityUnavailable, geometry::PhysicalSize,
+    geometry::Size, paint::Color,
+};
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
@@ -39,7 +45,7 @@ impl RendererIdentity {
 
 /// Runtime surface identity, lifecycle, and complete-publication state.
 ///
-/// A surface belongs to the [`crate::Renderer`] that created it and to one
+/// A surface belongs to the [`crate::renderer::Renderer`] that created it and to one
 /// device generation. Foreign or stale use is a typed failure. The render crate
 /// owns GPU resources and failure-atomic publication; an application host owns
 /// native-window or browser host lifecycle and supplies compatible attachments.
@@ -122,7 +128,7 @@ impl Surface {
     /// Resumes a non-presented surface with the same attachment kind.
     ///
     /// Presented host resources must be resumed asynchronously through
-    /// [`crate::Renderer::resume_surface`]. An incompatible attachment fails
+    /// [`crate::renderer::Renderer::resume_surface`]. An incompatible attachment fails
     /// without changing the committed lifecycle.
     pub fn resume(&mut self, attachment: Attachment) -> Result<()> {
         self.ensure_attachment_compatible(&attachment)?;
@@ -1470,13 +1476,15 @@ mod acquired_texture_tests;
 mod custody_tests {
     use super::*;
     use crate::{
-        Options, Renderer,
         accounting::{Generation, GenerationClass, RenderResource},
+        renderer::Options,
+        renderer::Renderer,
     };
 
     #[test]
     fn surviving_texture_view_clones_retain_parent_texture_custody() {
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
         let (device, _) = renderer
             .default_wgpu_device_queue()
@@ -1521,7 +1529,8 @@ mod custody_tests {
 
     #[test]
     fn headless_publication_replacement_resize_and_drop_release_owned_texture() {
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
         let mut surface =
             pollster::block_on(renderer.create_headless(Size::new(1.0, 1.0), 1.0)).unwrap();

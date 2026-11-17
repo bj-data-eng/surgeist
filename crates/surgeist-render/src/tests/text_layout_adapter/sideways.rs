@@ -146,7 +146,7 @@ fn clockwise_asymmetric_outline_uses_one_basis_then_real_outer_placement() {
             &input,
             outer,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(prepared.layout(), &input));
@@ -200,7 +200,7 @@ fn clockwise_italic_executes_horizontal_shear_before_rotation_and_outer_scale() 
         &input,
         outer,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(s.stats(), before);
@@ -247,7 +247,7 @@ fn clockwise_decoration_enters_scene_as_already_physical_geometry() {
         &input,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(prepared.scene().commands.len(), 2);
@@ -256,7 +256,7 @@ fn clockwise_decoration_enters_scene_as_already_physical_geometry() {
     };
     assert_eq!(
         *shape,
-        crate::Shape::rect(Rect::try_new(97.0, 20.0, 1.0, 10.0).unwrap())
+        crate::shape::Shape::rect(Rect::try_new(97.0, 20.0, 1.0, 10.0).unwrap())
     );
     let (run, transform) = outline(&prepared.scene().commands[0]);
     assert_eq!(

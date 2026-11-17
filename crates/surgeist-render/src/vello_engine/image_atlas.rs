@@ -6,7 +6,7 @@ use crate::image::ImageWindow;
 use peniko::ImageData;
 use vello_encoding::{DrawImage, Encoding, Patch};
 
-use crate::{BackendErrorCode, Error, PhysicalSize, Result};
+use crate::{Error, Result, error::BackendErrorCode, geometry::PhysicalSize};
 
 const PACKED_MAX: u32 = u16::MAX as u32;
 pub(super) const MAX_TEXELS: u64 = PACKED_MAX as u64 * PACKED_MAX as u64;
@@ -479,7 +479,9 @@ mod tests {
     }
 
     fn empty_image_encoding() -> Encoding {
-        let image = crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
+        let image =
+            crate::image::Image::from_rgba(crate::geometry::Size::new(0.0, 3.0), Vec::<u8>::new())
+                .unwrap();
         let mut encoding = Encoding::new();
         encoding.encode_image(&image.data, 1.0);
         encoding
@@ -494,7 +496,10 @@ mod tests {
         let attempt = report.attempt().unwrap();
         assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
         let refusal = attempt.refusal().unwrap();
-        assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
+        assert_eq!(
+            refusal.quantity,
+            crate::accounting::RenderQuantity::Work(work)
+        );
         assert_eq!((refusal.current, refusal.amount), (current, amount));
         let cpu = report.renderer_cpu().unwrap();
         for resource in [
@@ -624,8 +629,11 @@ mod tests {
                 peniko::Extend::Pad,
             );
             if index == 0 {
-                let image =
-                    crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
+                let image = crate::image::Image::from_rgba(
+                    crate::geometry::Size::new(0.0, 3.0),
+                    Vec::<u8>::new(),
+                )
+                .unwrap();
                 encoding.encode_image(&image.data, 1.0);
             }
         }
@@ -760,8 +768,8 @@ mod tests {
     }
 
     fn image() -> ImageData {
-        crate::Image::from_rgba(
-            crate::Size::new(2.0, 1.0),
+        crate::image::Image::from_rgba(
+            crate::geometry::Size::new(2.0, 1.0),
             vec![255, 0, 0, 255, 0, 0, 255, 255],
         )
         .unwrap()
@@ -951,21 +959,24 @@ mod tests {
         )
         .err()
         .expect("the two expanded grids exceed the representable atlas area");
-        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
+            error.accounting_diagnostic()
         else {
             panic!("atlas area must preserve its typed local-quota refusal");
         };
         assert_eq!(refusal.phase(), RenderPhase::AtlasQuota);
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Resource(RenderResource::LocalAtlasTexelQuota)
+            crate::accounting::RenderQuantity::Resource(RenderResource::LocalAtlasTexelQuota)
         );
         assert_eq!(encoding.resources.patches.len(), 2);
     }
 
     #[test]
     fn empty_image_brush_has_no_upload_and_resolves_to_transparent_dimensions() {
-        let image = crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
+        let image =
+            crate::image::Image::from_rgba(crate::geometry::Size::new(0.0, 3.0), Vec::<u8>::new())
+                .unwrap();
         let mut encoding = Encoding::new();
         encoding.encode_image(&image.data, 1.0);
         let plan =
@@ -1039,7 +1050,9 @@ mod tests {
     fn four_rectangles_fit_one_square_without_an_overlong_texture_axis() {
         let mut encoding = Encoding::new();
         for _ in 0..4 {
-            let image = crate::Image::from_rgba(crate::Size::new(4.0, 3.0), vec![255; 48]).unwrap();
+            let image =
+                crate::image::Image::from_rgba(crate::geometry::Size::new(4.0, 3.0), vec![255; 48])
+                    .unwrap();
             encoding.encode_image(&image.data, 1.0);
         }
         let plan =
@@ -1053,8 +1066,8 @@ mod tests {
     fn atlas_regions_are_deterministic_nonoverlapping_and_contain_every_source() {
         let mut encoding = Encoding::new();
         for (width, height) in [(4_u32, 2_u32), (2, 4), (1, 1), (3, 2)] {
-            let image = crate::Image::from_rgba(
-                crate::Size::new(f64::from(width), f64::from(height)),
+            let image = crate::image::Image::from_rgba(
+                crate::geometry::Size::new(f64::from(width), f64::from(height)),
                 vec![255; (width * height * 4) as usize],
             )
             .unwrap();

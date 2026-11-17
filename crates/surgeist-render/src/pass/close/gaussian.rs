@@ -560,12 +560,19 @@ pub(super) fn composite_footprint_is_exact(
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, FilterColorSpace, FilterDomains, GaussianInput, GaussianSource, Layer,
-        RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext,
         backend::DeviceCapabilities,
+        capability::Capabilities,
+        filter_domains::FilterDomains,
+        filter_model::FilterColorSpace,
         frame::{FrameContext, FramePlan},
-        prepare_gaussian,
+        gaussian::GaussianInput,
+        gaussian::GaussianSource,
+        gaussian::prepare_gaussian,
+        geometry::Size,
+        layer::Layer,
         renderer::Antialiasing,
+        scene::Scene,
     };
 
     fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {
@@ -577,7 +584,7 @@ mod tests {
         SharedValue::from_accounted(data, &account.storage()).unwrap()
     }
     fn plan(kind: u8, sigma: [f64; 2]) -> LoweredGraphPlan {
-        let bounds = crate::Rect::new(0.0, 0.0, 4.0, 4.0);
+        let bounds = crate::geometry::Rect::new(0.0, 0.0, 4.0, 4.0);
         let operation = prepare_gaussian(
             GaussianInput::new().with_standard_deviations(sigma[0], sigma[1]),
             FilterColorSpace::LinearSrgb,
@@ -594,7 +601,7 @@ mod tests {
             1 => GaussianSource::constant(Color::BLACK, bounds, bounds).unwrap(),
             _ => GaussianSource::periodic(
                 input,
-                crate::Rect::new(0.0, 0.0, 2.5, 1.25),
+                crate::geometry::Rect::new(0.0, 0.0, 2.5, 1.25),
                 bounds,
                 bounds,
             )

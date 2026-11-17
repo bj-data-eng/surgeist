@@ -179,15 +179,16 @@ fn image_observation<'a>(
 #[cfg(test)]
 mod tests {
     use crate::{
-        Color, Image, ImageFit, Layer, Rect, RenderAccountingContext, RenderAccountingOptions,
-        RenderLimits, RenderWork, Scene, Size,
+        accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+        accounting::RenderLimits, accounting::RenderWork, geometry::Rect, geometry::Size,
+        image::Image, image::ImageFit, layer::Layer, paint::Color, scene::Scene,
     };
 
     #[cfg(not(target_family = "wasm"))]
     #[test]
     fn deeply_nested_layers_can_be_inspected_on_a_bounded_stack() {
         use super::Command;
-        use crate::RenderResource;
+        use crate::accounting::RenderResource;
 
         std::thread::Builder::new()
             .name("deep scene inspection".into())
@@ -244,8 +245,8 @@ mod tests {
     fn pending_siblings_are_admitted_before_inspecting_children() {
         use super::Command;
         use crate::{
-            RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
-            RenderResource,
+            accounting::RenderAccountingError, accounting::RenderPhase, accounting::RenderQuantity,
+            accounting::RenderRefusal, accounting::RenderRefusalReason, accounting::RenderResource,
         };
 
         let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
@@ -344,10 +345,13 @@ mod tests {
         // not an owned retained identity with a source payload destructor.
         assert_eq!(usage.work(RenderWork::ImageIdentityDrops), 0);
         assert_eq!(
-            usage.peak(crate::RenderResource::ScratchCpuBytes),
+            usage.peak(crate::accounting::RenderResource::ScratchCpuBytes),
             std::mem::size_of::<&Image>() as u64
         );
-        assert_eq!(usage.live(crate::RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(
+            usage.live(crate::accounting::RenderResource::ScratchCpuBytes),
+            0
+        );
     }
 
     #[test]

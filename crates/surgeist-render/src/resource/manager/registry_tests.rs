@@ -1,7 +1,13 @@
 use super::*;
 use crate::{
-    RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
-    RenderLimits, RenderPhase, RenderQuantity, RenderWork,
+    accounting::RenderAccountingContext,
+    accounting::RenderAccountingOptions,
+    accounting::RenderAttemptKind,
+    accounting::RenderAttemptStatus,
+    accounting::RenderLimits,
+    accounting::RenderPhase,
+    accounting::RenderQuantity,
+    accounting::RenderWork,
     resource::{ResourceManager, ResourceRetentionOutcome, lock_state},
 };
 
@@ -20,7 +26,7 @@ fn two_idle_entries() -> ResourceManager {
 
 fn descriptor() -> EffectTextureDescriptor {
     EffectTextureDescriptor::try_capture(
-        crate::PhysicalSize::new(1, 1),
+        crate::geometry::PhysicalSize::new(1, 1),
         wgpu::TextureUsages::TEXTURE_BINDING,
     )
     .unwrap()
@@ -436,7 +442,7 @@ fn active_frame_index_growth_charges_overlap_and_ordered_removal() {
 
 #[test]
 fn mutable_registration_receipt_names_the_missing_identity_and_preserves_custody() {
-    use crate::RenderResource;
+    use crate::accounting::RenderResource;
     use surgeist_ledger::Dimension;
 
     let manager = two_idle_entries();
@@ -636,8 +642,9 @@ fn registry_frame_audit_refuses_the_first_unadmitted_entry_and_retries_without_m
 #[test]
 fn repeated_preflight_requests_require_each_distinct_idle_reservation_lookup() {
     use crate::{
-        RenderResource, ResourceCacheBudget,
+        accounting::RenderResource,
         accounting::{RenderCpuScope, RendererCpu},
+        renderer::ResourceCacheBudget,
     };
     use surgeist_ledger::Dimension;
 
@@ -722,8 +729,9 @@ fn repeated_preflight_requests_require_each_distinct_idle_reservation_lookup() {
 #[test]
 fn preflight_reserves_distinct_idle_entries_before_previewing_fresh_bytes_at_capacity() {
     use crate::{
-        RenderResource, ResourceCacheBudget,
+        accounting::RenderResource,
         accounting::{RenderCpuScope, RendererCpu},
+        renderer::ResourceCacheBudget,
     };
     use surgeist_ledger::Dimension;
 

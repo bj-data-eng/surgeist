@@ -11,7 +11,7 @@ use vello_encoding::{
 #[cfg(test)]
 use vello_encoding::{DrawTag, PathTag, Style};
 
-use crate::{BackendErrorCode, Error, Result, TextRun, encode::glyph_paint_brush};
+use crate::{Error, Result, encode::glyph_paint_brush, error::BackendErrorCode, text::TextRun};
 
 use super::bounded::{self, EncodingBacking, Growth, PayloadCustody};
 use super::dash::QualifiedDash;
@@ -138,7 +138,7 @@ impl<'a> QualifiedStroke<'a> {
     ) -> Result<Self> {
         let width = geometry_action(account, || style.width)?;
         if geometry_action(account, || width == 0.0)? {
-            return Err(crate::GeometryRealizationError::UnrepresentableStroke.into());
+            return Err(crate::error::GeometryRealizationError::UnrepresentableStroke.into());
         }
         geometry::qualify_stroke(style, transform, account)?;
         Ok(Self(style))
@@ -160,13 +160,17 @@ impl VelloScene {
         SceneDraws(self)
     }
 
-    pub(crate) fn import_image(&mut self, image: &crate::Image, account: &Account) -> Result<()> {
+    pub(crate) fn import_image(
+        &mut self,
+        image: &crate::image::Image,
+        account: &Account,
+    ) -> Result<()> {
         self.payloads.keep(account.import_image(image)?, account)
     }
 
     pub(crate) fn draw_image_region(
         &mut self,
-        image: &crate::Image,
+        image: &crate::image::Image,
         region: crate::image::ResolvedImageRegion,
         source_to_device: kurbo::Affine,
         account: &Account,
@@ -174,7 +178,7 @@ impl VelloScene {
         self.import_image(image, account)?;
         let expansion = super::image_atlas::ImageExpansion::for_region(
             region.window(),
-            image.rendering_hint() == Some(crate::ImageRendering::Pixelated),
+            image.rendering_hint() == Some(crate::image::ImageRendering::Pixelated),
             source_to_device,
             account,
         )?;
@@ -205,7 +209,7 @@ impl VelloScene {
     /// applies the supplied compensation to the image brush transform.
     pub(crate) fn with_pixelated_image<T>(
         &mut self,
-        image: &crate::Image,
+        image: &crate::image::Image,
         source_to_device: kurbo::Affine,
         encode: impl FnOnce(&mut SceneDraws<'_>, kurbo::Affine) -> Result<T>,
         account: &Account,
@@ -236,7 +240,7 @@ impl VelloScene {
             .get(first_patch..)
             .ok_or_else(|| {
                 crate::Error::new(
-                    crate::BackendErrorCode::RenderFailed,
+                    crate::error::BackendErrorCode::RenderFailed,
                     "image patch suffix starts beyond the recorded patches",
                 )
             })?;
@@ -577,7 +581,7 @@ impl VelloScene {
                 account,
             )?;
             geometry::qualify_inverse(&blur_transform, account)?;
-            let reason = crate::GeometryRealizationError::UnrepresentableBlur;
+            let reason = crate::error::GeometryRealizationError::UnrepresentableBlur;
             let width = geometry::scalar(width, reason, account)?;
             let height = geometry::scalar(height, reason, account)?;
             let radius = geometry::scalar(radius, reason, account)?;
@@ -604,7 +608,7 @@ impl VelloScene {
         self.append_validated_glyph_run(
             validated,
             kurbo::Affine::IDENTITY,
-            crate::PhysicalSize::new(2, 2),
+            crate::geometry::PhysicalSize::new(2, 2),
             account,
         )
     }
@@ -613,7 +617,7 @@ impl VelloScene {
         &mut self,
         run: &TextRun<'_>,
         transform: kurbo::Affine,
-        target_extent: crate::PhysicalSize,
+        target_extent: crate::geometry::PhysicalSize,
         account: &Account,
     ) -> Result<()> {
         let validated = preflight_selected_glyphs(run, account)?;
@@ -642,7 +646,7 @@ impl VelloScene {
         &mut self,
         validated: ValidatedGlyphRun<'_>,
         transform: kurbo::Affine,
-        target_extent: crate::PhysicalSize,
+        target_extent: crate::geometry::PhysicalSize,
         account: &Account,
     ) -> Result<()> {
         let mut unsupported = None;
@@ -694,7 +698,7 @@ impl VelloScene {
             brush.native_glyph_transform(paint_transform, target_extent, account)?;
         let image_expansion = match validated.paint().fill().kind() {
             crate::paint::PaintKind::Image(image)
-                if image.rendering_hint() == Some(crate::ImageRendering::Pixelated)
+                if image.rendering_hint() == Some(crate::image::ImageRendering::Pixelated)
                     && image.data.width != 0
                     && image.data.height != 0 =>
             {
@@ -1320,9 +1324,11 @@ mod pixelated_tests {
     fn assert_native_lattice_boundary(limit: u64) {
         use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{
-            Image, ImageRendering, RenderAccountingError, RenderAccountingOptions,
-            RenderAttemptStatus, RenderCpuScope, RenderEvent, RenderLimits, RenderPhaseFilter,
-            RenderProfile, RenderQuantity, RenderRefusalReason, RenderResource, Size,
+            accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+            accounting::RenderAttemptStatus, accounting::RenderCpuScope, accounting::RenderEvent,
+            accounting::RenderLimits, accounting::RenderPhaseFilter, accounting::RenderProfile,
+            accounting::RenderQuantity, accounting::RenderRefusalReason,
+            accounting::RenderResource, geometry::Size, image::Image, image::ImageRendering,
         };
 
         let image = Image::from_rgba(Size::new(2.0, 1.0), vec![255, 0, 0, 255, 0, 0, 255, 255])
@@ -1441,28 +1447,28 @@ mod pixelated_tests {
 
     #[test]
     fn original_font_glyph_diagnostic_precedes_sweep_field_capacity() {
-        let font = crate::FontData::try_from_bytes(
+        let font = crate::text::FontData::try_from_bytes(
             include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
             0,
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
-        let gradient = crate::Gradient::try_sweep(
-            crate::Point::new(f64::MAX, f64::MAX),
+        let gradient = crate::paint::Gradient::try_sweep(
+            crate::geometry::Point::new(f64::MAX, f64::MAX),
             vec![
-                crate::GradientStop::try_new(0.0, crate::Color::BLACK).unwrap(),
-                crate::GradientStop::try_new(1.0, crate::Color::TRANSPARENT).unwrap(),
+                crate::paint::GradientStop::try_new(0.0, crate::paint::Color::BLACK).unwrap(),
+                crate::paint::GradientStop::try_new(1.0, crate::paint::Color::TRANSPARENT).unwrap(),
             ],
         )
         .unwrap();
-        let glyphs = [crate::TextGlyph::try_new(u32::MAX, 0.0, 16.0, 16.0).unwrap()];
-        let run = crate::TextRun::try_new(
-            crate::FontRef::new(2123).with_data(font),
+        let glyphs = [crate::text::TextGlyph::try_new(u32::MAX, 0.0, 16.0, 16.0).unwrap()];
+        let run = crate::text::TextRun::try_new(
+            crate::text::FontRef::new(2123).with_data(font),
             16.0,
-            crate::Transform::identity(),
-            crate::TextPaint::try_fill(gradient.into()).unwrap(),
+            crate::geometry::Transform::identity(),
+            crate::text::TextPaint::try_fill(gradient.into()).unwrap(),
             &glyphs,
-            crate::TextRunBounds::unspecified(),
+            crate::text::TextRunBounds::unspecified(),
         )
         .unwrap();
         let error = VelloScene::default()
@@ -1509,7 +1515,9 @@ mod pixelated_tests {
     #[test]
     fn empty_pixelated_brush_keeps_transparent_draw_without_expansion() {
         let account = Account::for_test();
-        let image = crate::Image::from_rgba(crate::Size::new(0.0, 2.0), Vec::<u8>::new()).unwrap();
+        let image =
+            crate::image::Image::from_rgba(crate::geometry::Size::new(0.0, 2.0), Vec::<u8>::new())
+                .unwrap();
         let brush = crate::encode::image_brush(&image);
         let mut scene = VelloScene::default();
         scene.import_image(&image, &account).unwrap();
@@ -1553,8 +1561,8 @@ mod pixelated_tests {
     #[test]
     fn images_gradients_and_pixelated_glyph_paint_keep_their_resolved_draw_data() {
         let account = Account::for_test();
-        let image = crate::Image::from_rgba(
-            crate::Size::new(2.0, 1.0),
+        let image = crate::image::Image::from_rgba(
+            crate::geometry::Size::new(2.0, 1.0),
             vec![255, 0, 0, 255, 0, 0, 255, 255],
         )
         .unwrap();
@@ -1570,29 +1578,35 @@ mod pixelated_tests {
             .fill(
                 Fill::NonZero,
                 kurbo::Affine::IDENTITY,
-                SceneBrush::new((&gradient).into(), None, crate::PhysicalSize::new(32, 16)),
+                SceneBrush::new(
+                    (&gradient).into(),
+                    None,
+                    crate::geometry::PhysicalSize::new(32, 16),
+                ),
                 None,
                 &kurbo::Rect::new(0.0, 0.0, 16.0, 4.0),
                 &account,
             )
             .unwrap();
-        let font = crate::FontData::try_from_bytes(
+        let font = crate::text::FontData::try_from_bytes(
             include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
             0,
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
-        let glyphs = [crate::TextGlyph::try_new(58, 0.0, 8.0, 8.0).unwrap()];
-        let run = crate::TextRun::try_new(
-            crate::FontRef::new(1_u64).with_data(font),
+        let glyphs = [crate::text::TextGlyph::try_new(58, 0.0, 8.0, 8.0).unwrap()];
+        let run = crate::text::TextRun::try_new(
+            crate::text::FontRef::new(1_u64).with_data(font),
             8.0,
-            crate::Transform::scale(2.2, 3.7).unwrap(),
-            crate::TextPaint::try_fill(crate::Paint::image(
-                image.clone().rendering(crate::ImageRendering::Pixelated),
+            crate::geometry::Transform::scale(2.2, 3.7).unwrap(),
+            crate::text::TextPaint::try_fill(crate::paint::Paint::image(
+                image
+                    .clone()
+                    .rendering(crate::image::ImageRendering::Pixelated),
             ))
             .unwrap(),
             &glyphs,
-            crate::TextRunBounds::unspecified(),
+            crate::text::TextRunBounds::unspecified(),
         )
         .unwrap();
         scene.encode_text_run(&run, &account).unwrap();
@@ -1626,9 +1640,9 @@ mod pixelated_tests {
         let prepared = scene
             .prepare_raster(
                 RasterParameters::try_new(
-                    crate::PhysicalSize::new(32, 32),
+                    crate::geometry::PhysicalSize::new(32, 32),
                     peniko::Color::TRANSPARENT,
-                    crate::Antialiasing::Area,
+                    crate::renderer::Antialiasing::Area,
                 )
                 .unwrap(),
                 &account,
@@ -1644,8 +1658,8 @@ mod pixelated_tests {
     #[test]
     fn pixelated_callback_marks_only_new_draws_and_preserves_original_source() {
         let account = Account::for_test();
-        let image = crate::Image::from_rgba(
-            crate::Size::new(2.0, 1.0),
+        let image = crate::image::Image::from_rgba(
+            crate::geometry::Size::new(2.0, 1.0),
             vec![255, 0, 0, 255, 0, 0, 255, 255],
         )
         .unwrap();
@@ -1691,15 +1705,24 @@ mod pixelated_tests {
         )
         .unwrap();
         assert_eq!(plan.entries.len(), 2);
-        assert_eq!(plan.entries[0].extent(), crate::PhysicalSize::new(2, 1));
-        assert_eq!(plan.entries[1].extent(), crate::PhysicalSize::new(4, 4));
+        assert_eq!(
+            plan.entries[0].extent(),
+            crate::geometry::PhysicalSize::new(2, 1)
+        );
+        assert_eq!(
+            plan.entries[1].extent(),
+            crate::geometry::PhysicalSize::new(4, 4)
+        );
     }
 
     #[test]
     fn expansion_mark_rejects_an_out_of_range_suffix_and_preserves_the_prefix() {
         let account = Account::for_test();
-        let image =
-            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let image = crate::image::Image::from_rgba(
+            crate::geometry::Size::new(1.0, 1.0),
+            vec![0, 0, 255, 255],
+        )
+        .unwrap();
         let brush = crate::encode::image_brush(&image);
         let mut scene = VelloScene::default();
         scene.import_image(&image, &account).unwrap();
@@ -1731,7 +1754,10 @@ mod pixelated_tests {
     #[test]
     fn atlas_refuses_a_registered_region_paired_with_an_empty_image() {
         use super::super::image_atlas::ImageAtlasPlan;
-        use crate::{Image, PhysicalSize, Rect, Size, image::ResolvedImageRegion};
+        use crate::{
+            geometry::PhysicalSize, geometry::Rect, geometry::Size, image::Image,
+            image::ResolvedImageRegion,
+        };
 
         let account = Account::for_test();
         let source = Image::from_rgba(Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
@@ -1774,12 +1800,18 @@ mod pixelated_tests {
     #[test]
     fn pixelated_callback_error_preserves_its_cause_and_releases_the_draft() {
         use crate::accounting::{FrameFixture, RendererCpu};
-        use crate::{RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope, RenderResource};
+        use crate::{
+            accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+            accounting::RenderCpuScope, accounting::RenderResource,
+        };
 
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let image =
-            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let image = crate::image::Image::from_rgba(
+            crate::geometry::Size::new(1.0, 1.0),
+            vec![0, 0, 255, 255],
+        )
+        .unwrap();
         let brush = crate::encode::image_brush(&image);
         let transform = kurbo::Affine::scale(2.0);
         // Warm registry backing so the draft's image lease has a stable opening baseline.
@@ -1851,7 +1883,10 @@ mod pixelated_tests {
                     account,
                 )?;
                 assert_eq!(plan.entries.len(), 1);
-                assert_eq!(plan.entries[0].extent(), crate::PhysicalSize::new(2, 2));
+                assert_eq!(
+                    plan.entries[0].extent(),
+                    crate::geometry::PhysicalSize::new(2, 2)
+                );
                 Ok(())
             })
             .unwrap()
@@ -1867,31 +1902,34 @@ mod pixelated_tests {
         let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
         let visible = provider.charmap().map('A').unwrap().to_u32();
         let space = provider.charmap().map(' ').unwrap().to_u32();
-        let font = crate::FontData::try_from_bytes(
+        let font = crate::text::FontData::try_from_bytes(
             bytes.to_vec(),
             0,
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
         let glyphs = [
-            crate::TextGlyph::try_new(space, f64::MAX, f64::MAX, 16.0).unwrap(),
-            crate::TextGlyph::try_new(visible, f64::MIN_POSITIVE, 16.0, 16.0).unwrap(),
+            crate::text::TextGlyph::try_new(space, f64::MAX, f64::MAX, 16.0).unwrap(),
+            crate::text::TextGlyph::try_new(visible, f64::MIN_POSITIVE, 16.0, 16.0).unwrap(),
         ];
         fn make_run<'a>(
-            font: &crate::FontData,
-            glyphs: &'a [crate::TextGlyph],
-        ) -> crate::TextRun<'a> {
-            crate::TextRun::try_new(
-                crate::FontRef::new(1_u64).with_data(font.clone()),
+            font: &crate::text::FontData,
+            glyphs: &'a [crate::text::TextGlyph],
+        ) -> crate::text::TextRun<'a> {
+            crate::text::TextRun::try_new(
+                crate::text::FontRef::new(1_u64).with_data(font.clone()),
                 16.0,
-                crate::Transform::identity(),
-                crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                crate::geometry::Transform::identity(),
+                crate::text::TextPaint::try_fill(crate::paint::Paint::color(
+                    crate::paint::Color::BLACK,
+                ))
+                .unwrap(),
                 glyphs,
-                crate::TextRunBounds::unspecified(),
+                crate::text::TextRunBounds::unspecified(),
             )
             .unwrap()
         }
-        let mut context = crate::RenderAccountingContext::default();
+        let mut context = crate::accounting::RenderAccountingContext::default();
         let invalid = make_run(&font, &glyphs[..]);
         let error = context
             .run(
@@ -1905,7 +1943,7 @@ mod pixelated_tests {
             .unwrap_err();
         assert_eq!(
             error.geometry_realization_diagnostic(),
-            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 1 })
+            Some(&crate::error::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 1 })
         );
         assert_eq!(
             context
@@ -1914,7 +1952,7 @@ mod pixelated_tests {
                 .attempt()
                 .unwrap()
                 .usage()
-                .live(crate::RenderResource::ScratchCpuBytes),
+                .live(crate::accounting::RenderResource::ScratchCpuBytes),
             0
         );
         let empty = make_run(&font, &glyphs[..1]);
@@ -1940,23 +1978,26 @@ mod pixelated_tests {
         let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
         let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
         let visible = provider.charmap().map('A').unwrap().to_u32();
-        let font = crate::FontData::try_from_bytes(
+        let font = crate::text::FontData::try_from_bytes(
             bytes.to_vec(),
             0,
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
-        let glyphs = [crate::TextGlyph::try_new(visible, 0.0, 0.0, 0.0).unwrap()];
-        let run = crate::TextRun::try_new(
-            crate::FontRef::new(1_u64).with_data(font),
+        let glyphs = [crate::text::TextGlyph::try_new(visible, 0.0, 0.0, 0.0).unwrap()];
+        let run = crate::text::TextRun::try_new(
+            crate::text::FontRef::new(1_u64).with_data(font),
             2.0_f32.powi(-43),
-            crate::Transform::scale(2.0_f64.powi(48), 2.0_f64.powi(48)).unwrap(),
-            crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+            crate::geometry::Transform::scale(2.0_f64.powi(48), 2.0_f64.powi(48)).unwrap(),
+            crate::text::TextPaint::try_fill(crate::paint::Paint::color(
+                crate::paint::Color::BLACK,
+            ))
+            .unwrap(),
             &glyphs,
-            crate::TextRunBounds::unspecified(),
+            crate::text::TextRunBounds::unspecified(),
         )
         .unwrap();
-        let mut context = crate::RenderAccountingContext::default();
+        let mut context = crate::accounting::RenderAccountingContext::default();
         let error = context
             .run(
                 crate::accounting::RenderAttemptKind::Frame,
@@ -1969,29 +2010,36 @@ mod pixelated_tests {
             .unwrap_err();
         assert_eq!(
             error.geometry_realization_diagnostic(),
-            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 0 })
+            Some(&crate::error::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 0 })
         );
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
-        assert_eq!(usage.live(crate::RenderResource::ScratchCpuBytes), 0);
-        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(
+            usage.live(crate::accounting::RenderResource::ScratchCpuBytes),
+            0
+        );
+        assert_eq!(
+            usage.live(crate::accounting::RenderResource::RetainedCpuBytes),
+            0
+        );
     }
 
     #[test]
     fn geometry_role_remapping_preserves_capacity_and_accounting_domains() {
-        let capacity: Error = crate::GeometryRealizationError::InsufficientNativeCapacity.into();
+        let capacity: Error =
+            crate::error::GeometryRealizationError::InsufficientNativeCapacity.into();
         assert_eq!(
             glyph_geometry_error(capacity, 3).geometry_realization_diagnostic(),
-            Some(&crate::GeometryRealizationError::InsufficientNativeCapacity)
+            Some(&crate::error::GeometryRealizationError::InsufficientNativeCapacity)
         );
         let path: Error =
-            crate::GeometryRealizationError::UnrepresentablePath { element_index: 2 }.into();
+            crate::error::GeometryRealizationError::UnrepresentablePath { element_index: 2 }.into();
         assert_eq!(
             glyph_geometry_error(path, 3).geometry_realization_diagnostic(),
-            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 3 })
+            Some(&crate::error::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 3 })
         );
-        let mut context = crate::RenderAccountingContext::new(
-            crate::RenderAccountingOptions::new().with_limits(
-                crate::RenderLimits::new()
+        let mut context = crate::accounting::RenderAccountingContext::new(
+            crate::accounting::RenderAccountingOptions::new().with_limits(
+                crate::accounting::RenderLimits::new()
                     .with_work_limit(RenderWork::CoordinateVisits, 0)
                     .unwrap(),
             ),
@@ -2023,7 +2071,7 @@ mod pixelated_tests {
         let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
         let visible = provider.charmap().map('A').unwrap().to_u32();
         let empty = provider.charmap().map(' ').unwrap().to_u32();
-        let font = crate::FontData::try_from_bytes(
+        let font = crate::text::FontData::try_from_bytes(
             bytes.to_vec(),
             0,
             surgeist_test::fixtures::FONT_LIMITS,
@@ -2069,22 +2117,25 @@ mod pixelated_tests {
             "authentic Ahem space has no outline segments"
         );
         let glyphs = [
-            crate::TextGlyph::try_new(visible, 0.0, 16.0, 16.0).unwrap(),
-            crate::TextGlyph::try_new(visible, 16.0, 16.0, 16.0).unwrap(),
-            crate::TextGlyph::try_new(empty, 32.0, 16.0, 16.0).unwrap(),
+            crate::text::TextGlyph::try_new(visible, 0.0, 16.0, 16.0).unwrap(),
+            crate::text::TextGlyph::try_new(visible, 16.0, 16.0, 16.0).unwrap(),
+            crate::text::TextGlyph::try_new(empty, 32.0, 16.0, 16.0).unwrap(),
         ];
         let mut scene = VelloScene::default();
         for (size, transform) in [
-            (16.0, crate::Transform::identity()),
-            (32.0, crate::Transform::scale(2.2, 3.7).unwrap()),
+            (16.0, crate::geometry::Transform::identity()),
+            (32.0, crate::geometry::Transform::scale(2.2, 3.7).unwrap()),
         ] {
-            let run = crate::TextRun::try_new(
-                crate::FontRef::new(1_u64).with_data(font.clone()),
+            let run = crate::text::TextRun::try_new(
+                crate::text::FontRef::new(1_u64).with_data(font.clone()),
                 size,
                 transform,
-                crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                crate::text::TextPaint::try_fill(crate::paint::Paint::color(
+                    crate::paint::Color::BLACK,
+                ))
+                .unwrap(),
                 &glyphs,
-                crate::TextRunBounds::unspecified(),
+                crate::text::TextRunBounds::unspecified(),
             )
             .unwrap();
             scene.encode_text_run(&run, &account).unwrap();
@@ -2132,7 +2183,7 @@ mod pixelated_tests {
         ];
         for &(bytes, variable) in fixtures {
             let account = Account::for_test();
-            let font = crate::FontData::try_from_bytes(
+            let font = crate::text::FontData::try_from_bytes(
                 bytes.to_vec(),
                 0,
                 surgeist_test::fixtures::FONT_LIMITS,
@@ -2155,14 +2206,17 @@ mod pixelated_tests {
                 {
                     continue;
                 }
-                let glyphs = [crate::TextGlyph::try_new(id, 0.0, 20.0, 20.0).unwrap()];
-                let run = crate::TextRun::try_new(
-                    crate::FontRef::new(1_u64).with_data(font.clone()),
+                let glyphs = [crate::text::TextGlyph::try_new(id, 0.0, 20.0, 20.0).unwrap()];
+                let run = crate::text::TextRun::try_new(
+                    crate::text::FontRef::new(1_u64).with_data(font.clone()),
                     20.0,
-                    crate::Transform::identity(),
-                    crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                    crate::geometry::Transform::identity(),
+                    crate::text::TextPaint::try_fill(crate::paint::Paint::color(
+                        crate::paint::Color::BLACK,
+                    ))
+                    .unwrap(),
                     &glyphs,
-                    crate::TextRunBounds::unspecified(),
+                    crate::text::TextRunBounds::unspecified(),
                 )
                 .unwrap();
                 let qualified = preflight_selected_glyphs(&run, &account).unwrap();
@@ -2173,16 +2227,19 @@ mod pixelated_tests {
             }
             let id = selected.expect("fixture must expose a nonempty ordinary outline");
             let glyphs = [
-                crate::TextGlyph::try_new(id, 0.0, 20.0, 20.0).unwrap(),
-                crate::TextGlyph::try_new(id, 20.0, 20.0, 20.0).unwrap(),
+                crate::text::TextGlyph::try_new(id, 0.0, 20.0, 20.0).unwrap(),
+                crate::text::TextGlyph::try_new(id, 20.0, 20.0, 20.0).unwrap(),
             ];
-            let run = crate::TextRun::try_new(
-                crate::FontRef::new(1_u64).with_data(font),
+            let run = crate::text::TextRun::try_new(
+                crate::text::FontRef::new(1_u64).with_data(font),
                 20.0,
-                crate::Transform::scale(1.75, 0.6).unwrap(),
-                crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                crate::geometry::Transform::scale(1.75, 0.6).unwrap(),
+                crate::text::TextPaint::try_fill(crate::paint::Paint::color(
+                    crate::paint::Color::BLACK,
+                ))
+                .unwrap(),
                 &glyphs,
-                crate::TextRunBounds::unspecified(),
+                crate::text::TextRunBounds::unspecified(),
             )
             .unwrap();
             let mut scene = VelloScene::default();

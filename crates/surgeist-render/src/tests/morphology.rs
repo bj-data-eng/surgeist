@@ -2,9 +2,12 @@
 //! discrete definitions; they do not use production ranges, tables or queries.
 use super::convolution::{assert_pixel, bounds, image, pixel, renderer_and_surface};
 use crate::{
-    Color, FilterColorSpace, FilterDomains, Image, ImageBuffer, ImageFit, Layer, MorphologyInput,
-    MorphologyOperator as Op, MorphologySource, Parameters, PreparedMorphology, Rect,
-    RenderAccountingContext, Renderer, Scene, Surface, prepare_morphology,
+    accounting::RenderAccountingContext, filter_domains::FilterDomains,
+    filter_model::FilterColorSpace, geometry::Rect, image::Image, image::ImageBuffer,
+    image::ImageFit, layer::Layer, morphology::MorphologyInput,
+    morphology::MorphologyOperator as Op, morphology::MorphologySource,
+    morphology::PreparedMorphology, morphology::prepare_morphology, paint::Color,
+    renderer::Renderer, scene::Scene, surface::Parameters, surface::Surface,
 };
 
 pub(super) fn operation(input: MorphologyInput, space: FilterColorSpace) -> PreparedMorphology {
@@ -30,7 +33,7 @@ pub(super) fn finite_scene(
 pub(super) fn render(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) -> ImageBuffer {
     let stats = pollster::block_on(renderer.render(surface, scene, Parameters::default())).unwrap();
     assert_eq!(stats, renderer.stats());
-    assert_eq!(stats.route, Some(crate::RenderRoute::GpuGraph));
+    assert_eq!(stats.route, Some(crate::stats::RenderRoute::GpuGraph));
     pollster::block_on(renderer.read_headless(surface)).unwrap()
 }
 fn white(a: u8) -> [u8; 4] {
@@ -143,7 +146,7 @@ fn public_morphology_nonpositive_disabled_and_positive_grid_point_preserve_numer
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::KernelSampleVisits),
+                .work(crate::accounting::RenderWork::KernelSampleVisits),
             0
         );
     }
@@ -455,7 +458,7 @@ fn public_morphology_huge_finite_radius_uses_bounded_semantic_proofs_before_cast
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::KernelSampleVisits),
+                .work(crate::accounting::RenderWork::KernelSampleVisits),
             0
         );
     }
@@ -516,7 +519,7 @@ fn public_morphology_periodic_extrema_wrap_the_authentic_fundamental_canvas() {
 
 #[test]
 fn public_morphology_density_two_threshold_uses_actual_axis_grid() {
-    use crate::{Options, Size};
+    use crate::{geometry::Size, renderer::Options};
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(4.0, 1.0), 2.0)).unwrap();
@@ -547,7 +550,7 @@ fn public_morphology_density_two_threshold_uses_actual_axis_grid() {
 
 #[test]
 fn public_morphology_positive_scaling_overflow_is_consumed_only_by_proved_huge_routes() {
-    use crate::{Options, Size};
+    use crate::{geometry::Size, renderer::Options};
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(5.0, 1.0), 2.0)).unwrap();
@@ -620,7 +623,10 @@ fn public_morphology_positive_scaling_overflow_is_consumed_only_by_proved_huge_r
 
 #[test]
 fn public_morphology_reached_capture_and_period_mapping_refusals_keep_the_owning_diagnostic() {
-    use crate::{MorphologyNumericPhase, MorphologyPreparationError, Transform};
+    use crate::{
+        geometry::Transform, morphology::MorphologyNumericPhase,
+        morphology::MorphologyPreparationError,
+    };
     let (mut renderer, mut surface) = renderer_and_surface(4, 1);
     let full = bounds(4, 1);
     let mut old = Scene::new();

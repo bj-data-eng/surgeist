@@ -1,9 +1,9 @@
 use super::{
     Account, CpuAccount, CpuHold, CpuImport, PreparationHold, RenderAccountingError, RenderResource,
 };
-#[cfg(test)]
-use crate::GlyphPreparationError;
 use crate::Result;
+#[cfg(test)]
+use crate::text::GlyphPreparationError;
 use std::ops::{Deref, DerefMut};
 
 mod packed;
@@ -119,7 +119,7 @@ impl std::error::Error for StorageContractError {}
 impl From<StorageContractError> for crate::Error {
     fn from(value: StorageContractError) -> Self {
         Self::new(
-            crate::BackendErrorCode::RenderFailed,
+            crate::error::BackendErrorCode::RenderFailed,
             "owned-vector storage contract failed",
         )
         .with_source(value)
@@ -1297,7 +1297,7 @@ mod tests {
                     let _value = value;
                     if exit == 1 {
                         Err(crate::Error::new(
-                            crate::BackendErrorCode::RenderFailed,
+                            crate::error::BackendErrorCode::RenderFailed,
                             "boxed owner caller failed",
                         ))
                     } else {
@@ -1567,7 +1567,7 @@ mod tests {
         let mut context = RenderAccountingContext::default();
         let result: Result<()> = context.prepare(
             RenderAttemptKind::GlyphRun,
-            crate::GlyphRunLimits::new(0, 0, 0, 0),
+            crate::text::GlyphRunLimits::new(0, 0, 0, 0),
             #[cfg(feature = "render-text")]
             None,
             |account| {
@@ -1662,11 +1662,11 @@ mod tests {
             std::mem::size_of::<DisposalCompletion>(),
             std::mem::size_of::<DisposalStart<'_>>(),
             std::mem::size_of::<crate::accounting::ForwardPhase<'_>>(),
-            std::mem::size_of::<PreparationValue<crate::Gradient>>(),
+            std::mem::size_of::<PreparationValue<crate::paint::Gradient>>(),
             std::mem::size_of::<crate::image::AccountedImageBuffer>(),
             std::mem::size_of::<crate::readback::ReadbackOutput>(),
             std::mem::size_of::<AccountedVec<u8>>(),
-            std::mem::size_of::<crate::ImageBuffer>(),
+            std::mem::size_of::<crate::image::ImageBuffer>(),
             std::mem::size_of::<SharedValueData<Vec<u8>>>(),
             std::mem::size_of::<SharedValueData<u32>>()
         );
@@ -1674,12 +1674,12 @@ mod tests {
             "actual shared payload bytes: Vec<u8>={}, u32={}, Image={}; backing capacity={capacity}, baseline={baseline}, exact={exact}",
             allocation,
             std::mem::size_of::<SharedValueData<u32>>(),
-            std::mem::size_of::<SharedValueData<crate::Image>>()
+            std::mem::size_of::<SharedValueData<crate::image::Image>>()
         );
         for limit in [exact - 1, exact] {
             let cpu = RendererCpu::new(
                 RenderAccountingOptions::new()
-                    .with_limits(crate::RenderLimits::new().with_retained_bytes(limit)),
+                    .with_limits(crate::accounting::RenderLimits::new().with_retained_bytes(limit)),
             )
             .unwrap();
             let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
@@ -1694,10 +1694,12 @@ mod tests {
                     error.accounting_diagnostic(),
                     Some(RenderAccountingError::CpuRefused {
                         scope: RenderCpuScope::Root,
-                        quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                        quantity: crate::accounting::RenderQuantity::Resource(
+                            RenderResource::RetainedCpuBytes
+                        ),
                         current: baseline + capacity as u64,
                         amount: allocation,
-                        reason: crate::RenderRefusalReason::Limit { limit },
+                        reason: crate::accounting::RenderRefusalReason::Limit { limit },
                     })
                 );
             } else {
@@ -1744,7 +1746,7 @@ mod tests {
         let limit = baseline + capacity as u64 + allocation;
         let cpu = RendererCpu::new(
             RenderAccountingOptions::new()
-                .with_limits(crate::RenderLimits::new().with_retained_bytes(limit)),
+                .with_limits(crate::accounting::RenderLimits::new().with_retained_bytes(limit)),
         )
         .unwrap();
         let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
@@ -1767,10 +1769,12 @@ mod tests {
             error.accounting_diagnostic(),
             Some(RenderAccountingError::CpuRefused {
                 scope: RenderCpuScope::Root,
-                quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                quantity: crate::accounting::RenderQuantity::Resource(
+                    RenderResource::RetainedCpuBytes
+                ),
                 current: baseline + blocking_capacity + capacity as u64,
                 amount: allocation,
-                reason: crate::RenderRefusalReason::Limit { limit },
+                reason: crate::accounting::RenderRefusalReason::Limit { limit },
             })
         );
         let refused = cpu.snapshot().unwrap();
@@ -1822,7 +1826,7 @@ mod tests {
         }
         struct Probe {
             bytes: Vec<u8>,
-            image: Option<crate::Image>,
+            image: Option<crate::image::Image>,
             cpu: RendererCpu,
             drops: Arc<AtomicUsize>,
             observed: Arc<AtomicU64>,
@@ -1886,8 +1890,11 @@ mod tests {
                 .unwrap();
                 let account = cpu.at(RenderCpuScope::FrameBacking);
                 let storage = StorageAccount::Renderer(account.clone());
-                let image = crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 0, 255])
-                    .unwrap();
+                let image = crate::image::Image::from_rgba(
+                    crate::geometry::Size::new(1.0, 1.0),
+                    vec![0, 0, 0, 255],
+                )
+                .unwrap();
                 let import = account.import_image(&image, None).unwrap();
                 let imported = cpu
                     .snapshot()
@@ -1969,7 +1976,7 @@ mod tests {
                                 event,
                                 RenderCpuEvent::Change {
                                     scope: RenderCpuScope::FrameBacking,
-                                    kind: crate::RenderChangeKind::Release,
+                                    kind: crate::accounting::RenderChangeKind::Release,
                                     ..
                                 }
                             ))
@@ -1980,7 +1987,7 @@ mod tests {
                         event,
                         RenderCpuEvent::Change {
                             scope: RenderCpuScope::ImagePayloads,
-                            kind: crate::RenderChangeKind::Release,
+                            kind: crate::accounting::RenderChangeKind::Release,
                             ..
                         }
                     )));

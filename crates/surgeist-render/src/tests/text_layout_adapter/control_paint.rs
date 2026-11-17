@@ -1,7 +1,9 @@
 //! Real selected Text resources reach explicit headless GPU pixels.
 
 use super::*;
-use crate::{Options, Parameters, RenderRoute, Renderer, Size};
+use crate::{
+    geometry::Size, renderer::Options, renderer::Renderer, stats::RenderRoute, surface::Parameters,
+};
 use skrifa::MetadataProvider;
 
 const FONT_SIZE: f32 = 28.0;
@@ -145,7 +147,7 @@ fn retained_native_default_ignorables_paint_no_pixels_with_absent_or_visible_nom
                 &layout,
                 Transform::identity(),
                 limits(),
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(prepared.layout(), &layout));
@@ -425,7 +427,7 @@ fn retained_native_control_fonts_paint_distinct_codepoints_after_system_drop() {
             layout,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(prepared.layout(), layout));

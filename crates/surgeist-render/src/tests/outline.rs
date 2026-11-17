@@ -2,11 +2,31 @@ use super::support::{
     AHEM_FONT_BYTES, AHEM_GLYPH_X, default_graph_working_format_for_test, pixel_rgba,
 };
 use crate::{
-    Capabilities, Color, FontData, GlyphRunLimits, GlyphSynthesis, Gradient, GradientStop, Image,
-    ImageQuality, Options, Parameters, Point, PreparedGlyphRun, Rect, RenderRoute, Renderer, Scene,
-    Shape, Size, TextGlyph, TextInstance, TextPaint, Transform,
+    capability::Capabilities,
     command::RenderCommand,
     encode::encode_vello_scene_with_initial_transform,
+    geometry::Point,
+    geometry::Rect,
+    geometry::Size,
+    geometry::Transform,
+    image::Image,
+    image::ImageQuality,
+    paint::Color,
+    paint::Gradient,
+    paint::GradientStop,
+    renderer::Options,
+    renderer::Renderer,
+    scene::Scene,
+    shape::Shape,
+    stats::RenderRoute,
+    surface::Parameters,
+    text::FontData,
+    text::GlyphRunLimits,
+    text::GlyphSynthesis,
+    text::PreparedGlyphRun,
+    text::TextGlyph,
+    text::TextInstance,
+    text::TextPaint,
     vello_engine::scene::{VelloFillRuleObservationForTest, VelloPathElementObservationForTest},
 };
 
@@ -23,7 +43,7 @@ fn overlapping_outline() -> PreparedGlyphRun {
         &instance,
         &[glyph, glyph],
         GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap()
 }
@@ -96,7 +116,7 @@ fn overlapping_composite_outline() -> PreparedGlyphRun {
             &instance,
             &[glyph],
             GlyphRunLimits::new(1, 16, 1 << 20, 1 << 20),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(result.glyphs(), [glyph]);
@@ -133,7 +153,7 @@ fn prepared_glyph_run_normalization_and_encoder_share_one_real_run_wide_nonzero_
     let encoded = encode_vello_scene_with_initial_transform(
         &normalized,
         Transform::identity(),
-        crate::PhysicalSize::new(2, 2),
+        crate::geometry::PhysicalSize::new(2, 2),
         &crate::accounting::Account::for_test(),
     )
     .unwrap();
@@ -158,11 +178,11 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
     for (transform, expected) in [
         (
             Transform::scale(f64::MAX, 1.0).unwrap(),
-            crate::GeometryRealizationError::UnrepresentableTransform,
+            crate::error::GeometryRealizationError::UnrepresentableTransform,
         ),
         (
             Transform::translation(1e30, 0.0).unwrap(),
-            crate::GeometryRealizationError::InsufficientNativeCapacity,
+            crate::error::GeometryRealizationError::InsufficientNativeCapacity,
         ),
     ] {
         let mut scene = Scene::new();
@@ -180,7 +200,7 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
         let error = match encode_vello_scene_with_initial_transform(
             &normalized,
             Transform::identity(),
-            crate::PhysicalSize::new(2, 2),
+            crate::geometry::PhysicalSize::new(2, 2),
             &crate::accounting::Account::for_test(),
         ) {
             Ok(_) => panic!("unrepresentable composed affine cannot encode"),
@@ -204,7 +224,7 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
                 )
                 .unwrap(),
             Transform::identity(),
-            crate::PhysicalSize::new(2, 2),
+            crate::geometry::PhysicalSize::new(2, 2),
             &crate::accounting::Account::for_test(),
         )
         .is_ok()
@@ -283,7 +303,7 @@ fn prepared_glyph_run_real_gpu_color_gradient_and_image_keep_run_local_paint_spa
                 TextGlyph::try_new(AHEM_GLYPH_X, 2.0, 0.8, 1.0).unwrap(),
             ],
             GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
@@ -377,7 +397,7 @@ fn prepared_glyph_run_real_gpu_color_gradient_and_image_keep_run_local_paint_spa
 
 #[test]
 fn pixelated_outline_paint_preserves_native_and_prepared_glyph_pixels() {
-    use crate::{FontRef, ImageRendering, TextRun, TextRunBounds};
+    use crate::{image::ImageRendering, text::FontRef, text::TextRun, text::TextRunBounds};
 
     let font = FontData::try_from_bytes(
         AHEM_FONT_BYTES.to_vec(),
@@ -394,7 +414,7 @@ fn pixelated_outline_paint_preserves_native_and_prepared_glyph_pixels() {
             &TextInstance::try_new(1.0, vec![], GlyphSynthesis::none()).unwrap(),
             &glyphs,
             GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     let image = Image::from_rgba(
@@ -462,7 +482,7 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
                     &instance,
                     plain.glyphs(),
                     GlyphRunLimits::new(2, 32, 1 << 20, 1 << 20),
-                    &mut crate::RenderAccountingContext::default(),
+                    &mut crate::accounting::RenderAccountingContext::default(),
                 )
                 .unwrap();
             assert_eq!(prepared.path_elements().count(), 20);
@@ -498,7 +518,7 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
             let encoded = encode_vello_scene_with_initial_transform(
                 &normalized,
                 Transform::identity(),
-                crate::PhysicalSize::new(2, 2),
+                crate::geometry::PhysicalSize::new(2, 2),
                 &crate::accounting::Account::for_test(),
             )
             .unwrap();
@@ -569,13 +589,13 @@ fn any_absorbed_bold_point_refuses_even_when_other_copy_points_move() {
             &instance,
             &glyphs,
             GlyphRunLimits::new(2, 20, 1 << 20, 1 << 20),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert!(matches!(
         error.glyph_preparation_diagnostic(),
-        Some(crate::GlyphPreparationError::Numeric {
-            phase: crate::GlyphNumericPhase::Synthesis,
+        Some(crate::text::GlyphPreparationError::Numeric {
+            phase: crate::text::GlyphNumericPhase::Synthesis,
             value: 1.0,
         })
     ));

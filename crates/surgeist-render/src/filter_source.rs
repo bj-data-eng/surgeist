@@ -1,6 +1,8 @@
 //! Shared immutable native filter source declarations; the public GaussianSource
 //! remains the actual iterative Scene owner used by restrictive native receivers.
-use crate::{Color, FilterDomains, FilterEdgeMode, Rect};
+use crate::{
+    filter_domains::FilterDomains, filter_model::FilterEdgeMode, geometry::Rect, paint::Color,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum FilterSourceDescriptor {

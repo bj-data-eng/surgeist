@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    Antialiasing, Capabilities, Color, Extend, Image, ImageBuffer, ImageRendering, Layer,
-    PhysicalSize, Rect, ResolvedLayerAlphaMask, Scene, Size, Transform, frame::FrameContext,
-    reference,
+    capability::Capabilities, frame::FrameContext, geometry::PhysicalSize, geometry::Rect,
+    geometry::Size, geometry::Transform, image::Extend, image::Image, image::ImageBuffer,
+    image::ImageRendering, layer::Layer, layer::ResolvedLayerAlphaMask, paint::Color, reference,
+    renderer::Antialiasing, scene::Scene,
 };
 
 fn mask(size: PhysicalSize, alpha: &[u8], extend: Extend) -> Image {
@@ -169,7 +170,7 @@ fn pixelated_mask_graph_parameters_use_transformed_basis_and_device_scale() {
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn pixelated_mask_gpu_fractional_rotation_and_dpr_match_independent_alpha_oracle() {
-    use crate::{Options, Parameters, RenderRoute, Renderer};
+    use crate::{renderer::Options, renderer::Renderer, stats::RenderRoute, surface::Parameters};
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     for (dpr, logical_size, transform, vertical) in [
         (
@@ -241,9 +242,11 @@ fn pixelated_mask_gpu_fractional_rotation_and_dpr_match_independent_alpha_oracle
 #[test]
 fn pixelated_mask_accounts_for_both_placements_and_preserves_publication_on_refusal() {
     use crate::{
-        ImageQuality, Options, Parameters, RenderAccountingError, RenderAccountingOptions,
-        RenderAttemptStatus, RenderLimits, RenderPhase, RenderQuantity, RenderRefusalReason,
-        RenderRoute, RenderWork, Renderer,
+        accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+        accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderQuantity, accounting::RenderRefusalReason, accounting::RenderWork,
+        image::ImageQuality, renderer::Options, renderer::Renderer, stats::RenderRoute,
+        surface::Parameters,
     };
 
     let pixelated = mask(PhysicalSize::new(2, 1), &[0, 255], Extend::Pad);
@@ -355,7 +358,7 @@ fn pixelated_mask_accounts_for_both_placements_and_preserves_publication_on_refu
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn pixelated_mask_gpu_reuses_source_at_distinct_scales_and_preserves_extends() {
-    use crate::{Options, Parameters, RenderRoute, Renderer};
+    use crate::{renderer::Options, renderer::Renderer, stats::RenderRoute, surface::Parameters};
     let shared = mask(PhysicalSize::new(3, 1), &[0, 128, 255], Extend::Pad);
     let mut scene = Scene::new();
     let cases = [
@@ -423,7 +426,7 @@ fn pixelated_mask_gpu_reuses_source_at_distinct_scales_and_preserves_extends() {
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn rendering_hints_reach_mask_gpu_sampling_without_collapsing_to_medium() {
-    use crate::{Options, Parameters, Renderer};
+    use crate::{renderer::Options, renderer::Renderer, surface::Parameters};
     let mut scene = Scene::new();
     let mut expected = Vec::new();
     for (row, (hint, alpha)) in [

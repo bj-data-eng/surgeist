@@ -6,10 +6,13 @@ use super::displacement::{
     FORMATS, active, assert_premul, finite_scene, native_map, render, source_scene,
 };
 use crate::{
-    BackdropCaptureBounds, BackdropFilterInput, BlendMode, Color, DisplacementChannel as Channel,
-    DisplacementPreparationError, DisplacementSource, FilterBlur, FilterDomains, FilterList,
-    FilterOp, ImageFit, Layer, LayerComposition, PorterDuffOperator as Pd, PreparedDisplacementMap,
-    Rect, ResolvedLayerAlphaMask, Scene, Shape, Transform,
+    displacement::DisplacementChannel as Channel, displacement::DisplacementPreparationError,
+    displacement::DisplacementSource, displacement::PreparedDisplacementMap,
+    filter_domains::FilterDomains, geometry::Rect, geometry::Transform, image::ImageFit,
+    layer::BlendMode, layer::Layer, layer::LayerComposition, layer::PorterDuffOperator as Pd,
+    layer::ResolvedLayerAlphaMask, paint::Color, scene::Scene, shape::Shape,
+    style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+    style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
 };
 
 fn white(alpha: u8) -> [u8; 4] {

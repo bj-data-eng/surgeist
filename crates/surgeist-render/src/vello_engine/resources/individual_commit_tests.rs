@@ -57,7 +57,7 @@ fn options(profile: RenderProfile) -> RenderAccountingOptions {
 }
 fn manager(cpu: &RendererCpu, options: RenderAccountingOptions) -> ResourceManager {
     ResourceManager::with_generation(
-        crate::ResourceCacheBudget::DEFAULT,
+        crate::renderer::ResourceCacheBudget::DEFAULT,
         Generation::new(options).unwrap(),
         cpu.at(RenderCpuScope::DeviceBacking),
     )
@@ -95,7 +95,7 @@ fn clean_lease(
 fn cleanup_cost(
     profile: RenderProfile,
     cpu: &RendererCpu,
-    before: &crate::RenderCpuSnapshot,
+    before: &crate::accounting::RenderCpuSnapshot,
     phases: u64,
     probes: u64,
 ) {
@@ -128,7 +128,7 @@ fn cleanup_cost(
 
 #[test]
 fn native_resource_slots_retain_scoped_cpu_backing() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let (device, _) = renderer.default_wgpu_device_queue().unwrap();
     let options = options(RenderProfile::Summary { timing: false });
     let owner = RendererCpu::new(options).unwrap();
@@ -164,7 +164,7 @@ fn native_resource_slots_retain_scoped_cpu_backing() {
 
 #[test]
 fn native_resource_index_refuses_invalid_slots_and_scratch_before_gpu_allocation() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let (device, _) = renderer.default_wgpu_device_queue().unwrap();
     let account = Account::for_test();
     let mut recording = RecordingBuilder::new(&account).unwrap();
@@ -184,11 +184,11 @@ fn native_resource_index_refuses_invalid_slots_and_scratch_before_gpu_allocation
 
     intents.swap(0, 1);
     let limited_options = options.with_limits(
-        crate::RenderLimits::new().with_scratch_bytes(0),
+        crate::accounting::RenderLimits::new().with_scratch_bytes(0),
     );
     let limited_owner = RendererCpu::new(limited_options).unwrap();
     let limited_manager = ResourceManager::with_generation(
-        crate::ResourceCacheBudget::DEFAULT,
+        crate::renderer::ResourceCacheBudget::DEFAULT,
         Generation::new(limited_options).unwrap(),
         limited_owner.at(RenderCpuScope::DeviceBacking),
     );
@@ -196,8 +196,8 @@ fn native_resource_index_refuses_invalid_slots_and_scratch_before_gpu_allocation
     let error = result.err().unwrap();
     assert!(matches!(
         error.accounting_diagnostic(),
-        Some(crate::RenderAccountingError::CpuRefused {
-            quantity: crate::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+        Some(crate::accounting::RenderAccountingError::CpuRefused {
+            quantity: crate::accounting::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
             ..
         })
     ));
@@ -209,7 +209,7 @@ fn native_resource_index_refuses_invalid_slots_and_scratch_before_gpu_allocation
 
 #[test]
 fn native_resource_slots_qualify_kind_and_release_once() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let (device, _) = renderer.default_wgpu_device_queue().unwrap();
     let account = Account::for_test();
     let mut recording = RecordingBuilder::new(&account).unwrap();
@@ -265,7 +265,7 @@ fn native_atlas_retirement_removes_only_idle_persistent_atlases() {
         accounting::GenerationClass, resource::ResourceCacheKey, texture::EffectTextureDescriptor,
     };
 
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0;
     let options = options(RenderProfile::Off);
     let cpu = RendererCpu::new(options).unwrap();
@@ -390,7 +390,7 @@ fn native_atlas_retirement_removes_only_idle_persistent_atlases() {
 
 #[test]
 fn individual_clean_commit_preserves_retention_and_exact_readiness_maintenance() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0;
     for input in [Input::Empty, Input::Buffer, Input::BufferAndAtlas] {
         for policy in policies() {
@@ -608,7 +608,7 @@ fn individual_clean_commit_preserves_retention_and_exact_readiness_maintenance()
 fn individual_final_readiness_fault_preserves_first_error_and_aborts_actual_frame() {
     const READINESS_ERROR: &str =
         "resource manager is unavailable after a retained-byte accounting invariant failure";
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0;
     for input in [Input::Buffer, Input::BufferAndAtlas] {
         for policy in policies() {
@@ -658,16 +658,16 @@ fn individual_final_readiness_fault_preserves_first_error_and_aborts_actual_fram
                             .ensure_healthy()
                             .unwrap_err()
                             .accounting_diagnostic();
-                        let quantity = crate::RenderQuantity::Resource(
+                        let quantity = crate::accounting::RenderQuantity::Resource(
                             RenderResource::RegisteredCacheGpuBytes,
                         );
                         assert_eq!(
                             diagnostic,
-                            Some(crate::RenderAccountingError::GenerationRefused {
+                            Some(crate::accounting::RenderAccountingError::GenerationRefused {
                                 quantity,
                                 current: last_bytes - 1,
                                 amount: last_bytes,
-                                reason: crate::RenderRefusalReason::Underflow,
+                                reason: crate::accounting::RenderRefusalReason::Underflow,
                             })
                         );
                         let usage = generation.usage().unwrap();
@@ -701,7 +701,7 @@ fn individual_final_readiness_fault_preserves_first_error_and_aborts_actual_fram
 
 #[test]
 fn external_unwind_discards_checked_individual_owners_under_both_retention_policies() {
-    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let mut renderer = pollster::block_on(crate::renderer::Renderer::new(crate::renderer::Options::default())).unwrap();
     let device = renderer.default_wgpu_device_queue().unwrap().0;
     for input in [Input::Empty, Input::Buffer, Input::BufferAndAtlas] {
         for policy in policies() {

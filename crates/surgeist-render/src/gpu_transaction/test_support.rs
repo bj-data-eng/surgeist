@@ -176,7 +176,7 @@ pub(super) fn after_graph_authorization_for_test(lease: &super::GpuOperationLeas
             );
             assert_eq!(probe.generation.replace(Some(lease.generation)), None);
             lease.signal.record_uncaptured_fault_for_test(
-                crate::GpuFaultKind::Internal,
+                crate::error::GpuFaultKind::Internal,
                 "terminal after actual graph authorization",
             );
         }
@@ -188,10 +188,11 @@ use super::{
     VelloResourceCommitProof,
 };
 #[cfg(feature = "render-window")]
-use crate::DeviceLossReason;
+use crate::error::DeviceLossReason;
 use crate::{
-    Result, RuntimeOperation,
+    Result,
     backend::DeviceSignal,
+    error::RuntimeOperation,
     resource::{ResourceCacheKey, ResourceManager},
     vello_engine::{PendingVelloResourceCommit, VelloResourceAllocationSummaryForTest},
 };
@@ -428,7 +429,7 @@ pub(crate) async fn fault_command_buffer_after_submit_for_test(
     queue: &wgpu::Queue,
     command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     signal: &DeviceSignal,
-    kind: crate::GpuFaultKind,
+    kind: crate::error::GpuFaultKind,
     message: &str,
     operation: RuntimeOperation,
 ) -> Result<()> {

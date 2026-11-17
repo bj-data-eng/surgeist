@@ -1,6 +1,11 @@
-use super::*;
 use super::{geometry::validate_rect_maxima, paint::PaintKind, shape::ShapeKind};
 use crate::accounting::{Account, RenderWork};
+use crate::{
+    Error, Result, capability::Capabilities, geometry::Point, geometry::Radii, geometry::Rect,
+    geometry::Size, geometry::Transform, layer::Filter, layer::Layer, layer::Shadow, paint::Color,
+    paint::Paint, shape::Path, shape::PathElement, shape::Shape, shape::Stroke,
+    surface::SurfaceOptions, text::TextGlyph,
+};
 
 pub(crate) fn validate_path_in(path: &Path, account: &Account) -> Result<()> {
     for element in path.elements() {

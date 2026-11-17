@@ -238,7 +238,7 @@ pub(super) fn prepare(
             let record = palette
                 .get(usize::from(layer.palette))
                 .ok_or_else(invalid)?;
-            Some(crate::Color::try_rgba(
+            Some(crate::paint::Color::try_rgba(
                 f32::from(record.red()) / 255.0,
                 f32::from(record.green()) / 255.0,
                 f32::from(record.blue()) / 255.0,

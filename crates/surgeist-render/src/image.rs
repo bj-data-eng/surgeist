@@ -1,7 +1,8 @@
-use super::{BackendErrorCode, Error, PhysicalSize, Rect, Result, Size};
+use super::{Error, Result};
 use crate::accounting::{
     Account, AccountedVec, CpuAccount, RenderCpuScope, RenderWork, SharedValue, StorageAccount,
 };
+use crate::{error::BackendErrorCode, geometry::PhysicalSize, geometry::Rect, geometry::Size};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -81,7 +82,7 @@ impl RawImageUploadDescriptor {
         bytes: Arc<[u8]>,
         account: &Account,
     ) -> Result<Self> {
-        use crate::DisplacementPreparationError as Invalid;
+        use crate::displacement::DisplacementPreparationError as Invalid;
         let width = account
             .coordinate(|| image_dimension(size.width(), "width"))?
             .map_err(|_| Invalid::InvalidMapDimensions { size })?;
@@ -103,9 +104,10 @@ impl RawImageUploadDescriptor {
         }
         let storage = account.storage();
         let backing = match &storage {
-            StorageAccount::Preparation(account) => {
-                Some(account.acquire(crate::RenderResource::RetainedCpuBytes, bytes.len())?)
-            }
+            StorageAccount::Preparation(account) => Some(account.acquire(
+                crate::accounting::RenderResource::RetainedCpuBytes,
+                bytes.len(),
+            )?),
             StorageAccount::Renderer(_) => None,
         };
         let import = account.import_pixel_bytes(&bytes)?;
@@ -209,8 +211,8 @@ impl RawImageUploadDescriptor {
 
     pub(crate) fn upload_row_bytes(&self) -> Result<u32> {
         self.physical_size().width().checked_mul(4).ok_or_else(|| {
-            crate::DisplacementPreparationError::Numeric {
-                phase: crate::DisplacementNumericPhase::Sampling,
+            crate::displacement::DisplacementPreparationError::Numeric {
+                phase: crate::displacement::DisplacementNumericPhase::Sampling,
                 value: f64::from(self.physical_size().width()) * 4.0,
             }
             .into()
@@ -218,13 +220,16 @@ impl RawImageUploadDescriptor {
     }
 
     pub(crate) fn validate_upload_byte_len(&self, actual: usize) -> Result<()> {
-        let actual = u64::try_from(actual).map_err(|_| crate::RenderAccountingError::Invariant)?;
+        let actual = u64::try_from(actual)
+            .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?;
         if actual != self.byte_len() {
-            return Err(crate::DisplacementPreparationError::InvalidMapPayload {
-                expected: self.byte_len(),
-                actual,
-            }
-            .into());
+            return Err(
+                crate::displacement::DisplacementPreparationError::InvalidMapPayload {
+                    expected: self.byte_len(),
+                    actual,
+                }
+                .into(),
+            );
         }
         Ok(())
     }
@@ -290,7 +295,7 @@ impl RawImageUploadKey {
                     .payload
                     .cpu
                     .as_ref()
-                    .ok_or(crate::RenderAccountingError::Invariant)?
+                    .ok_or(crate::accounting::RenderAccountingError::Invariant)?
                     .at(RenderCpuScope::Cleanup);
                 let mut result = Ok(false);
                 cpu.maintenance_phase(|| {
@@ -950,7 +955,7 @@ pub enum ImageFit {
 ///
 /// The byte length always equals `width * height * 4`. Zero-area buffers are
 /// represented by an empty byte vector. This resolved CPU-visible value is
-/// produced only by explicit [`crate::Renderer::read_headless`] or by validated
+/// produced only by explicit [`crate::renderer::Renderer::read_headless`] or by validated
 /// caller construction; production rendering does not consume it as a fallback.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImageBuffer {
@@ -1234,60 +1239,75 @@ mod raw_upload_tests {
 
     #[test]
     fn native_pixel_byte_refusal_precedes_hashing_and_retains_no_failed_payload() {
-        let limits = crate::RenderLimits::new().with_retained_bytes(3);
-        let mut context =
-            crate::RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let limits = crate::accounting::RenderLimits::new().with_retained_bytes(3);
+        let mut context = crate::accounting::RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(limits),
+        );
         let pixels: Arc<[u8]> = Arc::from([255, 0, 0, 64]);
         let weak = Arc::downgrade(&pixels);
-        let error = crate::prepare_native_displacement_map(
+        let error = crate::displacement::prepare_native_displacement_map(
             Size::new(1.0, 1.0),
             pixels,
             Rect::new(0.0, 0.0, 1.0, 1.0),
             &mut context,
         )
         .unwrap_err();
-        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
+            error.accounting_diagnostic()
         else {
             panic!("native bytes require a typed admission refusal");
         };
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Resource(crate::RenderResource::RetainedCpuBytes)
+            crate::accounting::RenderQuantity::Resource(
+                crate::accounting::RenderResource::RetainedCpuBytes
+            )
         );
         assert_eq!((refusal.current(), refusal.amount()), (0, 4));
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::DisplacementMapByteVisits), 0);
-        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(
+            usage.live(crate::accounting::RenderResource::RetainedCpuBytes),
+            0
+        );
         assert!(weak.upgrade().is_none());
     }
     #[test]
     fn hash_refusal_releases_admitted_pixel_backing_without_a_cleanup_fault() {
-        let limits = crate::RenderLimits::new()
+        let limits = crate::accounting::RenderLimits::new()
             .with_work_limit(RenderWork::DisplacementMapByteVisits, 0)
             .unwrap();
-        let mut context =
-            crate::RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let mut context = crate::accounting::RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(limits),
+        );
         let pixels: Arc<[u8]> = Arc::from([255, 0, 0, 64]);
         let weak = Arc::downgrade(&pixels);
-        let error = crate::prepare_native_displacement_map(
+        let error = crate::displacement::prepare_native_displacement_map(
             Size::new(1.0, 1.0),
             pixels,
             Rect::new(0.0, 0.0, 1.0, 1.0),
             &mut context,
         )
         .unwrap_err();
-        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
+            error.accounting_diagnostic()
         else {
             panic!("native hashing requires a typed admission refusal");
         };
         assert_eq!(
             refusal.quantity(),
-            crate::RenderQuantity::Work(RenderWork::DisplacementMapByteVisits)
+            crate::accounting::RenderQuantity::Work(RenderWork::DisplacementMapByteVisits)
         );
         assert_eq!((refusal.current(), refusal.amount()), (0, 4));
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
-        assert_eq!(usage.peak(crate::RenderResource::RetainedCpuBytes), 4);
-        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(
+            usage.peak(crate::accounting::RenderResource::RetainedCpuBytes),
+            4
+        );
+        assert_eq!(
+            usage.live(crate::accounting::RenderResource::RetainedCpuBytes),
+            0
+        );
         assert!(weak.upgrade().is_none());
         assert_eq!(context.last_attempt().unwrap().cleanup_fault(), None);
     }

@@ -4,11 +4,13 @@
 use super::test_support::{ScopePopGate, ScopePopPosition};
 use super::*;
 use crate::{
-    Options, Renderer, ResourceCacheBudget,
     accounting::{
         FrameFixture, RenderAccountingOptions, RenderProfile, RenderResource, RenderWork,
         RendererCpu,
     },
+    renderer::Options,
+    renderer::Renderer,
+    renderer::ResourceCacheBudget,
     resource::{ResourceCacheKey, ResourceManager},
 };
 use std::{
@@ -349,7 +351,7 @@ fn canceled_submission_resolve_includes_actual_lease_cleanup_in_phase_elapsed() 
     LEASE_CLEANUP_CLOCK.with_borrow_mut(|clock| *clock = Some(Rc::clone(&time)));
     let _reset = LeaseCleanupClockReset;
     let options = RenderAccountingOptions::new()
-        .with_clock(crate::RenderClock::Host(lease_cleanup_clock))
+        .with_clock(crate::accounting::RenderClock::Host(lease_cleanup_clock))
         .with_profile(RenderProfile::Summary { timing: true });
     let cpu = RendererCpu::new(options).unwrap();
     let mut fixture = FrameFixture::new(&cpu, options);
@@ -504,7 +506,8 @@ fn terminal_after_actual_graph_authorization_retains_prior_output_and_suppresses
         take_last_presented_texture_for_test,
     };
     use crate::{
-        Color, EffectQualityPolicy, Parameters, Rect, RenderGenerationScope, RenderRoute, Scene,
+        accounting::RenderGenerationScope, geometry::Rect, paint::Color,
+        renderer::EffectQualityPolicy, scene::Scene, stats::RenderRoute, surface::Parameters,
     };
     let mut renderer = pollster::block_on(Renderer::new(
         Options::default()
@@ -589,7 +592,7 @@ fn terminal_after_actual_graph_authorization_retains_prior_output_and_suppresses
     let report = renderer.last_attempt().unwrap();
     assert_eq!(
         report.status(),
-        crate::RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        crate::accounting::RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
     );
     assert_eq!(
         report
@@ -629,8 +632,9 @@ fn terminal_after_actual_graph_authorization_retains_prior_output_and_suppresses
 fn graph_and_readback_profiles_preserve_work_custody_and_owning_phases() {
     use crate::backend::configured_display_free_presented_surface_for_test;
     use crate::{
-        Color, EffectQualityPolicy, Parameters, Rect, RenderEvent, RenderGenerationScope,
-        RenderPhaseFilter, Scene, Size,
+        accounting::RenderEvent, accounting::RenderGenerationScope, accounting::RenderPhaseFilter,
+        geometry::Rect, geometry::Size, paint::Color, renderer::EffectQualityPolicy, scene::Scene,
+        surface::Parameters,
     };
     let mut baseline = None;
     for profile in [

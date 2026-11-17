@@ -4,11 +4,12 @@ pub(crate) use repeating::GradientGeometry;
 pub use repeating::RepeatingGradient;
 
 use super::{
-    Error, GradientHintError, Image, Point, Result,
+    Error, Result,
     validation::{
         validate_color, validate_finite_f64, validate_paint, validate_point, validate_positive_f64,
     },
 };
+use crate::{error::GradientHintError, geometry::Point, image::Image};
 
 /// A validated numeric-sRGB color with straight red, green, blue, and alpha channels.
 ///

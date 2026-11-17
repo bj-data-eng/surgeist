@@ -7,10 +7,11 @@ use super::{
 #[cfg(test)]
 use crate::resource::ResourceIdentity;
 use crate::{
-    PhysicalSize, Result,
+    Result,
     accounting::{Account, AccountedVec, RenderWork},
     backend::DeviceCapabilities,
     frame::MorphologyStage,
+    geometry::PhysicalSize,
     resource::{FrameResourceScope, ResourceLease},
     texture::EffectTextureDescriptor,
 };
@@ -541,14 +542,24 @@ impl MorphologyScratchBindings {
 mod tests {
     use super::*;
     use crate::{
-        Capabilities, Color, FilterColorSpace, FilterDomains, Layer, MorphologyInput,
-        MorphologyOperator, MorphologySource, Rect, RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext,
         accounting::{GenerationClass, GpuObjectKind, RenderAccountingOptions, RendererCpu},
         backend::Backend,
+        capability::Capabilities,
+        filter_domains::FilterDomains,
+        filter_model::FilterColorSpace,
         frame::{FrameContext, FramePlan},
+        geometry::Rect,
+        geometry::Size,
+        layer::Layer,
+        morphology::MorphologyInput,
+        morphology::MorphologyOperator,
+        morphology::MorphologySource,
+        morphology::prepare_morphology,
+        paint::Color,
         pass::{GraphExternalOutputView, LoweredGraphPlan},
-        prepare_morphology,
         resource::WorkingFormat,
+        scene::Scene,
     };
 
     fn lower(
@@ -597,7 +608,7 @@ mod tests {
         let context = FrameContext::try_new(
             Size::new(f64::from(width), f64::from(height)),
             1.0,
-            crate::Antialiasing::Area,
+            crate::renderer::Antialiasing::Area,
             Color::TRANSPARENT,
         )
         .unwrap();
@@ -607,7 +618,7 @@ mod tests {
         LoweredGraphPlan::try_lower_validated_graph(
             &graph,
             WorkingFormat::HighPrecision,
-            crate::Format::Rgba8,
+            crate::surface::Format::Rgba8,
             capabilities,
             account,
         )
@@ -617,7 +628,8 @@ mod tests {
     async fn backend() -> (Backend, crate::backend::DeviceSlotIdentity) {
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let mut backend = Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options).unwrap();
+        let mut backend =
+            Backend::new(crate::renderer::ResourceCacheBudget::DISABLED, cpu, options).unwrap();
         let identity = backend
             .select_device(None)
             .await
@@ -644,14 +656,14 @@ mod tests {
                     .begin_gpu_operation(
                         identity,
                         crate::gpu_transaction::GpuOperationStage::Render,
-                        crate::RuntimeOperation::MorphologyRendering,
+                        crate::error::RuntimeOperation::MorphologyRendering,
                     )
                     .unwrap();
                 let mut prepared = backend
                     .prepare_graph_resources(
                         identity,
                         lowered,
-                        crate::EffectQualityPolicy::RequireHighPrecision,
+                        crate::renderer::EffectQualityPolicy::RequireHighPrecision,
                         &account,
                     )
                     .unwrap();
@@ -798,8 +810,12 @@ mod tests {
                 let pending = prepared
                     .encode_custom_spine(
                         &mut encoder,
-                        GraphExternalOutputView::try_new(&view, crate::Format::Rgba8, extent)
-                            .unwrap(),
+                        GraphExternalOutputView::try_new(
+                            &view,
+                            crate::surface::Format::Rgba8,
+                            extent,
+                        )
+                        .unwrap(),
                         &account,
                     )
                     .await
@@ -850,7 +866,10 @@ mod tests {
                 drop(prepared);
                 drop((view, output));
                 transaction
-                    .finish(crate::RuntimeOperation::MorphologyRendering, Some(&account))
+                    .finish(
+                        crate::error::RuntimeOperation::MorphologyRendering,
+                        Some(&account),
+                    )
                     .await
                     .unwrap();
                 let manager = backend
@@ -873,7 +892,7 @@ mod tests {
                 .prepare_graph_resources(
                     identity,
                     lowered,
-                    crate::EffectQualityPolicy::RequireHighPrecision,
+                    crate::renderer::EffectQualityPolicy::RequireHighPrecision,
                     &account,
                 )
                 .unwrap();
@@ -926,7 +945,7 @@ mod tests {
                 .prepare_graph_resources(
                     identity,
                     lowered,
-                    crate::EffectQualityPolicy::RequireHighPrecision,
+                    crate::renderer::EffectQualityPolicy::RequireHighPrecision,
                     &account,
                 )
                 .unwrap();
@@ -967,7 +986,7 @@ mod tests {
                     .prepare_graph_resources(
                         identity,
                         lowered,
-                        crate::EffectQualityPolicy::RequireHighPrecision,
+                        crate::renderer::EffectQualityPolicy::RequireHighPrecision,
                         &account,
                     )
                     .unwrap();

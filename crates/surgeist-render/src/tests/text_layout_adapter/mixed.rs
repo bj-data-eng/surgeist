@@ -354,7 +354,7 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
             &layout,
             outer,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(scene.layout(), &layout));
@@ -398,7 +398,7 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
         &layout,
         Transform::identity(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let retained = published.scene().clone();
@@ -422,7 +422,7 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
             &layout,
             Transform::identity(),
             limits(),
-            &mut crate::RenderAccountingContext::default()
+            &mut crate::accounting::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -481,7 +481,7 @@ fn mixed_odd_upright_punctuation_and_hebrew_rotate_only_r_outlines_and_reverse_s
         &layout,
         Transform::translation(7.0, 9.0).unwrap(),
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(scene.layout(), &layout));

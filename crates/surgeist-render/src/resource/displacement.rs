@@ -1,7 +1,9 @@
 //! Immutable, exactly compared displacement storage-buffer uploads.
 use crate::{
-    DisplacementNumericPhase, DisplacementPreparationError, Result,
+    Result,
     accounting::{Account, CpuAccount, RenderCpuScope, RenderWork, SharedValue},
+    displacement::DisplacementNumericPhase,
+    displacement::DisplacementPreparationError,
     frame::{DisplacementAddressEntry, DisplacementMapRecord},
 };
 use std::hash::{Hash, Hasher};
@@ -238,7 +240,7 @@ impl DisplacementBufferPlan {
             bytes.extend_from_slice(&word)?;
         }
         if bytes.len() != length {
-            return Err(crate::RenderAccountingError::Invariant.into());
+            return Err(crate::accounting::RenderAccountingError::Invariant.into());
         }
         Ok(Self {
             key: DisplacementBufferKey {
@@ -264,7 +266,7 @@ impl DisplacementBufferPlan {
     }
     pub(crate) fn validate_upload_byte_len(&self, actual: usize) -> Result<()> {
         if actual != self.key.bytes.len() {
-            return Err(crate::RenderAccountingError::Invariant.into());
+            return Err(crate::accounting::RenderAccountingError::Invariant.into());
         }
         Ok(())
     }

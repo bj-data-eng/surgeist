@@ -18,8 +18,9 @@ use super::{
     RuntimeVelloSpan, RuntimeVelloSpanScope,
 };
 use crate::{
-    BackendErrorCode, Error, Format, Result,
+    Error, Result,
     backend::DeviceCapabilities,
+    error::BackendErrorCode,
     filter::{
         CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS, ColorClampBoundary, RuntimeFilterAmount,
         RuntimeFilterAngle, RuntimeUnitFilterAmount,
@@ -43,6 +44,7 @@ use crate::{
         ShaderSamplingFilterKey, ShaderTextureFormatKey,
     },
     style::ColorFilterOp,
+    surface::Format,
 };
 
 impl RuntimeSpatialDescriptor {
@@ -1191,14 +1193,14 @@ mod terminal_accounting_tests {
     #[test]
     fn lowering_admits_the_terminal_pass_after_the_complete_graph_prefix() {
         let setup = Account::for_test();
-        let commands = crate::Scene::new()
-            .normalize(crate::Capabilities::CURRENT, &setup)
+        let commands = crate::scene::Scene::new()
+            .normalize(crate::capability::Capabilities::CURRENT, &setup)
             .unwrap();
         let context = crate::frame::FrameContext::try_new(
-            crate::Size::new(4.0, 4.0),
+            crate::geometry::Size::new(4.0, 4.0),
             1.0,
-            crate::Antialiasing::Area,
-            crate::Color::TRANSPARENT,
+            crate::renderer::Antialiasing::Area,
+            crate::paint::Color::TRANSPARENT,
         )
         .unwrap();
         let graph = crate::frame::forced_base_graph_for_test(commands, context).unwrap();
@@ -1234,11 +1236,14 @@ mod terminal_accounting_tests {
                     result.is_err(),
                     "terminal inspection requires its own admission"
                 );
-                assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                assert_eq!(
+                    attempt.status(),
+                    crate::accounting::RenderAttemptStatus::Refused
+                );
                 let refusal = attempt.refusal().unwrap();
                 assert_eq!(
                     refusal.quantity,
-                    crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                    crate::accounting::RenderQuantity::Work(RenderWork::GraphNodeVisits)
                 );
                 assert_eq!((refusal.current, refusal.amount), (25, 1));
             }

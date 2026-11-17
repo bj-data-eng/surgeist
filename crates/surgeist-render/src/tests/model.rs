@@ -9,18 +9,25 @@ mod color_bitmap;
 use proptest::{prelude::any, prop_assert, prop_assert_eq, proptest};
 
 use crate::{
-    BlendMode, Capabilities, Color, CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag,
-    Dash, DegradedQuality, DegradedQualityKind, DeviceLossReason, EffectPrecision,
-    EffectQualityPolicy, Error, ErrorCode, Extend, FillRule, FilledPath, Filter, FontData, FontId,
-    FontRef, GpuFaultKind, Gradient, GradientStop, HitTestOwnership, Image, ImageBuffer, ImageFit,
-    ImageQuality, InvalidValue, Layer, LineCap, LineJoin, NormalizedPaintLayer, Paint, PaintColor,
-    Path, PathElement, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii, Rect,
-    RenderRoute, RenderSurfaceAvailability, RepeatingGradient, ResolvedLayerAlphaMask,
-    RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene,
-    Shadow, ShadowList, Shape, Size, Stats, Stroke, StrokeAlign, SurfaceIdentityMismatchKind,
-    SymbolicColorPolicy, TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextPaint,
-    TextRun, TextRunBounds, TextRunBoundsKind, TextShadowRun, Transform, UnresolvedResource,
-    UnresolvedResourceKind, UnsupportedPrimitive,
+    Error, ErrorCode, capability::Capabilities, capability::HitTestOwnership,
+    capability::SymbolicColorPolicy, error::DegradedQuality, error::DegradedQualityKind,
+    error::DeviceLossReason, error::GpuFaultKind, error::InvalidValue, error::PrimitiveFamily,
+    error::PrimitiveOperation, error::RenderSurfaceAvailability,
+    error::RuntimeCapabilityUnavailable, error::RuntimeCapabilityUnavailableReason,
+    error::RuntimeOperation, error::SurfaceIdentityMismatchKind, error::UnresolvedResource,
+    error::UnresolvedResourceKind, error::UnsupportedPrimitive, geometry::CoordinateSpaceId,
+    geometry::CoordinateSpaceKind, geometry::CoordinateSpaceTag, geometry::PhysicalSize,
+    geometry::Point, geometry::Radii, geometry::Rect, geometry::Size, geometry::Transform,
+    image::Extend, image::Image, image::ImageBuffer, image::ImageFit, image::ImageQuality,
+    layer::BlendMode, layer::Filter, layer::Layer, layer::ResolvedLayerAlphaMask, layer::Shadow,
+    layer::ShadowList, paint::Color, paint::Gradient, paint::GradientStop,
+    paint::NormalizedPaintLayer, paint::Paint, paint::PaintColor, paint::RepeatingGradient,
+    renderer::EffectQualityPolicy, scene::Scene, shape::Dash, shape::FillRule, shape::FilledPath,
+    shape::LineCap, shape::LineJoin, shape::Path, shape::PathElement, shape::Shape, shape::Stroke,
+    shape::StrokeAlign, stats::EffectPrecision, stats::RenderRoute, stats::Stats, text::FontData,
+    text::FontId, text::FontRef, text::TextDecorationLine, text::TextDecorationLineStyle,
+    text::TextGlyph, text::TextPaint, text::TextRun, text::TextRunBounds, text::TextRunBoundsKind,
+    text::TextShadowRun,
 };
 
 use crate::{
@@ -82,7 +89,7 @@ fn scene_stats_report_facts_without_renderer() {
         });
 
     let stats = scene
-        .inspect(&mut crate::RenderAccountingContext::default())
+        .inspect(&mut crate::accounting::RenderAccountingContext::default())
         .unwrap();
 
     assert_eq!(stats.commands, 6);
@@ -4727,22 +4734,22 @@ fn runtime_pair_is_listed(
 
 #[test]
 fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substitution() {
-    let instance = crate::TextInstance::try_new(
+    let instance = crate::text::TextInstance::try_new(
         16.0,
         vec![],
-        crate::GlyphSynthesis::try_new(0.25, 0.0).unwrap(),
+        crate::text::GlyphSynthesis::try_new(0.25, 0.0).unwrap(),
     )
     .unwrap();
     let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 0.0, 16.0).unwrap()];
-    let limits = crate::GlyphRunLimits::new(1, 100, 1 << 20, 1 << 20);
+    let limits = crate::text::GlyphRunLimits::new(1, 100, 1 << 20, 1 << 20);
     for (bytes, expected) in [
         (
             ahem_color_font(valid_cpal()),
-            crate::GlyphPreparationError::UnsupportedImageInstance,
+            crate::text::GlyphPreparationError::UnsupportedImageInstance,
         ),
         (
             ahem_sbix_font(rgba_png()),
-            crate::GlyphPreparationError::UnsupportedImageInstance,
+            crate::text::GlyphPreparationError::UnsupportedImageInstance,
         ),
     ] {
         let error = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
@@ -4751,7 +4758,7 @@ fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substituti
                 &instance,
                 &glyphs,
                 limits,
-                &mut crate::RenderAccountingContext::default(),
+                &mut crate::accounting::RenderAccountingContext::default(),
             )
             .unwrap_err();
         assert_eq!(error.glyph_preparation_diagnostic(), Some(&expected));
@@ -4763,18 +4770,19 @@ fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substituti
     )
     .unwrap();
     let ordinary =
-        crate::TextInstance::try_new(16.0, vec![], crate::GlyphSynthesis::none()).unwrap();
+        crate::text::TextInstance::try_new(16.0, vec![], crate::text::GlyphSynthesis::none())
+            .unwrap();
     let error = malformed
         .prepare_glyph_run(
             &ordinary,
             &glyphs,
             limits,
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert_eq!(
         error.glyph_preparation_diagnostic(),
-        Some(&crate::GlyphPreparationError::InvalidFont)
+        Some(&crate::text::GlyphPreparationError::InvalidFont)
     );
 }
 

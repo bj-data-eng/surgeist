@@ -5,11 +5,12 @@
 use vello_shaders::{BindType, ComputeShader, SHADERS};
 
 use crate::{
-    BackendErrorCode, Error, Result,
+    Error, Result,
     accounting::{
         Account, AccountedVec, CpuAccount, Generation, GpuObjectKind, OwnedGpu, RenderResource,
         RenderWork, StorageAccount,
     },
+    error::BackendErrorCode,
 };
 
 use super::recording::RasterKernel;
@@ -813,7 +814,7 @@ fn classify_checked_wgpu_error(failure_message: &'static str, source: wgpu::Erro
 
 #[cfg(test)]
 pub(crate) async fn checked_shader_validation_for_test(device: &wgpu::Device) -> Result<()> {
-    let generation = Generation::new(crate::RenderAccountingOptions::default())?;
+    let generation = Generation::new(crate::accounting::RenderAccountingOptions::default())?;
     checked_wgpu_build(device, || {
         let _module = generation.opaque(GpuObjectKind::ShaderModule, None, || {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -840,7 +841,9 @@ pub(crate) fn checked_scope_out_of_memory_for_test() -> Error {
 mod cpu_tests {
     use super::*;
     use crate::accounting::RendererCpu;
-    use crate::{RenderAccountingOptions, RenderCpuScope, RenderLimits};
+    use crate::{
+        accounting::RenderAccountingOptions, accounting::RenderCpuScope, accounting::RenderLimits,
+    };
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
@@ -1023,7 +1026,7 @@ mod cpu_tests {
     fn shader_preparation_records_work_in_device_backing() {
         let owner = RendererCpu::new(
             RenderAccountingOptions::default()
-                .with_profile(crate::RenderProfile::Summary { timing: false }),
+                .with_profile(crate::accounting::RenderProfile::Summary { timing: false }),
         )
         .unwrap();
         let cpu = owner.at(RenderCpuScope::DeviceBacking);
@@ -1143,8 +1146,10 @@ mod cpu_tests {
             let error = fine_shader_source(&cpu, shader, msaa8).unwrap_err();
             assert!(matches!(
                 error.accounting_diagnostic(),
-                Some(crate::RenderAccountingError::CpuRefused {
-                    quantity: crate::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+                Some(crate::accounting::RenderAccountingError::CpuRefused {
+                    quantity: crate::accounting::RenderQuantity::Resource(
+                        RenderResource::ScratchCpuBytes
+                    ),
                     ..
                 })
             ));
@@ -1239,8 +1244,10 @@ mod cpu_tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn shader_initialization_cpu_refusal_makes_no_native_resource_request() {
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+            crate::renderer::Options::default(),
+        ))
+        .unwrap();
         let (device, _) = renderer
             .default_wgpu_device_queue()
             .expect("shader initialization needs a host adapter");

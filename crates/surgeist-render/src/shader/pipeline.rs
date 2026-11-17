@@ -1817,14 +1817,17 @@ mod convolution_alpha_gpu_tests {
 
     #[test]
     fn convolution_preserve_alpha_gpu_guards_zero_and_subnormal_divisors() {
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+            crate::renderer::Options::default(),
+        ))
+        .unwrap();
         let (device, queue) = renderer
             .default_wgpu_device_queue()
             .expect("tiny-alpha shader coverage requires a GPU adapter");
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let account = Account::for_test();
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let cpu = account.cpu().unwrap();
         let layout =
             create_convolution_bind_group_layout(&generation, cpu, Some(&account), device).unwrap();
@@ -1903,8 +1906,8 @@ mod convolution_alpha_gpu_tests {
             source_grid_extent: [4, 1],
             result_grid_origin: [0; 2],
             result_grid_extent: [4, 1],
-            source_domain: crate::Rect::new(0.0, 0.0, 4.0, 1.0),
-            result_domain: crate::Rect::new(0.0, 0.0, 4.0, 1.0),
+            source_domain: crate::geometry::Rect::new(0.0, 0.0, 4.0, 1.0),
+            result_domain: crate::geometry::Rect::new(0.0, 0.0, 4.0, 1.0),
             result_capture_origin: [0.0; 2],
             result_capture_scale: 1.0,
             order: [1; 2],
@@ -1929,7 +1932,7 @@ mod convolution_alpha_gpu_tests {
         let accumulate_parameters = uniform(facts(1));
         let finalize_parameters = uniform(facts(2));
         let mut empty_facts = facts(4);
-        empty_facts.source_domain = crate::Rect::new(0.0, 0.0, 0.0, 1.0e12);
+        empty_facts.source_domain = crate::geometry::Rect::new(0.0, 0.0, 0.0, 1.0e12);
         let empty_parameters = uniform(empty_facts);
         let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
         let sums_view = sums.create_view(&wgpu::TextureViewDescriptor::default());
@@ -2160,14 +2163,17 @@ mod gaussian_pipeline_gpu_tests {
 
     #[test]
     fn gaussian_pipeline_entry_points_validate_with_only_reached_resources() {
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+            crate::renderer::Options::default(),
+        ))
+        .unwrap();
         let (device, _) = renderer
             .default_wgpu_device_queue()
             .expect("Gaussian pipeline validation requires a GPU adapter");
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let account = Account::for_test();
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let cpu = account.cpu().unwrap();
         let shader =
             create_gaussian_shader_module(&generation, cpu, Some(&account), device).unwrap();
@@ -2294,12 +2300,15 @@ mod morphology_shader_tests {
 
     #[test]
     fn morphology_gpu_creates_every_stage_pipeline_with_exact_resources_in_both_formats() {
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+            crate::renderer::Options::default(),
+        ))
+        .unwrap();
         let (device, _) = renderer.default_wgpu_device_queue().unwrap();
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let account = Account::for_test();
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let cpu = account.cpu().unwrap();
         let shader =
             create_morphology_shader_module(&generation, cpu, Some(&account), device).unwrap();
@@ -2354,12 +2363,15 @@ mod morphology_shader_tests {
     fn morphology_first_query_completes_point_selection_and_zeroes_finite_exterior() {
         use crate::shader::{MorphologyParameterBytes, MorphologyParameterFacts};
         use wgpu::util::DeviceExt;
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+            crate::renderer::Options::default(),
+        ))
+        .unwrap();
         let (device, queue) = renderer.default_wgpu_device_queue().unwrap();
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let account = Account::for_test();
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let cpu = account.cpu().unwrap();
         let description = MorphologyPassDescription {
             target_format: ShaderTextureFormatKey::FilterRgba32Float,
@@ -2607,12 +2619,15 @@ mod native_shadow_shader_tests {
 
     #[test]
     fn native_shadow_gpu_creates_all_branch_pipelines_in_both_working_formats() {
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let mut renderer = pollster::block_on(crate::renderer::Renderer::new(
+            crate::renderer::Options::default(),
+        ))
+        .unwrap();
         let (device, _) = renderer.default_wgpu_device_queue().unwrap();
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let account = Account::for_test();
-        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
+        let generation =
+            Generation::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
         let cpu = account.cpu().unwrap();
         let shader =
             create_native_shadow_shader_module(&generation, cpu, Some(&account), device).unwrap();

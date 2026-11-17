@@ -2,13 +2,16 @@
 use super::convolution::{assert_pixel, bounds, image, renderer_and_surface};
 use super::morphology::{assert_premul, finite_scene, operation, render, source_scene};
 use crate::{
-    BackdropCaptureBounds, BackdropFilterInput, BlendMode, Color, FilterBlur, FilterColorSpace,
-    FilterDomains, FilterList, FilterOp, ImageFit, Layer, LayerComposition, MorphologyInput,
-    MorphologyOperator as Op, MorphologySource, Parameters, PorterDuffOperator as Pd, Rect,
-    ResolvedLayerAlphaMask, Scene, Shape, Transform, UnitFilterAmount, resource::WorkingFormat,
+    filter_domains::FilterDomains, filter_model::FilterColorSpace, geometry::Rect,
+    geometry::Transform, image::ImageFit, layer::BlendMode, layer::Layer, layer::LayerComposition,
+    layer::PorterDuffOperator as Pd, layer::ResolvedLayerAlphaMask, morphology::MorphologyInput,
+    morphology::MorphologyOperator as Op, morphology::MorphologySource, paint::Color,
+    resource::WorkingFormat, scene::Scene, shape::Shape, style::filter::BackdropCaptureBounds,
+    style::filter::BackdropFilterInput, style::filter::FilterBlur, style::filter::FilterList,
+    style::filter::FilterOp, style::filter::UnitFilterAmount, surface::Parameters,
 };
 
-fn active(op: Op, x: f64, y: f64) -> crate::PreparedMorphology {
+fn active(op: Op, x: f64, y: f64) -> crate::morphology::PreparedMorphology {
     operation(
         MorphologyInput::new().with_operator(op).with_radii(x, y),
         FilterColorSpace::Srgb,
@@ -333,7 +336,7 @@ fn public_morphology_empty_domains_omit_huge_unused_backdrop_and_radius_work() {
                 .attempt()
                 .unwrap()
                 .usage()
-                .work(crate::RenderWork::KernelSampleVisits),
+                .work(crate::accounting::RenderWork::KernelSampleVisits),
             0
         );
     }

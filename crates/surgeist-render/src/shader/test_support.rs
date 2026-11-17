@@ -576,12 +576,13 @@ pub(crate) fn drop_shadow_colorize_key_facts_for_test(
 
 #[cfg(test)]
 pub(crate) fn device_pass_cache_owns_exact_key_spaces_for_test() -> bool {
-    let cpu = crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())
-        .expect("standalone cache CPU");
+    let cpu =
+        crate::accounting::RendererCpu::new(crate::accounting::RenderAccountingOptions::default())
+            .expect("standalone cache CPU");
     let cache = DevicePassCache::new(
-        Generation::new(crate::RenderAccountingOptions::default())
+        Generation::new(crate::accounting::RenderAccountingOptions::default())
             .expect("standalone pass-cache generation"),
-        cpu.at(crate::RenderCpuScope::DeviceBacking),
+        cpu.at(crate::accounting::RenderCpuScope::DeviceBacking),
     );
     cache.samplers.is_empty()
         && cache.layouts.is_empty()

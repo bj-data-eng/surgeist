@@ -3,8 +3,9 @@ use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase,
 use crate::filter_source::FilterSourceDescriptor;
 use crate::number_text::Number;
 use crate::{
-    Color, FilterColorSpace, FilterDomains, GaussianPreparationError, GaussianSource, Rect, Result,
-    Scene,
+    Result, filter_domains::FilterDomains, filter_model::FilterColorSpace,
+    gaussian::GaussianPreparationError, gaussian::GaussianSource, geometry::Rect, paint::Color,
+    scene::Scene,
 };
 
 /// Component-wise rectangular extrema selected for native morphology.
@@ -276,10 +277,13 @@ pub(crate) struct MorphologyForeground {
 mod tests {
     use super::*;
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, Capabilities, Error, ErrorCode, Filter,
-        FilterEdgeMode, FilterList, FilterOp, Layer, LayerComposition, PorterDuffOperator,
-        RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderQuantity, RenderResource,
-        Transform, command::NormalizedForegroundEffect, layer::LayerFilter, scene::Command,
+        Error, ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderLimits, accounting::RenderQuantity, accounting::RenderResource,
+        capability::Capabilities, command::NormalizedForegroundEffect,
+        filter_model::FilterEdgeMode, geometry::Transform, layer::Filter, layer::Layer,
+        layer::LayerComposition, layer::LayerFilter, layer::PorterDuffOperator, scene::Command,
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterList, style::filter::FilterOp,
     };
 
     fn domains() -> FilterDomains {
@@ -308,7 +312,7 @@ mod tests {
             .try_backdrop_filter(
                 BackdropFilterInput::try_new(
                     FilterList::try_ops(vec![FilterOp::blur(
-                        crate::FilterBlur::try_new(1.0).unwrap(),
+                        crate::style::filter::FilterBlur::try_new(1.0).unwrap(),
                     )])
                     .unwrap(),
                     BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 4.0, 5.0)).unwrap(),
@@ -440,7 +444,7 @@ mod tests {
                 let error =
                     prepare_morphology(input, FilterColorSpace::Srgb, &mut accounting).unwrap_err();
                 assert!(
-                    matches!(error.accounting_diagnostic(), Some(crate::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(work))
+                    matches!(error.accounting_diagnostic(), Some(crate::accounting::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(work))
                 );
                 assert_eq!(
                     accounting.last_attempt().unwrap().status(),
@@ -520,15 +524,19 @@ mod tests {
     #[test]
     fn receiver_replaces_foreground_preserving_outer_layer_and_child_order() {
         let operation = prepare(MorphologyInput::new().with_radii(1.0, 2.0));
-        let mask = crate::ResolvedLayerAlphaMask::try_new(
-            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255, 255, 255, 128]).unwrap(),
+        let mask = crate::layer::ResolvedLayerAlphaMask::try_new(
+            crate::image::Image::from_rgba(
+                crate::geometry::Size::new(1.0, 1.0),
+                vec![255, 255, 255, 128],
+            )
+            .unwrap(),
             Rect::new(-1.0, 0.0, 5.0, 6.0),
         )
         .unwrap();
         let layer = Layer::new()
             .try_filter(Filter::try_blur(2.0).unwrap())
             .unwrap()
-            .try_clip(crate::Shape::rect(Rect::new(-2.0, 0.0, 7.0, 8.0)))
+            .try_clip(crate::shape::Shape::rect(Rect::new(-2.0, 0.0, 7.0, 8.0)))
             .unwrap()
             .with_resolved_alpha_mask(mask)
             .with_transform(Transform::try_new([1.0, 0.5, -0.25, 2.0, 3.0, -4.0]).unwrap())
@@ -681,12 +689,12 @@ mod tests {
                 .filters()
                 .supports_gpu_morphology_filter_execution()
         );
-        let unavailable = crate::RuntimeCapabilityUnavailable::filter_float32_unavailable(
-            crate::RuntimeOperation::MorphologyRendering,
+        let unavailable = crate::error::RuntimeCapabilityUnavailable::filter_float32_unavailable(
+            crate::error::RuntimeOperation::MorphologyRendering,
         );
         assert_eq!(
             unavailable.operation(),
-            crate::RuntimeOperation::MorphologyRendering
+            crate::error::RuntimeOperation::MorphologyRendering
         );
     }
 }

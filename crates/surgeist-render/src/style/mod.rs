@@ -1,11 +1,11 @@
-use super::{Color, SymbolicColorPolicy};
+use crate::{capability::SymbolicColorPolicy, paint::Color};
 
-mod background;
-mod clip;
-mod decoration;
-mod filter;
-mod image;
-mod mask;
+pub(crate) mod background;
+pub(crate) mod clip;
+pub(crate) mod decoration;
+pub(crate) mod filter;
+pub(crate) mod image;
+pub(crate) mod mask;
 
 pub use self::background::{
     BackgroundBlendList, BackgroundBlendMode, BackgroundLayer, BackgroundNormalizationInput,

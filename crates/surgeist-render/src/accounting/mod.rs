@@ -50,7 +50,9 @@ pub(crate) use storage::{
     StorageSizing, preparation_backing, reserve_backing_with,
 };
 
-use crate::{Error, GlyphPreparationError, GlyphResource, GlyphRunLimits, Result};
+use crate::{
+    Error, Result, text::GlyphPreparationError, text::GlyphResource, text::GlyphRunLimits,
+};
 use std::{
     mem::size_of,
     sync::{
@@ -632,7 +634,7 @@ impl Account {
         next.history = Some(history);
         next
     }
-    pub(crate) fn observe_image(&self, image: &crate::Image) -> Result<()> {
+    pub(crate) fn observe_image(&self, image: &crate::image::Image) -> Result<()> {
         let Some(history) = &self.history else {
             return Ok(());
         };
@@ -651,14 +653,14 @@ impl Account {
     }
     pub(crate) fn import_convolution(
         &self,
-        prepared: &crate::PreparedConvolution,
+        prepared: &crate::convolution::PreparedConvolution,
     ) -> Result<Option<CpuImport>> {
         self.cpu
             .as_ref()
             .map(|cpu| cpu.import_convolution(prepared, Some(self)))
             .transpose()
     }
-    pub(crate) fn import_image(&self, image: &crate::Image) -> Result<Option<CpuImport>> {
+    pub(crate) fn import_image(&self, image: &crate::image::Image) -> Result<Option<CpuImport>> {
         self.cpu
             .as_ref()
             .map(|cpu| cpu.import_image(image, Some(self)))
@@ -697,7 +699,7 @@ impl Account {
     }
     pub(crate) fn import_prepared(
         &self,
-        run: &crate::PreparedGlyphRun,
+        run: &crate::text::PreparedGlyphRun,
     ) -> Result<Option<CpuImport>> {
         self.cpu
             .as_ref()
@@ -840,15 +842,15 @@ impl Account {
         }
         #[cfg(feature = "render-paint")]
         if self.is_paint_gradient() {
-            return crate::PaintGradientError::Allocation { resource }.into();
+            return crate::paint_gradient::PaintGradientError::Allocation { resource }.into();
         }
         #[cfg(feature = "render-text")]
         if self.kind == RenderAttemptKind::TextLayout {
-            return crate::TextLayoutError::Allocation {
+            return crate::text_layout::TextLayoutError::Allocation {
                 resource: if resource == RenderResource::ScratchCpuBytes {
-                    crate::TextLayoutResource::ScratchBytes
+                    crate::text_layout::TextLayoutResource::ScratchBytes
                 } else {
-                    crate::TextLayoutResource::RetainedBytes
+                    crate::text_layout::TextLayoutResource::RetainedBytes
                 },
             }
             .into();
@@ -877,7 +879,7 @@ impl Account {
         }
         #[cfg(feature = "render-paint")]
         if self.is_paint_gradient() {
-            return crate::PaintGradientError::CapacityOverflow { resource }.into();
+            return crate::paint_gradient::PaintGradientError::CapacityOverflow { resource }.into();
         }
         let _ = resource;
         GlyphPreparationError::CapacityOverflow.into()
@@ -956,7 +958,7 @@ impl Account {
         {
             #[cfg(feature = "render-text")]
             if self.kind == RenderAttemptKind::TextLayout {
-                use crate::TextLayoutResource as T;
+                use crate::text_layout::TextLayoutResource as T;
                 let resource = match refusal.quantity {
                     RenderQuantity::Work(RenderWork::GlyphInputs) => Some(T::Glyphs),
                     RenderQuantity::Work(RenderWork::PathElementsEmitted) => Some(T::PathElements),
@@ -972,7 +974,7 @@ impl Account {
                     _ => None,
                 };
                 if let Some(resource) = resource {
-                    return crate::TextLayoutError::Limit {
+                    return crate::text_layout::TextLayoutError::Limit {
                         resource,
                         required,
                         limit,

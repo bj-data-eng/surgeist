@@ -1,6 +1,7 @@
 use crate::{
-    BackendErrorCode, Error, Result,
+    Error, Result,
     accounting::{Account, RenderWork},
+    error::BackendErrorCode,
 };
 
 use super::key::{
@@ -562,8 +563,9 @@ mod morphology_key_tests {
 
     #[test]
     fn morphology_keys_require_exact_stage_resources_and_real_intermediate_precision() {
-        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
-        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let owner =
+            RendererCpu::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::accounting::RenderCpuScope::DeviceBacking);
         for working in [
             ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
             ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,
@@ -1435,7 +1437,9 @@ impl RenderPipelineKey {
 mod accounting_tests {
     use super::*;
     use crate::accounting::RendererCpu;
-    use crate::{GlyphRunLimits, RenderAccountingContext, RenderAttemptKind};
+    use crate::{
+        accounting::RenderAccountingContext, accounting::RenderAttemptKind, text::GlyphRunLimits,
+    };
 
     struct KeyFixture {
         layout: BindGroupLayoutKey,
@@ -1448,8 +1452,9 @@ mod accounting_tests {
         shader_edge: ShaderSamplingEdgeKey,
         pipeline_edge: ShaderSamplingEdgeKey,
     ) -> KeyFixture {
-        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
-        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let owner =
+            RendererCpu::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::accounting::RenderCpuScope::DeviceBacking);
         let format = ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float;
         let layout = BindGroupLayoutKey::new(
             &cpu,
@@ -1497,14 +1502,18 @@ mod accounting_tests {
     fn measured_comparison(
         limit: u64,
         compare: impl FnOnce(&Account) -> Result<bool>,
-    ) -> (Result<bool>, crate::RenderStandaloneReport) {
-        let options = crate::RenderAccountingOptions::new().with_limits(
-            crate::RenderLimits::new()
+    ) -> (Result<bool>, crate::accounting::RenderStandaloneReport) {
+        let options = crate::accounting::RenderAccountingOptions::new().with_limits(
+            crate::accounting::RenderLimits::new()
                 .with_work_limit(RenderWork::ShaderBindingVisits, limit)
                 .unwrap(),
         );
         let mut context = RenderAccountingContext::new(options);
-        let result = context.run(RenderAttemptKind::Frame, crate::RenderPhase::Lower, compare);
+        let result = context.run(
+            RenderAttemptKind::Frame,
+            crate::accounting::RenderPhase::Lower,
+            compare,
+        );
         (result, context.take_last_attempt().unwrap())
     }
 
@@ -1553,14 +1562,14 @@ mod accounting_tests {
                 if limit == visits {
                     assert!(result.unwrap());
                 } else {
-                    let Some(crate::RenderAccountingError::Refused(refusal)) =
+                    let Some(crate::accounting::RenderAccountingError::Refused(refusal)) =
                         result.unwrap_err().accounting_diagnostic()
                     else {
                         panic!("the next nested binding must refuse");
                     };
                     assert_eq!(
                         refusal.quantity(),
-                        crate::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+                        crate::accounting::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
                     );
                     assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
                 }
@@ -1662,8 +1671,9 @@ mod convolution_key_tests {
     use crate::accounting::RendererCpu;
 
     fn fixture() -> (BindGroupLayoutKey, ShaderModuleKey, RenderPipelineKey) {
-        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
-        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let owner =
+            RendererCpu::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::accounting::RenderCpuScope::DeviceBacking);
         let format = ShaderTextureFormatKey::FilterRgba32Float;
         let layout = BindGroupLayoutKey::new(
             &cpu,
@@ -1752,8 +1762,9 @@ mod offset_key_tests {
     fn fixture(
         format: ShaderTextureFormatKey,
     ) -> (BindGroupLayoutKey, ShaderModuleKey, RenderPipelineKey) {
-        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
-        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let owner =
+            RendererCpu::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::accounting::RenderCpuScope::DeviceBacking);
         let layout = BindGroupLayoutKey::new(
             &cpu,
             None,
@@ -1847,8 +1858,9 @@ mod offset_key_tests {
         let mut wrong = layout.clone();
         wrong.program = ShaderProgramKey::Convolution;
         assert!(validate(&wrong, &shader, &pipeline).is_err());
-        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
-        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let owner =
+            RendererCpu::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::accounting::RenderCpuScope::DeviceBacking);
         for (role, data) in [
             (
                 ShaderBindingRoleKey::ConvolutionSource,
@@ -1911,8 +1923,9 @@ mod gaussian_key_tests {
 
     #[test]
     fn gaussian_programs_require_their_real_texture_and_buffer_bindings() {
-        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
-        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let owner =
+            RendererCpu::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::accounting::RenderCpuScope::DeviceBacking);
         let float = ShaderTextureFormatKey::FilterRgba32Float;
         for (program, textures, data) in [
             (
@@ -2013,8 +2026,9 @@ mod native_shadow_key_tests {
 
     #[test]
     fn native_shadow_keys_require_exact_real_branch_roles_in_each_working_format() {
-        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
-        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let owner =
+            RendererCpu::new(crate::accounting::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::accounting::RenderCpuScope::DeviceBacking);
         for format in [
             ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
             ShaderTextureFormatKey::WorkingReducedPrecisionRgba8Unorm,

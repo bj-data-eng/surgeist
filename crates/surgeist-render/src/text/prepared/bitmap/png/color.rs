@@ -205,7 +205,7 @@ impl Interpretation {
 
 fn numeric(value: f64) -> Error {
     GlyphPreparationError::Numeric {
-        phase: crate::GlyphNumericPhase::BitmapColor,
+        phase: crate::text::GlyphNumericPhase::BitmapColor,
         value,
     }
     .into()

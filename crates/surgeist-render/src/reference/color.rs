@@ -1,6 +1,9 @@
 use super::{PremultipliedRgba8, ReferencePremultipliedRgba8Buffer, round_byte};
 use crate::{
-    Error, Image, ImageBuffer, PhysicalSize, Result,
+    Error, Result,
+    geometry::PhysicalSize,
+    image::Image,
+    image::ImageBuffer,
     image::{image_dimension, validate_image_buffer_rgba_len, validate_rgba_image},
     style::{ColorFilterOp, ColorFilterPipeline, UnitFilterAmount},
 };

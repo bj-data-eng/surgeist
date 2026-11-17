@@ -8,9 +8,11 @@ use super::support::{
     pixel_rgba,
 };
 use crate::{
-    BlendMode, Color, EffectPrecision, EffectQualityPolicy, Extend, ImageQuality, Layer, Options,
-    Parameters, PhysicalSize, Rect, RenderRoute, Renderer, ResolvedLayerAlphaMask, Scene, Shape,
-    Size, Surface, reference::PremultipliedRgba8, resource::WorkingFormat,
+    geometry::PhysicalSize, geometry::Rect, geometry::Size, image::Extend, image::ImageQuality,
+    layer::BlendMode, layer::Layer, layer::ResolvedLayerAlphaMask, paint::Color,
+    reference::PremultipliedRgba8, renderer::EffectQualityPolicy, renderer::Options,
+    renderer::Renderer, resource::WorkingFormat, scene::Scene, shape::Shape,
+    stats::EffectPrecision, stats::RenderRoute, surface::Parameters, surface::Surface,
 };
 
 const SOURCE: [f32; 4] = [0.375, 0.125, 0.25, 0.5];
@@ -184,7 +186,7 @@ fn separable_graph_shader_preserves_guards_thresholds_and_partial_alpha() {
     let vectors = cases
         .iter()
         .map(|case| CompositionBlendVectorForTest {
-            composition: crate::LayerComposition::from_blend(case.mode),
+            composition: crate::layer::LayerComposition::from_blend(case.mode),
             clip_alpha: None,
             source: case.source,
             parent: case.backdrop,
@@ -277,7 +279,7 @@ pub(super) fn render_pixels(
     surface: &mut Surface,
     scene: &Scene,
     format: Option<WorkingFormat>,
-) -> crate::ImageBuffer {
+) -> crate::image::ImageBuffer {
     let before = surface.headless_publication_count_for_test();
     let stats = if let Some(format) = format {
         pollster::block_on(renderer.render_with_exact_graph_working_format_for_test(
@@ -316,9 +318,9 @@ pub(super) fn render_pixels(
 fn separable_direct_clamps_blend_result_before_composition_after_local_plus() {
     let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
     for antialiasing in [
-        crate::Antialiasing::Area,
-        crate::Antialiasing::Msaa8,
-        crate::Antialiasing::Msaa16,
+        crate::renderer::Antialiasing::Area,
+        crate::renderer::Antialiasing::Msaa8,
+        crate::renderer::Antialiasing::Msaa16,
     ] {
         let mut renderer = pollster::block_on(Renderer::new(
             Options::default().with_antialiasing(antialiasing),
@@ -354,9 +356,9 @@ fn separable_direct_clamps_blend_result_before_composition_after_local_plus() {
 fn separable_capture_local_clamps_blend_result_before_composition_after_local_plus() {
     let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
     for antialiasing in [
-        crate::Antialiasing::Area,
-        crate::Antialiasing::Msaa8,
-        crate::Antialiasing::Msaa16,
+        crate::renderer::Antialiasing::Area,
+        crate::renderer::Antialiasing::Msaa8,
+        crate::renderer::Antialiasing::Msaa16,
     ] {
         let mut renderer = pollster::block_on(Renderer::new(
             Options::default()
@@ -397,9 +399,9 @@ fn separable_bounding_preserves_local_plus_accumulation_before_later_paint() {
     let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
     let white = Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap();
     for antialiasing in [
-        crate::Antialiasing::Area,
-        crate::Antialiasing::Msaa8,
-        crate::Antialiasing::Msaa16,
+        crate::renderer::Antialiasing::Area,
+        crate::renderer::Antialiasing::Msaa8,
+        crate::renderer::Antialiasing::Msaa16,
     ] {
         let mut renderer = pollster::block_on(Renderer::new(
             Options::default().with_antialiasing(antialiasing),
@@ -432,9 +434,9 @@ fn separable_bounding_preserves_plus_under_full_cover_clip_only_layers() {
     let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
     let white = Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap();
     for antialiasing in [
-        crate::Antialiasing::Area,
-        crate::Antialiasing::Msaa8,
-        crate::Antialiasing::Msaa16,
+        crate::renderer::Antialiasing::Area,
+        crate::renderer::Antialiasing::Msaa8,
+        crate::renderer::Antialiasing::Msaa16,
     ] {
         let mut renderer = pollster::block_on(Renderer::new(
             Options::default().with_antialiasing(antialiasing),

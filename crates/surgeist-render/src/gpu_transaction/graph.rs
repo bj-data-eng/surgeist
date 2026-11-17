@@ -1,7 +1,8 @@
 use super::{GpuOperationTransaction, vello::VelloResourceCommitProof};
 use crate::accounting::{Account, RenderPhase};
 use crate::{
-    Result, RuntimeOperation,
+    Result,
+    error::RuntimeOperation,
     pass::{
         AccountingReadyPreparedFrameCommit, EncodedPreparedGraphSubmission,
         PendingPreparedFrameCommit,

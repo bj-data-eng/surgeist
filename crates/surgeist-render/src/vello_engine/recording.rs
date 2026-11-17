@@ -10,7 +10,7 @@ use vello_encoding::ConfigUniform;
 
 use super::bounded::PayloadCustody;
 use crate::accounting::{Account, AccountedVec, RenderWork};
-use crate::{BackendErrorCode, Error, PhysicalSize, Result};
+use crate::{error::BackendErrorCode, Error, geometry::PhysicalSize, Result};
 
 /// A symbolic resource identity within one prepared Vello pass.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1491,7 +1491,7 @@ mod binding_arity_tests {
 
     #[test]
     fn recording_keeps_inline_dispatch_footprint_and_charged_capacity() {
-        use crate::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderResource};
+        use crate::{accounting::RenderAccountingContext, accounting::RenderAttemptKind, accounting::RenderPhase, accounting::RenderResource};
 
         #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
         {

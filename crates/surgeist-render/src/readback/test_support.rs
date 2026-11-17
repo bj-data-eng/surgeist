@@ -177,8 +177,8 @@ pub(crate) use native_support::*;
 mod native_support {
     use super::*;
     use crate::{
-        ImageBuffer,
         accounting::{ReadbackFixture, RenderAccountingOptions, RendererCpu},
+        image::ImageBuffer,
     };
     use std::sync::OnceLock;
     const DEADLINE: Duration = Duration::from_secs(30);

@@ -1,8 +1,10 @@
 //! Hand-derived image-domain and two-stage lattice witnesses.
 use super::convolution::*;
 use crate::{
-    Color, ConvolutionInput, FilterColorSpace, FilterDomains, FilterEdgeMode, Layer, Parameters,
-    Rect, RenderAccountingContext, Scene, Transform, prepare_convolution,
+    accounting::RenderAccountingContext, convolution::ConvolutionInput,
+    convolution::prepare_convolution, filter_domains::FilterDomains,
+    filter_model::FilterColorSpace, filter_model::FilterEdgeMode, geometry::Rect,
+    geometry::Transform, layer::Layer, paint::Color, scene::Scene, surface::Parameters,
 };
 
 #[test]
@@ -29,7 +31,7 @@ fn overflowing_capture_resampling_refuses_before_publication() {
             child.image(
                 image(2, 1, vec![255, 0, 0, 255, 0, 0, 255, 255]),
                 domain,
-                crate::ImageFit::Stretch,
+                crate::image::ImageFit::Stretch,
             );
         },
     );
@@ -41,8 +43,8 @@ fn overflowing_capture_resampling_refuses_before_publication() {
         .expect_err("unrepresentable capture arithmetic must refuse before submission");
     assert!(matches!(
         error.convolution_diagnostic(),
-        Some(crate::ConvolutionPreparationError::Numeric {
-            phase: crate::ConvolutionNumericPhase::GridMapping,
+        Some(crate::convolution::ConvolutionPreparationError::Numeric {
+            phase: crate::convolution::ConvolutionNumericPhase::GridMapping,
             ..
         })
     ));
@@ -209,7 +211,7 @@ fn anisotropic_convolution_keeps_full_outer_affine_placement() {
 
 #[test]
 fn unequal_kernel_axes_under_affine_follow_local_sampling_equations() {
-    use crate::{ImageFit, ImageQuality};
+    use crate::{image::ImageFit, image::ImageQuality};
     let (mut renderer, mut surface) = renderer_and_surface(24, 24);
     let domain = bounds(8, 8);
     let op = operation(
@@ -254,7 +256,7 @@ fn unequal_kernel_axes_under_affine_follow_local_sampling_equations() {
 
 #[test]
 fn vector_gradient_capture_phase_is_preserved_through_affine_convolution() {
-    use crate::{Gradient, GradientStop, Paint, Point};
+    use crate::{geometry::Point, paint::Gradient, paint::GradientStop, paint::Paint};
     let (mut renderer, mut surface) = renderer_and_surface(24, 24);
     let domain = bounds(8, 8);
     let gradient = Gradient::try_linear(
@@ -325,7 +327,10 @@ fn empty_result_region_publishes_transparent_frame() {
 
 #[test]
 fn same_layer_backdrop_outside_source_does_not_shift_explicit_kernel_origin() {
-    use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+    use crate::{
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterBlur, style::filter::FilterList, style::filter::FilterOp,
+    };
     let (mut renderer, mut surface) = renderer_and_surface(6, 1);
     let full = bounds(6, 1);
     let finite = Rect::new(1.0, 0.0, 2.0, 1.0);
@@ -388,6 +393,12 @@ fn same_layer_backdrop_outside_source_does_not_shift_explicit_kernel_origin() {
     assert_pixel(&output, 2, 0, [0; 4], 1);
     let report = renderer.last_attempt().unwrap();
     let usage = report.attempt().unwrap().usage();
-    assert_eq!(usage.work(crate::RenderWork::ScheduledConvolutionTaps), 0);
-    assert_eq!(usage.work(crate::RenderWork::KernelSampleVisits), 0);
+    assert_eq!(
+        usage.work(crate::accounting::RenderWork::ScheduledConvolutionTaps),
+        0
+    );
+    assert_eq!(
+        usage.work(crate::accounting::RenderWork::KernelSampleVisits),
+        0
+    );
 }

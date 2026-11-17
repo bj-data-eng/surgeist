@@ -1,6 +1,6 @@
 use super::*;
 use crate::tests::support::{default_graph_working_format_for_test, pixel_rgba};
-use crate::{Options, Parameters, RenderRoute, Renderer};
+use crate::{renderer::Options, renderer::Renderer, stats::RenderRoute, surface::Parameters};
 
 fn registered_layout(
     bytes: Vec<u8>,
@@ -45,11 +45,11 @@ fn real_gpu_v0_v1_and_sbix_use_retained_intrinsic_red_in_direct_and_graph() {
         (offset_sbix(), 20.0, (3, 16), (4, 16)),
     ] {
         let input = registered_layout(bytes, size, "X", 0.0, 1.0);
-        let ready = crate::prepare_text_layout(
+        let ready = crate::text_layout::prepare_text_layout(
             &input,
             Transform::translation(1.0, 0.0).unwrap(),
-            crate::TextLayoutLimits::new(limits(), 4, 4, 4),
-            &mut crate::RenderAccountingContext::default(),
+            crate::text_layout::TextLayoutLimits::new(limits(), 4, 4, 4),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(ready.layout(), &input));
@@ -111,11 +111,11 @@ fn real_gpu_mixed_overlap_keeps_foreground_after_intrinsic_color() {
             .collect::<Vec<_>>(),
         [0.0, 0.0, 0.0]
     );
-    let ready = crate::prepare_text_layout(
+    let ready = crate::text_layout::prepare_text_layout(
         &input,
         Transform::identity(),
-        crate::TextLayoutLimits::new(limits(), 4, 4, 4),
-        &mut crate::RenderAccountingContext::default(),
+        crate::text_layout::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
@@ -153,11 +153,11 @@ fn real_gpu_mixed_overlap_keeps_foreground_after_intrinsic_color() {
 #[test]
 fn real_gpu_one_text_layout_retains_outline_color_bitmap_and_image_resources() {
     let input = registered_layout(mixed_representation_font(), 16.0, "AXB", 0.0, 1.0);
-    let ready = crate::prepare_text_layout(
+    let ready = crate::text_layout::prepare_text_layout(
         &input,
         Transform::identity(),
-        crate::TextLayoutLimits::new(limits(), 4, 4, 4),
-        &mut crate::RenderAccountingContext::default(),
+        crate::text_layout::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(ready.layout(), &input));
@@ -204,16 +204,16 @@ fn empty_intrinsic_keeps_two_foreground_layers(bytes: Vec<u8>) {
             &instance(10.0),
             &one_glyph(),
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(empty.bounds().kind(), TextRunBoundsKind::Empty);
     let input = registered_layout(bytes, 10.0, "AXA", -10.0, 0.5);
-    let ready = crate::prepare_text_layout(
+    let ready = crate::text_layout::prepare_text_layout(
         &input,
         Transform::identity(),
-        crate::TextLayoutLimits::new(limits(), 4, 4, 4),
-        &mut crate::RenderAccountingContext::default(),
+        crate::text_layout::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();

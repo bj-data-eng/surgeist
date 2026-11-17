@@ -1,7 +1,8 @@
 use super::GpuOperationTransaction;
 use crate::{
-    Result, RuntimeOperation,
+    Result,
     accounting::{Account, RenderPhase},
+    error::RuntimeOperation,
 };
 
 /// Transaction-owned result of submitting one texture readback copy.

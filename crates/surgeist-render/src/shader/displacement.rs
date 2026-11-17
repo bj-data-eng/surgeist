@@ -1,7 +1,9 @@
 //! The fixed uniform protocol consumes qualified integers, never floating offsets.
 use crate::{
-    DisplacementNumericPhase, DisplacementPreparationError, Error, Result,
+    Error, Result,
     accounting::{Account, RenderWork},
+    displacement::DisplacementNumericPhase,
+    displacement::DisplacementPreparationError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]

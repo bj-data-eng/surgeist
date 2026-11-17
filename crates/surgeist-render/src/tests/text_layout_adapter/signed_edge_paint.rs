@@ -156,7 +156,7 @@ fn place_signed_pair(p: &text::PreparedText, line: text::FinalizedLine) -> text:
     .unwrap()
 }
 
-fn observe_scene(scene: &crate::PreparedTextScene<'_>, second: f64) {
+fn observe_scene(scene: &crate::text_layout::PreparedTextScene<'_>, second: f64) {
     let mut glyphs = Vec::new();
     let mut hull = (
         f64::INFINITY,
@@ -228,7 +228,7 @@ fn signed_box_flow_retracts_without_clipping_or_painting_the_retained_ahem_packe
         &layouts[0],
         caller,
         limits(),
-        &mut crate::RenderAccountingContext::default(),
+        &mut crate::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     observe_scene(&prior_scene, 12.0);
@@ -248,7 +248,7 @@ fn signed_box_flow_retracts_without_clipping_or_painting_the_retained_ahem_packe
             layout,
             caller,
             limits(),
-            &mut crate::RenderAccountingContext::default(),
+            &mut crate::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(scene.layout(), layout));

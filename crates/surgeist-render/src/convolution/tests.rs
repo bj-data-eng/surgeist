@@ -1,5 +1,8 @@
 use super::*;
-use crate::{Layer, Rect, RenderAccountingOptions, RenderLimits, RenderProfile, RenderQuantity};
+use crate::{
+    accounting::RenderAccountingOptions, accounting::RenderLimits, accounting::RenderProfile,
+    accounting::RenderQuantity, geometry::Rect, layer::Layer,
+};
 
 fn domains() -> FilterDomains {
     let rect = Rect::try_new(0.0, 0.0, 4.0, 3.0).unwrap();
@@ -172,11 +175,11 @@ fn foreground_effect_setters_replace_one_exclusive_slot() {
     let layer = Layer::new().with_convolution(output.clone());
     assert_eq!(layer.convolution(), Some(&output));
     assert!(layer.filter_list().is_none());
-    let layer = layer.with_filter_list(crate::FilterList::none());
+    let layer = layer.with_filter_list(crate::style::filter::FilterList::none());
     assert!(layer.convolution().is_none());
     let layer = layer
         .with_convolution(output)
-        .try_filter(crate::Filter::try_blur(1.0).unwrap())
+        .try_filter(crate::layer::Filter::try_blur(1.0).unwrap())
         .unwrap();
     assert!(layer.convolution().is_none());
 }
@@ -190,7 +193,7 @@ fn preparation_counts_profiles_exact_cap_refusal_and_retry() {
         RenderProfile::Detailed {
             timing: false,
             event_limit: 0,
-            filter: crate::RenderPhaseFilter::All,
+            filter: crate::accounting::RenderPhaseFilter::All,
         },
     ] {
         let options = RenderAccountingOptions::default().with_profile(profile);
@@ -227,7 +230,7 @@ fn preparation_counts_profiles_exact_cap_refusal_and_retry() {
         )
         .unwrap_err();
         assert!(
-            matches!(error.accounting_diagnostic(),Some(crate::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(RenderWork::KernelSampleVisits))
+            matches!(error.accounting_diagnostic(),Some(crate::accounting::RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Work(RenderWork::KernelSampleVisits))
         );
         accounting.set_options(
             options.with_limits(
@@ -259,7 +262,7 @@ fn backing_exact_cap_one_under_and_count_recovery_have_truthful_work() {
             .attempt()
             .unwrap()
             .usage()
-            .peak(crate::RenderResource::RetainedCpuBytes),
+            .peak(crate::accounting::RenderResource::RetainedCpuBytes),
         bytes
     );
     accounting.set_options(
@@ -269,8 +272,8 @@ fn backing_exact_cap_one_under_and_count_recovery_have_truthful_work() {
     let error =
         prepare_convolution(input, domains(), FilterColorSpace::Srgb, &mut accounting).unwrap_err();
     assert!(
-        matches!(error.accounting_diagnostic(),Some(crate::RenderAccountingError::Refused(refusal))
-        if refusal.quantity() == RenderQuantity::Resource(crate::RenderResource::RetainedCpuBytes))
+        matches!(error.accounting_diagnostic(),Some(crate::accounting::RenderAccountingError::Refused(refusal))
+        if refusal.quantity() == RenderQuantity::Resource(crate::accounting::RenderResource::RetainedCpuBytes))
     );
     accounting.set_options(
         RenderAccountingOptions::new().with_limits(RenderLimits::new().with_retained_bytes(bytes)),
@@ -338,15 +341,15 @@ fn independent_domains_remain_resolved_and_empty_regions_are_valid() {
 #[test]
 fn native_convolution_capability_accepts_all_resolved_edge_modes() {
     assert!(
-        crate::Capabilities::CURRENT
+        crate::capability::Capabilities::CURRENT
             .filters()
             .supports_gpu_convolution_filter_execution()
     );
-    let primitive = crate::UnsupportedPrimitive::new(
-        crate::PrimitiveFamily::Filters,
-        crate::PrimitiveOperation::GpuConvolutionFilterExecution,
+    let primitive = crate::error::UnsupportedPrimitive::new(
+        crate::error::PrimitiveFamily::Filters,
+        crate::error::PrimitiveOperation::GpuConvolutionFilterExecution,
     );
-    crate::Capabilities::CURRENT
+    crate::capability::Capabilities::CURRENT
         .ensure_supported(primitive)
         .unwrap();
     assert_eq!(

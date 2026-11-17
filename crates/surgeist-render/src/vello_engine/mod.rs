@@ -75,7 +75,7 @@ mod raster {
             {
                 return Err(
                     super::recording::VelloEncodingFailure::before_resource_allocation(Error::new(
-                        crate::BackendErrorCode::RenderFailed,
+                        crate::error::BackendErrorCode::RenderFailed,
                         "internal Vello encoding target does not match the prepared raster intent",
                     )),
                 );
@@ -170,9 +170,9 @@ pub(crate) use shaders::{
 
 #[cfg(test)]
 pub(crate) struct PreparedVelloPassObservation {
-    pub(in crate::vello_engine) target_extent: crate::PhysicalSize,
+    pub(in crate::vello_engine) target_extent: crate::geometry::PhysicalSize,
     pub(in crate::vello_engine) transparent_base: bool,
-    pub(in crate::vello_engine) antialiasing: crate::Antialiasing,
+    pub(in crate::vello_engine) antialiasing: crate::renderer::Antialiasing,
     pub(in crate::vello_engine) is_rgba8_storage: bool,
     pub(in crate::vello_engine) final_dispatch_targets_output: bool,
     pub(in crate::vello_engine) is_self_consistent: bool,
@@ -182,7 +182,7 @@ pub(crate) struct PreparedVelloPassObservation {
 
 #[cfg(test)]
 impl PreparedVelloPassObservation {
-    pub(crate) const fn target_extent_for_test(&self) -> crate::PhysicalSize {
+    pub(crate) const fn target_extent_for_test(&self) -> crate::geometry::PhysicalSize {
         self.target_extent
     }
 
@@ -190,7 +190,7 @@ impl PreparedVelloPassObservation {
         self.transparent_base
     }
 
-    pub(crate) const fn antialiasing_for_test(&self) -> crate::Antialiasing {
+    pub(crate) const fn antialiasing_for_test(&self) -> crate::renderer::Antialiasing {
         self.antialiasing
     }
 

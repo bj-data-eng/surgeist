@@ -1,7 +1,9 @@
 use super::convolution::*;
 use crate::{
-    Color, ConvolutionInput, FilterColorSpace, FilterDomains, FilterEdgeMode, Layer, Rect,
-    RenderAccountingContext, Scene, prepare_convolution,
+    accounting::RenderAccountingContext, convolution::ConvolutionInput,
+    convolution::prepare_convolution, filter_domains::FilterDomains,
+    filter_model::FilterColorSpace, filter_model::FilterEdgeMode, geometry::Rect, layer::Layer,
+    paint::Color, scene::Scene,
 };
 
 #[test]
@@ -46,7 +48,8 @@ fn zero_axis_source_does_not_qualify_the_unused_large_axis() {
 #[test]
 fn empty_source_excludes_backdrop_before_bias_generates_the_result() {
     use crate::{
-        BackdropCaptureBounds, BackdropFilterInput, FilterList, FilterOp, UnitFilterAmount,
+        style::filter::BackdropCaptureBounds, style::filter::BackdropFilterInput,
+        style::filter::FilterList, style::filter::FilterOp, style::filter::UnitFilterAmount,
     };
     let (mut renderer, mut surface) = renderer_and_surface(2, 1);
     let result = bounds(2, 1);

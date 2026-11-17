@@ -1,11 +1,14 @@
 use super::{
-    BackdropFilterInput, ClipInput, Error, FilterList, Image, Paint, Point, Rect, Result, Shape,
-    Transform,
+    Error, Result,
     style::validate_clip_input,
     validation::{
         validate_filter, validate_finite_f64, validate_non_negative_f64, validate_paint,
         validate_point, validate_positive_f64, validate_shape,
     },
+};
+use crate::{
+    geometry::Point, geometry::Rect, geometry::Transform, image::Image, paint::Paint, shape::Shape,
+    style::clip::ClipInput, style::filter::BackdropFilterInput, style::filter::FilterList,
 };
 
 /// Authored grouping parameters applied to a nested scene.
@@ -135,14 +138,17 @@ impl Layer {
 
     /// Installs an admitted convolution, replacing the previous foreground effect.
     #[must_use]
-    pub fn with_convolution(mut self, convolution: crate::PreparedConvolution) -> Self {
+    pub fn with_convolution(
+        mut self,
+        convolution: crate::convolution::PreparedConvolution,
+    ) -> Self {
         self.filter = Some(LayerFilter::Convolution(convolution));
         self
     }
 
     /// Returns the admitted foreground convolution, if selected.
     #[must_use]
-    pub const fn convolution(&self) -> Option<&crate::PreparedConvolution> {
+    pub const fn convolution(&self) -> Option<&crate::convolution::PreparedConvolution> {
         match &self.filter {
             Some(LayerFilter::Convolution(convolution)) => Some(convolution),
             _ => None,
@@ -151,14 +157,14 @@ impl Layer {
 
     /// Installs an admitted image-space offset, replacing the previous foreground effect.
     #[must_use]
-    pub fn with_offset(mut self, offset: crate::PreparedOffset) -> Self {
+    pub fn with_offset(mut self, offset: crate::offset::PreparedOffset) -> Self {
         self.filter = Some(LayerFilter::Offset(offset));
         self
     }
 
     /// Returns the admitted foreground offset, if selected.
     #[must_use]
-    pub const fn offset(&self) -> Option<&crate::PreparedOffset> {
+    pub const fn offset(&self) -> Option<&crate::offset::PreparedOffset> {
         match &self.filter {
             Some(LayerFilter::Offset(offset)) => Some(offset),
             _ => None,
@@ -393,8 +399,8 @@ impl Layer {
 pub(crate) enum LayerFilter {
     Blur(Filter),
     List(FilterList),
-    Convolution(crate::PreparedConvolution),
-    Offset(crate::PreparedOffset),
+    Convolution(crate::convolution::PreparedConvolution),
+    Offset(crate::offset::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
     Morphology(crate::morphology::MorphologyForeground),
     Displacement(crate::displacement::DisplacementForeground),
@@ -520,7 +526,7 @@ pub enum ResolvedMaskSource {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedMaskLayer {
     pub source: ResolvedMaskSource,
-    pub composite: crate::MaskCompositeMode,
+    pub composite: crate::style::mask::MaskCompositeMode,
 }
 
 /// Creates an unmodified layer with identity transform, opacity `1`, normal

@@ -1,7 +1,8 @@
 //! Serialization of the admitted native shadow merge, with only actual reads.
 use crate::{
-    FilterColorSpace, Result,
+    Result,
     accounting::Account,
+    filter_model::FilterColorSpace,
     frame::{NativeShadowOriginal, NativeShadowPassFacts},
     shader::{
         NativeShadowParameterBytes, NativeShadowParameterFacts, ShaderNativeShadowSourceKey,

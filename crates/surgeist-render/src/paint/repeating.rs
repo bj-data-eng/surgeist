@@ -168,10 +168,12 @@ impl RepeatingGradient {
         let span = positions.1 - positions.0;
         account.work(RenderWork::CoordinateVisits, 1)?;
         validate_non_negative_f64(span, "repeating gradient span").map_err(|_| {
-            crate::Error::from(crate::PaintGradientError::UnrepresentableSpan {
-                first_source_index: source_indices.0,
-                last_source_index: source_indices.1,
-            })
+            crate::Error::from(
+                crate::paint_gradient::PaintGradientError::UnrepresentableSpan {
+                    first_source_index: source_indices.0,
+                    last_source_index: source_indices.1,
+                },
+            )
         })?;
         Ok(gradient)
     }

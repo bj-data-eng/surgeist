@@ -5,11 +5,13 @@ use super::{
     filter_grid::{self as grid, FilterGridMapping, FilterGridOwner, PeriodCapture},
 };
 use crate::{
-    Color, MorphologyOperator, Transform,
     accounting::{Account, RenderWork, SharedValue},
     error::{Error, Result},
     filter_source::FilterSourceDescriptor,
+    geometry::Transform,
     morphology::MorphologyForeground,
+    morphology::MorphologyOperator,
+    paint::Color,
 };
 
 const OWNER: FilterGridOwner = FilterGridOwner::Morphology;
@@ -99,10 +101,12 @@ impl MorphologyEndpoint {
     }
     fn clamped(delta: i64, n: u32, m: u32) -> Result<Self> {
         let last = i64::from(m) - 1;
-        if last
-            .checked_add(delta)
-            .ok_or_else(|| numeric(crate::MorphologyNumericPhase::EndpointMapping, delta as f64))?
-            <= 0
+        if last.checked_add(delta).ok_or_else(|| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                delta as f64,
+            )
+        })? <= 0
         {
             return Ok(Self { kind: 0, delta: 0 });
         }
@@ -110,10 +114,18 @@ impl MorphologyEndpoint {
             return Ok(Self { kind: 1, delta: 0 });
         }
         // A reachable nonconstant map is bounded by the actual input/output lengths.
-        let delta = i32::try_from(delta)
-            .map_err(|_| numeric(crate::MorphologyNumericPhase::EndpointMapping, delta as f64))?;
-        i32::try_from(last + i64::from(delta))
-            .map_err(|_| numeric(crate::MorphologyNumericPhase::EndpointMapping, last as f64))?;
+        let delta = i32::try_from(delta).map_err(|_| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                delta as f64,
+            )
+        })?;
+        i32::try_from(last + i64::from(delta)).map_err(|_| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                last as f64,
+            )
+        })?;
         Ok(Self { kind: 2, delta })
     }
     fn at(self, j: i64, n: u32) -> i64 {
@@ -304,14 +316,20 @@ impl MorphologyRoute {
                     grid::require_spatial(
                         context,
                         grid::finite_domain(source).ok_or_else(|| {
-                            numeric(crate::MorphologyNumericPhase::EndpointMapping, 0.0)
+                            numeric(
+                                crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                                0.0,
+                            )
                         })?,
                         transform,
                         OWNER,
                     )?
                 };
                 if period.is_some() && raw != Some(original) {
-                    return Err(numeric(crate::MorphologyNumericPhase::EndpointMapping, 0.0));
+                    return Err(numeric(
+                        crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                        0.0,
+                    ));
                 }
                 if let Some(raw) = raw
                     && period.is_none()
@@ -323,16 +341,18 @@ impl MorphologyRoute {
                         || a.max().x() < d.max().x()
                         || a.max().y() < d.max().y()
                     {
-                        return Err(numeric(crate::MorphologyNumericPhase::EndpointMapping, 0.0));
+                        return Err(numeric(
+                            crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                            0.0,
+                        ));
                     }
                 }
                 let kind = if foreground.operation.is_disabled() {
                     MorphologyRouteKind::Copy
                 } else {
-                    let radii = foreground
-                        .operation
-                        .radii()
-                        .ok_or_else(|| numeric(crate::MorphologyNumericPhase::RadiusGrid, 0.0))?;
+                    let radii = foreground.operation.radii().ok_or_else(|| {
+                        numeric(crate::morphology::MorphologyNumericPhase::RadiusGrid, 0.0)
+                    })?;
                     let density = period
                         .map(|p| p.density)
                         .unwrap_or([original.raster_scale.get(); 2]);
@@ -435,9 +455,12 @@ impl MorphologyRoute {
     }
     fn mapping(&self, index: usize, account: &Account) -> Result<MorphologyMapping> {
         account.work(RenderWork::FilterOperationVisits, 1)?;
-        let stage = self
-            .stage_at(index)
-            .ok_or_else(|| numeric(crate::MorphologyNumericPhase::TableLayout, index as f64))?;
+        let stage = self.stage_at(index).ok_or_else(|| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::TableLayout,
+                index as f64,
+            )
+        })?;
         let data = &*self.0;
         let result = data.result;
         let output = grid::result_domain(data.foreground.source);
@@ -447,15 +470,21 @@ impl MorphologyRoute {
         let mut previous = false;
         let mapping = if stage == MorphologyStage::Constant {
             let MorphologyRouteKind::Constant(color) = data.kind else {
-                return Err(numeric(crate::MorphologyNumericPhase::TableLayout, 0.0));
+                return Err(numeric(
+                    crate::morphology::MorphologyNumericPhase::TableLayout,
+                    0.0,
+                ));
             };
             make(None, result)
                 .with_color(color)
                 .with_output_clip(output, result, account)?
         } else {
-            let original = data
-                .original
-                .ok_or_else(|| numeric(crate::MorphologyNumericPhase::EndpointMapping, 0.0))?;
+            let original = data.original.ok_or_else(|| {
+                numeric(
+                    crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                    0.0,
+                )
+            })?;
             let input_size = grid::extent(original);
             let periodic = data.period.is_some();
             let output_size = if periodic {
@@ -466,7 +495,10 @@ impl MorphologyRoute {
             match stage {
                 MorphologyStage::RebaseSource => {
                     let raw = data.raw.ok_or_else(|| {
-                        numeric(crate::MorphologyNumericPhase::EndpointMapping, 0.0)
+                        numeric(
+                            crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                            0.0,
+                        )
                     })?;
                     make(Some(raw), original).with_base(
                         grid::base_between(raw, original, OWNER)?,
@@ -488,7 +520,10 @@ impl MorphologyRoute {
                             )?
                             .with_source_clip(
                                 grid::finite_domain(data.foreground.source).ok_or_else(|| {
-                                    numeric(crate::MorphologyNumericPhase::EndpointMapping, 0.0)
+                                    numeric(
+                                        crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                                        0.0,
+                                    )
                                 })?,
                                 original,
                                 account,
@@ -519,7 +554,10 @@ impl MorphologyRoute {
                 | MorphologyStage::RefineQuery { axis, level: _ }
                 | MorphologyStage::Query { axis, level: _ } => {
                     let MorphologyRouteKind::Active(queries) = data.kind else {
-                        return Err(numeric(crate::MorphologyNumericPhase::TableLayout, 0.0));
+                        return Err(numeric(
+                            crate::morphology::MorphologyNumericPhase::TableLayout,
+                            0.0,
+                        ));
                     };
                     let q = queries[axis.index()];
                     query = Some(q);
@@ -532,7 +570,7 @@ impl MorphologyRoute {
                     let span = stage.span();
                     if span == 0 || span > q.input_length {
                         return Err(numeric(
-                            crate::MorphologyNumericPhase::TableLayout,
+                            crate::morphology::MorphologyNumericPhase::TableLayout,
                             f64::from(span),
                         ));
                     }
@@ -564,7 +602,10 @@ impl MorphologyRoute {
                     make(Some(target.0), target.1).with_flags(periodic, true, false)
                 }
                 MorphologyStage::Constant => {
-                    return Err(numeric(crate::MorphologyNumericPhase::TableLayout, 0.0));
+                    return Err(numeric(
+                        crate::morphology::MorphologyNumericPhase::TableLayout,
+                        0.0,
+                    ));
                 }
             }
         };
@@ -587,9 +628,12 @@ struct MorphologyPassData {
 }
 impl MorphologyPassFacts {
     pub(super) fn try_new(route: MorphologyRoute, index: usize, account: &Account) -> Result<Self> {
-        let stage = route
-            .stage_at(index)
-            .ok_or_else(|| numeric(crate::MorphologyNumericPhase::TableLayout, index as f64))?;
+        let stage = route.stage_at(index).ok_or_else(|| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::TableLayout,
+                index as f64,
+            )
+        })?;
         let mapping = route.mapping(index, account)?;
         SharedValue::new(
             MorphologyPassData {
@@ -619,7 +663,7 @@ impl MorphologyPassFacts {
         )
         .map(Self)
     }
-    pub(crate) fn operation(&self) -> &crate::PreparedMorphology {
+    pub(crate) fn operation(&self) -> &crate::morphology::PreparedMorphology {
         &self.0.route.0.foreground.operation
     }
     pub(crate) fn mapping(&self) -> MorphologyMapping {
@@ -715,8 +759,8 @@ fn route_context(result: NonEmptyFrameSpatialPlan) -> FrameContext {
         base_color: Color::TRANSPARENT,
     }
 }
-fn numeric(phase: crate::MorphologyNumericPhase, value: f64) -> Error {
-    crate::MorphologyPreparationError::Numeric { phase, value }.into()
+fn numeric(phase: crate::morphology::MorphologyNumericPhase, value: f64) -> Error {
+    crate::morphology::MorphologyPreparationError::Numeric { phase, value }.into()
 }
 
 /// An axis of the checked source/output grids and their aligned relative origin.
@@ -764,7 +808,10 @@ fn query_geometry(
             (n, 0, false)
         } else {
             if !scaled.is_finite() || scaled < 0.0 {
-                return Err(numeric(crate::MorphologyNumericPhase::RadiusGrid, scaled));
+                return Err(numeric(
+                    crate::morphology::MorphologyNumericPhase::RadiusGrid,
+                    scaled,
+                ));
             }
             let r = scaled.floor() as u32;
             (
@@ -790,9 +837,12 @@ fn query_geometry(
     if operator == MorphologyOperator::Erode && scaled >= f64::from(n.div_ceil(2)) {
         return Ok(None);
     }
-    let last = base
-        .checked_add(i64::from(m) - 1)
-        .ok_or_else(|| numeric(crate::MorphologyNumericPhase::EndpointMapping, base as f64))?;
+    let last = base.checked_add(i64::from(m) - 1).ok_or_else(|| {
+        numeric(
+            crate::morphology::MorphologyNumericPhase::EndpointMapping,
+            base as f64,
+        )
+    })?;
     let full_threshold = last.max(i64::from(n) - 1 - base).max(0);
     if operator == MorphologyOperator::Dilate && scaled >= full_threshold as f64 {
         return Ok(Some(MorphologyQuery {
@@ -807,16 +857,27 @@ fn query_geometry(
         }));
     }
     if !scaled.is_finite() || scaled < 0.0 || scaled.floor() > i64::MAX as f64 {
-        return Err(numeric(crate::MorphologyNumericPhase::RadiusGrid, scaled));
+        return Err(numeric(
+            crate::morphology::MorphologyNumericPhase::RadiusGrid,
+            scaled,
+        ));
     }
     let r = scaled.floor() as i64;
-    let lo = base
-        .checked_sub(r)
-        .ok_or_else(|| numeric(crate::MorphologyNumericPhase::EndpointMapping, base as f64))?;
+    let lo = base.checked_sub(r).ok_or_else(|| {
+        numeric(
+            crate::morphology::MorphologyNumericPhase::EndpointMapping,
+            base as f64,
+        )
+    })?;
     let hi = base
         .checked_add(r)
         .and_then(|v| v.checked_add(1))
-        .ok_or_else(|| numeric(crate::MorphologyNumericPhase::EndpointMapping, base as f64))?;
+        .ok_or_else(|| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                base as f64,
+            )
+        })?;
     let lower = MorphologyEndpoint::clamped(lo, n, m)?;
     let upper = MorphologyEndpoint::clamped(hi, n, m)?;
     let valid_output = if operator == MorphologyOperator::Erode {
@@ -851,14 +912,21 @@ fn query_geometry(
         let length = r
             .checked_mul(2)
             .and_then(|v| v.checked_add(1))
-            .ok_or_else(|| numeric(crate::MorphologyNumericPhase::RadiusGrid, r as f64))?;
+            .ok_or_else(|| {
+                numeric(
+                    crate::morphology::MorphologyNumericPhase::RadiusGrid,
+                    r as f64,
+                )
+            })?;
         if valid_output[0] >= valid_output[1] {
             return Ok(None);
         }
-        Some(
-            u32::try_from(length)
-                .map_err(|_| numeric(crate::MorphologyNumericPhase::RadiusGrid, length as f64))?,
-        )
+        Some(u32::try_from(length).map_err(|_| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::RadiusGrid,
+                length as f64,
+            )
+        })?)
     } else {
         (min == max).then_some(max)
     };
@@ -900,8 +968,12 @@ pub(super) fn input_is_unreachable(
     };
     let input = grid::require_spatial(
         context,
-        grid::finite_domain(foreground.source)
-            .ok_or_else(|| numeric(crate::MorphologyNumericPhase::EndpointMapping, 0.0))?,
+        grid::finite_domain(foreground.source).ok_or_else(|| {
+            numeric(
+                crate::morphology::MorphologyNumericPhase::EndpointMapping,
+                0.0,
+            )
+        })?,
         transform,
         OWNER,
     )?;
@@ -939,8 +1011,9 @@ pub(super) fn input_is_unreachable(
 mod tests {
     use super::*;
     use crate::{
-        FilterColorSpace, FilterDomains, Layer, MorphologyInput, MorphologySource, Rect,
-        RenderAccountingContext, Scene, Size,
+        accounting::RenderAccountingContext, filter_domains::FilterDomains,
+        filter_model::FilterColorSpace, geometry::Rect, geometry::Size, layer::Layer,
+        morphology::MorphologyInput, morphology::MorphologySource, scene::Scene,
     };
     fn context(scale: f64) -> FrameContext {
         FrameContext::try_new(
@@ -951,8 +1024,11 @@ mod tests {
         )
         .unwrap()
     }
-    fn operation(operator: MorphologyOperator, radii: [f64; 2]) -> crate::PreparedMorphology {
-        crate::prepare_morphology(
+    fn operation(
+        operator: MorphologyOperator,
+        radii: [f64; 2],
+    ) -> crate::morphology::PreparedMorphology {
+        crate::morphology::prepare_morphology(
             MorphologyInput::new()
                 .with_operator(operator)
                 .with_radii(radii[0], radii[1]),
@@ -980,7 +1056,7 @@ mod tests {
     fn planned(scene: &Scene) -> crate::accounting::OwnedBox<super::super::GpuRenderGraph> {
         let account = Account::for_test();
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &account)
+            .normalize(crate::capability::Capabilities::CURRENT, &account)
             .unwrap();
         match super::super::FramePlan::try_from_commands(commands, context(1.0), &account).unwrap()
         {
@@ -1149,7 +1225,7 @@ mod tests {
         let d = Rect::new(0.0, 0.0, 3.0, 2.0);
         let source = FilterSourceDescriptor::Finite {
             domains: FilterDomains::try_new(d, d, d).unwrap(),
-            edge: crate::FilterEdgeMode::None,
+            edge: crate::filter_model::FilterEdgeMode::None,
         };
         let account = Account::for_test();
         let raw = grid::require_spatial(context(1.0), d, Transform::identity(), OWNER).unwrap();

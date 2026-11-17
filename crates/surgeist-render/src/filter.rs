@@ -1,11 +1,12 @@
 use super::{
-    Error, Rect, Result,
+    Error, Result,
     style::{
         ColorFilterOp, FilterAmount, FilterAngle, FilterBlur, FilterDropShadow, FilterOp,
         FilterOpKind, UnitFilterAmount,
     },
 };
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
+use crate::geometry::Rect;
 #[cfg(test)]
 use crate::style::FilterList;
 

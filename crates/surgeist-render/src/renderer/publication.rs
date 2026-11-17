@@ -1,12 +1,19 @@
 use super::Renderer;
 use crate::{
-    BackendErrorCode, EffectPrecision, Error, Parameters, RenderAccountingOptions, RenderRoute,
-    Result, Scene, Stats, Surface,
+    Error, Result,
+    accounting::RenderAccountingOptions,
     accounting::{
         Account, HistoryCommit, RenderFrameReport, RenderPhase, RendererCpu, frame_lifecycle,
     },
     backend::SurfaceFrameCommit,
+    error::BackendErrorCode,
     resource::{FrameCleanup, WorkingFormat},
+    scene::Scene,
+    stats::EffectPrecision,
+    stats::RenderRoute,
+    stats::Stats,
+    surface::Parameters,
+    surface::Surface,
     surface::{HeadlessPublication, HeadlessResources, SurfaceBackend},
 };
 
@@ -186,7 +193,7 @@ impl Renderer {
                         let generation = renderer
                             .backend
                             .as_ref()
-                            .ok_or(crate::RenderAccountingError::Invariant)?
+                            .ok_or(crate::accounting::RenderAccountingError::Invariant)?
                             .generation(identity)?
                             .clone();
                         attempt.attach_generation(&generation)?;
