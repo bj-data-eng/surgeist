@@ -169,7 +169,7 @@ fn element_task_errors_state_the_refused_operation() {
             ),
             (
                 DomElementTaskRuntimeError::Binding,
-                "the element-task owner, DOM or task binding is missing or does not match",
+                "the element-task owner, DOM or task binding is missing or does not match, or the retained task state does not match",
             ),
             (
                 DomElementTaskRuntimeError::OwnerDisposed,
@@ -255,7 +255,7 @@ fn hosted_lifecycle_errors_state_the_refused_operation() {
         vec![
             (
                 DomHostedRuntimeError::Dom(DomHostedError::ForeignSource),
-                "the canonical DOM refused the hosted lifecycle operation",
+                "a canonical DOM or hosted DOM error refused the hosted lifecycle operation",
             ),
             (
                 DomHostedRuntimeError::OwnerDisposed,
@@ -263,11 +263,11 @@ fn hosted_lifecycle_errors_state_the_refused_operation() {
             ),
             (
                 DomHostedRuntimeError::Busy,
-                "the hosted lifecycle owner or its event loop is already in use by another operation",
+                "the hosted lifecycle state, its event loop or the element-task state this operation needs is already in use",
             ),
             (
                 DomHostedRuntimeError::Binding,
-                "the hosted lifecycle permission, DOM view or target does not match the original binding",
+                "the hosted lifecycle permission, DOM view, clock source or target does not match the original binding, or is not ready",
             ),
             (
                 DomHostedRuntimeError::Admission,
@@ -299,7 +299,7 @@ fn hosted_lifecycle_errors_state_the_refused_operation() {
             ),
             (
                 DomHostedRuntimeError::OperationPending,
-                "another retained hosted operation or live hosted record must be settled before this operation",
+                "a retained hosted operation, live hosted record or cleanup phase must be settled or reached before this operation can proceed",
             ),
             (
                 DomHostedRuntimeError::TargetNotFound,
@@ -307,11 +307,11 @@ fn hosted_lifecycle_errors_state_the_refused_operation() {
             ),
             (
                 DomHostedRuntimeError::Protocol,
-                "retained hosted lifecycle state disagrees with the canonical request",
+                "a retained hosted lifecycle record, phase or source identity is missing or disagrees with the request, or the element-task owner refused it",
             ),
             (
                 DomHostedRuntimeError::Inactive,
-                "the Document or Global this operation names is not currently active or ready",
+                "the Document, Global or navigable this operation names is not currently active, ready or the expected top-level target",
             ),
             (
                 DomHostedRuntimeError::CheckpointUnavailable,
@@ -476,7 +476,7 @@ fn source_operation_errors_state_the_refusing_owner() {
                 DomSourceRuntimeError::MetaCsp(
                     DomSourceMetaCspError::<PolicyListCapacity>::IssuerBusy,
                 ),
-                "the CSP processor or the Source controller refused the meta CSP pragma",
+                "the meta CSP pragma could not be processed",
             ),
         ],
         |error| match error {
@@ -504,9 +504,8 @@ fn source_operation_errors_state_the_refusing_owner() {
 fn style_runtime_errors_state_the_refused_operation() {
     let root = node();
     // Rows without a public constructor for their payload: `PendingParsedAssociations`
-    // (row 0, a parsed association id), `RootReleasedForHostedDestruction` (row 13, a
-    // hosted operation id and a CSSOM revision) and `SourcePending` (row 18, a Source
-    // operation id) are exercised only by the exhaustive index below.
+    // (row 0, a parsed association id) and `RootReleasedForHostedDestruction` (row 13, a
+    // hosted operation id and a CSSOM revision) have no constructed row.
     check_table(
         vec![
             (
@@ -515,7 +514,7 @@ fn style_runtime_errors_state_the_refused_operation() {
             ),
             (
                 DomStyleRuntimeError::Cssom(CssomError::EffectAlreadyConsumed),
-                "the CSSOM owner refused the mutation",
+                "the CSSOM owner refused the operation",
             ),
             (
                 DomStyleRuntimeError::Css(CssUtf16InputError::allocation()),
@@ -523,11 +522,11 @@ fn style_runtime_errors_state_the_refused_operation() {
             ),
             (
                 DomStyleRuntimeError::Admission,
-                "the Style runtime's own admission refused the operation",
+                "the Style operation was refused admission or an accounting step failed",
             ),
             (
                 DomStyleRuntimeError::Binding,
-                "the Style runtime owner is borrowed, replaced or conflicts with the supplied binding",
+                "an owner needed by the Style operation is borrowed, replaced or conflicts with the supplied binding",
             ),
             (
                 DomStyleRuntimeError::Protocol,
@@ -543,7 +542,7 @@ fn style_runtime_errors_state_the_refused_operation() {
             ),
             (
                 DomStyleRuntimeError::WrongSession,
-                "the execution permission and the DOM view belong to different sessions",
+                "the DOM view belongs to a different session than the Style runtime",
             ),
             (
                 DomStyleRuntimeError::PreboundSession,
@@ -574,12 +573,16 @@ fn style_runtime_errors_state_the_refused_operation() {
                 "the preference or producer output could not be admitted",
             ),
             (
+                DomStyleRuntimeError::SourcePending(dom_with_pending_edit().1),
+                "a canonical Source operation is already pending",
+            ),
+            (
                 DomStyleRuntimeError::Resource(DomStyleCssomRootError::Busy),
                 "the retained CSSOM root resource is unavailable or refused the work",
             ),
             (
                 DomStyleRuntimeError::EventExecutor(DomSourceEventRuntimeError::Busy),
-                "the Source event executor refused Style event attestation",
+                "the Source event executor refused the Style event dispatch",
             ),
             (
                 DomStyleRuntimeError::EventClock(DomHostedRuntimeError::Busy),
@@ -622,7 +625,7 @@ fn style_runtime_errors_state_the_refused_operation() {
                     | DomStyleRuntimeError::EventClock(_)
             )
         },
-        &[0, 13, 18],
+        &[0, 13],
     );
     let inner = some_dom_error();
     assert_chains(&DomStyleRuntimeError::Dom(inner.clone()), &inner);
@@ -764,7 +767,7 @@ fn session_creation_refusals_name_the_exhausted_owner_resource() {
     ));
     assert_eq!(
         refusal.to_string(),
-        "the Style runtime's own admission refused the operation"
+        "the Style operation was refused admission or an accounting step failed"
     );
 
     let mut refused = limits();
@@ -831,5 +834,171 @@ fn operations_on_a_disposed_session_report_the_disposed_owner() {
     assert_eq!(
         error.to_string(),
         "the session that issued this hosted permission was disposed"
+    );
+}
+
+/// A session whose DOM can hold hosted top-level Documents.
+fn hosted_session() -> DomSession {
+    let dom = Dom::new(
+        DomLimits::new(
+            512,
+            200_000,
+            1024,
+            1024,
+            1024,
+            64,
+            4_000_000,
+            surgeist_dom::limits::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                .unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            surgeist_dom::event::DomDispatchCustodyLimits::new(
+                64, 4096, 16_000_000, 16_000_000, 4_000_000,
+            )
+            .unwrap(),
+        )
+        .with_details_toggle_intentions(32)
+        .unwrap(),
+    )
+    .unwrap();
+    DomSession::new(dom, limits()).unwrap()
+}
+
+#[test]
+fn hosted_lifecycle_refusals_of_public_operations_state_their_cause() {
+    let mut session = hosted_session();
+    let mut hosted = session.hosted_execution();
+
+    let error = hosted
+        .create_host(&mut session.dom(), &AtomicBool::new(true))
+        .unwrap_err();
+    assert!(matches!(error, DomHostedRuntimeError::Cancelled));
+    assert_eq!(
+        error.to_string(),
+        "the hosted lifecycle operation was cancelled"
+    );
+
+    // A DOM view of another session does not match the permission's binding.
+    let mut foreign = hosted_session();
+    let error = hosted.create_host(&mut foreign.dom(), &flag()).unwrap_err();
+    assert!(matches!(error, DomHostedRuntimeError::Binding));
+    assert_eq!(
+        error.to_string(),
+        "the hosted lifecycle permission, DOM view, clock source or target does not match the original binding, or is not ready"
+    );
+
+    // A host that still has a live top-level cannot be destroyed first.
+    let host = hosted.create_host(&mut session.dom(), &flag()).unwrap();
+    hosted
+        .create_top_level(&mut session.dom(), host, &flag())
+        .unwrap();
+    let error = hosted
+        .destroy_host(&mut session.dom(), host, &flag())
+        .unwrap_err();
+    assert!(matches!(error, DomHostedRuntimeError::OperationPending));
+    assert_eq!(
+        error.to_string(),
+        "a retained hosted operation, live hosted record or cleanup phase must be settled or reached before this operation can proceed"
+    );
+
+    // A host that was already destroyed is no longer found.
+    let empty = hosted.create_host(&mut session.dom(), &flag()).unwrap();
+    hosted
+        .destroy_host(&mut session.dom(), empty, &flag())
+        .unwrap();
+    let error = hosted
+        .destroy_host(&mut session.dom(), empty, &flag())
+        .unwrap_err();
+    assert!(matches!(error, DomHostedRuntimeError::TargetNotFound));
+    assert_eq!(
+        error.to_string(),
+        "the live native host, Global, navigable or retained record this operation names was not found"
+    );
+}
+
+/// A DOM with one started, unfinished Source edit, and that edit's operation id.
+fn dom_with_pending_edit() -> (Dom, surgeist_dom::source::DomSourceOperationId) {
+    use surgeist_dom::source::{DomSourceEdit, DomSourceLimits, DomSourceProgress};
+    let (mut dom, _) = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let style =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
+    let commit = dom.apply(batch, &flag()).unwrap();
+    let document = commit.document(&document).unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(style, document.node(), None),
+            DomSourceLimits::new(64_000_000, 1_000_000, 20_000_000, 128, 4096, 4096, 8),
+            &flag(),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&flag()).unwrap(),
+        DomSourceProgress::Request(_)
+    ));
+    drop(lease);
+    let operation = dom.pending_source_edit().unwrap().operation();
+    (dom, operation)
+}
+
+#[test]
+fn a_session_over_a_dom_with_a_pending_source_edit_is_refused_for_it() {
+    let (dom, operation) = dom_with_pending_edit();
+    let error = match DomSession::new(dom, limits()) {
+        Err(error) => error,
+        Ok(_) => panic!("a pending Source edit must refuse the session"),
+    };
+    assert!(
+        matches!(
+            error.error(),
+            DomSessionCreateFailure::Style(DomStyleRuntimeError::SourcePending(pending))
+                if *pending == operation
+        ),
+        "{:?}",
+        error.error()
+    );
+    assert_eq!(
+        DomStyleRuntimeError::SourcePending(operation).to_string(),
+        "a canonical Source operation is already pending"
+    );
+}
+
+#[test]
+fn operations_with_the_dom_view_of_another_session_state_the_mismatch() {
+    let session = DomSession::new(dom().0, limits()).unwrap();
+    let mut tasks = session.element_task_execution();
+    let styles = session.style_execution();
+    let (other_dom, node) = dom();
+    let mut other = DomSession::new(other_dom, limits()).unwrap();
+
+    // The hosted owner is checked first, so the refusal is the hosted one.
+    let error = tasks.ingest(&mut other.dom(), &flag()).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            DomElementTaskRuntimeError::Hosted(DomHostedRuntimeError::Binding)
+        ),
+        "{error:?}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "the native hosted lifecycle refused the element-task operation"
+    );
+    assert_eq!(
+        error.source().unwrap().to_string(),
+        "the hosted lifecycle permission, DOM view, clock source or target does not match the original binding, or is not ready"
+    );
+
+    let error = styles.sheet_sets(&other.dom(), node, &flag()).unwrap_err();
+    assert!(
+        matches!(error, DomStyleRuntimeError::WrongSession),
+        "{error:?}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "the DOM view belongs to a different session than the Style runtime"
     );
 }
