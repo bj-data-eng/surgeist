@@ -201,6 +201,12 @@ impl State {
     }
 }
 
+/// The resources of the refusals that report an exhausted source collector.
+const BYTES_RESOURCE: &str = "retained parse source bytes";
+const DEPTH_RESOURCE: &str = "retained source traversal depth";
+const STORAGE_RESOURCE: &str = "retained source traversal storage";
+const STEPS_RESOURCE: &str = "retained source traversal steps";
+
 /// The refusal that reports an exhausted source collector.
 pub(crate) fn source_refusal(error: CssSourceRetentionError, limits: &CssomLimits) -> CssomError {
     assert!(
@@ -209,23 +215,33 @@ pub(crate) fn source_refusal(error: CssSourceRetentionError, limits: &CssomLimit
     );
     match error.exhausted_limit() {
         Some(CssSourceRetentionResource::RetainedBytes) => CssomError::Limit {
-            resource: "retained parse source bytes",
+            resource: BYTES_RESOURCE,
             maximum: limits.max_retained_source_bytes,
         },
         Some(CssSourceRetentionResource::Depth) => CssomError::Limit {
-            resource: "retained source traversal depth",
+            resource: DEPTH_RESOURCE,
             maximum: limits.max_source_traversal_depth,
         },
         // An allocation refusal or exhausted collector storage.
         Some(CssSourceRetentionResource::Storage) | None => CssomError::Limit {
-            resource: "retained source traversal storage",
+            resource: STORAGE_RESOURCE,
             maximum: limits.max_source_traversal_steps,
         },
         Some(_) => CssomError::Limit {
-            resource: "retained source traversal steps",
+            resource: STEPS_RESOURCE,
             maximum: limits.max_source_traversal_steps,
         },
     }
+}
+
+/// Whether `error` is one of the refusals [`source_refusal`] returns.
+#[cfg(test)]
+pub(crate) fn is_source_refusal(error: &CssomError) -> bool {
+    matches!(
+        error,
+        CssomError::Limit { resource, .. }
+            if [BYTES_RESOURCE, DEPTH_RESOURCE, STORAGE_RESOURCE, STEPS_RESOURCE].contains(resource)
+    )
 }
 
 /// Charges and visits the sources of one sheet record.

@@ -1,4 +1,5 @@
 //! Surgeist's inert named-support policy; CSS owns syntax and reconstruction.
+use crate::css_adapter::Adoption;
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, rule_operations::component_limits, *};
 use surgeist_css::component::{CssComponentValue, CssComponentValueRef, CssValueOrigin};
@@ -26,17 +27,17 @@ fn own_child(child: CssSupportsTestChildRef<'_>) -> Result<CssSupportsTestChild,
     }
 }
 
-impl State {
+impl Adoption<'_> {
     pub(crate) fn named_supports_data(
         &mut self,
         name: &CssSupportsConditionName,
         body: &CssSupportsTestBody,
         parent: &CssomRuleId,
         depth: usize,
-        limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
+        let limits = self.limits();
         validate_body(name, body, depth, limits)?;
-        let children = self.list(limits)?;
+        let children = self.list()?;
         for child in body.children() {
             let child = self.adopt(
                 CssomAuthoredRule::SupportsTestChild(own_child(child)?),
@@ -45,9 +46,8 @@ impl State {
                     resource: "rule depth",
                     maximum: limits.max_depth,
                 })?,
-                limits,
             )?;
-            self.lists.get_mut(&children).expect("new list").push(child);
+            self.push_child(&children, child);
         }
         Ok(CssomRuleData::NamedSupports {
             name: name.clone(),
@@ -55,6 +55,9 @@ impl State {
             children,
         })
     }
+}
+
+impl State {
     fn named_supports_guard(&self, id: &CssomRuleId) -> Result<(), CssomError> {
         self.rule(id)?;
         if let Some(sheet) = self.parent_style_sheet(id)? {
