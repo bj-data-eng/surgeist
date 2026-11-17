@@ -263,6 +263,29 @@ fn a_host_cap_on_parse_work_replaces_the_report_and_charges_nothing() {
 }
 
 #[test]
+fn a_host_cap_refuses_block_contents_with_its_limit_and_total() {
+    // `color:red` builds 3 documents; one earlier call has charged 1.
+    let caps = cap(CssWorkFields {
+        Document: 3,
+        ..CssWorkFields::splat(u64::MAX)
+    });
+    let (ledger, host) = host(caps, ProfileMode::Off);
+    let parser = CssParser::default();
+    parser.accounted(&host).parse_sheet("").unwrap();
+    let stop = parser
+        .accounted(&host)
+        .parse_block_contents("color:red")
+        .unwrap_err();
+    let refusal = stop.host_refusal().unwrap();
+    assert_eq!(refusal.change(), CssChange::Work(CssWork::Document, 3));
+    assert_eq!(
+        (refusal.limit(), refusal.total(), refusal.amount()),
+        (3, 1, 3)
+    );
+    assert_eq!(charged(&ledger), [0, 1, 0, 0]);
+}
+
+#[test]
 fn a_host_cap_on_input_units_refuses_after_the_parse_work_is_charged() {
     let caps = cap(CssWorkFields {
         InputUnit: 11,
