@@ -2094,6 +2094,7 @@ name = "surgeist-css-parser"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
+ "surgeist-ledger",
 ]
 
 [[package]]
