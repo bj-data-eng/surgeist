@@ -1228,7 +1228,7 @@ fn parsed_install_error_messages_state_the_refused_report() {
         ),
         row(
             E::CurrentPolicyUnavailable,
-            "the report or the destination Document is outside the policy profile that completed HTML installation supports",
+            "the current Document facts or the report's policy profile do not qualify the report's URL, encoding, scripting, registry, browsing-context or policy observations",
             false,
         ),
         row(
