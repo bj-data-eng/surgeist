@@ -509,9 +509,11 @@ fn reading_a_slot_from_an_element_that_is_not_a_slot_is_refused() {
     );
 }
 
+type SetterCase = (fn(&mut DomBatch, NodeId), DomError, &'static str);
+
 #[test]
 fn control_setters_on_a_div_name_the_element_they_need() {
-    let cases: [(fn(&mut DomBatch, NodeId), DomError, &str); 7] = [
+    let cases: [SetterCase; 7] = [
         (
             |b, n| b.set_input_checked(n, true),
             DomError::InputInapplicable,
