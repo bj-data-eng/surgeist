@@ -31,11 +31,11 @@ use surgeist_runtime::{
     AppProxy, DomEventConstructionError, DomEventDispatchError, DomHostedRuntimeError,
     DomSessionCreateFailure, DomSourceDriveError, DomSourceEventRuntimeError,
     DomSourceRuntimeError, DomStyleMetaError, DomStyleParsedAdmissionError,
-    DomStyleParsedFrontierError, DomStyleParsedInstallError, DomStyleParsedMetaOccurrenceError,
-    DomStyleParsedNotificationError, DomStyleParsedPrefixError, DomStyleParsedSheetError,
-    DomStyleParsedSubjectError, DomStyleParsedSuccessorError, DomStyleRootWithdrawalError,
-    DomStyleRuntimeError, InputProvenance, QueuePolicy, TaskInput, TaskIntentAttemptId,
-    TaskIntentId, WakeBridge, WakeError,
+    DomStyleParsedFrontierError, DomStyleParsedInstallError, DomStyleParsedMetaError,
+    DomStyleParsedMetaOccurrenceError, DomStyleParsedNotificationError, DomStyleParsedPrefixError,
+    DomStyleParsedSheetError, DomStyleParsedSubjectError, DomStyleParsedSuccessorError,
+    DomStyleRootWithdrawalError, DomStyleRuntimeError, InputProvenance, QueuePolicy, TaskInput,
+    TaskIntentAttemptId, TaskIntentId, WakeBridge, WakeError,
     trusted_types_csp::{AttributePolicyError, PolicyListCapacity, PolicyListError},
 };
 
@@ -401,6 +401,28 @@ fn parsed_style_wrappers_state_their_own_context() {
         |error| match error {
             DomStyleParsedSuccessorError::Runtime(_) => 0,
             DomStyleParsedSuccessorError::Successor(_) => 1,
+        },
+        |_| true,
+        &[],
+    );
+    check_table(
+        vec![
+            (
+                DomStyleParsedMetaError::Runtime(runtime()),
+                "the Style runtime refused the parsed Meta operation",
+            ),
+            (
+                DomStyleParsedMetaError::Meta(
+                    surgeist_dom::installation::meta::DomParsedHtmlMetaError::Admission(
+                        DomParsedHtmlAssociationAdmissionError::Dom(DomError::Cancelled),
+                    ),
+                ),
+                "the canonical parsed Meta qualification or producer preparation was refused",
+            ),
+        ],
+        |error| match error {
+            DomStyleParsedMetaError::Runtime(_) => 0,
+            DomStyleParsedMetaError::Meta(_) => 1,
         },
         |_| true,
         &[],
