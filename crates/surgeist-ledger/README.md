@@ -266,7 +266,8 @@ a gauge; and of one and of four threads charging sibling scopes of one shared
 operation, as the mean time a participant takes per batch. Its last table
 runs a loop of events that keeps a local limit check and charges the ledger per
 event, per block of 64 or 4096 events, or once after the loop, beside the same
-loop with no ledger and with plain two-scope counters. A consumer chooses how
+loop with no ledger, with plain two-scope counters and with a two-scope `Chain`;
+the batch table also charges chains of two and three scopes. A consumer chooses how
 often a high-volume site charges from that table.
 
 Platforms without a supported standard clock can select untimed profiling
@@ -360,6 +361,45 @@ the implementation's `Stop`. `Operation::charge_at` and
 of the operation and report the ledger `Error`. A consumer with its own admission
 rules implements the trait over its accounting and maps the refusal into its own
 stop type. Dispatch is static and each call carries a whole batch.
+
+## Count an unobserved task in plain counters
+
+`Chain` holds a root scope and a fixed number of scopes below it, one under the
+other, in plain tables. Batches are charged at the leaf. It admits and refuses
+every batch as an `Operation` with the same scopes, caps and tariffs does when
+charged at its leaf: the same atomic ordered batches, the same first refusal with
+its scope, item, change, current value and reason, and the same usage and peaks
+in every scope. `check_batch` changes nothing, `usage` and `limits` read any scope
+of the chain, and `Chain` implements `Charge`.
+
+```rust
+use surgeist_ledger::{Chain, Change, Limits, NoDimension, NoTable, Tariff, Tariffs};
+
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable, WorkFields { Token, Node, Credit }
+}
+
+// A charging scope without caps counts tokens and nodes. Its parent counts
+// both as credits and admits a hundred of them.
+let mut chain = Chain::<Work, NoDimension, 1>::new(
+    Limits::new(WorkTable::new(WorkFields { Token: u64::MAX, Node: u64::MAX, Credit: 100 }), NoTable::EMPTY),
+    [(
+        Limits::unlimited(),
+        Tariffs::from_fn(|_| Tariff::new(Work::Credit, 1), |dimension| match dimension {}),
+    )],
+)?;
+chain.apply_batch(&[Change::Work(Work::Token, 60), Change::Work(Work::Node, 30)])?;
+assert!(chain.apply(Change::Work(Work::Token, 11)).is_err());
+assert_eq!(chain.usage(chain.leaf())?.work(Work::Token), 60);
+assert_eq!(chain.usage(chain.root())?.work(Work::Credit), 90);
+# Ok::<(), surgeist_ledger::Error<Work, NoDimension>>(())
+```
+
+Use it for accounting that nothing observes: a task with no host scope, no
+profile and no checkpoint. A chain has no profile, checkpoints, phases or scope
+names, charges only its leaf, and allocates nothing at setup or admission. A
+task that a host or a profile observes charges an `Operation`. The `granularity`
+bench reports a chain beside an operation and beside bare counters.
 
 ## Share short accounting calls
 
