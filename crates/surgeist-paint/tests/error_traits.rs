@@ -8,17 +8,32 @@
 use std::error::Error;
 use surgeist_layout::{Edges, PhysicalAxis, Point, Size, SourceIndex};
 use surgeist_ledger::{Defect, ProfileMode, RefusalReason};
-use surgeist_paint::{
-    AccountingFailure, BorderImageGeometryError, BorderImageOutset, BorderImageRequest,
-    BorderImageSlice, BorderImageSource, BorderImageWidth, BoxCategoryError, BoxFacts, BoxId,
-    BoxPaintKind, BudgetRefusal, ChildOrder, ContentEntry, ContextEffect, FragmentId,
-    FragmentOwner, GradientGeometryError, GradientPositionComponent, GradientStopItem,
-    GradientStopsError, LineId, LinearGradientDirection, PaintChange, PaintError, PaintInputError,
-    PaintLimits, PaintOptions, PaintPhase, Participation, Position, PrimitiveId,
-    RadialGradientError, RadialGradientSize, ResourceKind, SourceChild, TextId, WorkKind, ZIndex,
-    ZeroHeightGradientError, plan_paint_order, plan_stacking, resolve_border_image,
-    resolve_gradient_stops, resolve_linear_gradient, resolve_radial_gradient,
+use surgeist_paint::PaintError;
+use surgeist_paint::accounting::{
+    AccountingFailure, BudgetRefusal, PaintChange, PaintLimits, PaintOptions, PaintPhase,
+    ResourceKind, WorkKind,
 };
+use surgeist_paint::border_image::{
+    BorderImageGeometryError, BorderImageOutset, BorderImageRequest, BorderImageSlice,
+    BorderImageSource, BorderImageWidth, resolve_border_image,
+};
+use surgeist_paint::gradient_stops::{
+    GradientPositionComponent, GradientStopItem, GradientStopsError, resolve_gradient_stops,
+};
+use surgeist_paint::linear_gradient::{
+    GradientGeometryError, LinearGradientDirection, resolve_linear_gradient,
+};
+use surgeist_paint::paint_order::{
+    BoxCategoryError, BoxPaintKind, ContentEntry, FragmentId, FragmentOwner, LineId,
+    PaintInputError, PaintRequest, PrimitiveId, SourceChild, TextId, plan_paint_order,
+};
+use surgeist_paint::radial_gradient::{
+    RadialGradientError, RadialGradientSize, resolve_radial_gradient,
+};
+use surgeist_paint::stacking::{
+    BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex, plan_stacking,
+};
+use surgeist_paint::zero_height_gradient::ZeroHeightGradientError;
 
 fn options() -> PaintOptions {
     PaintOptions::new(
@@ -534,7 +549,7 @@ fn a_box_paint_table_of_the_wrong_length_is_reported_in_words_end_to_end() {
             ContextEffect::None,
         ),
     ];
-    let request = surgeist_paint::PaintRequest::new(&boxes, &[], &[], &[], &[], &[], BoxId::new(0));
+    let request = PaintRequest::new(&boxes, &[], &[], &[], &[], &[], BoxId::new(0));
     let error = plan_paint_order(request, options()).result.unwrap_err();
     assert_eq!(error.to_string(), "paint input is invalid");
     assert_eq!(

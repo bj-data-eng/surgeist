@@ -2,11 +2,20 @@
 
 use std::{cell::Cell, ptr, rc::Rc, time::Duration};
 use surgeist_layout::{Point, Size};
-use surgeist_paint::{
-    EventFilter, GradientPosition, GradientPositionComponent, GradientRepeat, GradientStopItem,
-    GradientStopPositions, GradientStopsError, PaintChange, PaintError, PaintLimits, PaintOptions,
-    PaintPhase, PaintReport, ProfileMode, RadialGradientGeometry, RadialGradientSize, ResourceKind,
-    WorkKind, ZeroHeightGradientColors, ZeroHeightGradientError, resolve_radial_gradient,
+use surgeist_ledger::{EventFilter, ProfileMode};
+use surgeist_paint::PaintError;
+use surgeist_paint::accounting::{
+    PaintChange, PaintLimits, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
+};
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientPositionComponent, GradientStopItem, GradientStopPositions,
+    GradientStopsError,
+};
+use surgeist_paint::radial_gradient::{
+    RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
+};
+use surgeist_paint::zero_height_gradient::{
+    GradientRepeat, ZeroHeightGradientColors, ZeroHeightGradientError,
     resolve_zero_height_gradient_colors,
 };
 

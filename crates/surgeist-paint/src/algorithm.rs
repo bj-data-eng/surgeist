@@ -2,13 +2,12 @@
 mod paint;
 pub(crate) use paint::{model as paint_model, plan as plan_order};
 
+use crate::PaintError;
 use crate::accounting::{
-    Meter, OperationKind, PhaseMeter, allocate, apply, charge, finish, release, setup_error,
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, PhaseMeter, ResourceKind,
+    WorkKind, allocate, apply, charge, finish, release, setup_error,
 };
-use crate::{
-    BoxFacts, BoxId, ChildOrder, PaintError, PaintOptions, PaintPhase, PaintReport, Participation,
-    ResourceKind, WorkKind,
-};
+use crate::stacking::{BoxFacts, BoxId, ChildOrder, Participation};
 use std::{
     cmp::Ordering,
     mem::{size_of, take},
@@ -519,7 +518,9 @@ mod sort_buffers {
         ) -> Result<Self, PaintError> {
             let scratch = scratch
                 .get_mut(..values.len())
-                .ok_or(PaintError::Accounting(crate::AccountingFailure::Invariant))?;
+                .ok_or(PaintError::Accounting(
+                    crate::accounting::AccountingFailure::Invariant,
+                ))?;
             Ok(Self { values, scratch })
         }
 

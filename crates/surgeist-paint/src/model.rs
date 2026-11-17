@@ -64,7 +64,7 @@ pub enum ContextEffect {
 }
 
 /// Immutable, caller-resolved rendering-box facts. Cross-box relations are
-/// validated by [`crate::plan_stacking`]. Anonymous/generated boxes have slots too.
+/// validated by [`crate::stacking::plan_stacking`]. Anonymous/generated boxes have slots too.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BoxFacts {
     pub(crate) parent: Option<BoxId>,
@@ -144,12 +144,12 @@ impl BoxFacts {
 /// A complete typed refusal. A failed operation publishes no partial plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaintError {
-    Input(crate::PaintInputError),
-    Gradient(crate::GradientGeometryError),
-    GradientStops(crate::GradientStopsError),
-    RadialGradient(crate::RadialGradientError),
-    ZeroHeightGradient(crate::ZeroHeightGradientError),
-    BorderImage(crate::BorderImageGeometryError),
+    Input(crate::paint_order::PaintInputError),
+    Gradient(crate::linear_gradient::GradientGeometryError),
+    GradientStops(crate::gradient_stops::GradientStopsError),
+    RadialGradient(crate::radial_gradient::RadialGradientError),
+    ZeroHeightGradient(crate::zero_height_gradient::ZeroHeightGradientError),
+    BorderImage(crate::border_image::BorderImageGeometryError),
     MissingRoot,
     MultipleRoots {
         first: BoxId,
@@ -174,10 +174,10 @@ pub enum PaintError {
     },
     CapacityOverflow,
     Allocation {
-        resource: crate::ResourceKind,
+        resource: crate::accounting::ResourceKind,
     },
-    Budget(crate::BudgetRefusal),
-    Accounting(crate::AccountingFailure),
+    Budget(crate::accounting::BudgetRefusal),
+    Accounting(crate::accounting::AccountingFailure),
 }
 impl fmt::Display for PaintError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -255,5 +255,3 @@ impl Error for PaintError {
         }
     }
 }
-
-pub use crate::algorithm::{ContextView, StackingPlan};

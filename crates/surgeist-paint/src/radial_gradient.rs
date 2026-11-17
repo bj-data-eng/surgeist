@@ -1,8 +1,25 @@
-use crate::{
-    GradientPosition, GradientPositionComponent, PaintError, PaintOptions, PaintPhase, PaintReport,
-    ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
+//! Radial gradient size resolution, center and the ordered zero cases.
+//!
+//! [`resolve_radial_gradient`] takes a concrete box size, an optional already
+//! used physical center and a [`RadialGradientSize`] request (a circle radius,
+//! explicit radii, or a side or corner [`RadialGradientExtent`]) and returns a
+//! [`RadialGradientGeometry`]: a finite center and either positive ellipse radii
+//! or one of the ordered degenerate cases of [`RadialGradientCase`]
+//! (`ZeroCircle`, `ZeroWidth`, `ZeroHeight`). No replacement radii are
+//! invented for a zero case.
+//!
+//! Invalid native input and unrepresentable results are a
+//! [`RadialGradientError`]. The call runs under a
+//! [`PaintOptions`] and returns a
+//! [`RadialGradientOutcome`] with the accounted work. A zero-height result feeds
+//! [`crate::zero_height_gradient`].
+
+use crate::PaintError;
+use crate::accounting::{
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, PhaseMeter, ResourceKind,
+    WorkKind, apply, bytes, charge, finish, setup_error,
 };
+use crate::gradient_stops::{GradientPosition, GradientPositionComponent};
 use core::error::Error;
 use std::fmt;
 use surgeist_layout::{PhysicalAxis, Point, Size};
@@ -721,8 +738,9 @@ impl From<RadialGradientError> for PaintError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PaintChange, PaintLimits, PaintPhase, ProfileMode};
+    use crate::accounting::{PaintChange, PaintLimits, PaintPhase};
     use std::mem::size_of;
+    use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {
         PaintOptions::new(limits, ProfileMode::Summary { timing: false })

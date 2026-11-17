@@ -1,10 +1,8 @@
 use super::*;
-use crate::{
-    BoxFacts, ContextEffect, PaintLimits, PaintOptions, PaintPhase, PaintReport, Position,
-    ProfileMode, ZIndex, accounting::OperationKind,
-};
+use crate::accounting::{OperationKind, PaintLimits, PaintOptions, PaintPhase, PaintReport};
+use crate::stacking::{BoxFacts, ContextEffect, Position, ZIndex};
 use surgeist_layout::ItemOrder;
-use surgeist_ledger::{Limits, Tariffs};
+use surgeist_ledger::{Limits, ProfileMode, Tariffs};
 
 #[derive(Debug, Eq, PartialEq)]
 struct Snapshot {

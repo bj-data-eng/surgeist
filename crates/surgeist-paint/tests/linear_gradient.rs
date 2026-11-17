@@ -2,10 +2,14 @@
 
 use std::{cell::Cell, mem::size_of, time::Duration};
 use surgeist_layout::{Point, Size};
-use surgeist_paint::{
-    EventFilter, GradientGeometryError, LinearGradientDirection as Direction, LinearGradientLine,
-    PaintChange, PaintError, PaintLimits, PaintOptions, PaintPhase, PaintReport, ProfileMode,
-    ResourceKind, WorkKind, resolve_linear_gradient,
+use surgeist_ledger::{EventFilter, ProfileMode};
+use surgeist_paint::PaintError;
+use surgeist_paint::accounting::{
+    PaintChange, PaintLimits, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
+};
+use surgeist_paint::linear_gradient::{
+    GradientGeometryError, LinearGradientDirection as Direction, LinearGradientLine,
+    resolve_linear_gradient,
 };
 
 fn options(limits: PaintLimits) -> PaintOptions {

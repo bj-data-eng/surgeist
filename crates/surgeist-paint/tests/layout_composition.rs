@@ -3,9 +3,10 @@
 //! computed Style adapter. Batch slice order supplies neither topology nor paint order.
 use std::convert::Infallible;
 use surgeist_layout as layout;
-use surgeist_paint::{
-    BoxFacts, BoxId, ChildOrder, ContextEffect, PaintLimits, PaintOptions, Participation, Position,
-    ProfileMode, ZIndex, plan_stacking,
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::stacking::{
+    BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex, plan_stacking,
 };
 
 struct Tree {

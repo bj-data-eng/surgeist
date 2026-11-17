@@ -1,11 +1,11 @@
 use super::{IndexedPaint, PaintCleanup, SequencedPaint, model::*, validation::PaintIndex};
-use crate::{
-    AccountingFailure, BoxId, PaintError, Participation, Position, ResourceKind, WorkKind,
-    accounting::{
-        Meter, PhaseMeter, allocate, allocate_with_headroom, charge, release, setup_error,
-    },
-    algorithm,
+use crate::PaintError;
+use crate::accounting::{
+    AccountingFailure, Meter, PhaseMeter, ResourceKind, WorkKind, allocate, allocate_with_headroom,
+    charge, release, setup_error,
 };
+use crate::algorithm;
+use crate::stacking::{BoxId, Participation, Position};
 use std::{
     mem::take,
     ops::{
@@ -23,12 +23,10 @@ fn invariant() -> PaintError {
 mod pending_tests {
     use super::super::{PreparedPaint, validation};
     use super::*;
-    use crate::{
-        BoxFacts, ChildOrder, ContextEffect, PaintChange, PaintLimits, PaintOptions, PaintPhase,
-        ProfileMode, ZIndex, accounting::OperationKind,
-    };
+    use crate::accounting::{OperationKind, PaintChange, PaintLimits, PaintOptions, PaintPhase};
+    use crate::stacking::{BoxFacts, ChildOrder, ContextEffect, ZIndex};
     use surgeist_layout::SourceIndex;
-    use surgeist_ledger::{Limits, Tariffs};
+    use surgeist_ledger::{Limits, ProfileMode, Tariffs};
 
     #[test]
     fn refused_first_task_keeps_pending_scope_unstarted_until_cleanup_and_retry() {
@@ -117,7 +115,10 @@ mod pending_tests {
             assert!(report.peak(resource) > 0);
             assert_eq!(report.live(resource), 0);
         }
-        let retry = crate::plan_paint_order(request, options.with_limits(PaintLimits::unlimited()));
+        let retry = crate::paint_order::plan_paint_order(
+            request,
+            options.with_limits(PaintLimits::unlimited()),
+        );
         let plan = retry.result.unwrap();
         let events: Vec<_> = plan.events().collect();
         assert!(
@@ -129,12 +130,13 @@ mod pending_tests {
 #[cfg(test)]
 mod growth_tests {
     use super::*;
-    use crate::{
-        BoxFacts, ChildOrder, ContextEffect, EventFilter, PaintChange, PaintEvent, PaintLimits,
-        PaintOptions, PaintReport, ProfileMode, RefusalReason, ZIndex, accounting::OperationKind,
+    use crate::accounting::{
+        OperationKind, PaintChange, PaintEvent, PaintLimits, PaintOptions, PaintReport,
     };
+    use crate::stacking::{BoxFacts, ChildOrder, ContextEffect, ZIndex};
     use std::mem::size_of;
     use surgeist_layout::SourceIndex;
+    use surgeist_ledger::{EventFilter, ProfileMode, RefusalReason};
 
     fn exercise(work_limit: u64, resource_limit: u64) -> (bool, u64, u64, PaintReport) {
         let limits = PaintLimits::unlimited()
@@ -250,14 +252,14 @@ mod growth_tests {
             filter: EventFilter::All,
         };
         let options = PaintOptions::new(PaintLimits::unlimited(), profile);
-        let baseline = crate::plan_paint_order(request, options);
+        let baseline = crate::paint_order::plan_paint_order(request, options);
         assert!(baseline.result.is_ok());
         let baseline = baseline.report.unwrap();
         // A root pushes its end marker and eight stages. Its ninth pending
         // task previously grew the eight-record backing to sixteen records.
         let task_bytes = size_of::<Task>() as u64;
         let required_peak = baseline.peak(ResourceKind::ScratchBytes) - 7 * task_bytes;
-        let outcome = crate::plan_paint_order(
+        let outcome = crate::paint_order::plan_paint_order(
             request,
             options.with_limits(
                 PaintLimits::unlimited()
@@ -286,7 +288,7 @@ mod growth_tests {
         }
 
         let one_short = required_peak - 1;
-        let outcome = crate::plan_paint_order(
+        let outcome = crate::paint_order::plan_paint_order(
             request,
             options.with_limits(
                 PaintLimits::unlimited().with_resource_limit(ResourceKind::ScratchBytes, one_short),

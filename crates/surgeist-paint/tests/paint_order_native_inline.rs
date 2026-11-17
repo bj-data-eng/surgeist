@@ -5,7 +5,8 @@
 
 use std::{convert::Infallible, ptr, sync::Arc};
 use surgeist_layout as l;
-use surgeist_paint as p;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::{accounting, paint_order, stacking};
 use surgeist_text as t;
 
 const AHEM: &[u8] = include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -305,53 +306,58 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
         native_lines[1].binding.prepared
     );
     let box_nodes = [2, 0, 1];
-    let box_id = |node| p::BoxId::new(box_nodes.iter().position(|&value| value == node).unwrap());
+    let box_id =
+        |node| stacking::BoxId::new(box_nodes.iter().position(|&value| value == node).unwrap());
     let boxes: Vec<_> = box_nodes
         .iter()
         .map(|&node| {
-            p::BoxFacts::new(
+            stacking::BoxFacts::new(
                 if node == 0 { None } else { Some(box_id(0)) },
                 source_index(&batch, node),
                 if node == 0 {
-                    p::ChildOrder::Flex
+                    stacking::ChildOrder::Flex
                 } else {
-                    p::ChildOrder::Source
+                    stacking::ChildOrder::Source
                 },
                 if node == 0 {
-                    p::Participation::Ordinary
+                    stacking::Participation::Ordinary
                 } else {
-                    p::Participation::FlexItem(l::ItemOrder::new(0))
+                    stacking::Participation::FlexItem(l::ItemOrder::new(0))
                 },
-                p::Position::Static,
-                p::ZIndex::Auto,
-                p::ContextEffect::None,
+                stacking::Position::Static,
+                stacking::ZIndex::Auto,
+                stacking::ContextEffect::None,
             )
         })
         .collect();
-    let paints = [p::BoxPaint::new(p::BoxPaintKind::Block, p::FloatParticipation::None); 3];
+    let paints = [paint_order::BoxPaint::new(
+        paint_order::BoxPaintKind::Block,
+        paint_order::FloatParticipation::None,
+    ); 3];
     let text_nodes = [7, 4, 3, 6, 5];
-    let text_id =
-        |node| p::TextId::new(text_nodes.iter().position(|&value| value == node).unwrap());
+    let text_id = |node| {
+        paint_order::TextId::new(text_nodes.iter().position(|&value| value == node).unwrap())
+    };
     let texts: Vec<_> = text_nodes
         .iter()
         .map(|&node| {
-            p::TextSource::new(
+            paint_order::TextSource::new(
                 box_id(if first.nodes.contains(&node) { 1 } else { 2 }),
                 source_index(&batch, node),
             )
         })
         .collect();
     // Root and container occurrence slots are independent of box storage.
-    let root_fragment = p::FragmentId::new(1);
-    let container_fragment = |node| p::FragmentId::new(if node == 1 { 2 } else { 0 });
+    let root_fragment = paint_order::FragmentId::new(1);
+    let container_fragment = |node| paint_order::FragmentId::new(if node == 1 { 2 } else { 0 });
     let lines = [
-        p::PaintLine::new(container_fragment(2), 0),
-        p::PaintLine::new(container_fragment(1), 0),
+        paint_order::PaintLine::new(container_fragment(2), 0),
+        paint_order::PaintLine::new(container_fragment(1), 0),
     ];
     let mut fragments = vec![
-        p::PaintFragment::box_fragment(box_id(2), Some(root_fragment), None, 0),
-        p::PaintFragment::box_fragment(box_id(0), None, None, 0),
-        p::PaintFragment::box_fragment(box_id(1), Some(root_fragment), None, 0),
+        paint_order::PaintFragment::box_fragment(box_id(2), Some(root_fragment), None, 0),
+        paint_order::PaintFragment::box_fragment(box_id(0), None, None, 0),
+        paint_order::PaintFragment::box_fragment(box_id(1), Some(root_fragment), None, 0),
     ];
     let mut native_fragments = vec![None; 3];
     // Deliberately reverse the producer association table. Paint gets explicit
@@ -388,16 +394,16 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
                 if matches!(*node, 3 | 6) { 0.0 } else { 10.0 }
             );
         }
-        fragments.push(p::PaintFragment::text_fragment(
+        fragments.push(paint_order::PaintFragment::text_fragment(
             text_id(*node),
             container_fragment(association.binding.container),
-            p::LineId::new(line_slot),
+            paint_order::LineId::new(line_slot),
             0,
         ));
         native_fragments.push(Some(row));
     }
     let text_fragment = |node| {
-        p::FragmentId::new(
+        paint_order::FragmentId::new(
             native_fragments
                 .iter()
                 .position(|row| {
@@ -406,23 +412,38 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
                 .unwrap(),
         )
     };
-    let text =
-        |node| p::PaintPrimitive::fragment(text_fragment(node), p::FragmentPaintKind::Text, 0);
+    let text = |node| {
+        paint_order::PaintPrimitive::fragment(
+            text_fragment(node),
+            paint_order::FragmentPaintKind::Text,
+            0,
+        )
+    };
     let background = |node| {
-        p::PaintPrimitive::fragment(
+        paint_order::PaintPrimitive::fragment(
             container_fragment(node),
-            p::FragmentPaintKind::BackgroundColor,
+            paint_order::FragmentPaintKind::BackgroundColor,
             0,
         )
     };
     let primitives = [
         text(7),
-        p::PaintPrimitive::decoration(text_fragment(3), box_id(1), p::DecorationKind::Underline, 0),
-        p::PaintPrimitive::canvas(p::CanvasPaintKind::BackgroundColor, 0),
+        paint_order::PaintPrimitive::decoration(
+            text_fragment(3),
+            box_id(1),
+            paint_order::DecorationKind::Underline,
+            0,
+        ),
+        paint_order::PaintPrimitive::canvas(paint_order::CanvasPaintKind::BackgroundColor, 0),
         text(5),
         background(2),
         text(3),
-        p::PaintPrimitive::decoration(text_fragment(3), box_id(0), p::DecorationKind::Underline, 0),
+        paint_order::PaintPrimitive::decoration(
+            text_fragment(3),
+            box_id(0),
+            paint_order::DecorationKind::Underline,
+            0,
+        ),
         background(1),
         text(6),
     ];
@@ -437,7 +458,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
             .aggregate_range(),
         Some(t::Range::new(1, 1))
     );
-    let request = p::PaintRequest::new(
+    let request = paint_order::PaintRequest::new(
         &boxes,
         &paints,
         &texts,
@@ -446,11 +467,11 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
         &primitives,
         box_id(0),
     );
-    let plan = p::plan_paint_order(
+    let plan = paint_order::plan_paint_order(
         request,
-        p::PaintOptions::new(
-            p::PaintLimits::unlimited(),
-            p::ProfileMode::Summary { timing: false },
+        accounting::PaintOptions::new(
+            accounting::PaintLimits::unlimited(),
+            ProfileMode::Summary { timing: false },
         ),
     )
     .result
@@ -458,9 +479,9 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
     let events: Vec<_> = plan
         .events()
         .map(|event| match event {
-            p::PaintOrderEvent::BeginContext(owner) => ('[', box_nodes[owner.id().get()]),
-            p::PaintOrderEvent::Draw(primitive) => ('d', primitive.id().get()),
-            p::PaintOrderEvent::EndContext(owner) => (']', box_nodes[owner.id().get()]),
+            paint_order::PaintOrderEvent::BeginContext(owner) => ('[', box_nodes[owner.id().get()]),
+            paint_order::PaintOrderEvent::Draw(primitive) => ('d', primitive.id().get()),
+            paint_order::PaintOrderEvent::EndContext(owner) => (']', box_nodes[owner.id().get()]),
         })
         .collect();
     // Source-leading item1 paints completely before item2 despite row-reverse
@@ -482,7 +503,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
         ]
     );
     for event in plan.events() {
-        if let p::PaintOrderEvent::Draw(primitive) = event {
+        if let paint_order::PaintOrderEvent::Draw(primitive) = event {
             assert!(ptr::eq(
                 primitive.record(),
                 &primitives[primitive.id().get()]
@@ -490,7 +511,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
             if let Some(fragment) = primitive.fragment() {
                 assert!(ptr::eq(fragment.record(), &fragments[fragment.id().get()]));
                 if let Some(row) = native_fragments[fragment.id().get()] {
-                    let p::FragmentOwner::Text(id) = fragment.record().owner() else {
+                    let paint_order::FragmentOwner::Text(id) = fragment.record().owner() else {
                         panic!("actual text occurrence retains a text source")
                     };
                     let node = text_nodes[id.get()];
@@ -527,12 +548,12 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
     let empty_view = plan.fragment_view(text_fragment(4)).unwrap();
     assert_eq!(
         empty_view.record().owner(),
-        p::FragmentOwner::Text(text_id(4))
+        paint_order::FragmentOwner::Text(text_id(4))
     );
-    assert_eq!(empty_view.line().unwrap().id(), p::LineId::new(1));
+    assert_eq!(empty_view.line().unwrap().id(), paint_order::LineId::new(1));
     assert_eq!(
         empty_view.text_source().unwrap().source_index(),
         source_index(&batch, 4)
     );
-    assert!(!plan.events().any(|event| matches!(event, p::PaintOrderEvent::Draw(primitive) if primitive.fragment().is_some_and(|fragment| fragment.id() == empty_view.id()))));
+    assert!(!plan.events().any(|event| matches!(event, paint_order::PaintOrderEvent::Draw(primitive) if primitive.fragment().is_some_and(|fragment| fragment.id() == empty_view.id()))));
 }

@@ -1,6 +1,31 @@
-use crate::{
-    PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
+//! Border-image and mask-border areas, nine-slice partitions and tiles.
+//!
+//! The functions here turn an already-sized border box and a concrete image
+//! source into physical geometry; callers own source eligibility, decoding,
+//! mask-channel interpretation and scene lowering.
+//!
+//! - [`resolve_border_image`] partitions an already-sized source and its outset
+//!   paint area into nine source regions and destination rectangles
+//!   ([`BorderImageGeometry`]).
+//! - When the source first needs sizing, [`resolve_border_image_area`] returns
+//!   the outset [`BorderImageArea`] and its default sizing extent, and
+//!   [`resolve_border_image_in_area`] partitions inside that area, so the area
+//!   and the width basis are computed once.
+//! - [`resolve_border_image_tiling`] plans clipped corner, edge and center
+//!   tiles from a partition and the per-axis [`BorderImageRepeat`] values.
+//! - [`resolve_mask_border_in_area`] plans the tiles and any opaque center of
+//!   a mask border in one operation ([`MaskBorderPlan`]).
+//!
+//! Lengths are CSS pixels in one caller-selected physical coordinate space.
+//! Every operation runs under the limits and profile of a
+//! [`PaintOptions`] and returns an outcome
+//! with the complete result or a [`PaintError`], with the accounted work of
+//! the accepted prefix. The failure kind is a [`BorderImageGeometryError`].
+
+use crate::PaintError;
+use crate::accounting::{
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, PhaseMeter, ResourceKind,
+    WorkKind, apply, bytes, charge, finish, setup_error,
 };
 use core::error::Error;
 use std::{cmp::Ordering, fmt};
@@ -129,9 +154,9 @@ impl BorderImageRect {
 
 /// A resolved paint area and the border widths that produced it.
 ///
-/// ```compile_fail
+/// ```compile_fail,E0616
 /// use surgeist_layout::Size;
-/// use surgeist_paint::BorderImageArea;
+/// use surgeist_paint::border_image::BorderImageArea;
 ///
 /// fn replace_sizing_extent(area: &mut BorderImageArea) {
 ///     area.extent = Size::new(10.0, 20.0);
@@ -1278,7 +1303,8 @@ fn region_rect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PaintChange, PaintLimits, ProfileMode};
+    use crate::accounting::{PaintChange, PaintLimits};
+    use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {
         PaintOptions::new(limits, ProfileMode::Summary { timing: false })

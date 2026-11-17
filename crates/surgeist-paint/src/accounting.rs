@@ -1,54 +1,92 @@
+//! Work and storage limits, profiling options and the reports of one paint operation.
+//!
+//! Every paint operation takes a [`PaintOptions`]: named [`PaintLimits`] over
+//! the [`WorkKind`] and [`ResourceKind`] dimensions, a Ledger profile mode
+//! (`surgeist_ledger::ProfileMode`) and an optional monotonic clock. Work
+//! counts defined algorithm actions, not CPU instructions or elapsed time;
+//! resources count the owned scratch and retained result bytes of the
+//! operation, never caller input or the bounded observer storage. Explicit
+//! unlimited limits still check arithmetic, and a zero limit is meaningful.
+//!
+//! An operation returns its result and an optional [`PaintReport`] of the
+//! accepted work, including for a failed operation. The report resolves
+//! Ledger scopes to [`PaintPhase`] values, so a reader needs neither a scope
+//! lookup nor a display-name interpretation; usage is inclusive, so root totals
+//! must not be summed with child attribution. A refused change is a
+//! [`BudgetRefusal`]; setup failures and broken internal expectations are an
+//! [`AccountingFailure`]. Both are carried by [`crate::PaintError`].
+//!
+//! The Ledger types that appear in this API (`ProfileMode`, `EventFilter`,
+//! `RefusalReason`, `Defect`) belong to the `surgeist-ledger` crate; name them
+//! from it.
+
 use crate::PaintError;
 use core::error::Error;
 use std::{fmt, mem::size_of, time::Duration};
-pub use surgeist_ledger::RefusalReason;
 use surgeist_ledger::{
-    Change, Dimension, Error as LedgerError, Limits, Operation, Phase, ProfileMode, Report, Scope,
-    Tariffs, Usage, dimensions,
+    Change, Dimension, Error as LedgerError, Limits, Operation, Phase, ProfileMode, RefusalReason,
+    Report, Scope, Tariffs, Usage,
 };
 
-dimensions! {
-    /// Defined algorithm actions, not CPU instructions.
-    pub enum WorkKind => WorkKindTable, WorkKindFields {
-        BoxValidation,
-        ParentEdge,
-        TopologyVisit,
-        SiblingComparison,
-        MembershipVisit,
-        ContextComparison,
-        OrderMove,
-        OutputRecord,
-        /// One paint-input record or reference validation action.
-        PaintValidation,
-        /// One fragment inspection, including repeated passes.
-        FragmentVisit,
-        /// One line inspection.
-        LineVisit,
-        /// One mixed text, child, or occurrence traversal action.
-        InlineMemberVisit,
-        /// One primitive record inspection.
-        PrimitiveVisit,
-        /// One recursive paint-scope work-stack action or visit.
-        PaintScopeVisit,
-        /// One source, occurrence, or primitive ordering comparison.
-        PaintOrderComparison,
-        /// One decoration applicator or ordering comparison.
-        DecorationComparison,
-        /// One input scalar, gradient request discriminant, or stop-list grammar validation.
-        GradientValidation,
-        /// One direction dispatch, scalar calculation, or scalar inspection.
-        GradientDirection,
-        /// One scalar gradient geometry or used-position calculation/inspection,
-        /// including repeated checks and bounded scalar representation-proof actions.
-        GradientCoordinate,
-        /// One source-item or expanded stop-record visit, including repeated walks.
-        GradientStopVisit,
-        /// One border-image input scalar validity check.
-        BorderImageValidation,
-        /// One border-image coordinate calculation or inspection.
-        BorderImageCoordinate,
+/// The generated dimension enums and their per-dimension tables. The tables
+/// stay unnameable: they appear only through `Dimension::Table`.
+mod tables {
+    use surgeist_ledger::dimensions;
+
+    dimensions! {
+        /// Defined algorithm actions, not CPU instructions.
+        pub enum WorkKind => WorkKindTable, WorkKindFields {
+            BoxValidation,
+            ParentEdge,
+            TopologyVisit,
+            SiblingComparison,
+            MembershipVisit,
+            ContextComparison,
+            OrderMove,
+            OutputRecord,
+            /// One paint-input record or reference validation action.
+            PaintValidation,
+            /// One fragment inspection, including repeated passes.
+            FragmentVisit,
+            /// One line inspection.
+            LineVisit,
+            /// One mixed text, child, or occurrence traversal action.
+            InlineMemberVisit,
+            /// One primitive record inspection.
+            PrimitiveVisit,
+            /// One recursive paint-scope work-stack action or visit.
+            PaintScopeVisit,
+            /// One source, occurrence, or primitive ordering comparison.
+            PaintOrderComparison,
+            /// One decoration applicator or ordering comparison.
+            DecorationComparison,
+            /// One input scalar, gradient request discriminant, or stop-list grammar validation.
+            GradientValidation,
+            /// One direction dispatch, scalar calculation, or scalar inspection.
+            GradientDirection,
+            /// One scalar gradient geometry or used-position calculation/inspection,
+            /// including repeated checks and bounded scalar representation-proof actions.
+            GradientCoordinate,
+            /// One source-item or expanded stop-record visit, including repeated walks.
+            GradientStopVisit,
+            /// One border-image input scalar validity check.
+            BorderImageValidation,
+            /// One border-image coordinate calculation or inspection.
+            BorderImageCoordinate,
+        }
+    }
+
+    dimensions! {
+        /// Owned algorithm/result storage, excluding caller input and the independently
+        /// bounded Ledger observer and Paint report adapter.
+        pub enum ResourceKind => ResourceKindTable, ResourceKindFields {
+            ScratchBytes,
+            RetainedResultBytes,
+        }
     }
 }
+pub use tables::{ResourceKind, WorkKind};
+use tables::{ResourceKindTable, WorkKindTable};
 
 pub(crate) enum OperationKind {
     Stacking,
@@ -122,15 +160,6 @@ impl WorkKind {
             Self::BorderImageValidation => "border image validation",
             Self::BorderImageCoordinate => "border image coordinate",
         }
-    }
-}
-
-dimensions! {
-    /// Owned algorithm/result storage, excluding caller input and the independently
-    /// bounded Ledger observer and Paint report adapter.
-    pub enum ResourceKind => ResourceKindTable, ResourceKindFields {
-        ScratchBytes,
-        RetainedResultBytes,
     }
 }
 

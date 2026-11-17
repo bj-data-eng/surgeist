@@ -3,7 +3,8 @@ use super::{
     BorderImageTiling, GeometryWork, OperationKind, in_geometry, resolve_geometry, run_stages,
     tiling, validate_partition,
 };
-use crate::{PaintError, PaintOptions, PaintPhase, PaintReport, WorkKind, accounting::charge};
+use crate::PaintError;
+use crate::accounting::{PaintOptions, PaintPhase, PaintReport, WorkKind, charge};
 use surgeist_layout::Size;
 
 /// Mask coverage geometry for an admitted border image and one destination area.
@@ -82,12 +83,13 @@ pub fn resolve_mask_border_in_area(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
+    use crate::accounting::{PaintChange, PaintLimits, ResourceKind};
+    use crate::border_image::{
         BorderImageAreaRequest, BorderImageOutset, BorderImageSlice, BorderImageSource,
-        BorderImageWidth, PaintChange, PaintLimits, ProfileMode, ResourceKind,
-        resolve_border_image_area,
+        BorderImageWidth, resolve_border_image_area,
     };
     use surgeist_layout::{Edges, Point};
+    use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {
         PaintOptions::new(limits, ProfileMode::Summary { timing: false })

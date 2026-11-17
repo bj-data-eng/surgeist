@@ -5,11 +5,15 @@
 
 use std::{convert::Infallible, ptr};
 use surgeist_layout as layout;
-use surgeist_paint::{
-    BoxFacts, BoxId, BoxPaint, BoxPaintKind, CanvasPaintKind, ChildOrder, ContextEffect,
-    FloatParticipation, FragmentId, FragmentOwner, FragmentPaintKind, PaintFragment, PaintLimits,
-    PaintOptions, PaintOrder, PaintOrderEvent, PaintPrimitive, PaintRequest, Participation,
-    Position, PrimitiveKind, ProfileMode, ZIndex, plan_paint_order,
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::paint_order::{
+    BoxPaint, BoxPaintKind, CanvasPaintKind, FloatParticipation, FragmentId, FragmentOwner,
+    FragmentPaintKind, PaintFragment, PaintOrder, PaintOrderEvent, PaintPrimitive, PaintRequest,
+    PrimitiveKind, plan_paint_order,
+};
+use surgeist_paint::stacking::{
+    BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex,
 };
 
 struct Tree {
@@ -587,7 +591,7 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
 
 #[test]
 fn border_image_area_from_completed_layout_precedes_source_partition() {
-    use surgeist_paint::{
+    use surgeist_paint::border_image::{
         BorderImageAreaRequest, BorderImageAxisPlacement, BorderImageOutset,
         BorderImagePartitionRequest, BorderImageRepeat, BorderImageSlice, BorderImageSource,
         BorderImageWidth, resolve_border_image_area, resolve_border_image_in_area,

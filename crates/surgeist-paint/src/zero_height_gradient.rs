@@ -1,17 +1,27 @@
 //! Native zero-height radial color projection. No replacement axes are created.
+//!
+//! [`resolve_zero_height_gradient_colors`] consumes a
+//! [`RadialGradientGeometry`]
+//! in the `ZeroHeight` case, raw
+//! [`GradientStopItem`]s and a
+//! [`GradientRepeat`] selection, and returns the borrowed color measure
+//! [`ZeroHeightGradientColors`]: the last color at weight one, or every expanded
+//! color occurrence with its average weight when repeating. Payloads stay opaque
+//! and the result borrows its exact source. Other geometry cases are a
+//! [`ZeroHeightGradientError`]; stop-list failures keep their
+//! [`GradientStopsError`](crate::gradient_stops::GradientStopsError) detail.
 
-use crate::{
-    GradientPosition, GradientStopItem, PaintError, PaintOptions, PaintPhase, PaintReport,
-    RadialGradientCase, RadialGradientGeometry, ResourceKind, WorkKind,
-    accounting::{
-        Meter, OperationKind, allocate, apply, bytes, charge, finish, release, setup_error,
-    },
-    gradient_stops::{
-        ColorArity, ColorOccurrence, ColorSourceItem, MultipleColors, ScalarPosition, StopWork,
-        UsedGradientRecord, distribute_with, expand_with, fill_run, fixup_with, interior_omitted,
-        validate_source,
-    },
+use crate::PaintError;
+use crate::accounting::{
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind, allocate,
+    apply, bytes, charge, finish, release, setup_error,
 };
+use crate::gradient_stops::{
+    ColorArity, ColorOccurrence, ColorSourceItem, GradientPosition, GradientStopItem,
+    MultipleColors, ScalarPosition, StopWork, UsedGradientRecord, distribute_with, expand_with,
+    fill_run, fixup_with, interior_omitted, validate_source,
+};
+use crate::radial_gradient::{RadialGradientCase, RadialGradientGeometry};
 use core::error::Error;
 use std::{fmt, mem::take};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
@@ -78,8 +88,8 @@ struct WeightedColor<'s, C> {
 /// Borrows one actual weighted occurrence without projecting its fields.
 /// A consumer can admit its visit before calling [`Self::color`].
 ///
-/// ```compile_fail
-/// use surgeist_paint::WeightedGradientRecord;
+/// ```compile_fail,E0451
+/// use surgeist_paint::zero_height_gradient::WeightedGradientRecord;
 /// fn fabricate(authentic: WeightedGradientRecord<'_, ()>) {
 ///     let _ = WeightedGradientRecord { ..authentic };
 /// }
@@ -116,9 +126,12 @@ enum Measure<'s, C> {
 ///
 /// The source remains borrowed for the entire result lifetime:
 ///
-/// ```compile_fail
-/// use surgeist_paint::{GradientRepeat, GradientStopItem, GradientStopPositions,
-///     PaintLimits, PaintOptions, ProfileMode, RadialGradientGeometry,
+/// ```compile_fail,E0597
+/// use surgeist_ledger::ProfileMode;
+/// use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+/// use surgeist_paint::gradient_stops::{GradientStopItem, GradientStopPositions};
+/// use surgeist_paint::radial_gradient::RadialGradientGeometry;
+/// use surgeist_paint::zero_height_gradient::{GradientRepeat,
 ///     resolve_zero_height_gradient_colors};
 /// fn escape(geometry: &RadialGradientGeometry) {
 ///     let colors = {
@@ -134,8 +147,9 @@ enum Measure<'s, C> {
 ///
 /// Only the resolver can construct a qualified owner:
 ///
-/// ```compile_fail
-/// use surgeist_paint::{GradientStopItem, ZeroHeightGradientColors};
+/// ```compile_fail,E0451
+/// use surgeist_paint::gradient_stops::GradientStopItem;
+/// use surgeist_paint::zero_height_gradient::ZeroHeightGradientColors;
 /// fn fabricate<'a>(source: &'a [GradientStopItem<()>], authentic: ZeroHeightGradientColors<'a, ()>) {
 ///     let _ = ZeroHeightGradientColors { source, ..authentic };
 /// }
@@ -1073,11 +1087,11 @@ mod projection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        GradientStopPositions, PaintChange, PaintLimits, ProfileMode, RadialGradientSize,
-        resolve_radial_gradient,
-    };
+    use crate::accounting::{PaintChange, PaintLimits};
+    use crate::gradient_stops::GradientStopPositions;
+    use crate::radial_gradient::{RadialGradientSize, resolve_radial_gradient};
     use surgeist_layout::{Point, Size};
+    use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {
         PaintOptions::new(limits, ProfileMode::Summary { timing: false })

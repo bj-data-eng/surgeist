@@ -1,11 +1,11 @@
 use super::*;
-use crate::ResourceKind;
-use crate::{
-    BoxFacts, BoxId, ChildOrder, ContextEffect, PaintChange, PaintLimits, PaintPhase,
-    Participation, Position, ProfileMode, WorkKind, ZIndex,
+use crate::accounting::{PaintChange, PaintLimits, PaintPhase, ResourceKind, WorkKind};
+use crate::stacking::{
+    BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex,
 };
 use std::{cell::Cell, time::Duration};
 use surgeist_layout::SourceIndex;
+use surgeist_ledger::ProfileMode;
 
 struct Fixture {
     boxes: Vec<BoxFacts>,
@@ -325,12 +325,12 @@ fn fixed_phase_timing_detail_loss_and_off_untimed_preserve_work_and_outcomes() {
         ProfileMode::Detailed {
             timing: false,
             event_limit: 0,
-            filter: crate::EventFilter::All,
+            filter: surgeist_ledger::EventFilter::All,
         },
         ProfileMode::Detailed {
             timing: false,
             event_limit: 1,
-            filter: crate::EventFilter::ScopeName("paint_sequence"),
+            filter: surgeist_ledger::EventFilter::ScopeName("paint_sequence"),
         },
     ] {
         let outcome = plan_paint_order(

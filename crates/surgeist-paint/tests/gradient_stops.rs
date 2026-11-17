@@ -2,12 +2,17 @@
 
 use std::{cell::Cell, mem::size_of, ptr, rc::Rc, time::Duration};
 use surgeist_layout::Size;
-use surgeist_paint::{
-    EventFilter, GradientPosition, GradientPositionComponent, GradientStopItem,
-    GradientStopPositions, GradientStops, GradientStopsError, LinearGradientDirection, PaintChange,
-    PaintError, PaintEvent, PaintLimits, PaintOptions, PaintPhase, PaintReport, ProfileMode,
-    ResourceKind, UsedGradientItem, WorkKind, resolve_gradient_stops, resolve_linear_gradient,
+use surgeist_ledger::{EventFilter, ProfileMode};
+use surgeist_paint::PaintError;
+use surgeist_paint::accounting::{
+    PaintChange, PaintEvent, PaintLimits, PaintOptions, PaintPhase, PaintReport, ResourceKind,
+    WorkKind,
 };
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientPositionComponent, GradientStopItem, GradientStopPositions,
+    GradientStops, GradientStopsError, UsedGradientItem, resolve_gradient_stops,
+};
+use surgeist_paint::linear_gradient::{LinearGradientDirection, resolve_linear_gradient};
 
 fn options(limits: PaintLimits) -> PaintOptions {
     PaintOptions::new(limits, ProfileMode::Summary { timing: false })

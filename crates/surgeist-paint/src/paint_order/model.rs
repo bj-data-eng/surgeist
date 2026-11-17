@@ -9,7 +9,7 @@
 use core::error::Error;
 use std::fmt;
 
-use crate::{BoxFacts, BoxId};
+use crate::stacking::{BoxFacts, BoxId};
 use surgeist_layout::SourceIndex;
 
 macro_rules! slot_id {

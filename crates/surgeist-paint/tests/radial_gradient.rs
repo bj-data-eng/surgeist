@@ -2,12 +2,19 @@
 
 use std::{cell::Cell, mem::size_of, time::Duration};
 use surgeist_layout::{PhysicalAxis, Point, Size};
-use surgeist_paint::{
-    EventFilter, GradientPosition, GradientPositionComponent, GradientStopItem,
-    GradientStopPositions, PaintChange, PaintError, PaintEvent, PaintLimits, PaintOptions,
-    PaintPhase, PaintReport, ProfileMode, RadialGradientCase as Case, RadialGradientError,
-    RadialGradientExtent as Extent, RadialGradientGeometry, RadialGradientSize as EndingSize,
-    ResourceKind, UsedGradientItem, WorkKind, resolve_gradient_stops, resolve_radial_gradient,
+use surgeist_ledger::{EventFilter, ProfileMode};
+use surgeist_paint::PaintError;
+use surgeist_paint::accounting::{
+    PaintChange, PaintEvent, PaintLimits, PaintOptions, PaintPhase, PaintReport, ResourceKind,
+    WorkKind,
+};
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientPositionComponent, GradientStopItem, GradientStopPositions,
+    UsedGradientItem, resolve_gradient_stops,
+};
+use surgeist_paint::radial_gradient::{
+    RadialGradientCase as Case, RadialGradientError, RadialGradientExtent as Extent,
+    RadialGradientGeometry, RadialGradientSize as EndingSize, resolve_radial_gradient,
 };
 
 fn options(limits: PaintLimits) -> PaintOptions {
