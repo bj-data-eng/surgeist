@@ -775,31 +775,6 @@ pub surgeist_bindings_js::ValueKind::Undefined
 pub surgeist_bindings_js::WellKnownSymbol::Iterator
 pub surgeist_bindings_js::WellKnownSymbol::ToStringTag
 pub surgeist_bindings_js::WellKnownSymbol::Unscopables
-pub struct surgeist_bindings_js::Admitted<T>
-impl<T: core::cmp::PartialEq<U>, U> core::cmp::PartialEq<U> for surgeist_bindings_js::preparation::Admitted<T>
-pub fn surgeist_bindings_js::preparation::Admitted<T>::eq(&self, other: &U) -> bool
-impl<T: core::fmt::Debug> core::fmt::Debug for surgeist_bindings_js::preparation::Admitted<T>
-pub fn surgeist_bindings_js::preparation::Admitted<T>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<T> core::ops::deref::Deref for surgeist_bindings_js::preparation::Admitted<T>
-pub type surgeist_bindings_js::preparation::Admitted<T>::Target = T
-pub fn surgeist_bindings_js::preparation::Admitted<T>::deref(&self) -> &T
-pub struct surgeist_bindings_js::ArgumentValues<'scope>
-impl<'scope> surgeist_bindings_js::preparation::ArgumentValues<'scope>
-pub fn surgeist_bindings_js::preparation::ArgumentValues<'scope>::pop(&mut self) -> core::option::Option<surgeist_bindings_js::Value<'scope>>
-pub fn surgeist_bindings_js::preparation::ArgumentValues<'scope>::remove(&mut self, index: usize) -> core::option::Option<surgeist_bindings_js::Value<'scope>>
-impl<'scope> core::iter::traits::collect::IntoIterator for surgeist_bindings_js::preparation::ArgumentValues<'scope>
-pub type surgeist_bindings_js::preparation::ArgumentValues<'scope>::IntoIter = surgeist_bindings_js::preparation::ArgumentValuesIntoIter<'scope>
-pub type surgeist_bindings_js::preparation::ArgumentValues<'scope>::Item = surgeist_bindings_js::Value<'scope>
-pub fn surgeist_bindings_js::preparation::ArgumentValues<'scope>::into_iter(self) -> Self::IntoIter
-impl<'scope> core::ops::deref::Deref for surgeist_bindings_js::preparation::ArgumentValues<'scope>
-pub type surgeist_bindings_js::preparation::ArgumentValues<'scope>::Target = [surgeist_bindings_js::Value<'scope>]
-pub fn surgeist_bindings_js::preparation::ArgumentValues<'scope>::deref(&self) -> &Self::Target
-pub struct surgeist_bindings_js::ArgumentValuesIntoIter<'scope>
-impl core::iter::traits::exact_size::ExactSizeIterator for surgeist_bindings_js::preparation::ArgumentValuesIntoIter<'_>
-impl<'scope> core::iter::traits::iterator::Iterator for surgeist_bindings_js::preparation::ArgumentValuesIntoIter<'scope>
-pub type surgeist_bindings_js::preparation::ArgumentValuesIntoIter<'scope>::Item = surgeist_bindings_js::Value<'scope>
-pub fn surgeist_bindings_js::preparation::ArgumentValuesIntoIter<'scope>::next(&mut self) -> core::option::Option<Self::Item>
-pub fn surgeist_bindings_js::preparation::ArgumentValuesIntoIter<'scope>::size_hint(&self) -> (usize, core::option::Option<usize>)
 pub struct surgeist_bindings_js::Arguments<'scope>
 impl<'scope> surgeist_bindings_js::Arguments<'scope>
 pub fn surgeist_bindings_js::Arguments<'scope>::get(&self, index: usize) -> core::option::Option<&surgeist_bindings_js::Value<'scope>>
