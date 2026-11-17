@@ -159,42 +159,48 @@ fn scalar_payloads_are_appended_and_resources_are_named() {
 
 #[test]
 fn wrapping_variants_return_the_wrapped_error_as_their_source() {
-    let wrapped: [(DomError, &str); 8] = [
+    // The wording of each wrapped type is specified with that type. This test
+    // checks that the source is the wrapped value and that the wrapper's own
+    // text does not repeat it.
+    let wrapped: [(DomError, String); 8] = [
         (
             DomError::Meta(DomMetaError::HistoryUnavailable),
-            "the Document has no supplied Meta processing history",
+            DomMetaError::HistoryUnavailable.to_string(),
         ),
         (
             DomError::BaseFacts(DomBaseFactsError::PolicyMismatch),
-            "base URL facts were produced under a different policy",
+            DomBaseFactsError::PolicyMismatch.to_string(),
         ),
         (
             DomError::EncodingUrlFacts(DomEncodingUrlFactsError::MissingFacts),
-            "the document has no encoding and URL facts",
+            DomEncodingUrlFactsError::MissingFacts.to_string(),
         ),
         (
             DomError::DocumentConstructor(DomDocumentConstructorError::Unavailable),
-            "no hosted association is available for the Document constructor",
+            DomDocumentConstructorError::Unavailable.to_string(),
         ),
         (
             DomError::ViewTransitionCssom(DomViewTransitionCssomError::StaleRevision),
-            "view transition CSSOM association rejected: the CSSOM object's revision is stale",
+            DomViewTransitionCssomError::StaleRevision.to_string(),
         ),
-        (DomError::InputNumeric(HtmlRangeNumericError::Integrity), ""),
+        (
+            DomError::InputNumeric(HtmlRangeNumericError::Integrity),
+            HtmlRangeNumericError::Integrity.to_string(),
+        ),
         (
             DomError::PseudoAttributeCursor(HtmlPiPseudoAttributeError::Integrity),
-            "",
+            HtmlPiPseudoAttributeError::Integrity.to_string(),
         ),
-        (DomError::SelectCapture(HtmlCaptureError::NotHtmlLink), ""),
+        (
+            DomError::SelectCapture(HtmlCaptureError::NotHtmlLink),
+            HtmlCaptureError::NotHtmlLink.to_string(),
+        ),
     ];
     for (error, inner) in wrapped {
         let source = error.source().expect("a wrapping variant has a source");
-        if !inner.is_empty() {
-            assert_eq!(source.to_string(), inner);
-        } else {
-            assert!(!source.to_string().is_empty());
-        }
-        assert!(!error.to_string().contains(&source.to_string()) || inner.is_empty());
+        assert!(!inner.is_empty());
+        assert_eq!(source.to_string(), inner);
+        assert!(!error.to_string().contains(&inner));
     }
     assert!(
         DomError::OutputProtocol(HtmlOutputCursorError)
