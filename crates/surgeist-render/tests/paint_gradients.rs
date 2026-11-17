@@ -3,7 +3,18 @@
 
 use std::{cell::Cell, mem::size_of, time::Duration};
 use surgeist_layout as layout;
-use surgeist_paint as paint;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientStopItem, GradientStopPositions, GradientStops, UsedGradientItem,
+    resolve_gradient_stops,
+};
+use surgeist_paint::linear_gradient::{
+    LinearGradientDirection, LinearGradientLine, resolve_linear_gradient,
+};
+use surgeist_paint::radial_gradient::{
+    RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
+};
 use surgeist_render::{
     Color, Error, ErrorCode, GradientStop, PaintGradientError, RenderAccountingContext,
     RenderAccountingError, RenderAccountingOptions, RenderAttemptKind, RenderAttemptReport,
@@ -23,57 +34,51 @@ fn blue() -> Color {
     Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap()
 }
 
-fn paint_options() -> paint::PaintOptions {
-    paint::PaintOptions::new(paint::PaintLimits::unlimited(), paint::ProfileMode::Off)
+fn paint_options() -> PaintOptions {
+    PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
 }
 
-fn position(length: f64, fraction: f64) -> paint::GradientPosition {
-    paint::GradientPosition { length, fraction }
+fn position(length: f64, fraction: f64) -> GradientPosition {
+    GradientPosition { length, fraction }
 }
 
-fn at(value: f64, color: Color) -> paint::GradientStopItem<Color> {
-    paint::GradientStopItem::Stop {
+fn at(value: f64, color: Color) -> GradientStopItem<Color> {
+    GradientStopItem::Stop {
         payload: color,
-        positions: paint::GradientStopPositions::One(position(value, 0.0)),
+        positions: GradientStopPositions::One(position(value, 0.0)),
     }
 }
 
-fn omitted(color: Color) -> paint::GradientStopItem<Color> {
-    paint::GradientStopItem::Stop {
+fn omitted(color: Color) -> GradientStopItem<Color> {
+    GradientStopItem::Stop {
         payload: color,
-        positions: paint::GradientStopPositions::Omitted,
+        positions: GradientStopPositions::Omitted,
     }
 }
 
-fn line(length: f64) -> paint::LinearGradientLine {
-    paint::resolve_linear_gradient(
+fn line(length: f64) -> LinearGradientLine {
+    resolve_linear_gradient(
         layout::Size::<f64>::new(length, 1.0),
-        paint::LinearGradientDirection::Right,
+        LinearGradientDirection::Right,
         paint_options(),
     )
     .result
     .unwrap()
 }
 
-fn radial(x: f64, y: f64) -> paint::RadialGradientGeometry {
-    paint::resolve_radial_gradient(
+fn radial(x: f64, y: f64) -> RadialGradientGeometry {
+    resolve_radial_gradient(
         layout::Size::<f64>::new(16.0, 8.0),
         Some(layout::Point::new(8.0, 4.0)),
-        paint::RadialGradientSize::EllipseRadii(layout::Size::new(
-            position(x, 0.0),
-            position(y, 0.0),
-        )),
+        RadialGradientSize::EllipseRadii(layout::Size::new(position(x, 0.0), position(y, 0.0))),
         paint_options(),
     )
     .result
     .unwrap()
 }
 
-fn stops(
-    length: f64,
-    source: &[paint::GradientStopItem<Color>],
-) -> paint::GradientStops<'_, Color> {
-    paint::resolve_gradient_stops(length, source, paint_options())
+fn stops(length: f64, source: &[GradientStopItem<Color>]) -> GradientStops<'_, Color> {
+    resolve_gradient_stops(length, source, paint_options())
         .result
         .unwrap()
 }
@@ -113,17 +118,17 @@ fn no_custody(report: &RenderAttemptReport) {
 
 #[test]
 fn actual_paint_line_and_shared_fixup_preserve_geometry_colors_and_expanded_order() {
-    let geometry = paint::resolve_linear_gradient(
+    let geometry = resolve_linear_gradient(
         layout::Size::new(200.0, 100.0),
-        paint::LinearGradientDirection::Top,
+        LinearGradientDirection::Top,
         paint_options(),
     )
     .result
     .unwrap();
     let source = [
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: red(),
-            positions: paint::GradientStopPositions::Two(position(-50.0, 0.0), position(0.0, 0.0)),
+            positions: GradientStopPositions::Two(position(-50.0, 0.0), position(0.0, 0.0)),
         },
         at(0.0, green()),
         at(150.0, blue()),
@@ -181,7 +186,7 @@ fn returned_gradient_and_its_clone_outlive_all_source_storage_and_the_context() 
 fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_explicit() {
     let source = [
         at(0.0, red()),
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(5.0, 0.0),
         },
         at(10.0, blue()),
@@ -195,10 +200,10 @@ fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_
         PaintGradientError::UnsupportedZeroLengthLinear
     ));
     for geometry in [
-        paint::resolve_radial_gradient(
+        resolve_radial_gradient(
             layout::Size::new(16.0, 8.0),
             None,
-            paint::RadialGradientSize::CircleRadius(0.0),
+            RadialGradientSize::CircleRadius(0.0),
             paint_options(),
         )
         .result
@@ -233,7 +238,7 @@ fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_
 fn exact_basis_equality_precedes_source_item_conversion() {
     let source = [
         at(0.0, red()),
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(5.0, 0.0),
         },
         at(10.0, blue()),
@@ -262,19 +267,19 @@ fn adopted_hint_bounded_fixup_and_outgoing_associations_survive_all_four_consume
     let source = [
         at(0.0, red()),
         omitted(green()),
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(20.0, 0.0),
         },
         at(100.0, blue()),
     ];
     let used = stops(100.0, &source);
-    let positions: Vec<_> = used
-        .items()
-        .map(|item| match item {
-            paint::UsedGradientItem::Stop { position, .. }
-            | paint::UsedGradientItem::Hint { position, .. } => position,
-        })
-        .collect();
+    let positions: Vec<_> =
+        used.items()
+            .map(|item| match item {
+                UsedGradientItem::Stop { position, .. }
+                | UsedGradientItem::Hint { position, .. } => position,
+            })
+            .collect();
     assert_eq!(positions, [0.0, 10.0, 20.0, 100.0]);
     let mut account = context(RenderLimits::new());
     let prepared = [
@@ -334,7 +339,7 @@ fn source_numeric_refusals_keep_hint_and_two_ordinals_instead_of_old_hint_prefli
         (
             [
                 at(f64::from_bits(1), red()),
-                paint::GradientStopItem::Hint {
+                GradientStopItem::Hint {
                     position: position(1.0, 0.0),
                 },
                 at(2.0, blue()),
@@ -344,7 +349,7 @@ fn source_numeric_refusals_keep_hint_and_two_ordinals_instead_of_old_hint_prefli
         (
             [
                 at(0.0, red()),
-                paint::GradientStopItem::Hint {
+                GradientStopItem::Hint {
                     position: position(f64::from_bits(1), 0.0),
                 },
                 at(2.0, blue()),
@@ -395,7 +400,7 @@ fn hint_topology_collapse_reports_the_actual_hint_or_following_two_ordinal() {
         (
             vec![
                 at(first, red()),
-                paint::GradientStopItem::Hint {
+                GradientStopItem::Hint {
                     position: position(second, 0.0),
                 },
                 at(3.0, blue()),
@@ -405,12 +410,12 @@ fn hint_topology_collapse_reports_the_actual_hint_or_following_two_ordinal() {
         (
             vec![
                 at(0.0, red()),
-                paint::GradientStopItem::Hint {
+                GradientStopItem::Hint {
                     position: position(first, 0.0),
                 },
-                paint::GradientStopItem::Stop {
+                GradientStopItem::Stop {
                     payload: blue(),
-                    positions: paint::GradientStopPositions::Two(
+                    positions: GradientStopPositions::Two(
                         position(second, 0.0),
                         position(3.0, 0.0),
                     ),
@@ -442,16 +447,16 @@ fn hint_topology_collapse_reports_the_actual_hint_or_following_two_ordinal() {
 #[test]
 fn hint_after_two_attaches_to_ordinal_one_before_following_ordinal_zero() {
     let source = [
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: red(),
-            positions: paint::GradientStopPositions::Two(position(0.0, 0.0), position(0.2, 0.0)),
+            positions: GradientStopPositions::Two(position(0.0, 0.0), position(0.2, 0.0)),
         },
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(0.3, 0.0),
         },
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: blue(),
-            positions: paint::GradientStopPositions::Two(position(0.8, 0.0), position(1.0, 0.0)),
+            positions: GradientStopPositions::Two(position(0.8, 0.0), position(1.0, 0.0)),
         },
     ];
     let used = stops(1.0, &source);
@@ -524,12 +529,9 @@ fn quotient_underflow_overflow_and_distinct_stop_collapse_are_typed_refusals() {
     assert_eq!(first / 3.0, second / 3.0);
     let source = [
         at(0.0, red()),
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: blue(),
-            positions: paint::GradientStopPositions::Two(
-                position(first, 0.0),
-                position(second, 0.0),
-            ),
+            positions: GradientStopPositions::Two(position(first, 0.0), position(second, 0.0)),
         },
     ];
     let used = stops(3.0, &source);
@@ -582,12 +584,9 @@ fn ordinary_nonzero_quotient_rounding_is_accepted_and_true_equal_stops_remain_di
 #[test]
 fn only_the_converted_span_must_be_finite_not_the_original_physical_span() {
     let source = [
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: red(),
-            positions: paint::GradientStopPositions::Two(
-                position(-f64::MAX, 0.0),
-                position(0.0, 0.0),
-            ),
+            positions: GradientStopPositions::Two(position(-f64::MAX, 0.0), position(0.0, 0.0)),
         },
         at(f64::MAX, blue()),
     ];

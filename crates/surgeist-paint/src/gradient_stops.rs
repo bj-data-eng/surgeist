@@ -1,11 +1,26 @@
-use crate::{
-    PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
-    accounting::{
-        Meter, OperationKind, PhaseMeter, allocate, apply, bytes, charge, finish, release,
-        setup_error,
-    },
+//! Used positions for native gradient stop lists, with source association.
+//!
+//! [`resolve_gradient_stops`] resolves a list of native [`GradientStopItem`]s
+//! (stops with opaque payloads and distinct hints) against a line length in
+//! the physical unit of that length. Each [`GradientPosition`] is the affine
+//! pair `fraction * line_length + length`. The result, [`GradientStops`],
+//! expands double positions, applies endpoint defaults and ordered fixup,
+//! distributes omitted runs and keeps every [`UsedGradientStop`] and
+//! [`UsedGradientItem`] tied to its source index and position ordinal.
+//!
+//! Payloads are never interpreted, cloned or validated, and the result borrows
+//! the exact source slice, so it cannot outlive it. A failure is a
+//! [`GradientStopsError`] naming the source item at fault. The call runs under
+//! a [`PaintOptions`] and returns a
+//! [`GradientStopsOutcome`] with the accounted work.
+
+use crate::PaintError;
+use crate::accounting::{
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, PhaseMeter, ResourceKind,
+    WorkKind, allocate, apply, bytes, charge, finish, release, setup_error,
 };
-use std::mem::take;
+use core::error::Error;
+use std::{fmt, mem::take};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
 /// Raw, already-computed position contributions. A fraction of 1 means 100%.
@@ -69,6 +84,59 @@ pub enum GradientStopsError {
         right_source_index: usize,
     },
 }
+impl GradientPositionComponent {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Length => "length",
+            Self::Fraction => "fraction",
+        }
+    }
+}
+impl fmt::Display for GradientStopsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::InvalidLineLength => {
+                f.write_str("gradient line length must be finite and nonnegative")
+            }
+            Self::EmptyList => f.write_str("gradient stop list is empty"),
+            Self::EndpointHint { source_index } => write!(
+                f,
+                "gradient item {source_index} is a hint at the start or end of the list; the first and last items must be stops"
+            ),
+            Self::AdjacentHints {
+                previous_source_index,
+                source_index,
+            } => write!(
+                f,
+                "gradient items {previous_source_index} and {source_index} are adjacent hints"
+            ),
+            Self::NonFiniteComponent {
+                source_index,
+                position_index,
+                component,
+            } => write!(
+                f,
+                "the {} of position {position_index} of gradient item {source_index} is not finite",
+                component.label()
+            ),
+            Self::UnrepresentablePosition {
+                source_index,
+                position_index,
+            } => write!(
+                f,
+                "position {position_index} of gradient item {source_index} cannot be represented as a finite used position"
+            ),
+            Self::UnrepresentableDistribution {
+                left_source_index,
+                right_source_index,
+            } => write!(
+                f,
+                "the used positions from gradient item {left_source_index} to gradient item {right_source_index} cannot be kept finite and non-decreasing in f64"
+            ),
+        }
+    }
+}
+impl Error for GradientStopsError {}
 
 /// A resolved item view. Indices identify the exact borrowed native source list.
 /// Stop ordinals are 0 for omitted/one positions and 0/1 for two positions.
@@ -95,8 +163,8 @@ impl<C> Clone for UsedGradientItem<'_, C> {
 /// The mandatory first color occurrence of a qualified used-stop list.
 /// Only Paint's resolver constructs this record; payloads remain source-borrowed.
 ///
-/// ```compile_fail
-/// use surgeist_paint::UsedGradientStop;
+/// ```compile_fail,E0451
+/// use surgeist_paint::gradient_stops::UsedGradientStop;
 /// let forged = UsedGradientStop {
 ///     source_index: 0, position_index: 0, payload: &(), position: 0.0,
 /// };
@@ -128,8 +196,8 @@ impl<C> UsedGradientStop<'_, C> {
 ///
 /// A view cannot be constructed through a raw record or reassociated:
 ///
-/// ```compile_fail
-/// use surgeist_paint::GradientRecord;
+/// ```compile_fail,E0451
+/// use surgeist_paint::gradient_stops::GradientRecord;
 /// fn fabricate(authentic: GradientRecord<'_, ()>) {
 ///     let _ = GradientRecord { ..authentic };
 /// }
@@ -137,9 +205,11 @@ impl<C> UsedGradientStop<'_, C> {
 ///
 /// Even with the source alive, a borrowed record cannot outlive its owner:
 ///
-/// ```compile_fail
-/// use surgeist_paint::{GradientStopItem, GradientStopPositions, PaintLimits,
-///     PaintOptions, ProfileMode, resolve_gradient_stops};
+/// ```compile_fail,E0597
+/// use surgeist_ledger::ProfileMode;
+/// use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+/// use surgeist_paint::gradient_stops::{GradientStopItem, GradientStopPositions,
+///     resolve_gradient_stops};
 /// let source = [GradientStopItem::Stop { payload: (), positions: GradientStopPositions::Omitted }];
 /// let view = {
 ///     let stops = resolve_gradient_stops(1.0, &source,
@@ -233,8 +303,10 @@ impl<'a, C> GradientStops<'a, C> {
     /// Borrows the mandatory first color, before any consumer field inspection.
     ///
     /// ```
-    /// use surgeist_paint::{GradientStopItem, GradientStopPositions, PaintLimits,
-    ///     PaintOptions, ProfileMode, resolve_gradient_stops};
+    /// use surgeist_ledger::ProfileMode;
+    /// use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+    /// use surgeist_paint::gradient_stops::{GradientStopItem, GradientStopPositions,
+    ///     resolve_gradient_stops};
     /// let source = [GradientStopItem::Stop {
     ///     payload: "first", positions: GradientStopPositions::Omitted,
     /// }];
@@ -275,9 +347,11 @@ pub struct GradientStopsOutcome<'a, C> {
 /// This does not evaluate authored CSS, interpolate colors, or normalize positions.
 /// The borrowed result cannot outlive its source storage.
 ///
-/// ```compile_fail
-/// use surgeist_paint::{GradientStopItem, GradientStopPositions, PaintLimits,
-///     PaintOptions, ProfileMode, resolve_gradient_stops};
+/// ```compile_fail,E0597
+/// use surgeist_ledger::ProfileMode;
+/// use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+/// use surgeist_paint::gradient_stops::{GradientStopItem, GradientStopPositions,
+///     resolve_gradient_stops};
 /// let stops = {
 ///     let source = [GradientStopItem::Stop {
 ///         payload: (), positions: GradientStopPositions::Omitted,
@@ -290,9 +364,11 @@ pub struct GradientStopsOutcome<'a, C> {
 ///
 /// A result cannot be reassociated with another, equally well-typed source.
 ///
-/// ```compile_fail
-/// use surgeist_paint::{GradientStopItem, GradientStopPositions, GradientStops,
-///     PaintLimits, PaintOptions, ProfileMode, resolve_gradient_stops};
+/// ```compile_fail,E0451
+/// use surgeist_ledger::ProfileMode;
+/// use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+/// use surgeist_paint::gradient_stops::{GradientStopItem, GradientStopPositions,
+///     GradientStops, resolve_gradient_stops};
 /// let source = [GradientStopItem::Stop {
 ///     payload: (), positions: GradientStopPositions::Omitted,
 /// }];
@@ -1226,8 +1302,9 @@ mod ordinary {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::{PaintChange, PaintLimits, PaintPhase, ProfileMode};
+        use crate::accounting::{PaintChange, PaintLimits, PaintPhase};
         use std::mem::size_of;
+        use surgeist_ledger::ProfileMode;
 
         fn options(limits: PaintLimits) -> PaintOptions {
             PaintOptions::new(limits, ProfileMode::Summary { timing: false })

@@ -2061,6 +2061,7 @@ dependencies = [
  "surgeist-html-parser",
  "surgeist-html-semantics",
  "surgeist-layout",
+ "surgeist-ledger",
  "surgeist-paint",
  "surgeist-render",
  "surgeist-runtime",
@@ -2093,6 +2094,7 @@ name = "surgeist-css-parser"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
+ "surgeist-ledger",
 ]
 
 [[package]]

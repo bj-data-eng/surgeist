@@ -1,53 +1,92 @@
+//! Work and storage limits, profiling options and the reports of one paint operation.
+//!
+//! Every paint operation takes a [`PaintOptions`]: named [`PaintLimits`] over
+//! the [`WorkKind`] and [`ResourceKind`] dimensions, a Ledger profile mode
+//! (`surgeist_ledger::ProfileMode`) and an optional monotonic clock. Work
+//! counts defined algorithm actions, not CPU instructions or elapsed time;
+//! resources count the owned scratch and retained result bytes of the
+//! operation, never caller input or the bounded observer storage. Explicit
+//! unlimited limits still check arithmetic, and a zero limit is meaningful.
+//!
+//! An operation returns its result and an optional [`PaintReport`] of the
+//! accepted work, including for a failed operation. The report resolves
+//! Ledger scopes to [`PaintPhase`] values, so a reader needs neither a scope
+//! lookup nor a display-name interpretation; usage is inclusive, so root totals
+//! must not be summed with child attribution. A refused change is a
+//! [`BudgetRefusal`]; setup failures and broken internal expectations are an
+//! [`AccountingFailure`]. Both are carried by [`crate::PaintError`].
+//!
+//! The Ledger types that appear in this API (`ProfileMode`, `EventFilter`,
+//! `RefusalReason`, `Defect`) belong to the `surgeist-ledger` crate; name them
+//! from it.
+
 use crate::PaintError;
-use std::{mem::size_of, time::Duration};
-pub use surgeist_ledger::RefusalReason;
+use core::error::Error;
+use std::{fmt, mem::size_of, time::Duration};
 use surgeist_ledger::{
-    Change, Dimension, Error as LedgerError, Limits, Operation, Phase, ProfileMode, Report, Scope,
-    Tariffs, Usage, dimensions,
+    Change, Dimension, Error as LedgerError, Limits, Operation, Phase, ProfileMode, RefusalReason,
+    Report, Scope, Tariffs, Usage,
 };
 
-dimensions! {
-    /// Defined algorithm actions, not CPU instructions.
-    pub enum WorkKind => WorkKindTable, WorkKindFields {
-        BoxValidation,
-        ParentEdge,
-        TopologyVisit,
-        SiblingComparison,
-        MembershipVisit,
-        ContextComparison,
-        OrderMove,
-        OutputRecord,
-        /// One paint-input record or reference validation action.
-        PaintValidation,
-        /// One fragment inspection, including repeated passes.
-        FragmentVisit,
-        /// One line inspection.
-        LineVisit,
-        /// One mixed text, child, or occurrence traversal action.
-        InlineMemberVisit,
-        /// One primitive record inspection.
-        PrimitiveVisit,
-        /// One recursive paint-scope work-stack action or visit.
-        PaintScopeVisit,
-        /// One source, occurrence, or primitive ordering comparison.
-        PaintOrderComparison,
-        /// One decoration applicator or ordering comparison.
-        DecorationComparison,
-        /// One input scalar, gradient request discriminant, or stop-list grammar validation.
-        GradientValidation,
-        /// One direction dispatch, scalar calculation, or scalar inspection.
-        GradientDirection,
-        /// One scalar gradient geometry or used-position calculation/inspection,
-        /// including repeated checks and bounded scalar representation-proof actions.
-        GradientCoordinate,
-        /// One source-item or expanded stop-record visit, including repeated walks.
-        GradientStopVisit,
-        /// One border-image input scalar validity check.
-        BorderImageValidation,
-        /// One border-image coordinate calculation or inspection.
-        BorderImageCoordinate,
+/// The generated dimension enums and their per-dimension tables. The tables
+/// stay unnameable: they appear only through `Dimension::Table`.
+mod tables {
+    use surgeist_ledger::dimensions;
+
+    dimensions! {
+        /// Defined algorithm actions, not CPU instructions.
+        pub enum WorkKind => WorkKindTable, WorkKindFields {
+            BoxValidation,
+            ParentEdge,
+            TopologyVisit,
+            SiblingComparison,
+            MembershipVisit,
+            ContextComparison,
+            OrderMove,
+            OutputRecord,
+            /// One paint-input record or reference validation action.
+            PaintValidation,
+            /// One fragment inspection, including repeated passes.
+            FragmentVisit,
+            /// One line inspection.
+            LineVisit,
+            /// One mixed text, child, or occurrence traversal action.
+            InlineMemberVisit,
+            /// One primitive record inspection.
+            PrimitiveVisit,
+            /// One recursive paint-scope work-stack action or visit.
+            PaintScopeVisit,
+            /// One source, occurrence, or primitive ordering comparison.
+            PaintOrderComparison,
+            /// One decoration applicator or ordering comparison.
+            DecorationComparison,
+            /// One input scalar, gradient request discriminant, or stop-list grammar validation.
+            GradientValidation,
+            /// One direction dispatch, scalar calculation, or scalar inspection.
+            GradientDirection,
+            /// One scalar gradient geometry or used-position calculation/inspection,
+            /// including repeated checks and bounded scalar representation-proof actions.
+            GradientCoordinate,
+            /// One source-item or expanded stop-record visit, including repeated walks.
+            GradientStopVisit,
+            /// One border-image input scalar validity check.
+            BorderImageValidation,
+            /// One border-image coordinate calculation or inspection.
+            BorderImageCoordinate,
+        }
+    }
+
+    dimensions! {
+        /// Owned algorithm/result storage, excluding caller input and the independently
+        /// bounded Ledger observer and Paint report adapter.
+        pub enum ResourceKind => ResourceKindTable, ResourceKindFields {
+            ScratchBytes,
+            RetainedResultBytes,
+        }
     }
 }
+pub use tables::{ResourceKind, WorkKind};
+use tables::{ResourceKindTable, WorkKindTable};
 
 pub(crate) enum OperationKind {
     Stacking,
@@ -95,14 +134,32 @@ impl OperationKind {
 impl WorkKind {
     /// Every work kind, in declaration order.
     pub const ALL: &'static [Self] = <Self as Dimension>::ALL;
-}
 
-dimensions! {
-    /// Owned algorithm/result storage, excluding caller input and the independently
-    /// bounded Ledger observer and Paint report adapter.
-    pub enum ResourceKind => ResourceKindTable, ResourceKindFields {
-        ScratchBytes,
-        RetainedResultBytes,
+    fn label(self) -> &'static str {
+        match self {
+            Self::BoxValidation => "box validation",
+            Self::ParentEdge => "parent edge",
+            Self::TopologyVisit => "topology visit",
+            Self::SiblingComparison => "sibling comparison",
+            Self::MembershipVisit => "membership visit",
+            Self::ContextComparison => "context comparison",
+            Self::OrderMove => "order move",
+            Self::OutputRecord => "output record",
+            Self::PaintValidation => "paint validation",
+            Self::FragmentVisit => "fragment visit",
+            Self::LineVisit => "line visit",
+            Self::InlineMemberVisit => "inline member visit",
+            Self::PrimitiveVisit => "primitive visit",
+            Self::PaintScopeVisit => "paint scope visit",
+            Self::PaintOrderComparison => "paint order comparison",
+            Self::DecorationComparison => "decoration comparison",
+            Self::GradientValidation => "gradient validation",
+            Self::GradientDirection => "gradient direction",
+            Self::GradientCoordinate => "gradient coordinate",
+            Self::GradientStopVisit => "gradient stop visit",
+            Self::BorderImageValidation => "border image validation",
+            Self::BorderImageCoordinate => "border image coordinate",
+        }
     }
 }
 
@@ -270,6 +327,61 @@ pub enum AccountingFailure {
     LedgerDefect(surgeist_ledger::Defect),
     Invariant,
 }
+struct ChangeText(PaintChange);
+impl fmt::Display for ChangeText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            PaintChange::Work { kind, amount } => write!(f, "{amount} {} work", kind.label()),
+            PaintChange::Acquire { kind, amount } => {
+                write!(f, "acquiring {amount} bytes of {}", kind.label())
+            }
+            PaintChange::Release { kind, amount } => {
+                write!(f, "releasing {amount} bytes of {}", kind.label())
+            }
+        }
+    }
+}
+impl fmt::Display for BudgetRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} refused in the {} phase by the {} phase at item {} (usage {}): ",
+            ChangeText(self.change),
+            self.origin.name(),
+            self.limiting_phase.name(),
+            self.item,
+            self.current
+        )?;
+        match self.reason {
+            RefusalReason::Overflow => f.write_str("the total would overflow"),
+            RefusalReason::Underflow => f.write_str("the release exceeds the held amount"),
+            RefusalReason::Limit { limit } => write!(f, "the limit is {limit}"),
+        }
+    }
+}
+impl Error for BudgetRefusal {}
+impl fmt::Display for AccountingFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Allocation => f.write_str("paint accounting could not reserve its storage"),
+            Self::IdentityExhausted => {
+                f.write_str("paint accounting scope identities are exhausted")
+            }
+            Self::ForeignScope => {
+                f.write_str("an accounting scope belongs to a different operation")
+            }
+            Self::ScopeLimit { limit } => {
+                write!(f, "paint accounting scope limit of {limit} exceeded")
+            }
+            Self::TimingUnavailable => {
+                f.write_str("profile timing was requested but is unavailable")
+            }
+            Self::LedgerDefect(defect) => write!(f, "ledger invariant violated: {defect}"),
+            Self::Invariant => f.write_str("paint accounting found an inconsistent internal state"),
+        }
+    }
+}
+impl Error for AccountingFailure {}
 fn invariant() -> PaintError {
     PaintError::Accounting(AccountingFailure::Invariant)
 }
@@ -774,6 +886,13 @@ pub(crate) fn finish<T>(
 impl ResourceKind {
     /// Every resource kind, in declaration order.
     pub const ALL: &'static [Self] = <Self as Dimension>::ALL;
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::ScratchBytes => "scratch storage",
+            Self::RetainedResultBytes => "retained result storage",
+        }
+    }
 }
 
 #[cfg(test)]

@@ -6,9 +6,10 @@
 //! their authentic geometry, formatter/run/line and appearance associations by
 //! these slots; these records do not authenticate computed Style or infer geometry.
 
+use core::error::Error;
 use std::fmt;
 
-use crate::{BoxFacts, BoxId};
+use crate::stacking::{BoxFacts, BoxId};
 use surgeist_layout::SourceIndex;
 
 macro_rules! slot_id {
@@ -594,12 +595,301 @@ pub enum PaintInputError {
         record_order: usize,
     },
 }
-impl fmt::Display for PaintInputError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid resolved paint input: {self:?}")
+impl BoxPaintKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Inline => "inline",
+            Self::InlineBlock => "inline-block",
+            Self::BlockReplaced => "block replaced",
+            Self::InlineReplaced => "inline replaced",
+            Self::Table => "table",
+            Self::InlineTable => "inline table",
+        }
     }
 }
-impl std::error::Error for PaintInputError {}
+impl fmt::Display for BoxCategoryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::RootMustBeBlock => "the root box must have a block category",
+            Self::FloatingRoot => "the root box must not float",
+            Self::FloatingInline => "a floating box must have a block category, not an inline one",
+            Self::OutOfFlowInline => {
+                "an out-of-flow box must have a block category, not an inline one"
+            }
+            Self::InlineItem => "a flex or grid item must have a block category, not an inline one",
+            Self::FloatingItem => "a flex or grid item must not float",
+            Self::ReplacedHasChildren => "a replaced box must not have children",
+        })
+    }
+}
+impl Error for BoxCategoryError {}
+
+struct Owner(FragmentOwner);
+impl fmt::Display for Owner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            FragmentOwner::Box(id) => write!(f, "box {}", id.get()),
+            FragmentOwner::Text(id) => write!(f, "text {}", id.get()),
+        }
+    }
+}
+struct Child(SourceChild);
+impl fmt::Display for Child {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            SourceChild::Box(id) => write!(f, "box {}", id.get()),
+            SourceChild::Text(id) => write!(f, "text {}", id.get()),
+        }
+    }
+}
+struct Entry(ContentEntry);
+impl fmt::Display for Entry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            ContentEntry::Line(id) => write!(f, "line {}", id.get()),
+            ContentEntry::PromotedBlock(id) => write!(f, "promoted block fragment {}", id.get()),
+        }
+    }
+}
+
+impl fmt::Display for PaintInputError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::BoxPaintCount { boxes, box_paint } => {
+                write!(
+                    f,
+                    "the box paint table has {box_paint} records for {boxes} boxes"
+                )
+            }
+            Self::UnsupportedBoxKind { box_id, kind } => write!(
+                f,
+                "box {} has the {} category, which paint order does not support",
+                box_id.get(),
+                kind.label()
+            ),
+            Self::InvalidBoxCategory { box_id, .. } => {
+                write!(f, "box {} has an invalid paint category", box_id.get())
+            }
+            Self::MissingTextParent { text, parent } => write!(
+                f,
+                "text {} names parent box {}, which is not in the box table",
+                text.get(),
+                parent.get()
+            ),
+            Self::InvalidTextParent { text, parent } => write!(
+                f,
+                "text {} names parent box {}, which cannot directly contain text",
+                text.get(),
+                parent.get()
+            ),
+            Self::DuplicateMixedSourceIndex {
+                parent,
+                source_index,
+                first,
+                other,
+            } => write!(
+                f,
+                "box {} has two children, {} and {}, with source index {}",
+                parent.get(),
+                Child(first),
+                Child(other),
+                source_index.get()
+            ),
+            Self::MissingFragmentOwner { fragment, owner } => write!(
+                f,
+                "fragment {} names owner {}, which is not in its table",
+                fragment.get(),
+                Owner(owner)
+            ),
+            Self::MissingFragmentParent { fragment, parent } => write!(
+                f,
+                "fragment {} names parent fragment {}, which is not in the fragment table",
+                fragment.get(),
+                parent.get()
+            ),
+            Self::InvalidFragmentParent {
+                fragment,
+                parent: Some(parent),
+            } => write!(
+                f,
+                "fragment {} has parent fragment {}, which does not match its owner's parent",
+                fragment.get(),
+                parent.get()
+            ),
+            Self::InvalidFragmentParent {
+                fragment,
+                parent: None,
+            } => write!(
+                f,
+                "fragment {} has no parent fragment although its owner has a parent",
+                fragment.get()
+            ),
+            Self::InvalidBlockInInlinePlacement {
+                fragment,
+                container,
+            } => write!(
+                f,
+                "fragment {} is not a valid block-in-inline placement in container fragment {}",
+                fragment.get(),
+                container.get()
+            ),
+            Self::UnsupportedFragmentTopology {
+                fragment,
+                container,
+                through,
+            } => write!(
+                f,
+                "fragment {} reaches container fragment {} through box {}, a wrapper that paint order cannot skip",
+                fragment.get(),
+                container.get(),
+                through.get()
+            ),
+            Self::DuplicateFragmentOrder {
+                owner,
+                logical_order,
+                first,
+                other,
+            } => write!(
+                f,
+                "fragments {} and {} of {} share logical order {logical_order}",
+                first.get(),
+                other.get(),
+                Owner(owner)
+            ),
+            Self::InconsistentFragmentOrder { first, other } => write!(
+                f,
+                "fragments {} and {} are ordered inconsistently with their parents and lines",
+                first.get(),
+                other.get()
+            ),
+            Self::MissingLineContainer { line, container } => write!(
+                f,
+                "line {} names container fragment {}, which is not in the fragment table",
+                line.get(),
+                container.get()
+            ),
+            Self::InvalidLineContainer { line, container } => write!(
+                f,
+                "line {} names container fragment {}, which cannot contain lines",
+                line.get(),
+                container.get()
+            ),
+            Self::DuplicateLineOrder {
+                container,
+                logical_order,
+                first,
+                other,
+            } => write!(
+                f,
+                "lines {} and {} in container fragment {} share logical order {logical_order}",
+                first.get(),
+                other.get(),
+                container.get()
+            ),
+            Self::DuplicateContentOrder {
+                container,
+                logical_order,
+                first,
+                other,
+            } => write!(
+                f,
+                "{} and {} in container fragment {} share content order {logical_order}",
+                Entry(first),
+                Entry(other),
+                container.get()
+            ),
+            Self::MissingFragmentLine { fragment, line } => write!(
+                f,
+                "fragment {} names line {}, which is not in the line table",
+                fragment.get(),
+                line.get()
+            ),
+            Self::MissingLineIncidence { fragment } => write!(
+                f,
+                "fragment {} must be on a line but names none",
+                fragment.get()
+            ),
+            Self::UnexpectedLineIncidence { fragment, line } => write!(
+                f,
+                "fragment {} names line {} but does not belong on a line",
+                fragment.get(),
+                line.get()
+            ),
+            Self::InvalidLineIncidence { fragment, line } => write!(
+                f,
+                "fragment {} names line {}, which does not contain it",
+                fragment.get(),
+                line.get()
+            ),
+            Self::MissingPrimitiveFragment {
+                primitive,
+                fragment,
+            } => write!(
+                f,
+                "primitive {} names fragment {}, which is not in the fragment table",
+                primitive.get(),
+                fragment.get()
+            ),
+            Self::InvalidPrimitiveTarget {
+                primitive,
+                fragment,
+            } => write!(
+                f,
+                "primitive {} targets fragment {}, whose owner cannot receive its paint kind",
+                primitive.get(),
+                fragment.get()
+            ),
+            Self::RootFragmentBackground {
+                primitive,
+                fragment,
+            } => write!(
+                f,
+                "primitive {} paints the root background on fragment {}; root backgrounds use canvas primitives",
+                primitive.get(),
+                fragment.get()
+            ),
+            Self::MissingDecorationApplicator {
+                primitive,
+                applying_box,
+            } => write!(
+                f,
+                "decoration primitive {} names applying box {}, which is not in the box table",
+                primitive.get(),
+                applying_box.get()
+            ),
+            Self::InvalidDecorationApplicator {
+                primitive,
+                text_fragment,
+                applying_box,
+            } => write!(
+                f,
+                "decoration primitive {} names box {}, which does not decorate text fragment {}",
+                primitive.get(),
+                applying_box.get(),
+                text_fragment.get()
+            ),
+            Self::DuplicatePrimitiveOrder {
+                first,
+                other,
+                record_order,
+            } => write!(
+                f,
+                "primitives {} and {} have the same record order {record_order} for the same target and paint role (and applying box, for a decoration)",
+                first.get(),
+                other.get()
+            ),
+        }
+    }
+}
+impl Error for PaintInputError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidBoxCategory { reason, .. } => Some(reason),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum OrderEvent {

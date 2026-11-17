@@ -1,8 +1,27 @@
-use crate::{
-    GradientPosition, GradientPositionComponent, PaintError, PaintOptions, PaintPhase, PaintReport,
-    ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
+//! Radial gradient size resolution, center and the ordered zero cases.
+//!
+//! [`resolve_radial_gradient`] takes a concrete box size, an optional already
+//! used physical center and a [`RadialGradientSize`] request (a circle radius,
+//! explicit radii, or a side or corner [`RadialGradientExtent`]) and returns a
+//! [`RadialGradientGeometry`]: a finite center and either positive ellipse radii
+//! or one of the ordered degenerate cases of [`RadialGradientCase`]
+//! (`ZeroCircle`, `ZeroWidth`, `ZeroHeight`). No replacement radii are
+//! invented for a zero case.
+//!
+//! Invalid native input and unrepresentable results are a
+//! [`RadialGradientError`]. The call runs under a
+//! [`PaintOptions`] and returns a
+//! [`RadialGradientOutcome`] with the accounted work. A zero-height result feeds
+//! [`crate::zero_height_gradient`].
+
+use crate::PaintError;
+use crate::accounting::{
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, PhaseMeter, ResourceKind,
+    WorkKind, apply, bytes, charge, finish, setup_error,
 };
+use crate::gradient_stops::{GradientPosition, GradientPositionComponent};
+use core::error::Error;
+use std::fmt;
 use surgeist_layout::{PhysicalAxis, Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
@@ -49,6 +68,45 @@ pub enum RadialGradientError {
     },
     UnrepresentableGeometry,
 }
+fn axis_label(axis: PhysicalAxis) -> &'static str {
+    match axis {
+        PhysicalAxis::Horizontal => "horizontal",
+        PhysicalAxis::Vertical => "vertical",
+    }
+}
+impl fmt::Display for RadialGradientError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::InvalidWidth => {
+                f.write_str("radial gradient box width must be finite and nonnegative")
+            }
+            Self::InvalidHeight => {
+                f.write_str("radial gradient box height must be finite and nonnegative")
+            }
+            Self::NonFiniteCenter { axis } => write!(
+                f,
+                "radial gradient center is not finite on the {} axis",
+                axis_label(axis)
+            ),
+            Self::InvalidCircleRadius => {
+                f.write_str("radial gradient circle radius must be finite and nonnegative")
+            }
+            Self::NonFiniteRadiusComponent { axis, component } => write!(
+                f,
+                "the {} of the {} radius is not finite",
+                component.label(),
+                axis_label(axis)
+            ),
+            Self::NegativeRadius { axis } => {
+                write!(f, "radial gradient {} radius is negative", axis_label(axis))
+            }
+            Self::UnrepresentableGeometry => {
+                f.write_str("radial gradient geometry cannot be represented in f64")
+            }
+        }
+    }
+}
+impl Error for RadialGradientError {}
 
 /// Resolved geometry or the ordered radial semantic case. Only Ellipse supplies
 /// positive finite radii and a normal rightward ray basis (its horizontal radius).
@@ -680,8 +738,9 @@ impl From<RadialGradientError> for PaintError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PaintChange, PaintLimits, PaintPhase, ProfileMode};
+    use crate::accounting::{PaintChange, PaintLimits, PaintPhase};
     use std::mem::size_of;
+    use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {
         PaintOptions::new(limits, ProfileMode::Summary { timing: false })

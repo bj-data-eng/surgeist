@@ -2,26 +2,34 @@
 #![forbid(unsafe_code)]
 
 use surgeist_layout as layout;
-use surgeist_paint as paint;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientStopItem, GradientStopPositions, UsedGradientItem,
+    resolve_gradient_stops,
+};
+use surgeist_paint::radial_gradient::{
+    RadialGradientCase, RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
+};
 use surgeist_render::{
     Color, EffectQualityPolicy, Image, ImageBuffer, Layer, Options, Paint, Parameters, Rect,
     RenderAccountingContext, RenderRoute, Renderer, ResolvedLayerAlphaMask, Scene, Size, Surface,
     prepare_radial_gradient, prepare_repeating_radial_gradient,
 };
 
-fn options() -> paint::PaintOptions {
-    paint::PaintOptions::new(paint::PaintLimits::unlimited(), paint::ProfileMode::Off)
+fn options() -> PaintOptions {
+    PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
 }
 
-fn position(length: f64, fraction: f64) -> paint::GradientPosition {
-    paint::GradientPosition { length, fraction }
+fn position(length: f64, fraction: f64) -> GradientPosition {
+    GradientPosition { length, fraction }
 }
 
 fn field(repeating: bool, height: f64, center_y: f64) -> Paint {
-    let geometry = paint::resolve_radial_gradient(
+    let geometry = resolve_radial_gradient(
         layout::Size::new(16.0, 8.0),
         Some(layout::Point::new(8.0, center_y)),
-        paint::RadialGradientSize::EllipseRadii(layout::Size::new(
+        RadialGradientSize::EllipseRadii(layout::Size::new(
             position(0.0, 0.0),
             position(height, 0.0),
         )),
@@ -29,22 +37,22 @@ fn field(repeating: bool, height: f64, center_y: f64) -> Paint {
     )
     .result
     .expect("authentic Paint radial geometry preparation must succeed");
-    assert_eq!(geometry.case(), paint::RadialGradientCase::ZeroWidth);
+    assert_eq!(geometry.case(), RadialGradientCase::ZeroWidth);
     assert_eq!(geometry.center(), layout::Point::new(8.0, center_y));
     let (first, last) = if repeating { (1.0, 5.0) } else { (2.0, 6.0) };
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
     let blue = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();
     let source = [
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: red,
-            positions: paint::GradientStopPositions::One(position(first, -1.0)),
+            positions: GradientStopPositions::One(position(first, -1.0)),
         },
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: blue,
-            positions: paint::GradientStopPositions::One(position(last, 1.0)),
+            positions: GradientStopPositions::One(position(last, 1.0)),
         },
     ];
-    let used = paint::resolve_gradient_stops(0.0, &source, options())
+    let used = resolve_gradient_stops(0.0, &source, options())
         .result
         .expect("authentic Paint basis-zero used-stop preparation must succeed");
     assert_eq!(used.line_length(), 0.0);
@@ -52,7 +60,7 @@ fn field(repeating: bool, height: f64, center_y: f64) -> Paint {
     let records: Vec<_> = used
         .items()
         .map(|item| {
-            let paint::UsedGradientItem::Stop {
+            let UsedGradientItem::Stop {
                 source_index,
                 position_index,
                 position,
@@ -212,33 +220,30 @@ fn repeating_zero_width_consumer_folds_before_phase_and_preserves_both_seams() {
     }
 }
 
-fn at(color: Color, length: f64, fraction: f64) -> paint::GradientStopItem<Color> {
-    paint::GradientStopItem::Stop {
+fn at(color: Color, length: f64, fraction: f64) -> GradientStopItem<Color> {
+    GradientStopItem::Stop {
         payload: color,
-        positions: paint::GradientStopPositions::One(position(length, fraction)),
+        positions: GradientStopPositions::One(position(length, fraction)),
     }
 }
 
-fn geometry(origin: f64) -> paint::RadialGradientGeometry {
-    paint::resolve_radial_gradient(
+fn geometry(origin: f64) -> RadialGradientGeometry {
+    resolve_radial_gradient(
         layout::Size::new(32.0, 16.0),
         Some(layout::Point::new(origin, -100.0)),
-        paint::RadialGradientSize::EllipseRadii(layout::Size::new(
-            position(0.0, 0.0),
-            position(8.0, 0.0),
-        )),
+        RadialGradientSize::EllipseRadii(layout::Size::new(position(0.0, 0.0), position(8.0, 0.0))),
         options(),
     )
     .result
     .unwrap()
 }
 
-fn composed(origin: f64, source: Vec<paint::GradientStopItem<Color>>, repeating: bool) -> Paint {
+fn composed(origin: f64, source: Vec<GradientStopItem<Color>>, repeating: bool) -> Paint {
     let geometry = geometry(origin);
-    let used = paint::resolve_gradient_stops(0.0, &source, options())
+    let used = resolve_gradient_stops(0.0, &source, options())
         .result
         .unwrap();
-    assert_eq!(geometry.case(), paint::RadialGradientCase::ZeroWidth);
+    assert_eq!(geometry.case(), RadialGradientCase::ZeroWidth);
     assert_eq!(used.line_length(), 0.0);
     let mut context = RenderAccountingContext::default();
     if repeating {
@@ -260,13 +265,13 @@ fn authentic_basis_zero_omissions_percentages_two_positions_and_hints_keep_their
     let (mut renderer, mut surface) = renderer_and_surface();
     for repeating in [false, true] {
         let omitted = vec![
-            paint::GradientStopItem::Stop {
+            GradientStopItem::Stop {
                 payload: r,
-                positions: paint::GradientStopPositions::Omitted,
+                positions: GradientStopPositions::Omitted,
             },
-            paint::GradientStopItem::Stop {
+            GradientStopItem::Stop {
                 payload: b,
-                positions: paint::GradientStopPositions::Omitted,
+                positions: GradientStopPositions::Omitted,
             },
         ];
         let fields = [
@@ -295,12 +300,9 @@ fn authentic_basis_zero_omissions_percentages_two_positions_and_hints_keep_their
     let two = composed(
         8.0,
         vec![
-            paint::GradientStopItem::Stop {
+            GradientStopItem::Stop {
                 payload: r,
-                positions: paint::GradientStopPositions::Two(
-                    position(0.0, 0.0),
-                    position(2.0, 0.0),
-                ),
+                positions: GradientStopPositions::Two(position(0.0, 0.0), position(2.0, 0.0)),
             },
             at(b, 6.0, 0.0),
         ],
@@ -310,11 +312,11 @@ fn authentic_basis_zero_omissions_percentages_two_positions_and_hints_keep_their
         8.0,
         vec![
             at(r, 0.0, 0.0),
-            paint::GradientStopItem::Stop {
+            GradientStopItem::Stop {
                 payload: g,
-                positions: paint::GradientStopPositions::Omitted,
+                positions: GradientStopPositions::Omitted,
             },
-            paint::GradientStopItem::Hint {
+            GradientStopItem::Hint {
                 position: position(6.0, 0.0),
             },
             at(b, 8.0, 0.0),
@@ -352,12 +354,12 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
     let geometry = geometry(8.0);
     let source = [
         at(r, 2.0, 0.0),
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(3.0, 0.0),
         },
         at(b, 6.0, 0.0),
     ];
-    let used = paint::resolve_gradient_stops(0.0, &source, options())
+    let used = resolve_gradient_stops(0.0, &source, options())
         .result
         .unwrap();
     let mut context = RenderAccountingContext::new(
@@ -386,7 +388,7 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
     assert_eq!(repeated.stops(), ordinary.stops());
     // Repeat separately performs its required span subtraction and domain check.
     assert_eq!(repeat.usage().work(RenderWork::CoordinateVisits), 3 + 3 + 2);
-    let mismatch = paint::resolve_gradient_stops(1.0, &source, options())
+    let mismatch = resolve_gradient_stops(1.0, &source, options())
         .result
         .unwrap();
     for error in [
@@ -412,18 +414,18 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
         0
     );
     for geometry in [
-        paint::resolve_radial_gradient(
+        resolve_radial_gradient(
             layout::Size::new(16.0, 8.0),
             None,
-            paint::RadialGradientSize::CircleRadius(0.0),
+            RadialGradientSize::CircleRadius(0.0),
             options(),
         )
         .result
         .unwrap(),
-        paint::resolve_radial_gradient(
+        resolve_radial_gradient(
             layout::Size::new(16.0, 8.0),
             None,
-            paint::RadialGradientSize::EllipseRadii(layout::Size::new(
+            RadialGradientSize::EllipseRadii(layout::Size::new(
                 position(8.0, 0.0),
                 position(0.0, 0.0),
             )),
@@ -445,7 +447,7 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
         }
     }
     let extremes = [at(r, -f64::MAX, 0.0), at(b, f64::MAX, 0.0)];
-    let extremes = paint::resolve_gradient_stops(0.0, &extremes, options())
+    let extremes = resolve_gradient_stops(0.0, &extremes, options())
         .result
         .unwrap();
     assert!(prepare_radial_gradient(&geometry, &extremes, &mut context).is_ok());
@@ -589,7 +591,7 @@ fn authentic_owned_distance_fields_survive_transformed_fill_stroke_and_both_glyp
             0.75 * factor,
             vec![
                 at(r, 0.0, 0.0),
-                paint::GradientStopItem::Hint {
+                GradientStopItem::Hint {
                     position: position(0.25 * factor, 0.0),
                 },
                 at(b, factor, 0.0),

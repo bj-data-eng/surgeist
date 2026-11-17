@@ -8,11 +8,10 @@ mod validation;
 
 #[path = "model.rs"]
 pub(crate) mod model;
-use crate::{
-    BoxFacts, BoxId, PaintError, ResourceKind, StackingPlan,
-    accounting::{Meter, PhaseMeter, apply, release, setup_error},
-    algorithm::{self, CoreCleanup, PreparationFailure, PreparedCore, StackingPublication},
-};
+use crate::PaintError;
+use crate::accounting::{Meter, PhaseMeter, ResourceKind, apply, release, setup_error};
+use crate::algorithm::{self, CoreCleanup, PreparationFailure, PreparedCore, StackingPublication};
+use crate::stacking::{BoxFacts, BoxId, StackingPlan};
 use model::*;
 use std::{
     mem::{size_of, take},

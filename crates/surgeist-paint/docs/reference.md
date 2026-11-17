@@ -1,35 +1,42 @@
 # Reference
 
 The [manifest](../Cargo.toml) owns dependencies and Rust compatibility.
-The [public front door](../src/lib.rs) exports these surfaces:
+The crate root holds `PaintError`; every other public item has exactly one path,
+in the module that owns its domain. The [public front door](../src/lib.rs)
+declares these modules:
 
-| Surface | Contract |
-| --- | --- |
-| `resolve_border_image`, `BorderImageRequest`, `BorderImageGeometry` | Slice, outset, and width geometry from a concrete source and a supplied border box. |
-| `resolve_border_image_area`, `BorderImageArea`, `resolve_border_image_in_area` | Compute the outset area before source sizing and reuse it for partitioning. |
-| `resolve_border_image_tiling`, `BorderImageTiling` | Scale and position tiles from the admitted nine-slice geometry. |
-| `resolve_mask_border_in_area`, `MaskBorderPlan` | Plan coverage tiles and the opaque center for an admitted mask-border source and area. |
-| `BoxId`, `BoxFacts` | Rendering-box slots and explicit resolved topology/context facts. |
-| `ChildOrder`, `Participation`, `Position`, `ZIndex`, `ContextEffect` | Shared source/flex/grid traversal and actual-context classification facts. |
-| `plan_stacking`, `PaintOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
-| `BoxPaint`, `BoxPaintKind`, `FloatParticipation` | Same-slot resolved box categories and float participation. |
-| `TextSource`, `PaintLine`, `PaintFragment`, `BlockInInlinePlacement` | Logical sources and exact line/fragment occurrences with explicit promotion placement. |
-| `TextId`, `LineId`, `FragmentId`, `PrimitiveId` | Distinct request-local table slots, without global provenance. |
-| `PaintPrimitive`, `PrimitiveKind`, `CanvasPaintKind`, `FragmentPaintKind`, `DecorationKind` | Resolved appearance roles and local record order. |
-| `PaintRequest`, `plan_paint_order`, `PaintOrderOutcome`, `PaintOrder` | Borrowed resolved input and complete supported order, or typed failure. |
-| `PaintOrderEvent`, `BoxView`, `LineView`, `FragmentView`, `PrimitiveView` | Actual-context boundaries and exact borrowed source-record observations. |
-| `PaintError`, `PaintInputError`, `BoxCategoryError` | Planning/accounting failures and typed input/category/unsupported-profile diagnostics. |
-| `PaintLimits`, `PaintOptions`, `PaintReport`, `PaintPhase` | Limits, clock/profiling policy and named Ledger usage access. |
-| `resolve_linear_gradient`, `LinearGradientDirection`, `LinearGradientLine`, `LinearGradientOutcome` | Concrete box-local physical line geometry, length and optional accepted-prefix report. |
-| `GradientGeometryError` | Invalid dimensions/angle or unrepresentable positive line, wrapped by `PaintError::Gradient`. |
-| `GradientPosition`, `GradientStopPositions`, `GradientStopItem<C>` | Raw affine positions and native source records with opaque stop payloads or distinct hints. |
-| `resolve_gradient_stops`, `GradientStopsOutcome`, `GradientStops`, `UsedGradientItem` | Complete ordered used positions with exact source association, or typed failure and optional report. |
-| `GradientStopsError`, `GradientPositionComponent` | List/length/component/numerical diagnostics with source indices and expanded-position ordinals, wrapped by `PaintError::GradientStops`. |
-| `resolve_radial_gradient`, `RadialGradientSize`, `RadialGradientExtent` | Concrete box/used-center request with coupled circle/ellipse size and default ellipse/farthest-corner. |
-| `RadialGradientGeometry`, `RadialGradientCase`, `RadialGradientOutcome` | Finite center and positive ellipse axes or ordered ZeroCircle/ZeroWidth/ZeroHeight, plus optional report. |
-| `RadialGradientError` | Native dimension/center/radius and numerical diagnostics, using Layout `PhysicalAxis` where applicable and wrapped by `PaintError::RadialGradient`. |
-| `resolve_zero_height_gradient_colors`, `GradientRepeat`, `ZeroHeightGradientColorsOutcome`, `ZeroHeightGradientColors`, `WeightedGradientColor` | Authenticated ordinary/average color measure for the native ZeroHeight case, borrowing exact source payloads. |
-| `ZeroHeightGradientError` | Expected-case or normalized color-measure representation failure, wrapped by `PaintError::ZeroHeightGradient`. |
+| Module | Surface | Contract |
+| --- | --- | --- |
+| `border_image` | `resolve_border_image`, `BorderImageRequest`, `BorderImageGeometry` | Slice, outset, and width geometry from a concrete source and a supplied border box. |
+| `border_image` | `resolve_border_image_area`, `BorderImageArea`, `resolve_border_image_in_area` | Compute the outset area before source sizing and reuse it for partitioning. |
+| `border_image` | `resolve_border_image_tiling`, `BorderImageTiling` | Scale and position tiles from the admitted nine-slice geometry. |
+| `border_image` | `resolve_mask_border_in_area`, `MaskBorderPlan` | Plan coverage tiles and the opaque center for an admitted mask-border source and area. |
+| `stacking` | `BoxId`, `BoxFacts` | Rendering-box slots and explicit resolved topology/context facts. |
+| `stacking` | `ChildOrder`, `Participation`, `Position`, `ZIndex`, `ContextEffect` | Shared source/flex/grid traversal and actual-context classification facts. |
+| `stacking` | `plan_stacking`, `StackingOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
+| `paint_order` | `BoxPaint`, `BoxPaintKind`, `FloatParticipation` | Same-slot resolved box categories and float participation. |
+| `paint_order` | `TextSource`, `PaintLine`, `PaintFragment`, `BlockInInlinePlacement` | Logical sources and exact line/fragment occurrences with explicit promotion placement. |
+| `paint_order` | `TextId`, `LineId`, `FragmentId`, `PrimitiveId` | Distinct request-local table slots, without global provenance. |
+| `paint_order` | `PaintPrimitive`, `PrimitiveKind`, `CanvasPaintKind`, `FragmentPaintKind`, `DecorationKind` | Resolved appearance roles and local record order. |
+| `paint_order` | `PaintRequest`, `plan_paint_order`, `PaintOrderOutcome`, `PaintOrder` | Borrowed resolved input and complete supported order, or typed failure. |
+| `paint_order` | `PaintOrderEvent`, `BoxView`, `LineView`, `FragmentView`, `PrimitiveView` | Actual-context boundaries and exact borrowed source-record observations. |
+| `paint_order` | `PaintInputError`, `BoxCategoryError` | Typed input/category/unsupported-profile diagnostics. |
+| root | `PaintError` | Planning/accounting failure of every operation; it wraps each module's error and returns it from `source()`. |
+| `accounting` | `PaintLimits`, `PaintOptions`, `PaintReport`, `PaintPhase` | Limits, clock/profiling policy and named Ledger usage access. |
+| `accounting` | `WorkKind`, `ResourceKind`, `PhaseReport`, `PaintEvent`, `PaintChange`, `BudgetRefusal`, `AccountingFailure` | Named work and storage dimensions, observations and the typed accounting refusals. |
+| `linear_gradient` | `resolve_linear_gradient`, `LinearGradientDirection`, `LinearGradientLine`, `LinearGradientOutcome` | Concrete box-local physical line geometry, length and optional accepted-prefix report. |
+| `linear_gradient` | `GradientGeometryError` | Invalid dimensions/angle or unrepresentable positive line, wrapped by `PaintError::Gradient`. |
+| `gradient_stops` | `GradientPosition`, `GradientStopPositions`, `GradientStopItem<C>` | Raw affine positions and native source records with opaque stop payloads or distinct hints. |
+| `gradient_stops` | `resolve_gradient_stops`, `GradientStopsOutcome`, `GradientStops`, `UsedGradientItem` | Complete ordered used positions with exact source association, or typed failure and optional report. |
+| `gradient_stops` | `GradientStopsError`, `GradientPositionComponent` | List/length/component/numerical diagnostics with source indices and expanded-position ordinals, wrapped by `PaintError::GradientStops`. |
+| `radial_gradient` | `resolve_radial_gradient`, `RadialGradientSize`, `RadialGradientExtent` | Concrete box/used-center request with coupled circle/ellipse size and default ellipse/farthest-corner. |
+| `radial_gradient` | `RadialGradientGeometry`, `RadialGradientCase`, `RadialGradientOutcome` | Finite center and positive ellipse axes or ordered ZeroCircle/ZeroWidth/ZeroHeight, plus optional report. |
+| `radial_gradient` | `RadialGradientError` | Native dimension/center/radius and numerical diagnostics, using Layout `PhysicalAxis` where applicable and wrapped by `PaintError::RadialGradient`. |
+| `zero_height_gradient` | `resolve_zero_height_gradient_colors`, `GradientRepeat`, `ZeroHeightGradientColorsOutcome`, `ZeroHeightGradientColors`, `WeightedGradientColor` | Authenticated ordinary/average color measure for the native ZeroHeight case, borrowing exact source payloads. |
+| `zero_height_gradient` | `ZeroHeightGradientError` | Expected-case or normalized color-measure representation failure, wrapped by `PaintError::ZeroHeightGradient`. |
+
+`ProfileMode`, `EventFilter` and `RefusalReason` belong to `surgeist-ledger`;
+import them from it.
 
 ## Ordinary gradient stop views
 
@@ -234,7 +241,7 @@ scalar geometry calculations and inspections, including repeated work. A success
 operation admits one output record and the fixed `LinearGradientLine` result's
 size as retained bytes. It allocates no geometry buffer; caller input and
 Ledger's bounded observer remain outside these byte dimensions. See
-[the implementation](../src/gradient.rs) for the precise charged action units.
+[the implementation](../src/linear_gradient.rs) for the precise charged action units.
 
 `resolve_radial_gradient` uses the existing gradient validation/geometry,
 publication and cleanup child phases under its own root, five scopes total.
@@ -288,7 +295,7 @@ typed input errors and borrowed order views. [Validation](../src/paint_order/val
 owns cross-table incidence; [sequencing](../src/paint_order/sequencing.rs) owns
 paint bands and recursive scope ordering. The [operation](../src/paint_order/mod.rs)
 composes these under one report.
-[Gradient geometry](../src/gradient.rs) owns physical direction resolution,
+[Gradient geometry](../src/linear_gradient.rs) owns physical direction resolution,
 numerical validation and the line result; its
 [public tests](../tests/linear_gradient.rs) use real Layout values and independent
 coordinate, budget and profiling expectations.

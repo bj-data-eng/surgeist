@@ -2,7 +2,9 @@
 
 ## Resolve a native gradient
 
-Use `resolve_linear_gradient` with the concrete Layout size and physical
+The gradient operations live in `linear_gradient`, `gradient_stops`,
+`radial_gradient` and `zero_height_gradient`; the [README](../README.md#modules)
+lists every module. Use `resolve_linear_gradient` with the concrete Layout size and physical
 direction, then pass its returned length to `resolve_gradient_stops`. Keep the
 native source list alive: used stop views borrow its exact payloads and preserve
 source indices, including both occurrences of a double-position stop. The
@@ -31,7 +33,11 @@ indices and resolved CSS facts; input slice order is not painting order.
 
 ```rust
 use surgeist_layout::SourceIndex;
-use surgeist_paint::*;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions, ResourceKind, WorkKind};
+use surgeist_paint::stacking::{
+    BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex, plan_stacking,
+};
 
 let boxes = [
     BoxFacts::new(None, SourceIndex::ZERO, ChildOrder::Source,

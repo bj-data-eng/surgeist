@@ -29,15 +29,49 @@ The order is not a Render command stream or a complete transform/clip tree.
 Computed Style composition, table painting and complete scene lowering remain
 unfinished; table/inline-table input receives a typed unsupported diagnostic.
 
+## Modules
+
+The crate root holds `PaintError`, the error every operation returns; it wraps
+each module's error and returns it from `source()`. Every other public item has
+exactly one path, in the module that owns its domain.
+
+| Module | Domain |
+| --- | --- |
+| `stacking` | Box facts, stacking-context membership and child context order (`plan_stacking`). |
+| `paint_order` | Resolved paint requests, validation errors and the ordered primitives and views (`plan_paint_order`). |
+| `accounting` | Work and storage limits, options, profiling reports and the typed accounting refusals. |
+| `linear_gradient` | Box-local line geometry of linear gradients (`resolve_linear_gradient`). |
+| `gradient_stops` | Used positions of native stop lists with source association (`resolve_gradient_stops`). |
+| `radial_gradient` | Radial size resolution, center and ordered zero cases (`resolve_radial_gradient`). |
+| `zero_height_gradient` | The color measure of the native zero-height radial case. |
+| `border_image` | Border-image and mask-border areas, partitions and tiles. |
+
+A root path to a module item does not resolve:
+
+```compile_fail,E0432
+use surgeist_paint::plan_stacking;
+```
+
+`ProfileMode`, `EventFilter` and `RefusalReason` belong to `surgeist-ledger`;
+import them from it.
+
 ## Start
 
 See [getting started](docs/getting-started.md) for context planning and the
 [ordering explanation](docs/explanation.md) for the supported native input profile.
-This root-only request orders one already-resolved canvas appearance record:
+This request orders one already-resolved canvas appearance record:
 
 ```rust
 use surgeist_layout::SourceIndex;
-use surgeist_paint::*;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions, ResourceKind};
+use surgeist_paint::paint_order::{
+    BoxPaint, BoxPaintKind, CanvasPaintKind, FloatParticipation, PaintOrderEvent, PaintPrimitive,
+    PaintRequest, PrimitiveId, plan_paint_order,
+};
+use surgeist_paint::stacking::{
+    BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex,
+};
 
 let boxes = [BoxFacts::new(
     None, SourceIndex::ZERO, ChildOrder::Source, Participation::Ordinary,
@@ -75,10 +109,9 @@ For a concrete gradient box, supply its size separately from its placement:
 
 ```rust
 use surgeist_layout::{Point, Size};
-use surgeist_paint::{
-    LinearGradientDirection, PaintLimits, PaintOptions, ProfileMode,
-    resolve_linear_gradient,
-};
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::linear_gradient::{LinearGradientDirection, resolve_linear_gradient};
 
 let outcome = resolve_linear_gradient(
     Size::new(200.0, 100.0), LinearGradientDirection::Top,
@@ -95,7 +128,11 @@ physical center. This side-sized ellipse has a rightward ray length of 100:
 
 ```rust
 use surgeist_layout::{Point, Size};
-use surgeist_paint::*;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::radial_gradient::{
+    RadialGradientCase, RadialGradientExtent, RadialGradientSize, resolve_radial_gradient,
+};
 
 let geometry = resolve_radial_gradient(
     Size::new(200.0, 100.0), None,
@@ -114,7 +151,12 @@ describe geometry and numerical limits. Resolve native stop positions
 against that length with `resolve_gradient_stops`:
 
 ```rust
-use surgeist_paint::*;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientStopItem, GradientStopPositions, UsedGradientItem,
+    resolve_gradient_stops,
+};
 
 let source = [
     GradientStopItem::Stop { payload: "red", positions: GradientStopPositions::Omitted },

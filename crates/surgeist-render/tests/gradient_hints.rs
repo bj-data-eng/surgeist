@@ -2,7 +2,16 @@
 #![forbid(unsafe_code)]
 
 use surgeist_layout as layout;
-use surgeist_paint as paint;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::gradient_stops::{
+    GradientPosition, GradientStopItem, GradientStopPositions, GradientStops, UsedGradientItem,
+    resolve_gradient_stops,
+};
+use surgeist_paint::linear_gradient::{
+    LinearGradientDirection, LinearGradientLine, resolve_linear_gradient,
+};
+use surgeist_paint::radial_gradient::{RadialGradientSize, resolve_radial_gradient};
 use surgeist_render::{
     Color, EffectQualityPolicy, Gradient, GradientHint, GradientStop, Image, ImageBuffer, Layer,
     Options, Paint, Parameters, Point, Rect, RenderAccountingContext, RenderRoute, Renderer,
@@ -10,52 +19,52 @@ use surgeist_render::{
     prepare_radial_gradient, prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
 };
 
-fn options() -> paint::PaintOptions {
-    paint::PaintOptions::new(paint::PaintLimits::unlimited(), paint::ProfileMode::Off)
+fn options() -> PaintOptions {
+    PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
 }
 
-fn position(length: f64) -> paint::GradientPosition {
-    paint::GradientPosition {
+fn position(length: f64) -> GradientPosition {
+    GradientPosition {
         length,
         fraction: 0.0,
     }
 }
 
-fn source(length: f64, alpha: f32) -> [paint::GradientStopItem<Color>; 3] {
+fn source(length: f64, alpha: f32) -> [GradientStopItem<Color>; 3] {
     [
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: Color::try_rgba(1.0, 0.0, 0.0, alpha).unwrap(),
-            positions: paint::GradientStopPositions::One(position(0.0)),
+            positions: GradientStopPositions::One(position(0.0)),
         },
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(length / 4.0),
         },
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap(),
-            positions: paint::GradientStopPositions::One(position(length)),
+            positions: GradientStopPositions::One(position(length)),
         },
     ]
 }
 
-fn line(length: f64) -> paint::LinearGradientLine {
-    paint::resolve_linear_gradient(
+fn line(length: f64) -> LinearGradientLine {
+    resolve_linear_gradient(
         layout::Size::new(length, 16.0),
-        paint::LinearGradientDirection::Right,
+        LinearGradientDirection::Right,
         options(),
     )
     .result
     .expect("authentic Paint line preparation must succeed")
 }
 
-fn used(basis: f64, source: &[paint::GradientStopItem<Color>]) -> paint::GradientStops<'_, Color> {
-    let used = paint::resolve_gradient_stops(basis, source, options())
+fn used(basis: f64, source: &[GradientStopItem<Color>]) -> GradientStops<'_, Color> {
+    let used = resolve_gradient_stops(basis, source, options())
         .result
         .expect("authentic Paint used-stop preparation must succeed");
     // Verify that the real producer retained the stimulus. The behavioral
     // assertion remains consumer acceptance followed by independently known pixels.
     assert!(
         used.items()
-            .any(|item| matches!(item, paint::UsedGradientItem::Hint { .. }))
+            .any(|item| matches!(item, UsedGradientItem::Hint { .. }))
     );
     used
 }
@@ -225,13 +234,10 @@ fn authentic_linear_hint_controls_half_and_three_quarter_premultiplied_colors() 
 #[test]
 fn authentic_unequal_ellipse_hints_execute_for_ordinary_and_repeating_consumers() {
     let (ordinary, repeating) = {
-        let geometry = paint::resolve_radial_gradient(
+        let geometry = resolve_radial_gradient(
             layout::Size::new(32.0, 16.0),
             Some(layout::Point::new(8.0, 8.0)),
-            paint::RadialGradientSize::EllipseRadii(layout::Size::new(
-                position(16.0),
-                position(8.0),
-            )),
+            RadialGradientSize::EllipseRadii(layout::Size::new(position(16.0), position(8.0))),
             options(),
         )
         .result

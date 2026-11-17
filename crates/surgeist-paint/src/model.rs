@@ -1,3 +1,4 @@
+use core::error::Error;
 use std::fmt;
 
 use surgeist_layout::{ItemOrder, SourceIndex};
@@ -63,7 +64,7 @@ pub enum ContextEffect {
 }
 
 /// Immutable, caller-resolved rendering-box facts. Cross-box relations are
-/// validated by [`crate::plan_stacking`]. Anonymous/generated boxes have slots too.
+/// validated by [`crate::stacking::plan_stacking`]. Anonymous/generated boxes have slots too.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BoxFacts {
     pub(crate) parent: Option<BoxId>,
@@ -143,12 +144,12 @@ impl BoxFacts {
 /// A complete typed refusal. A failed operation publishes no partial plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaintError {
-    Input(crate::PaintInputError),
-    Gradient(crate::GradientGeometryError),
-    GradientStops(crate::GradientStopsError),
-    RadialGradient(crate::RadialGradientError),
-    ZeroHeightGradient(crate::ZeroHeightGradientError),
-    BorderImage(crate::BorderImageGeometryError),
+    Input(crate::paint_order::PaintInputError),
+    Gradient(crate::linear_gradient::GradientGeometryError),
+    GradientStops(crate::gradient_stops::GradientStopsError),
+    RadialGradient(crate::radial_gradient::RadialGradientError),
+    ZeroHeightGradient(crate::zero_height_gradient::ZeroHeightGradientError),
+    BorderImage(crate::border_image::BorderImageGeometryError),
     MissingRoot,
     MultipleRoots {
         first: BoxId,
@@ -173,16 +174,84 @@ pub enum PaintError {
     },
     CapacityOverflow,
     Allocation {
-        resource: crate::ResourceKind,
+        resource: crate::accounting::ResourceKind,
     },
-    Budget(crate::BudgetRefusal),
-    Accounting(crate::AccountingFailure),
+    Budget(crate::accounting::BudgetRefusal),
+    Accounting(crate::accounting::AccountingFailure),
 }
 impl fmt::Display for PaintError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "paint planning failed: {self:?}")
+        match self {
+            Self::Input(_) => f.write_str("paint input is invalid"),
+            Self::Gradient(_) => f.write_str("linear gradient geometry is invalid"),
+            Self::GradientStops(_) => f.write_str("gradient stop list is invalid"),
+            Self::RadialGradient(_) => f.write_str("radial gradient geometry is invalid"),
+            Self::ZeroHeightGradient(_) => {
+                f.write_str("zero-height gradient colors cannot be resolved")
+            }
+            Self::BorderImage(_) => f.write_str("border image geometry is invalid"),
+            Self::MissingRoot => f.write_str(
+                "the root box is not in the box table or is not the box without a parent",
+            ),
+            Self::MultipleRoots { first, other } => write!(
+                f,
+                "boxes {} and {} both have no parent; exactly one root is allowed",
+                first.get(),
+                other.get()
+            ),
+            Self::MissingParent { child, parent } => write!(
+                f,
+                "box {} names parent {}, which is not in the box table",
+                child.get(),
+                parent.get()
+            ),
+            Self::SelfParent { box_id } => {
+                write!(f, "box {} names itself as its parent", box_id.get())
+            }
+            Self::Cycle { box_id } => write!(f, "box {} is part of a parent cycle", box_id.get()),
+            Self::DuplicateSourceIndex {
+                parent,
+                source_index,
+            } => write!(
+                f,
+                "box {} has two children with source index {}",
+                parent.get(),
+                source_index.get()
+            ),
+            Self::IncompatibleParticipation { box_id } => write!(
+                f,
+                "box {} has a participation that does not fit its place in the tree: a root must be ordinary; a child that is out of flow or under a source-order parent must be ordinary; an in-flow child of a flex or grid parent must be that parent's flex or grid item",
+                box_id.get()
+            ),
+            Self::CapacityOverflow => f.write_str("a storage size calculation overflowed"),
+            Self::Allocation { resource } => {
+                write!(f, "allocating {} failed", resource.label())
+            }
+            Self::Budget(_) => f.write_str("paint budget refused the operation"),
+            Self::Accounting(_) => f.write_str("paint accounting failed"),
+        }
     }
 }
-impl std::error::Error for PaintError {}
-
-pub use crate::algorithm::{ContextView, StackingPlan};
+impl Error for PaintError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Input(error) => Some(error),
+            Self::Gradient(error) => Some(error),
+            Self::GradientStops(error) => Some(error),
+            Self::RadialGradient(error) => Some(error),
+            Self::ZeroHeightGradient(error) => Some(error),
+            Self::BorderImage(error) => Some(error),
+            Self::Budget(refusal) => Some(refusal),
+            Self::Accounting(failure) => Some(failure),
+            Self::MissingRoot
+            | Self::MultipleRoots { .. }
+            | Self::MissingParent { .. }
+            | Self::SelfParent { .. }
+            | Self::Cycle { .. }
+            | Self::DuplicateSourceIndex { .. }
+            | Self::IncompatibleParticipation { .. }
+            | Self::CapacityOverflow
+            | Self::Allocation { .. } => None,
+        }
+    }
+}

@@ -9,11 +9,12 @@ use std::{
 };
 
 use super::{IndexedPaint, PaintCleanup, PreparedPaint, model::*};
-use crate::{
-    BoxId, ChildOrder, PaintError, Participation, Position, ResourceKind, WorkKind,
-    accounting::{Meter, PhaseMeter, allocate, charge, release, setup_error},
-    algorithm::{PreparedCore, SortBuffers},
+use crate::PaintError;
+use crate::accounting::{
+    Meter, PhaseMeter, ResourceKind, WorkKind, allocate, charge, release, setup_error,
 };
+use crate::algorithm::{PreparedCore, SortBuffers};
+use crate::stacking::{BoxId, ChildOrder, Participation, Position};
 use surgeist_layout::SourceIndex;
 use surgeist_ledger::Scope;
 

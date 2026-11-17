@@ -1,10 +1,10 @@
 use super::*;
-use crate::ResourceKind;
-use crate::{
-    BoxFacts, BoxId, ChildOrder, ContextEffect, PaintLimits, PaintReport, Participation, Position,
-    ProfileMode, ZIndex,
+use crate::accounting::{PaintLimits, PaintReport, ResourceKind};
+use crate::stacking::{
+    BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex,
 };
 use surgeist_layout::SourceIndex;
+use surgeist_ledger::ProfileMode;
 
 fn root() -> BoxFacts {
     BoxFacts::new(

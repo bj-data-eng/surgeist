@@ -1,7 +1,23 @@
-use crate::{
-    PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
+//! Box-local line geometry of CSS linear gradients.
+//!
+//! [`resolve_linear_gradient`] turns a concrete physical box size and a
+//! [`LinearGradientDirection`] into the directed [`LinearGradientLine`]
+//! (start, end and length) of a box whose y axis points down. Placement is a
+//! consumer transform. Zero dimensions are valid; a line that cannot keep finite,
+//! positive-length geometry in `f64` is a [`GradientGeometryError`]. The length
+//! is the basis for [`crate::gradient_stops::resolve_gradient_stops`].
+//!
+//! The call runs under a [`PaintOptions`] and
+//! returns a [`LinearGradientOutcome`] with the line or a
+//! [`PaintError`] and the accounted work.
+
+use crate::PaintError;
+use crate::accounting::{
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, PhaseMeter, ResourceKind,
+    WorkKind, apply, bytes, charge, finish, setup_error,
 };
+use core::error::Error;
+use std::fmt;
 use surgeist_layout::{Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
@@ -30,6 +46,19 @@ pub enum GradientGeometryError {
     NonFiniteAngle,
     UnrepresentableLine,
 }
+impl fmt::Display for GradientGeometryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InvalidWidth => "gradient box width must be finite and nonnegative",
+            Self::InvalidHeight => "gradient box height must be finite and nonnegative",
+            Self::NonFiniteAngle => "gradient angle must be finite",
+            Self::UnrepresentableLine => {
+                "gradient line cannot keep finite, positive-length geometry in f64"
+            }
+        })
+    }
+}
+impl Error for GradientGeometryError {}
 
 /// Validated, box-local directed line. Placement is a consumer transform.
 #[derive(Clone, Copy, Debug, PartialEq)]

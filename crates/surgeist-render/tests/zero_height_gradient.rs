@@ -3,7 +3,15 @@
 
 use std::{cell::Cell, mem::size_of, time::Duration};
 use surgeist_layout as layout;
-use surgeist_paint as paint;
+use surgeist_ledger::ProfileMode;
+use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+use surgeist_paint::gradient_stops::{GradientPosition, GradientStopItem, GradientStopPositions};
+use surgeist_paint::radial_gradient::{
+    RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
+};
+use surgeist_paint::zero_height_gradient::{
+    GradientRepeat, ZeroHeightGradientColors, resolve_zero_height_gradient_colors,
+};
 use surgeist_render::{
     Color, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
     RenderAttemptKind, RenderAttemptStatus, RenderClock, RenderLimits, RenderPhase,
@@ -14,30 +22,30 @@ use surgeist_render::{
 fn color(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::try_rgba(r, g, b, a).unwrap()
 }
-fn position(length: f64, fraction: f64) -> paint::GradientPosition {
-    paint::GradientPosition { length, fraction }
+fn position(length: f64, fraction: f64) -> GradientPosition {
+    GradientPosition { length, fraction }
 }
-fn stop(payload: Color, length: f64, fraction: f64) -> paint::GradientStopItem<Color> {
-    paint::GradientStopItem::Stop {
+fn stop(payload: Color, length: f64, fraction: f64) -> GradientStopItem<Color> {
+    GradientStopItem::Stop {
         payload,
-        positions: paint::GradientStopPositions::One(position(length, fraction)),
+        positions: GradientStopPositions::One(position(length, fraction)),
     }
 }
-fn source(colors: [Color; 3]) -> [paint::GradientStopItem<Color>; 3] {
+fn source(colors: [Color; 3]) -> [GradientStopItem<Color>; 3] {
     [
         stop(colors[0], 0.0, 0.0),
         stop(colors[1], 10.0, 0.0),
         stop(colors[2], 0.0, 1.0),
     ]
 }
-fn paint_options() -> paint::PaintOptions {
-    paint::PaintOptions::new(paint::PaintLimits::unlimited(), paint::ProfileMode::Off)
+fn paint_options() -> PaintOptions {
+    PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
 }
-fn geometry(radius: f64) -> paint::RadialGradientGeometry {
-    paint::resolve_radial_gradient(
+fn geometry(radius: f64) -> RadialGradientGeometry {
+    resolve_radial_gradient(
         layout::Size::new(32.0, 16.0),
         Some(layout::Point::new(8.0, 8.0)),
-        paint::RadialGradientSize::EllipseRadii(layout::Size::new(
+        RadialGradientSize::EllipseRadii(layout::Size::new(
             position(radius, 0.0),
             position(0.0, 0.0),
         )),
@@ -47,15 +55,15 @@ fn geometry(radius: f64) -> paint::RadialGradientGeometry {
     .unwrap()
 }
 fn measure<'a>(
-    geometry: &paint::RadialGradientGeometry,
-    source: &'a [paint::GradientStopItem<Color>],
-    repeat: paint::GradientRepeat,
-) -> paint::ZeroHeightGradientColors<'a, Color> {
-    paint::resolve_zero_height_gradient_colors(geometry, source, repeat, paint_options())
+    geometry: &RadialGradientGeometry,
+    source: &'a [GradientStopItem<Color>],
+    repeat: GradientRepeat,
+) -> ZeroHeightGradientColors<'a, Color> {
+    resolve_zero_height_gradient_colors(geometry, source, repeat, paint_options())
         .result
         .unwrap()
 }
-fn owned(radius: f64, colors: [Color; 3], repeat: paint::GradientRepeat) -> Color {
+fn owned(radius: f64, colors: [Color; 3], repeat: GradientRepeat) -> Color {
     let geometry = geometry(radius);
     let source = source(colors);
     let measure = measure(&geometry, &source, repeat);
@@ -85,10 +93,10 @@ fn real_zero_height_measure_becomes_an_owned_premultiplied_color_before_quantiza
         // All producers, borrowed measures and preparation contexts are dropped
         // on return. The selected weights are (0,.5,.5), not (.25,.5,.25).
         assert_color(
-            owned(radius, rgb, paint::GradientRepeat::Repeat),
+            owned(radius, rgb, GradientRepeat::Repeat),
             [0.0, 0.5, 0.5, 1.0],
         );
-        assert_eq!(owned(radius, rgb, paint::GradientRepeat::None), rgb[2]);
+        assert_eq!(owned(radius, rgb, GradientRepeat::None), rgb[2]);
     }
     let partial = [
         color(1.0, 0.0, 0.0, 0.0),
@@ -97,7 +105,7 @@ fn real_zero_height_measure_becomes_an_owned_premultiplied_color_before_quantiza
     ];
     // Weighted premultiplied (0,.25,.5,.75) unpremultiplies to (0,1/3,2/3,.75).
     assert_color(
-        owned(20.0, partial, paint::GradientRepeat::Repeat),
+        owned(20.0, partial, GradientRepeat::Repeat),
         [0.0, 1.0 / 3.0, 2.0 / 3.0, 0.75],
     );
     let transparent = [
@@ -106,13 +114,13 @@ fn real_zero_height_measure_becomes_an_owned_premultiplied_color_before_quantiza
         color(0.0, 0.0, 1.0, 0.0),
     ];
     assert_eq!(
-        owned(20.0, transparent, paint::GradientRepeat::Repeat),
+        owned(20.0, transparent, GradientRepeat::Repeat),
         Color::TRANSPARENT
     );
     // Last is a direct copy, preserving even unused straight RGB at alpha0;
     // only an averaged zero-alpha result selects canonical transparent.
     assert_eq!(
-        owned(20.0, transparent, paint::GradientRepeat::None),
+        owned(20.0, transparent, GradientRepeat::None),
         transparent[2]
     );
 }
@@ -134,13 +142,13 @@ fn actual_two_occurrences_and_hint_bounded_omissions_reduce_without_hint_colors(
         ),
     ] {
         let source = [
-            paint::GradientStopItem::Stop {
+            GradientStopItem::Stop {
                 payload: red,
-                positions: paint::GradientStopPositions::Two(positions.0, positions.1),
+                positions: GradientStopPositions::Two(positions.0, positions.1),
             },
             stop(blue, 0.0, 1.0),
         ];
-        let measure = measure(&geometry, &source, paint::GradientRepeat::Repeat);
+        let measure = measure(&geometry, &source, GradientRepeat::Repeat);
         let result =
             prepare_zero_height_gradient_color(&measure, &mut RenderAccountingContext::default())
                 .unwrap();
@@ -148,16 +156,16 @@ fn actual_two_occurrences_and_hint_bounded_omissions_reduce_without_hint_colors(
     }
     let source = [
         stop(red, 0.0, 0.0),
-        paint::GradientStopItem::Stop {
+        GradientStopItem::Stop {
             payload: green,
-            positions: paint::GradientStopPositions::Omitted,
+            positions: GradientStopPositions::Omitted,
         },
-        paint::GradientStopItem::Hint {
+        GradientStopItem::Hint {
             position: position(0.0, 0.75),
         },
         stop(blue, 0.0, 1.0),
     ];
-    let measure = measure(&geometry, &source, paint::GradientRepeat::Repeat);
+    let measure = measure(&geometry, &source, GradientRepeat::Repeat);
     let result =
         prepare_zero_height_gradient_color(&measure, &mut RenderAccountingContext::default())
             .unwrap();
@@ -184,7 +192,7 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
         color(0.0, 1.0, 0.0, 0.5),
         color(0.0, 0.0, 1.0, 1.0),
     ]);
-    for repeat in [paint::GradientRepeat::None, paint::GradientRepeat::Repeat] {
+    for repeat in [GradientRepeat::None, GradientRepeat::Repeat] {
         let measure = measure(&geometry, &source, repeat);
         let mut context = RenderAccountingContext::new(
             RenderAccountingOptions::new()
@@ -208,16 +216,12 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
         );
         assert_eq!(
             baseline.usage().work(RenderWork::GradientStopVisits),
-            if repeat == paint::GradientRepeat::None {
-                1
-            } else {
-                3
-            }
+            if repeat == GradientRepeat::None { 1 } else { 3 }
         );
         // Last copies directly. Average performs weight capture1,
         // premultiplication11 and weighted product/sum8 per occurrence, then
         // nonzero-alpha final conversion12, including the zero-weight record.
-        let coordinates = if repeat == paint::GradientRepeat::None {
+        let coordinates = if repeat == GradientRepeat::None {
             0
         } else {
             3 * 20 + 12
@@ -227,11 +231,7 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
             coordinates
         );
         assert_eq!(baseline.usage().work(RenderWork::PaintVisits), 2);
-        let visits = if repeat == paint::GradientRepeat::None {
-            1
-        } else {
-            3
-        };
+        let visits = if repeat == GradientRepeat::None { 1 } else { 3 };
         let mut failure_oracles = Vec::new();
         for (profile_index, profile) in [
             RenderProfile::Off,
@@ -403,16 +403,13 @@ mod gpu {
         ];
         // These values are all that survive; no source/context/measure remains.
         let fields = [
+            (owned(20.0, opaque, GradientRepeat::None), [0, 0, 255, 255]),
             (
-                owned(20.0, opaque, paint::GradientRepeat::None),
-                [0, 0, 255, 255],
-            ),
-            (
-                owned(20.0, opaque, paint::GradientRepeat::Repeat),
+                owned(20.0, opaque, GradientRepeat::Repeat),
                 [0, 128, 128, 255],
             ),
             (
-                owned(20.0, partial, paint::GradientRepeat::Repeat),
+                owned(20.0, partial, GradientRepeat::Repeat),
                 [0, 85, 170, 191],
             ),
         ];
@@ -530,7 +527,7 @@ mod gpu {
             color(0.0, 1.0, 0.0, 1.0),
             color(0.0, 0.0, 1.0, 1.0),
         ];
-        let owned = owned(20.0, colors, paint::GradientRepeat::Repeat);
+        let owned = owned(20.0, colors, GradientRepeat::Repeat);
         // One actual normalized fill fits. The next forward emission refuses
         // before publication; authored lifecycle totals are not admission caps.
         let limits = RenderLimits::new()

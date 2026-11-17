@@ -1,10 +1,8 @@
 use super::*;
-use crate::{
-    ContextEffect, ContextView, EventFilter, PaintChange, PaintEvent, PaintLimits, PaintPhase,
-    Position, ProfileMode, ZIndex,
-};
+use crate::accounting::{PaintChange, PaintEvent, PaintLimits};
+use crate::stacking::{ContextEffect, ContextView, Position, ZIndex};
 use surgeist_layout::{ItemOrder, SourceIndex};
-use surgeist_ledger::RefusalReason;
+use surgeist_ledger::{EventFilter, ProfileMode, RefusalReason};
 
 const STACKING_WORK_KINDS: [WorkKind; 8] = [
     WorkKind::BoxValidation,
@@ -274,7 +272,7 @@ fn sort_buffers_short_initialized_backing_refuses_without_work_or_mutation() {
             .unwrap_err();
         assert_eq!(
             error,
-            PaintError::Accounting(crate::AccountingFailure::Invariant)
+            PaintError::Accounting(crate::accounting::AccountingFailure::Invariant)
         );
         assert_eq!(values, original);
         assert_eq!(scratch, vec![77; initialized]);
@@ -863,7 +861,7 @@ fn paint_order_reserves_scopes_for_stacking_and_both_paint_phases() {
             Tariffs::identity()
         ),
         Err(PaintError::Accounting(
-            crate::AccountingFailure::ScopeLimit { limit: 10 }
+            crate::accounting::AccountingFailure::ScopeLimit { limit: 10 }
         ))
     ));
     let report = meter.finish().unwrap().unwrap();
@@ -1001,11 +999,11 @@ fn detailed_failures_and_phase_work_use_only_named_public_views() {
     let report = outcome.report.unwrap();
     assert_eq!(report.refusals().collect::<Vec<_>>(), [expected]);
     assert!(report.events().any(
-        |event| matches!(event, crate::PaintEvent::Refused { refusal, .. } if refusal == expected)
+        |event| matches!(event, crate::accounting::PaintEvent::Refused { refusal, .. } if refusal == expected)
     ));
     assert!(report.events().any(|event| matches!(
         event,
-        crate::PaintEvent::Accepted {
+        crate::accounting::PaintEvent::Accepted {
             phase: PaintPhase::Validate,
             change: PaintChange::Work {
                 kind: WorkKind::BoxValidation,

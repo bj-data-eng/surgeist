@@ -2,10 +2,8 @@ use super::{
     BorderImageGeometry, BorderImageRect, BorderImageRegion, ExactProduct, GeometryWork,
     compare_product_sums, geometry_error, run,
 };
-use crate::{
-    PaintError, PaintOptions, PaintPhase, PaintReport, WorkKind,
-    accounting::{OperationKind, charge},
-};
+use crate::PaintError;
+use crate::accounting::{OperationKind, PaintOptions, PaintPhase, PaintReport, WorkKind, charge};
 use std::{cmp::Ordering, num::NonZeroU64};
 use surgeist_layout::Size;
 
@@ -588,13 +586,14 @@ fn tile_count(work: &mut GeometryWork<'_, '_, '_>, count: f64) -> Result<NonZero
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
+    use crate::accounting::{PaintChange, PaintLimits, ResourceKind};
+    use crate::border_image::{
         BorderImageOutset, BorderImageRequest, BorderImageSlice, BorderImageSource,
-        BorderImageWidth, PaintChange, PaintLimits, ProfileMode, ResourceKind,
-        resolve_border_image,
+        BorderImageWidth, resolve_border_image,
     };
     use std::mem::size_of;
     use surgeist_layout::{Edges, Point};
+    use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {
         PaintOptions::new(limits, ProfileMode::Summary { timing: false })

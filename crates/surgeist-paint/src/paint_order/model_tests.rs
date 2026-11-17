@@ -1,8 +1,7 @@
 use super::*;
-use crate::{
-    ChildOrder, ContextEffect, PaintLimits, PaintOptions, Participation, Position, ProfileMode,
-    ZIndex,
-};
+use crate::accounting::{PaintLimits, PaintOptions};
+use crate::stacking::{ChildOrder, ContextEffect, Participation, Position, ZIndex};
+use surgeist_ledger::ProfileMode;
 
 fn facts(parent: Option<BoxId>, source: usize) -> BoxFacts {
     BoxFacts::new(
@@ -55,7 +54,7 @@ fn draw_views_retain_exact_records_and_original_text_owner_across_lines() {
         &primitives,
         root,
     );
-    let plan = crate::plan_paint_order(
+    let plan = crate::paint_order::plan_paint_order(
         request,
         PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off),
     )

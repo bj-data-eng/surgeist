@@ -10,10 +10,10 @@ use crate::{
     paint::GradientGeometry,
 };
 use std::mem::size_of;
-use surgeist_paint::{
-    GradientStops, LinearGradientLine, RadialGradientCase, RadialGradientGeometry,
-    UsedGradientItem, ZeroHeightGradientColors,
-};
+use surgeist_paint::gradient_stops::{GradientStops, UsedGradientItem};
+use surgeist_paint::linear_gradient::LinearGradientLine;
+use surgeist_paint::radial_gradient::{RadialGradientCase, RadialGradientGeometry};
+use surgeist_paint::zero_height_gradient::ZeroHeightGradientColors;
 
 /// Native composition or representation refusal. Valid Paint values may exceed
 /// the supported native consumer's geometry/representation capability.
@@ -441,10 +441,12 @@ mod tests {
     use super::*;
     use crate::{RenderAccountingOptions, RenderLimits, RenderProfile, paint::GradientKind};
     use std::cell::Cell;
-    use surgeist_paint::{
-        GradientPosition, GradientStopItem, GradientStopPositions, PaintLimits, PaintOptions,
-        ProfileMode, RadialGradientSize, resolve_gradient_stops, resolve_radial_gradient,
+    use surgeist_ledger::ProfileMode;
+    use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+    use surgeist_paint::gradient_stops::{
+        GradientPosition, GradientStopItem, GradientStopPositions, resolve_gradient_stops,
     };
+    use surgeist_paint::radial_gradient::{RadialGradientSize, resolve_radial_gradient};
 
     fn unit_basis(basis: f64) -> AdapterGeometry {
         AdapterGeometry::UnitBasis {
@@ -796,7 +798,9 @@ mod tests {
 
     #[test]
     fn zero_height_last_copies_color_without_channel_math_and_transfers_only_fixed_output() {
-        use surgeist_paint::{GradientRepeat, resolve_zero_height_gradient_colors};
+        use surgeist_paint::zero_height_gradient::{
+            GradientRepeat, resolve_zero_height_gradient_colors,
+        };
         let hidden = Color::try_rgba(1.0, 0.5, 0.25, 0.0).unwrap();
         let source = [GradientStopItem::Stop {
             payload: hidden,
@@ -836,7 +840,9 @@ mod tests {
 
     #[test]
     fn zero_height_average_counts_real_channel_actions_and_cleans_each_refused_prefix() {
-        use surgeist_paint::{GradientRepeat, resolve_zero_height_gradient_colors};
+        use surgeist_paint::zero_height_gradient::{
+            GradientRepeat, resolve_zero_height_gradient_colors,
+        };
         let source = [
             GradientStopItem::Stop {
                 payload: Color::try_rgba(1.0, 0.0, 0.0, 0.0).unwrap(),

@@ -2,13 +2,12 @@
 mod paint;
 pub(crate) use paint::{model as paint_model, plan as plan_order};
 
+use crate::PaintError;
 use crate::accounting::{
-    Meter, OperationKind, PhaseMeter, allocate, apply, charge, finish, release, setup_error,
+    Meter, OperationKind, PaintOptions, PaintPhase, PaintReport, PhaseMeter, ResourceKind,
+    WorkKind, allocate, apply, charge, finish, release, setup_error,
 };
-use crate::{
-    BoxFacts, BoxId, ChildOrder, PaintError, PaintOptions, PaintPhase, PaintReport, Participation,
-    ResourceKind, WorkKind,
-};
+use crate::stacking::{BoxFacts, BoxId, ChildOrder, Participation};
 use std::{
     cmp::Ordering,
     mem::{size_of, take},
@@ -19,7 +18,7 @@ use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 /// Complete result and optional accepted-prefix report. A semantic/admission
 /// failure contains no partial plan; accepted work remains observable.
 #[derive(Debug)]
-pub struct PaintOutcome<'a> {
+pub struct StackingOutcome<'a> {
     pub result: Result<StackingPlan<'a>, PaintError>,
     pub report: Option<PaintReport>,
 }
@@ -109,11 +108,11 @@ pub fn plan_stacking(
     boxes: &[BoxFacts],
     root_box: BoxId,
     options: PaintOptions,
-) -> PaintOutcome<'_> {
+) -> StackingOutcome<'_> {
     let mut meter = match options.operation(OperationKind::Stacking) {
         Ok(meter) => meter,
         Err(error) => {
-            return PaintOutcome {
+            return StackingOutcome {
                 result: Err(error),
                 report: None,
             };
@@ -125,7 +124,7 @@ pub fn plan_stacking(
         Ok(scopes) => scopes,
         Err(error) => {
             let (result, report) = finish(meter, Err(error));
-            return PaintOutcome { result, report };
+            return StackingOutcome { result, report };
         }
     };
     let completion = match prepare(&mut meter, root, &scopes, boxes, root_box) {
@@ -138,7 +137,7 @@ pub fn plan_stacking(
         .map_err(setup_error)
         .and_then(|done| done);
     let (result, report) = finish(meter, result);
-    PaintOutcome { result, report }
+    StackingOutcome { result, report }
 }
 
 pub(crate) fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 7], PaintError> {
@@ -519,7 +518,9 @@ mod sort_buffers {
         ) -> Result<Self, PaintError> {
             let scratch = scratch
                 .get_mut(..values.len())
-                .ok_or(PaintError::Accounting(crate::AccountingFailure::Invariant))?;
+                .ok_or(PaintError::Accounting(
+                    crate::accounting::AccountingFailure::Invariant,
+                ))?;
             Ok(Self { values, scratch })
         }
 

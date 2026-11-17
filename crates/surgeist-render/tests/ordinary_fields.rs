@@ -514,59 +514,64 @@ fn outside_fields_follow_transformed_strokes_and_both_glyph_routes_at_final_scal
 mod paint {
     use super::*;
     use surgeist_layout as layout;
-    use surgeist_paint as producer;
+    use surgeist_ledger::ProfileMode;
+    use surgeist_paint::accounting::{PaintLimits, PaintOptions};
+    use surgeist_paint::gradient_stops::{
+        GradientPosition, GradientStopItem, GradientStopPositions, GradientStops,
+        resolve_gradient_stops,
+    };
+    use surgeist_paint::linear_gradient::{
+        LinearGradientDirection, LinearGradientLine, resolve_linear_gradient,
+    };
+    use surgeist_paint::radial_gradient::{
+        RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
+    };
     use surgeist_render::{
         EffectQualityPolicy, Error, ErrorCode, PaintGradientError, RenderAccountingContext,
         prepare_linear_gradient, prepare_radial_gradient,
     };
 
-    fn options() -> producer::PaintOptions {
-        producer::PaintOptions::new(
-            producer::PaintLimits::unlimited(),
-            producer::ProfileMode::Off,
-        )
+    fn options() -> PaintOptions {
+        PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
     }
 
-    fn position(length: f64) -> producer::GradientPosition {
-        producer::GradientPosition {
+    fn position(length: f64) -> GradientPosition {
+        GradientPosition {
             length,
             fraction: 0.0,
         }
     }
 
-    fn at(length: f64, color: Color) -> producer::GradientStopItem<Color> {
-        producer::GradientStopItem::Stop {
+    fn at(length: f64, color: Color) -> GradientStopItem<Color> {
+        GradientStopItem::Stop {
             payload: color,
-            positions: producer::GradientStopPositions::One(position(length)),
+            positions: GradientStopPositions::One(position(length)),
         }
     }
 
-    fn line(length: f64) -> producer::LinearGradientLine {
-        producer::resolve_linear_gradient(
+    fn line(length: f64) -> LinearGradientLine {
+        resolve_linear_gradient(
             layout::Size::new(length, 16.0),
-            producer::LinearGradientDirection::Right,
+            LinearGradientDirection::Right,
             options(),
         )
         .result
         .unwrap()
     }
 
-    fn ellipse(x: f64, y: f64) -> producer::RadialGradientGeometry {
-        producer::resolve_radial_gradient(
+    fn ellipse(x: f64, y: f64) -> RadialGradientGeometry {
+        resolve_radial_gradient(
             layout::Size::new(32.0, 16.0),
             Some(layout::Point::new(16.0, 8.0)),
-            producer::RadialGradientSize::EllipseRadii(layout::Size::new(position(x), position(y))),
+            RadialGradientSize::EllipseRadii(layout::Size::new(position(x), position(y))),
             options(),
         )
         .result
         .unwrap()
     }
 
-    fn used(
-        basis: f64,
-        source: &[producer::GradientStopItem<Color>],
-    ) -> producer::GradientStops<'_, Color> {
-        producer::resolve_gradient_stops(basis, source, options())
+    fn used(basis: f64, source: &[GradientStopItem<Color>]) -> GradientStops<'_, Color> {
+        resolve_gradient_stops(basis, source, options())
             .result
             .unwrap()
     }
@@ -584,9 +589,9 @@ mod paint {
         let linear = {
             let geometry = line(8.0);
             let source = vec![
-                producer::GradientStopItem::Stop {
+                GradientStopItem::Stop {
                     payload: red,
-                    positions: producer::GradientStopPositions::Two(position(-8.0), position(0.0)),
+                    positions: GradientStopPositions::Two(position(-8.0), position(0.0)),
                 },
                 at(16.0, blue),
             ];
@@ -646,7 +651,7 @@ mod paint {
         let blue = rgba(0.0, 0.0, 1.0, 1.0);
         let source = [
             at(0.0, red),
-            producer::GradientStopItem::Hint {
+            GradientStopItem::Hint {
                 position: position(4.0),
             },
             at(8.0, blue),
@@ -685,9 +690,9 @@ mod paint {
         assert_eq!(first / 3.0, second / 3.0);
         let source = [
             at(0.0, red),
-            producer::GradientStopItem::Stop {
+            GradientStopItem::Stop {
                 payload: blue,
-                positions: producer::GradientStopPositions::Two(position(first), position(second)),
+                positions: GradientStopPositions::Two(position(first), position(second)),
             },
         ];
         let collapsed = used(3.0, &source);
