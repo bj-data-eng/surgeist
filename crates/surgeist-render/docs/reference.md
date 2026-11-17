@@ -1024,13 +1024,18 @@ Accounting errors retain their typed cause without allocating during constructio
 `Error::message` formats and caches human-readable text on first observation;
 typed diagnostic access and Display formatting leave that cache uninitialized.
 
-`Error` prints the lowercase classification phrase of its `ErrorCode`, a colon and
-its message (`glyph preparation refused: …`). The message of a typed diagnostic is
-that diagnostic's own sentence followed by the sentences of its causes, joined by a
-colon and a space; `Error::source` still returns only a backend source, and the
-typed diagnostic stays available through its `*_diagnostic` accessor. Every error
-enum of the crate implements `Display` and `core::error::Error`; a wrapper's text
-names what failed at its own layer and `source` returns the wrapped error.
+`Error` prints its message and nothing else. A caller that wants the classification
+in the text it prints reads `Error::code`, whose `ErrorCode` also implements
+`Display` with one lowercase phrase per code that is true at every place the code is
+raised (`preparation refused`, `surface setup failed`, `invalid value`, …). The
+message of a typed diagnostic is that diagnostic's own sentence followed by the
+sentences of its causes, joined by a colon and a space; `Error::source` still
+returns only a backend source, and the typed diagnostic stays available through its
+`*_diagnostic` accessor. Every error enum of the crate implements `Display` and
+`core::error::Error`; a wrapper's text names what failed at its own layer and
+`source` returns the wrapped error. A floating-point value in a message prints in
+plain form from 1e-5 up to 1e16 and in exponent form beyond that, so an extreme value
+stays short.
 
 ### Resolved accounting reports
 

@@ -211,8 +211,9 @@ impl TextLayoutResource {
             Self::Decorations => "decorations",
             Self::Glyphs => "glyphs",
             Self::PathElements => "path elements",
-            Self::ScratchBytes => "scratch bytes",
-            Self::RetainedBytes => "retained bytes",
+            // The byte resources are the accounting dimensions, so a chain names them as they are named there.
+            Self::ScratchBytes => RenderResource::ScratchCpuBytes.label(),
+            Self::RetainedBytes => RenderResource::RetainedCpuBytes.label(),
         }
     }
 }
@@ -234,9 +235,8 @@ impl core::fmt::Display for TextLayoutCause {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
             Self::Text(_) => "text could not qualify the face, instance or synthesis",
-            Self::Render(_) => {
-                "render refused the font, paint, numeric facts or outline capability"
-            }
+            // Every error of glyph preparation is wrapped here, including a caller's limit.
+            Self::Render(_) => "render could not prepare the item",
         })
     }
 }
@@ -262,7 +262,7 @@ impl core::fmt::Display for TextLayoutError {
                 "placed layout needs {required} {}, above the limit of {limit}",
                 resource.label()
             ),
-            Self::CapacityOverflow => f.write_str("a count or storage size calculation overflowed"),
+            Self::CapacityOverflow => f.write_str("a count calculation overflowed"),
             Self::Allocation { resource } => write!(f, "allocating {} failed", resource.label()),
             Self::Item { location, .. } => {
                 write!(f, "layout item at {} was refused", LocationText(*location))

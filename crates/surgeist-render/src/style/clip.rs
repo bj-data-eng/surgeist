@@ -496,14 +496,24 @@ fn finite_clip_rect(x: f64, y: f64, width: f64, height: f64) -> Result<Rect> {
     if !x.is_finite() || !y.is_finite() || !width.is_finite() || !height.is_finite() {
         return Err(Error::invalid_value(
             "clip transformed bounds",
-            format!("x {x}, y {y}, width {width}, height {height}"),
+            format_args!(
+                "x {}, y {}, width {}, height {}",
+                crate::number_text::Number(x),
+                crate::number_text::Number(y),
+                crate::number_text::Number(width),
+                crate::number_text::Number(height)
+            ),
             "must remain finite after coordinate-space transform",
         ));
     }
     if width < 0.0 || height < 0.0 {
         return Err(Error::invalid_value(
             "clip transformed bounds",
-            format!("width {width}, height {height}"),
+            format_args!(
+                "width {}, height {}",
+                crate::number_text::Number(width),
+                crate::number_text::Number(height)
+            ),
             "must be non-negative",
         ));
     }

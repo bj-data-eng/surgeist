@@ -3,6 +3,7 @@ use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };
 use crate::filter_source::FilterSourceDescriptor;
+use crate::number_text::Number;
 use crate::{Color, FilterColorSpace, FilterDomains, FilterEdgeMode, Rect, Result, Scene};
 
 /// Gaussian parameter whose resolved value is invalid.
@@ -75,8 +76,9 @@ impl core::fmt::Display for GaussianPreparationError {
         match self {
             Self::InvalidParameter { parameter, value } => write!(
                 f,
-                "Gaussian parameter {} has the invalid value {value}",
-                parameter.label()
+                "Gaussian parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
             ),
             Self::Numeric { phase, .. } => {
                 write!(f, "Gaussian numeric check failed at {}", phase.label())

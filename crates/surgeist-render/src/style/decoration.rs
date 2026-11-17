@@ -887,7 +887,11 @@ fn outline_target_rect(border_box: Rect, offset: f64, account: &Account) -> Resu
     {
         return Err(Error::invalid_value(
             "outline target rect",
-            format!("border box {border_box:?}, offset {offset}"),
+            format_args!(
+                "border box {}, offset {}",
+                crate::number_text::RectText(border_box),
+                crate::number_text::Number(offset)
+            ),
             "must resolve to finite positive width and height",
         ));
     }

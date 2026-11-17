@@ -167,7 +167,7 @@ fn offscreen_local_scene_physical_size(
     if format != Format::Rgba8 {
         return Err(Error::invalid_value(
             "offscreen Vello scene texture format",
-            format!("{format:?}"),
+            format.label(),
             "must be Rgba8 for minimal offscreen Vello targets",
         ));
     }
@@ -182,7 +182,7 @@ fn offscreen_local_scene_texture_descriptor_for_physical_size(
     if format != Format::Rgba8 {
         return Err(Error::invalid_value(
             "offscreen Vello scene texture format",
-            format!("{format:?}"),
+            format.label(),
             "must be Rgba8 for minimal offscreen Vello targets",
         ));
     }

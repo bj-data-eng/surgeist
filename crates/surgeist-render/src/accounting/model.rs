@@ -1272,7 +1272,7 @@ pub enum RenderAccountingError {
         /// The requested backing dimension.
         resource: RenderResource,
     },
-    /// This dimension has no producer at the selected operation boundary.
+    /// This dimension is not produced by the operations the limit applies to, or has no limit at all.
     InvalidLimit(RenderWork),
     /// A private fixed-scope, checkpoint or participant contract was violated.
     Invariant,
@@ -1341,7 +1341,7 @@ impl fmt::Display for RenderAccountingError {
             ),
             Self::InvalidLimit(work) => write!(
                 f,
-                "{} work has no producer at the selected operation boundary and cannot be limited",
+                "{} work is not produced by the operations this limit applies to and cannot be limited",
                 work.label()
             ),
             Self::Invariant => f.write_str("an internal consistency check failed"),
@@ -1395,7 +1395,16 @@ impl std::error::Error for RenderAccountingError {
         match self {
             Self::Setup(error) => Some(error),
             Self::Refused(refusal) => Some(refusal),
-            _ => None,
+            Self::StandaloneAllocation { .. }
+            | Self::StandaloneCapacityOverflow { .. }
+            | Self::InvalidLimit(_)
+            | Self::Invariant
+            | Self::LedgerDefect(_)
+            | Self::GenerationRefused { .. }
+            | Self::GenerationRetired
+            | Self::CpuRefused { .. }
+            | Self::CpuAllocation { .. }
+            | Self::CpuCapacityOverflow { .. } => None,
         }
     }
 }

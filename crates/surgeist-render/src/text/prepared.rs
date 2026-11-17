@@ -14,6 +14,7 @@ use skrifa::{
     raw::TableProvider,
 };
 
+use crate::number_text::Number;
 use crate::{Error, FontData, PathElement, Point, Rect, Result, TextGlyph, TextRunBounds};
 
 mod bitmap;
@@ -337,8 +338,9 @@ impl GlyphResource {
         match self {
             Self::Glyphs => "glyphs",
             Self::PathElements => "path elements",
-            Self::ScratchBytes => "scratch bytes",
-            Self::RetainedBytes => "retained bytes",
+            // The byte resources are the accounting dimensions, so a chain names them as they are named there.
+            Self::ScratchBytes => RenderResource::ScratchCpuBytes.label(),
+            Self::RetainedBytes => RenderResource::RetainedCpuBytes.label(),
         }
     }
 }
@@ -395,13 +397,15 @@ impl core::fmt::Display for GlyphPreparationError {
                 f,
                 "{supplied} variation coordinates were supplied but the face has {required} axes"
             ),
-            Self::CoordinateValue { value } => write!(
-                f,
-                "variation coordinate value {value} is outside the normalized domain"
+            // The value is raw 2.14 bits for one constructor and a scalar for the other, so the
+            // text states both normalized domains and not the number.
+            Self::CoordinateValue { .. } => f.write_str(
+                "a variation coordinate is outside the normalized domain, which is -1 to 1 as a scalar and -16384 to 16384 as 2.14 bits",
             ),
             Self::CoordinateLoss { value } => write!(
                 f,
-                "variation coordinate {value} would change during quantization"
+                "variation coordinate {} would change during quantization",
+                Number(*value)
             ),
             Self::InvalidVariation { table } => {
                 write!(f, "the {} variation table is malformed", table.label())

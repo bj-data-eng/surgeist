@@ -1700,7 +1700,11 @@ fn checked_finite_result(
     if !result.is_finite() {
         return Err(Error::invalid_value(
             name,
-            format!("{left} {operation} {right}"),
+            format_args!(
+                "{} {operation} {}",
+                crate::number_text::Number(left),
+                crate::number_text::Number(right)
+            ),
             "must produce a finite value",
         ));
     }

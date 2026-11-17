@@ -838,7 +838,7 @@ fn validate_placement_rect(rect: Rect, field: &str) -> Result<()> {
     if rect.width() <= 0.0 || rect.height() <= 0.0 {
         return Err(Error::invalid_value(
             field,
-            format!("{rect:?}"),
+            crate::number_text::RectText(rect),
             "must have finite positive width and height",
         ));
     }
@@ -853,7 +853,7 @@ fn validate_positive_size(size: Size, field: &str) -> Result<()> {
     {
         return Err(Error::invalid_value(
             field,
-            format!("{size:?}"),
+            crate::number_text::SizeText(size),
             "must have finite positive width and height",
         ));
     }
@@ -1198,7 +1198,11 @@ fn repeat_positions(
     if account.coordinate(|| !clip_end.is_finite())? {
         return Err(Error::invalid_value(
             "image repeat geometry",
-            format!("origin {clip_origin}, axis {clip_axis}"),
+            format_args!(
+                "origin {}, axis {}",
+                crate::number_text::Number(clip_origin),
+                crate::number_text::Number(clip_axis)
+            ),
             "resolved clip extent must be finite",
         ));
     }
@@ -1616,7 +1620,7 @@ pub(super) fn validate_background_rect(rect: Rect, field: &str) -> Result<()> {
     {
         return Err(Error::invalid_value(
             field,
-            format!("{rect:?}"),
+            crate::number_text::RectText(rect),
             "must have finite positive width and height",
         ));
     }
@@ -1662,7 +1666,7 @@ impl ImageAttachmentPlan {
             if tag.kind() != CoordinateSpaceKind::Viewport {
                 return Err(Error::invalid_value(
                     "background attachment coordinate space",
-                    format!("{:?}", tag.kind()),
+                    tag.kind().label(),
                     "fixed backgrounds require a viewport coordinate tag",
                 ));
             }

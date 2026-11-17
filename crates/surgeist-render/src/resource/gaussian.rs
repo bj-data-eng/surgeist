@@ -549,7 +549,11 @@ fn append_kernel_sample(
     if !offset.is_finite() || !weight.is_finite() {
         return Err(Error::invalid_value(
             "Gaussian kernel sample",
-            format!("offset {offset}, weight {weight}"),
+            format_args!(
+                "offset {}, weight {}",
+                crate::number_text::Number(offset),
+                crate::number_text::Number(weight)
+            ),
             "must narrow to finite f32 values",
         ));
     }

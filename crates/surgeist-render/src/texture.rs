@@ -1,5 +1,46 @@
 use super::{Error, Format, PhysicalSize, Result, resource::WorkingFormat};
 
+/// The name of a texture format in a message. Formats this crate never selects share one name.
+pub(crate) const fn texture_format_label(format: wgpu::TextureFormat) -> &'static str {
+    match format {
+        wgpu::TextureFormat::Rgba8Unorm => "Rgba8Unorm",
+        wgpu::TextureFormat::Rgba8UnormSrgb => "Rgba8UnormSrgb",
+        wgpu::TextureFormat::Bgra8Unorm => "Bgra8Unorm",
+        wgpu::TextureFormat::Bgra8UnormSrgb => "Bgra8UnormSrgb",
+        wgpu::TextureFormat::Rgba16Float => "Rgba16Float",
+        wgpu::TextureFormat::Rgba32Float => "Rgba32Float",
+        _ => "a texture format this crate does not use",
+    }
+}
+
+/// The usages of a texture as a list of names in a message.
+pub(crate) struct UsageText(pub(crate) wgpu::TextureUsages);
+
+impl std::fmt::Display for UsageText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for (usage, name) in [
+            (wgpu::TextureUsages::COPY_SRC, "copy source"),
+            (wgpu::TextureUsages::COPY_DST, "copy destination"),
+            (wgpu::TextureUsages::TEXTURE_BINDING, "texture binding"),
+            (wgpu::TextureUsages::STORAGE_BINDING, "storage binding"),
+            (wgpu::TextureUsages::RENDER_ATTACHMENT, "render attachment"),
+        ] {
+            if self.0.contains(usage) {
+                if !first {
+                    f.write_str(", ")?;
+                }
+                first = false;
+                f.write_str(name)?;
+            }
+        }
+        if first {
+            f.write_str("no usage")?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum EffectTextureRole {
     Capture,
@@ -123,7 +164,7 @@ impl EffectTextureDescriptor {
         ) {
             return Err(Error::invalid_value(
                 "effect texture format",
-                format!("{texture_format:?}"),
+                texture_format_label(texture_format),
                 "must be Rgba16Float, Rgba8Unorm, or filter Rgba32Float",
             ));
         }
@@ -166,7 +207,7 @@ impl EffectTextureDescriptor {
             _ => {
                 return Err(Error::invalid_value(
                     "effect texture format",
-                    format!("{:?}", self.texture_format),
+                    texture_format_label(self.texture_format),
                     "must be Rgba16Float, Rgba8Unorm, or filter Rgba32Float",
                 ));
             }

@@ -69,7 +69,47 @@ pub(crate) enum StorageContractError {
 }
 impl std::fmt::Display for StorageContractError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "owned-vector consumer contract: {self:?}")
+        match self {
+            Self::MissingBacking => f.write_str("the owned vector has no active admitted backing"),
+            Self::ReservedCapacity { needed, capacity } => write!(
+                f,
+                "the owned vector needs room for {needed} values but reserved {capacity}"
+            ),
+            Self::InvalidInsertion { index, len } => write!(
+                f,
+                "cannot insert at index {index} in an owned vector of length {len}"
+            ),
+            Self::InvalidPosition { index, len } => {
+                write!(f, "position {index} is outside a sequence of length {len}")
+            }
+            Self::BackingCapacityMismatch {
+                admitted_bytes,
+                actual_bytes,
+            } => write!(
+                f,
+                "the owned vector holds {actual_bytes} bytes of capacity but {admitted_bytes} bytes were admitted"
+            ),
+            Self::WrongRetentionLifetime => f.write_str(
+                "the backing is retained by the renderer where a preparation backing is required",
+            ),
+            Self::BackingResourceMismatch {
+                admitted,
+                requested,
+            } => write!(
+                f,
+                "the admitted backing counts {} but {} was requested",
+                admitted.label(),
+                requested.label()
+            ),
+            Self::ProducerCapacityChanged { expected, actual } => write!(
+                f,
+                "the producer changed the vector capacity from {expected} to {actual} values"
+            ),
+            Self::ProducerLengthChanged { expected, actual } => write!(
+                f,
+                "the producer wrote {actual} values where {expected} were qualified"
+            ),
+        }
     }
 }
 impl std::error::Error for StorageContractError {}

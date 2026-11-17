@@ -15,7 +15,7 @@ fn accounting_failure_preserves_typed_cause_and_full_human_message() {
         "generation accounting refused 1 of resource allocations work at usage 3: the limit is 3";
     assert_eq!(error.code(), ErrorCode::Accounting);
     assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
-    assert_eq!(error.to_string(), format!("{message}"));
+    assert_eq!(error.to_string(), message);
     assert_eq!(error.message(), message);
     assert_eq!(error.message(), message);
     assert!(error.source().is_none());

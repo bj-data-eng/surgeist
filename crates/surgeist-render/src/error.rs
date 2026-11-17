@@ -12,6 +12,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// attempted frame is not published, and any previous complete frame remains
 /// observable. Creating an accounting diagnostic requires no allocation;
 /// requesting its message formats and caches that text at the observation edge.
+///
+/// `Display` prints the message and nothing else. The classification is read through [`Self::code`],
+/// and [`ErrorCode`] implements `Display` for a caller that wants it in the text it prints.
 #[derive(Debug)]
 pub struct Error {
     payload: ErrorPayload,
@@ -857,7 +860,7 @@ impl fmt::Display for GradientRealizationError {
             }
             Self::UnrepresentableStop { stop_index } => write!(
                 f,
-                "stop {stop_index} cannot keep its source ordering, separation or finiteness natively"
+                "stop {stop_index} cannot keep its source position, ordering or separation natively"
             ),
             Self::UnrepresentableHint { stop_index } => write!(
                 f,
@@ -1049,7 +1052,11 @@ fn chain(error: &(dyn error::Error + 'static)) -> String {
     Chain(error).to_string()
 }
 
-/// Prints the classification phrase of the [`ErrorCode`], a colon and the message.
+/// Prints the message of the diagnostic and nothing else.
+///
+/// The text names what failed and does not repeat the classification. A caller that wants the
+/// classification in a line it prints reads [`Error::code`], whose [`ErrorCode`] also implements
+/// `Display`, and prints that itself.
 ///
 /// The message of a typed diagnostic is that diagnostic's own text followed by the text of its causes,
 /// joined by `": "`. The diagnostic itself stays available through its `*_diagnostic` accessor and is
@@ -1057,13 +1064,8 @@ fn chain(error: &(dyn error::Error + 'static)) -> String {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.payload {
-            ErrorPayload::Accounting(failure) => {
-                write!(f, "{}: ", ErrorCode::Accounting)?;
-                write_chain(f, &failure.diagnostic)
-            }
-            ErrorPayload::Context(context) => {
-                write!(f, "{}: {}", context.code, context.message)
-            }
+            ErrorPayload::Accounting(failure) => write_chain(f, &failure.diagnostic),
+            ErrorPayload::Context(context) => f.write_str(&context.message),
         }
     }
 }
@@ -1153,7 +1155,9 @@ pub enum ErrorCode {
 
 /// Prints one lowercase phrase naming the classification.
 ///
-/// The phrase is the classification, not a message: [`Error`] prints it before its message.
+/// The phrase is the classification, not a message: [`Error`] prints only its message, so a caller
+/// that wants the classification in text prints [`Error::code`] itself. Each phrase is true at every
+/// place the code is raised.
 impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -1167,24 +1171,30 @@ impl fmt::Display for ErrorCode {
             Self::TextLayout => "text layout admission refused",
             #[cfg(feature = "render-text")]
             Self::LeaderPattern => "leader pattern admission refused",
-            Self::GlyphPreparation => "glyph preparation refused",
+            // Also raised by any attempt kind through the limit, capacity and allocation refusals.
+            Self::GlyphPreparation => "preparation refused",
             Self::DeviceCreateFailed => "gpu device creation failed",
             Self::RendererCreateFailed => "renderer creation failed",
-            Self::SurfaceCreateFailed => "surface creation failed",
-            Self::SurfaceConfigureFailed => "surface configuration failed",
+            // Also raised when a surface cannot resume, or accept its format or attachment.
+            Self::SurfaceCreateFailed => "surface setup failed",
+            // Also raised while a configuration is pending or does not match the output.
+            Self::SurfaceConfigureFailed => "surface configuration unavailable",
             // Raised for GPU memory exhaustion in any stage, not only surface operations.
             Self::SurfaceOutOfMemory => "gpu memory exhausted",
             Self::SurfaceTimeout => "surface operation timed out",
             Self::SurfaceOutdated => "surface configuration outdated",
-            Self::InvalidInput => "invalid input",
+            // Also raised for internal values that break a stated rule, not only caller input.
+            Self::InvalidInput => "invalid value",
             Self::UnsupportedPrimitive => "unsupported primitive",
             Self::UnresolvedResource => "unresolved resource",
             Self::DegradedQuality => "degraded quality",
             Self::RuntimeCapabilityUnavailable => "runtime capability unavailable",
-            Self::ImageUploadFailed => "image upload failed",
+            // Raised by the validation of image data and sizes, which precedes any upload.
+            Self::ImageUploadFailed => "image data refused",
             Self::RenderFailed => "render failed",
             Self::ReadbackFailed => "readback failed",
-            Self::PresentFailed => "presentation failed",
+            // Also raised before the present call, for unavailable resources and format checks.
+            Self::PresentFailed => "presented output failed",
             Self::UnsupportedBackend => "unsupported backend",
         })
     }
@@ -1555,7 +1565,9 @@ impl InvalidValue {
     fn message(&self) -> String {
         format!(
             "{} value {} is invalid: {}",
-            self.field, self.value, self.invariant
+            self.field,
+            crate::number_text::message_text(&self.value),
+            self.invariant
         )
     }
 }

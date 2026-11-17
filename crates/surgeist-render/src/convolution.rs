@@ -3,6 +3,7 @@ use crate::accounting::{
     Account, AccountedVec, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
     SharedValue,
 };
+use crate::number_text::Number;
 use crate::{Error, FilterDomains, Result};
 
 use crate::{FilterColorSpace, FilterEdgeMode};
@@ -97,8 +98,9 @@ impl core::fmt::Display for ConvolutionPreparationError {
         match self {
             Self::InvalidParameter { parameter, value } => write!(
                 f,
-                "convolution parameter {} has the invalid value {value}",
-                parameter.label()
+                "convolution parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
             ),
             Self::Numeric { phase, .. } => {
                 write!(f, "convolution numeric check failed at {}", phase.label())

@@ -1,6 +1,7 @@
 //! Admitted native rectangular component extrema and authentic source declarations.
 use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
 use crate::filter_source::FilterSourceDescriptor;
+use crate::number_text::Number;
 use crate::{
     Color, FilterColorSpace, FilterDomains, GaussianPreparationError, GaussianSource, Rect, Result,
     Scene,
@@ -89,8 +90,9 @@ impl core::fmt::Display for MorphologyPreparationError {
         match self {
             Self::InvalidParameter { parameter, value } => write!(
                 f,
-                "morphology parameter {} has the invalid value {value}",
-                parameter.label()
+                "morphology parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
             ),
             Self::Numeric { phase, .. } => {
                 write!(f, "morphology numeric check failed at {}", phase.label())

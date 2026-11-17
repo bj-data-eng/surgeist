@@ -520,6 +520,18 @@ pub enum CoordinateSpaceKind {
     Named(CoordinateSpaceId),
 }
 
+impl CoordinateSpaceKind {
+    /// The name of the kind in a message.
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Viewport => "viewport",
+            Self::Surface => "surface",
+            Self::Named(_) => "named",
+        }
+    }
+}
+
 /// A coordinate-space kind paired with the finite transform used during lowering.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CoordinateSpaceTag {

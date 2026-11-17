@@ -426,6 +426,248 @@ impl std::fmt::Debug for GraphValidationError {
     }
 }
 
+/// Message form of a resource identity: its index in the graph.
+struct ResourceText(SemanticResourceId);
+impl std::fmt::Display for ResourceText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "resource {}", self.0.index.0)
+    }
+}
+
+/// Message form of a pass identity: its index in the graph.
+struct PassText(SemanticPassId);
+impl std::fmt::Display for PassText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "pass {}", self.0.index.0)
+    }
+}
+
+impl std::fmt::Display for GraphValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Accounting(error) => write!(f, "{error}"),
+            Self::GenerationExhausted => f.write_str("the graph generation counter is exhausted"),
+            Self::ResourceIdentityExhausted => {
+                f.write_str("the graph has more resources than a resource identity can number")
+            }
+            Self::PassIdentityExhausted => {
+                f.write_str("the graph has more passes than a pass identity can number")
+            }
+            Self::UnknownResourceIndex => {
+                f.write_str("a resource index cannot address a recorded resource")
+            }
+            Self::UnknownPassIndex => f.write_str("a pass index cannot address a recorded pass"),
+            Self::WrongResourceGeneration { expected, actual } => write!(
+                f,
+                "a resource belongs to graph generation {} but the graph is generation {}",
+                actual.0, expected.0
+            ),
+            Self::WrongPassGeneration { expected, actual } => write!(
+                f,
+                "a pass belongs to graph generation {} but the graph is generation {}",
+                actual.0, expected.0
+            ),
+            Self::UnknownResource(id) => {
+                write!(f, "{} is not recorded in the graph", ResourceText(*id))
+            }
+            Self::UnknownPass(id) => write!(f, "{} is not recorded in the graph", PassText(*id)),
+            Self::ReleasedResource(id) => write!(
+                f,
+                "{} is read after its declared reads are used up",
+                ResourceText(*id)
+            ),
+            Self::ForwardDependency(id) => write!(
+                f,
+                "a pass depends on {}, which is not recorded before it",
+                PassText(*id)
+            ),
+            Self::ForwardRead(id) => write!(
+                f,
+                "{} is read before any pass produces it",
+                ResourceText(*id)
+            ),
+            Self::ReadWriteAlias(id) => write!(
+                f,
+                "a pass both reads and produces {}",
+                ResourceText(*id)
+            ),
+            Self::DuplicateProducer(id) => {
+                write!(f, "{} has more than one producer", ResourceText(*id))
+            }
+            Self::DuplicateDependency(id) => write!(
+                f,
+                "{} is listed twice as a dependency of one pass",
+                PassText(*id)
+            ),
+            Self::DuplicateRead(id) => {
+                write!(f, "{} is read twice by one pass", ResourceText(*id))
+            }
+            Self::MissingProducerDependency { resource, producer } => write!(
+                f,
+                "a pass reads {} without depending on its producer, {}",
+                ResourceText(*resource),
+                PassText(*producer)
+            ),
+            Self::ReadCountOverflow(id) => write!(
+                f,
+                "{} has more reads than can be counted",
+                ResourceText(*id)
+            ),
+            Self::DeclaredReadCountMismatch {
+                resource,
+                declared,
+                recorded,
+            } => write!(
+                f,
+                "{} declares {declared} reads but the graph records {recorded}",
+                ResourceText(*resource)
+            ),
+            Self::ResourceWithoutProducer(id) => {
+                write!(f, "{} has no producer", ResourceText(*id))
+            }
+            Self::OrphanResult(id) => {
+                write!(f, "{} is produced but never read", ResourceText(*id))
+            }
+            Self::MissingRootWorkingImage => f.write_str("the graph has no root working image"),
+            Self::DuplicateRootWorkingImage => {
+                f.write_str("the graph declares more than one root working image")
+            }
+            Self::MissingFinalPresent => f.write_str("the graph has no final present pass"),
+            Self::DuplicateFinalPresent => {
+                f.write_str("the graph has more than one final present pass")
+            }
+            Self::DeclarationAfterFinalPresent => {
+                f.write_str("a declaration follows the final present pass")
+            }
+            Self::MissingSurfaceBaseInitialization => {
+                f.write_str("the graph never initializes the surface base")
+            }
+            Self::RepeatedSurfaceBaseInitialization => {
+                f.write_str("the graph initializes the surface base more than once")
+            }
+            Self::RootMustUseSurfaceBase => f.write_str(
+                "a clear-root pass must start the root working image from the surface base color and an isolation image from transparent",
+            ),
+            Self::NonTransparentCaptureBase => {
+                f.write_str("a capture pass must start from a transparent base")
+            }
+            Self::InvalidClearRootResult => f.write_str(
+                "a clear-root pass must have no dependencies or reads and one working-image result",
+            ),
+            Self::InvalidCaptureResult => f.write_str(
+                "a capture pass must have no reads and a capture, clip coverage or isolation image result",
+            ),
+            Self::InvalidImportedResourceRole => {
+                f.write_str("an imported resource must have the imported image role")
+            }
+            Self::InvalidPassArity => {
+                f.write_str("a pass reads a number of resources that its intent does not allow")
+            }
+            Self::InvalidPassResultRole => f.write_str(
+                "a pass produces a resource whose role its intent does not allow",
+            ),
+            Self::InvalidPresentIntent => {
+                f.write_str("the present pass must read exactly one resource and produce none")
+            }
+            Self::RootProducedByNonClearPass => f.write_str(
+                "the root working image is produced by a pass other than a clear-root pass",
+            ),
+            Self::ConsumersNotSealed => {
+                f.write_str("the consumers of the graph must be sealed before scheduling")
+            }
+            Self::ConsumersAlreadySealed => {
+                f.write_str("the consumers of the graph are sealed and cannot be recorded")
+            }
+            Self::PassAlreadyScheduled(id) => {
+                write!(f, "{} is already scheduled", PassText(*id))
+            }
+            Self::PresentScheduledBeforeOtherPasses(id) => write!(
+                f,
+                "the present pass was scheduled before {}",
+                PassText(*id)
+            ),
+            Self::SchedulingAfterFinalPresent => {
+                f.write_str("a pass was scheduled after the final present pass")
+            }
+            Self::UnscheduledDependency { pass, dependency } => write!(
+                f,
+                "{} was scheduled before its dependency, {}",
+                PassText(*pass),
+                PassText(*dependency)
+            ),
+            Self::UnscheduledProducer { resource, producer } => write!(
+                f,
+                "{} was read before its producer, {}, was scheduled",
+                ResourceText(*resource),
+                PassText(*producer)
+            ),
+            Self::UnscheduledPass(id) => write!(f, "{} was never scheduled", PassText(*id)),
+            Self::UnscheduledReads {
+                resource,
+                remaining,
+            } => write!(
+                f,
+                "{} has {remaining} reads still to be scheduled",
+                ResourceText(*resource)
+            ),
+        }
+    }
+}
+
+impl std::error::Error for GraphValidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Accounting(error) => Some(error),
+            Self::GenerationExhausted
+            | Self::ResourceIdentityExhausted
+            | Self::PassIdentityExhausted
+            | Self::UnknownResourceIndex
+            | Self::UnknownPassIndex
+            | Self::WrongResourceGeneration { .. }
+            | Self::WrongPassGeneration { .. }
+            | Self::UnknownResource(_)
+            | Self::UnknownPass(_)
+            | Self::ReleasedResource(_)
+            | Self::ForwardDependency(_)
+            | Self::ForwardRead(_)
+            | Self::ReadWriteAlias(_)
+            | Self::DuplicateProducer(_)
+            | Self::DuplicateDependency(_)
+            | Self::DuplicateRead(_)
+            | Self::MissingProducerDependency { .. }
+            | Self::ReadCountOverflow(_)
+            | Self::DeclaredReadCountMismatch { .. }
+            | Self::ResourceWithoutProducer(_)
+            | Self::OrphanResult(_)
+            | Self::MissingRootWorkingImage
+            | Self::DuplicateRootWorkingImage
+            | Self::MissingFinalPresent
+            | Self::DuplicateFinalPresent
+            | Self::DeclarationAfterFinalPresent
+            | Self::MissingSurfaceBaseInitialization
+            | Self::RepeatedSurfaceBaseInitialization
+            | Self::RootMustUseSurfaceBase
+            | Self::NonTransparentCaptureBase
+            | Self::InvalidClearRootResult
+            | Self::InvalidCaptureResult
+            | Self::InvalidImportedResourceRole
+            | Self::InvalidPassArity
+            | Self::InvalidPassResultRole
+            | Self::InvalidPresentIntent
+            | Self::RootProducedByNonClearPass
+            | Self::ConsumersNotSealed
+            | Self::ConsumersAlreadySealed
+            | Self::PassAlreadyScheduled(_)
+            | Self::PresentScheduledBeforeOtherPasses(_)
+            | Self::SchedulingAfterFinalPresent
+            | Self::UnscheduledDependency { .. }
+            | Self::UnscheduledProducer { .. }
+            | Self::UnscheduledPass(_)
+            | Self::UnscheduledReads { .. } => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SemanticVelloSpanScope {
     CurrentParent,
@@ -3664,7 +3906,7 @@ pub(super) fn graph_build<T>(result: GraphBuildResult<T>) -> Result<T> {
         }
         Error::new(
             BackendErrorCode::RenderFailed,
-            format!("semantic frame graph validation failed: {error:?}"),
+            format!("semantic frame graph validation failed: {error}"),
         )
     })
 }
@@ -4046,6 +4288,10 @@ mod diagnostic_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "graph_text_tests.rs"]
+mod graph_text_tests;
 
 #[cfg(test)]
 #[path = "surface_grid_tests.rs"]

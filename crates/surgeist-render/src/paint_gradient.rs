@@ -7,6 +7,7 @@ use crate::{
         Account, AccountedVec, Hold, PreparationValue, RenderAttemptKind, RenderPhase, RenderWork,
     },
     color_reduction::{PremultipliedSum, premultiplied},
+    number_text::Number,
     paint::GradientGeometry,
 };
 use std::mem::size_of;
@@ -61,7 +62,9 @@ impl core::fmt::Display for PaintGradientError {
             ),
             Self::BasisMismatch { expected, actual } => write!(
                 f,
-                "the used stops are measured on a line of length {actual}, but the geometry's basis is {expected}"
+                "the used stops are measured on a line of length {}, but the geometry's basis is {}",
+                Number(*actual),
+                Number(*expected)
             ),
             Self::UnrepresentablePosition {
                 source_index,

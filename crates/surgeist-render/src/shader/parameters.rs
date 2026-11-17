@@ -1131,7 +1131,7 @@ impl BlurEdgeParameterBytes {
         if maximum_x <= minimum_x || maximum_y <= minimum_y {
             return Err(Error::invalid_value(
                 "blur semantic mirror bounds",
-                format!("{bounds:?}"),
+                crate::number_text::RectText(bounds),
                 "must narrow to a finite positive logical rectangle",
             ));
         }

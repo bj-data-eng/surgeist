@@ -37,7 +37,8 @@ impl core::fmt::Display for LeaderPatternCause {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
             Self::Text(_) => "text could not qualify the retained instance or glyph frame",
-            Self::Render(_) => "render could not admit the representation, paint or numeric facts",
+            // Every error of glyph preparation is wrapped here, including a caller's limit.
+            Self::Render(_) => "render could not prepare the run",
         })
     }
 }

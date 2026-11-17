@@ -595,7 +595,11 @@ fn region_axis(
     let invalid = || {
         Error::invalid_value(
             format!("image source region {axis}"),
-            format!("{min}..{max}"),
+            format_args!(
+                "{}..{}",
+                crate::number_text::Number(min),
+                crate::number_text::Number(max)
+            ),
             "must be nonempty and within the image",
         )
     };
@@ -649,7 +653,10 @@ pub(crate) fn image_dimension(value: f64, name: &str) -> Result<u32> {
     if !value.is_finite() || value < 0.0 || value.fract() != 0.0 || value > f64::from(u32::MAX) {
         return Err(Error::new(
             BackendErrorCode::ImageUploadFailed,
-            format!("image {name} {value} must be a finite non-negative integer pixel size"),
+            format!(
+                "image {name} {} must be a finite non-negative integer pixel size",
+                crate::number_text::Number(value)
+            ),
         ));
     }
     Ok(value as u32)

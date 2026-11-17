@@ -54,6 +54,7 @@ mod image;
 mod layer;
 mod morphology;
 mod native_shadow;
+mod number_text;
 mod offset;
 mod paint;
 #[cfg(feature = "render-paint")]

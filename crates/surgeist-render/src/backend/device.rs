@@ -336,7 +336,7 @@ impl DeviceCapabilities {
             _ => {
                 return Err(Error::invalid_value(
                     "effect texture format",
-                    format!("{texture_format:?}"),
+                    crate::texture::texture_format_label(texture_format),
                     "must be Rgba16Float, Rgba8Unorm, or filter Rgba32Float",
                 ));
             }
@@ -344,7 +344,11 @@ impl DeviceCapabilities {
         if working_format.is_some_and(|format| format.texture_format() != texture_format) {
             return Err(Error::invalid_value(
                 "effect working texture format",
-                format!("{working_format:?} as {texture_format:?}"),
+                format_args!(
+                    "{} as {}",
+                    working_format.map_or("none", WorkingFormat::label),
+                    crate::texture::texture_format_label(texture_format)
+                ),
                 "must use the underlying format selected by WorkingFormat",
             ));
         }
@@ -380,7 +384,9 @@ impl DeviceCapabilities {
                 RuntimeCapabilityUnavailable::effect_format_unavailable(policy)
             },
             format!(
-                "the selected GPU does not support {texture_format:?} with exact usage {usage:?}"
+                "the selected GPU does not support {} with exact usage {}",
+                crate::texture::texture_format_label(texture_format),
+                crate::texture::UsageText(usage)
             ),
         ))
     }

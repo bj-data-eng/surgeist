@@ -4,6 +4,7 @@ use crate::accounting::{
 };
 use crate::filter_source::FilterSourceDescriptor;
 use crate::image::RawImageUploadDescriptor;
+use crate::number_text::Number;
 use crate::{
     Color, FilterColorSpace, FilterDomains, GaussianPreparationError, GaussianSource, Rect, Result,
     Scene, Size,
@@ -126,20 +127,21 @@ impl core::fmt::Display for DisplacementPreparationError {
         match self {
             Self::InvalidParameter { parameter, value } => write!(
                 f,
-                "displacement parameter {} has the invalid value {value}",
-                parameter.label()
+                "displacement parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
             ),
             Self::InvalidMapDimensions { size } => write!(
                 f,
                 "displacement map size {} by {} is not a pair of finite nonnegative integers that fit in u32",
-                size.width(),
-                size.height()
+                Number(size.width()),
+                Number(size.height())
             ),
             Self::MapPayloadOverflow { size } => write!(
                 f,
                 "the byte length of a displacement map of {} by {} pixels cannot be represented",
-                size.width(),
-                size.height()
+                Number(size.width()),
+                Number(size.height())
             ),
             Self::InvalidMapPayload { expected, actual } => write!(
                 f,

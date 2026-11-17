@@ -2,6 +2,7 @@
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };
+use crate::number_text::Number;
 use crate::{Error, FilterDomains, ImageRendering, Result};
 
 /// Offset parameter whose resolved value is invalid.
@@ -64,8 +65,9 @@ impl core::fmt::Display for OffsetPreparationError {
         match self {
             Self::InvalidParameter { parameter, value } => write!(
                 f,
-                "offset parameter {} has the invalid value {value}",
-                parameter.label()
+                "offset parameter {} has the invalid value {}",
+                parameter.label(),
+                Number(*value)
             ),
             Self::Numeric { phase, .. } => {
                 write!(f, "offset numeric check failed at {}", phase.label())

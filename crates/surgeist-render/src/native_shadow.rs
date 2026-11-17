@@ -1,5 +1,6 @@
 //! Resolved native alpha-blur, displacement, flood and source-over shadow.
 use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
+use crate::number_text::Number;
 use crate::offset::{OffsetDisplacement, prepare_offset_displacement_in};
 use crate::{
     Color, FilterColorSpace, FilterDomains, GaussianInput, GaussianPreparationError,
@@ -11,7 +12,8 @@ use crate::{filter_source::FilterSourceDescriptor, gaussian::prepare_gaussian_in
 /// Actual native shadow merge arithmetic that could not be represented safely.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DropShadowNumericPhase {
-    /// Mapping the final output into the retained original and shifted alpha.
+    /// Mapping the final output into the retained original and shifted alpha, and the Gaussian
+    /// kernel extent, grid mapping and sampling arithmetic that frame qualification reports here.
     MergeMapping,
     /// Checked original or shifted-alpha sample neighborhoods.
     GridIndex,
@@ -43,7 +45,7 @@ pub enum DropShadowPreparationError {
 impl DropShadowNumericPhase {
     const fn label(self) -> &'static str {
         match self {
-            Self::MergeMapping => "merge mapping",
+            Self::MergeMapping => "merge mapping, kernel extent or sampling",
             Self::GridIndex => "grid index",
             Self::Sampling => "sampling",
         }
@@ -55,7 +57,8 @@ impl core::fmt::Display for DropShadowPreparationError {
         match self {
             Self::InvalidFloodOpacity { value } => write!(
                 f,
-                "drop shadow flood opacity {value} is not finite or is outside 0 to 1"
+                "drop shadow flood opacity {} is not finite or is outside 0 to 1",
+                Number(*value)
             ),
             Self::EmptyPeriod => {
                 f.write_str("a periodic source must have positive width and height")

@@ -856,7 +856,11 @@ impl RuntimeFilterAngle {
         if !sine.is_finite() || !cosine.is_finite() {
             return Err(Error::invalid_value(
                 "runtime filter angle sine and cosine",
-                format!("{sine}, {cosine}"),
+                format_args!(
+                    "{}, {}",
+                    crate::number_text::Number(sine),
+                    crate::number_text::Number(cosine)
+                ),
                 "must remain finite after angle reduction",
             ));
         }
