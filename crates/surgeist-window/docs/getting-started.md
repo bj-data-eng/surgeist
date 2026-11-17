@@ -27,8 +27,10 @@ deterministic tests.
    the runner, and asserts the callback sequence `["created", "ready"]`, a live
    window, and no terminal result.
 
-The public import name is `surgeist_window`. Its
-[public front door](../src/lib.rs) reexports the application types used below.
+The public import name is `surgeist_window`. Its [crate root](../src/lib.rs)
+holds `app`, `open`, `Handler`, `Error`, `ErrorCode`, `Result` and `Instant`;
+every other item is in a domain module such as `callback`, `event`, `registry`
+or `descriptor`, listed in the [reference](reference.md#public-interfaces).
 
 ## Follow the complete lifecycle
 
@@ -38,7 +40,11 @@ example is also an executable rustdoc example in [src/lib.rs](../src/lib.rs).
 
 ```rust
 use surgeist_window::{
-    Close, Closed, Event, EventKind, Frame, Handler, Id, Ready, Result, open,
+    Handler, Result,
+    callback::{Close, Closed, Event, Frame, Ready},
+    event::EventKind,
+    open,
+    registry::Id,
     testing::Runner,
 };
 

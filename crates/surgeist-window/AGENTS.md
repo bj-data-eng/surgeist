@@ -15,7 +15,7 @@ outside this crate. The private `winit` adapter stays window-owned.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door and reexports | [src/lib.rs](src/lib.rs) |
+| Public modules and reexports | [src/lib.rs](src/lib.rs), the facade files [src/callback.rs](src/callback.rs) and [src/host.rs](src/host.rs), and each public module file |
 | Authored requests, commands, and observed state | [src/dsl.rs](src/dsl.rs), [src/command.rs](src/command.rs), [src/descriptor.rs](src/descriptor.rs), [src/geometry.rs](src/geometry.rs) |
 | Normalization, planning, callbacks, and lifecycle ownership | [src/normalization.rs](src/normalization.rs), [src/planning.rs](src/planning.rs), [src/pump.rs](src/pump.rs), [src/loop_.rs](src/loop_.rs), [src/registry.rs](src/registry.rs), [src/lease.rs](src/lease.rs) |
 | Target capabilities and native lowering | [src/capability.rs](src/capability.rs), [src/winit_adapter.rs](src/winit_adapter.rs), [src/winit_mapping.rs](src/winit_mapping.rs) |

@@ -231,7 +231,7 @@ See [the clipboard interface](../src/clipboard.rs) and
 
 This procedure requires the `accessibility` feature, a live window, and a host
 capability report that permits accessibility. Import semantic tree types through
-`surgeist_window::accesskit`; the native adapter remains private.
+`surgeist_window::accessibility::accesskit`; the native adapter remains private.
 
 1. Wait for `Handler::event` to receive
    `EventKind::Accessibility(AccessibilityEvent::InitialTreeRequested(id))`.
