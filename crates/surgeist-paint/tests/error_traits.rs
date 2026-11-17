@@ -438,7 +438,7 @@ fn paint_errors_state_what_failed_in_words() {
         ),
         (
             PaintError::IncompatibleParticipation { box_id: box_id(7) },
-            "box 7 has a participation that does not fit its place in the tree: a root must be ordinary, and a child must be ordinary under a source-order parent or out of flow, or a flex or grid item in flow under a matching parent",
+            "box 7 has a participation that does not fit its place in the tree: a root must be ordinary; a child that is out of flow or under a source-order parent must be ordinary; an in-flow child of a flex or grid parent must be that parent's flex or grid item",
         ),
         (
             PaintError::CapacityOverflow,
@@ -594,7 +594,7 @@ fn item_box(parent: Option<BoxId>, participation: Participation) -> BoxFacts {
 
 fn incompatible(box_id: usize) -> String {
     format!(
-        "box {box_id} has a participation that does not fit its place in the tree: a root must be ordinary, and a child must be ordinary under a source-order parent or out of flow, or a flex or grid item in flow under a matching parent"
+        "box {box_id} has a participation that does not fit its place in the tree: a root must be ordinary; a child that is out of flow or under a source-order parent must be ordinary; an in-flow child of a flex or grid parent must be that parent's flex or grid item"
     )
 }
 
