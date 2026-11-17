@@ -229,7 +229,7 @@ mod tests {
             assert_eq!(
                 render_expr(&Expr::Literal(Literal::Float(f64::from_bits(bits)))),
                 format!(
-                    "::surgeist::template::Expr::Literal(::surgeist::template::Literal::Float(::core::primitive::f64::from_bits({bits}u64)))"
+                    "::surgeist::template::expr::Expr::Literal(::surgeist::template::expr::Literal::Float(::core::primitive::f64::from_bits({bits}u64)))"
                 )
             );
         }
@@ -241,7 +241,7 @@ mod tests {
             render_expr(&Expr::Literal(Literal::String(
                 "Ω\n\"quoted\"\\tail\0".to_owned()
             ))),
-            r#"::surgeist::template::Expr::Literal(::surgeist::template::Literal::String(::std::string::String::from("Ω\n\"quoted\"\\tail\0")))"#
+            r#"::surgeist::template::expr::Expr::Literal(::surgeist::template::expr::Literal::String(::std::string::String::from("Ω\n\"quoted\"\\tail\0")))"#
         );
     }
 }
