@@ -14,8 +14,7 @@ use super::{
 };
 use crate::accounting::Account;
 use crate::{
-    Antialiasing, Attachment, EffectQualityPolicy, ErrorCode, FilterList, Format, Options,
-    Parameters, PhysicalSize, Surface, SurfaceOptions,
+    ErrorCode,
     accounting::{Generation, GenerationClass, GpuObjectKind, OwnedGpu},
     capability::EffectPrecisionCapabilities,
     command::OffscreenBounds,
@@ -23,6 +22,7 @@ use crate::{
         BackendErrorCode, DeviceLossReason, Error, GpuFaultKind, Result,
         RuntimeCapabilityUnavailable, RuntimeOperation,
     },
+    geometry::PhysicalSize,
     gpu_transaction::{
         GpuOperationStage, GraphOutputCommit, GraphSubmissionPayload, InternalVelloPayload,
         test_support::{
@@ -39,6 +39,9 @@ use crate::{
         GraphExternalOutputView, LayerCompositeCacheRequestsForTest, LoweredGraphPlan,
         PreparedGraph, SpatialFilterPreparableGraph,
     },
+    renderer::Antialiasing,
+    renderer::EffectQualityPolicy,
+    renderer::Options,
     renderer::ResourceCacheBudget,
     resource::{
         ManagerIdentity, ResourceAccountingFault, ResourceManager,
@@ -48,6 +51,12 @@ use crate::{
         ColorFilterOperationBufferLimits, CompositePassKeyRefs, CorePassKeyRefs, DevicePassCache,
         DevicePassCacheCountsForTest, ProvisionalDevicePassCacheUpdate,
     },
+    style::filter::FilterList,
+    surface::Attachment,
+    surface::Format,
+    surface::Parameters,
+    surface::Surface,
+    surface::SurfaceOptions,
     surface::{HeadlessPublication, HeadlessResources, RendererIdentity, SurfaceBackend},
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloPass, PreparedVelloPass, TransactionEncodingState,
