@@ -169,18 +169,14 @@ fn static_html_appends_ordered_real_nodes_and_retains_the_old_snapshot() {
     assert_eq!(node.node_name(), DocumentString::from("div"));
     let element = node.as_element().unwrap();
     assert_eq!(element.name().namespace_uri(), Namespace::html().uri());
-    let attributes = element.attributes();
+    let attributes = node.attributes().unwrap();
     assert_eq!(attributes.len(), 2);
-    assert_eq!(
-        attributes[0].name().local_name(),
-        &DocumentString::from("id")
-    );
-    assert_eq!(attributes[0].value(), &DocumentString::from("outer"));
-    assert_eq!(
-        attributes[1].name().local_name(),
-        &DocumentString::from("class")
-    );
-    assert_eq!(attributes[1].value(), &DocumentString::from("one"));
+    let id = attributes.item(0).unwrap();
+    assert_eq!(id.name().local_name(), &DocumentString::from("id"));
+    assert_eq!(id.value(), &DocumentString::from("outer"));
+    let class = attributes.item(1).unwrap();
+    assert_eq!(class.name().local_name(), &DocumentString::from("class"));
+    assert_eq!(class.value(), &DocumentString::from("one"));
     assert!(
         attributes
             .iter()
@@ -193,7 +189,10 @@ fn static_html_appends_ordered_real_nodes_and_retains_the_old_snapshot() {
     assert_eq!(child.node_name(), DocumentString::from("span"));
     let element = child.as_element().unwrap();
     assert_eq!(element.name().namespace_uri(), Namespace::html().uri());
-    assert_eq!(element.attributes()[0].value(), &DocumentString::from("Ω"));
+    assert_eq!(
+        child.attributes().unwrap().item(0).unwrap().value(),
+        &DocumentString::from("Ω")
+    );
     assert_eq!(child.children().len(), 1);
     assert_eq!(
         snapshot
@@ -210,13 +209,11 @@ fn static_html_appends_ordered_real_nodes_and_retains_the_old_snapshot() {
     );
     let paragraph = snapshot.node(p).unwrap();
     assert_eq!(paragraph.node_name(), DocumentString::from("p"));
-    let attributes = paragraph.as_element().unwrap().attributes();
+    let attributes = paragraph.attributes().unwrap();
     assert_eq!(attributes.len(), 1);
-    assert_eq!(
-        attributes[0].name().local_name(),
-        &DocumentString::from("hidden")
-    );
-    assert!(attributes[0].value().is_empty());
+    let hidden = attributes.item(0).unwrap();
+    assert_eq!(hidden.name().local_name(), &DocumentString::from("hidden"));
+    assert!(hidden.value().is_empty());
     assert_eq!(old.node(parent).unwrap().children(), &[marker]);
     assert_eq!(
         old.node(marker).unwrap().data().unwrap(),
