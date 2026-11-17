@@ -404,3 +404,70 @@ fn a_failed_enable_returns_the_unpublished_owner_and_chains_its_cause() {
     );
     assert_chains(&failure, &DocumentGuestEventError::RegistryUnbound);
 }
+
+#[test]
+fn script_outcome_and_event_errors_state_their_own_context() {
+    use surgeist_runtime::document_scripting::DocumentScriptEventError;
+    use surgeist_runtime::{
+        DomElementTaskRuntimeError, DomSourceRuntimeError, DomStyleRuntimeError,
+    };
+    let native = || DocumentScriptError::Native(DocumentScriptNativeError::Busy);
+    check_table(
+        vec![
+            (native(), "a native entry or owner operation was refused"),
+            (
+                DocumentScriptError::Script(
+                    surgeist_bindings_js::Error::PreparationAlreadyAdmitted,
+                ),
+                "the bindings execution outcome is an error",
+            ),
+        ],
+        |error| match error {
+            DocumentScriptError::Native(_) => 0,
+            DocumentScriptError::Script(_) => 1,
+            // `#[non_exhaustive]`: the in-crate exhaustive Display match forces a message.
+            _ => unreachable!("a new DocumentScriptError variant needs a table row"),
+        },
+        |_| true,
+        &[],
+    );
+    assert_chains(&native(), &DocumentScriptNativeError::Busy);
+    check_table(
+        vec![
+            (
+                DocumentScriptEventError::Access(native()),
+                "the script owner or its Source capability refused entry",
+            ),
+            (
+                DocumentScriptEventError::Service(DomSourceRuntimeError::Style(
+                    DomStyleRuntimeError::Binding,
+                )),
+                "the native event adapter refused servicing",
+            ),
+            (
+                DocumentScriptEventError::Task(DomElementTaskRuntimeError::Busy),
+                "the element-task owner refused delivery or completion",
+            ),
+            (
+                DocumentScriptEventError::Guest(DocumentGuestEventError::RegistryUnbound),
+                "the attached registry or guest invocation refused delivery",
+            ),
+        ],
+        |error| match error {
+            DocumentScriptEventError::Access(_) => 0,
+            DocumentScriptEventError::Service(_) => 1,
+            DocumentScriptEventError::Task(_) => 2,
+            DocumentScriptEventError::Guest(_) => 3,
+            // `#[non_exhaustive]`: the in-crate exhaustive Display match forces a message.
+            _ => unreachable!("a new DocumentScriptEventError variant needs a table row"),
+        },
+        |_| true,
+        &[],
+    );
+    assert_chains(
+        &DocumentScriptEventError::Guest(DocumentGuestEventError::RegistryUnbound),
+        &DocumentGuestEventError::RegistryUnbound,
+    );
+    // The guest event error that wraps the script error no longer prints the native text twice.
+    assert_chains(&DocumentGuestEventError::Document(native()), &native());
+}

@@ -727,80 +727,104 @@ fn creation_refusal(
     }
 }
 
+/// Checks a session creation refusal: the context of the failure, the context of
+/// the error that returns the DOM, and the exhausted resource from the chain.
+fn assert_refusal(
+    limits: surgeist_runtime::DomSessionLimits,
+    check: fn(&DomSessionCreateFailure) -> bool,
+    context: &str,
+    cause: &str,
+) {
+    let refusal = creation_refusal(limits);
+    let failure = refusal.error();
+    assert!(check(failure), "{failure:?}");
+    assert_eq!(failure.to_string(), context);
+    assert_eq!(
+        failure.source().expect("the owner's refusal").to_string(),
+        cause
+    );
+    assert_eq!(
+        refusal.to_string(),
+        "creating the DOM session failed and returned the original DOM"
+    );
+    assert_eq!(refusal.source().expect("the failure").to_string(), context);
+}
+
 #[test]
 fn session_creation_refusals_name_the_exhausted_owner_resource() {
     let mut refused = limits();
     refused.source_events.work = 0;
-    let refusal = creation_refusal(refused);
-    let failure = refusal.error();
-    assert!(matches!(
-        failure,
-        DomSessionCreateFailure::SourceEvents(DomSourceEventRuntimeError::Admission(
-            DomSourceEventResource::Work
-        ))
-    ));
-    assert_eq!(
-        refusal.to_string(),
-        "the Source event adapter refused admission for cumulative adapter work"
+    assert_refusal(
+        refused,
+        |failure| {
+            matches!(
+                failure,
+                DomSessionCreateFailure::SourceEvents(DomSourceEventRuntimeError::Admission(
+                    DomSourceEventResource::Work
+                ))
+            )
+        },
+        "session creation was refused by the Source event executor",
+        "the Source event adapter refused admission for cumulative adapter work",
     );
 
     let mut refused = limits();
     refused.element_tasks.storage_bytes = 0;
-    let refusal = creation_refusal(refused);
-    let failure = refusal.error();
-    assert!(matches!(
-        failure,
-        DomSessionCreateFailure::ElementTasks(DomElementTaskRuntimeError::Admission)
-    ));
-    assert_eq!(
-        refusal.to_string(),
-        "element-task admission refused the operation"
+    assert_refusal(
+        refused,
+        |failure| {
+            matches!(
+                failure,
+                DomSessionCreateFailure::ElementTasks(DomElementTaskRuntimeError::Admission)
+            )
+        },
+        "session creation was refused by the element-task owner",
+        "element-task admission refused the operation",
     );
 
     let mut refused = limits();
     refused.style.storage_bytes = 0;
-    let refusal = creation_refusal(refused);
-    let failure = refusal.error();
-    assert!(matches!(
-        failure,
-        DomSessionCreateFailure::Style(DomStyleRuntimeError::Admission)
-    ));
-    assert_eq!(
-        refusal.to_string(),
-        "the Style operation was refused admission or an accounting step failed"
+    assert_refusal(
+        refused,
+        |failure| {
+            matches!(
+                failure,
+                DomSessionCreateFailure::Style(DomStyleRuntimeError::Admission)
+            )
+        },
+        "session creation was refused by the Style owner",
+        "the Style operation was refused admission or an accounting step failed",
     );
 
     let mut refused = limits();
     refused.hosted.storage_bytes = 0;
-    let refusal = creation_refusal(refused);
-    let failure = refusal.error();
-    assert!(matches!(
-        failure,
-        DomSessionCreateFailure::Hosted(DomHostedRuntimeError::Admission)
-    ));
-    assert_eq!(
-        refusal.to_string(),
-        "hosted lifecycle admission refused the operation"
+    assert_refusal(
+        refused,
+        |failure| {
+            matches!(
+                failure,
+                DomSessionCreateFailure::Hosted(DomHostedRuntimeError::Admission)
+            )
+        },
+        "session creation was refused by the hosted lifecycle owner",
+        "hosted lifecycle admission refused the operation",
     );
 
     let mut refused = limits();
     refused.authored_events.storage_bytes = 0;
-    let refusal = creation_refusal(refused);
-    let failure = refusal.error();
-    assert!(
-        matches!(
-            failure,
-            DomSessionCreateFailure::Events(DomEventDispatchError::Admission(
-                DomEventResource::Storage
-            ))
-        ),
-        "{failure:?}"
+    assert_refusal(
+        refused,
+        |failure| {
+            matches!(
+                failure,
+                DomSessionCreateFailure::Events(DomEventDispatchError::Admission(
+                    DomEventResource::Storage
+                ))
+            )
+        },
+        "session creation was refused by the shared Event object storage",
+        "native DOM event dispatch admission refused event, target, listener and invocation storage",
     );
-    assert_eq!(
-        refusal.to_string(),
-        "native DOM event dispatch admission refused event, target, listener and invocation storage"
-    );
-    assert_eq!(failure.to_string(), refusal.to_string());
 }
 
 #[test]
