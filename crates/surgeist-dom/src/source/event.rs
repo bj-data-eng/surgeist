@@ -36,6 +36,18 @@ pub enum DomSourceEventClockFailure {
     /// The actual native time exceeded the representation.
     Overflow,
 }
+impl core::fmt::Display for DomSourceEventClockFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Unavailable => "the event clock could not supply a monotonic time",
+            Self::Regressed => {
+                "the event clock's native reading preceded its latest earlier reading"
+            }
+            Self::Overflow => "the event clock's native time exceeded the representable range",
+        })
+    }
+}
+impl core::error::Error for DomSourceEventClockFailure {}
 
 /// The original issuer's observation for an exact synchronous firing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

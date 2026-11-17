@@ -16,6 +16,9 @@ pub surgeist_dom::DomBaseFactsError::ForeignProducer
 pub surgeist_dom::DomBaseFactsError::InputsMismatch
 pub surgeist_dom::DomBaseFactsError::Missing(surgeist_html_semantics::base::HtmlBaseMissing)
 pub surgeist_dom::DomBaseFactsError::PolicyMismatch
+impl core::error::Error for surgeist_dom::DomBaseFactsError
+impl core::fmt::Display for surgeist_dom::DomBaseFactsError
+pub fn surgeist_dom::DomBaseFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomBaseResponse
 pub surgeist_dom::DomBaseResponse::FactsPublished
 pub surgeist_dom::DomBaseResponse::ParsedCompleted
@@ -149,6 +152,9 @@ pub surgeist_dom::DomDocumentConstructorError::IncompleteAssociation
 pub surgeist_dom::DomDocumentConstructorError::PoisonedIssuer
 pub surgeist_dom::DomDocumentConstructorError::StaleAssociation
 pub surgeist_dom::DomDocumentConstructorError::Unavailable
+impl core::error::Error for surgeist_dom::DomDocumentConstructorError
+impl core::fmt::Display for surgeist_dom::DomDocumentConstructorError
+pub fn surgeist_dom::DomDocumentConstructorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomDocumentCreationCause
 pub surgeist_dom::DomDocumentCreationCause::Cloned
 pub surgeist_dom::DomDocumentCreationCause::Cloned::encoding: core::option::Option<surgeist_html_semantics::base::HtmlBaseEncoding>
@@ -186,6 +192,10 @@ pub surgeist_dom::DomEncodingUrlFactsError::BasisRevisionMismatch
 pub surgeist_dom::DomEncodingUrlFactsError::EnvironmentMismatch
 pub surgeist_dom::DomEncodingUrlFactsError::MissingFacts
 pub surgeist_dom::DomEncodingUrlFactsError::Producer(surgeist_html_semantics::hyperlink::HtmlEncodingUrlFactsError)
+impl core::error::Error for surgeist_dom::DomEncodingUrlFactsError
+pub fn surgeist_dom::DomEncodingUrlFactsError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_dom::DomEncodingUrlFactsError
+pub fn surgeist_dom::DomEncodingUrlFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_dom::DomError
 pub surgeist_dom::DomError::AllocationFailed
 pub surgeist_dom::DomError::AutofocusDelegateProtocol(surgeist_html::internal::focus::focus_delegate::HtmlAutofocusDelegateError)
@@ -439,6 +449,7 @@ pub fn surgeist_dom::DomParsedHtmlStyleSuccessorError::from(value: surgeist_dom:
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::DomParsedHtmlTerminalError
 pub fn surgeist_dom::DomParsedHtmlTerminalError::from(error: surgeist_dom::DomError) -> Self
 impl core::error::Error for surgeist_dom::DomError
+pub fn surgeist_dom::DomError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomError
 pub fn surgeist_dom::DomError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<E> core::convert::From<surgeist_dom::DomError> for surgeist_dom::DomSourceMetaCspError<E>
@@ -629,6 +640,7 @@ pub fn surgeist_dom::DomHostedError::from(error: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::DomHostedError> for surgeist_dom::DomHostedSheetConstructionError
 pub fn surgeist_dom::DomHostedSheetConstructionError::from(error: surgeist_dom::DomHostedError) -> Self
 impl core::error::Error for surgeist_dom::DomHostedError
+pub fn surgeist_dom::DomHostedError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomHostedError
 pub fn surgeist_dom::DomHostedError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomHostedHistoryStep<'a>
@@ -729,6 +741,7 @@ pub fn surgeist_dom::DomInlineStyleError::from(value: surgeist_dom::DomError) ->
 impl core::convert::From<surgeist_dom::DomInlineStyleError> for surgeist_dom::DomMetaAtomicError
 pub fn surgeist_dom::DomMetaAtomicError::from(value: surgeist_dom::DomInlineStyleError) -> Self
 impl core::error::Error for surgeist_dom::DomInlineStyleError
+pub fn surgeist_dom::DomInlineStyleError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomInlineStyleError
 pub fn surgeist_dom::DomInlineStyleError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomInlineStyleMutation<'a>
@@ -793,6 +806,9 @@ pub surgeist_dom::DomMetaError::ThemeColorUnavailable(surgeist_css::color::bound
 pub surgeist_dom::DomMetaError::ThemeColorUnsupported(surgeist_css::color::bounded::CssColorUnsupported)
 pub surgeist_dom::DomMetaError::WorkLimit
 pub surgeist_dom::DomMetaError::WorkLimit::limit: u64
+impl core::error::Error for surgeist_dom::DomMetaError
+impl core::fmt::Display for surgeist_dom::DomMetaError
+pub fn surgeist_dom::DomMetaError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomMetaSourceStep<'hold, 'dom, 'caps>
 pub surgeist_dom::DomMetaSourceStep::EventFiring(surgeist_dom::DomSourceEventFiring)
 pub surgeist_dom::DomMetaSourceStep::Prepared(surgeist_dom::DomMetaSourcePreparation<'hold, 'dom, 'caps>)
@@ -1416,6 +1432,9 @@ pub enum surgeist_dom::DomSourceEventClockFailure
 pub surgeist_dom::DomSourceEventClockFailure::Overflow
 pub surgeist_dom::DomSourceEventClockFailure::Regressed
 pub surgeist_dom::DomSourceEventClockFailure::Unavailable
+impl core::error::Error for surgeist_dom::DomSourceEventClockFailure
+impl core::fmt::Display for surgeist_dom::DomSourceEventClockFailure
+pub fn surgeist_dom::DomSourceEventClockFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomSourceEventClockMode
 pub surgeist_dom::DomSourceEventClockMode::ContextFree
 pub surgeist_dom::DomSourceEventClockMode::Hosted
@@ -1449,12 +1468,12 @@ pub surgeist_dom::DomSourceMetaCspError::ProcessorUnavailable(surgeist_html::int
 pub surgeist_dom::DomSourceMetaCspError::Protocol(surgeist_html::internal::security::csp_policy::HtmlCspProtocolError)
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_dom::DomSourceMetaCspError<E>
 pub fn surgeist_dom::DomSourceMetaCspError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
-impl<E: core::fmt::Debug> core::fmt::Display for surgeist_dom::DomSourceMetaCspError<E>
-pub fn surgeist_dom::DomSourceMetaCspError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<E> core::convert::From<surgeist_dom::DomError> for surgeist_dom::DomSourceMetaCspError<E>
 pub fn surgeist_dom::DomSourceMetaCspError<E>::from(error: surgeist_dom::DomError) -> Self
 impl<E> core::convert::From<surgeist_html::internal::security::csp_policy::HtmlCspError<surgeist_dom::DomError>> for surgeist_dom::DomSourceMetaCspError<E>
 pub fn surgeist_dom::DomSourceMetaCspError<E>::from(error: surgeist_html::internal::security::csp_policy::HtmlCspError<surgeist_dom::DomError>) -> Self
+impl<E> core::fmt::Display for surgeist_dom::DomSourceMetaCspError<E>
+pub fn surgeist_dom::DomSourceMetaCspError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomSourceOutput
 pub surgeist_dom::DomSourceOutput::AdjacentElement(core::option::Option<surgeist_dom::NodeId>)
 pub surgeist_dom::DomSourceOutput::AttributeAttachment(surgeist_dom::DomAttributeAttachment)
@@ -1578,6 +1597,9 @@ pub surgeist_dom::DomViewTransitionCssomError::RuleOrder
 pub surgeist_dom::DomViewTransitionCssomError::StaleRevision
 pub surgeist_dom::DomViewTransitionCssomError::WrongKind
 pub surgeist_dom::DomViewTransitionCssomError::WrongSheet
+impl core::error::Error for surgeist_dom::DomViewTransitionCssomError
+impl core::fmt::Display for surgeist_dom::DomViewTransitionCssomError
+pub fn surgeist_dom::DomViewTransitionCssomError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::DomViewTransitionImageRules
 pub surgeist_dom::DomViewTransitionImageRules::Empty
 pub surgeist_dom::DomViewTransitionImageRules::New(surgeist_cssom::identity::CssomRuleId)

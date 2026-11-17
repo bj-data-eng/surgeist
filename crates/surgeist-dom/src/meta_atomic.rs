@@ -276,7 +276,30 @@ impl From<DomInlineStyleError> for DomMetaAtomicError {
 }
 impl std::fmt::Display for DomMetaAtomicError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "native Meta composition refused: {self:?}")
+        match self {
+            Self::Dom(_) => f.write_str("the canonical DOM refused the native Meta composition"),
+            Self::Inline(_) => {
+                f.write_str("inline style synchronization refused the native Meta composition")
+            }
+            Self::OwnerBusy { .. } => f.write_str(
+                "the CSSOM owner of the root is already borrowed, so no producer operation was attempted",
+            ),
+            Self::OwnerPoisoned { .. } => f.write_str(
+                "the CSSOM owner of the root is poisoned, so no producer operation was attempted",
+            ),
+            Self::Cssom { .. } => f.write_str(
+                "the CSSOM producer refused the Meta composition operation for the root",
+            ),
+            Self::MissingOwner { .. } => {
+                f.write_str("no CSSOM owner was supplied or held for the root's Document")
+            }
+            Self::MismatchedOwner { .. } => f.write_str(
+                "the CSSOM owner supplied for the root's Document differs from the owner already bound or supplied for it",
+            ),
+            Self::StaleProducer { .. } => {
+                f.write_str("the root's producer snapshot is stale or does not contain the sheet")
+            }
+        }
     }
 }
 impl std::error::Error for DomMetaAtomicError {
@@ -285,7 +308,11 @@ impl std::error::Error for DomMetaAtomicError {
             Self::Dom(e) => Some(e),
             Self::Inline(e) => Some(e),
             Self::Cssom { error, .. } => Some(error),
-            _ => None,
+            Self::OwnerBusy { .. }
+            | Self::OwnerPoisoned { .. }
+            | Self::MissingOwner { .. }
+            | Self::MismatchedOwner { .. }
+            | Self::StaleProducer { .. } => None,
         }
     }
 }

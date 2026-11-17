@@ -12,6 +12,38 @@ pub enum DomEncodingUrlFactsError {
     MissingFacts,
     Producer(surgeist_html_semantics::HtmlEncodingUrlFactsError),
 }
+impl core::fmt::Display for DomEncodingUrlFactsError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::BasisRevisionMismatch => {
+                f.write_str("encoding and URL facts were captured at a different store revision")
+            }
+            Self::EnvironmentMismatch => {
+                f.write_str("encoding and URL facts do not describe this document's environment")
+            }
+            Self::Base(missing) => write!(
+                f,
+                "the base URL needed for encoding and URL facts is unavailable: {}",
+                crate::base::missing_clause(*missing)
+            ),
+            Self::MissingFacts => f.write_str("the document has no encoding and URL facts"),
+            Self::Producer(_) => {
+                f.write_str("the HTML semantics producer refused the encoding and URL facts")
+            }
+        }
+    }
+}
+impl core::error::Error for DomEncodingUrlFactsError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Producer(error) => Some(error),
+            Self::BasisRevisionMismatch
+            | Self::EnvironmentMismatch
+            | Self::Base(_)
+            | Self::MissingFacts => None,
+        }
+    }
+}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Parsed<K> {
     pub(crate) document: K,

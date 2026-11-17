@@ -73,7 +73,27 @@ impl From<DomError> for DomParsedHtmlStyleNotificationError {
 }
 impl std::fmt::Display for DomParsedHtmlStyleNotificationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "original Style notification refused: {self:?}")
+        f.write_str(match self {
+            Self::Style(_) => "the original Style prefix refused the notification",
+            Self::MismatchedOwner { .. } => {
+                "the supplied CSSOM owner does not match the owner of the destination root"
+            }
+            Self::OwnerBusy { .. } => "the CSSOM owner of the destination root is already borrowed",
+            Self::OwnerPoisoned { .. } => {
+                "the CSSOM owner of the destination root was poisoned by an earlier failure"
+            }
+            Self::Cssom(_) => "the CSSOM producer refused the Style notification",
+            Self::MismatchedAssociation { .. } => {
+                "the current Style association of the target node does not match the notified sheet"
+            }
+            Self::MismatchedLabel { .. } => {
+                "the sheet's CSSOM owner label differs from the expected owner label"
+            }
+            Self::TargetDestroyed { .. } => {
+                "the Style element targeted by the notification no longer exists"
+            }
+            Self::MissingContinuation => "no notification continuation was supplied",
+        })
     }
 }
 impl std::error::Error for DomParsedHtmlStyleNotificationError {

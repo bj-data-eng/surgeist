@@ -123,11 +123,53 @@ pub enum DomNativeHtmlInstallError {
 impl std::fmt::Display for DomNativeHtmlInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnreadableSource { subject, cause } => write!(
-                f,
-                "native HTML installation rejected: source node {subject:?} holds a reference its result does not resolve: {cause:?}"
-            ),
-            _ => write!(f, "native HTML installation rejected: {self:?}"),
+            Self::Target(_) => {
+                f.write_str("the canonical DOM refused the native HTML installation")
+            }
+            Self::StaleDestination { .. } => {
+                f.write_str("the destination changed since the supplied basis stamp")
+            }
+            Self::Source { .. } => {
+                f.write_str("the canonical DOM refused to build a node of the source result")
+            }
+            Self::SourceLookup { .. } => {
+                f.write_str("a source node identity does not belong to the supplied HTML result")
+            }
+            Self::UnreadableSource { .. } => {
+                f.write_str("a source node holds a reference that its result does not resolve")
+            }
+            Self::UnsupportedAssociation { association, .. } => {
+                f.write_str("native HTML installation cannot convert ")?;
+                f.write_str(match association {
+                    DomNativeHtmlAssociation::HostedSourceRoot => "a hosted source fragment root",
+                    DomNativeHtmlAssociation::DeclarativeShadow => {
+                        "a declarative shadow relationship"
+                    }
+                    DomNativeHtmlAssociation::TemplateShadowReference => {
+                        "a Template shadow reference"
+                    }
+                    DomNativeHtmlAssociation::TemplateOwnership => {
+                        "a Template ownership relationship"
+                    }
+                })?;
+                f.write_str(" into fresh native ownership")
+            }
+            Self::ResourceLimit { resource, limit } => {
+                f.write_str("native HTML installation exceeded its ")?;
+                f.write_str(match resource {
+                    DomNativeHtmlInstallResource::MappedNodes => "mapped-node",
+                    DomNativeHtmlInstallResource::Work => "adapter work",
+                    DomNativeHtmlInstallResource::ScratchBytes => "scratch byte",
+                })?;
+                write!(f, " allowance of {limit}")
+            }
+            Self::Cancelled => f.write_str("the native HTML installation was cancelled"),
+            Self::AllocationFailed => {
+                f.write_str("an allocation required by the native HTML installation failed")
+            }
+            Self::RepresentationExhausted => {
+                f.write_str("the native HTML installation exhausted a checked representation")
+            }
         }
     }
 }

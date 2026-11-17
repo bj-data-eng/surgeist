@@ -97,7 +97,19 @@ impl From<DomError> for DomParsedHtmlStyleSheetError {
 }
 impl std::fmt::Display for DomParsedHtmlStyleSheetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "parsed Style sheet preparation refused: {self:?}")
+        f.write_str(match self {
+            Self::Style(_) => "the original Style prefix refused the first sheet publication",
+            Self::MismatchedOwner { .. } => {
+                "the supplied CSSOM owner does not match the owner of the destination root"
+            }
+            Self::OwnerBusy { .. } => "the CSSOM owner of the destination root is already borrowed",
+            Self::OwnerPoisoned { .. } => {
+                "the CSSOM owner of the destination root was poisoned by an earlier failure"
+            }
+            Self::Cssom { .. } => {
+                "the CSSOM producer refused a step of the first sheet publication for the destination root"
+            }
+        })
     }
 }
 impl std::error::Error for DomParsedHtmlStyleSheetError {

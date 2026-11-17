@@ -213,6 +213,49 @@ pub enum DomMetaError {
         limit: u64,
     },
 }
+impl core::fmt::Display for DomMetaError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::HistoryUnavailable => {
+                f.write_str("the Document has no supplied Meta processing history")
+            }
+            Self::DefaultStyleUnsupported => {
+                f.write_str("the preferred stylesheet-set operation cannot be processed in this mutation route or state")
+            }
+            Self::ContentSecurityPolicyUnsupported => f.write_str(
+                "this mutation route cannot process a Content Security Policy Meta insertion",
+            ),
+            Self::ThemeColorMediaUnavailable => f.write_str(
+                "theme-color media matching beyond an empty or ASCII-whitespace query needs matching facts that were not supplied",
+            ),
+            Self::ThemeColorUnavailable(_) => f.write_str("a fact needed to parse the theme-color value was not supplied"),
+            Self::ThemeColorUnsupported(_) => {
+                f.write_str("the theme-color value needs a color capability that is not supported")
+            }
+            Self::ThemeColorFacts(_) => f.write_str("the supplied theme-color facts are defective"),
+            Self::ThemeColorScratchLimit { limit } => write!(
+                f,
+                "theme-color processing exceeded its scratch allowance of {limit}"
+            ),
+            Self::ColorSchemeProcessingUnavailable => {
+                f.write_str("no finite color-scheme processing allowance was supplied")
+            }
+            Self::ColorSchemeLimit(resource) => write!(
+                f,
+                "color-scheme processing exceeded its limit on {}",
+                resource.as_str()
+            ),
+            Self::CssProcessingProtocol => {
+                f.write_str("the CSS property processing protocol was violated")
+            }
+            Self::WorkLimit { limit } => write!(
+                f,
+                "Meta processing exhausted its cumulative work allowance of {limit}"
+            ),
+        }
+    }
+}
+impl core::error::Error for DomMetaError {}
 
 /// Rebuild a producer fact from actual captured history, never current Meta nodes.
 pub(crate) fn language_fallback(

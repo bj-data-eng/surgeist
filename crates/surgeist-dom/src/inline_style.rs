@@ -348,10 +348,71 @@ impl From<CssomStyleAttributeError<DomError>> for DomInlineStyleError {
 }
 impl std::fmt::Display for DomInlineStyleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::Dom(_) => f.write_str("the canonical DOM refused the inline style operation"),
+            Self::Cssom(_) => {
+                f.write_str("the declaration producer refused the inline style operation")
+            }
+            Self::Input(_) => {
+                f.write_str("preparing the original CSS input for the inline style failed")
+            }
+            Self::Unconfigured => f.write_str("no finite inline style policy has been installed"),
+            Self::AlreadyConfigured => {
+                f.write_str("the inline style owner already has its fixed policy")
+            }
+            Self::Inapplicable => f.write_str(
+                "the Element's namespace has no supported ElementCSSInlineStyle capability",
+            ),
+            Self::StaleContext => {
+                f.write_str("the supplied observation or owner effect no longer matches the current state")
+            }
+            Self::ParserModeMismatch => {
+                f.write_str("the selected parser mode does not describe the Document")
+            }
+            Self::InvalidSupportRole => {
+                f.write_str("the supplied input version is not a Support qualification")
+            }
+            Self::ContextUpdateRequired => f.write_str(
+                "the bound inline style block already exists with different explicit external inputs",
+            ),
+            Self::Unbound => {
+                f.write_str("the inline declaration block or parked feedback operation the operation needs is absent or does not match")
+            }
+            Self::OperationPending { .. } => {
+                f.write_str("another inline style owner-write outcome is still resident")
+            }
+            Self::ReconciliationRequiresTerminal { .. } => f.write_str(
+                "reconciliation requires a failed terminal owner effect, not a live or applied one",
+            ),
+            Self::ReconciliationNotRequired => f.write_str(
+                "an effect-free inline style operation has no owner synchronization to reconcile",
+            ),
+            Self::TerminalEffect { .. } => f
+                .write_str("the owner effect is terminal and cannot be retried as a pending write"),
+        }
     }
 }
-impl std::error::Error for DomInlineStyleError {}
+impl std::error::Error for DomInlineStyleError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Dom(error) => Some(error),
+            Self::Cssom(error) => Some(error),
+            Self::Input(error) => Some(error),
+            Self::Unconfigured
+            | Self::AlreadyConfigured
+            | Self::Inapplicable
+            | Self::StaleContext
+            | Self::ParserModeMismatch
+            | Self::InvalidSupportRole
+            | Self::ContextUpdateRequired
+            | Self::Unbound
+            | Self::OperationPending { .. }
+            | Self::ReconciliationRequiresTerminal { .. }
+            | Self::ReconciliationNotRequired
+            | Self::TerminalEffect { .. } => None,
+        }
+    }
+}
 
 /// An immutable, jointly qualified DOM/CSSOM observation. It retains no live
 /// writer. Later refusal, changes or owner destruction cannot rewrite it.

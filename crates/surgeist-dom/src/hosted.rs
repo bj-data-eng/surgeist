@@ -228,10 +228,117 @@ impl From<DomError> for DomHostedError {
 }
 impl fmt::Display for DomHostedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::Dom(_) => f.write_str("the canonical DOM refused the hosted operation"),
+            Self::AlreadyRegistered => {
+                f.write_str("the DOM owner already has a hosted source registered")
+            }
+            Self::PriorDetailsTransfer => f.write_str(
+                "a hosted source cannot be registered after details task custody was transferred",
+            ),
+            Self::ForeignSource => {
+                f.write_str("the identity, request or binding belongs to a different hosted source, DOM owner or Global")
+            }
+            Self::SourceExpired => {
+                f.write_str("the hosted source that issued the identity has expired")
+            }
+            Self::SourcePoisoned => {
+                f.write_str("the hosted source's state was poisoned by an earlier panic")
+            }
+            Self::StaleIdentity => f.write_str("the hosted identity is unknown, stale or retired"),
+            Self::WrongPhase => {
+                f.write_str("the hosted state does not permit this step")
+            }
+            Self::MissingPublication => {
+                f.write_str("a hosted preparation, publication or history record that the operation needs is missing")
+            }
+            Self::StaleBasis => {
+                f.write_str("the supplied basis does not match the current hosted or DOM state")
+            }
+            Self::IncompleteOperation => {
+                f.write_str("a hosted operation, job or association has not completed")
+            }
+            Self::UnsupportedProfile => {
+                f.write_str("the selected hosted profile does not support this operation or lacks the hosted state it needs")
+            }
+            Self::ScriptingDisabled => f.write_str("scripting is disabled for the Document"),
+            Self::PendingDocumentObligations => {
+                f.write_str("the Document still has pending obligations")
+            }
+            Self::CspProtocol(_) => {
+                f.write_str("the Content Security Policy protocol was violated")
+            }
+            Self::CspIssuerBusy => {
+                f.write_str("the Content Security Policy issuer is already borrowed")
+            }
+            Self::ClockRegression => {
+                f.write_str("the finish-loading clock reading is from another source or precedes the navigation start")
+            }
+            Self::InvalidClockSample => {
+                f.write_str("the clock sample is not a multiple of 100 microseconds")
+            }
+            Self::InvalidEntryInitialization => {
+                f.write_str("the entry initialization's navigation key or id is not a canonical version 4 UUID")
+            }
+            Self::RepresentationExhausted => f.write_str(
+                "a hosted counter, size or credit cannot represent or cover the requested amount",
+            ),
+            Self::AllocationFailed => {
+                f.write_str("an allocation required by the hosted operation failed")
+            }
+            Self::Limit { resource, limit } => {
+                let resource = match resource {
+                    DomHostedResource::Hosts => "hosts",
+                    DomHostedResource::BrowsingContexts => "browsing contexts",
+                    DomHostedResource::Navigables => "navigables",
+                    DomHostedResource::Entries => "entries",
+                    DomHostedResource::Globals => "globals",
+                    DomHostedResource::Operations => "operations",
+                    DomHostedResource::Registries => "registries",
+                    DomHostedResource::RetainedBytes => "retained bytes",
+                    DomHostedResource::ScratchBytes => "scratch bytes",
+                    DomHostedResource::Work => "work",
+                };
+                write!(f, "the hosted {resource} limit of {limit} was exceeded")
+            }
+            Self::WorkLimit { limit } => {
+                write!(
+                    f,
+                    "hosted processing exhausted its work allowance of {limit}"
+                )
+            }
+        }
     }
 }
-impl std::error::Error for DomHostedError {}
+impl std::error::Error for DomHostedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Dom(error) => Some(error),
+            Self::CspProtocol(error) => Some(error),
+            Self::AlreadyRegistered
+            | Self::PriorDetailsTransfer
+            | Self::ForeignSource
+            | Self::SourceExpired
+            | Self::SourcePoisoned
+            | Self::StaleIdentity
+            | Self::WrongPhase
+            | Self::MissingPublication
+            | Self::StaleBasis
+            | Self::IncompleteOperation
+            | Self::UnsupportedProfile
+            | Self::ScriptingDisabled
+            | Self::PendingDocumentObligations
+            | Self::CspIssuerBusy
+            | Self::ClockRegression
+            | Self::InvalidClockSample
+            | Self::InvalidEntryInitialization
+            | Self::RepresentationExhausted
+            | Self::AllocationFailed
+            | Self::Limit { .. }
+            | Self::WorkLimit { .. } => None,
+        }
+    }
+}
 
 /// One actual inherited result in the selected initial Permissions Policy roster.
 /// This is report data, not authority to install policy or execute a feature.
@@ -497,6 +604,27 @@ pub enum DomDocumentConstructorError {
     IncompleteAssociation,
     Unavailable,
 }
+impl core::fmt::Display for DomDocumentConstructorError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::ForeignIssuer => {
+                "the Document constructor context was issued by a different hosted source"
+            }
+            Self::ExpiredIssuer => "the Document constructor context's issuer has expired",
+            Self::PoisonedIssuer => {
+                "the Document constructor context's issuer was poisoned by an earlier failure"
+            }
+            Self::StaleAssociation => {
+                "the Document constructor context's Global association is missing, stale or retired"
+            }
+            Self::IncompleteAssociation => {
+                "the Document constructor context's association is not in the live initial-entry phase"
+            }
+            Self::Unavailable => "no hosted association is available for the Document constructor",
+        })
+    }
+}
+impl core::error::Error for DomDocumentConstructorError {}
 impl DomDocumentConstructorError {
     pub(crate) fn from_hosted(error: DomHostedError) -> crate::DomError {
         let reason = match error {
