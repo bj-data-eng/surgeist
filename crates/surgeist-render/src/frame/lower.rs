@@ -2438,7 +2438,7 @@ mod resource_binding_tests {
         assert_eq!(
             error.message(),
             format!(
-                "semantic frame graph validation failed: resource {} has 0 reads still to be scheduled",
+                "semantic frame graph validation failed: the schedule does not consume resource {} as declared (remaining reads 0)",
                 id.index.0
             )
         );
@@ -2450,7 +2450,7 @@ mod resource_binding_tests {
         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
         assert_eq!(
             error.message(),
-            "semantic frame graph validation failed: an imported resource must have the imported image role"
+            "semantic frame graph validation failed: an imported resource must have the imported image role, an imported producer and exactly one import record"
         );
     }
 }

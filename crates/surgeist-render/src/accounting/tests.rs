@@ -1234,7 +1234,7 @@ fn every_storage_contract_failure_has_written_text_as_the_source_of_a_render_fai
         ),
         (
             S::InvalidPosition { index: 7, len: 6 },
-            "position 7 is outside a sequence of length 6",
+            "index or count 7 is beyond a sequence of length 6",
         ),
         (
             S::BackingCapacityMismatch {
@@ -1266,7 +1266,7 @@ fn every_storage_contract_failure_has_written_text_as_the_source_of_a_render_fai
                 expected: 8,
                 actual: 7,
             },
-            "the producer wrote 7 values where 8 were qualified",
+            "the producer left 7 values in the vector where 8 were qualified",
         ),
     ];
     let mut covered = [false; 9];

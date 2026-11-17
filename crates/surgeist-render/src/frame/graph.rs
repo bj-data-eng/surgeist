@@ -4052,12 +4052,12 @@ mod diagnostic_tests {
             ),
             (
                 E::UnknownResource(resource),
-                "resource 3 is not recorded in the graph",
+                "resource 3 does not identify a recorded resource",
             ),
-            (E::UnknownPass(pass), "pass 4 is not recorded in the graph"),
+            (E::UnknownPass(pass), "pass 4 does not identify a recorded pass"),
             (
                 E::ReleasedResource(resource),
-                "resource 3 is read after its declared reads are used up",
+                "resource 3 has no declared read left for this pass",
             ),
             (
                 E::ForwardDependency(pass),
@@ -4073,7 +4073,7 @@ mod diagnostic_tests {
             ),
             (
                 E::DuplicateProducer(resource),
-                "resource 3 has more than one producer",
+                "resource 3 does not have exactly one producer that records it as a result",
             ),
             (
                 E::DuplicateDependency(pass),
@@ -4152,19 +4152,19 @@ mod diagnostic_tests {
             ),
             (
                 E::InvalidCaptureResult,
-                "a capture pass must have no reads and a capture, clip coverage or isolation image result",
+                "a capture does not match the span or coverage that records it: its reads, result role, scale or consumer count",
             ),
             (
                 E::InvalidImportedResourceRole,
-                "an imported resource must have the imported image role",
+                "an imported resource must have the imported image role, an imported producer and exactly one import record",
             ),
             (
                 E::InvalidPassArity,
-                "a pass reads a number of resources that its intent does not allow",
+                "a pass does not have the reads, result, order or count that its recorded operation requires",
             ),
             (
                 E::InvalidPassResultRole,
-                "a pass produces a resource whose role its intent does not allow",
+                "a pass result does not have the role, spatial mapping or bounds that its operation requires",
             ),
             (
                 E::InvalidPresentIntent,
@@ -4211,7 +4211,7 @@ mod diagnostic_tests {
                     resource,
                     remaining: 2,
                 },
-                "resource 3 has 2 reads still to be scheduled",
+                "the schedule does not consume resource 3 as declared (remaining reads 2)",
             ),
         ];
         // One row per variant: the match returns the variant's row position.
