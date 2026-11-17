@@ -191,6 +191,24 @@ fn csp_protocol() -> HtmlCspProtocolError {
         Ok(_) => panic!("a policy association of another owner is a protocol error"),
     }
 }
+fn invocation(real: &Real) -> DomParsedHtmlStyleNotificationRequirement {
+    DomParsedHtmlStyleNotificationRequirement::Invocation {
+        contribution: real.contribution,
+        occurrence: real.occurrence.clone(),
+        document: real.document,
+        phase: DomParsedHtmlStylePhase::Unstarted,
+    }
+}
+fn occurrence(real: &Real) -> DomParsedHtmlStyleNotificationRequirement {
+    DomParsedHtmlStyleNotificationRequirement::Occurrence {
+        contribution: real.contribution,
+        occurrence: real.occurrence.clone(),
+        document: real.document,
+        kind: HtmlParseAssociationOccurrenceKind::ChangePreferred,
+    }
+}
+/// Work that remains (an invocation or an occurrence) differs from an inventory
+/// that no further work can complete (`Unavailable`).
 fn requirement(real: &Real) -> DomParsedHtmlStyleNotificationRequirement {
     DomParsedHtmlStyleNotificationRequirement::Unavailable {
         contribution: real.contribution,
@@ -222,6 +240,8 @@ fn assert_semantic<T: Error + Send + Sync + 'static>(
     for index in unconstructible {
         covered[*index] = true;
     }
+    // Every mismatch is collected, so that one run names all rows that differ.
+    let mut mismatches = Vec::new();
     for Row { value, text, wraps } in &rows {
         let at = index(value);
         assert!(
@@ -230,7 +250,9 @@ fn assert_semantic<T: Error + Send + Sync + 'static>(
         );
         covered[at] = true;
         let shown = value.to_string();
-        assert_eq!(&shown, text, "variant {at}");
+        if &shown != text {
+            mismatches.push(format!("variant {at}: shows {shown:?}, expected {text:?}"));
+        }
         let debug = format!("{value:?}");
         assert_ne!(shown, debug, "variant {at} writes its Debug form");
         assert!(
@@ -244,6 +266,7 @@ fn assert_semantic<T: Error + Send + Sync + 'static>(
         );
         assert_eq!(value.source().is_some(), *wraps, "variant {at} source()");
     }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
     assert!(
         covered.iter().all(|seen| *seen),
         "a variant has no row: {covered:?}"
@@ -257,14 +280,14 @@ fn admission_error_messages_state_the_refused_condition() {
     let rows = vec![
         row(
             E::Dom(DomError::Cancelled),
-            "the canonical DOM refused parsed association admission",
+            "the association owner or canonical DOM refused the operation",
             true,
         ),
         row(
             E::NotPending {
                 contribution: real.contribution,
             },
-            "the contribution is no longer pending at its destination",
+            "the contribution is not pending at its destination",
             false,
         ),
         row(
@@ -359,7 +382,7 @@ fn admission_refuses_a_lowered_work_policy_with_the_limit_text() {
         ));
         assert_eq!(
             error.to_string(),
-            "the canonical DOM refused parsed association admission"
+            "the association owner or canonical DOM refused the operation"
         );
         assert!(error.source().is_some());
     }
@@ -382,7 +405,7 @@ fn meta_error_messages_state_their_own_context() {
     let rows = vec![
         row(
             E::Admission(admission()),
-            "the whole parsed Meta contribution was refused at admission",
+            "the association owner or canonical DOM refused the operation",
             true,
         ),
         row(
@@ -402,7 +425,7 @@ fn meta_error_messages_state_their_own_context() {
         ),
         row(
             E::MismatchedOwner { root: real.node },
-            "the supplied CSSOM owner is not the owner bound to the destination root",
+            "the supplied CSSOM owner does not match the owner of the destination root",
             false,
         ),
         row(
@@ -415,7 +438,7 @@ fn meta_error_messages_state_their_own_context() {
                 root: real.node,
                 error: cssom(),
             },
-            "the CSSOM producer refused the parsed Meta change for the destination root",
+            "the CSSOM producer refused a parsed Meta operation for the destination root",
             true,
         ),
     ];
@@ -466,8 +489,18 @@ fn meta_occurrence_error_messages_state_their_own_context() {
             true,
         ),
         row(
-            E::Remaining(requirement(&real)),
+            E::Remaining(invocation(&real)),
             "other influencing original work must run before this Meta occurrence",
+            false,
+        ),
+        row(
+            E::Remaining(occurrence(&real)),
+            "other influencing original work must run before this Meta occurrence",
+            false,
+        ),
+        row(
+            E::Remaining(requirement(&real)),
+            "the original inventory cannot establish this Meta occurrence",
             false,
         ),
         row(
@@ -487,7 +520,7 @@ fn meta_occurrence_error_messages_state_their_own_context() {
         ),
         row(
             E::MismatchedOwner { root: real.node },
-            "the supplied CSSOM owner is not the owner bound to the destination root",
+            "the supplied CSSOM owner does not match the owner of the destination root",
             false,
         ),
         row(
@@ -502,7 +535,7 @@ fn meta_occurrence_error_messages_state_their_own_context() {
         ),
         row(
             E::Cssom(cssom()),
-            "the CSSOM producer refused the original Meta occurrence",
+            "the CSSOM producer refused a step of the original Meta occurrence",
             true,
         ),
     ];
@@ -519,7 +552,7 @@ fn meta_occurrence_error_messages_state_their_own_context() {
             E::Cssom(_) => 8,
         }
     }
-    assert_semantic(rows, index, 9, &[], &[]);
+    assert_semantic(rows, index, 9, &[], &[1]);
 }
 
 #[test]
@@ -531,7 +564,7 @@ fn style_error_messages_state_the_refused_command() {
             E::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                 DomError::Cancelled,
             )),
-            "the contribution was refused at admission",
+            "the association owner or canonical DOM refused the operation",
             true,
         ),
         row(
@@ -557,7 +590,7 @@ fn style_error_messages_state_the_refused_command() {
         ),
         row(
             E::WrongRequest,
-            "the supplied request does not identify the original Style operation this command acts on",
+            "the supplied inputs or the stored original Style state do not match what this command requires",
             false,
         ),
         row(
@@ -572,12 +605,12 @@ fn style_error_messages_state_the_refused_command() {
                 profile:
                     surgeist_html::elements::style::HtmlStyleExecutionProfile::SourcePredicates,
             },
-            "the Style execution profile is not the supported profile without executable JavaScript",
+            "the Style execution profile or the Document's scripting mode does not allow execution without JavaScript",
             false,
         ),
         row(
             E::AlreadyBound,
-            "the initial inline policy of this Style operation is already bound",
+            "this Style operation already has its initial inline policy",
             false,
         ),
         row(
@@ -609,7 +642,7 @@ fn style_error_messages_state_the_refused_command() {
         ),
         row(
             E::InvalidSheetInput,
-            "the original Style history or inputs do not describe a valid sheet creation",
+            "the sheet inputs, the order of sheet calls or the recorded Style state are not valid for this operation",
             false,
         ),
         row(
@@ -636,12 +669,12 @@ fn style_error_messages_state_the_refused_command() {
         ),
         row(
             E::Csp(csp_protocol()),
-            "the HTML Content Security Policy protocol rejected the Style request",
+            "the HTML Content Security Policy protocol rejected a policy of the Style operation",
             true,
         ),
         row(
             E::Protocol(surgeist_html::elements::style::HtmlStyleProtocolError),
-            "the HTML Style protocol rejected the reply",
+            "the HTML Style protocol rejected a reply for the original Style operation",
             true,
         ),
     ];
@@ -709,7 +742,7 @@ fn style_commands_report_their_refusal_before_and_after_a_policy_is_supplied() {
     assert!(matches!(error, DomParsedHtmlStyleError::WrongRequest));
     assert_eq!(
         error.to_string(),
-        "the supplied request does not identify the original Style operation this command acts on"
+        "the supplied inputs or the stored original Style state do not match what this command requires"
     );
 }
 
@@ -725,7 +758,7 @@ fn style_notification_error_messages_state_their_own_context() {
         ),
         row(
             E::MismatchedOwner { root: real.node },
-            "the supplied CSSOM owner is not the owner bound to the destination root",
+            "the supplied CSSOM owner does not match the owner of the destination root",
             false,
         ),
         row(
@@ -745,7 +778,7 @@ fn style_notification_error_messages_state_their_own_context() {
         ),
         row(
             E::MismatchedAssociation { target: real.node },
-            "the current association of the Style element does not match the notified sheet",
+            "the current Style association of the target node does not match the notified sheet",
             false,
         ),
         row(
@@ -812,12 +845,12 @@ fn style_sheet_error_messages_state_their_own_context() {
     let rows = vec![
         row(
             E::Style(DomParsedHtmlStyleError::WrongRequest),
-            "the original Style prefix refused the sheet preparation",
+            "the original Style prefix refused the first sheet publication",
             true,
         ),
         row(
             E::MismatchedOwner { root: real.node },
-            "the supplied CSSOM owner is not the owner bound to the destination root",
+            "the supplied CSSOM owner does not match the owner of the destination root",
             false,
         ),
         row(
@@ -835,7 +868,7 @@ fn style_sheet_error_messages_state_their_own_context() {
                 root: real.node,
                 error: cssom(),
             },
-            "the CSSOM producer refused the first sheet publication for the destination root",
+            "the CSSOM producer refused a step of the first sheet publication for the destination root",
             true,
         ),
     ];
@@ -868,7 +901,7 @@ fn sheet_preparation_before_execution_wraps_the_style_refusal() {
     };
     assert_eq!(
         error.to_string(),
-        "the original Style prefix refused the sheet preparation"
+        "the original Style prefix refused the first sheet publication"
     );
     assert_eq!(
         error.source().unwrap().to_string(),
@@ -887,8 +920,18 @@ fn style_subject_error_messages_state_their_own_context() {
             true,
         ),
         row(
-            E::Remaining(requirement(&real)),
+            E::Remaining(invocation(&real)),
             "other influencing original work must run before the next Style subject",
+            false,
+        ),
+        row(
+            E::Remaining(occurrence(&real)),
+            "other influencing original work must run before the next Style subject",
+            false,
+        ),
+        row(
+            E::Remaining(requirement(&real)),
+            "the original inventory cannot establish the next Style subject",
             false,
         ),
         row(
@@ -898,7 +941,7 @@ fn style_subject_error_messages_state_their_own_context() {
         ),
         row(
             E::AlreadySelected,
-            "the supplied occurrence was already selected",
+            "the supplied occurrence was already selected or passed by the original sequence",
             false,
         ),
     ];
@@ -910,7 +953,7 @@ fn style_subject_error_messages_state_their_own_context() {
             E::AlreadySelected => 3,
         }
     }
-    assert_semantic(rows, index, 4, &[], &[]);
+    assert_semantic(rows, index, 4, &[], &[1]);
 }
 
 #[test]
@@ -952,7 +995,7 @@ fn style_successor_error_messages_state_their_own_context() {
         ),
         row(
             E::MismatchedOwner { root: real.node },
-            "the supplied CSSOM owner is not the owner bound to the destination root",
+            "the supplied CSSOM owner does not match the owner of the destination root",
             false,
         ),
         row(
@@ -971,8 +1014,18 @@ fn style_successor_error_messages_state_their_own_context() {
             true,
         ),
         row(
-            E::Remaining(requirement(&real)),
+            E::Remaining(invocation(&real)),
             "the next influencing original work is outside this ParserPopped successor",
+            false,
+        ),
+        row(
+            E::Remaining(occurrence(&real)),
+            "the next influencing original work is outside this ParserPopped successor",
+            false,
+        ),
+        row(
+            E::Remaining(requirement(&real)),
+            "the original inventory cannot establish the successor",
             false,
         ),
     ];
@@ -987,7 +1040,7 @@ fn style_successor_error_messages_state_their_own_context() {
             E::Remaining(_) => 6,
         }
     }
-    assert_semantic(rows, index, 7, &[], &[]);
+    assert_semantic(rows, index, 7, &[], &[6]);
 }
 
 #[test]
@@ -1018,7 +1071,7 @@ fn terminal_error_messages_state_the_unsettled_condition() {
     let rows = vec![
         row(
             E::Frontier(DomParsedHtmlFrontierError::Remaining(requirement(&real))),
-            "the original synchronous end could not be established",
+            "the original contribution settlement was refused",
             true,
         ),
         row(
@@ -1086,12 +1139,22 @@ fn frontier_error_messages_state_their_own_context() {
     let rows = vec![
         row(
             E::Style(DomParsedHtmlStyleError::WrongRequest),
-            "the original Style prefix refused the synchronous end",
+            "the original Style prefix refused the original synchronous end or its settlement",
             true,
         ),
         row(
-            E::Remaining(requirement(&real)),
+            E::Remaining(invocation(&real)),
             "influencing original work remains before the synchronous end",
+            false,
+        ),
+        row(
+            E::Remaining(occurrence(&real)),
+            "influencing original work remains before the synchronous end",
+            false,
+        ),
+        row(
+            E::Remaining(requirement(&real)),
+            "the original inventory cannot establish the synchronous end",
             false,
         ),
     ];
@@ -1101,7 +1164,7 @@ fn frontier_error_messages_state_their_own_context() {
             E::Remaining(_) => 1,
         }
     }
-    assert_semantic(rows, index, 2, &[], &[]);
+    assert_semantic(rows, index, 2, &[], &[1]);
 }
 
 #[test]
@@ -1120,7 +1183,7 @@ fn synchronous_end_before_execution_wraps_the_style_refusal() {
     };
     assert_eq!(
         error.to_string(),
-        "the original Style prefix refused the synchronous end"
+        "the original Style prefix refused the original synchronous end or its settlement"
     );
     assert_eq!(
         error.source().unwrap().to_string(),
@@ -1137,7 +1200,7 @@ fn parsed_install_error_messages_state_the_refused_report() {
     let rows = vec![
         row(
             E::Target(DomError::Cancelled),
-            "the destination refused the completed HTML installation",
+            "the canonical DOM refused the completed HTML installation",
             true,
         ),
         row(
@@ -1160,12 +1223,12 @@ fn parsed_install_error_messages_state_the_refused_report() {
         ),
         row(
             E::ForeignContext,
-            "the report's context does not belong to the supplied HTML capture",
+            "the report's captured context does not match the supplied HTML capture",
             false,
         ),
         row(
             E::CurrentPolicyUnavailable,
-            "the current Document facts cannot qualify the report's original URL, encoding or policy observations",
+            "the report or the destination Document is outside the policy profile that completed HTML installation supports",
             false,
         ),
         row(
@@ -1180,22 +1243,22 @@ fn parsed_install_error_messages_state_the_refused_report() {
         ),
         row(
             E::CapturedStateUnavailable,
-            "the report's captured historical state is unavailable in the destination",
+            "the captured historical state the report relies on cannot be matched in the destination",
             false,
         ),
         row(
             E::EnvironmentMismatch,
-            "the supplied environment differs from the report's original Document facts",
+            "the supplied environment is missing or differs from the report's original Document facts",
             false,
         ),
         row(
             E::MissingMetadata { subject: subject() },
-            "the report holds no metadata that installation requires for a source node",
+            "installation found no report metadata or source mapping that it requires for a source node",
             false,
         ),
         row(
             E::UnsupportedState { subject: subject() },
-            "a source node holds state that completed HTML installation does not support",
+            "a source node cannot be installed because its state or installation mapping is unsupported",
             false,
         ),
         row(
@@ -1246,7 +1309,7 @@ fn parsed_install_error_messages_state_the_refused_report() {
                 subject: subject(),
                 action: surgeist_html::elements::dialog::HtmlDialogAction::ReadOpen,
             },
-            "the report holds an original Dialog operation that was never fulfilled",
+            "the original Dialog state that installation requires is unavailable",
             false,
         ),
         row(
@@ -1416,7 +1479,7 @@ fn native_install_error_messages_state_the_refused_fragment() {
     let rows = vec![
         row(
             E::Target(DomError::Cancelled),
-            "the destination refused the native HTML installation",
+            "the canonical DOM refused the native HTML installation",
             true,
         ),
         row(
@@ -1432,7 +1495,7 @@ fn native_install_error_messages_state_the_refused_fragment() {
                 subject: subject(),
                 error: DomError::Cancelled,
             },
-            "the canonical DOM refused to create a node of the source result",
+            "the canonical DOM refused to build a node of the source result",
             true,
         ),
         row(
@@ -1636,6 +1699,144 @@ mod native_fragment {
             "the native HTML installation was cancelled"
         );
     }
+}
+
+fn empty_policy() -> surgeist_html::security::csp::HtmlCspAssociation {
+    let mut admit = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let mut owner = HtmlCspOwner::new_with(&mut admit).unwrap();
+    owner.initial_document_with(&mut admit).unwrap()
+}
+/// A contribution whose first inline decision blocked, so that its parser-popped
+/// successor and everything after it remain as original work.
+fn blocked(
+    dom: &mut Dom,
+    report: Arc<HtmlParseReport>,
+    environment: DomParsedDocumentEnvironment,
+) -> DomParsedHtmlAssociationId {
+    let (_, id) = install(dom, report, environment);
+    {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        assert_eq!(
+            hold.advance(&flag()).unwrap(),
+            DomParsedHtmlStylePhase::AwaitingInitialPolicy
+        );
+    }
+    let request = dom
+        .parsed_html_style_prefix(id)
+        .unwrap()
+        .initial_policy_request()
+        .unwrap()
+        .clone();
+    {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        hold.bind_initial_policy(&request, &mut Some(empty_policy()), &flag())
+            .unwrap();
+        assert_eq!(
+            hold.advance(&flag()).unwrap(),
+            DomParsedHtmlStylePhase::InlinePolicyPending
+        );
+    }
+    let mut observation = {
+        let view = dom.parsed_html_style_prefix(id).unwrap();
+        Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
+            view.inline_policy_request().unwrap(),
+            false,
+        ))
+    };
+    dom.begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap()
+        .accept_inline_policy(&mut observation, &flag())
+        .unwrap();
+    id
+}
+
+#[test]
+fn synchronous_end_with_original_work_remaining_names_that_work() {
+    let (mut dom, environment) = setup();
+    let id = blocked(
+        &mut dom,
+        parse("<!doctype html><style>blocked</style>"),
+        environment,
+    );
+    let Err(error) = dom
+        .begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap()
+        .complete_synchronous_execution(&flag())
+    else {
+        panic!("the parser-popped return of the blocked Style is still original work");
+    };
+    assert!(matches!(
+        error,
+        DomParsedHtmlFrontierError::Remaining(
+            DomParsedHtmlStyleNotificationRequirement::Occurrence { .. }
+        )
+    ));
+    assert_eq!(
+        error.to_string(),
+        "influencing original work remains before the synchronous end"
+    );
+    assert!(error.source().is_none());
+}
+
+#[test]
+fn meta_occurrence_error_returns_wrap_and_work_remaining_text() {
+    let report =
+        parse("<!doctype html><style>blocked</style><meta http-equiv=default-style content=A>");
+    let meta = {
+        let mut cursor = report.pending_associations();
+        loop {
+            match cursor.advance() {
+                HtmlParsePendingAssociationStep::Occurrence(row)
+                    if row.kind() == HtmlParseAssociationOccurrenceKind::ChangePreferred =>
+                {
+                    break row.id();
+                }
+                HtmlParsePendingAssociationStep::Complete => panic!("no Meta occurrence"),
+                _ => (),
+            }
+        }
+    };
+    let (mut dom, environment) = setup();
+    let (_, id) = install(&mut dom, report.clone(), environment);
+    {
+        let hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        let Err(error) = hold.meta_occurrence_document(&meta, &flag()) else {
+            panic!("execution has not started");
+        };
+        assert_eq!(
+            error.to_string(),
+            "the original Style prefix refused the Meta occurrence"
+        );
+        assert_eq!(
+            error.source().unwrap().to_string(),
+            "synchronous execution of the original contribution has not started"
+        );
+    }
+    let (mut dom, environment) = setup();
+    let id = blocked(&mut dom, report, environment);
+    let hold = dom
+        .begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap();
+    let Err(error) = hold.meta_occurrence_document(&meta, &flag()) else {
+        panic!("the blocked Style's parser-popped return comes first");
+    };
+    assert!(matches!(
+        error,
+        DomParsedHtmlMetaOccurrenceError::Remaining(
+            DomParsedHtmlStyleNotificationRequirement::Occurrence { .. }
+        )
+    ));
+    assert_eq!(
+        error.to_string(),
+        "other influencing original work must run before this Meta occurrence"
+    );
+    assert!(error.source().is_none());
 }
 
 #[derive(Debug, PartialEq, Eq)]
