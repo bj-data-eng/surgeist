@@ -307,18 +307,6 @@ impl CssHostScope {
         })
     }
 
-    /// The host's operation.
-    #[must_use]
-    pub const fn ledger(&self) -> &CssLedger {
-        &self.ledger
-    }
-
-    /// The scope the front scopes were opened below.
-    #[must_use]
-    pub const fn parent(&self) -> Scope {
-        self.parent
-    }
-
     /// The scope `front` charges.
     #[must_use]
     pub const fn scope(&self, front: CssFront) -> Scope {
@@ -361,12 +349,6 @@ impl<'host> CssAccount<'host> {
     #[must_use]
     pub const fn host(host: &'host CssHostScope) -> Self {
         Self { host: Some(host) }
-    }
-
-    /// The host scope this call charges below, if a host observes it.
-    #[must_use]
-    pub const fn observer(&self) -> Option<&'host CssHostScope> {
-        self.host
     }
 
     /// Charges `changes` to the scope of `front` as one batch: all of them

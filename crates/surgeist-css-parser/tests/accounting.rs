@@ -152,7 +152,6 @@ fn a_front_names_each_of_its_dimensions_once_and_fits_one_charge() {
 fn a_handle_opens_one_named_scope_per_front_without_caps() {
     let (ledger, document) = host(no_caps(), no_caps(), 1);
     let handle = CssHostScope::open(ledger.clone(), document).unwrap();
-    assert_eq!(handle.parent(), document);
     assert_eq!(NAMES.map(|(front, _)| front), CssFront::ALL);
     for (front, name) in NAMES {
         let scope = handle.scope(front);
@@ -442,7 +441,6 @@ fn a_timed_front_records_one_phase_of_its_scope_and_returns_the_result() {
 #[test]
 fn an_account_with_no_host_admits_every_charge_and_only_runs_a_timed_front() {
     let account = CssAccount::NONE;
-    assert!(account.observer().is_none());
     // No operation exists, so nothing a ledger would refuse or fault is seen.
     let outside = [CssChange::Work(CssWork::ColorAction, u64::MAX); 20];
     for front in CssFront::ALL {
@@ -452,13 +450,4 @@ fn an_account_with_no_host_admits_every_charge_and_only_runs_a_timed_front() {
     let mut runs = 0;
     assert_eq!(account.timed(Parse, || runs += 1), Ok(()));
     assert_eq!(runs, 1);
-}
-
-#[test]
-fn an_account_with_a_host_names_it() {
-    let (ledger, document) = host(no_caps(), no_caps(), 1);
-    let handle = CssHostScope::open(ledger, document).unwrap();
-    let observer = CssAccount::host(&handle).observer().unwrap();
-    assert_eq!(observer.parent(), document);
-    assert_eq!(observer.scope(Input), handle.scope(Input));
 }
