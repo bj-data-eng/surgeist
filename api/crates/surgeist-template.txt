@@ -97,7 +97,7 @@ pub surgeist_template::dom::TemplateDomUnresolvedKind::Interpolation
 pub surgeist_template::dom::TemplateDomUnresolvedKind::Iteration
 impl core::fmt::Display for surgeist_template::dom::TemplateDomUnresolvedKind
 pub fn surgeist_template::dom::TemplateDomUnresolvedKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub fn surgeist_template::dom::append_static_html(template: &surgeist_template::validation::ValidatedTemplate, batch: &mut surgeist_dom::batch::DomBatch, document: surgeist_dom::batch::NodeOperand, parent: surgeist_dom::batch::NodeOperand) -> core::result::Result<alloc::vec::Vec<surgeist_dom::batch::CreatedNode>, surgeist_template::dom::TemplateDomError>
+pub fn surgeist_template::dom::append_static_html(template: &surgeist_template::validation::ValidatedTemplate, batch: &mut surgeist_dom::internal::batch::DomBatch, document: surgeist_dom::internal::batch::NodeOperand, parent: surgeist_dom::internal::batch::NodeOperand) -> core::result::Result<alloc::vec::Vec<surgeist_dom::internal::batch::CreatedNode>, surgeist_template::dom::TemplateDomError>
 pub mod surgeist_template::expr
 pub enum surgeist_template::expr::BinaryOp
 pub surgeist_template::expr::BinaryOp::Add
