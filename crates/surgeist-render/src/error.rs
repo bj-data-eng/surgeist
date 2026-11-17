@@ -1959,7 +1959,7 @@ mod geometry_error_tests {
         );
         assert_eq!(
             error.to_string(),
-            "GeometryRealization: qualified receiving failure"
+            "geometry realization refused: qualified receiving failure"
         );
     }
 
