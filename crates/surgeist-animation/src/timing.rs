@@ -130,7 +130,7 @@ impl std::error::Error for TimingError {}
 /// assert_eq!(sample.active_duration_secs(), Some(1.0));
 /// ```
 ///
-/// ```compile_fail
+/// ```compile_fail,E0599
 /// use surgeist_animation::easing::Easing;
 /// use surgeist_animation::time::{AnimationDelay, AnimationDuration};
 /// use surgeist_animation::timing::{
