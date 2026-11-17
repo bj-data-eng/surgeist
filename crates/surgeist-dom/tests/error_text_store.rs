@@ -77,7 +77,10 @@ fn variants_without_payload_state_their_condition() {
             DomError::Namespace,
             "the qualified name and namespace are inconsistent",
         ),
-        (DomError::NotFound, "the requested node was not found"),
+        (
+            DomError::NotFound,
+            "the requested node or relation was not found",
+        ),
         (DomError::IndexSize, "the index is out of range"),
         (
             DomError::InUseAttribute,
@@ -138,19 +141,19 @@ fn scalar_payloads_are_appended_and_resources_are_named() {
             limit: 4
         }
         .to_string(),
-        "ranges would exceed its configured limit of 4"
+        "the configured limit of 4 for ranges would be exceeded"
     );
     assert_eq!(
         DomError::WorkLimit {
-            resource: DomResource::StringCodeUnits,
+            resource: DomResource::InlineStyleWork,
             limit: 5
         }
         .to_string(),
-        "string code units work exhausted its allowance of 5"
+        "the allowance of 5 for inline style work was exhausted"
     );
     assert_eq!(
         DomError::InvalidLimit(DomResource::ManagedNodes).to_string(),
-        "the configured limit for managed nodes is invalid"
+        "a configured limit is invalid"
     );
 }
 
