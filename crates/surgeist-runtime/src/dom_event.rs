@@ -295,9 +295,11 @@ pub enum DomEventResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomEventDispatchError {
-    /// Canonical identity or source-coherence validation failed before the next step.
+    /// The canonical DOM refused the dispatch: identity or source validation,
+    /// or cancellation.
     Dom(DomError),
-    /// Actual hosted source or global association could not be qualified.
+    /// The hosted source or Global state refused the dispatch: its association
+    /// could not be qualified, or a hosted operation has not completed.
     Hosted(DomHostedError),
     /// Finite admission refused work; no callback ran for a new event.
     Admission(DomEventResource),
@@ -312,15 +314,19 @@ pub enum DomEventDispatchError {
     Uninitialized,
     /// This invocation already produced its one completion receipt.
     AlreadyCompleted,
-    /// The affine invocation was terminally abandoned.
+    /// The affine invocation was terminally abandoned, or its retained custody is
+    /// gone.
     Abandoned,
-    /// Resume requires an event retained by this exact registry.
+    /// The continuation does not match the state this dispatcher retained: a
+    /// foreign registry, a missing or mismatched retained frame, or a path whose
+    /// final target is not a node.
     WrongContinuation,
     /// The standalone target belongs to another dispatcher registry.
     WrongTargetRegistry,
     /// The selected host refused execution; this event cannot produce a receipt.
     HostRefused(DomEventHostError),
-    /// Registry/generation/order identity exhausted rather than wrapping.
+    /// Registry, generation or order identity, or the registration capacity, is
+    /// exhausted rather than wrapping.
     IdentityExhausted,
     /// A canonical event-parent chain repeated a node.
     CyclicPath,

@@ -78,15 +78,18 @@ pub enum DocumentGuestEventError {
     Dispatch(DomEventDispatchError),
     /// The associated engine Realm has no authority in this attachment.
     CallbackRealmUnavailable,
-    /// This host has no installed guest registry, or it already has one.
+    /// The guest event registry or its retained state is missing or already in
+    /// use.
     RegistryState,
     /// The supplied registry must first claim the exact native DOM.
     RegistryUnbound,
-    /// Finite cumulative guest adapter work refused.
+    /// Guest adapter work was refused: its cumulative limit, or an amount that
+    /// cannot be represented.
     WorkLimit,
     /// Ledger setup or accounting integrity failed.
     Accounting(AccountingError),
-    /// The next listener requires a different host route.
+    /// The operation requires a host route that is unavailable, such as the one
+    /// the next listener needs.
     HostRouteUnavailable,
     /// The original Source operation blocked synchronous completion.
     SourcePending(surgeist_dom::source::DomSourceOperationId),
