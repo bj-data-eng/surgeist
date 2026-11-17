@@ -123,12 +123,14 @@ pub enum DomNativeHtmlInstallError {
 impl std::fmt::Display for DomNativeHtmlInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Target(_) => f.write_str("the destination refused the native HTML installation"),
+            Self::Target(_) => {
+                f.write_str("the canonical DOM refused the native HTML installation")
+            }
             Self::StaleDestination { .. } => {
                 f.write_str("the destination changed since the supplied basis stamp")
             }
             Self::Source { .. } => {
-                f.write_str("the canonical DOM refused to create a node of the source result")
+                f.write_str("the canonical DOM refused to build a node of the source result")
             }
             Self::SourceLookup { .. } => {
                 f.write_str("a source node identity does not belong to the supplied HTML result")

@@ -212,7 +212,7 @@ impl std::fmt::Display for DomParsedHtmlInstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Target(_) => {
-                f.write_str("the destination refused the completed HTML installation")
+                f.write_str("the canonical DOM refused the completed HTML installation")
             }
             Self::StaleDestination { .. } => {
                 f.write_str("the destination store changed since the supplied stamp")
@@ -227,26 +227,26 @@ impl std::fmt::Display for DomParsedHtmlInstallError {
                 f.write_str("the report is defective, so it was not installed")
             }
             Self::ForeignContext => {
-                f.write_str("the report's context does not belong to the supplied HTML capture")
+                f.write_str("the report's captured context does not match the supplied HTML capture")
             }
             Self::CurrentPolicyUnavailable => f.write_str(
-                "the current Document facts cannot qualify the report's original URL, encoding or policy observations",
+                "the report or the destination Document is outside the policy profile that completed HTML installation supports",
             ),
             Self::CspProtocol(_) => f.write_str(
                 "the HTML Content Security Policy protocol rejected the report's policy association",
             ),
             Self::CspIssuerBusy => f.write_str("the Document policy issuer is already borrowed"),
             Self::CapturedStateUnavailable => f.write_str(
-                "the report's captured historical state is unavailable in the destination",
+                "the captured historical state the report relies on cannot be matched in the destination",
             ),
             Self::EnvironmentMismatch => f.write_str(
-                "the supplied environment differs from the report's original Document facts",
+                "the supplied environment is missing or differs from the report's original Document facts",
             ),
             Self::MissingMetadata { .. } => f.write_str(
-                "the report holds no metadata that installation requires for a source node",
+                "installation found no report metadata or source mapping that it requires for a source node",
             ),
             Self::UnsupportedState { .. } => f.write_str(
-                "a source node holds state that completed HTML installation does not support",
+                "a source node cannot be installed because its state or installation mapping is unsupported",
             ),
             Self::FamilyStateUnavailable { .. } => {
                 f.write_str("the original element family state of a source node is unavailable")
@@ -267,7 +267,7 @@ impl std::fmt::Display for DomParsedHtmlInstallError {
                 f.write_str("the original update activity of an image is unavailable")
             }
             Self::DialogStateUnavailable { .. } => f.write_str(
-                "the report holds an original Dialog operation that was never fulfilled",
+                "the original Dialog state that installation requires is unavailable",
             ),
             Self::SourceLookup { .. } => f.write_str(
                 "a source node identity does not belong to the report's HTML result",
@@ -290,7 +290,7 @@ impl std::fmt::Display for DomParsedHtmlInstallError {
                 f.write_str("an allocation required by the completed HTML installation failed")
             }
             Self::RepresentationExhausted => {
-                f.write_str("the completed HTML installation exhausted a checked representation")
+                f.write_str("the completed HTML installation met a count, size or position that its representation cannot hold")
             }
         }
     }
