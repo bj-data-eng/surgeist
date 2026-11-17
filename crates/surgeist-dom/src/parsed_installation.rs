@@ -230,7 +230,7 @@ impl std::fmt::Display for DomParsedHtmlInstallError {
                 f.write_str("the report's captured context does not match the supplied HTML capture")
             }
             Self::CurrentPolicyUnavailable => f.write_str(
-                "the report or the destination Document is outside the policy profile that completed HTML installation supports",
+                "the current Document facts or the report's policy profile do not qualify the report's URL, encoding, scripting, registry, browsing-context or policy observations",
             ),
             Self::CspProtocol(_) => f.write_str(
                 "the HTML Content Security Policy protocol rejected the report's policy association",
