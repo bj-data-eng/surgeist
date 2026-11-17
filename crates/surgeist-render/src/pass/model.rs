@@ -470,7 +470,7 @@ impl RuntimeLayerCompositeParameters {
         if !opacity.is_finite() {
             return Err(Error::invalid_value(
                 "composite opacity",
-                opacity,
+                crate::number_text::Number(opacity),
                 "must be finite before clamping",
             ));
         }

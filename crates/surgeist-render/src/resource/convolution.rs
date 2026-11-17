@@ -124,7 +124,7 @@ impl ConvolutionWeightsPlan {
             if weight != 0.0 && !weight.is_normal() {
                 return Err(Error::invalid_value(
                     "convolution normalized weight",
-                    weight,
+                    crate::number_text::Number(weight),
                     "must be zero or a finite normal f32",
                 ));
             }

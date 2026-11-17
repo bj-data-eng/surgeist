@@ -1644,7 +1644,7 @@ impl CompositeParameterBytes {
         if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
             return Err(Error::invalid_value(
                 "composite opacity",
-                opacity,
+                crate::number_text::Number(opacity),
                 "must be finite and clamped to the inclusive unit interval",
             ));
         }
@@ -1912,7 +1912,7 @@ fn narrow_composite_scalar(field: &'static str, value: f64) -> Result<f32> {
     if !narrowed.is_finite() {
         return Err(Error::invalid_value(
             field,
-            value,
+            crate::number_text::Number(value),
             "must remain finite after f64-to-f32 narrowing",
         ));
     }
@@ -1924,7 +1924,7 @@ fn narrow_positive_composite_scalar(field: &'static str, value: f64) -> Result<f
     if narrowed <= 0.0 {
         return Err(Error::invalid_value(
             field,
-            value,
+            crate::number_text::Number(value),
             "must remain strictly positive after f64-to-f32 narrowing",
         ));
     }
@@ -1936,7 +1936,7 @@ fn narrow_spatial_scalar(field: &'static str, value: f64) -> Result<f32> {
     if !narrowed.is_finite() {
         return Err(Error::invalid_value(
             field,
-            value,
+            crate::number_text::Number(value),
             "must remain finite after f64-to-f32 narrowing",
         ));
     }
@@ -1948,7 +1948,7 @@ fn narrow_raster_scale(field: &'static str, value: f64) -> Result<f32> {
     if narrowed <= 0.0 {
         return Err(Error::invalid_value(
             field,
-            value,
+            crate::number_text::Number(value),
             "must remain strictly positive after f64-to-f32 narrowing",
         ));
     }

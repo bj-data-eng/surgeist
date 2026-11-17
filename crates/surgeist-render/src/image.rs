@@ -741,7 +741,7 @@ pub(crate) fn pixelated_multipliers(
         {
             return Err(Error::invalid_value(
                 "pixelated image scale",
-                scale,
+                crate::number_text::Number(scale),
                 "must be finite with a positive integer multiple representable as u32",
             ));
         }

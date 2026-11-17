@@ -335,7 +335,7 @@ pub fn prepare_convolution(
                         if !value.is_finite() {
                             return Err(Error::invalid_value(
                                 "filter domain coordinate",
-                                value,
+                                crate::number_text::Number(value),
                                 "must be finite",
                             ));
                         }

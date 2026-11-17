@@ -1659,7 +1659,7 @@ fn shadow_bounds(shape: &ShadowShape, shadow: &RenderShadow) -> Result<Offscreen
     if !support.is_finite() {
         return Err(Error::invalid_value(
             "box shadow support",
-            support,
+            crate::number_text::Number(support),
             "must be finite",
         ));
     }

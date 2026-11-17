@@ -259,14 +259,14 @@ impl BackdropCaptureBounds {
         if !rect.width().is_finite() || rect.width() <= 0.0 {
             return Err(Error::invalid_value(
                 "backdrop capture bounds width",
-                rect.width(),
+                crate::number_text::Number(rect.width()),
                 "must be finite and positive",
             ));
         }
         if !rect.height().is_finite() || rect.height() <= 0.0 {
             return Err(Error::invalid_value(
                 "backdrop capture bounds height",
-                rect.height(),
+                crate::number_text::Number(rect.height()),
                 "must be finite and positive",
             ));
         }
@@ -448,7 +448,7 @@ impl FilterDropShadow {
         if shadow.spread() != 0.0 {
             return Err(Error::invalid_value(
                 "filter drop-shadow spread",
-                shadow.spread(),
+                crate::number_text::Number(shadow.spread()),
                 "must be zero for CSS drop-shadow filter planning",
             ));
         }
@@ -637,7 +637,7 @@ impl FilterBlur {
         if !radius.is_finite() || !(0.0..=MAX_FILTER_BLUR_RADIUS).contains(&radius) {
             return Err(Error::invalid_value(
                 "filter blur radius",
-                radius,
+                crate::number_text::Number(radius),
                 "must be finite and between 0 and 256",
             ));
         }
@@ -670,7 +670,7 @@ impl FilterAmount {
         if !value.is_finite() || value < 0.0 {
             return Err(Error::invalid_value(
                 "filter amount",
-                value,
+                crate::number_text::Number(value),
                 "must be finite and non-negative",
             ));
         }
@@ -702,7 +702,7 @@ impl UnitFilterAmount {
         if !value.is_finite() || !(0.0..=1.0).contains(&value) {
             return Err(Error::invalid_value(
                 "filter unit amount",
-                value,
+                crate::number_text::Number(value),
                 "must be finite and between 0 and 1",
             ));
         }
@@ -734,7 +734,7 @@ impl FilterAngle {
         if !radians.is_finite() {
             return Err(Error::invalid_value(
                 "filter angle",
-                radians,
+                crate::number_text::Number(radians),
                 "must be finite",
             ));
         }

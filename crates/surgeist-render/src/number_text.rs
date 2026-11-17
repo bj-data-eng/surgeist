@@ -4,14 +4,12 @@
 //! and `f64::MIN_POSITIVE` 326. A message that carries a rejected number prints it through
 //! [`Number`]: the plain form for ordinary magnitudes and the exponent form beyond them.
 
-use std::{borrow::Cow, fmt};
+use std::fmt;
 
 /// Smallest magnitude printed in plain form; smaller non-zero magnitudes use the exponent form.
 const PLAIN_MINIMUM: f64 = 1e-5;
 /// Magnitude from which the exponent form is used.
 const PLAIN_LIMIT: f64 = 1e16;
-/// Longest run of digits that an integer type can print (`i128::MIN` has 39 digits and a sign).
-const LONGEST_INTEGER_DIGITS: usize = 40;
 
 /// A number printed in the diagnostic form.
 ///
@@ -86,42 +84,9 @@ impl fmt::Display for CoefficientsText {
     }
 }
 
-/// The text of a caller-supplied value in a message.
-///
-/// A generic value reaches a message only as its `Display` text, so the text of a float is
-/// recognised by its form: digits with a decimal point, or more digits than any integer type
-/// prints. Such a text is parsed and printed through [`Number`], which does not change a value
-/// of ordinary magnitude. Any other text is returned as it is; in particular an integer text is
-/// never rewritten.
-pub(crate) fn message_text(text: &str) -> Cow<'_, str> {
-    let digits = text.strip_prefix('-').unwrap_or(text);
-    let mut parts = digits.split('.');
-    let whole = parts.next().unwrap_or("");
-    let fraction = parts.next();
-    let plain = parts.next().is_none()
-        && !whole.is_empty()
-        && whole.bytes().all(|byte| byte.is_ascii_digit())
-        && fraction
-            .is_none_or(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()));
-    if !plain || (fraction.is_none() && whole.len() <= LONGEST_INTEGER_DIGITS) {
-        return Cow::Borrowed(text);
-    }
-    match text.parse::<f64>() {
-        Ok(value) if value.is_finite() => {
-            let rendered = Number(value).to_string();
-            if rendered == text {
-                Cow::Borrowed(text)
-            } else {
-                Cow::Owned(rendered)
-            }
-        }
-        _ => Cow::Borrowed(text),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Number, message_text};
+    use super::Number;
 
     #[test]
     fn ordinary_magnitudes_print_in_plain_form() {
@@ -170,24 +135,6 @@ mod tests {
     }
 
     #[test]
-    fn a_printed_float_text_is_rewritten_only_beyond_the_plain_range() {
-        let max = f64::MAX.to_string();
-        assert_eq!(max.len(), 309);
-        assert_eq!(message_text(&max), "1.7976931348623157e308");
-        let min = f64::MIN.to_string();
-        assert_eq!(message_text(&min), "-1.7976931348623157e308");
-        let tiny = f64::MIN_POSITIVE.to_string();
-        assert_eq!(message_text(&tiny), "2.2250738585072014e-308");
-        assert_eq!(message_text("0.000001"), "1e-6");
-        for unchanged in [
-            "0.5", "-2.5", "100", "0.00001", "NaN", "inf", "-inf", "abc", "", "-", "1.2.3", "1.",
-            ".5",
-        ] {
-            assert_eq!(message_text(unchanged), unchanged);
-        }
-    }
-
-    #[test]
     fn a_rectangle_a_size_and_coefficients_print_every_number_through_the_form() {
         use super::{CoefficientsText, RectText, SizeText};
         let rect = crate::Rect::try_new(1.5, -2.0, 1e300, 0.000001).unwrap();
@@ -198,17 +145,5 @@ mod tests {
             CoefficientsText([1.0, 0.0, 0.0, 1.0, f64::MIN_POSITIVE, -3.5]).to_string(),
             "1, 0, 0, 1, 2.2250738585072014e-308, -3.5"
         );
-    }
-
-    #[test]
-    fn an_integer_text_is_never_rewritten() {
-        for text in [
-            u64::MAX.to_string(),
-            i64::MIN.to_string(),
-            u128::MAX.to_string(),
-            i128::MIN.to_string(),
-        ] {
-            assert_eq!(message_text(&text), text);
-        }
     }
 }

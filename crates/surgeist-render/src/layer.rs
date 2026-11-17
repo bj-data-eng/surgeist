@@ -259,7 +259,7 @@ impl Layer {
         if !opacity.is_finite() {
             return Err(Error::invalid_value(
                 "layer opacity",
-                opacity,
+                crate::number_text::Number(opacity),
                 "must be finite",
             ));
         }

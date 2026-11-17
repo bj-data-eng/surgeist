@@ -126,7 +126,7 @@ impl ImageResourceDensity {
         if !value.is_finite() || value <= 0.0 {
             return Err(Error::invalid_value(
                 "image resource density",
-                value,
+                crate::number_text::Number(value),
                 "must be finite and positive",
             ));
         }
@@ -459,14 +459,22 @@ impl PositionComponent {
 
     fn try_percent_for(value: f64, field: &str) -> Result<Self> {
         if !value.is_finite() {
-            return Err(Error::invalid_value(field, value, "must be finite"));
+            return Err(Error::invalid_value(
+                field,
+                crate::number_text::Number(value),
+                "must be finite",
+            ));
         }
         Ok(Self::percent_unchecked(value))
     }
 
     fn try_length_for(value: f64, field: &str) -> Result<Self> {
         if !value.is_finite() {
-            return Err(Error::invalid_value(field, value, "must be finite"));
+            return Err(Error::invalid_value(
+                field,
+                crate::number_text::Number(value),
+                "must be finite",
+            ));
         }
         Ok(Self {
             kind: PositionComponentKind::Length,
@@ -538,7 +546,7 @@ impl PositionEdgeOffset {
         if !offset.is_finite() {
             return Err(Error::invalid_value(
                 "background position edge offset",
-                offset,
+                crate::number_text::Number(offset),
                 "must be finite",
             ));
         }
@@ -657,7 +665,7 @@ impl SizeComponent {
         if !value.is_finite() || value < 0.0 {
             return Err(Error::invalid_value(
                 "background size length",
-                value,
+                crate::number_text::Number(value),
                 "must be finite and non-negative",
             ));
         }
@@ -675,7 +683,7 @@ impl SizeComponent {
         if !value.is_finite() || value < 0.0 {
             return Err(Error::invalid_value(
                 "background size percent",
-                value,
+                crate::number_text::Number(value),
                 "must be finite and non-negative",
             ));
         }
@@ -1189,7 +1197,7 @@ fn repeat_positions(
     if account.coordinate(|| tile_axis <= 0.0)? || account.coordinate(|| !tile_axis.is_finite())? {
         return Err(Error::invalid_value(
             "image repeat tile size",
-            tile_axis,
+            crate::number_text::Number(tile_axis),
             "must be finite and positive",
         ));
     }
@@ -1279,7 +1287,7 @@ fn first_repeated_tile_origin(
     })? {
         return Err(Error::invalid_value(
             "image repeat geometry",
-            origin,
+            crate::number_text::Number(origin),
             "first tile must have a finite origin and reach past the clip start",
         ));
     }
@@ -1377,10 +1385,14 @@ fn repeat_position_count(
         if account.coordinate(|| delta.is_infinite())? {
             return Ok(None);
         }
-        return Err(image_repeat_tile_count_error(count));
+        return Err(image_repeat_tile_count_error(crate::number_text::Number(
+            count,
+        )));
     }
     if account.coordinate(|| count < 0.0)? || account.coordinate(|| count > usize::MAX as f64)? {
-        return Err(image_repeat_tile_count_error(count));
+        return Err(image_repeat_tile_count_error(crate::number_text::Number(
+            count,
+        )));
     }
     Ok(Some(account.coordinate(|| count as usize)?))
 }

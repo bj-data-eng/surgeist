@@ -211,7 +211,7 @@ pub(crate) fn validate_color(color: Color, name: &str) -> Result<()> {
         if !value.is_finite() || !(0.0..=1.0).contains(&value) {
             return Err(Error::invalid_value(
                 format!("{name} {channel} channel"),
-                value,
+                crate::number_text::Number(value),
                 "must be finite and between 0 and 1",
             ));
         }
@@ -223,7 +223,7 @@ pub(crate) fn validate_positive_f64(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() || value <= 0.0 {
         return Err(Error::invalid_value(
             name,
-            value,
+            crate::number_text::Number(value),
             "must be finite and greater than 0",
         ));
     }
@@ -234,7 +234,7 @@ pub(crate) fn validate_non_negative_f64(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() || value < 0.0 {
         return Err(Error::invalid_value(
             name,
-            value,
+            crate::number_text::Number(value),
             "must be finite and non-negative",
         ));
     }
@@ -243,7 +243,11 @@ pub(crate) fn validate_non_negative_f64(value: f64, name: &str) -> Result<()> {
 
 pub(crate) fn validate_finite_f64(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() {
-        return Err(Error::invalid_value(name, value, "must be finite"));
+        return Err(Error::invalid_value(
+            name,
+            crate::number_text::Number(value),
+            "must be finite",
+        ));
     }
     Ok(())
 }

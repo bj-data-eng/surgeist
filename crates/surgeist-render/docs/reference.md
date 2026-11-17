@@ -1033,9 +1033,9 @@ sentences of its causes, joined by a colon and a space; `Error::source` still
 returns only a backend source, and the typed diagnostic stays available through its
 `*_diagnostic` accessor. Every error enum of the crate implements `Display` and
 `core::error::Error`; a wrapper's text names what failed at its own layer and
-`source` returns the wrapped error. A floating-point value in a message prints in
+`source` returns the wrapped error. A floating-point value that the crate reports in a message prints in
 plain form from 1e-5 up to 1e16 and in exponent form beyond that, so an extreme value
-stays short.
+stays short; `Error::invalid_value` prints the text of the value it is given exactly.
 
 ### Resolved accounting reports
 

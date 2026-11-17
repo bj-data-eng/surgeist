@@ -167,7 +167,11 @@ impl PaintColor {
 
 fn validate_finite_channel(value: f32, name: &str) -> Result<()> {
     if !value.is_finite() {
-        return Err(Error::invalid_value(name, value, "must be finite"));
+        return Err(Error::invalid_value(
+            name,
+            crate::number_text::Number(value),
+            "must be finite",
+        ));
     }
     Ok(())
 }
@@ -176,7 +180,7 @@ fn validate_unit_channel(value: f32, name: &str) -> Result<()> {
     if !value.is_finite() || !(0.0..=1.0).contains(&value) {
         return Err(Error::invalid_value(
             name,
-            value,
+            crate::number_text::Number(value),
             "must be finite and between 0 and 1",
         ));
     }
@@ -356,7 +360,7 @@ fn validate_field_stops(stops: &[GradientStop]) -> Result<(&GradientStop, &Gradi
         if pair[1].position < pair[0].position {
             return Err(Error::invalid_value(
                 "gradient stop position",
-                pair[1].position,
+                crate::number_text::Number(pair[1].position),
                 "must be nondecreasing",
             ));
         }
@@ -456,7 +460,7 @@ impl Gradient {
         if let Some(position) = invalid_position {
             return Err(Error::invalid_value(
                 "sweep gradient stop position",
-                position,
+                crate::number_text::Number(position),
                 "must be between 0 and 1",
             ));
         }

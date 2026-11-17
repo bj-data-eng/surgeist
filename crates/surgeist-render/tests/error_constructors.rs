@@ -9,8 +9,9 @@
 
 use core::error::Error as StdError;
 use surgeist_render::{
-    DegradedQuality, DegradedQualityKind, Error, ErrorCode, InvalidValue, PrimitiveFamily, Rect, Size,
-    PrimitiveOperation, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
+    DegradedQuality, DegradedQualityKind, Error, ErrorCode, InvalidValue, PrimitiveFamily,
+    PrimitiveOperation, Rect, Size, UnresolvedResource, UnresolvedResourceKind,
+    UnsupportedPrimitive,
 };
 
 #[test]
@@ -126,8 +127,14 @@ fn a_value_passed_to_the_public_constructor_keeps_its_text_exactly() {
         ("-12.25", Error::invalid_value("x", -12.25, "r")),
         ("0.00001", Error::invalid_value("x", 0.00001, "r")),
         ("0.000001", Error::invalid_value("x", 0.000001, "r")),
-        ("18446744073709551615", Error::invalid_value("x", u64::MAX, "r")),
-        ("-9223372036854775808", Error::invalid_value("x", i64::MIN, "r")),
+        (
+            "18446744073709551615",
+            Error::invalid_value("x", u64::MAX, "r"),
+        ),
+        (
+            "-9223372036854775808",
+            Error::invalid_value("x", i64::MIN, "r"),
+        ),
         (
             "340282366920938463463374607431768211455",
             Error::invalid_value("x", u128::MAX, "r"),

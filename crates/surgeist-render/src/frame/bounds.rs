@@ -1331,7 +1331,7 @@ impl RasterScale {
         if !value.is_finite() || value <= 0.0 {
             return Err(Error::invalid_value(
                 "frame local raster scale",
-                value,
+                crate::number_text::Number(value),
                 "must be finite and greater than 0",
             ));
         }
@@ -1658,7 +1658,11 @@ fn transform_point(transform: Transform, x: f64, y: f64, name: &str) -> Result<P
 
 fn validate_finite(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() {
-        return Err(Error::invalid_value(name, value, "must be finite"));
+        return Err(Error::invalid_value(
+            name,
+            crate::number_text::Number(value),
+            "must be finite",
+        ));
     }
     Ok(())
 }
@@ -1667,7 +1671,7 @@ fn validate_non_negative(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() || value < 0.0 {
         return Err(Error::invalid_value(
             name,
-            value,
+            crate::number_text::Number(value),
             "must be finite and non-negative",
         ));
     }

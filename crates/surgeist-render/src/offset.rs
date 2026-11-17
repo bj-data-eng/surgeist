@@ -220,7 +220,7 @@ pub fn prepare_offset(
                         if !value.is_finite() || (extent && value < 0.0) {
                             return Err(Error::invalid_value(
                                 format!("filter domain {role} {field}"),
-                                value,
+                                crate::number_text::Number(value),
                                 if extent {
                                     "must be finite and non-negative"
                                 } else {

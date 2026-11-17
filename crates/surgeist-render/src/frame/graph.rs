@@ -555,13 +555,13 @@ impl std::fmt::Display for GraphValidationError {
                 "a clear-root pass must have no dependencies or reads and one working-image result",
             ),
             Self::InvalidCaptureResult => f.write_str(
-                "a capture does not match the span or coverage that records it: its reads, result role, scale or consumer count",
+                "a capture does not match the shape or the span or coverage record required for it",
             ),
             Self::InvalidImportedResourceRole => {
                 f.write_str("an imported resource must have the imported image role, an imported producer and exactly one import record")
             }
             Self::InvalidPassArity => {
-                f.write_str("a pass does not have the reads, result, order or count that its recorded operation requires")
+                f.write_str("a pass does not match the records, reads or bindings that the graph holds or records for its operation")
             }
             Self::InvalidPassResultRole => f.write_str(
                 "a pass result does not have the role, spatial mapping or bounds that its operation requires",

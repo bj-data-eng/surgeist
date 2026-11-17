@@ -1141,9 +1141,11 @@ pub enum ErrorCode {
     DegradedQuality,
     /// Reports that a runtime GPU capability prevented a specific render operation.
     RuntimeCapabilityUnavailable,
-    /// Reports failure while uploading image data to the GPU.
+    /// Reports image data or image sizes that validation refused. The refusal precedes any
+    /// upload to the GPU, and no upload has started when it is returned.
     ImageUploadFailed,
-    /// Reports failure while validating, encoding, submitting, or executing a render.
+    /// Reports an internal failure of the render pipeline: validating, encoding, submitting or
+    /// executing a render, and the device state that readback and present rely on.
     RenderFailed,
     /// Reports failure to copy, map, or decode pixels during GPU readback.
     ReadbackFailed,
@@ -1191,7 +1193,8 @@ impl fmt::Display for ErrorCode {
             Self::RuntimeCapabilityUnavailable => "runtime capability unavailable",
             // Raised by the validation of image data and sizes, which precedes any upload.
             Self::ImageUploadFailed => "image data refused",
-            Self::RenderFailed => "render failed",
+            // Also raised for the device state that readback and present look up, not only for stages of a render.
+            Self::RenderFailed => "render pipeline failed",
             Self::ReadbackFailed => "readback failed",
             // Also raised before the present call, for unavailable resources and format checks.
             Self::PresentFailed => "presented output failed",
@@ -1565,9 +1568,7 @@ impl InvalidValue {
     fn message(&self) -> String {
         format!(
             "{} value {} is invalid: {}",
-            self.field,
-            crate::number_text::message_text(&self.value),
-            self.invariant
+            self.field, self.value, self.invariant
         )
     }
 }

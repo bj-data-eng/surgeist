@@ -16,10 +16,18 @@ impl Point {
     /// Returns [`crate::ErrorCode::InvalidInput`] when either coordinate is not finite.
     pub fn try_new(x: f64, y: f64) -> Result<Self> {
         if !x.is_finite() {
-            return Err(Error::invalid_value("point x", x, "must be finite"));
+            return Err(Error::invalid_value(
+                "point x",
+                crate::number_text::Number(x),
+                "must be finite",
+            ));
         }
         if !y.is_finite() {
-            return Err(Error::invalid_value("point y", y, "must be finite"));
+            return Err(Error::invalid_value(
+                "point y",
+                crate::number_text::Number(y),
+                "must be finite",
+            ));
         }
         Ok(Self { x, y })
     }
@@ -59,14 +67,14 @@ impl Size {
         if !width.is_finite() || width < 0.0 {
             return Err(Error::invalid_value(
                 "size width",
-                width,
+                crate::number_text::Number(width),
                 "must be finite and non-negative",
             ));
         }
         if !height.is_finite() || height < 0.0 {
             return Err(Error::invalid_value(
                 "size height",
-                height,
+                crate::number_text::Number(height),
                 "must be finite and non-negative",
             ));
         }
@@ -112,14 +120,14 @@ impl Rect {
         if !width.is_finite() || width < 0.0 {
             return Err(Error::invalid_value(
                 "rectangle width",
-                width,
+                crate::number_text::Number(width),
                 "must be finite and non-negative",
             ));
         }
         if !height.is_finite() || height < 0.0 {
             return Err(Error::invalid_value(
                 "rectangle height",
-                height,
+                crate::number_text::Number(height),
                 "must be finite and non-negative",
             ));
         }
@@ -196,7 +204,7 @@ pub(crate) fn validate_rect_maxima(rect: Rect, name: &str) -> Result<()> {
         if !maximum.is_finite() {
             return Err(Error::invalid_value(
                 format!("{name} max {axis}"),
-                maximum,
+                crate::number_text::Number(maximum),
                 "must be finite",
             ));
         }
@@ -251,7 +259,7 @@ impl Radii {
             if !value.is_finite() || value < 0.0 {
                 return Err(Error::invalid_value(
                     name,
-                    value,
+                    crate::number_text::Number(value),
                     "must be finite and non-negative",
                 ));
             }
@@ -271,7 +279,7 @@ impl Radii {
         if !radius.is_finite() || radius < 0.0 {
             return Err(Error::invalid_value(
                 "corner radius",
-                radius,
+                crate::number_text::Number(radius),
                 "must be finite and non-negative",
             ));
         }
@@ -377,7 +385,7 @@ impl Transform {
             if !finite(value)? {
                 return Err(Error::invalid_value(
                     "transform",
-                    value,
+                    crate::number_text::Number(value),
                     "must contain only finite values",
                 ));
             }
@@ -611,7 +619,7 @@ impl PhysicalSize {
         if !scale.is_finite() || scale <= 0.0 {
             return Err(Error::invalid_value(
                 "surface scale",
-                scale,
+                crate::number_text::Number(scale),
                 "must be finite and greater than 0",
             ));
         }
@@ -620,14 +628,14 @@ impl PhysicalSize {
         if width > f64::from(u32::MAX) {
             return Err(Error::invalid_value(
                 "physical width",
-                width,
+                crate::number_text::Number(width),
                 "must fit in u32 device pixels",
             ));
         }
         if height > f64::from(u32::MAX) {
             return Err(Error::invalid_value(
                 "physical height",
-                height,
+                crate::number_text::Number(height),
                 "must fit in u32 device pixels",
             ));
         }
