@@ -2,8 +2,10 @@
 //!
 //! `DomHostedEntry`, `DomHostedEntryId` and `DomHostedNavigable` read the captured
 //! entries and navigables, `DomHostedEntryRequest` and `DomHostedEntryInitialization`
-//! create entries, and the `DomHostedHistory*` and `DomHostedQueuedHistory` types carry
-//! queued history jobs.
+//! create entries, `DomHostedChildHistoryRequest` and `DomHostedChildHistoryPublication`
+//! carry the queued creation of a child's entry, and `DomHostedHistoryJobRequest`,
+//! `DomHostedHistoryJobReceipt`, `DomHostedHistoryStep` and `DomHostedQueuedHistory`
+//! carry queued history jobs.
 //!
 //! `docs/hosted-documents.md` owns the contract.
 

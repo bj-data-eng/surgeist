@@ -6,8 +6,11 @@
 //! mapping and shared producers. `DomScriptingCapture` pairs a snapshot with an
 //! owner-sampled scripting fact. `DomHostPublisher` publishes fixed focus, hover or
 //! document-target observations from an external producer against one exact
-//! `identity::DomDocumentStamp`, and `DomHostCapture` and the other `DomHost*` types read
-//! them.
+//! `identity::DomDocumentStamp`; `DomHostCapture`, `DomHostObservations`,
+//! `DomHostPublication`, `DomHostChange`, `DomHostChanges`, `DomHostChangeCoverage`,
+//! `DomHostDomain`, `DomHostDomains`, `DomHostStamp`, `DomHostSourceId`,
+//! `DomHostRecomputeReason` and `DomHostError` read and describe them (items whose names
+//! begin with DomHosted belong to `hosted` and its submodules).
 //!
 //! Captures retain exact historical values and keep no live nodes; `HostStateRevision`
 //! advances only when observations change. A refused publication preserves the complete

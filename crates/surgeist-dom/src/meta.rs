@@ -4,10 +4,11 @@
 //! captured with its revision; it is not a summary of the currently attached elements.
 //! `DomMetaColorSchemeState` and `DomMetaThemeColorState` record the last completed
 //! selections, `DomDocumentCspState` is source-qualified knowledge of the CSP policy
-//! container, and `DomMetaSubject` and `DomMetaPreferredOccurrence` identify an element
-//! and a preferred-name invocation. The `DomMeta*Preparation`, `*Published` and `*Commit`
-//! types compose an ordinary or Source Meta change with its runtime custody, and
-//! `DomSourceMetaCspRequest` observes one Meta CSP insertion.
+//! container, and `DomMetaSubject` and `DomMetaPreferredOccurrence` identify the
+//! historical subject of a Meta operation and a preferred-name invocation. The
+//! `DomMetaOrdinary*` and `DomMetaSource*` types stage an ordinary or a Source Meta
+//! change, and their published custody keeps the actual locks until the runtime has
+//! installed its names. `DomSourceMetaCspRequest` observes one Meta CSP insertion.
 //!
 //! `docs/urls-and-metadata.md` and `docs/source-and-style.md` (native Meta composition)
 //! own the contracts.

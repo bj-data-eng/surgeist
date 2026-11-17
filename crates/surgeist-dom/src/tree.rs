@@ -5,8 +5,9 @@
 //! `DomAttr`, `DomNamedNodeMap`, `DomDocumentType` and `DomProcessingInstruction`. Names
 //! are `DomQualifiedName`, `DomTagName`, `DomNameAtom` and `DomNamespaceUri`.
 //! `DomTreeOrder` iterates the captured tree in order, `DomTreeScope` names one exact
-//! root, and `DomNodeIterator` with its filter, request and progress types is the live
-//! NodeIterator cursor.
+//! root. `DomNodeIteratorId` identifies a live NodeIterator cursor of the owner,
+//! `DomNodeIterator` is that cursor's public state at the time it was read, and the
+//! filter, request and progress types drive its traversal.
 //!
 //! Views are immutable and keep the snapshot lifetime; reading creates no node. A
 //! NodeIterator starts before its root, walks ordinary tree order within the root, and

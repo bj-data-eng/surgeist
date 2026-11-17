@@ -4,8 +4,11 @@
 //! These types carry the stages of the whole original Style settlement of a parsed
 //! report, in order: the inline-policy prefix, the first sheet publication, the
 //! notification permission and synchronous frontier, a successor and a subsequent
-//! subject, and the terminal error. Each stage has a preparation, a published result and
-//! a typed error.
+//! subject, and the terminal error. The sheet and successor stages have a preparation, a
+//! published result, a retirement, a completion and a typed error; the notification stage
+//! has a preparation, a published result, a completion and a typed error, plus its
+//! handoff types; the subject stage has a completion and an error; the frontier has a
+//! dispatch cursor, a synchronous end and an error; the terminal stage is one error.
 //!
 //! `docs/html-installation.md` (pending stylesheet associations) owns the contract.
 

@@ -1,9 +1,11 @@
-//! Every public item resolves at the module path the module plan assigns to it.
+//! Proves that each of the 531 public items resolves at the module path the module plan
+//! assigns it: the imports below fail to compile if an item is missing from, or not
+//! reachable at, its planned module.
 //!
-//! Generated from the approved module plan (`items.md` of issue 2919), not from the
-//! implementation: an item that is missing, misplaced or reachable only elsewhere
-//! fails to compile here. The crate root exposes five items; every other item has
-//! exactly one path, in its domain module.
+//! Generated from the approved plan (`items.md` of issue 2919), not from the
+//! implementation. This test does not prove that an item has only one path or that
+//! the crate root holds only its five items; the regenerated public API audit checks
+//! both.
 
 #![expect(
     unused_imports,

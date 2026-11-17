@@ -4,13 +4,17 @@
 //! `DomRegistryBinding` is the registry that controlled creation selects.
 //! `DomElementDefinition` is an element's associated definition, and
 //! `DomRegistryDefinitionId` and `DomRegistryDefinitionPreparation` identify and publish
-//! one. `DomCustomElementReaction`, `DomCustomElementReactions`,
-//! `DomSynchronousReactionQueue` and `DomShadowReactionRoute` carry the reactions an edit
-//! reaches, in the order reached. The `DomSourceCustomElement*` types and
-//! `DomWatchedElementCreation` are the Source continuation for constructor, upgrade and
-//! callback work.
+//! one. `DomCustomElementReaction` is one reaction occurrence in the order the edit
+//! reached it, `DomCustomElementReactions` one published segment's reactions,
+//! `DomSynchronousReactionQueue` a synchronous element queue minted by a script
+//! registration, and `DomShadowReactionRoute` a registration with its disconnection
+//! callback lookup. The `DomSourceCustomElement*` types are the Source continuation for
+//! constructor, upgrade and callback work, and `DomWatchedElementCreation` and
+//! `DomWatchedCustomElementResult` report a factory's creation with retirement custody.
 //!
-//! `docs/source-and-style.md` owns the Source contract.
+//! The crate documentation has no custom-element page: `docs/source-and-style.md`
+//! describes the shared Source continuation and `docs/document-creation.md` the
+//! known-null registry of a native document.
 
 pub use crate::internal::document::DomRegistryBinding;
 pub use crate::internal::element::DomElementDefinition;

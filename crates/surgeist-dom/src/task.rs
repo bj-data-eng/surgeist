@@ -6,10 +6,12 @@
 //! admission of the owner's storage, and `DomElementTaskAssociation` records the relevant
 //! Global and Document at queueing time. `Dom::native_checkpoint_step` takes a
 //! `DomNativeCheckpointLimits` and returns a `DomNativeCheckpoint`, one native checkpoint
-//! turn; `DomNativeTaskId` is an exact operation identity.
+//! turn (idle, a Select task, a child-list notification or Slot notifications);
+//! `DomNativeTaskId` is an exact operation identity.
 //!
-//! No callback and no browser event loop is installed: the runtime calls the checkpoint
-//! explicitly. `docs/slots-and-checkpoints.md` owns the contract.
+//! A checkpoint turn executes the oldest native FIFO work: child-list observer deliveries
+//! precede the captured Slot signals. No callback and no browser event loop is installed.
+//! `docs/slots-and-checkpoints.md` owns the contract.
 
 pub use crate::internal::details::DomElementTaskAssociation;
 pub use crate::internal::element_tasks::{

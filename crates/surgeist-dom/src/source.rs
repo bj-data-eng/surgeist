@@ -2,13 +2,16 @@
 //! status and cleanup.
 //!
 //! Use Source when a canonical operation reaches an external service.
-//! `Dom::begin_source_edit` runs one `DomSourceEdit` (exactly one requested edit; there
-//! is no command queue) through the canonical source engine and returns a
-//! `DomSourceLease`, the execution permission for that operation. The service the engine
-//! reaches is a `DomSourceRequest`; `DomSourceInput` is the owned input of the original
-//! entry, and `DomSourceProgress`, `DomSourceStatus` and `DomSourceCompletion` report
-//! where the operation stands. `DomSourceLimits` admits the whole composed operation, and
-//! `DomSourceCleanupCause` and `DomSourceStoppedAction` describe how it ends.
+//! `Dom::begin_source_edit` takes a `DomSourceInput`, which a `DomSourceEdit` (exactly
+//! one requested edit; there is no command queue) converts into, runs it through the
+//! canonical source engine and returns a `DomSourceLease`, the execution permission for
+//! that operation. The service the engine reaches is a `DomSourceRequest`;
+//! `DomSourceInput` is the owned input of the original entry, and `DomSourceProgress`,
+//! `DomSourceStatus` and `DomSourceCompletion` report where the operation stands.
+//! `DomSourceLimits` admits the whole composed operation. `DomSourceCleanupCause` is the
+//! original native failure whose invocation cleanup is still pending, and
+//! `DomSourceStoppedAction` the exact externally stopped native action retained while
+//! cleanup is pending.
 //!
 //! Once a phase publishes, dropping the lease parks its mandatory continuation in the
 //! DOM, and `Dom::resume_source_edit` reacquires that exact operation. Feature-specific

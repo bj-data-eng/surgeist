@@ -7,10 +7,11 @@
 //! assignment's operands and admission together until Source adopts or releases them.
 //! `DomTemplate` and `DomTemplatePatch` read the separately owned Template contents.
 //!
-//! Manual intent, stored assignment and fresh Slot queries are separate;
-//! `DomSlotNotifications` hands slotchange intentions to the explicit native checkpoint
-//! in `task`, and no callback runs inside a transaction. `docs/shadow-and-template.md`
-//! and `docs/slots-and-checkpoints.md` own the contracts.
+//! Manual intent, stored assignment and fresh Slot queries are separate.
+//! `DomSlotNotifications` is the historical batch of slotchange targets that the native
+//! checkpoint (`task::DomNativeCheckpoint::Slots`) returns, and no callback runs inside a
+//! transaction. `docs/shadow-and-template.md` and `docs/slots-and-checkpoints.md` own the
+//! contracts.
 
 pub use crate::internal::shadow::{DomShadowRootInit, DomShadowRootState};
 pub use crate::internal::slot::{
