@@ -64,21 +64,23 @@ fn every_variant_has_its_documented_sentence() {
             "the size of retained cpu bytes cannot be represented".into(),
         ),
     ];
+    let mut seen = [false; 7];
     for (error, text) in &rows {
         assert_eq!(&error.to_string(), text);
         assert_ne!(&format!("{error:?}"), text);
         assert!(error.source().is_none());
-        // The match has no wildcard: a new variant must get a row above.
-        let _ = match error {
-            E::UnsupportedZeroLengthLinear
-            | E::UnsupportedRadialCase { .. }
-            | E::BasisMismatch { .. }
-            | E::UnrepresentablePosition { .. }
-            | E::UnrepresentableSpan { .. }
-            | E::Allocation { .. }
-            | E::CapacityOverflow { .. } => (),
-        };
+        // The match has no wildcard: a new variant fails to compile until it is given a row above.
+        seen[match error {
+            E::UnsupportedZeroLengthLinear => 0,
+            E::UnsupportedRadialCase { .. } => 1,
+            E::BasisMismatch { .. } => 2,
+            E::UnrepresentablePosition { .. } => 3,
+            E::UnrepresentableSpan { .. } => 4,
+            E::Allocation { .. } => 5,
+            E::CapacityOverflow { .. } => 6,
+        }] = true;
     }
+    assert!(seen.iter().all(|covered| *covered), "a variant has no row");
     for (case, label) in [
         (RadialGradientCase::ZeroWidth, "zero-width"),
         (RadialGradientCase::ZeroHeight, "zero-height"),

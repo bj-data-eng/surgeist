@@ -144,3 +144,61 @@ fn a_leader_run_error_names_the_run_and_returns_its_cause() {
         render_error().to_string()
     );
 }
+
+#[test]
+fn a_new_variant_fails_to_compile_here_until_the_tests_above_cover_it() {
+    // These matches have no wildcard. Each value below is also the subject of a test above.
+    let layout = [
+        TextLayoutError::Limit {
+            resource: TextLayoutResource::Runs,
+            required: 1,
+            limit: 0,
+        },
+        TextLayoutError::CapacityOverflow,
+        TextLayoutError::Allocation {
+            resource: TextLayoutResource::Runs,
+        },
+        TextLayoutError::Item {
+            location: TextLayoutLocation::Run { line: 0, run: 0 },
+            cause: TextLayoutCause::Text(Box::new(text_error())),
+        },
+    ];
+    let mut seen = [false; 4];
+    for error in &layout {
+        seen[match error {
+            TextLayoutError::Limit { .. } => 0,
+            TextLayoutError::CapacityOverflow => 1,
+            TextLayoutError::Allocation { .. } => 2,
+            TextLayoutError::Item { .. } => 3,
+        }] = true;
+        assert!(!error.to_string().is_empty());
+    }
+    assert!(seen.iter().all(|covered| *covered));
+    let mut causes = [false; 2];
+    for cause in [
+        TextLayoutCause::Text(Box::new(text_error())),
+        TextLayoutCause::Render(Box::new(render_error())),
+    ] {
+        causes[match cause {
+            TextLayoutCause::Text(_) => 0,
+            TextLayoutCause::Render(_) => 1,
+        }] = true;
+    }
+    assert!(causes.iter().all(|covered| *covered));
+    let mut leader = [false; 2];
+    for cause in [
+        LeaderPatternCause::Text(Box::new(text_error())),
+        LeaderPatternCause::Render(Box::new(render_error())),
+    ] {
+        leader[match cause {
+            LeaderPatternCause::Text(_) => 0,
+            LeaderPatternCause::Render(_) => 1,
+        }] = true;
+    }
+    assert!(leader.iter().all(|covered| *covered));
+    let run = LeaderPatternError::Run {
+        run: 0,
+        cause: LeaderPatternCause::Text(Box::new(text_error())),
+    };
+    let LeaderPatternError::Run { .. } = run;
+}
