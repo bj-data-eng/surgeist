@@ -36,7 +36,7 @@ fn invalid_rejection<T>(property: &str, result: render::Result<T>) -> Result<Cas
 }
 
 pub(super) fn coefficients(values: [f64; 6]) -> Result<CaseOutcome> {
-    let result = render::Transform::try_new(values);
+    let result = render::geometry::Transform::try_new(values);
     if values.iter().any(|value| !value.is_finite()) {
         return invalid_rejection(TRANSFORM, result);
     }
@@ -87,11 +87,11 @@ fn affine(matrix: Matrix) -> [f64; 6] {
 
 pub(super) fn compose(first: [f64; 6], next: [f64; 6], origin: [f64; 2]) -> Result<CaseOutcome> {
     let observed = (|| -> render::Result<_> {
-        let first_transform = render::Transform::try_new(first)?;
-        let next_transform = render::Transform::try_new(next)?;
+        let first_transform = render::geometry::Transform::try_new(first)?;
+        let next_transform = render::geometry::Transform::try_new(next)?;
         Ok((
             first_transform.then(next_transform)?,
-            first_transform.around(render::Point::try_new(origin[0], origin[1])?)?,
+            first_transform.around(render::geometry::Point::try_new(origin[0], origin[1])?)?,
         ))
     })();
     let (then, around) =
@@ -124,9 +124,9 @@ pub(super) fn compose(first: [f64; 6], next: [f64; 6], origin: [f64; 2]) -> Resu
 pub(super) fn overflow() -> Result<CaseOutcome> {
     let setup = (|| -> render::Result<_> {
         Ok((
-            render::Transform::scale(f64::MAX, 1.)?,
-            render::Transform::scale(2., 1.)?,
-            render::Point::try_new(f64::MAX, 0.)?,
+            render::geometry::Transform::scale(f64::MAX, 1.)?,
+            render::geometry::Transform::scale(2., 1.)?,
+            render::geometry::Point::try_new(f64::MAX, 0.)?,
         ))
     })();
     let (large, two, origin) =
@@ -148,8 +148,8 @@ fn rect_valid([x, y, width, height]: [f64; 4]) -> bool {
         && (x + width).is_finite()
         && (y + height).is_finite()
 }
-fn rect([x, y, width, height]: [f64; 4]) -> render::Result<render::Rect> {
-    render::Rect::try_new(x, y, width, height)
+fn rect([x, y, width, height]: [f64; 4]) -> render::Result<render::geometry::Rect> {
+    render::geometry::Rect::try_new(x, y, width, height)
 }
 
 impl ClipRecipe {
@@ -263,15 +263,15 @@ impl ClipRecipe {
             .fold(f64::NEG_INFINITY, f64::max);
         (max_x - min_x).is_finite() && (max_y - min_y).is_finite()
     }
-    fn input(&self) -> render::Result<render::ClipInput> {
+    fn input(&self) -> render::Result<render::style::clip::ClipInput> {
         let input = match &self.geometry {
-            ClipSource::Rect(values) => {
-                render::ClipInput::try_shape(render::Shape::rect(rect(*values)?))?
-            }
+            ClipSource::Rect(values) => render::style::clip::ClipInput::try_shape(
+                render::shape::Shape::rect(rect(*values)?),
+            )?,
             ClipSource::Path(points) => {
-                let mut path = render::Path::new();
+                let mut path = render::shape::Path::new();
                 for (index, [x, y]) in points.iter().copied().enumerate() {
-                    let point = render::Point::try_new(x, y)?;
+                    let point = render::geometry::Point::try_new(x, y)?;
                     if index == 0 {
                         path.move_to(point);
                     } else {
@@ -279,23 +279,22 @@ impl ClipRecipe {
                     }
                 }
                 path.close();
-                render::ClipInput::try_filled_path(render::FilledPath::try_new(
-                    path,
-                    render::FillRule::EvenOdd,
-                )?)?
+                render::style::clip::ClipInput::try_filled_path(
+                    render::shape::FilledPath::try_new(path, render::shape::FillRule::EvenOdd)?,
+                )?
             }
         };
         Ok(
-            input.with_coordinate_space(render::CoordinateSpaceTag::surface(
-                render::Transform::try_new(self.transform)?,
+            input.with_coordinate_space(render::geometry::CoordinateSpaceTag::surface(
+                render::geometry::Transform::try_new(self.transform)?,
             )?),
         )
     }
     pub(super) fn evaluate(&self) -> Result<CaseOutcome> {
-        let mut context = render::RenderAccountingContext::default();
-        let result = self
-            .input()
-            .and_then(|input| input.normalize(render::Capabilities::CURRENT, &mut context));
+        let mut context = render::accounting::RenderAccountingContext::default();
+        let result = self.input().and_then(|input| {
+            input.normalize(render::capability::Capabilities::CURRENT, &mut context)
+        });
         if !self.expected_acceptance() {
             return invalid_rejection(CLIP, result);
         }
@@ -304,34 +303,34 @@ impl ClipRecipe {
             Err(failure) => return Ok(failure),
         };
         let geometry_equal = match (&self.geometry, normalized.geometry().kind()) {
-            (ClipSource::Rect(expected), render::ClipGeometryKind::Rect(actual)) => {
+            (ClipSource::Rect(expected), render::style::clip::ClipGeometryKind::Rect(actual)) => {
                 [actual.x(), actual.y(), actual.width(), actual.height()].map(f64::to_bits)
                     == expected.map(f64::to_bits)
             }
-            (ClipSource::Path(expected), render::ClipGeometryKind::Path(actual)) => {
+            (ClipSource::Path(expected), render::style::clip::ClipGeometryKind::Path(actual)) => {
                 let elements = actual.path().elements();
-                actual.fill_rule() == render::FillRule::EvenOdd
+                actual.fill_rule() == render::shape::FillRule::EvenOdd
                     && elements.len() == expected.len() + 1
                     && expected
                         .iter()
                         .enumerate()
                         .all(|(index, point)| match elements[index] {
-                            render::PathElement::MoveTo(actual) if index == 0 => {
+                            render::shape::PathElement::MoveTo(actual) if index == 0 => {
                                 [actual.x(), actual.y()].map(f64::to_bits)
                                     == point.map(f64::to_bits)
                             }
-                            render::PathElement::LineTo(actual) if index > 0 => {
+                            render::shape::PathElement::LineTo(actual) if index > 0 => {
                                 [actual.x(), actual.y()].map(f64::to_bits)
                                     == point.map(f64::to_bits)
                             }
                             _ => false,
                         })
-                    && matches!(elements.last(), Some(render::PathElement::Close))
+                    && matches!(elements.last(), Some(render::shape::PathElement::Close))
             }
             _ => false,
         };
         let tag_equal = normalized.coordinate_space().is_some_and(|tag| {
-            tag.kind() == render::CoordinateSpaceKind::Surface
+            tag.kind() == render::geometry::CoordinateSpaceKind::Surface
                 && tag.transform().as_array().map(f64::to_bits) == self.transform.map(f64::to_bits)
         });
         if !geometry_equal || !tag_equal {
@@ -350,7 +349,8 @@ impl ClipRecipe {
         };
         let usage = report.usage();
         if let ClipSource::Path(points) = &self.geometry
-            && usage.work(render::RenderWork::PathElementVisits) != (3 * (points.len() + 1)) as u64
+            && usage.work(render::accounting::RenderWork::PathElementVisits)
+                != (3 * (points.len() + 1)) as u64
         {
             return violated(
                 CLIP,
@@ -367,8 +367,9 @@ pub(super) fn mask(image: &ImageRecipe, bounds: [f64; 4]) -> Result<CaseOutcome>
         Ok(image) => image,
         Err(failure) => return Ok(failure),
     };
-    let result = rect(bounds)
-        .and_then(|bounds| render::ResolvedLayerAlphaMask::try_new(original.clone(), bounds));
+    let result = rect(bounds).and_then(|bounds| {
+        render::scene::ResolvedLayerAlphaMask::try_new(original.clone(), bounds)
+    });
     if !rect_valid(bounds) || bounds[2] <= 0. || bounds[3] <= 0. {
         return invalid_rejection(MASK, result);
     }

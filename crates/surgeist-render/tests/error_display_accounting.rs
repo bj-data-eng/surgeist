@@ -8,8 +8,8 @@
 use core::error::Error as StdError;
 use surgeist_ledger::{Defect, Dimension};
 use surgeist_render::{
-    RenderAccountingError as E, RenderCpuScope, RenderQuantity, RenderRefusalReason,
-    RenderResource, RenderWork,
+    accounting::RenderAccountingError as E, accounting::RenderCpuScope, accounting::RenderQuantity,
+    accounting::RenderRefusalReason, accounting::RenderResource, accounting::RenderWork,
 };
 
 #[test]

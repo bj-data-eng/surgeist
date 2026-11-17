@@ -4,7 +4,7 @@
 
 use core::error::Error as StdError;
 use surgeist_paint::radial_gradient::RadialGradientCase;
-use surgeist_render::{PaintGradientError, RenderResource};
+use surgeist_render::{accounting::RenderResource, paint_gradient::PaintGradientError};
 
 #[test]
 fn the_paint_gradient_error_is_a_standard_error_without_a_cause() {

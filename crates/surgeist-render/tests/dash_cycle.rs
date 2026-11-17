@@ -3,9 +3,12 @@
 
 use std::io::Write;
 use surgeist_render::{
-    Color, Dash, EffectQualityPolicy, ErrorCode, GeometryRealizationError, Image, Layer, Options,
-    Parameters, Rect, RenderAccountingOptions, RenderAttemptStatus, RenderProfile, RenderResource,
-    RenderRoute, RenderWork, Renderer, ResolvedLayerAlphaMask, Scene, Size, Stroke,
+    ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+    accounting::RenderProfile, accounting::RenderResource, accounting::RenderWork,
+    diagnostic::GeometryRealizationError, geometry::Rect, geometry::Size, image::Image,
+    paint::Color, renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute,
+    renderer::Renderer, scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene, shape::Dash,
+    shape::Stroke, surface::Parameters,
 };
 
 fn bounds() -> Rect {
@@ -157,7 +160,7 @@ fn graph_overflowed_cycle_at_negative_offset_refuses_before_initialization() {
 }
 
 fn line_scene(graph: bool, dash: Dash) -> Scene {
-    use surgeist_render::{Path, Point, Shape};
+    use surgeist_render::{geometry::Point, shape::Path, shape::Shape};
     scene(graph, |scene| {
         scene.fill(bounds(), Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap());
         let mut path = Path::new();
@@ -220,8 +223,8 @@ fn open_dash_patterns_keep_lengths_offsets_and_solid_zero_semantics() {
 #[test]
 fn native_initializer_admission_preserves_profiles_prefix_custody_and_retry() {
     use surgeist_render::{
-        RenderAccountingError, RenderLimits, RenderPhase, RenderPhaseFilter, RenderQuantity,
-        RenderRefusalReason,
+        accounting::RenderAccountingError, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderPhaseFilter, accounting::RenderQuantity, accounting::RenderRefusalReason,
     };
     for graph in [false, true] {
         let mut expected_usage = None;

@@ -155,16 +155,16 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
         .collect::<Vec<_>>();
     assert_eq!(pieces, [text::Rect::new(40.0, 0.0, 10.0, 10.0)]);
     drop(system);
-    let paint = render::prepare_text_layout(
+    let paint = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::identity(),
-        render::TextLayoutLimits::new(
-            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+        render::geometry::Transform::identity(),
+        render::text_layout::TextLayoutLimits::new(
+            render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
             8,
             32,
             8,
         ),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));

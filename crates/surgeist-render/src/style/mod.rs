@@ -1,46 +1,22 @@
+//! Style-facing authored models.
+//!
+//! [`StyleColor`] is a concrete color accepted by the style-facing model. The submodules are
+//! [`background`], [`clip`], [`decoration`], [`filter`], [`image`] and [`mask`].
+
 use crate::{capability::SymbolicColorPolicy, paint::Color};
 
-pub(crate) mod background;
-pub(crate) mod clip;
-pub(crate) mod decoration;
-pub(crate) mod filter;
-pub(crate) mod image;
-pub(crate) mod mask;
+pub mod background;
+pub mod clip;
+pub mod decoration;
+pub mod filter;
+pub mod image;
+pub mod mask;
 
-pub use self::background::{
-    BackgroundBlendList, BackgroundBlendMode, BackgroundLayer, BackgroundNormalizationInput,
-    BackgroundStack, NormalizedBackgroundCommand, NormalizedBackgroundCommandKind,
-    NormalizedBackgroundLayer, NormalizedBackgroundLayerSource, NormalizedBackgroundStack,
-};
 pub(crate) use self::clip::validate_clip_input;
-pub use self::clip::{ClipGeometry, ClipGeometryKind, ClipInput, ClipInputKind, NormalizedClip};
-pub use self::decoration::{
-    BorderEdges, BorderSide, BorderStyle, BoxDecorationBreak, BoxDecorationFragment,
-    BoxDecorationInput, BoxSide, NormalizedBorderCommand, NormalizedBorderStyle,
-    NormalizedBoxDecoration, NormalizedBoxDecorationCommand, NormalizedBoxDecorationCommandKind,
-    NormalizedBoxRadii, NormalizedDoubleBorderBands, NormalizedOutlineCommand,
-    NormalizedOutlineStyle, Outline, OutlineStyle,
-};
 #[cfg(test)]
 pub(crate) use self::filter::ColorFilterPipeline;
 #[cfg(test)]
 pub(crate) use self::filter::filter_drop_shadow_payload_accepts_shadow_for_test;
-pub use self::filter::{
-    BackdropCaptureBounds, BackdropFilterInput, FilterAmount, FilterAngle, FilterBlur,
-    FilterDropShadow, FilterList, FilterOp, FilterOpKind, FilteredImagePaint, UnitFilterAmount,
-};
-pub use self::image::{
-    BackgroundAreas, BackgroundAttachment, BackgroundBox, BackgroundClipGeometry,
-    BackgroundClipGeometryKind, BackgroundPosition, BackgroundRepeat, BackgroundSize,
-    BackgroundSizeKind, ImageAttachmentPlan, ImagePlacementInput, ImageRepeatMode, ImageRepeatPlan,
-    ImageResourceDensity, PositionComponent, PositionComponentKind, PositionEdge,
-    PositionEdgeOffset, RepeatMode, ResolvedImagePlacement, ResolvedImageRepeat,
-    ResolvedImageResource, SizeComponent, SizeComponentKind, StyleImageLayer, StyleImageSource,
-    StyleImageSourceKind, StyleResourceRef,
-};
-pub use self::mask::{
-    MaskCompositeMode, MaskInput, MaskLayer, MaskLayerStack, MaskMode, MaskSource, MaskSourceKind,
-};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// A concrete color accepted by the current style-facing rendering model.

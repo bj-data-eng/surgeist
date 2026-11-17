@@ -14,8 +14,10 @@ use surgeist_paint::{
     radial_gradient::{RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient},
 };
 use surgeist_render::{
-    Color, ErrorCode, RenderAccountingContext, prepare_linear_gradient, prepare_radial_gradient,
-    prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    ErrorCode, accounting::RenderAccountingContext, paint::Color,
+    paint_gradient::prepare_linear_gradient, paint_gradient::prepare_radial_gradient,
+    paint_gradient::prepare_repeating_linear_gradient,
+    paint_gradient::prepare_repeating_radial_gradient,
 };
 
 fn options() -> PaintOptions {

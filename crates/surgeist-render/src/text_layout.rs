@@ -1,4 +1,11 @@
 //! Consumers of authentic immutable Text layouts and finalized leader patterns.
+//!
+//! [`prepare_text_layout`] prepares glyphs and decorations of a placed layout as a
+//! [`PreparedTextScene`] under [`TextLayoutLimits`], with [`PreparedGlyphDraw`] as an immutable draw. A
+//! refusal is a [`TextLayoutError`] with a [`TextLayoutCause`], a [`TextLayoutLocation`] and a
+//! [`TextLayoutResource`]. [`prepare_leader_pattern`] admits one finalized leader as a
+//! [`PreparedLeaderPattern`] of [`PreparedLeaderGroup`], [`PreparedLeaderRun`] and
+//! [`PreparedLeaderGlyph`] values, or a [`LeaderPatternError`] with a [`LeaderPatternCause`].
 
 mod leader;
 pub use leader::{

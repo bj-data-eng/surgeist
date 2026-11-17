@@ -2,9 +2,11 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, EffectQualityPolicy, Image, ImageBuffer, Layer, Options, Parameters, Rect,
-    RenderAccountingOptions, RenderAttemptStatus, RenderProfile, RenderRoute, RenderWork, Renderer,
-    ResolvedLayerAlphaMask, Scene, Size, Transform,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+    accounting::RenderProfile, accounting::RenderWork, geometry::Rect, geometry::Size,
+    geometry::Transform, image::Image, image::ImageBuffer, paint::Color,
+    renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute, renderer::Renderer,
+    scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene, surface::Parameters,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -236,7 +238,9 @@ fn graph_tiny_local_edges_survive_final_scale_or_refuse_atomically() {
 
 #[test]
 fn contextual_geometry_errors_preserve_their_closed_reason_and_local_indices() {
-    use surgeist_render::{Error, ErrorCode, GeometryRealizationError as Reason, Point};
+    use surgeist_render::{
+        Error, ErrorCode, diagnostic::GeometryRealizationError as Reason, geometry::Point,
+    };
     for reason in [
         Reason::UnrepresentableTransform,
         Reason::UnrepresentablePath { element_index: 7 },
@@ -258,7 +262,7 @@ fn contextual_geometry_errors_preserve_their_closed_reason_and_local_indices() {
     assert!(intrinsic.geometry_realization_diagnostic().is_none());
 }
 
-fn profiled_renderer(profile: RenderProfile) -> (Renderer, surgeist_render::Surface) {
+fn profiled_renderer(profile: RenderProfile) -> (Renderer, surgeist_render::surface::Surface) {
     let mut renderer = pollster::block_on(Renderer::new(
         Options::default()
             .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision)
@@ -273,7 +277,7 @@ fn profiled_renderer(profile: RenderProfile) -> (Renderer, surgeist_render::Surf
 
 fn render_read(
     renderer: &mut Renderer,
-    surface: &mut surgeist_render::Surface,
+    surface: &mut surgeist_render::surface::Surface,
     target: &Scene,
     graph: bool,
 ) -> ImageBuffer {
@@ -292,7 +296,7 @@ fn render_read(
 
 fn assert_contextual_refusal(
     error: &surgeist_render::Error,
-    reason: surgeist_render::GeometryRealizationError,
+    reason: surgeist_render::diagnostic::GeometryRealizationError,
 ) {
     assert_eq!(
         error.code(),
@@ -308,9 +312,10 @@ fn assert_contextual_refusal(
 #[test]
 fn concrete_transform_path_stroke_blur_and_glyph_losses_have_contextual_receiving_diagnostics() {
     use surgeist_render::{
-        FontData, FontRef, GeometryRealizationError as Reason, GlyphRunLimits, GlyphSynthesis,
-        Point, RenderAccountingContext, Shadow, Stroke, TextGlyph, TextInstance, TextPaint,
-        TextRun, TextRunBounds,
+        accounting::RenderAccountingContext, diagnostic::GeometryRealizationError as Reason,
+        geometry::Point, scene::Shadow, shape::Stroke, text::FontData, text::FontRef,
+        text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph, text::TextInstance,
+        text::TextPaint, text::TextRun, text::TextRunBounds,
     };
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
     let blue = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();
@@ -477,8 +482,8 @@ fn concrete_transform_path_stroke_blur_and_glyph_losses_have_contextual_receivin
     }
 }
 
-fn decimal_curve() -> surgeist_render::Shape {
-    use surgeist_render::{Path, Point, Shape};
+fn decimal_curve() -> surgeist_render::shape::Shape {
+    use surgeist_render::{geometry::Point, shape::Path, shape::Shape};
     let mut path = Path::new();
     path.move_to(Point::try_new(2.1, 2.1).unwrap())
         .line_to(Point::try_new(29.9, 2.1).unwrap())
@@ -497,7 +502,10 @@ fn decimal_curve() -> surgeist_render::Shape {
 
 #[test]
 fn ordinary_decimal_fill_stroke_clip_image_and_blur_receivers_keep_interior_coverage() {
-    use surgeist_render::{ImageFit, LineJoin, Path, Point, Radii, Shadow, Shape, Stroke};
+    use surgeist_render::{
+        geometry::Point, geometry::Radii, image::ImageFit, scene::Shadow, shape::LineJoin,
+        shape::Path, shape::Shape, shape::Stroke,
+    };
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
     let rounded = Shape::try_rounded_rect(
         Rect::try_new(2.1, 2.1, 27.8, 11.8).unwrap(),
@@ -588,8 +596,9 @@ fn ordinary_decimal_fill_stroke_clip_image_and_blur_receivers_keep_interior_cove
 #[test]
 fn prepared_and_native_glyph_receivers_accept_decimal_placement_and_skip_empty_glyphs() {
     use surgeist_render::{
-        FontData, FontRef, GlyphRunLimits, GlyphSynthesis, RenderAccountingContext, TextGlyph,
-        TextInstance, TextPaint, TextRun, TextRunBounds,
+        accounting::RenderAccountingContext, text::FontData, text::FontRef, text::GlyphRunLimits,
+        text::GlyphSynthesis, text::TextGlyph, text::TextInstance, text::TextPaint, text::TextRun,
+        text::TextRunBounds,
     };
     let font = FontData::try_from_bytes(
         include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec(),
@@ -687,7 +696,7 @@ fn prepared_and_native_glyph_receivers_accept_decimal_placement_and_skip_empty_g
 
 #[test]
 fn empty_point_only_singular_and_eliminated_geometry_keep_their_unused_inputs_unrequired() {
-    use surgeist_render::{Path, Point, Shape};
+    use surgeist_render::{geometry::Point, shape::Path, shape::Shape};
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
     let blue = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();
     let mut point = Path::new();
@@ -732,8 +741,8 @@ fn empty_point_only_singular_and_eliminated_geometry_keep_their_unused_inputs_un
 #[test]
 fn receiving_profiles_preserve_values_custody_and_actual_scalar_cap_refusal_with_retry() {
     use surgeist_render::{
-        RenderAccountingError, RenderLimits, RenderPhase, RenderPhaseFilter, RenderQuantity,
-        RenderRefusalReason,
+        accounting::RenderAccountingError, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderPhaseFilter, accounting::RenderQuantity, accounting::RenderRefusalReason,
     };
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
     let blue = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();

@@ -1,3 +1,12 @@
+//! Authored background stacks and their normalized render commands.
+//!
+//! [`BackgroundStack`] holds an authored color and ordered [`BackgroundLayer`] values, and
+//! [`BackgroundBlendList`] with [`BackgroundBlendMode`] holds their authored blend choices.
+//! [`BackgroundNormalizationInput`] is the context for normalization. The normalized forms are
+//! [`NormalizedBackgroundStack`], [`NormalizedBackgroundCommand`] with its
+//! [`NormalizedBackgroundCommandKind`], and [`NormalizedBackgroundLayer`] with its
+//! [`NormalizedBackgroundLayerSource`].
+
 use super::super::{Error, Result};
 use super::image::{
     BackgroundAreas, BackgroundClipGeometry, ImageAttachmentPlan, ImagePlacementInput,

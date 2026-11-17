@@ -10,8 +10,13 @@ filter graphs belong to the caller.
 
 ```rust
 use surgeist_render::{
-    Color, FilterColorSpace, FilterDomains, GaussianInput, GaussianSource, Layer,
-    Rect, RenderAccountingContext, Result, Scene, prepare_gaussian,
+    Result,
+    accounting::RenderAccountingContext,
+    effect::{FilterColorSpace, FilterDomains},
+    gaussian::{GaussianInput, GaussianSource, prepare_gaussian},
+    geometry::Rect,
+    paint::Color,
+    scene::{Layer, Scene},
 };
 
 fn blurred_scene(accounting: &mut RenderAccountingContext) -> Result<Scene> {

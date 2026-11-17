@@ -2,8 +2,8 @@
 #![cfg(feature = "render-text")]
 
 use surgeist_render::{
-    Error, ErrorCode, LeaderPatternCause, LeaderPatternError, TextLayoutCause, TextLayoutError,
-    TextLayoutLocation,
+    Error, ErrorCode, text_layout::LeaderPatternCause, text_layout::LeaderPatternError,
+    text_layout::TextLayoutCause, text_layout::TextLayoutError, text_layout::TextLayoutLocation,
 };
 
 fn text_error() -> surgeist_text::Error {

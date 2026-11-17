@@ -317,9 +317,9 @@ fn capture(
     (batch, origin)
 }
 
-fn limits() -> render::TextLayoutLimits {
-    render::TextLayoutLimits::new(
-        render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+fn limits() -> render::text_layout::TextLayoutLimits {
+    render::text_layout::TextLayoutLimits::new(
+        render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
         8,
         32,
         8,
@@ -361,10 +361,14 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
     let bytes = visible_separator_font();
     // One small real GPU surface is reused across all three native bases.
     // There is no skip or CPU substitute when a compatible adapter is absent.
-    let mut renderer = block_on(render::Renderer::new(render::Options::default())).unwrap();
-    let mut surface =
-        block_on(renderer.create_headless(render::Size::try_new(40.0, 40.0).unwrap(), 1.0))
-            .unwrap();
+    let mut renderer = block_on(render::renderer::Renderer::new(
+        render::renderer::Options::default(),
+    ))
+    .unwrap();
+    let mut surface = block_on(
+        renderer.create_headless(render::geometry::Size::try_new(40.0, 40.0).unwrap(), 1.0),
+    )
+    .unwrap();
     for frame in [
         AdapterFrame::Horizontal,
         AdapterFrame::Clockwise,
@@ -465,15 +469,19 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
             }
         }
         assert_eq!(index, 3);
-        let paint = render::prepare_text_layout(
+        let paint = render::text_layout::prepare_text_layout(
             placed,
-            render::Transform::identity(),
+            render::geometry::Transform::identity(),
             limits(),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
-        block_on(renderer.render(&mut surface, paint.scene(), render::Parameters::default()))
-            .unwrap();
+        block_on(renderer.render(
+            &mut surface,
+            paint.scene(),
+            render::surface::Parameters::default(),
+        ))
+        .unwrap();
         let pixels = block_on(renderer.read_headless(&surface)).unwrap();
         assert_eq!((pixels.size().width(), pixels.size().height()), (40, 40));
         // A/separator/A draw three actual 10px squares. Half of authored4 +
@@ -522,11 +530,11 @@ fn native_inter_word_accessibility_keeps_nbsp_source_and_allocated_character_geo
     let bytes = visible_separator_font();
     let (batch, _) = capture(&bytes, AdapterFrame::Horizontal);
     let placed = batch.placed_text()[0].layout();
-    let paint = render::prepare_text_layout(
+    let paint = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::identity(),
+        render::geometry::Transform::identity(),
         limits(),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     let mut accessibility = text::Accessibility::new(20);

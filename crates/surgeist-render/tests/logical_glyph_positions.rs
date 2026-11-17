@@ -1,5 +1,8 @@
 //! Functional qualification of logical f64 glyph placement at the real outline boundary.
-use surgeist_render::{FontData, GlyphRunLimits, GlyphSynthesis, Rect, TextGlyph, TextInstance};
+use surgeist_render::{
+    geometry::Rect, text::FontData, text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph,
+    text::TextInstance,
+};
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 
@@ -21,7 +24,7 @@ fn logical_glyph_position_is_retained_until_actual_path_point_conversion() {
             &instance,
             &[glyph],
             GlyphRunLimits::new(1, 5, 1 << 20, 1 << 20),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(prepared.glyphs(), [glyph]);

@@ -2,8 +2,10 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, EffectQualityPolicy, Gradient, GradientStop, Image, ImageBuffer, Layer, Options,
-    Parameters, Point, Rect, RenderRoute, Renderer, ResolvedLayerAlphaMask, Scene, Size, Surface,
+    geometry::Point, geometry::Rect, geometry::Size, image::Image, image::ImageBuffer,
+    paint::Color, paint::Gradient, paint::GradientStop, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::RenderRoute, renderer::Renderer, scene::Layer,
+    scene::ResolvedLayerAlphaMask, scene::Scene, surface::Parameters, surface::Surface,
 };
 
 fn point(x: f64, y: f64) -> Point {

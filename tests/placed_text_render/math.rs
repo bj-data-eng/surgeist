@@ -450,7 +450,7 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                 .flat_map(|run| {
                     run.glyphs()
                         .map(|glyph| {
-                            render::TextGlyph::try_new(
+                            render::text::TextGlyph::try_new(
                                 glyph.id(),
                                 glyph.pen() + f64::from(glyph.x()),
                                 f64::from(glyph.y()),
@@ -461,34 +461,37 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            let font = render::FontData::try_from_bytes(
+            let font = render::text::FontData::try_from_bytes(
                 bytes.clone(),
                 0,
                 surgeist_test::fixtures::FONT_LIMITS,
             )
             .unwrap();
-            let instance =
-                render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none())
-                    .unwrap();
+            let instance = render::text::TextInstance::try_new(
+                10.0,
+                vec![],
+                render::text::GlyphSynthesis::none(),
+            )
+            .unwrap();
             let retained = font
                 .prepare_glyph_run(
                     &instance,
                     &actual,
-                    render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
-                    &mut surgeist_render::RenderAccountingContext::default(),
+                    render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                    &mut surgeist_render::accounting::RenderAccountingContext::default(),
                 )
                 .unwrap();
             assert_eq!(retained.bounds().ink_rect().unwrap().width(), 10.0);
-            let paint = render::prepare_text_layout(
+            let paint = render::text_layout::prepare_text_layout(
                 placed,
-                render::Transform::identity(),
-                render::TextLayoutLimits::new(
-                    render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                render::geometry::Transform::identity(),
+                render::text_layout::TextLayoutLimits::new(
+                    render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
                     8,
                     32,
                     8,
                 ),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(paint.layout(), placed));

@@ -2,11 +2,13 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, EffectQualityPolicy, FontData, FontRef, GlyphRunLimits, GlyphSynthesis, Image,
-    ImageBuffer, Layer, Options, Parameters, Rect, RenderAccountingContext,
-    RenderAccountingOptions, RenderAttemptStatus, RenderProfile, RenderRoute, RenderWork, Renderer,
-    ResolvedLayerAlphaMask, Scene, Size, TextGlyph, TextInstance, TextPaint, TextRun,
-    TextRunBounds, Transform,
+    accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderProfile, accounting::RenderWork,
+    geometry::Rect, geometry::Size, geometry::Transform, image::Image, image::ImageBuffer,
+    paint::Color, renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute,
+    renderer::Renderer, scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene,
+    surface::Parameters, text::FontData, text::FontRef, text::GlyphRunLimits, text::GlyphSynthesis,
+    text::TextGlyph, text::TextInstance, text::TextPaint, text::TextRun, text::TextRunBounds,
 };
 
 fn bounds() -> Rect {
@@ -251,7 +253,9 @@ fn tiny_nonempty_native_glyph_has_typed_atomic_refusal_on_both_routes() {
         assert_eq!(
             error.geometry_realization_diagnostic(),
             Some(
-                &surgeist_render::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 0 }
+                &surgeist_render::diagnostic::GeometryRealizationError::UnrepresentableGlyph {
+                    glyph_index: 0
+                }
             )
         );
         assert!(error.invalid_value_diagnostic().is_none());

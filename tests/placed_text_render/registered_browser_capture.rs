@@ -64,16 +64,16 @@ fn main() {
 fn verify_render(placed: &surgeist_text::Layout) {
     let units: Vec<_> = "\n  basis  definite\n".encode_utf16().collect();
     assert_eq!(placed.source().text().code_units(), units);
-    let prepared = render::prepare_text_layout(
+    let prepared = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::translation(7.0, 9.0).unwrap(),
-        render::TextLayoutLimits::new(
-            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+        render::geometry::Transform::translation(7.0, 9.0).unwrap(),
+        render::text_layout::TextLayoutLimits::new(
+            render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
             8,
             32,
             0,
         ),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(prepared.layout(), placed));
@@ -89,7 +89,7 @@ fn verify_render(placed: &surgeist_text::Layout) {
     ];
     let top = f64::from(-12.8_f32);
     let bottom = f64::from(3.2_f32);
-    let color = render::Color::try_rgba(0.0, 128.0 / 255.0, 0.0, 1.0).unwrap();
+    let color = render::paint::Color::try_rgba(0.0, 128.0 / 255.0, 0.0, 1.0).unwrap();
     let mut draws = prepared.glyph_draws();
     let mut source_runs = placed
         .run_views()
@@ -107,23 +107,26 @@ fn verify_render(placed: &surgeist_text::Layout) {
         assert_eq!(face.index(), 0);
         assert_eq!(run.instance().size(), 16.0);
         assert!(run.instance().coordinates().is_empty());
-        assert_eq!(run.instance().synthesis(), render::GlyphSynthesis::none());
+        assert_eq!(
+            run.instance().synthesis(),
+            render::text::GlyphSynthesis::none()
+        );
         let glyphs: Vec<_> = ids
             .iter()
             .zip(0_u32..)
             .map(|(&id, column)| {
-                render::TextGlyph::try_new(id, f64::from(column) * 16.0, 0.0, 16.0).unwrap()
+                render::text::TextGlyph::try_new(id, f64::from(column) * 16.0, 0.0, 16.0).unwrap()
             })
             .collect();
         assert_eq!(run.glyphs(), glyphs);
         assert_eq!(
             draw.transform(),
-            render::Transform::translation(7.0, baseline).unwrap()
+            render::geometry::Transform::translation(7.0, baseline).unwrap()
         );
         assert_eq!(draw.paint().fill(), &color.into());
         assert_eq!(
             run.bounds().ink_rect(),
-            Some(render::Rect::try_new(0.0, top, ink_width, bottom - top).unwrap())
+            Some(render::geometry::Rect::try_new(0.0, top, ink_width, bottom - top).unwrap())
         );
     }
     assert!(draws.next().is_none());

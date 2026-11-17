@@ -275,16 +275,16 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         );
     }
     drop(system);
-    let paint = render::prepare_text_layout(
+    let paint = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::identity(),
-        render::TextLayoutLimits::new(
-            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+        render::geometry::Transform::identity(),
+        render::text_layout::TextLayoutLimits::new(
+            render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
             8,
             32,
             8,
         ),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));
@@ -561,16 +561,16 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         text::Point::new(f64::from(indent), 0.0)
     );
     drop(system);
-    let paint = render::prepare_text_layout(
+    let paint = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::identity(),
-        render::TextLayoutLimits::new(
-            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+        render::geometry::Transform::identity(),
+        render::text_layout::TextLayoutLimits::new(
+            render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
             8,
             32,
             8,
         ),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));
@@ -955,16 +955,16 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
     assert_eq!(caret.origin, text::Point::new(caret_x, 10.0));
     assert_eq!(caret.size.height, 10.0);
     drop(system);
-    let paint = render::prepare_text_layout(
+    let paint = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::identity(),
-        render::TextLayoutLimits::new(
-            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+        render::geometry::Transform::identity(),
+        render::text_layout::TextLayoutLimits::new(
+            render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
             8,
             32,
             8,
         ),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(!paint.scene().is_empty());
@@ -1372,16 +1372,16 @@ mod kana_transform {
             }
             let misses = system.stats().layout_misses();
             drop(system);
-            let paint = render::prepare_text_layout(
+            let paint = render::text_layout::prepare_text_layout(
                 placed,
-                render::Transform::identity(),
-                render::TextLayoutLimits::new(
-                    render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                render::geometry::Transform::identity(),
+                render::text_layout::TextLayoutLimits::new(
+                    render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
                     8,
                     32,
                     8,
                 ),
-                &mut surgeist_render::RenderAccountingContext::default(),
+                &mut surgeist_render::accounting::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(paint.layout(), placed));

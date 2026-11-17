@@ -749,7 +749,7 @@ an allocation.
 These numerical limits are caller choices, not product defaults. A render
 consumer can use `srgb.channels()` and `alpha()` without serialization. Render
 still owns missing-channel handling, clipping, f64→f32 lowering and its checked
-`surgeist_render::Color::try_rgba`; its existing representation is unchanged.
+`surgeist_render::paint::Color::try_rgba`; its existing representation is unchanged.
 Animation remains unchanged unless a concrete numerical consumer is separately
 authorized. Neither crate becomes a mandatory path through the facade.
 

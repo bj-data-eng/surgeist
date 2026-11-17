@@ -12,9 +12,11 @@ use surgeist_paint::radial_gradient::{
     RadialGradientCase, RadialGradientGeometry, RadialGradientSize, resolve_radial_gradient,
 };
 use surgeist_render::{
-    Color, EffectQualityPolicy, Image, ImageBuffer, Layer, Options, Paint, Parameters, Rect,
-    RenderAccountingContext, RenderRoute, Renderer, ResolvedLayerAlphaMask, Scene, Size, Surface,
-    prepare_radial_gradient, prepare_repeating_radial_gradient,
+    accounting::RenderAccountingContext, geometry::Rect, geometry::Size, image::Image,
+    image::ImageBuffer, paint::Color, paint::Paint, paint_gradient::prepare_radial_gradient,
+    paint_gradient::prepare_repeating_radial_gradient, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::RenderRoute, renderer::Renderer, scene::Layer,
+    scene::ResolvedLayerAlphaMask, scene::Scene, surface::Parameters, surface::Surface,
 };
 
 fn options() -> PaintOptions {
@@ -346,8 +348,10 @@ fn authentic_basis_zero_omissions_percentages_two_positions_and_hints_keep_their
 #[test]
 fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_real_caps() {
     use surgeist_render::{
-        PaintGradientError, RenderAccountingOptions, RenderAttemptStatus, RenderClock,
-        RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderResource, RenderWork,
+        accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+        accounting::RenderClock, accounting::RenderLimits, accounting::RenderPhase,
+        accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderResource,
+        accounting::RenderWork, paint_gradient::PaintGradientError,
     };
     let r = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
     let b = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();
@@ -581,8 +585,9 @@ fn forbidden_adapter_clock() -> std::time::Duration {
 #[test]
 fn authentic_owned_distance_fields_survive_transformed_fill_stroke_and_both_glyph_routes() {
     use surgeist_render::{
-        FontData, FontRef, GlyphRunLimits, GlyphSynthesis, Shape, Stroke, TextGlyph, TextInstance,
-        TextPaint, TextRun, TextRunBounds, Transform,
+        geometry::Transform, shape::Shape, shape::Stroke, text::FontData, text::FontRef,
+        text::GlyphRunLimits, text::GlyphSynthesis, text::TextGlyph, text::TextInstance,
+        text::TextPaint, text::TextRun, text::TextRunBounds,
     };
     let r = Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap();
     let b = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();

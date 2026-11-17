@@ -208,24 +208,24 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     );
     let stats = system.stats();
     let limits = |runs| {
-        render::TextLayoutLimits::new(
-            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+        render::text_layout::TextLayoutLimits::new(
+            render::text::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
             runs,
             32,
             8,
         )
     };
-    let refusal = render::prepare_text_layout(
+    let refusal = render::text_layout::prepare_text_layout(
         placed,
-        render::Transform::identity(),
+        render::geometry::Transform::identity(),
         limits(1),
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .unwrap_err();
     assert!(matches!(
         refusal.text_layout_diagnostic(),
-        Some(render::TextLayoutError::Limit {
-            resource: render::TextLayoutResource::Runs,
+        Some(render::text_layout::TextLayoutError::Limit {
+            resource: render::text_layout::TextLayoutResource::Runs,
             required: 2,
             limit: 1
         })
@@ -236,14 +236,14 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     // The owning Render tests qualify actual CW outlines and noncommuting
     // transforms. Here the producer is the authentic native Layout batch.
     for placement in [
-        render::Transform::identity(),
-        render::Transform::translation(7.0, 9.0).unwrap(),
+        render::geometry::Transform::identity(),
+        render::geometry::Transform::translation(7.0, 9.0).unwrap(),
     ] {
-        let paint = render::prepare_text_layout(
+        let paint = render::text_layout::prepare_text_layout(
             placed,
             placement,
             limits(8),
-            &mut surgeist_render::RenderAccountingContext::default(),
+            &mut surgeist_render::accounting::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(paint.layout(), placed));

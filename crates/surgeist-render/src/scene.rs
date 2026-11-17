@@ -1,3 +1,13 @@
+//! Authored scenes and layers.
+//!
+//! [`Scene`] is an ordered tree of renderer-facing draw commands, and [`SceneSummary`] reports its
+//! structural facts. A [`Layer`] groups a nested scene and can carry a clip, a mask, a [`Filter`], a
+//! backdrop filter and a [`LayerComposition`], which pairs a [`BlendMode`] with a
+//! [`PorterDuffOperator`]; PlusLighter is a complete operation. Resolved masks are [`ResolvedMaskLayer`] values over a
+//! [`ResolvedMaskSource`], with [`ResolvedLayerAlphaMask`], [`ResolvedLayerLuminanceMask`] and
+//! [`MaskLuminanceSpace`]. [`Shadow`] and [`ShadowList`] describe authored shadows, placed by
+//! [`ShadowKind`].
+
 use super::command::{RenderCommands, normalize_commands};
 use crate::{
     Result, accounting::RenderAccountingContext, accounting::RenderAttemptKind,
@@ -5,18 +15,22 @@ use crate::{
     displacement::DisplacementSource, displacement::PreparedDisplacement,
     displacement::PreparedDisplacementMap, gaussian::GaussianPreparationError,
     gaussian::GaussianSource, gaussian::PreparedGaussian, geometry::Rect, geometry::Transform,
-    image::Image, image::ImageFit, layer::Layer, layer::LayerComposition,
-    layer::PorterDuffOperator, layer::ResolvedMaskLayer, layer::ResolvedMaskSource, layer::Shadow,
-    layer::ShadowList, morphology::MorphologyPreparationError, morphology::MorphologySource,
-    morphology::PreparedMorphology, native_shadow::DropShadowPreparationError,
-    native_shadow::DropShadowSource, native_shadow::PreparedDropShadow, paint::Paint, shape::Path,
-    shape::Shape, shape::Stroke, style::mask::MaskCompositeMode, text::FontRef,
-    text::PreparedGlyphRun, text::TextDecorationLine, text::TextGlyph, text::TextPaint,
-    text::TextRun, text::TextRunBounds, text::TextShadowRun,
+    image::Image, image::ImageFit, morphology::MorphologyPreparationError,
+    morphology::MorphologySource, morphology::PreparedMorphology,
+    native_shadow::DropShadowPreparationError, native_shadow::DropShadowSource,
+    native_shadow::PreparedDropShadow, paint::Paint, shape::Path, shape::Shape, shape::Stroke,
+    style::mask::MaskCompositeMode, text::FontRef, text::PreparedGlyphRun,
+    text::TextDecorationLine, text::TextGlyph, text::TextPaint, text::TextRun, text::TextRunBounds,
+    text::TextShadowRun,
 };
 use std::{mem, ops::Deref};
 mod inspect;
 mod value;
+pub use crate::layer::{
+    BlendMode, Filter, Layer, LayerComposition, MaskLuminanceSpace, PorterDuffOperator,
+    ResolvedLayerAlphaMask, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
+    Shadow, ShadowKind, ShadowList,
+};
 pub use inspect::SceneSummary;
 
 /// An authored, ordered tree of renderer-facing draw commands.

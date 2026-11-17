@@ -7,10 +7,11 @@ validation, GPU execution, surface resources, explicit headless readback, and
 render diagnostics. Style interpretation, layout, text shaping, and application
 and window lifecycle belong outside this rendering boundary.
 
-The [current public API](../src/lib.rs) also exports style-facing authored values
+The [current public API](../src/lib.rs) also exposes style-facing authored values
 and normalization inputs for backgrounds, decorations, image placement, masks,
-clips, and filters. Those are existing contracts, not a claim that their
-long-term authored-model ownership has been settled. The separately deferred
+clips, and filters through the `style` module and its submodules. Those are
+existing contracts, not a claim that their long-term authored-model ownership
+has been settled. The separately deferred
 cross-crate ownership question does not change their current availability.
 
 The root `surgeist` repository owns the public composition facade,

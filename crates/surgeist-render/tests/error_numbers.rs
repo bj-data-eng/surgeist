@@ -7,10 +7,12 @@
 //! the smallest subnormal is `5e-324`. A magnitude from 1e-5 up to but excluding 1e16 stays plain.
 
 use surgeist_render::{
-    ConvolutionParameter, ConvolutionPreparationError, DisplacementParameter,
-    DisplacementPreparationError, DropShadowPreparationError, GaussianParameter,
-    GaussianPreparationError, GlyphPreparationError, MorphologyParameter,
-    MorphologyPreparationError, OffsetParameter, OffsetPreparationError, Size,
+    convolution::ConvolutionParameter, convolution::ConvolutionPreparationError,
+    displacement::DisplacementParameter, displacement::DisplacementPreparationError,
+    gaussian::GaussianParameter, gaussian::GaussianPreparationError, geometry::Size,
+    morphology::MorphologyParameter, morphology::MorphologyPreparationError,
+    native_shadow::DropShadowPreparationError, offset::OffsetParameter,
+    offset::OffsetPreparationError, text::GlyphPreparationError,
 };
 
 const EXTREMES: [(f64, &str); 5] = [
@@ -135,7 +137,7 @@ fn a_single_precision_coordinate_prints_through_the_number_form() {
 #[cfg(feature = "render-paint")]
 #[test]
 fn a_gradient_basis_prints_through_the_number_form() {
-    use surgeist_render::PaintGradientError;
+    use surgeist_render::paint_gradient::PaintGradientError;
     assert_eq!(
         PaintGradientError::BasisMismatch {
             expected: f64::MAX,

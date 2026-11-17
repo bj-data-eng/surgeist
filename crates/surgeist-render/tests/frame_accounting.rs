@@ -7,7 +7,15 @@ use std::{
     },
     time::Duration,
 };
-use surgeist_render::*;
+use surgeist_render::{
+    accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderClock, accounting::RenderEvent,
+    accounting::RenderGenerationScope, accounting::RenderLimits, accounting::RenderPhase,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderResource,
+    accounting::RenderWork, geometry::Rect, geometry::Size, image::Image, image::ImageFit,
+    paint::Color, renderer::Options, renderer::RenderRoute, renderer::Renderer, scene::Scene,
+    surface::Parameters,
+};
 
 fn solid_scene() -> Scene {
     let mut scene = Scene::new();

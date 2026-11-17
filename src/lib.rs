@@ -125,7 +125,7 @@ mod tests {
         )
         .unwrap();
         let face = resource.face(0).unwrap();
-        let render_font = super::render::FontData::from_face(face.clone());
+        let render_font = super::render::text::FontData::from_face(face.clone());
         assert_eq!(render_font.admitted_face(), &face);
         assert_eq!(
             render_font.admitted_face().resource().source().bytes(),

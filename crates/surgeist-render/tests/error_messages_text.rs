@@ -14,8 +14,8 @@
 
 use core::error::Error as _;
 use surgeist_render::{
-    Error, ErrorCode, GlyphPreparationError, GlyphRunLimits, TextLayoutLimits, Transform,
-    prepare_text_layout,
+    Error, ErrorCode, geometry::Transform, text::GlyphPreparationError, text::GlyphRunLimits,
+    text_layout::TextLayoutLimits, text_layout::prepare_text_layout,
 };
 use surgeist_text as text;
 
@@ -64,7 +64,7 @@ fn refuse(limits: TextLayoutLimits) -> Error {
         &layout,
         Transform::identity(),
         limits,
-        &mut surgeist_render::RenderAccountingContext::default(),
+        &mut surgeist_render::accounting::RenderAccountingContext::default(),
     )
     .map(|_| ())
     .unwrap_err()

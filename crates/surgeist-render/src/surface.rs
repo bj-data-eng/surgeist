@@ -1,3 +1,11 @@
+//! Surfaces and their lifecycle.
+//!
+//! [`Surface`] holds runtime surface identity, lifecycle and complete-publication state, observed
+//! through [`SurfaceState`] and [`SurfaceResourceState`]. [`SurfaceOptions`] configures creation, with
+//! [`Format`] and [`PresentMode`] as choices, and [`Attachment`] is the host attachment requested for a
+//! surface. [`Parameters`] are the per-frame render parameters and [`WebCanvas`] is the browser-host
+//! canvas attachment boundary.
+
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")

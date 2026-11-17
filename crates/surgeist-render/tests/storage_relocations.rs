@@ -1,5 +1,14 @@
 use std::time::Duration;
-use surgeist_render::*;
+#[cfg(not(target_arch = "wasm32"))]
+use surgeist_render::renderer::{Options, Renderer};
+use surgeist_render::{
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAttemptStatus, accounting::RenderClock,
+    accounting::RenderLimits, accounting::RenderPhase, accounting::RenderPhaseFilter,
+    accounting::RenderProfile, accounting::RenderQuantity, accounting::RenderRefusalReason,
+    accounting::RenderResource, accounting::RenderWork, text::FontData, text::GlyphRunLimits,
+    text::GlyphSynthesis, text::TextGlyph, text::TextInstance,
+};
 
 const FONT: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 

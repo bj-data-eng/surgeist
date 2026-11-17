@@ -1,4 +1,8 @@
 //! Centrally admitted resolved convolution parameters. Production pixels remain GPU-owned.
+//!
+//! [`prepare_convolution`] admits a [`ConvolutionInput`] as a [`PreparedConvolution`]. A refused
+//! preparation returns an [`Error`] that can carry a [`ConvolutionPreparationError`],
+//! which names a [`ConvolutionParameter`] or a [`ConvolutionNumericPhase`].
 use crate::accounting::{
     Account, AccountedVec, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
     SharedValue,

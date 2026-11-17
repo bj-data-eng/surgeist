@@ -7,10 +7,12 @@
 
 use core::error::Error as StdError;
 use surgeist_render::{
-    ConvolutionNumericPhase, ConvolutionPreparationError, DisplacementPreparationError,
-    DropShadowPreparationError, Error, ErrorCode, GaussianPreparationError,
-    GeometryRealizationError, GlyphPreparationError, GradientHintError, GradientRealizationError,
-    MorphologyPreparationError, OffsetParameter, OffsetPreparationError,
+    Error, ErrorCode, convolution::ConvolutionNumericPhase,
+    convolution::ConvolutionPreparationError, diagnostic::GeometryRealizationError,
+    displacement::DisplacementPreparationError, gaussian::GaussianPreparationError,
+    morphology::MorphologyPreparationError, native_shadow::DropShadowPreparationError,
+    offset::OffsetParameter, offset::OffsetPreparationError, paint::GradientHintError,
+    paint::GradientRealizationError, text::GlyphPreparationError,
 };
 
 #[track_caller]

@@ -3,9 +3,11 @@
 use std::fmt::{self, Write};
 #[cfg(not(target_family = "wasm"))]
 use std::sync::Arc;
-use surgeist_render::{Color, Layer, Rect, Scene};
 #[cfg(not(target_family = "wasm"))]
-use surgeist_render::{Image, ImageFit, RenderAccountingContext, Size};
+use surgeist_render::{
+    accounting::RenderAccountingContext, geometry::Size, image::Image, image::ImageFit,
+};
+use surgeist_render::{geometry::Rect, paint::Color, scene::Layer, scene::Scene};
 
 fn rect(x: f64) -> Rect {
     Rect::try_new(x, 0.0, 1.0, 1.0).unwrap()
@@ -145,7 +147,7 @@ fn equality_distinguishes_order_and_layer_boundaries() {
 fn ordinary_debug_preserves_derived_structure_and_writer_errors() {
     // Use Rust's derived formatting of a small independent authored tree.
     mod expected {
-        use surgeist_render::{Layer, Paint, Shape};
+        use surgeist_render::{paint::Paint, scene::Layer, shape::Shape};
 
         #[derive(Debug)]
         #[allow(dead_code)]

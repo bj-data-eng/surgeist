@@ -1,4 +1,11 @@
 //! Native straight-byte displacement admission and authentic first-input ownership.
+//!
+//! [`prepare_displacement`] admits a [`DisplacementInput`] as a [`PreparedDisplacement`], and
+//! [`prepare_native_displacement_map`] admits a native-authored map as a
+//! [`PreparedDisplacementMap`]. [`DisplacementSource`] is the first input and [`DisplacementChannel`]
+//! selects a map channel. A refused preparation returns an [`Error`](crate::Error) that can carry a
+//! [`DisplacementPreparationError`], which can name a [`DisplacementParameter`] or a
+//! [`DisplacementNumericPhase`].
 use crate::accounting::{
     Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
 };

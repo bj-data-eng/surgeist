@@ -12,10 +12,12 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, EffectQualityPolicy, Error, ErrorCode, FontData, FontRef, GeometryRealizationError,
-    GlyphRunLimits, GlyphSynthesis, Gradient, GradientRealizationError, Options, Parameters, Point,
-    Rect, RenderAccountingContext, Renderer, Scene, Shadow, Size, Stroke, TextGlyph, TextInstance,
-    TextPaint, TextRun, TextRunBounds, Transform,
+    Error, ErrorCode, accounting::RenderAccountingContext, diagnostic::GeometryRealizationError,
+    geometry::Point, geometry::Rect, geometry::Size, geometry::Transform, paint::Color,
+    paint::Gradient, paint::GradientRealizationError, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::Renderer, scene::Scene, scene::Shadow, shape::Stroke,
+    surface::Parameters, text::FontData, text::FontRef, text::GlyphRunLimits, text::GlyphSynthesis,
+    text::TextGlyph, text::TextInstance, text::TextPaint, text::TextRun, text::TextRunBounds,
 };
 
 fn red() -> Color {
@@ -177,10 +179,12 @@ fn a_glyph_placement_below_native_precision_names_its_input_index() {
     );
 }
 
-fn stops(values: &[(f64, Color)]) -> Vec<surgeist_render::GradientStop> {
+fn stops(values: &[(f64, Color)]) -> Vec<surgeist_render::paint::GradientStop> {
     values
         .iter()
-        .map(|&(position, color)| surgeist_render::GradientStop::try_new(position, color).unwrap())
+        .map(|&(position, color)| {
+            surgeist_render::paint::GradientStop::try_new(position, color).unwrap()
+        })
         .collect()
 }
 

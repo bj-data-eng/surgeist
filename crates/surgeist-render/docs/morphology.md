@@ -10,9 +10,13 @@ resolution, named filter graphs and document adapters.
 
 ```rust
 use surgeist_render::{
-    Color, FilterColorSpace, FilterDomains, Layer, MorphologyInput,
-    MorphologyOperator, MorphologySource, Rect, RenderAccountingContext, Result,
-    Scene, prepare_morphology,
+    Result,
+    accounting::RenderAccountingContext,
+    effect::{FilterColorSpace, FilterDomains},
+    geometry::Rect,
+    morphology::{MorphologyInput, MorphologyOperator, MorphologySource, prepare_morphology},
+    paint::Color,
+    scene::{Layer, Scene},
 };
 
 fn dilated_scene(accounting: &mut RenderAccountingContext) -> Result<Scene> {

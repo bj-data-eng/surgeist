@@ -2,8 +2,10 @@
 #![cfg(not(target_family = "wasm"))]
 
 use surgeist_render::{
-    Color, ErrorCode, Image, Layer, Options, Parameters, Rect, RenderAttemptStatus, RenderCpuScope,
-    RenderPhase, RenderResource, RenderWork, Renderer, Scene, Size,
+    ErrorCode, accounting::RenderAttemptStatus, accounting::RenderCpuScope,
+    accounting::RenderPhase, accounting::RenderResource, accounting::RenderWork, geometry::Rect,
+    geometry::Size, image::Image, paint::Color, renderer::Options, renderer::Renderer,
+    scene::Layer, scene::Scene, surface::Parameters,
 };
 
 #[test]

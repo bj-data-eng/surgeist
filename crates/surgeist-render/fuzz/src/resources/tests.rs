@@ -1,8 +1,8 @@
 use super::*;
 use surgeist_fuzz::OutcomeKind;
 use surgeist_render::{
-    FontData, GlyphSynthesis, PathElement, Rect, RenderAccountingContext, TextGlyph, TextInstance,
-    TextRunBoundsKind,
+    accounting::RenderAccountingContext, geometry::Rect, shape::PathElement, text::FontData,
+    text::GlyphSynthesis, text::TextGlyph, text::TextInstance, text::TextRunBoundsKind,
 };
 
 #[test]
@@ -20,7 +20,7 @@ fn exact_ahem_x_has_literal_reflected_rectangle_and_preserves_negative_advance()
         .prepare_glyph_run(
             &instance,
             &glyphs,
-            surgeist_render::GlyphRunLimits::new(16, 1024, 1 << 20, 1 << 20),
+            surgeist_render::text::GlyphRunLimits::new(16, 1024, 1 << 20, 1 << 20),
             &mut RenderAccountingContext::default(),
         )
         .unwrap();
@@ -68,7 +68,7 @@ fn exact_ahem_space_is_empty_and_skew_precedes_y_reflection_and_placement() {
             .prepare_glyph_run(
                 &instance,
                 &glyphs,
-                surgeist_render::GlyphRunLimits::new(16, 1024, 1 << 20, 1 << 20),
+                surgeist_render::text::GlyphRunLimits::new(16, 1024, 1 << 20, 1 << 20),
                 &mut RenderAccountingContext::default(),
             )
             .unwrap();
@@ -350,7 +350,10 @@ fn captured_refused_and_raised_limits_drive_replay_without_recalculation() {
 
 #[test]
 fn real_typed_public_errors_become_declared_stable_property_failures() {
-    use surgeist_render::{Image, Point, RenderLimits, RenderWork, Size};
+    use surgeist_render::{
+        accounting::RenderLimits, accounting::RenderWork, geometry::Point, geometry::Size,
+        image::Image,
+    };
     // Exercise the classifier with actual caller-invalid public requests. These
     // are controls for error classification, not injected producer regressions.
     fn check<T, E: std::fmt::Display>(

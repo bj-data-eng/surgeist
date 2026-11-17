@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Attachment, Color, EffectQualityPolicy, Image, Layer, Options, Parameters, Rect, RenderRoute,
-    RenderSurfaceAvailability, Renderer, ResolvedLayerAlphaMask,
-    RuntimeCapabilityUnavailableReason, Scene, Size, Surface, SurfaceOptions,
+    diagnostic::RenderSurfaceAvailability, diagnostic::RuntimeCapabilityUnavailableReason,
+    geometry::Rect, geometry::Size, image::Image, paint::Color, renderer::EffectQualityPolicy,
+    renderer::Options, renderer::RenderRoute, renderer::Renderer, scene::Layer,
+    scene::ResolvedLayerAlphaMask, scene::Scene, surface::Attachment, surface::Parameters,
+    surface::Surface, surface::SurfaceOptions,
 };
 use surgeist_window::{
     Handler, Result,
@@ -113,7 +115,7 @@ fn render_presented(
     smoke: &mut PresentedRouteSmoke,
     frame: &mut Frame<'_>,
     scene: &Scene,
-) -> Result<Option<surgeist_render::Stats>> {
+) -> Result<Option<surgeist_render::renderer::Stats>> {
     let PresentedRouteSmoke {
         renderer: Some(renderer),
         surface: Some(surface),

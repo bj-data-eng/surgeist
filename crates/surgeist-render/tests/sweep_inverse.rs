@@ -2,10 +2,12 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    Color, EffectQualityPolicy, ErrorCode, Gradient, GradientRealizationError, GradientStop, Image,
-    ImageBuffer, Layer, Options, Parameters, Point, Rect, RenderAccountingOptions,
-    RenderAttemptStatus, RenderProfile, RenderResource, RenderRoute, RenderWork, Renderer,
-    ResolvedLayerAlphaMask, Scene, Size, Transform,
+    ErrorCode, accounting::RenderAccountingOptions, accounting::RenderAttemptStatus,
+    accounting::RenderProfile, accounting::RenderResource, accounting::RenderWork, geometry::Point,
+    geometry::Rect, geometry::Size, geometry::Transform, image::Image, image::ImageBuffer,
+    paint::Color, paint::Gradient, paint::GradientRealizationError, paint::GradientStop,
+    renderer::EffectQualityPolicy, renderer::Options, renderer::RenderRoute, renderer::Renderer,
+    scene::Layer, scene::ResolvedLayerAlphaMask, scene::Scene, surface::Parameters,
 };
 
 fn bounds() -> Rect {

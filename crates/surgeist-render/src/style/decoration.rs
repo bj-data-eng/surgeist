@@ -1,3 +1,14 @@
+//! Authored borders and outlines and their normalized command data.
+//!
+//! [`BorderEdges`] holds four [`BorderSide`] values, each with a [`BorderStyle`], and [`Outline`]
+//! has an [`OutlineStyle`]. [`BoxDecorationInput`] holds optional edges, an optional outline and
+//! [`BoxDecorationFragment`] values, each of which carries a [`BoxDecorationBreak`].
+//! [`NormalizedBoxDecoration`] holds ordered [`NormalizedBoxDecorationCommand`] values, whose
+//! [`NormalizedBoxDecorationCommandKind`] holds a [`NormalizedBorderCommand`] or a
+//! [`NormalizedOutlineCommand`]. [`BoxSide`],
+//! [`NormalizedBoxRadii`], [`NormalizedDoubleBorderBands`], [`NormalizedBorderStyle`] and
+//! [`NormalizedOutlineStyle`] are their supporting values.
+
 use super::super::{
     Error, Result,
     geometry::validate_rect_maxima,

@@ -1,17 +1,24 @@
 #![forbid(unsafe_code)]
 
 use surgeist_render::{
-    BackgroundLayer, BackgroundNormalizationInput, BackgroundStack, ImageId, ResolvedImageResource,
-    StyleImageLayer, StyleImageSource,
+    image::ImageId, style::background::BackgroundLayer,
+    style::background::BackgroundNormalizationInput, style::background::BackgroundStack,
+    style::image::ResolvedImageResource, style::image::StyleImageLayer,
+    style::image::StyleImageSource,
 };
 
 use surgeist_render::{
-    BackgroundAreas, BackgroundPosition, BackgroundRepeat, BackgroundSize, BoxDecorationBreak,
-    BoxDecorationFragment, BoxDecorationInput, Capabilities, Color, Error, ErrorCode,
-    ImagePlacementInput, ImageRepeatPlan, NormalizedBoxDecorationCommandKind, Outline,
-    OutlineStyle, Radii, Rect, RenderAccountingContext, RenderAccountingOptions,
-    RenderAttemptStatus, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile,
-    RenderResource, RenderWork, ResolvedImagePlacement, Scene, Size,
+    Error, ErrorCode, accounting::RenderAccountingContext, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderLimits, accounting::RenderPhase,
+    accounting::RenderPhaseFilter, accounting::RenderProfile, accounting::RenderResource,
+    accounting::RenderWork, capability::Capabilities, geometry::Radii, geometry::Rect,
+    geometry::Size, paint::Color, scene::Scene, style::decoration::BoxDecorationBreak,
+    style::decoration::BoxDecorationFragment, style::decoration::BoxDecorationInput,
+    style::decoration::NormalizedBoxDecorationCommandKind, style::decoration::Outline,
+    style::decoration::OutlineStyle, style::image::BackgroundAreas,
+    style::image::BackgroundPosition, style::image::BackgroundRepeat, style::image::BackgroundSize,
+    style::image::ImagePlacementInput, style::image::ImageRepeatPlan,
+    style::image::ResolvedImagePlacement,
 };
 
 fn assert_invalid_numeric_input(error: Error) {

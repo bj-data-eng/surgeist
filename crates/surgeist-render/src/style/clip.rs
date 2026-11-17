@@ -1,3 +1,9 @@
+//! Authored clips and validated clip geometry.
+//!
+//! [`ClipInput`], with its [`ClipInputKind`], is an authored clip source with an optional coordinate
+//! space. [`NormalizedClip`] and [`ClipGeometry`], with its [`ClipGeometryKind`], are intrinsically
+//! validated.
+
 use super::super::{
     Error, Result,
     shape::ShapeKind,

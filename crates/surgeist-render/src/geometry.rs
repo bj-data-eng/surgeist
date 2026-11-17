@@ -1,3 +1,10 @@
+//! Logical and physical rendering geometry.
+//!
+//! [`Point`], [`Size`], [`Rect`], [`Radii`] and [`Transform`] are finite values in logical rendering
+//! units; [`PhysicalSize`] counts integer physical device pixels. [`CoordinateSpaceId`],
+//! [`CoordinateSpaceKind`] and [`CoordinateSpaceTag`] name the frame in which tagged geometry is
+//! expressed.
+
 use super::{Error, Result};
 use crate::accounting::{Account, RenderWork};
 

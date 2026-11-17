@@ -6,8 +6,9 @@
 
 use core::error::Error as StdError;
 use surgeist_render::{
-    RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-    RenderAccountingSetupError, RenderLimits, RenderRefusal, RenderWork,
+    accounting::RenderAccountingContext, accounting::RenderAccountingError,
+    accounting::RenderAccountingOptions, accounting::RenderAccountingSetupError,
+    accounting::RenderLimits, accounting::RenderRefusal, accounting::RenderWork,
 };
 
 #[test]
@@ -47,24 +48,24 @@ fn a_refusal_is_a_standard_error_and_the_cause_of_the_refused_variant() {
         .unwrap();
     let mut context =
         RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
-    let font = surgeist_render::FontData::try_from_bytes(
+    let font = surgeist_render::text::FontData::try_from_bytes(
         include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec(),
         0,
         surgeist_test::fixtures::FONT_LIMITS,
     )
     .unwrap();
-    let instance = surgeist_render::TextInstance::try_new(
+    let instance = surgeist_render::text::TextInstance::try_new(
         1000.0,
         vec![],
-        surgeist_render::GlyphSynthesis::none(),
+        surgeist_render::text::GlyphSynthesis::none(),
     )
     .unwrap();
-    let glyph = surgeist_render::TextGlyph::try_new(58, 0.0, 0.0, 1000.0).unwrap();
+    let glyph = surgeist_render::text::TextGlyph::try_new(58, 0.0, 0.0, 1000.0).unwrap();
     let error = font
         .prepare_glyph_run(
             &instance,
             &[glyph],
-            surgeist_render::GlyphRunLimits::new(1, 5, 1 << 20, 1 << 20),
+            surgeist_render::text::GlyphRunLimits::new(1, 5, 1 << 20, 1 << 20),
             &mut context,
         )
         .unwrap_err();

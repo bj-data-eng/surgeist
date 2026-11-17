@@ -2,9 +2,11 @@
 #![cfg(not(target_family = "wasm"))]
 
 use surgeist_render::{
-    Color, Layer, Options, Parameters, RenderAccountingError, RenderAccountingOptions,
-    RenderAttemptStatus, RenderCpuScope, RenderLimits, RenderPhase, RenderQuantity, RenderResource,
-    RenderWork, Renderer, Scene, Size,
+    accounting::RenderAccountingError, accounting::RenderAccountingOptions,
+    accounting::RenderAttemptStatus, accounting::RenderCpuScope, accounting::RenderLimits,
+    accounting::RenderPhase, accounting::RenderQuantity, accounting::RenderResource,
+    accounting::RenderWork, geometry::Size, paint::Color, renderer::Options, renderer::Renderer,
+    scene::Layer, scene::Scene, surface::Parameters,
 };
 
 fn planning_refusal(depth: u64) {

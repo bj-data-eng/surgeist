@@ -4,24 +4,24 @@
 //!
 //! The crate owns renderer-facing visual facts, safe WGPU resources, and two
 //! observable execution routes. Effect-free scenes use one transaction-owned
-//! [`RenderRoute::DirectVello`] raster pass. Resolved image alpha masks,
+//! [`RenderRoute::DirectVello`](renderer::RenderRoute::DirectVello) raster pass. Resolved image alpha masks,
 //! supported blend/composition, and bounded backdrop filter lists use
-//! [`RenderRoute::GpuGraph`] image/composite passes. Production rendering has no
+//! [`RenderRoute::GpuGraph`](renderer::RenderRoute::GpuGraph) image/composite passes. Production rendering has no
 //! CPU pixel path or CPU fallback; CPU reference algorithms compile only for tests.
 //!
-//! Effect graphs use high precision by default. [`EffectQualityPolicy::RequireHighPrecision`]
+//! Effect graphs use high precision by default. [`EffectQualityPolicy::RequireHighPrecision`](renderer::EffectQualityPolicy::RequireHighPrecision)
 //! rejects a device that cannot provide it, while
-//! [`EffectQualityPolicy::AllowReducedPrecision`] permits reduced precision,
-//! observably, only when high precision is unavailable. [`Capabilities::CURRENT`]
-//! reports semantic capabilities for authored operations; [`Renderer::runtime_capabilities`]
+//! [`EffectQualityPolicy::AllowReducedPrecision`](renderer::EffectQualityPolicy::AllowReducedPrecision) permits reduced precision,
+//! observably, only when high precision is unavailable. [`Capabilities::CURRENT`](capability::Capabilities::CURRENT)
+//! reports semantic capabilities for authored operations; [`Renderer::runtime_capabilities`](renderer::Renderer::runtime_capabilities)
 //! reports immutable runtime capabilities for a selected device and surface.
 //! Cargo features select host adapters rather than changing those meanings.
 //!
 //! Renderer and surface GPU operations are asynchronous and failure-atomic. A
 //! failed or canceled operation publishes neither partial pixels nor partial
-//! statistics, so [`Renderer::stats`] continues to describe the last successful
+//! statistics, so [`Renderer::stats`](renderer::Renderer::stats) continues to describe the last successful
 //! frame. CPU-visible pixels require explicit headless readback through
-//! [`Renderer::read_headless`]; rendering never enters that path implicitly.
+//! [`Renderer::read_headless`](renderer::Renderer::read_headless); rendering never enters that path implicitly.
 //!
 //! The native window presentation path is host lifecycle owned.
 //! The tracked `render_window_smoke` example exercises the public native window lifecycle
@@ -31,15 +31,60 @@
 //! Render owns its optional `render-text` consumer of authentic standalone Text
 //! layouts. The root `surgeist` repository owns the facade, workspace wiring,
 //! generated API artifacts and browser integration evidence.
+//!
+//! # Where things live
+//!
+//! The crate root holds [`Error`], [`ErrorCode`] and [`Result`]. Every other public item lives in
+//! one module:
+//!
+//! | Module | Contents |
+//! | --- | --- |
+//! | [`accounting`] | Accounting contexts, limits, units and reports |
+//! | [`capability`] | Semantic and runtime capability reports |
+//! | [`convolution`], [`gaussian`], [`morphology`], [`displacement`], [`offset`], [`native_shadow`] | Native filter preparation and its typed refusals |
+//! | [`diagnostic`] | Typed diagnostics that an [`Error`] carries |
+//! | [`effect`] | Inputs shared by the filter-primitive modules |
+//! | [`geometry`] | Logical and physical geometry and coordinate spaces |
+//! | [`image`] | Images and their sampling choices |
+//! | [`paint`] | Paint sources, colors and gradients |
+//! | [`renderer`] | The GPU renderer, its options and frame statistics |
+//! | [`scene`] | Scenes, layers, masks and shadows |
+//! | [`shape`] | Paths, shapes and strokes |
+//! | [`style`] | Style-facing models: background, clip, decoration, filter, image and mask |
+//! | [`surface`] | Surfaces, their options and per-frame parameters |
+//! | [`text`] | Text runs and glyph-run preparation |
+//!
+//! With `render-paint` the `paint_gradient` module prepares native gradient fields, and with
+//! `render-text` the `text_layout` module consumes placed Text layouts and leader patterns.
 
-mod accounting;
+pub mod accounting;
+pub mod capability;
+pub mod convolution;
+pub mod diagnostic;
+pub mod displacement;
+pub mod effect;
+pub mod gaussian;
+pub mod geometry;
+pub mod image;
+pub mod morphology;
+pub mod native_shadow;
+pub mod offset;
+pub mod paint;
+#[cfg(feature = "render-paint")]
+pub mod paint_gradient;
+pub mod renderer;
+pub mod scene;
+pub mod shape;
+pub mod style;
+pub mod surface;
+pub mod text;
+#[cfg(feature = "render-text")]
+pub mod text_layout;
+
 mod backend;
-mod capability;
 mod color_mapping;
 mod color_reduction;
 mod command;
-mod convolution;
-mod displacement;
 mod encode;
 mod error;
 mod filter;
@@ -47,157 +92,21 @@ mod filter_domains;
 mod filter_model;
 mod filter_source;
 mod frame;
-mod gaussian;
-mod geometry;
 mod gpu_transaction;
-mod image;
 mod layer;
-mod morphology;
-mod native_shadow;
 mod number_text;
-mod offset;
-mod paint;
-#[cfg(feature = "render-paint")]
-mod paint_gradient;
 mod pass;
 mod readback;
 #[cfg(test)]
 mod reference;
-mod renderer;
 mod resource;
-mod scene;
 mod shader;
-mod shape;
 mod stats;
-mod style;
-mod surface;
-mod text;
-#[cfg(feature = "render-text")]
-mod text_layout;
 mod texture;
 mod validation;
 mod vello_engine;
 
-pub use accounting::{
-    RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
-    RenderAccountingSetupError, RenderAttemptKind, RenderAttemptReport, RenderAttemptStatus,
-    RenderChangeKind, RenderClock, RenderCpuEvent, RenderCpuIdentity, RenderCpuInterval,
-    RenderCpuScope, RenderCpuSnapshot, RenderCpuUsage, RenderDeviceSnapshot, RenderEvent,
-    RenderFrameReport, RenderFrameReportRef, RenderGenerationEvent, RenderGenerationIdentity,
-    RenderGenerationInterval, RenderGenerationScope, RenderLifetimeUsage, RenderLimits,
-    RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderReadbackReport,
-    RenderReadbackReportRef, RenderRefusal, RenderRefusalReason, RenderResource,
-    RenderResourceFields, RenderResourceTable, RenderStandaloneReport, RenderUsage, RenderWork,
-    RenderWorkFields, RenderWorkTable,
-};
-
-pub use capability::{
-    AvailableRuntimeCapabilities, BackgroundAttachmentCoordinatePolicy, BoxDecorationCapabilities,
-    Capabilities, CompositingCapabilities, EffectPrecisionCapabilities, FilterCapabilities,
-    GeometryTargetCapabilities, HitTestOwnership, ImageColorProfilePolicy, ImageOrientationPolicy,
-    ImageSamplingCapabilities, MaskClipCapabilities, OffscreenPipelineCapabilities,
-    PaintSourceCapabilities, RuntimeCapabilities, ShadowCapabilities, SurfaceCapabilities,
-    SymbolicColorPolicy, TransformCoordinateSpaceCapabilities,
-};
-pub use color_mapping::prepare_sdr_srgb_color;
-pub use convolution::{
-    ConvolutionInput, ConvolutionNumericPhase, ConvolutionParameter, ConvolutionPreparationError,
-    PreparedConvolution, prepare_convolution,
-};
-pub use displacement::{
-    DisplacementChannel, DisplacementInput, DisplacementNumericPhase, DisplacementParameter,
-    DisplacementPreparationError, DisplacementSource, PreparedDisplacement,
-    PreparedDisplacementMap, prepare_displacement, prepare_native_displacement_map,
-};
-pub use error::{
-    DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,
-    InvalidValue, PrimitiveFamily, PrimitiveOperation, RenderSurfaceAvailability, Result,
-    RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation,
-    SurfaceIdentityMismatchKind, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
-};
-pub use error::{GeometryRealizationError, GradientHintError, GradientRealizationError};
-pub use filter_domains::FilterDomains;
-pub use filter_model::{FilterColorSpace, FilterEdgeMode};
-pub use gaussian::{
-    GaussianInput, GaussianNumericPhase, GaussianParameter, GaussianPreparationError,
-    GaussianSource, PreparedGaussian, prepare_gaussian,
-};
-pub use geometry::{
-    CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag, PhysicalSize, Point, Radii, Rect,
-    Size, Transform,
-};
-pub use image::{Extend, Image, ImageBuffer, ImageFit, ImageId, ImageQuality, ImageRendering};
-pub use layer::{
-    BlendMode, Filter, Layer, LayerComposition, MaskLuminanceSpace, PorterDuffOperator,
-    ResolvedLayerAlphaMask, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
-    Shadow, ShadowKind, ShadowList,
-};
-pub use morphology::{
-    MorphologyInput, MorphologyNumericPhase, MorphologyOperator, MorphologyParameter,
-    MorphologyPreparationError, MorphologySource, PreparedMorphology, prepare_morphology,
-};
-pub use native_shadow::{
-    DropShadowInput, DropShadowNumericPhase, DropShadowPreparationError, DropShadowSource,
-    PreparedDropShadow, prepare_drop_shadow,
-};
-pub use offset::{
-    OffsetInput, OffsetNumericPhase, OffsetParameter, OffsetPreparationError, PreparedOffset,
-    prepare_offset,
-};
-pub use paint::{
-    Color, Gradient, GradientHint, GradientStop, NormalizedPaintLayer, Paint, PaintColor,
-    PaintColorSpace, RepeatingGradient,
-};
-#[cfg(feature = "render-paint")]
-pub use paint_gradient::{
-    PaintGradientError, prepare_linear_gradient, prepare_radial_gradient,
-    prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
-    prepare_zero_height_gradient_color,
-};
-pub use renderer::{Antialiasing, EffectQualityPolicy, Options, Renderer, ResourceCacheBudget};
-pub use scene::{Scene, SceneSummary};
-pub use shape::{
-    Dash, FillRule, FilledPath, LineCap, LineJoin, Path, PathElement, Shape, Stroke, StrokeAlign,
-};
-pub use stats::{EffectPrecision, RenderRoute, Stats};
-pub use style::{
-    BackdropCaptureBounds, BackdropFilterInput, BackgroundAreas, BackgroundAttachment,
-    BackgroundBlendList, BackgroundBlendMode, BackgroundBox, BackgroundClipGeometry,
-    BackgroundClipGeometryKind, BackgroundLayer, BackgroundNormalizationInput, BackgroundPosition,
-    BackgroundRepeat, BackgroundSize, BackgroundSizeKind, BackgroundStack, BorderEdges, BorderSide,
-    BorderStyle, BoxDecorationBreak, BoxDecorationFragment, BoxDecorationInput, BoxSide,
-    ClipGeometry, ClipGeometryKind, ClipInput, ClipInputKind, FilterAmount, FilterAngle,
-    FilterBlur, FilterDropShadow, FilterList, FilterOp, FilterOpKind, FilteredImagePaint,
-    ImageAttachmentPlan, ImagePlacementInput, ImageRepeatMode, ImageRepeatPlan,
-    ImageResourceDensity, MaskCompositeMode, MaskInput, MaskLayer, MaskLayerStack, MaskMode,
-    MaskSource, MaskSourceKind, NormalizedBackgroundCommand, NormalizedBackgroundCommandKind,
-    NormalizedBackgroundLayer, NormalizedBackgroundLayerSource, NormalizedBackgroundStack,
-    NormalizedBorderCommand, NormalizedBorderStyle, NormalizedBoxDecoration,
-    NormalizedBoxDecorationCommand, NormalizedBoxDecorationCommandKind, NormalizedBoxRadii,
-    NormalizedClip, NormalizedDoubleBorderBands, NormalizedOutlineCommand, NormalizedOutlineStyle,
-    Outline, OutlineStyle, PositionComponent, PositionComponentKind, PositionEdge,
-    PositionEdgeOffset, RepeatMode, ResolvedImagePlacement, ResolvedImageRepeat,
-    ResolvedImageResource, SizeComponent, SizeComponentKind, StyleColor, StyleImageLayer,
-    StyleImageSource, StyleImageSourceKind, StyleResourceRef, UnitFilterAmount,
-};
-pub use surface::{
-    Attachment, Format, Parameters, PresentMode, Surface, SurfaceOptions, SurfaceResourceState,
-    SurfaceState, WebCanvas,
-};
-#[cfg(feature = "render-text")]
-pub use text_layout::{
-    LeaderPatternCause, LeaderPatternError, PreparedGlyphDraw, PreparedLeaderGlyph,
-    PreparedLeaderGroup, PreparedLeaderPattern, PreparedLeaderRun, PreparedTextScene,
-    TextLayoutCause, TextLayoutError, TextLayoutLimits, TextLayoutLocation, TextLayoutResource,
-    prepare_leader_pattern, prepare_text_layout,
-};
-
-pub use text::{
-    FontData, FontId, FontRef, GlyphCapability, GlyphNumericPhase, GlyphPreparationError,
-    GlyphResource, GlyphRunLimits, GlyphSynthesis, NormalizedCoordinate, PreparedGlyphRun,
-    TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextInstance, TextPaint, TextRun,
-    TextRunBounds, TextRunBoundsKind, TextShadowRun, VariationTable,
-};
+pub use error::{Error, ErrorCode, Result};
 
 #[cfg(test)]
 mod tests;

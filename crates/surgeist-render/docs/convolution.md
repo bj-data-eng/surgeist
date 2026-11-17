@@ -16,8 +16,13 @@ a generic filter graph.
 
 ```rust
 use surgeist_render::{
-    Color, FilterDomains, ConvolutionInput, FilterColorSpace, Layer, Rect,
-    RenderAccountingContext, Result, Scene, prepare_convolution,
+    Result,
+    accounting::RenderAccountingContext,
+    convolution::{ConvolutionInput, prepare_convolution},
+    effect::{FilterColorSpace, FilterDomains},
+    geometry::Rect,
+    paint::Color,
+    scene::{Layer, Scene},
 };
 
 fn sharpened_scene(accounting: &mut RenderAccountingContext) -> Result<Scene> {
