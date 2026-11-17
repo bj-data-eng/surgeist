@@ -117,8 +117,8 @@ The explicit standalone path reports policy absence through
 record before guest entry and fills it with the original result or exception.
 Identity imports and clones share that record.
 
-`ArgumentValues` and its consuming iterator retain incoming-buffer custody.
-`Admitted<T>` retains returned UTF-16 and IDL-string storage through borrowed
+`preparation::ArgumentValues` and its consuming iterator retain incoming-buffer custody.
+`preparation::Admitted<T>` retains returned UTF-16 and IDL-string storage through borrowed
 access. Roots, callable registrations and callback-frame records have distinct
 custody matching their lifetimes. Declared prefixes preserve ignored operands,
 and full variadics capture all supplied operands. Release failures use prepared
