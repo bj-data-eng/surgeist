@@ -10,17 +10,34 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 
+use surgeist_css::CssParserContext;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::source::{CssUtf16InputError, CssUtf16InputLimits, CssUtf16Resource};
+use surgeist_cssom::{
+    CssomAdmission, CssomContext, CssomDeclarationCandidate, CssomDeclarationRequestLimits,
+    CssomDeclarationSupport, CssomError, CssomInputRole, CssomInputVersion, CssomLimits,
+    CssomOwnerEffectStatus, CssomUsabilityRequirement,
+};
 use surgeist_dom::{
     DocumentId, Dom, DomBaseFactsError, DomBatch, DomDocumentConstructorError,
-    DomEncodingUrlFactsError, DomError, DomLimits, DomMetaError, DomSourceEventClockFailure,
-    DomViewTransitionCssomError, NodeId,
+    DomEncodingUrlFactsError, DomError, DomHostDomains, DomHostError, DomHostObservations,
+    DomHostPublisher, DomHostedError, DomHostedLimits, DomHostedRecordLimits, DomHostedResource,
+    DomHostedSheetConstructionError, DomHtmlCaptureError, DomHtmlCaptureLimits,
+    DomHtmlCaptureResource, DomInlineStyleError, DomInlineStyleInputs, DomInlineStyleLimits,
+    DomInlineStyleRequestLimits, DomLimits, DomMetaAtomicError, DomMetaError,
+    DomSourceEventClockFailure, DomStyleCssomRootError, DomViewTransitionCssomError, NodeId,
+    Observed,
 };
 use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
-    HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsLimits,
-    HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseParseObservation, HtmlBaseParseOutcome,
-    HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme, HtmlEncodingUrlFactsError,
-    HtmlEncodingUrlParseFacts, HtmlParseBaseFacts,
+    HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsError,
+    HtmlBaseFactsLimits, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseParseObservation,
+    HtmlBaseParseOutcome, HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme,
+    HtmlCaptureElementError, HtmlCaptureError, HtmlCaptureLimits, HtmlControlFactsError,
+    HtmlElementReferenceFactsError, HtmlEncodingUrlFactsError, HtmlEncodingUrlParseFacts,
+    HtmlGlobalInheritanceError, HtmlInertFactError, HtmlLanguageDirectionError,
+    HtmlOutputDefaultError, HtmlParseBaseFacts, HtmlSemanticCancellation, HtmlSemanticContextError,
+    HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
 };
 
 /// Checks every row of one type's table against the `Error` contract.
@@ -32,8 +49,26 @@ fn check_table<E>(rows: Vec<(E, &'static str)>, index: fn(&E) -> usize, wraps: f
 where
     E: Error + Send + Sync + 'static + Debug,
 {
-    for (position, (value, expected)) in rows.iter().enumerate() {
+    check_partial_table(rows, index, wraps, &[]);
+}
+
+/// As `check_table`, for a type with variants that cannot be built outside the
+/// crate that owns their payload; `skipped` lists the row numbers without a row.
+fn check_partial_table<E>(
+    rows: Vec<(E, &'static str)>,
+    index: fn(&E) -> usize,
+    wraps: fn(&E) -> bool,
+    skipped: &[usize],
+) where
+    E: Error + Send + Sync + 'static + Debug,
+{
+    let mut position = 0;
+    for (value, expected) in &rows {
+        while skipped.contains(&position) {
+            position += 1;
+        }
         assert_eq!(index(value), position, "row order for {value:?}");
+        position += 1;
         let text = value.to_string();
         assert_eq!(&text, expected, "message for {value:?}");
         assert!(!text.ends_with('.'), "no trailing period: {text}");
@@ -530,5 +565,890 @@ fn exhausted_meta_work_allowance_reports_the_allowance() {
     assert_eq!(
         error.to_string(),
         "Meta processing exhausted its cumulative work allowance of 0"
+    );
+}
+
+// Hosted, host, capture, inline-style, Meta composition and style-root errors.
+
+/// A real node of a real owner, for variants that carry an identity.
+fn some_node() -> NodeId {
+    fixture(1_000_000).2
+}
+
+fn some_dom_error() -> DomError {
+    DomError::StaleRange
+}
+
+/// Checks that `source()` returns exactly the wrapped error and that the
+/// message does not repeat its text.
+fn assert_chains<E: Error>(outer: &E, inner: &dyn Error) {
+    let source = outer.source().expect("a wrapping variant has a source");
+    assert_eq!(source.to_string(), inner.to_string());
+    assert!(
+        !outer.to_string().contains(&inner.to_string()),
+        "the wrapped error is reported by source(), not repeated: {outer}"
+    );
+}
+
+#[test]
+fn hosted_errors_state_the_refused_hosted_operation() {
+    let rows = vec![
+        (
+            DomHostedError::Dom(some_dom_error()),
+            "the canonical DOM refused the hosted operation",
+        ),
+        (
+            DomHostedError::AlreadyRegistered,
+            "the DOM owner already has a hosted source registered",
+        ),
+        (
+            DomHostedError::PriorDetailsTransfer,
+            "a hosted source cannot be registered after details task custody was transferred",
+        ),
+        (
+            DomHostedError::ForeignSource,
+            "the identity or request was issued by a different hosted source",
+        ),
+        (
+            DomHostedError::SourceExpired,
+            "the hosted source that issued the identity no longer exists",
+        ),
+        (
+            DomHostedError::SourcePoisoned,
+            "the hosted source's state was poisoned by an earlier panic",
+        ),
+        (
+            DomHostedError::StaleIdentity,
+            "the hosted identity is stale or retired",
+        ),
+        (
+            DomHostedError::WrongPhase,
+            "the hosted operation is not in a phase that permits this step",
+        ),
+        (
+            DomHostedError::MissingPublication,
+            "the hosted operation has no pending preparation or publication",
+        ),
+        (
+            DomHostedError::StaleBasis,
+            "the hosted request no longer matches the current hosted state",
+        ),
+        (
+            DomHostedError::IncompleteOperation,
+            "an earlier hosted operation or association is incomplete",
+        ),
+        (
+            DomHostedError::UnsupportedProfile,
+            "the hosted profile does not support this operation",
+        ),
+        (
+            DomHostedError::ScriptingDisabled,
+            "scripting is disabled for the Document",
+        ),
+        (
+            DomHostedError::PendingDocumentObligations,
+            "the Document still has pending obligations",
+        ),
+        // `CspProtocol` has no row: `HtmlCspProtocolError` has no public constructor.
+        (
+            DomHostedError::CspIssuerBusy,
+            "the Content Security Policy issuer is already borrowed",
+        ),
+        (
+            DomHostedError::ClockRegression,
+            "the clock reading does not follow the navigation start",
+        ),
+        (
+            DomHostedError::InvalidClockSample,
+            "the clock sample is not a multiple of 100 microseconds",
+        ),
+        (
+            DomHostedError::InvalidEntryInitialization,
+            "the entry initialization does not hold canonical version 4 UUIDs",
+        ),
+        (
+            DomHostedError::RepresentationExhausted,
+            "a hosted counter or retained-byte credit cannot represent the requested amount",
+        ),
+        (
+            DomHostedError::AllocationFailed,
+            "an allocation required by the hosted operation failed",
+        ),
+        (
+            DomHostedError::Limit {
+                resource: DomHostedResource::BrowsingContexts,
+                limit: 4,
+            },
+            "the hosted browsing contexts limit of 4 was exceeded",
+        ),
+        (
+            DomHostedError::WorkLimit { limit: 9 },
+            "hosted processing exhausted its work allowance of 9",
+        ),
+    ];
+    check_partial_table(
+        rows,
+        |error| match error {
+            DomHostedError::Dom(_) => 0,
+            DomHostedError::AlreadyRegistered => 1,
+            DomHostedError::PriorDetailsTransfer => 2,
+            DomHostedError::ForeignSource => 3,
+            DomHostedError::SourceExpired => 4,
+            DomHostedError::SourcePoisoned => 5,
+            DomHostedError::StaleIdentity => 6,
+            DomHostedError::WrongPhase => 7,
+            DomHostedError::MissingPublication => 8,
+            DomHostedError::StaleBasis => 9,
+            DomHostedError::IncompleteOperation => 10,
+            DomHostedError::UnsupportedProfile => 11,
+            DomHostedError::ScriptingDisabled => 12,
+            DomHostedError::PendingDocumentObligations => 13,
+            DomHostedError::CspProtocol(_) => 14,
+            DomHostedError::CspIssuerBusy => 15,
+            DomHostedError::ClockRegression => 16,
+            DomHostedError::InvalidClockSample => 17,
+            DomHostedError::InvalidEntryInitialization => 18,
+            DomHostedError::RepresentationExhausted => 19,
+            DomHostedError::AllocationFailed => 20,
+            DomHostedError::Limit { .. } => 21,
+            DomHostedError::WorkLimit { .. } => 22,
+        },
+        |error| {
+            matches!(
+                error,
+                DomHostedError::Dom(_) | DomHostedError::CspProtocol(_)
+            )
+        },
+        &[14],
+    );
+    for (resource, name) in [
+        (DomHostedResource::Hosts, "hosts"),
+        (DomHostedResource::BrowsingContexts, "browsing contexts"),
+        (DomHostedResource::Navigables, "navigables"),
+        (DomHostedResource::Entries, "entries"),
+        (DomHostedResource::Globals, "globals"),
+        (DomHostedResource::Operations, "operations"),
+        (DomHostedResource::Registries, "registries"),
+        (DomHostedResource::RetainedBytes, "retained bytes"),
+        (DomHostedResource::ScratchBytes, "scratch bytes"),
+        (DomHostedResource::Work, "work"),
+    ] {
+        assert_eq!(
+            DomHostedError::Limit { resource, limit: 3 }.to_string(),
+            format!("the hosted {name} limit of 3 was exceeded")
+        );
+    }
+    let inner = some_dom_error();
+    assert_chains(&DomHostedError::Dom(inner.clone()), &inner);
+}
+
+fn hosted_limits(contexts: usize) -> DomHostedLimits {
+    DomHostedLimits::new(
+        DomHostedRecordLimits::new(16, contexts, 16, 16, 16, 16, 16),
+        16_000_000,
+        16_000_000,
+        4_000_000,
+    )
+}
+
+#[test]
+fn registering_a_second_hosted_source_reports_the_existing_registration() {
+    let mut dom = Dom::new(limits(1_000_000)).unwrap();
+    let _source = dom
+        .register_hosted_source(hosted_limits(16), &cancel())
+        .unwrap();
+    let error = dom
+        .register_hosted_source(hosted_limits(16), &cancel())
+        .err()
+        .expect("a second registration is refused");
+    assert_eq!(error, DomHostedError::AlreadyRegistered);
+    assert_eq!(
+        error.to_string(),
+        "the DOM owner already has a hosted source registered"
+    );
+}
+
+#[test]
+fn host_errors_state_the_refused_publication_or_stamp() {
+    let (dom, _, _, _) = fixture(1_000_000);
+    let revision = dom.snapshot().revision();
+    let node = some_node();
+    let rows = vec![
+        (
+            DomHostError::ForeignOwner,
+            "the Document belongs to a different DOM owner",
+        ),
+        (
+            DomHostError::WrongDocument,
+            "the observations belong to a different Document",
+        ),
+        (
+            DomHostError::DomRevisionMismatch {
+                expected: revision,
+                actual: revision,
+            },
+            "the observations and the canonical view have different DOM revisions",
+        ),
+        (
+            DomHostError::StaleDomRevision {
+                current: revision,
+                actual: revision,
+            },
+            "publication would move the canonical DOM revision backwards",
+        ),
+        (
+            DomHostError::DomainMismatch {
+                expected: DomHostDomains::Focus,
+                actual: DomHostDomains::Hover,
+            },
+            "the observations do not supply exactly this source's configured domains",
+        ),
+        (
+            DomHostError::ForeignSource,
+            "the stamp belongs to a different publisher or configuration",
+        ),
+        (
+            DomHostError::FutureHostRevision,
+            "the stamp has a later external revision than the current publication",
+        ),
+        (
+            DomHostError::FutureDomRevision,
+            "the stamp has a later canonical revision than the current publication",
+        ),
+        (
+            DomHostError::Unpublished,
+            "the publisher has not published a capture yet",
+        ),
+        (
+            DomHostError::Subject {
+                node,
+                error: some_dom_error(),
+            },
+            "a selected subject is not a current Element of the same Document",
+        ),
+        (
+            DomHostError::HostRevisionExhausted,
+            "the external revision cannot advance for the changed observations",
+        ),
+    ];
+    check_table(
+        rows,
+        |error| match error {
+            DomHostError::ForeignOwner => 0,
+            DomHostError::WrongDocument => 1,
+            DomHostError::DomRevisionMismatch { .. } => 2,
+            DomHostError::StaleDomRevision { .. } => 3,
+            DomHostError::DomainMismatch { .. } => 4,
+            DomHostError::ForeignSource => 5,
+            DomHostError::FutureHostRevision => 6,
+            DomHostError::FutureDomRevision => 7,
+            DomHostError::Unpublished => 8,
+            DomHostError::Subject { .. } => 9,
+            DomHostError::HostRevisionExhausted => 10,
+        },
+        |error| matches!(error, DomHostError::Subject { .. }),
+    );
+    let inner = some_dom_error();
+    assert_chains(
+        &DomHostError::Subject {
+            node,
+            error: inner.clone(),
+        },
+        &inner,
+    );
+}
+
+#[test]
+fn publisher_refusals_return_messages_naming_the_cause() {
+    let (mut dom, document, root, _) = fixture(1_000_000);
+    let snapshot = dom.snapshot();
+    let current = snapshot.document(document).unwrap();
+    let mut publisher = DomHostPublisher::new(DomHostDomains::Focus);
+
+    let error = publisher.changes_since(None).unwrap_err();
+    assert_eq!(error, DomHostError::Unpublished);
+    assert_eq!(
+        error.to_string(),
+        "the publisher has not published a capture yet"
+    );
+
+    let hover = DomHostObservations::Hover(Observed::NotApplicable);
+    let error = publisher
+        .publish(current, current.stamp(), hover)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        DomHostError::DomainMismatch {
+            expected: DomHostDomains::Focus,
+            actual: DomHostDomains::Hover,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "the observations do not supply exactly this source's configured domains"
+    );
+
+    let focus = DomHostObservations::Focus(Observed::Unsupported);
+    publisher.publish(current, current.stamp(), focus).unwrap();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(root, "key", "value");
+    dom.apply(batch, &cancel()).unwrap();
+    let newer = dom.snapshot();
+    let newer = newer.document(document).unwrap();
+    let error = publisher
+        .publish(newer, current.stamp(), focus)
+        .unwrap_err();
+    assert!(matches!(error, DomHostError::DomRevisionMismatch { .. }));
+    assert_eq!(
+        error.to_string(),
+        "the observations and the canonical view have different DOM revisions"
+    );
+}
+
+#[test]
+fn html_capture_errors_state_the_refused_capture_and_chain_their_cause() {
+    let rows = |semantic: DomHtmlCaptureError| {
+        vec![
+            (
+                DomHtmlCaptureError::Source(some_dom_error()),
+                "the DOM refused the capture's read of canonical state",
+            ),
+            (
+                DomHtmlCaptureError::Host(DomHostError::Unpublished),
+                "the host observations do not match the Document being captured",
+            ),
+            (
+                DomHtmlCaptureError::StaleScriptingObservation,
+                "the scripting observation was not made for this snapshot's exact state",
+            ),
+            (
+                DomHtmlCaptureError::Capture(HtmlCaptureError::ForeignBuilder),
+                "the HTML capture refused its input",
+            ),
+            (
+                DomHtmlCaptureError::ElementValues(
+                    HtmlCaptureElementError::InconsistentAttributes { index: 0 },
+                ),
+                "the HTML capture could not read an element's attributes",
+            ),
+            (
+                DomHtmlCaptureError::Context(HtmlSemanticContextError::MediaCaptureMismatch),
+                "the HTML semantic context could not be formed from the capture",
+            ),
+            (semantic, "the HTML semantic query failed"),
+            (
+                DomHtmlCaptureError::Language(HtmlLanguageDirectionError::HostRevisionMismatch),
+                "the language and direction facts could not be derived",
+            ),
+            (
+                DomHtmlCaptureError::Inert(HtmlInertFactError::HostRevisionMismatch),
+                "the inertness facts could not be derived",
+            ),
+            (
+                DomHtmlCaptureError::GlobalInheritance(
+                    HtmlGlobalInheritanceError::HostRevisionMismatch,
+                ),
+                "the global attribute inheritance facts could not be derived",
+            ),
+            (
+                DomHtmlCaptureError::Controls(HtmlControlFactsError::HostRevisionMismatch),
+                "the control facts could not be derived",
+            ),
+            (
+                DomHtmlCaptureError::BaseFacts(HtmlBaseFactsError::HostRevisionMismatch),
+                "the base URL facts could not be captured",
+            ),
+            (
+                DomHtmlCaptureError::OutputDefaults(HtmlOutputDefaultError::HostRevisionMismatch),
+                "the output default facts could not be derived",
+            ),
+            (
+                DomHtmlCaptureError::ElementReferences(
+                    HtmlElementReferenceFactsError::HostRevisionMismatch,
+                ),
+                "the element reference facts could not be derived",
+            ),
+            (
+                DomHtmlCaptureError::ResourceLimit {
+                    resource: DomHtmlCaptureResource::Subjects,
+                    limit: 12,
+                },
+                "the HTML capture exceeded its subject limit of 12",
+            ),
+            (
+                DomHtmlCaptureError::Cancelled,
+                "the HTML capture was cancelled",
+            ),
+            (
+                DomHtmlCaptureError::AllocationFailed,
+                "an allocation required by the HTML capture failed",
+            ),
+            (
+                DomHtmlCaptureError::RepresentationExhausted,
+                "an HTML capture count or size exceeded the representable range",
+            ),
+            (
+                DomHtmlCaptureError::UnmappedSubject,
+                "the node or subject is not part of this capture",
+            ),
+        ]
+    };
+    check_table(
+        rows(semantic_failure()),
+        |error| match error {
+            DomHtmlCaptureError::Source(_) => 0,
+            DomHtmlCaptureError::Host(_) => 1,
+            DomHtmlCaptureError::StaleScriptingObservation => 2,
+            DomHtmlCaptureError::Capture(_) => 3,
+            DomHtmlCaptureError::ElementValues(_) => 4,
+            DomHtmlCaptureError::Context(_) => 5,
+            DomHtmlCaptureError::Semantic(_) => 6,
+            DomHtmlCaptureError::Language(_) => 7,
+            DomHtmlCaptureError::Inert(_) => 8,
+            DomHtmlCaptureError::GlobalInheritance(_) => 9,
+            DomHtmlCaptureError::Controls(_) => 10,
+            DomHtmlCaptureError::BaseFacts(_) => 11,
+            DomHtmlCaptureError::OutputDefaults(_) => 12,
+            DomHtmlCaptureError::ElementReferences(_) => 13,
+            DomHtmlCaptureError::ResourceLimit { .. } => 14,
+            DomHtmlCaptureError::Cancelled => 15,
+            DomHtmlCaptureError::AllocationFailed => 16,
+            DomHtmlCaptureError::RepresentationExhausted => 17,
+            DomHtmlCaptureError::UnmappedSubject => 18,
+        },
+        |error| {
+            !matches!(
+                error,
+                DomHtmlCaptureError::StaleScriptingObservation
+                    | DomHtmlCaptureError::ResourceLimit { .. }
+                    | DomHtmlCaptureError::Cancelled
+                    | DomHtmlCaptureError::AllocationFailed
+                    | DomHtmlCaptureError::RepresentationExhausted
+                    | DomHtmlCaptureError::UnmappedSubject
+            )
+        },
+    );
+    assert_eq!(
+        DomHtmlCaptureError::ResourceLimit {
+            resource: DomHtmlCaptureResource::Work,
+            limit: 5,
+        }
+        .to_string(),
+        "the HTML capture exceeded its work allowance of 5"
+    );
+    let inner = some_dom_error();
+    assert_chains(&DomHtmlCaptureError::Source(inner.clone()), &inner);
+}
+
+fn capture_limits(subjects: usize, work: usize) -> (HtmlCaptureLimits, DomHtmlCaptureLimits) {
+    (
+        HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0, 16_777_216),
+        DomHtmlCaptureLimits::new(subjects, work),
+    )
+}
+
+/// A real semantic failure: a cancelled query against a real capture.
+fn semantic_failure() -> DomHtmlCaptureError {
+    let (dom, document, root, _) = fixture(1_000_000);
+    let (html, dom_limits) = capture_limits(128, 1_000_000);
+    let capture = dom
+        .snapshot()
+        .html_capture(document, None, html, dom_limits, &cancel())
+        .unwrap();
+    let cancellation = HtmlSemanticCancellation::new();
+    cancellation.cancel();
+    capture
+        .query(
+            &[HtmlSemanticRequest::new(
+                capture.subject(root).unwrap(),
+                HtmlSemanticQuery::TableModel,
+            )],
+            surgeist_html::values::HtmlValueInterpreter::new(8192),
+            HtmlSemanticLimits::new(10_000_000, 16, 4096, 256, 10_000_000, 4096),
+            cancellation,
+        )
+        .expect_err("a cancelled query is refused")
+}
+
+#[test]
+fn html_capture_refusals_return_messages_naming_the_cause() {
+    let (dom, document, _, _) = fixture(1_000_000);
+    let snapshot = dom.snapshot();
+
+    let (html, dom_limits) = capture_limits(128, 0);
+    let error = snapshot
+        .html_capture(document, None, html, dom_limits, &cancel())
+        .err()
+        .expect("a zero work allowance is refused");
+    assert!(matches!(
+        error,
+        DomHtmlCaptureError::ResourceLimit {
+            resource: DomHtmlCaptureResource::Work,
+            limit: 0
+        }
+    ));
+    assert_eq!(
+        error.to_string(),
+        "the HTML capture exceeded its work allowance of 0"
+    );
+
+    let (html, dom_limits) = capture_limits(0, 1_000_000);
+    let error = snapshot
+        .html_capture(document, None, html, dom_limits, &cancel())
+        .err()
+        .expect("a zero subject allowance is refused");
+    assert_eq!(
+        error.to_string(),
+        "the HTML capture exceeded its subject limit of 0"
+    );
+
+    let error = semantic_failure();
+    assert!(matches!(error, DomHtmlCaptureError::Semantic(_)));
+    assert_eq!(error.to_string(), "the HTML semantic query failed");
+    assert!(error.source().is_some());
+}
+
+#[test]
+fn inline_style_errors_state_the_refused_operation_and_chain_their_cause() {
+    let node = some_node();
+    let rows = vec![
+        (
+            DomInlineStyleError::Dom(some_dom_error()),
+            "the canonical DOM refused the inline style operation",
+        ),
+        (
+            DomInlineStyleError::Cssom(CssomError::StaleRevision),
+            "the declaration producer refused the inline style operation",
+        ),
+        (
+            DomInlineStyleError::Input(CssUtf16InputError::limit(CssUtf16Resource::InputUnits)),
+            "preparing the original CSS input for the inline style failed",
+        ),
+        (
+            DomInlineStyleError::Unconfigured,
+            "no finite inline style policy has been installed",
+        ),
+        (
+            DomInlineStyleError::AlreadyConfigured,
+            "the inline style owner already has its fixed policy",
+        ),
+        (
+            DomInlineStyleError::Inapplicable,
+            "the Element's namespace has no supported ElementCSSInlineStyle capability",
+        ),
+        (
+            DomInlineStyleError::StaleContext,
+            "the supplied Document observation is no longer current",
+        ),
+        (
+            DomInlineStyleError::ParserModeMismatch,
+            "the selected parser mode does not describe the Document",
+        ),
+        (
+            DomInlineStyleError::InvalidSupportRole,
+            "the supplied input version is not a Support qualification",
+        ),
+        (
+            DomInlineStyleError::ContextUpdateRequired,
+            "the bound inline style block already exists with different explicit external inputs",
+        ),
+        (
+            DomInlineStyleError::Unbound,
+            "the Element has no allocated inline declaration block",
+        ),
+        (
+            DomInlineStyleError::OperationPending { element: node },
+            "another inline style owner-write outcome is still resident",
+        ),
+        (
+            DomInlineStyleError::ReconciliationRequiresTerminal {
+                status: CssomOwnerEffectStatus::Applied,
+            },
+            "reconciliation requires a failed terminal owner effect, not a live or applied one",
+        ),
+        (
+            DomInlineStyleError::ReconciliationNotRequired,
+            "an effect-free inline style operation has no owner synchronization to reconcile",
+        ),
+        (
+            DomInlineStyleError::TerminalEffect {
+                status: CssomOwnerEffectStatus::Canceled,
+            },
+            "the owner effect is terminal and cannot be retried as a pending write",
+        ),
+    ];
+    check_table(
+        rows,
+        |error| match error {
+            DomInlineStyleError::Dom(_) => 0,
+            DomInlineStyleError::Cssom(_) => 1,
+            DomInlineStyleError::Input(_) => 2,
+            DomInlineStyleError::Unconfigured => 3,
+            DomInlineStyleError::AlreadyConfigured => 4,
+            DomInlineStyleError::Inapplicable => 5,
+            DomInlineStyleError::StaleContext => 6,
+            DomInlineStyleError::ParserModeMismatch => 7,
+            DomInlineStyleError::InvalidSupportRole => 8,
+            DomInlineStyleError::ContextUpdateRequired => 9,
+            DomInlineStyleError::Unbound => 10,
+            DomInlineStyleError::OperationPending { .. } => 11,
+            DomInlineStyleError::ReconciliationRequiresTerminal { .. } => 12,
+            DomInlineStyleError::ReconciliationNotRequired => 13,
+            DomInlineStyleError::TerminalEffect { .. } => 14,
+        },
+        |error| {
+            matches!(
+                error,
+                DomInlineStyleError::Dom(_)
+                    | DomInlineStyleError::Cssom(_)
+                    | DomInlineStyleError::Input(_)
+            )
+        },
+    );
+    let dom_error = some_dom_error();
+    assert_chains(&DomInlineStyleError::Dom(dom_error.clone()), &dom_error);
+    let cssom = CssomError::StaleRevision;
+    assert_chains(&DomInlineStyleError::Cssom(cssom.clone()), &cssom);
+    let input = CssUtf16InputError::limit(CssUtf16Resource::InputUnits);
+    assert_chains(&DomInlineStyleError::Input(input.clone()), &input);
+}
+
+fn inline_policy() -> DomInlineStyleLimits {
+    DomInlineStyleLimits::new(CssomLimits::default(), 64, 64_000_000, 8_000_000, 4_000_000).unwrap()
+}
+
+fn inline_requests() -> DomInlineStyleRequestLimits {
+    DomInlineStyleRequestLimits {
+        input: CssUtf16InputLimits::default(),
+        declaration: CssomDeclarationRequestLimits::default(),
+    }
+}
+
+fn inline_inputs(dom: &Dom, document: DocumentId) -> DomInlineStyleInputs {
+    DomInlineStyleInputs::new(
+        dom.snapshot().document(document).unwrap().stamp(),
+        CssParserContext::default(),
+        CssomInputVersion {
+            role: CssomInputRole::Support,
+            identity: "error-text-profile".into(),
+            revision: 1,
+        },
+        CssomDeclarationSupport::try_new(vec![(
+            CssPropertyGrammar::from_name("width").unwrap(),
+            CssomUsabilityRequirement::AllCheckedValues,
+        )])
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+fn no_decisions(
+    _: &[CssomDeclarationCandidate],
+    _: &CssomContext,
+) -> Result<CssomAdmission, CssomError> {
+    panic!("no whole-declaration candidate")
+}
+
+#[test]
+fn inline_style_refusals_return_messages_naming_the_cause() {
+    let (mut dom, document, _, element) = fixture(1_000_000);
+    let inputs = inline_inputs(&dom, document);
+
+    let error = dom
+        .inline_style(element, &inputs, inline_requests(), no_decisions, &cancel())
+        .err()
+        .expect("binding without a policy is refused");
+    assert!(matches!(error, DomInlineStyleError::Unconfigured));
+    assert_eq!(
+        error.to_string(),
+        "no finite inline style policy has been installed"
+    );
+
+    dom.configure_inline_styles(inline_policy(), &cancel())
+        .unwrap();
+    let error = dom
+        .configure_inline_styles(inline_policy(), &cancel())
+        .unwrap_err();
+    assert!(matches!(error, DomInlineStyleError::AlreadyConfigured));
+    assert_eq!(
+        error.to_string(),
+        "the inline style owner already has its fixed policy"
+    );
+
+    let mut batch = DomBatch::new();
+    let other = batch.create_element_ns(document, Namespace::from_uri("urn:test"), "e");
+    let commit = dom.apply(batch, &cancel()).unwrap();
+    let other = commit.created(&other).unwrap().unwrap();
+    let error = dom
+        .inline_style(other, &inputs, inline_requests(), no_decisions, &cancel())
+        .err()
+        .expect("an unknown namespace has no inline style");
+    assert!(matches!(error, DomInlineStyleError::Inapplicable));
+    assert_eq!(
+        error.to_string(),
+        "the Element's namespace has no supported ElementCSSInlineStyle capability"
+    );
+}
+
+#[test]
+fn meta_composition_errors_state_the_refused_root_operation_and_chain_their_cause() {
+    let root = some_node();
+    let rows = vec![
+        (
+            DomMetaAtomicError::Dom(some_dom_error()),
+            "the canonical DOM refused the native Meta composition",
+        ),
+        (
+            DomMetaAtomicError::Inline(DomInlineStyleError::Unbound),
+            "inline style synchronization refused the native Meta composition",
+        ),
+        (
+            DomMetaAtomicError::OwnerBusy { root },
+            "the CSSOM owner of the root is already borrowed, so no producer operation was attempted",
+        ),
+        (
+            DomMetaAtomicError::OwnerPoisoned { root },
+            "the CSSOM owner of the root is poisoned, so no producer operation was attempted",
+        ),
+        (
+            DomMetaAtomicError::Cssom {
+                root,
+                error: CssomError::StaleRevision,
+            },
+            "the CSSOM producer refused the Meta composition operation for the root",
+        ),
+        (
+            DomMetaAtomicError::MissingOwner { root },
+            "no CSSOM owner was supplied for the root's Document",
+        ),
+        (
+            DomMetaAtomicError::MismatchedOwner { root },
+            "the CSSOM owners supplied for the root's Document are not one owner",
+        ),
+        (
+            DomMetaAtomicError::StaleProducer { root },
+            "the sheet is not a member of the root's producer snapshot",
+        ),
+    ];
+    check_table(
+        rows,
+        |error| match error {
+            DomMetaAtomicError::Dom(_) => 0,
+            DomMetaAtomicError::Inline(_) => 1,
+            DomMetaAtomicError::OwnerBusy { .. } => 2,
+            DomMetaAtomicError::OwnerPoisoned { .. } => 3,
+            DomMetaAtomicError::Cssom { .. } => 4,
+            DomMetaAtomicError::MissingOwner { .. } => 5,
+            DomMetaAtomicError::MismatchedOwner { .. } => 6,
+            DomMetaAtomicError::StaleProducer { .. } => 7,
+        },
+        |error| {
+            matches!(
+                error,
+                DomMetaAtomicError::Dom(_)
+                    | DomMetaAtomicError::Inline(_)
+                    | DomMetaAtomicError::Cssom { .. }
+            )
+        },
+    );
+    let dom_error = some_dom_error();
+    assert_chains(&DomMetaAtomicError::Dom(dom_error.clone()), &dom_error);
+    assert_chains(
+        &DomMetaAtomicError::Inline(DomInlineStyleError::Unbound),
+        &DomInlineStyleError::Unbound,
+    );
+    let cssom = CssomError::StaleRevision;
+    assert_chains(
+        &DomMetaAtomicError::Cssom {
+            root,
+            error: cssom.clone(),
+        },
+        &cssom,
+    );
+}
+
+#[test]
+fn style_root_errors_state_the_refused_access_and_chain_the_producer() {
+    let rows = vec![
+        (
+            DomStyleCssomRootError::Busy,
+            "the style CSSOM root is in use by another operation",
+        ),
+        (
+            DomStyleCssomRootError::Poisoned,
+            "the style CSSOM root was poisoned by an earlier panic",
+        ),
+        (
+            DomStyleCssomRootError::MissingBatch,
+            "the commit envelope holds no unattempted CSSOM batch",
+        ),
+        (
+            DomStyleCssomRootError::Cssom(CssomError::Cancelled),
+            "the CSSOM producer rejected an attempted batch operation",
+        ),
+    ];
+    check_table(
+        rows,
+        |error| match error {
+            DomStyleCssomRootError::Busy => 0,
+            DomStyleCssomRootError::Poisoned => 1,
+            DomStyleCssomRootError::MissingBatch => 2,
+            DomStyleCssomRootError::Cssom(_) => 3,
+        },
+        |error| matches!(error, DomStyleCssomRootError::Cssom(_)),
+    );
+    let cssom = CssomError::Cancelled;
+    assert_chains(&DomStyleCssomRootError::Cssom(cssom.clone()), &cssom);
+}
+
+#[test]
+fn constructed_sheet_errors_state_the_refused_construction_and_chain_their_cause() {
+    let rows = vec![
+        (
+            DomHostedSheetConstructionError::Hosted(DomHostedError::WrongPhase),
+            "the hosted issuer, Document or custody refused the constructed stylesheet operation",
+        ),
+        (
+            DomHostedSheetConstructionError::Root(DomStyleCssomRootError::Busy),
+            "the style CSSOM root could not be loaned for the constructed stylesheet",
+        ),
+        (
+            DomHostedSheetConstructionError::Cssom(CssomError::Cancelled),
+            "CSSOM staging or preparation refused the constructed stylesheet",
+        ),
+        (
+            DomHostedSheetConstructionError::InvalidBaseSerialization {
+                offset: 3,
+                unit: 0xD800,
+            },
+            "the base URL serialization contains an isolated surrogate 0xd800 at offset 3",
+        ),
+    ];
+    check_table(
+        rows,
+        |error| match error {
+            DomHostedSheetConstructionError::Hosted(_) => 0,
+            DomHostedSheetConstructionError::Root(_) => 1,
+            DomHostedSheetConstructionError::Cssom(_) => 2,
+            DomHostedSheetConstructionError::InvalidBaseSerialization { .. } => 3,
+        },
+        |error| {
+            !matches!(
+                error,
+                DomHostedSheetConstructionError::InvalidBaseSerialization { .. }
+            )
+        },
+    );
+    let hosted = DomHostedError::WrongPhase;
+    assert_chains(
+        &DomHostedSheetConstructionError::Hosted(hosted.clone()),
+        &hosted,
+    );
+    let root = DomStyleCssomRootError::Busy;
+    assert_chains(&DomHostedSheetConstructionError::Root(root.clone()), &root);
+    let cssom = CssomError::Cancelled;
+    assert_chains(
+        &DomHostedSheetConstructionError::Cssom(cssom.clone()),
+        &cssom,
     );
 }
