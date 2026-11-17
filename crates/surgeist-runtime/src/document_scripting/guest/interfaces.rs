@@ -21,7 +21,7 @@ use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
     WellKnownSymbol,
     conversion::{
-        ArgumentValue, ConversionAccount, Hosted, ResourceTable, WorkTable,
+        ArgumentValue, ConversionAccount, Hosted, ResourceFields, ResourceTable, WorkTable,
         declarations::{event_constructor_0_event_init_dict, event_constructor_0_type},
     },
 };
@@ -270,9 +270,9 @@ impl PublicEventBindings {
             scope,
             surgeist_ledger::Limits::new(
                 WorkTable::splat(work),
-                ResourceTable {
+                ResourceTable::new(ResourceFields {
                     BufferBytes: buffer_bytes,
-                },
+                }),
             ),
             metadata,
         )?;

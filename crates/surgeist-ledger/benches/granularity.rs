@@ -32,14 +32,14 @@ use surgeist_ledger::{
 };
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable {
+    enum Work => WorkTable, WorkFields {
         W0, W1, W2, W3, W4, W5, W6, W7, W8, W9,
         W10, W11, W12, W13, W14, W15, W16, W17, W18, W19,
     }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { R0, R1, R2 }
+    enum Resource => ResourceTable, ResourceFields { R0, R1, R2 }
 }
 
 type Batch = Change<Work, Resource>;
@@ -342,7 +342,7 @@ fn events(mut holder: impl Holder, scope: Scope, granularity: Granularity) -> f6
     assert_eq!(local, EVENTS);
     match granularity {
         Granularity::Guard => {}
-        Granularity::Counters => assert_eq!(counters.root.W0, EVENTS),
+        Granularity::Counters => assert_eq!(counters.root[Work::W0], EVENTS),
         Granularity::Block(_) | Granularity::Call => {
             assert_eq!(holder.work(scope, Work::W0), EVENTS);
         }

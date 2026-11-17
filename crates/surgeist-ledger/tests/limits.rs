@@ -1,23 +1,23 @@
 use surgeist_ledger::{Error, Limits, Operation, Tariffs};
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visits, Credits }
+    enum Work => WorkTable, WorkFields { Visits, Credits }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes, Entries }
+    enum Resource => ResourceTable, ResourceFields { Bytes, Entries }
 }
 
 fn caps(visits: u64, credits: u64, bytes: u64, entries: u64) -> Limits<Work, Resource> {
     Limits::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Visits: visits,
             Credits: credits,
-        },
-        ResourceTable {
+        }),
+        ResourceTable::new(ResourceFields {
             Bytes: bytes,
             Entries: entries,
-        },
+        }),
     )
 }
 

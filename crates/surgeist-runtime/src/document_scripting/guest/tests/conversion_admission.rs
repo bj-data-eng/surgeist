@@ -287,7 +287,9 @@ impl surgeist_bindings_js::conversion::Host for StorageProbeHost {
 
 pub(in crate::document_scripting) fn converted_payload_and_receipt_use_the_original_exact_storage_boundary()
  {
-    use surgeist_bindings_js::conversion::{Hosted, ResourceTable, WorkTable, types};
+    use surgeist_bindings_js::conversion::{
+        Hosted, ResourceFields, ResourceTable, WorkTable, types,
+    };
     for short in [false, true] {
         let mut host = profiled_host(surgeist_ledger::ProfileMode::Summary { timing: false });
         let permit = host.permit().unwrap();
@@ -323,7 +325,7 @@ pub(in crate::document_scripting) fn converted_payload_and_receipt_use_the_origi
                     scope,
                     surgeist_ledger::Limits::new(
                         WorkTable::splat(100),
-                        ResourceTable { BufferBytes: 6 },
+                        ResourceTable::new(ResourceFields { BufferBytes: 6 }),
                     ),
                     metadata,
                 )

@@ -1,24 +1,24 @@
 use surgeist_ledger::{Change, Error, Limits, Operation, RefusalReason, Tariff, Tariffs};
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 // Four resources and one work dimension make nine words of usage, which the in-place store
 // prefers for a small batch.
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { A, B, C, D }
+    enum Resource => ResourceTable, ResourceFields { A, B, C, D }
 }
 
 fn caps(visits: u64, a: u64) -> Limits<Work, Resource> {
     Limits::new(
-        WorkTable { Visit: visits },
-        ResourceTable {
+        WorkTable::new(WorkFields { Visit: visits }),
+        ResourceTable::new(ResourceFields {
             A: a,
             B: u64::MAX,
             C: u64::MAX,
             D: u64::MAX,
-        },
+        }),
     )
 }
 

@@ -2,8 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use surgeist_bindings_js::conversion::{
-    ArgumentValue, Converted, FailureKind, IntegerType, Resource, ResourceTable, Rule, Work,
-    WorkTable, declarations, types,
+    ArgumentValue, Converted, FailureKind, IntegerType, Resource, ResourceFields, ResourceTable,
+    Rule, Work, WorkFields, WorkTable, declarations, types,
 };
 use surgeist_bindings_js::declarations::{ElementCreationArgument, EventInit};
 use surgeist_bindings_js::{
@@ -225,7 +225,7 @@ fn dictionary_admission(short: bool, value_cut: bool) -> TestResult {
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Value: if value_cut { 1 } else { 4 },
             CodeUnit: 0,
             EnumerationLookup: 0,
@@ -234,8 +234,8 @@ fn dictionary_admission(short: bool, value_cut: bool) -> TestResult {
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
-        },
-        ResourceTable { BufferBytes: 0 },
+        }),
+        ResourceTable::new(ResourceFields { BufferBytes: 0 }),
     );
     let account = account(&mut process, &realm, &ledger, limits)?;
     let effects = Rc::new(Cell::new(0));
@@ -363,7 +363,7 @@ fn nullable_admission(short_storage: bool) -> TestResult {
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Value: 2,
             CodeUnit: 3,
             EnumerationLookup: 0,
@@ -372,10 +372,10 @@ fn nullable_admission(short_storage: bool) -> TestResult {
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
-        },
-        ResourceTable {
+        }),
+        ResourceTable::new(ResourceFields {
             BufferBytes: if short_storage { 5 } else { 6 },
-        },
+        }),
     );
     let account = account(&mut process, &realm, &ledger, limits)?;
     let result = process.execution().in_realm(&realm, |scope| {

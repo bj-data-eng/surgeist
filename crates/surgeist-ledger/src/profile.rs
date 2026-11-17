@@ -531,7 +531,7 @@ mod tests {
     use super::*;
 
     crate::dimensions! {
-        enum TestWork => TestWorkTable { Visit }
+        enum TestWork => TestWorkTable, TestWorkFields { Visit }
     }
 
     thread_local! {

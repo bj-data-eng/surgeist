@@ -1,15 +1,18 @@
 use surgeist_ledger::{Change, Error, Limits, Operation, RefusalReason, Scope, Tariff, Tariffs};
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { A, B }
+    enum Resource => ResourceTable, ResourceFields { A, B }
 }
 
 fn caps(a: u64, b: u64) -> Limits<Work, Resource> {
-    Limits::new(WorkTable { Visit: u64::MAX }, ResourceTable { A: a, B: b })
+    Limits::new(
+        WorkTable::new(WorkFields { Visit: u64::MAX }),
+        ResourceTable::new(ResourceFields { A: a, B: b }),
+    )
 }
 
 /// Every resource converts to `target` at `scale`.

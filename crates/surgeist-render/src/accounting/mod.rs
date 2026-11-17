@@ -331,21 +331,21 @@ fn build_account(
     let mut scopes = [root; PHASE_COUNT];
     let [glyphs, paths, scratch, retained] = legacy.capacities();
     let mut work = RenderWorkTable::splat(u64::MAX);
-    work.GlyphInputs = as_u64(glyphs)?;
-    work.PathElementsEmitted = as_u64(paths)?;
+    work[RenderWork::GlyphInputs] = as_u64(glyphs)?;
+    work[RenderWork::PathElementsEmitted] = as_u64(paths)?;
     #[cfg(feature = "render-text")]
     if let Some([runs, coords, decorations]) = text_caps {
-        work.TextRuns = as_u64(runs)?;
-        work.CoordinateInputs = as_u64(coords)?;
-        work.TextDecorations = as_u64(decorations)?;
+        work[RenderWork::TextRuns] = as_u64(runs)?;
+        work[RenderWork::CoordinateInputs] = as_u64(coords)?;
+        work[RenderWork::TextDecorations] = as_u64(decorations)?;
     }
     let caps = Limits::new(
         work,
-        RenderResourceTable {
+        RenderResourceTable::new(RenderResourceFields {
             ScratchCpuBytes: as_u64(scratch)?,
             RetainedCpuBytes: as_u64(retained)?,
-            ..RenderResourceTable::splat(u64::MAX)
-        },
+            ..RenderResourceFields::splat(u64::MAX)
+        }),
     );
     for phase in RenderPhase::ALL.into_iter().skip(1) {
         let parent = phase.parent().ok_or(RenderAccountingError::Invariant)?;
@@ -364,20 +364,20 @@ fn build_account(
                 } else if phase == RenderPhase::RepeatQuota {
                     Limits::new(
                         RenderWorkTable::splat(u64::MAX),
-                        RenderResourceTable {
+                        RenderResourceTable::new(RenderResourceFields {
                             LocalRepeatTileQuota: 1_000_000,
-                            ..RenderResourceTable::splat(u64::MAX)
-                        },
+                            ..RenderResourceFields::splat(u64::MAX)
+                        }),
                     )
                 } else if phase == RenderPhase::AtlasQuota {
                     let texels = u64::from(u16::MAX) * u64::from(u16::MAX);
                     Limits::new(
                         RenderWorkTable::splat(u64::MAX),
-                        RenderResourceTable {
+                        RenderResourceTable::new(RenderResourceFields {
                             LocalAtlasSourceByteQuota: texels * 4,
                             LocalAtlasTexelQuota: texels,
-                            ..RenderResourceTable::splat(u64::MAX)
-                        },
+                            ..RenderResourceFields::splat(u64::MAX)
+                        }),
                     )
                 } else {
                     Limits::unlimited()

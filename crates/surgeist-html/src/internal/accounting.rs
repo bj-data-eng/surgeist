@@ -218,7 +218,7 @@ dimensions! {
     ///
     /// The eight parser categories each weigh one credit. Their units are
     /// physical bytes or individual events, not instructions or elapsed time.
-    pub enum HtmlWork => HtmlWorkTable {
+    pub enum HtmlWork => HtmlWorkTable, HtmlWorkFields {
         /// One supplied source unit read.
         InputUnitRead,
         /// One byte inspected without copying.
@@ -248,7 +248,7 @@ dimensions! {
 dimensions! {
     /// Resources the HTML crates hold. Declaration order is the deterministic
     /// precedence among simultaneous parse limit failures.
-    pub enum HtmlResource => HtmlResourceTable {
+    pub enum HtmlResource => HtmlResourceTable, HtmlResourceFields {
         /// Supplied source units, admitted once.
         SourceUnits,
         /// Live buffered UTF-16 units.

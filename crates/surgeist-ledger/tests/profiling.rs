@@ -3,28 +3,31 @@ use surgeist_ledger::{
 };
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes }
+    enum Resource => ResourceTable, ResourceFields { Bytes }
 }
 
 const WORK: Work = Work::Visit;
 const BYTES: Resource = Resource::Bytes;
 
 fn limits(work: u64, bytes: u64) -> Limits<Work, Resource> {
-    Limits::new(WorkTable { Visit: work }, ResourceTable { Bytes: bytes })
+    Limits::new(
+        WorkTable::new(WorkFields { Visit: work }),
+        ResourceTable::new(ResourceFields { Bytes: bytes }),
+    )
 }
 
 fn tariffs(work_scale: u64, bytes_scale: u64) -> Tariffs<Work, Resource> {
     Tariffs::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Visit: Tariff::new(WORK, work_scale),
-        },
-        ResourceTable {
+        }),
+        ResourceTable::new(ResourceFields {
             Bytes: Tariff::new(BYTES, bytes_scale),
-        },
+        }),
     )
 }
 

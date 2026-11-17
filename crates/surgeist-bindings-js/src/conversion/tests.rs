@@ -9,8 +9,8 @@ use std::rc::Rc;
 use surgeist_ledger::{Change, Limits, Operation, ProfileMode, SharedOperation, Tariffs};
 
 use super::{
-    CleanupPrimary, CleanupStage, ConversionAccount, Converted, Failure, Resource, ResourceTable,
-    Work, WorkTable, types,
+    CleanupPrimary, CleanupStage, ConversionAccount, Converted, Failure, Resource, ResourceFields,
+    ResourceTable, Work, WorkFields, WorkTable, types,
 };
 use crate::{Callback, Completion, EngineKind, Error, Process, Realm, Root};
 
@@ -209,7 +209,7 @@ fn earlier_host_stays_first() -> TestResult {
             .set_limits(
                 shared(&account).1,
                 Limits::new(
-                    WorkTable {
+                    WorkTable::new(WorkFields {
                         Value: 1,
                         CodeUnit: u64::MAX,
                         EnumerationLookup: u64::MAX,
@@ -218,10 +218,10 @@ fn earlier_host_stays_first() -> TestResult {
                         IteratorOperation: 0,
                         SequenceItem: 0,
                         SequenceMove: 0,
-                    },
-                    ResourceTable {
+                    }),
+                    ResourceTable::new(ResourceFields {
                         BufferBytes: u64::MAX,
-                    },
+                    }),
                 ),
             )
             .expect("change future admission");

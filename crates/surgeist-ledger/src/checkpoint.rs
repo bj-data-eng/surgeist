@@ -315,11 +315,11 @@ mod tests {
     use crate::NoDimension;
 
     crate::dimensions! {
-        enum TestWork => TestWorkTable { Visit }
+        enum TestWork => TestWorkTable, TestWorkFields { Visit }
     }
 
     crate::dimensions! {
-        enum TestResource => TestResourceTable { Bytes }
+        enum TestResource => TestResourceTable, TestResourceFields { Bytes }
     }
 
     #[test]
@@ -380,7 +380,7 @@ mod tests {
         let checkpoint = operation.begin_checkpoint().unwrap();
         // Cumulative work never decreases through the public API; lower it to
         // reach the state the closing subtraction guards.
-        operation.scopes[0].usage.work.Visit = 1;
+        operation.scopes[0].usage.work[TestWork::Visit] = 1;
         assert_eq!(
             operation.end_checkpoint(&checkpoint),
             Err(Error::Defect(Defect::IntervalWork))

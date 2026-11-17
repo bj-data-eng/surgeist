@@ -3,8 +3,8 @@ use super::{
     Account, AccountedVec, IntervalNumbers, ObserverBudget, RenderAccountingError,
     RenderAccountingOptions, RenderClock, RenderCpuIdentity, RenderCpuInterval, RenderCpuScope,
     RenderCpuSnapshot, RenderLedger, RenderLifetimeUsage, RenderQuantity, RenderRefusalReason,
-    RenderResource, RenderResourceTable, RenderWork, RenderWorkTable, ReportBacking,
-    StorageAccount, map_ledger_failure,
+    RenderResource, RenderResourceFields, RenderResourceTable, RenderWork, RenderWorkTable,
+    ReportBacking, StorageAccount, map_ledger_failure,
 };
 use crate::{Error, Image, PreparedGlyphRun, Result, image::ImageContentIdentity};
 use std::{
@@ -155,11 +155,11 @@ impl RendererCpu {
     pub(crate) fn new(options: RenderAccountingOptions) -> Result<Self> {
         let limits = Limits::new(
             RenderWorkTable::splat(u64::MAX),
-            RenderResourceTable {
+            RenderResourceTable::new(RenderResourceFields {
                 RetainedCpuBytes: options.limits.retained_bytes(),
                 ScratchCpuBytes: options.limits.scratch_bytes(),
-                ..RenderResourceTable::splat(u64::MAX)
-            },
+                ..RenderResourceFields::splat(u64::MAX)
+            }),
         );
         let profile = options.profile.ledger_cpu();
         let setup = |error| Error::from(map_ledger_failure(error));

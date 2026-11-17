@@ -1,10 +1,13 @@
 //! Closed dimension sets and the tables that hold one value per dimension.
 //!
 //! A consumer declares each set with [`dimensions!`](crate::dimensions). The
-//! macro writes a fieldless enum and a table struct with one named field per
-//! variant, and implements [`Dimension`] by matching every variant to its own
-//! field. A lookup is therefore total by type: it uses no index, so it cannot
-//! go out of range, and a table cannot be built with a dimension missing.
+//! macro writes a fieldless enum, a table that stores one value per variant in
+//! an array in declaration order, and a fields struct with one named field per
+//! variant, from which a table is built. [`Dimension`] looks a value up at the
+//! position of its variant, so a lookup is arithmetic on the dimension and has
+//! no branch on which dimension it names. The array has one element per
+//! variant, so a lookup cannot go out of range, and the fields struct names
+//! every variant, so a table cannot be built with a dimension missing.
 
 use std::{fmt, hash::Hash, marker::PhantomData};
 
@@ -18,7 +21,7 @@ impl<T: Copy + Eq + fmt::Debug + Send + Sync + 'static> TableValue for T {}
 /// Implement it only through [`dimensions!`](crate::dimensions); the
 /// supertrait is hidden so that a hand-written implementation is a deliberate
 /// step. The macro guarantees that [`Dimension::get`] and
-/// [`Dimension::get_mut`] reach the field named by the variant.
+/// [`Dimension::get_mut`] reach the value stored for the variant.
 pub trait Dimension:
     Copy + Eq + Hash + fmt::Debug + Send + Sync + 'static + crate::__private::Sealed
 {
@@ -72,12 +75,12 @@ impl Dimension for NoDimension {
     }
 }
 
-/// Declares a closed dimension set and its table.
+/// Declares a closed dimension set, its table and the fields a table is built from.
 ///
 /// ```
 /// surgeist_ledger::dimensions! {
 ///     /// Work a parser charges.
-///     pub enum ParseWork => ParseWorkTable {
+///     pub enum ParseWork => ParseWorkTable, ParseWorkFields {
 ///         /// One input byte read.
 ///         InputByte,
 ///         /// One tree node visited.
@@ -85,34 +88,55 @@ impl Dimension for NoDimension {
 ///     }
 /// }
 ///
-/// let limits = ParseWorkTable { InputByte: 4096, NodeVisit: 512 };
-/// assert_eq!(limits.NodeVisit, 512);
+/// let limits = ParseWorkTable::new(ParseWorkFields { InputByte: 4096, NodeVisit: 512 });
+/// assert_eq!(limits[ParseWork::NodeVisit], 512);
 ///
 /// const UNLIMITED: ParseWorkTable<u64> = ParseWorkTable::splat(u64::MAX);
-/// assert_eq!(UNLIMITED.InputByte, u64::MAX);
+/// assert_eq!(UNLIMITED[ParseWork::InputByte], u64::MAX);
 /// ```
 ///
 /// The enum derives `Clone`, `Copy`, `Debug`, `Eq`, `Hash`, `Ord`,
-/// `PartialEq` and `PartialOrd`. The table has the enum's visibility, one
-/// public field per variant with the variant's name and documentation, and
-/// derives `Clone`, `Copy`, `Debug`, `Eq`, `Hash` and `PartialEq`. A variant
-/// accepts doc comments only, because each one is copied to both the variant
-/// and its field; the enum itself accepts any attributes.
+/// `PartialEq` and `PartialOrd`. The table and the fields struct have the
+/// enum's visibility.
 ///
-/// A table built from its struct must name every dimension:
+/// The table stores its values in declaration order, implements `Clone`,
+/// `Copy`, `Debug`, `Eq`, `Hash` and `PartialEq`, and is indexed by the enum.
+/// Its `Debug` output names each value by its variant. `new` and `splat` are
+/// `const`, so a constant table stays a constant.
+///
+/// The fields struct has one public field per variant with the variant's name
+/// and documentation, and derives `Clone`, `Copy`, `Debug`, `Eq` and
+/// `PartialEq`. A variant accepts doc comments only, because each one is
+/// copied to both the variant and its field; the enum itself accepts any
+/// attributes.
+///
+/// A table must be built from a value for every dimension:
 ///
 /// ```compile_fail,E0063
 /// surgeist_ledger::dimensions! {
-///     pub enum ParseWork => ParseWorkTable { InputByte, NodeVisit }
+///     pub enum ParseWork => ParseWorkTable, ParseWorkFields { InputByte, NodeVisit }
 /// }
 ///
-/// let limits = ParseWorkTable { InputByte: 4096 };
+/// let limits = ParseWorkTable::new(ParseWorkFields { InputByte: 4096 });
+/// ```
+///
+/// The values of a table are private to the module that declares it, so other
+/// code cannot build one by position:
+///
+/// ```compile_fail,E0451
+/// mod parser {
+///     surgeist_ledger::dimensions! {
+///         pub enum ParseWork => ParseWorkTable, ParseWorkFields { InputByte, NodeVisit }
+///     }
+/// }
+///
+/// let limits = parser::ParseWorkTable { values: [4096, 512] };
 /// ```
 #[macro_export]
 macro_rules! dimensions {
     (
         $(#[$enum_meta:meta])*
-        $vis:vis enum $name:ident => $table:ident {
+        $vis:vis enum $name:ident => $table:ident, $fields:ident {
             $(
                 $(#[doc = $variant_doc:expr])*
                 $variant:ident
@@ -128,23 +152,93 @@ macro_rules! dimensions {
             )+
         }
 
-        #[doc = concat!("One value per [`", stringify!($name), "`] dimension.")]
-        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+        #[doc = concat!(
+            "One value per [`", stringify!($name), "`] dimension, by name. ",
+            "A [`", stringify!($table), "`] is built from it."
+        )]
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         #[allow(non_snake_case)]
-        $vis struct $table<T> {
+        $vis struct $fields<T> {
             $(
                 $(#[doc = $variant_doc])*
                 pub $variant: T,
             )+
         }
 
-        impl<T: Copy> $table<T> {
-            /// A table holding `value` for every dimension.
+        impl<T: Copy> $fields<T> {
+            /// Fields holding `value` for every dimension, as the base of a
+            /// struct update that names the others.
             #[allow(dead_code)]
             $vis const fn splat(value: T) -> Self {
                 Self {
                     $($variant: value,)+
                 }
+            }
+        }
+
+        #[doc = concat!("One value per [`", stringify!($name), "`] dimension.")]
+        #[derive(Clone, Copy, Eq, Hash, PartialEq)]
+        $vis struct $table<T> {
+            values: [T; [$($name::$variant),+].len()],
+        }
+
+        impl<T: Copy> $table<T> {
+            /// The table holding each value of `fields` for the dimension
+            /// that names it.
+            #[allow(dead_code)]
+            $vis const fn new(fields: $fields<T>) -> Self {
+                Self {
+                    values: [$(fields.$variant),+],
+                }
+            }
+
+            /// A table holding `value` for every dimension.
+            #[allow(dead_code)]
+            $vis const fn splat(value: T) -> Self {
+                Self {
+                    values: [value; [$($name::$variant),+].len()],
+                }
+            }
+        }
+
+        impl<T> ::core::ops::Index<$name> for $table<T> {
+            type Output = T;
+
+            #[inline]
+            fn index(&self, key: $name) -> &T {
+                // The array holds one value per variant, so the position of a
+                // variant is always present. The first value stands in for a
+                // position the enum cannot produce, which leaves the lookup
+                // without a panic path.
+                let [first, rest @ ..] = &self.values;
+                match (key as usize).checked_sub(1) {
+                    ::core::option::Option::None => first,
+                    ::core::option::Option::Some(position) => {
+                        rest.get(position).unwrap_or(first)
+                    }
+                }
+            }
+        }
+
+        impl<T> ::core::ops::IndexMut<$name> for $table<T> {
+            #[inline]
+            fn index_mut(&mut self, key: $name) -> &mut T {
+                let [first, rest @ ..] = &mut self.values;
+                match (key as usize).checked_sub(1) {
+                    ::core::option::Option::None => first,
+                    ::core::option::Option::Some(position) => {
+                        rest.get_mut(position).unwrap_or(first)
+                    }
+                }
+            }
+        }
+
+        impl<T: ::core::fmt::Debug> ::core::fmt::Debug for $table<T> {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                formatter
+                    .debug_struct(stringify!($table))
+                    $(.field(stringify!($variant), &self[$name::$variant]))+
+                    .finish()
             }
         }
 
@@ -155,21 +249,19 @@ macro_rules! dimensions {
 
             type Table<T: $crate::TableValue> = $table<T>;
 
+            #[inline]
             fn get<T: $crate::TableValue>(table: &$table<T>, key: Self) -> &T {
-                match key {
-                    $(Self::$variant => &table.$variant,)+
-                }
+                &table[key]
             }
 
+            #[inline]
             fn get_mut<T: $crate::TableValue>(table: &mut $table<T>, key: Self) -> &mut T {
-                match key {
-                    $(Self::$variant => &mut table.$variant,)+
-                }
+                &mut table[key]
             }
 
             fn from_fn<T: $crate::TableValue>(mut value: impl FnMut(Self) -> T) -> $table<T> {
                 $table {
-                    $($variant: value(Self::$variant),)+
+                    values: [$(value(Self::$variant)),+],
                 }
             }
         }

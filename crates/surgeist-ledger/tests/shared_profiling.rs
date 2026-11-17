@@ -8,18 +8,21 @@ use std::{
 use surgeist_ledger::{Change, Error, Limits, Operation, ProfileMode, SharedOperation};
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes }
+    enum Resource => ResourceTable, ResourceFields { Bytes }
 }
 
 const WORK: Work = Work::Visit;
 const BYTES: Resource = Resource::Bytes;
 
 fn limits(work: u64, bytes: u64) -> Limits<Work, Resource> {
-    Limits::new(WorkTable { Visit: work }, ResourceTable { Bytes: bytes })
+    Limits::new(
+        WorkTable::new(WorkFields { Visit: work }),
+        ResourceTable::new(ResourceFields { Bytes: bytes }),
+    )
 }
 thread_local! { static TIME:Cell<u64>=const {Cell::new(0)}; static READS:Cell<usize>=const{Cell::new(0)}; }
 fn clock() -> Duration {

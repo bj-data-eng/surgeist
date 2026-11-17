@@ -9,7 +9,7 @@ use surgeist_ledger::{
 
 surgeist_ledger::dimensions! {
     /// Work owned by the Runtime guest adapter.
-    pub enum DocumentGuestWork => WorkTable {
+    pub enum DocumentGuestWork => WorkTable, WorkFields {
         /// One admitted unit at an existing Runtime guest admission point.
         Adapter,
         /// One attempt to convert a JS value through a selected IDL type.
@@ -33,7 +33,7 @@ surgeist_ledger::dimensions! {
 
 surgeist_ledger::dimensions! {
     /// Live Rust backing owned by the Runtime guest adapter.
-    pub enum DocumentGuestResource => ResourceTable {
+    pub enum DocumentGuestResource => ResourceTable, ResourceFields {
         /// Requested bytes retained by the adapter.
         BackingBytes,
     }
@@ -98,10 +98,10 @@ pub(in crate::document_scripting) enum AccountScope {
 }
 
 fn adapter_work_limits(work: u64) -> WorkTable<u64> {
-    WorkTable {
+    WorkTable::new(WorkFields {
         Adapter: work,
-        ..WorkTable::splat(0)
-    }
+        ..WorkFields::splat(0)
+    })
 }
 
 fn conversion_tariffs() -> Tariffs<DocumentGuestWork, DocumentGuestResource> {

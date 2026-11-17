@@ -2038,7 +2038,7 @@ fn bounded_constructor_admits_declared_conversion_and_exact_output(
     process: &mut Process,
 ) -> Result<(), Error> {
     use surgeist_bindings_js::conversion::{
-        ArgumentValue, ConversionAccount, ResourceTable, WorkTable,
+        ArgumentValue, ConversionAccount, ResourceFields, ResourceTable, WorkFields, WorkTable,
         declarations::{event_constructor_0_event_init_dict, event_constructor_0_type},
     };
 
@@ -2047,11 +2047,11 @@ fn bounded_constructor_admits_declared_conversion_and_exact_output(
     execution.in_realm(&realm, |scope| {
         let account = ConversionAccount::standalone(
             scope,
-            WorkTable {
+            WorkTable::new(WorkFields {
                 CodeUnit: 4,
-                ..WorkTable::splat(8)
-            },
-            ResourceTable { BufferBytes: 4 },
+                ..WorkFields::splat(8)
+            }),
+            ResourceTable::new(ResourceFields { BufferBytes: 4 }),
         )?;
         let callback = ConstructorCallback::bounded(
             2,

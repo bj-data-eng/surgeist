@@ -3,11 +3,11 @@ use surgeist_ledger::{
 };
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes, Other }
+    enum Resource => ResourceTable, ResourceFields { Bytes, Other }
 }
 
 const WORK: Work = Work::Visit;
@@ -18,11 +18,11 @@ fn operation() -> Operation<Work, Resource> {
     Operation::with_profile(
         "root",
         Limits::new(
-            WorkTable { Visit: 10 },
-            ResourceTable {
+            WorkTable::new(WorkFields { Visit: 10 }),
+            ResourceTable::new(ResourceFields {
                 Bytes: 100,
                 Other: 100,
-            },
+            }),
         ),
         4,
         ProfileMode::Detailed {
@@ -149,13 +149,13 @@ fn child_creation_remapping_and_sibling_balances_define_ancestor_peak() {
             "child",
             Limits::unlimited(),
             Tariffs::new(
-                WorkTable {
+                WorkTable::new(WorkFields {
                     Visit: Tariff::new(WORK, 2),
-                },
-                ResourceTable {
+                }),
+                ResourceTable::new(ResourceFields {
                     Bytes: Tariff::new(OTHER, 2),
                     Other: Tariff::new(BYTES, 0),
-                },
+                }),
             ),
         )
         .unwrap();
@@ -207,13 +207,13 @@ fn tariff_overflow_rolls_back_interval_maximum_and_direct_custody() {
             "overflow",
             Limits::unlimited(),
             Tariffs::new(
-                WorkTable {
+                WorkTable::new(WorkFields {
                     Visit: Tariff::new(WORK, 1),
-                },
-                ResourceTable {
+                }),
+                ResourceTable::new(ResourceFields {
                     Bytes: Tariff::new(BYTES, u64::MAX),
                     Other: Tariff::new(OTHER, 1),
-                },
+                }),
             ),
         )
         .unwrap();

@@ -1,11 +1,11 @@
 use surgeist_ledger::{Change, Error, Limits, Operation, RefusalReason, Tariff, Tariffs};
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Actions, Credits }
+    enum Work => WorkTable, WorkFields { Actions, Credits }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes }
+    enum Resource => ResourceTable, ResourceFields { Bytes }
 }
 
 type Ledger = Operation<Work, Resource>;
@@ -16,11 +16,11 @@ const BYTES: Resource = Resource::Bytes;
 
 fn limits(actions: u64, credits: u64, bytes: u64) -> Limits<Work, Resource> {
     Limits::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Actions: actions,
             Credits: credits,
-        },
-        ResourceTable { Bytes: bytes },
+        }),
+        ResourceTable::new(ResourceFields { Bytes: bytes }),
     )
 }
 
@@ -51,13 +51,13 @@ mod css_fixture {
 
 fn css_tariffs(rate: u64) -> Tariffs<Work, Resource> {
     Tariffs::new(
-        WorkTable {
+        WorkTable::new(WorkFields {
             Actions: Tariff::new(CREDITS, rate),
             Credits: Tariff::new(CREDITS, 1),
-        },
-        ResourceTable {
+        }),
+        ResourceTable::new(ResourceFields {
             Bytes: Tariff::new(BYTES, 1),
-        },
+        }),
     )
 }
 
@@ -216,13 +216,13 @@ fn partial_releases_use_the_original_resource_tariff() {
     let root = ledger.root();
     let tariffs = |scale| {
         Tariffs::new(
-            WorkTable {
+            WorkTable::new(WorkFields {
                 Actions: Tariff::new(ACTIONS, 1),
                 Credits: Tariff::new(CREDITS, 1),
-            },
-            ResourceTable {
+            }),
+            ResourceTable::new(ResourceFields {
                 Bytes: Tariff::new(BYTES, scale),
-            },
+            }),
         )
     };
     let child = ledger

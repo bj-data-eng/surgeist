@@ -28,7 +28,7 @@ use crate::{
 
 pub use account::{
     CleanupObservation, CleanupStatus, ConversionAccount, Converted, LedgerError, Resource,
-    ResourceTable, Work, WorkTable,
+    ResourceFields, ResourceTable, Work, WorkFields, WorkTable,
 };
 pub use composition::{Argument, ArgumentValue, Descriptor, Nullable};
 pub use failure::{

@@ -94,10 +94,10 @@ impl Fixture {
     fn new(domain: Domain) -> Self {
         NOW.set(0);
         let limits = Limits::new(
-            RenderWorkTable {
+            RenderWorkTable::new(RenderWorkFields {
                 CoordinateVisits: 1,
-                ..RenderWorkTable::splat(u64::MAX)
-            },
+                ..RenderWorkFields::splat(u64::MAX)
+            }),
             RenderResourceTable::splat(u64::MAX),
         );
         let mut operation = Operation::with_profile_clock(
@@ -160,10 +160,10 @@ impl Fixture {
         let mut foreign_operation = Operation::with_profile(
             "foreign owner",
             Limits::new(
-                RenderWorkTable {
+                RenderWorkTable::new(RenderWorkFields {
                     CoordinateVisits: 0,
-                    ..RenderWorkTable::splat(u64::MAX)
-                },
+                    ..RenderWorkFields::splat(u64::MAX)
+                }),
                 RenderResourceTable::splat(u64::MAX),
             ),
             1,

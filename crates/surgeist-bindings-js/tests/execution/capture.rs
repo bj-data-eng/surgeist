@@ -5,10 +5,10 @@ use surgeist_bindings_js::preparation::{
 use surgeist_ledger::{Change, Limits, Operation, ProfileMode, SharedOperation};
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Capture }
+    enum Work => WorkTable, WorkFields { Capture }
 }
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes }
+    enum Resource => ResourceTable, ResourceFields { Bytes }
 }
 
 struct Account {

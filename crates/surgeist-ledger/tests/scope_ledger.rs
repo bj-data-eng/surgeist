@@ -3,17 +3,17 @@ use surgeist_ledger::{
 };
 
 surgeist_ledger::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 surgeist_ledger::dimensions! {
-    enum Resource => ResourceTable { Bytes }
+    enum Resource => ResourceTable, ResourceFields { Bytes }
 }
 
 fn caps(bytes: u64) -> Limits<Work, Resource> {
     Limits::new(
-        WorkTable { Visit: u64::MAX },
-        ResourceTable { Bytes: bytes },
+        WorkTable::new(WorkFields { Visit: u64::MAX }),
+        ResourceTable::new(ResourceFields { Bytes: bytes }),
     )
 }
 

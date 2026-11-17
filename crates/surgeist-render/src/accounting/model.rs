@@ -8,7 +8,7 @@ dimensions! {
     /// lifecycle maintenance and result transfer remain checked-unlimited.
     /// Values of different dimensions are not additive.
     #[non_exhaustive]
-    pub enum RenderWork => RenderWorkTable {
+    pub enum RenderWork => RenderWorkTable, RenderWorkFields {
         /// Authored or normalized command records actually inspected, including repeated traversals.
         CommandVisits,
         /// Contour endpoints or path elements inspected, including provider callbacks
@@ -457,7 +457,7 @@ impl RenderWork {
 dimensions! {
     /// Named resource units. See the crate accounting reference for units.
     #[non_exhaustive]
-    pub enum RenderResource => RenderResourceTable {
+    pub enum RenderResource => RenderResourceTable, RenderResourceFields {
         /// Live explicit backing, including vector capacity, usable pass-cache
         /// index record capacity, font/image payloads and documented fixed units.
         RetainedCpuBytes,
@@ -811,11 +811,11 @@ impl RenderLimits {
     pub(crate) const fn ledger(self) -> surgeist_ledger::Limits<RenderWork, RenderResource> {
         surgeist_ledger::Limits::new(
             self.work,
-            RenderResourceTable {
+            RenderResourceTable::new(RenderResourceFields {
                 RetainedCpuBytes: self.retained,
                 ScratchCpuBytes: self.scratch,
-                ..RenderResourceTable::splat(u64::MAX)
-            },
+                ..RenderResourceFields::splat(u64::MAX)
+            }),
         )
     }
 }

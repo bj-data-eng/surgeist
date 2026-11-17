@@ -12,25 +12,25 @@ use std::{hint::black_box, time::Instant};
 use surgeist_ledger::{Change, Limits, Operation, Tariff, Tariffs};
 
 surgeist_ledger::dimensions! {
-    enum NarrowWork => NarrowWorkTable {
+    enum NarrowWork => NarrowWorkTable, NarrowWorkFields {
         Read, Inspect, Copy, Step, Visit, Write, Reserve, Call, Total,
     }
 }
 
 surgeist_ledger::dimensions! {
-    enum NarrowResource => NarrowResourceTable {
+    enum NarrowResource => NarrowResourceTable, NarrowResourceFields {
         R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17, R18,
     }
 }
 
 surgeist_ledger::dimensions! {
-    enum WideWork => WideWorkTable {
+    enum WideWork => WideWorkTable, WideWorkFields {
         Read, Inspect, Copy, Step, Visit, Write, Reserve, Call, Total, A, B, C,
     }
 }
 
 surgeist_ledger::dimensions! {
-    enum WideResource => WideResourceTable {
+    enum WideResource => WideResourceTable, WideResourceFields {
         R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17, R18,
         S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15, S16, S17, S18,
         S19, S20, S21, S22, S23, S24, S25, S26, S27, S28,

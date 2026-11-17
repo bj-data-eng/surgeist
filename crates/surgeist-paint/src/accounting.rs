@@ -8,7 +8,7 @@ use surgeist_ledger::{
 
 dimensions! {
     /// Defined algorithm actions, not CPU instructions.
-    pub enum WorkKind => WorkKindTable {
+    pub enum WorkKind => WorkKindTable, WorkKindFields {
         BoxValidation,
         ParentEdge,
         TopologyVisit,
@@ -100,7 +100,7 @@ impl WorkKind {
 dimensions! {
     /// Owned algorithm/result storage, excluding caller input and the independently
     /// bounded Ledger observer and Paint report adapter.
-    pub enum ResourceKind => ResourceKindTable {
+    pub enum ResourceKind => ResourceKindTable, ResourceKindFields {
         ScratchBytes,
         RetainedResultBytes,
     }

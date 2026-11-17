@@ -7,11 +7,11 @@ use crate::{
 };
 
 crate::dimensions! {
-    enum Work => WorkTable { Visit }
+    enum Work => WorkTable, WorkFields { Visit }
 }
 
 crate::dimensions! {
-    enum Resource => ResourceTable { Bytes }
+    enum Resource => ResourceTable, ResourceFields { Bytes }
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn direct_custody_above_accepted_custody_is_a_latched_defect() {
     let mut operation = plain(1);
     let root = operation.root();
     // Direct holdings are a subset of the admitted live total, which is zero.
-    operation.scopes[0].direct.Bytes = u64::MAX;
+    operation.scopes[0].direct[Resource::Bytes] = u64::MAX;
     assert_eq!(
         operation.apply(root, Change::Acquire(Resource::Bytes, 1)),
         Err(Error::Defect(Defect::DirectCustody))
@@ -292,11 +292,11 @@ mod staging_stores {
     };
 
     crate::dimensions! {
-        enum Wk => WkTable { A, B, C, D }
+        enum Wk => WkTable, WkFields { A, B, C, D }
     }
 
     crate::dimensions! {
-        enum Rs => RsTable { X, Y, Z }
+        enum Rs => RsTable, RsFields { X, Y, Z }
     }
 
     /// A deterministic generator, so a failing case can be replayed.
@@ -605,10 +605,10 @@ mod staging_stores {
     fn the_in_place_store_is_selected_by_width_batch_size_and_chain() {
         use crate::in_place::{preferred, wide};
         crate::dimensions! {
-            enum OneWork => OneWorkTable { Only }
+            enum OneWork => OneWorkTable, OneWorkFields { Only }
         }
         crate::dimensions! {
-            enum OneResource => OneResourceTable { Only }
+            enum OneResource => OneResourceTable, OneResourceFields { Only }
         }
         let work = |count: usize| vec![Change::<Wk, Rs>::Work(Wk::A, 1); count];
         assert!(!wide::<OneWork, OneResource>());
@@ -622,10 +622,10 @@ mod staging_stores {
         assert!(!preferred(&work(2), 2));
         // A pair wide enough for five changes: 2 work and 24 resources.
         crate::dimensions! {
-            enum BigWork => BigWorkTable { A, B }
+            enum BigWork => BigWorkTable, BigWorkFields { A, B }
         }
         crate::dimensions! {
-            enum BigResource => BigResourceTable {
+            enum BigResource => BigResourceTable, BigResourceFields {
                 R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15,
                 R16, R17, R18, R19, R20, R21, R22, R23,
             }
