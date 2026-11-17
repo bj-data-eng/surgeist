@@ -1247,3 +1247,76 @@ fn history_errors_state_why_the_change_coverage_is_unavailable() {
         assert!(error.source().is_none());
     }
 }
+
+#[test]
+fn every_resource_is_named_by_a_distinct_phrase() {
+    let all = [
+        DomResource::ParsedAssociationBytes,
+        DomResource::ParsedAssociationUnits,
+        DomResource::ParsedAssociationProcessingRetainedBytes,
+        DomResource::ParsedAssociationProcessingRetainedUnits,
+        DomResource::ParsedAssociationProcessingOutputs,
+        DomResource::ParsedAssociationProcessingWork,
+        DomResource::ParsedAssociationDispatchWork,
+        DomResource::FullscreenExits,
+        DomResource::FullscreenEvents,
+        DomResource::Ranges,
+        DomResource::NodeIterators,
+        DomResource::ChildListObservers,
+        DomResource::ChildListRegistrations,
+        DomResource::ChildListRecords,
+        DomResource::ChildListRecordReferences,
+        DomResource::ManagedNodes,
+        DomResource::SlotReferences,
+        DomResource::AutofocusCandidates,
+        DomResource::SlotAssignmentInputs,
+        DomResource::SlotQueryOutput,
+        DomResource::SlotQueryScratch,
+        DomResource::StringCodeUnits,
+        DomResource::Commands,
+        DomResource::HistoryEntries,
+        DomResource::HistoryBytes,
+        DomResource::ViewTransitions,
+        DomResource::ViewTransitionRecords,
+        DomResource::ViewTransitionPseudos,
+        DomResource::ViewTransitionCaptureBytes,
+        DomResource::InputProcessingScratch,
+        DomResource::SelectScratch,
+        DomResource::SelectTasks,
+        DomResource::DetailsToggleIntentions,
+        DomResource::DetailsToggleOutput,
+        DomResource::BaseObservations,
+        DomResource::ImageUpdateCancellations,
+        DomResource::EncodingUrlObservations,
+        DomResource::DispatchCustodyScopes,
+        DomResource::DispatchCustodyReferences,
+        DomResource::DispatchCustodyRetainedBytes,
+        DomResource::DispatchCustodyScratch,
+        DomResource::EventRecipients,
+        DomResource::EventRecipientRetainedBytes,
+        DomResource::EventRecipientScratch,
+        DomResource::EventRecipientWork,
+        DomResource::InlineStyleBindings,
+        DomResource::InlineStyleStorage,
+        DomResource::InlineStyleScratch,
+        DomResource::InlineStyleWork,
+        DomResource::NodeRetirementCanonicalBytes,
+        DomResource::SourceRetainedBytes,
+        DomResource::SourceRetainedUnits,
+        DomResource::NameRetainedBytes,
+        DomResource::NameEntries,
+        DomResource::NameWork,
+        DomResource::NameScratch,
+        DomResource::MetaAtomicRetainedBytes,
+        DomResource::MetaAtomicRetainedUnits,
+        DomResource::MetaAtomicOutputs,
+        DomResource::MetaColorSchemeRetainedBytes,
+        DomResource::MetaThemeColorScratch,
+    ];
+    assert_eq!(all.len(), 61);
+    let mut phrases = std::collections::BTreeSet::new();
+    for resource in all {
+        let text = DomError::InvalidLimit(resource).to_string();
+        assert!(phrases.insert(text.clone()), "{resource:?} repeats {text}");
+    }
+}

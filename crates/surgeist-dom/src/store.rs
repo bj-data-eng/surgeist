@@ -85,6 +85,8 @@ pub use node_retirement::{
     DomNodeRetirementWatch, DomWatchedNode,
 };
 #[cfg(test)]
+mod error_text_tests;
+#[cfg(test)]
 mod oracle_tests;
 mod output;
 pub(crate) mod parsed_installation;
@@ -105,8 +107,6 @@ mod slot;
 pub(crate) mod source;
 pub(crate) mod style;
 mod style_custody;
-#[cfg(test)]
-mod error_text_tests;
 #[cfg(test)]
 mod style_custody_tests;
 mod svg_script;
@@ -520,10 +520,286 @@ pub enum DomError {
 }
 impl std::fmt::Display for DomError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DOM operation rejected: {self:?}")
+        match self {
+            Self::ParsedReportUnresolved(..) => f.write_str("a completed parse report holds a reference that its own tables cannot resolve"),
+            Self::ParsedAssociationPending { .. } => f.write_str("parsed association history must be admitted before this operation can cross the Document"),
+            Self::ParsedAssociationSynchronousPending { .. } => f.write_str("no authenticated executed synchronous frontier is available for the parsed notification"),
+            Self::ParsedAssociationProcessingPoisoned { .. } => f.write_str("the parsed association processing guard was poisoned by an earlier failure"),
+            Self::InlineStyleProfileMissing { .. } => f.write_str("the inline style operation has no profile for the Element"),
+            Self::InlineStyleProfileConflict { .. } => f.write_str("several inline style profiles name the same Element and Document qualification"),
+            Self::InlineStyleContextRequired { .. } => f.write_str("a bound inline style change needs an inline style synchronization operation"),
+            Self::InlineStyleOperationPending { .. } => f.write_str("an inline style feedback effect must complete before the affected operation"),
+            Self::StaleFullscreenExit => f.write_str("the fullscreen exit invocation is stale"),
+            Self::FullscreenExitHandoffRequired => f.write_str("a pending fullscreen exit must be handed off to its scheduling owner first"),
+            Self::FullscreenExitAssertionFailed { .. } => f.write_str("an assertion of the fullscreen exit algorithm failed"),
+            Self::FullscreenExitCompositionUnsupported { .. } => f.write_str("the fullscreen exit cannot be composed with the Document's current state"),
+            Self::FullscreenExitDocumentRetired { .. } => f.write_str("the Document of the fullscreen exit invocation was retired"),
+            Self::FullscreenModelUnavailable { .. } => f.write_str("the fullscreen model needs a fact that is unavailable at this step"),
+            Self::TopLayerAdoptionUnavailable { .. } => f.write_str("top-layer state cannot be adopted into the receiving Document"),
+            Self::StaleRange => f.write_str("the Range is stale"),
+            Self::StaleNodeIterator => f.write_str("the NodeIterator is stale"),
+            Self::StaleChildListObserver => f.write_str("the child-list observer is stale"),
+            Self::ChildListPublicationUnavailable => f.write_str("the child-list observation publication is unavailable"),
+            Self::ChildListDeliveryActive => f.write_str("child-list observation delivery is already active"),
+            Self::ChildListWorkLimit { limit } => write!(f, "child-list observation exhausted its work allowance of {limit}"),
+            Self::NodeIteratorFilterActive => f.write_str("the NodeIterator filter is already running"),
+            Self::NodeIteratorPublicationUnavailable => f.write_str("the NodeIterator publication is unavailable"),
+            Self::NodeIteratorWorkLimit { limit } => write!(f, "NodeIterator traversal exhausted its work allowance of {limit}"),
+            Self::RangeAssociationIneligible => f.write_str("the Range is not rooted in the Document it would be associated with"),
+            Self::RangePublicationUnavailable => f.write_str("the Range publication is unavailable"),
+            Self::HostedSourceUnavailable => f.write_str("the operation needs a current live hosted owner association"),
+            Self::DocumentConstructor(..) => f.write_str("the Document constructor refused the request"),
+            Self::HostedCompositionRequired => f.write_str("the operation must be composed with its hosted owner"),
+            Self::InvalidDispatchCustody => f.write_str("the dispatch custody, target or occurrence does not belong to this owner"),
+            Self::EventRegistryAlreadyBound => f.write_str("a live listener-registry owner is already associated with this DOM"),
+            Self::InvalidEventRegistry => f.write_str("the supplied association is not this DOM's current listener-registry owner"),
+            Self::DispatchCustodyWorkLimit { limit } => write!(f, "dispatch custody processing exhausted its work allowance of {limit}"),
+            Self::SourceLimitReduction => f.write_str("a Source policy call tried to reduce an allowance, which may only be raised"),
+            Self::ParsedAssociationOperationPending { .. } => f.write_str("an earlier consuming operation has sealed the prefix of this parsed contribution"),
+            Self::InvalidSourceEvent => f.write_str("the Source event does not match the retained operation or its executor"),
+            Self::SourceInvariantFailed { .. } => f.write_str("a Source operation assertion failed"),
+            Self::SourceReceiverRetired { .. } => f.write_str("the receiver of the Source dialog action was retired before the action completed"),
+            Self::SourceCloseWatcherReceiverRetired { .. } => f.write_str("the receiver of the Source close-watcher request was retired before the action completed"),
+            Self::CloseWatcherProtocol(..) => f.write_str("the close-watcher request protocol was violated"),
+            Self::SourceEventExecutorUnavailable => f.write_str("no event executor is installed for this Source operation"),
+            Self::SourceAttributeGlobalUnavailable => f.write_str("attribute verification has no authentic node-document Global"),
+            Self::SourceAttributeExecutorUnavailable => f.write_str("attribute verification has no qualified executor"),
+            Self::SourceAttributeVerificationRejected => f.write_str("the registered verifier rejected the proposed attribute value"),
+            Self::SourceAttributeVerificationAbrupt => f.write_str("the registered verifier retained an abrupt guest outcome"),
+            Self::DialogInvalidState => f.write_str("the Dialog is in a state that does not allow this operation"),
+            Self::NeedsEventfulOperation { .. } => f.write_str("the Dialog action fires events and needs an eventful Source operation"),
+            Self::SourceNestedOperationLimit { limit } => write!(f, "nested Source operations exceeded their allowance of {limit}"),
+            Self::SourceUrlInputsMismatch => f.write_str("the URL observation does not match the inputs of the Source stage"),
+            Self::SourceUrlUnavailable => f.write_str("the URL needed by the Source stage is unavailable"),
+            Self::ForeignOwner => f.write_str("the identity belongs to a different DOM owner"),
+            Self::StaleNode => f.write_str("the node identity is stale"),
+            Self::NodeRetirementAlreadyWatched => f.write_str("the node is already watched for retirement"),
+            Self::NodeRetirementWorkLimit { limit } => write!(f, "node-retirement watch preparation exhausted its work allowance of {limit}"),
+            Self::ForeignBatch => f.write_str("the creation ticket belongs to a different batch"),
+            Self::UnavailableCreation => f.write_str("a node created by this batch has no published identity"),
+            Self::WrongNodeKind => f.write_str("the node is not of the kind the operation requires"),
+            Self::WrongDocument => f.write_str("the node belongs to a different Document"),
+            Self::HierarchyRequest => f.write_str("the edit would produce an invalid node hierarchy"),
+            Self::InvalidAdjacentPosition => f.write_str("the adjacent insertion position is not beforebegin, afterbegin, beforeend or afterend"),
+            Self::InvalidCharacter => f.write_str("the name contains a character that is not allowed"),
+            Self::Namespace => f.write_str("the qualified name and namespace are inconsistent"),
+            Self::ScriptPreparationRequired => f.write_str("HTML Script preparation requires a live settings observation"),
+            Self::MetaCspProcessingRequired => f.write_str("a staged HTML Meta insertion requires its Content Security Policy processor"),
+            Self::NotSupported => f.write_str("the operation is not supported here"),
+            Self::NativeInitializationRequired(..) => f.write_str("the Element needs native initialization before it can be created"),
+            Self::NonceInapplicable => f.write_str("the Element has no nonce"),
+            Self::TemplateContentsUnavailable => f.write_str("the Template element's contents are unavailable"),
+            Self::MarqueeInapplicable => f.write_str("the Element is not a Marquee"),
+            Self::DialogInapplicable => f.write_str("the Element is not a Dialog"),
+            Self::DialogDocumentStateUnavailable => f.write_str("the Document has no Dialog state"),
+            Self::AutofocusDocumentStateUnavailable => f.write_str("the Document has no autofocus state"),
+            Self::AutofocusInsertionUnavailable { .. } => f.write_str("the autofocus insertion step needs a service that is unavailable"),
+            Self::AutofocusInsertionProtocol(..) => f.write_str("the autofocus insertion protocol was violated"),
+            Self::DesignModeProcessingUnavailable { .. } => f.write_str("designMode processing needs a fact that is unavailable at this step"),
+            Self::DesignModeProtocol(..) => f.write_str("the designMode protocol was violated"),
+            Self::DialogFocusingUnavailable { .. } => f.write_str("the Dialog focusing step needs a service that is unavailable"),
+            Self::DialogFocusingProtocol(..) => f.write_str("the Dialog focusing protocol was violated"),
+            Self::FocusDelegateProtocol(..) => f.write_str("the focus-delegate protocol was violated"),
+            Self::FocusedAreaDesignationUnavailable { .. } => f.write_str("the removing step cannot compare the Element with its Document's unavailable focused-area designation"),
+            Self::AutofocusDelegateProtocol(..) => f.write_str("the autofocus-delegate protocol was violated"),
+            Self::TopLayerAlreadyActive { .. } => f.write_str("the Element is already in the top layer of its Document"),
+            Self::DialogProcessingUnavailable { .. } => f.write_str("the Dialog action needs a service that is unavailable"),
+            Self::DialogProtocol(..) => f.write_str("the Dialog protocol was violated"),
+            Self::CustomValidityInapplicable => f.write_str("the Element has no custom validity"),
+            Self::ButtonInapplicable => f.write_str("the Element is not a Button"),
+            Self::InputInapplicable => f.write_str("the Element is not an Input"),
+            Self::TextareaInapplicable => f.write_str("the Element is not a Textarea"),
+            Self::OutputInapplicable => f.write_str("the Element is not an Output"),
+            Self::OutputProtocol(..) => f.write_str("the Output protocol was violated"),
+            Self::TextareaReadWorkLimit { limit } => write!(f, "reading the Textarea exhausted its work allowance of {limit}"),
+            Self::InputFilenameInvalidState => f.write_str("the Input cannot take this filename in its current state"),
+            Self::InputProcessingProtocol => f.write_str("the Input processing protocol was violated"),
+            Self::InputProcessingWorkLimit { limit } => write!(f, "Input processing exhausted its work allowance of {limit}"),
+            Self::InputNumeric(..) => f.write_str("Input numeric processing failed"),
+            Self::InputColorUnavailable(..) => f.write_str("the Input color is unavailable"),
+            Self::InputColorUnsupported(..) => f.write_str("the Input color is not supported"),
+            Self::InputColorFacts(..) => f.write_str("the Input color facts are defective"),
+            Self::StyleCompositionRequired(..) => f.write_str("this Style update must be composed with its Style owner"),
+            Self::StyleOwnerAttributesCompositionRequired => f.write_str("a Style owner attribute change must be composed with its Style owner"),
+            Self::StyleDisabledCompositionRequired => f.write_str("a Style disabled change must be composed with its Style owner"),
+            Self::StyleProcessingUnavailable => f.write_str("Style processing is unavailable for this operation"),
+            Self::Meta(..) => f.write_str("native Meta processing refused the operation"),
+            Self::StyleProtocol => f.write_str("the Style processing protocol was violated"),
+            Self::SvgScriptProcessingUnavailable => f.write_str("SVG Script processing is unavailable for this operation"),
+            Self::SourceOperationPending => f.write_str("a Source operation is already pending"),
+            Self::IncompleteSourceOperation => f.write_str("an incomplete Source operation must finish first"),
+            Self::InvalidSourceOperation => f.write_str("the Source operation does not match this request or is not in the phase it needs"),
+            Self::SourcePublicationLimit => f.write_str("the Source operation exhausted its publication allowance"),
+            Self::SourceOutputLimit => f.write_str("the Source operation exhausted its output allowance"),
+            Self::SourceIdentityLimit => f.write_str("the Source operation exhausted its identity allowance"),
+            Self::StyleReceiptMismatch => f.write_str("the Style receipt does not match the retained state"),
+            Self::StyleFactsMismatch => f.write_str("the supplied Style facts do not match the original request"),
+            Self::StyleCssomRootBusy => f.write_str("the Style CSSOM root is busy"),
+            Self::StyleCssomRootPoisoned => f.write_str("the Style CSSOM root was poisoned by an earlier failure"),
+            Self::SourceWorkLimit { limit } => write!(f, "the Source operation exhausted its work allowance of {limit}"),
+            Self::SelectInapplicable => f.write_str("the Element is not a Select"),
+            Self::OptionInapplicable => f.write_str("the Element is not an Option"),
+            Self::SelectProtocol => f.write_str("the Select protocol was violated"),
+            Self::SelectValueQueriesUnconfigured => f.write_str("Select value queries were not configured"),
+            Self::SelectCapture(..) => f.write_str("capturing the Select semantics failed"),
+            Self::SelectElementValues(..) => f.write_str("reading the Select element values failed"),
+            Self::SelectSemantic(..) => f.write_str("Select semantic evaluation failed"),
+            Self::InvalidSelectSemanticLimit { limit, used, .. } => write!(
+                f,
+                "the Select semantic allowance cannot be lowered to {limit} because {used} is already in use"
+            ),
+            Self::LinkProcessingUnavailable => f.write_str("Link processing is unavailable for this operation"),
+            Self::ImageProcessingUnavailable => f.write_str("image processing is unavailable for this operation"),
+            Self::MediaResourceEffectUnavailable(..) => f.write_str("the media resource effect needs a service that is unavailable"),
+            Self::MediaRemovalStableStateUnavailable => f.write_str("the stable-state step of media removal is unavailable"),
+            Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
+            Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
+            Self::EncodingUrlFacts(..) => f.write_str("the encoding and URL facts were refused"),
+            Self::EncodingUrlWorkLimit { limit } => write!(f, "encoding and URL processing exhausted its work allowance of {limit}"),
+            Self::BaseFacts(..) => f.write_str("the base URL facts were refused"),
+            Self::BaseWorkLimit { limit } => write!(f, "base URL processing exhausted its work allowance of {limit}"),
+            Self::SelectWorkLimit { limit } => write!(f, "Select processing exhausted its work allowance of {limit}"),
+            Self::InvalidNativeTask => f.write_str("the native task is not the active task or its targets changed"),
+            Self::SlotInapplicable => f.write_str("the node is not a Slot"),
+            Self::NonceEnvironmentUnavailable(..) => f.write_str("the nonce environment is unavailable"),
+            Self::NotFound => f.write_str("the requested node was not found"),
+            Self::InUseAttribute => f.write_str("the Attr is already in use by another Element"),
+            Self::InvalidDestruction => f.write_str("the node cannot be destroyed directly"),
+            Self::CustomElementReactionPending(..) => f.write_str("a routed custom element reaction must settle before the receiver can be retired"),
+            Self::IndexSize => f.write_str("the index is out of range"),
+            Self::Cancelled => f.write_str("the operation was cancelled"),
+            Self::ResourceLimit { resource, limit } => write!(
+                f,
+                "{} would exceed its configured limit of {limit}",
+                resource_text(*resource)
+            ),
+            Self::WorkLimit { resource, limit } => write!(
+                f,
+                "{} work exhausted its allowance of {limit}",
+                resource_text(*resource)
+            ),
+            Self::InvalidLimit(resource) => write!(
+                f,
+                "the configured limit for {} exceeds the largest representable allocation",
+                resource_text(*resource)
+            ),
+            Self::AllocationFailed => f.write_str("memory allocation failed"),
+            Self::RepresentationExhausted => f.write_str("a count, index or size exceeds its representable range"),
+            Self::HtmlChargeProtocol => f.write_str("an HTML operation broke its accounting contract with the DOM"),
+            Self::PseudoAttributeCursor(..) => f.write_str("the processing-instruction pseudo-attribute driver and its cursor disagree"),
+            Self::OwnerIdentityExhausted => f.write_str("no DOM owner identities remain"),
+            Self::RevisionExhausted => f.write_str("no store revisions remain"),
+            Self::ViewTransitionsUninitialized => f.write_str("view transitions were not initialized for the Document"),
+            Self::ViewTransitionRevisionMismatch => f.write_str("the view transition state was captured at a different revision"),
+            Self::StaleViewTransition => f.write_str("the view transition is stale"),
+            Self::StaleViewTransitionRecord => f.write_str("the view transition record is stale"),
+            Self::StaleViewTransitionPseudo => f.write_str("the view transition pseudo-element is stale"),
+            Self::InvalidViewTransitionState => f.write_str("the view transition is in a state that does not allow this operation"),
+            Self::DuplicateViewTransitionName => f.write_str("another view transition already uses this name"),
+            Self::ViewTransitionOriginUnavailable => f.write_str("the origin needed by the view transition is unavailable"),
+            Self::ViewTransitionCssom(..) => f.write_str("the view transition CSSOM association was refused"),
+            Self::ViewTransitionCaptureWorkLimit { limit } => write!(f, "view transition capture exhausted its work allowance of {limit}"),
+        }
     }
 }
-impl std::error::Error for DomError {}
+/// The configured capacity a `DomResource` names, as a noun phrase for a message.
+const fn resource_text(resource: DomResource) -> &'static str {
+    match resource {
+        DomResource::ParsedAssociationBytes => "retained parsed association bytes",
+        DomResource::ParsedAssociationUnits => "retained parsed association code units",
+        DomResource::ParsedAssociationProcessingRetainedBytes => {
+            "retained parsed association processing bytes"
+        }
+        DomResource::ParsedAssociationProcessingRetainedUnits => {
+            "retained parsed association processing units"
+        }
+        DomResource::ParsedAssociationProcessingOutputs => "parsed association processing outputs",
+        DomResource::ParsedAssociationProcessingWork => "parsed association processing work",
+        DomResource::ParsedAssociationDispatchWork => {
+            "parsed association dispatch header traversal"
+        }
+        DomResource::FullscreenExits => "fullscreen exit invocations",
+        DomResource::FullscreenEvents => "fullscreen events",
+        DomResource::Ranges => "ranges",
+        DomResource::NodeIterators => "node iterators",
+        DomResource::ChildListObservers => "child-list observers",
+        DomResource::ChildListRegistrations => "child-list registrations",
+        DomResource::ChildListRecords => "child-list records",
+        DomResource::ChildListRecordReferences => "child-list record references",
+        DomResource::ManagedNodes => "managed nodes",
+        DomResource::SlotReferences => "slot references",
+        DomResource::AutofocusCandidates => "autofocus candidates",
+        DomResource::SlotAssignmentInputs => "slot assignment inputs",
+        DomResource::SlotQueryOutput => "slot query output",
+        DomResource::SlotQueryScratch => "slot query scratch storage",
+        DomResource::StringCodeUnits => "string code units",
+        DomResource::Commands => "batch commands",
+        DomResource::HistoryEntries => "change history entries",
+        DomResource::HistoryBytes => "change history bytes",
+        DomResource::ViewTransitions => "view transitions",
+        DomResource::ViewTransitionRecords => "view transition records",
+        DomResource::ViewTransitionPseudos => "view transition pseudo-elements",
+        DomResource::ViewTransitionCaptureBytes => "view transition capture bytes",
+        DomResource::InputProcessingScratch => "Input processing scratch storage",
+        DomResource::SelectScratch => "Select scratch storage",
+        DomResource::SelectTasks => "Select tasks",
+        DomResource::DetailsToggleIntentions => "Details toggle intentions",
+        DomResource::DetailsToggleOutput => "Details toggle output",
+        DomResource::BaseObservations => "base URL observations",
+        DomResource::ImageUpdateCancellations => "image update cancellations",
+        DomResource::EncodingUrlObservations => "encoding and URL observations",
+        DomResource::DispatchCustodyScopes => "dispatch custody scopes",
+        DomResource::DispatchCustodyReferences => "dispatch custody target references",
+        DomResource::DispatchCustodyRetainedBytes => "dispatch custody retained bytes",
+        DomResource::DispatchCustodyScratch => "dispatch custody scratch storage",
+        DomResource::EventRecipients => "event recipient capabilities",
+        DomResource::EventRecipientRetainedBytes => "event recipient retained bytes",
+        DomResource::EventRecipientScratch => "event recipient scratch storage",
+        DomResource::EventRecipientWork => "event recipient work",
+        DomResource::InlineStyleBindings => "inline style bindings",
+        DomResource::InlineStyleStorage => "inline style storage",
+        DomResource::InlineStyleScratch => "inline style scratch storage",
+        DomResource::InlineStyleWork => "inline style work",
+        DomResource::NodeRetirementCanonicalBytes => "canonical bytes at node-retirement admission",
+        DomResource::SourceRetainedBytes => "Source retained bytes",
+        DomResource::SourceRetainedUnits => "Source retained code units",
+        DomResource::NameRetainedBytes => "name retained bytes",
+        DomResource::NameEntries => "name entries",
+        DomResource::NameWork => "name work",
+        DomResource::NameScratch => "name scratch storage",
+        DomResource::MetaAtomicRetainedBytes => "Meta composition retained bytes",
+        DomResource::MetaAtomicRetainedUnits => "Meta composition retained code units",
+        DomResource::MetaAtomicOutputs => "Meta composition outputs",
+        DomResource::MetaColorSchemeRetainedBytes => "Meta color-scheme retained bytes",
+        DomResource::MetaThemeColorScratch => "Meta theme-color scratch storage",
+    }
+}
+impl std::error::Error for DomError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ParsedReportUnresolved(error) => Some(error),
+            Self::DocumentConstructor(error) => Some(error),
+            Self::CloseWatcherProtocol(error) => Some(error),
+            Self::AutofocusInsertionProtocol(error) => Some(error),
+            Self::DesignModeProtocol(error) => Some(error),
+            Self::DialogFocusingProtocol(error) => Some(error),
+            Self::FocusDelegateProtocol(error) => Some(error),
+            Self::AutofocusDelegateProtocol(error) => Some(error),
+            Self::DialogProtocol(error) => Some(error),
+            Self::OutputProtocol(error) => Some(error),
+            Self::InputNumeric(error) => Some(error),
+            Self::Meta(error) => Some(error),
+            Self::SelectCapture(error) => Some(error),
+            Self::SelectElementValues(error) => Some(error),
+            Self::SelectSemantic(error) => Some(error),
+            Self::EncodingUrlFacts(error) => Some(error),
+            Self::BaseFacts(error) => Some(error),
+            Self::PseudoAttributeCursor(error) => Some(error),
+            Self::ViewTransitionCssom(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 impl DomError {
     /// The outcome of an accounting fault of an HTML crate: a ledger that cannot allocate is an
     /// allocation failure, and every other fault breaks the HTML operation's accounting contract.
@@ -1187,7 +1463,18 @@ pub enum DomHistoryError {
 }
 impl std::fmt::Display for DomHistoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DOM change coverage unavailable: {self:?}")
+        match self {
+            Self::ForeignOwner => f.write_str("the baseline stamp belongs to a different DOM owner"),
+            Self::FutureRevision => {
+                f.write_str("the baseline stamp is newer than the current revision")
+            }
+            Self::FullRecomputeRequired { .. } => f.write_str(
+                "the retained history no longer reaches back to the baseline; recompute from a snapshot",
+            ),
+            Self::AllocationFailed => {
+                f.write_str("memory allocation failed while collecting the change records")
+            }
+        }
     }
 }
 impl std::error::Error for DomHistoryError {}
