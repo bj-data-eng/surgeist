@@ -5,7 +5,7 @@
 //! state, and effect recording assertions.
 
 use super::{
-    command::Action,
+    action::Action,
     loop_::prepare_startup,
     normalization::{NormalizedCommand, normalize_command, normalize_commands},
     planning::{
@@ -24,6 +24,23 @@ use super::{
 
 #[cfg(test)]
 use super::{context::resolve_actions_with, dsl::Event as EventScope};
+#[cfg(feature = "accessibility")]
+use crate::accessibility::AccessibilityEvent;
+#[cfg(test)]
+use crate::callback::{Context, Frame, Input, Ready, Resize};
+use crate::capability::{
+    CapabilitySupport, CursorCapability, FullscreenMode, HostCapabilities, ImeCapability, RoleKind,
+    WindowOperation,
+};
+use crate::clipboard::{Clipboard, MemoryClipboard};
+use crate::command::{Command, CommandKind, HostCommandPlan};
+use crate::cursor::{Cursor, CursorGrab};
+use crate::descriptor::{Fullscreen, Metrics, Theme, WindowRequest, WindowSnapshot};
+use crate::environment::HostEnvironment;
+use crate::event::{EventKind, FileDragEvent, ImeHint, ImePurpose, ImeRequest, InputEvent};
+use crate::geometry::{PhysicalSize, Point, Size};
+use crate::host::{MetricsEvent, NativeEventTransition, WindowStatePatch};
+use crate::registry::{Access, Id, Instance, Proxy, Registry};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,

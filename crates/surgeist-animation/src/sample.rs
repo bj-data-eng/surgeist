@@ -4,10 +4,11 @@
 //! permanent unsupported interpolation, and recoverable sample-local arithmetic
 //! failure. Hints are derived from timing phase plus play state.
 
-use crate::{
-    AnimationPlayState, InterpolableValue, InterpolationError, InterpolationOutcome,
-    InterpolationPair, InterpolationProgress, PropertyKey, TimingPhase, TimingSample,
+use crate::interpolation::{
+    InterpolableValue, InterpolationError, InterpolationOutcome, InterpolationPair,
+    InterpolationProgress, PropertyKey,
 };
+use crate::timing::{AnimationPlayState, TimingPhase, TimingSample};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SampleClassification {
@@ -188,7 +189,7 @@ impl SampledPropertyResult {
 
     fn arithmetic_failure(
         timing: TimingSample,
-        result: crate::NonFiniteInterpolationResult,
+        result: crate::interpolation::NonFiniteInterpolationResult,
     ) -> Self {
         Self {
             classification: SampleClassification::Failed,
@@ -230,11 +231,15 @@ mod tests {
     use super::{
         CompletionStatus, NextFrameHint, SampleClassification, SampleValue, SampledPropertyResult,
     };
-    use crate::{
-        AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState, DiscreteValue,
-        Easing, ElapsedTime, FillMode, InterpolableNumber, InterpolableValue, InterpolationError,
-        InterpolationOutcome, InterpolationPair, IterationCount, LinearControlPoint, LinearEasing,
-        PropertyKey, TimingParameters, TimingSample, TransformValue, ValueFamily,
+    use crate::easing::{Easing, LinearControlPoint, LinearEasing};
+    use crate::interpolation::{
+        DiscreteValue, InterpolableNumber, InterpolableValue, InterpolationError,
+        InterpolationOutcome, InterpolationPair, PropertyKey, TransformValue, ValueFamily,
+    };
+    use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+    use crate::timing::{
+        AnimationDirection, AnimationPlayState, FillMode, IterationCount, TimingParameters,
+        TimingSample,
     };
 
     #[test]

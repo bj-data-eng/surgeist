@@ -14,15 +14,22 @@ use std::{
     thread,
 };
 
-use crate::{
-    BlockingPolicy, BlockingTaskJob, CancelReason, CancellationToken, CoalescingKey, DrainBudget,
-    DrainReport, ExecutorDrainReport, ExecutorError, ExecutorTaskHandle, ObservationChange,
-    ObserverId, QueueError, QueuePolicy, TaskAttemptId, TaskContext, TaskCoordination,
-    TaskDiagnosticEvent, TaskDiagnosticLevel, TaskEvent, TaskEventKind, TaskEventQueue,
-    TaskEventSink, TaskEventSinkError, TaskExecutor, TaskFailure, TaskFailureKind, TaskHandle,
-    TaskId, TaskJobEvent, TaskKey, TaskLifecycleEvent, TaskPolicy, TaskRecord, TaskRunnable,
-    TaskScope, TaskSnapshot, TaskSpawnRequest,
+use crate::internal::cancel::{CancelReason, CancellationToken};
+use crate::internal::coordination::{ObservationChange, TaskCoordination};
+use crate::internal::event::{
+    TaskDiagnosticEvent, TaskDiagnosticLevel, TaskEvent, TaskEventKind, TaskJobEvent,
+    TaskLifecycleEvent,
 };
+use crate::internal::executor::{
+    BlockingTaskJob, ExecutorDrainReport, ExecutorError, ExecutorTaskHandle, TaskContext,
+    TaskEventSink, TaskEventSinkError, TaskExecutor, TaskFailure, TaskFailureKind, TaskHandle,
+    TaskRunnable, TaskSpawnRequest,
+};
+use crate::internal::id::{CoalescingKey, ObserverId, TaskAttemptId, TaskId, TaskKey};
+use crate::internal::lifecycle::{TaskRecord, TaskSnapshot};
+use crate::internal::policy::{BlockingPolicy, TaskPolicy};
+use crate::internal::queue::{DrainBudget, DrainReport, QueueError, QueuePolicy, TaskEventQueue};
+use crate::internal::scope::TaskScope;
 
 #[derive(Debug)]
 struct RecordingTaskEventSinkState<Output> {
@@ -140,7 +147,8 @@ where
         context: TaskContext<Output>,
     ) -> Result<(), TaskFailure> {
         context.progress_message(
-            crate::CoalescingKey::try_new("recorded").expect("static coalescing key is valid"),
+            crate::internal::id::CoalescingKey::try_new("recorded")
+                .expect("static coalescing key is valid"),
             self.message,
         )
     }
@@ -705,10 +713,12 @@ impl TaskPrototypeHarness {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        CancelReason, CoalescingKey, DrainBudget, ObserverId, TaskAttemptId, TaskKey, TaskPolicy,
-        TaskProgressValue, TaskStatus,
-    };
+    use crate::internal::cancel::CancelReason;
+    use crate::internal::event::TaskProgressValue;
+    use crate::internal::id::{CoalescingKey, ObserverId, TaskAttemptId, TaskKey};
+    use crate::internal::lifecycle::TaskStatus;
+    use crate::internal::policy::TaskPolicy;
+    use crate::internal::queue::DrainBudget;
 
     use super::TaskPrototypeHarness;
 

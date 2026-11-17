@@ -1,9 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use surgeist_task::{
-    CancellationToken, CoalescingKey, TaskAttemptId, TaskContext, TaskEvent, TaskEventSink,
-    TaskEventSinkError, TaskId, TaskKey, TaskRunnable, TaskScope, TaskSpawnRequest,
-};
+use surgeist_task::cancellation::CancellationToken;
+use surgeist_task::event::{TaskEvent, TaskEventSink, TaskEventSinkError};
+use surgeist_task::executor::TaskSpawnRequest;
+use surgeist_task::identity::{CoalescingKey, TaskAttemptId, TaskId, TaskKey};
+use surgeist_task::job::{TaskContext, TaskRunnable};
+use surgeist_task::scope::TaskScope;
 
 #[derive(Clone, Debug, Default)]
 struct ExampleEventLog {

@@ -10,11 +10,15 @@ iteration. Expressions remain symbolic; runtime evaluation and host policy belon
 to their consuming owners. Template directly consumes HTML's known-name metadata
 and queues concrete HTML construction through the canonical DOM batch API.
 
-`NativeElementRegistry::from_html_metadata` unions global and contextual shared
+The pipeline functions `parse_template`, `validate_template` and `render_to_rust`
+are at the crate root. Their values live in domain modules: `ast`, `expr`, `name`,
+`span`, `parse`, `registry`, `validation` and `dom`.
+
+`registry::NativeElementRegistry::from_html_metadata` unions global and contextual shared
 attribute records, with an explicit `AttributeRule` for template value forms.
 This finite discovery profile does not certify full HTML conformance or cover
 custom/foreign names and open attribute families; manual registries remain
-available. `append_static_html` accepts a `ValidatedTemplate`, a caller-owned
+available. `dom::append_static_html` accepts a `validation::ValidatedTemplate`, a caller-owned
 `DomBatch`, and document/parent `NodeOperand`s, including same-batch tickets.
 It preserves ordered attributes/text and returns root creation tickets for the
 caller's successful commit. Symbolic values return span-bearing unresolved

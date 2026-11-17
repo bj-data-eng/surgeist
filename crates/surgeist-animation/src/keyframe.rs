@@ -10,12 +10,17 @@ use core::ops::Range;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::easing::Easing;
+use crate::interpolation::{
+    InterpolableValue, InterpolationError, InterpolationPair, InterpolationProgress, PropertyKey,
+};
+use crate::progress::{NormalizedProgress, UnitRatio};
+use crate::sample::SampledPropertyResult;
+use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
 use crate::timing::ActiveDuration;
-use crate::{
-    AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState, Easing, ElapsedTime,
-    FillMode, InterpolableValue, InterpolationError, InterpolationPair, InterpolationProgress,
-    IterationCount, NormalizedProgress, PropertyKey, SampledPropertyResult, TimingError,
-    TimingParameters, TimingSample, UnitRatio,
+use crate::timing::{
+    AnimationDirection, AnimationPlayState, FillMode, IterationCount, TimingError,
+    TimingParameters, TimingSample,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -660,12 +665,18 @@ mod tests {
     use super::{
         KeyframeAnimationId, KeyframeError, KeyframeSegment, KeyframeTiming, KeyframeTrack,
     };
-    use crate::{
-        AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState,
-        CompletionStatus, Easing, ElapsedTime, FillMode, InterpolableNumber,
-        InterpolablePercentage, InterpolableValue, InterpolationError, IterationCount,
-        LinearControlPoint, LinearEasing, NextFrameHint, PropertyKey, SampleClassification,
-        SampleValue, SampledPropertyResult, TimingError, TransformValue, UnitRatio, ValueFamily,
+    use crate::easing::{Easing, LinearControlPoint, LinearEasing};
+    use crate::interpolation::{
+        InterpolableNumber, InterpolablePercentage, InterpolableValue, InterpolationError,
+        PropertyKey, TransformValue, ValueFamily,
+    };
+    use crate::progress::UnitRatio;
+    use crate::sample::{
+        CompletionStatus, NextFrameHint, SampleClassification, SampleValue, SampledPropertyResult,
+    };
+    use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+    use crate::timing::{
+        AnimationDirection, AnimationPlayState, FillMode, IterationCount, TimingError,
     };
 
     #[test]
@@ -986,7 +997,9 @@ mod tests {
     fn second_segment_steps_use_local_progress() {
         let track = distinct_segment_track(
             default_timing(),
-            Easing::steps(crate::Steps::new(2, crate::StepPosition::JumpEnd).unwrap()),
+            Easing::steps(
+                crate::easing::Steps::new(2, crate::easing::StepPosition::JumpEnd).unwrap(),
+            ),
         );
         // Global 0.55 is local 0.25: jump-end holds the segment's initial 80.
         // Incorrectly easing global progress would produce 110.

@@ -1,12 +1,17 @@
 //! Shared external-consumer inputs for throughput and allocation measurements.
 
-use surgeist_animation::{
-    AnimationDelay, AnimationDirection, AnimationDuration, ColorInterpolationSpace, CompositeValue,
-    DiscreteValue, Easing, ElapsedTime, FillMode, InterpolableColor, InterpolableNumber,
-    InterpolablePercentage, InterpolableValue, IterationCount, KeyframeAnimationId,
-    KeyframeSegment, KeyframeTiming, KeyframeTrack, PropertyKey, TransformValue, TransitionTrack,
-    TransitionTrackId, UnitRatio,
+use surgeist_animation::easing::Easing;
+use surgeist_animation::interpolation::{
+    ColorInterpolationSpace, CompositeValue, DiscreteValue, InterpolableColor, InterpolableNumber,
+    InterpolablePercentage, InterpolableValue, PropertyKey, TransformValue,
 };
+use surgeist_animation::keyframe::{
+    KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack,
+};
+use surgeist_animation::progress::UnitRatio;
+use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use surgeist_animation::timing::{AnimationDirection, FillMode, IterationCount};
+use surgeist_animation::transition::{TransitionTrack, TransitionTrackId};
 
 pub const SIZES: [usize; 3] = [1, 8, 64];
 

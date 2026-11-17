@@ -124,6 +124,26 @@ impl TaskIdError {
     }
 }
 
+impl core::fmt::Display for TaskIdError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let value = &self.value;
+        match self.kind {
+            TaskIdErrorKind::Empty => {
+                write!(
+                    formatter,
+                    "task identifier {value:?} is empty or only whitespace"
+                )
+            }
+            TaskIdErrorKind::InvalidCharacter => write!(
+                formatter,
+                "task identifier {value:?} contains an ASCII control character"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for TaskIdError {}
+
 fn validate_string_id(value: impl Into<String>) -> Result<String, TaskIdError> {
     let value = value.into();
     let trimmed = value.trim();

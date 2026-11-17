@@ -13,10 +13,11 @@ mod text_throughput;
 use std::cell::Cell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
-use surgeist_animation::{
-    AnimationPlayState, CubicBezier, Easing, EasingInput, EasingKeyword, LinearControlPoint,
-    LinearEasing, NormalizedProgress,
+use surgeist_animation::easing::{
+    CubicBezier, Easing, EasingKeyword, LinearControlPoint, LinearEasing,
 };
+use surgeist_animation::progress::{EasingInput, NormalizedProgress};
+use surgeist_animation::timing::AnimationPlayState;
 
 use fixtures::{Family, Layout, SIZES};
 use lifecycle::{Curve, KeyReuse};

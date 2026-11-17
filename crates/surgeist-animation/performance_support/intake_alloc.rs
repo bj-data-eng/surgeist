@@ -4,7 +4,9 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, Stats};
-use surgeist_animation::{CompositeValue, DiscreteValue, PropertyKey, TransformValue};
+use surgeist_animation::interpolation::{
+    CompositeValue, DiscreteValue, PropertyKey, TransformValue,
+};
 
 pub fn report(filter: &str, iterations: usize) {
     println!(

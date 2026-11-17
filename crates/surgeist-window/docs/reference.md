@@ -14,31 +14,33 @@ and targets.
 | Default features | Empty |
 | `accessibility` feature | Enables optional `accesskit` and `accesskit_winit` dependencies and the typed accessibility surface |
 | Native backend dependency | `winit` |
-| Public dependency reexports | `CursorIcon`, `keyboard_types`, `Code`, `raw_window_handle`; `accesskit` with `accessibility` enabled |
+| Public dependency reexports | `Instant` at the root, `cursor::CursorIcon`, `event::keyboard_types`, `registry::raw_window_handle`; `accessibility::accesskit` with `accessibility` enabled |
 
 ## Public interfaces
 
-The reexports in [src/lib.rs](../src/lib.rs) define the public front door. Backend
+The crate root holds `App`, `app`, `Open`, `open`, `Handler`, `Error`, `ErrorCode`,
+`Result` and `Instant`. Every other public item has exactly one path, in the module
+named in the first column; a root path to a module item does not resolve. Backend
 adapters and planning implementation types remain private except for the public
-`HostCommandPlan` diagnostic surface.
+`command::HostCommandPlan` diagnostic surface.
 
 | Surface | Purpose | Source |
 | --- | --- | --- |
-| `App`, `app`, `Open`, `open`, `WindowRequest` | Authored startup and window creation intent | [DSL](../src/dsl.rs), [descriptors](../src/descriptor.rs) |
-| `Loop`, `Handler` | Native event-loop ownership and consumer callbacks | [loop](../src/loop_.rs), [handler](../src/handler.rs) |
-| `Context`, callback scopes, `Target`, `Command` | Queued window commands, draw/close/exit actions, and host services | [context](../src/context.rs), [DSL](../src/dsl.rs), [commands](../src/command.rs) |
-| `WindowSnapshot`, `Metrics`, `EventKind`, `InputEvent` | Observed state, metrics, and event payloads | [descriptors](../src/descriptor.rs), [events](../src/event.rs) |
-| `Instant` | Shared platform monotonic clock for deadlines and input receipt times | [clock contract](explanation.md#platform-monotonic-clock) |
-| `MagnificationEvent`, `MagnificationGesture`, `MagnificationDelta` | Raw native pinch or smart intent, with explicit unavailable pinch delta | [magnification input](explanation.md#native-magnification-input), [events](../src/event.rs) |
-| `HostEnvironment`, viewport, screen, input and preference values | Captured host facts with explicit unavailable observations | [environment](../src/environment.rs) |
-| `NativeGeometryRequest`, `NativeOpenFeatures` | Host-authorized CSS-pixel geometry resolved into ordinary window commands | [native geometry](../src/native_geometry.rs) |
-| `NativePointerCoordinates` | Fractional native client, desktop and screen-relative pointer observations | [pointer coordinates](../src/pointer_coordinates.rs) |
-| `SystemFontEnvironment` | Native UI role preferences, with AppKit face metrics and Windows logical font requests | [system fonts](../src/system_fonts.rs) |
-| `HostCapabilities`, `HostCommandPlan` | Immutable host support report and planned diagnostics | [capabilities](../src/capability.rs), [planning](../src/planning.rs) |
-| `Registry`, `Id`, `Ref`, `Handle`, `Access`, `Proxy` | Live lookup, runtime identity, native access, and queued ingress | [registry](../src/registry.rs), [geometry](../src/geometry.rs) |
-| `Clipboard`, `MemoryClipboard`, image types | Loop-owned text and image service | [clipboard](../src/clipboard.rs) |
+| Root `App`, `app`, `Open`, `open`; `descriptor::WindowRequest` | Authored startup and window creation intent | [DSL](../src/dsl.rs), [descriptors](../src/descriptor.rs) |
+| `host::Loop`; root `Handler` | Native event-loop ownership and consumer callbacks | [loop](../src/loop_.rs), [handler](../src/handler.rs) |
+| `callback::{Context, Target, ..}` scopes; `command::Command` | Queued window commands, draw/close/exit actions, and host services | [context](../src/context.rs), [DSL](../src/dsl.rs), [commands](../src/command.rs) |
+| `descriptor::{WindowSnapshot, Metrics}`; `event::{EventKind, InputEvent}` | Observed state, metrics, and event payloads | [descriptors](../src/descriptor.rs), [events](../src/event.rs) |
+| Root `Instant` | Shared platform monotonic clock for deadlines and input receipt times | [clock contract](explanation.md#platform-monotonic-clock) |
+| `event::{MagnificationEvent, MagnificationGesture, MagnificationDelta}` | Raw native pinch or smart intent, with explicit unavailable pinch delta | [magnification input](explanation.md#native-magnification-input), [events](../src/event.rs) |
+| `environment::HostEnvironment`, viewport, screen, input and preference values | Captured host facts with explicit unavailable observations | [environment](../src/environment.rs) |
+| `native_geometry::{NativeGeometryRequest, NativeOpenFeatures}` | Host-authorized CSS-pixel geometry resolved into ordinary window commands | [native geometry](../src/native_geometry.rs) |
+| `event::NativePointerCoordinates` | Fractional native client, desktop and screen-relative pointer observations | [pointer coordinates](../src/pointer_coordinates.rs) |
+| `system_fonts::SystemFontEnvironment` | Native UI role preferences, with AppKit face metrics and Windows logical font requests | [system fonts](../src/system_fonts.rs) |
+| `capability::HostCapabilities`; `command::HostCommandPlan` | Immutable host support report and planned diagnostics | [capabilities](../src/capability.rs), [planning](../src/planning.rs) |
+| `registry::{Registry, Id, Ref, Handle, Access, Proxy}` | Live lookup, runtime identity, native access, and queued ingress | [registry](../src/registry.rs) |
+| `clipboard::{Clipboard, MemoryClipboard}`, image types | Loop-owned text and image service | [clipboard](../src/clipboard.rs) |
 | `testing::Runner`, `testing::Host` | Deterministic lifecycle execution and callback-free recording | [testing](../src/testing.rs) |
-| `Error`, `ErrorCode`, `Result` | Structured failures and retained terminal outcomes | [errors](../src/error.rs) |
+| Root `Error`, `ErrorCode`, `Result` | Structured failures and retained terminal outcomes | [errors](../src/error.rs) |
 
 ## Callback routes
 

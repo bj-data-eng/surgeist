@@ -1,3 +1,15 @@
+//! Symbolic expressions and variable paths.
+//!
+//! Template expressions stay symbolic: an [`Expr`] records literals, variable
+//! paths, and unary and binary operators exactly as authored, and nothing in
+//! this crate evaluates one. A [`VariablePath`] is a root name followed by
+//! [`PathSegment`] fields and indexes, so `$user.items[2].name` stays a typed
+//! path rather than a Rust identifier. Names inside paths are validated, and
+//! [`VariablePath::try_new`] rejects reserved roots and adjacent indexes.
+//!
+//! [`Literal::Float`] holds the exact value authored, and generated Rust
+//! preserves its bits, including negative zero and NaN payloads.
+
 use crate::name::{NameError, VariableName};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +132,7 @@ impl PathIndex {
     }
 }
 
-pub fn parse_simple_expr(source: &str) -> Result<Expr, &'static str> {
+pub(crate) fn parse_simple_expr(source: &str) -> Result<Expr, &'static str> {
     let tokens = tokenize(source)?;
     if tokens.is_empty() {
         return Err("empty expression");

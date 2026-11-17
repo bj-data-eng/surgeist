@@ -1,8 +1,19 @@
+//! Authored window requests and the observed window state.
+//!
+//! A [`WindowRequest`] describes a window to open: role, level, theme,
+//! controls and fullscreen presentation. A [`WindowSnapshot`] is the committed
+//! state a handler observes, with its [`Metrics`]. [`Controls`] are built with
+//! [`controls`].
+
+pub use super::dsl::{ControlsBuilder, controls};
+
 use super::{
-    Error, ErrorCode, Id, Insets, PhysicalPoint, PhysicalSize, Point, Result, Size,
+    Error, ErrorCode, Result,
     geometry::{normalize_nonnegative_size, normalize_outer_position},
 };
-use crate::{FullscreenMode, RoleKind};
+use crate::capability::{FullscreenMode, RoleKind};
+use crate::geometry::{Insets, PhysicalPoint, PhysicalSize, Point, Size};
+use crate::registry::Id;
 
 /// Requested fullscreen presentation for a [`WindowRequest`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -542,7 +553,7 @@ pub struct WindowSnapshot {
     fullscreen: bool,
     theme: Option<Theme>,
     role: Role,
-    environment: crate::HostEnvironment,
+    environment: crate::environment::HostEnvironment,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -579,7 +590,7 @@ impl WindowSnapshot {
             fullscreen: false,
             theme: None,
             role: Role::Root,
-            environment: crate::HostEnvironment::default(),
+            environment: crate::environment::HostEnvironment::default(),
         }
     }
 
@@ -597,24 +608,24 @@ impl WindowSnapshot {
             fullscreen: seed.fullscreen,
             theme: seed.theme,
             role: seed.role,
-            environment: crate::HostEnvironment::default(),
+            environment: crate::environment::HostEnvironment::default(),
         }
     }
 
     /// Adds coherent host observations to this snapshot.
     #[must_use]
-    pub fn with_environment(mut self, environment: crate::HostEnvironment) -> Self {
+    pub fn with_environment(mut self, environment: crate::environment::HostEnvironment) -> Self {
         self.environment = environment;
         self
     }
 
     /// Returns baseline host observations; missing facts remain explicit.
     #[must_use]
-    pub const fn environment(&self) -> &crate::HostEnvironment {
+    pub const fn environment(&self) -> &crate::environment::HostEnvironment {
         &self.environment
     }
 
-    pub(crate) fn set_environment(&mut self, environment: crate::HostEnvironment) {
+    pub(crate) fn set_environment(&mut self, environment: crate::environment::HostEnvironment) {
         self.environment = environment;
     }
 
@@ -740,7 +751,7 @@ impl WindowSnapshot {
             // A producer can supply a fresh capture with the same transition.
             self.environment.native_scale = None;
             self.environment.page_zoom = None;
-            self.environment.output = crate::OutputDevice::Unavailable;
+            self.environment.output = crate::environment::OutputDevice::Unavailable;
             self.environment.screen = None;
             self.environment.viewport = None;
             self.environment.client_area = None;

@@ -6,16 +6,31 @@
 edition 2024, and library import name `surgeist_template`. It declares
 direct dependencies on `surgeist-html` and `surgeist-dom`, with no features or
 `rust-version` requirement.
-[src/lib.rs](../src/lib.rs) is the public front door; implementation modules
-are private and selected types and functions are reexported there.
+[src/lib.rs](../src/lib.rs) is the public front door. It holds the three pipeline
+functions and the public modules below; each public item has exactly one path.
+Implementation files `error.rs`, `lexer.rs`, `parser.rs`, `render.rs` and
+`validate.rs` are private; `parse.rs`, `registry.rs` and `validation.rs`
+list their public exports explicitly.
 
-| Interface | Input and result | Source |
+| Module | Contents | Source |
 | --- | --- | --- |
-| `parse_template` | `&str` → `Result<TemplateDocument, ParseError>` | [parser.rs](../src/parser.rs) |
-| `validate_template` | Document, native registry, and component registry references → `Result<ValidatedTemplate, ValidationError>` | [validate.rs](../src/validate.rs) |
-| `render_to_rust` | `&ValidatedTemplate` → `String` | [render.rs](../src/render.rs) |
-| `NativeElementRegistry::from_html_metadata` | Explicit `AttributeRule` → `Result<NativeElementRegistry, RegistryError>` | [validate.rs](../src/validate.rs) |
-| `append_static_html` | Validated template, mutable caller batch, document and parent operands → root tickets or `TemplateDomError` | [dom.rs](../src/dom.rs) |
+| crate root | `parse_template`, `validate_template`, `render_to_rust`, `CRATE_NAME` | [parser.rs](../src/parser.rs), [validate.rs](../src/validate.rs), [render.rs](../src/render.rs) |
+| `ast` | Authored tree: `TemplateDocument`, `Node` and its node structs, `ElementName`, `Attribute`, `AttrValue`, `AttrPart`, `IfBranch`, `AstConstructionError` | [ast.rs](../src/ast.rs) |
+| `expr` | `Expr`, `Literal`, `UnaryOp`, `BinaryOp`, `VariablePath`, `PathSegment`, `PathField`, `PathIndex` | [expr.rs](../src/expr.rs) |
+| `name` | `VariableName`, `AttributeName`, `NativeElementName`, `ComponentName`, `NameError` | [name.rs](../src/name.rs) |
+| `span` | `SourcePos`, `SourceSpan`, `SpanError` | [span.rs](../src/span.rs) |
+| `parse` | `ParseError`, `ParseErrorKind` | [parse.rs](../src/parse.rs) over [error.rs](../src/error.rs) |
+| `registry` | `NativeElementRegistry`, `ComponentRegistry`, their specs, `AttributeSpec`, `AttributeRule`, `AttributeKind`, `RegistryError` | [registry.rs](../src/registry.rs) over [validate.rs](../src/validate.rs) |
+| `validation` | `ValidatedTemplate`, `ValidatedNode` and its structs, `ValidationError`, `ValidationErrorKind` | [validation.rs](../src/validation.rs) over [validate.rs](../src/validate.rs) |
+| `dom` | `append_static_html`, `TemplateDomError`, `TemplateDomUnresolvedKind` | [dom.rs](../src/dom.rs) |
+
+| Interface | Input and result |
+| --- | --- |
+| `parse_template` | `&str` → `Result<ast::TemplateDocument, parse::ParseError>` |
+| `validate_template` | Document, native registry, and component registry references → `Result<validation::ValidatedTemplate, validation::ValidationError>` |
+| `render_to_rust` | `&validation::ValidatedTemplate` → `String` |
+| `registry::NativeElementRegistry::from_html_metadata` | Explicit `AttributeRule` → `Result<NativeElementRegistry, registry::RegistryError>` |
+| `dom::append_static_html` | Validated template, mutable caller batch, document and parent operands → root tickets or `dom::TemplateDomError` |
 
 `TemplateDocument::nodes()` exposes parsed `Node` values: `Element`, `Text`,
 `Interpolation`, `If`, and `ForEach`. `ValidatedTemplate::nodes()` preserves
@@ -99,8 +114,10 @@ and `_FILES`. See [expr.rs](../src/expr.rs) and [parser.rs](../src/parser.rs).
 ## Generated source
 
 `render_to_rust` emits one complete Rust expression with result type
-`surgeist::template::TemplateDocument`. It uses actual public AST constructors
-through the facade, with fully qualified names. Typed expressions remain symbolic;
+`surgeist::template::ast::TemplateDocument`. It uses actual public AST constructors
+through the facade, with fully qualified names under `::surgeist::template::ast`,
+`::surgeist::template::expr`, `::surgeist::template::name` and
+`::surgeist::template::span`. Typed expressions remain symbolic;
 no expression evaluation or source reparse occurs. Spans retain their authored
 coordinates, rather than identifying the generated Rust file. Float literals use
 `f64::from_bits` so all bit patterns survive. Callers validate the constructed
@@ -148,7 +165,9 @@ serialization/reparse or separate live tree is involved.
 ## Diagnostics and verification sources
 
 `ParseError` and `ValidationError` expose `kind()` and `span()`. `RegistryError`
-reports specification-construction failures. The variants live in
+reports specification-construction failures. Every error type implements
+`Display` and `core::error::Error`; span-bearing messages end with the line and
+column. The variants live in
 [error.rs](../src/error.rs) and [validate.rs](../src/validate.rs).
 
 Crate-local verification consists of unit tests in [src/](../src/) and the

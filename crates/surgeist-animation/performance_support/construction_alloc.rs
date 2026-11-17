@@ -4,11 +4,14 @@ use std::hint::black_box;
 use std::mem::{size_of, size_of_val};
 
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, Stats};
-use surgeist_animation::{
-    AnimationPlayState, ElapsedTime, InterpolableValue, InterpolationError, InterpolationPair,
-    KeyframeSegment, KeyframeTrack, NonFiniteInterpolationResult, SampledPropertyResult,
-    TransitionTrack,
+use surgeist_animation::interpolation::{
+    InterpolableValue, InterpolationError, InterpolationPair, NonFiniteInterpolationResult,
 };
+use surgeist_animation::keyframe::{KeyframeSegment, KeyframeTrack};
+use surgeist_animation::sample::SampledPropertyResult;
+use surgeist_animation::time::ElapsedTime;
+use surgeist_animation::timing::AnimationPlayState;
+use surgeist_animation::transition::TransitionTrack;
 
 use super::fixtures::{Family, Layout};
 use super::lifecycle::{self, Curve, KeyReuse};

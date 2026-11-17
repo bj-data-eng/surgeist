@@ -288,7 +288,7 @@ pub(crate) trait Operations {
     fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error>;
     /// Copies the entire string into an exactly sized, caller-owned buffer.
     fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error>;
-    fn to_utf16(&mut self, value: &Root) -> Result<crate::Admitted<Vec<u16>>, Error> {
+    fn to_utf16(&mut self, value: &Root) -> Result<crate::preparation::Admitted<Vec<u16>>, Error> {
         let string = self.coerce_string(value)?;
         let owner = self.owner_state();
         let mut units = crate::preparation::buffer::<u16>(

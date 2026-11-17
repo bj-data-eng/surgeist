@@ -29,16 +29,17 @@ does not need a Surgeist host.
 
 ## Follow a complete example
 
-The following Rust example uses only the crate's
-[public exports](../src/lib.rs). The template has a component, a native child,
+The following Rust example uses only the crate's public paths: the three
+pipeline functions at the [crate root](../src/lib.rs) and the registry types
+from the `registry` module. The template has a component, a native child,
 an interpolated title, an expression attribute, and interpolated child text.
 
 ```rust
-use surgeist_template::{
+use surgeist_template::registry::{
     AttributeKind, AttributeRule, AttributeSpec, ComponentRegistry, ComponentSpec,
-    NativeElementRegistry, NativeElementSpec, parse_template, render_to_rust,
-    validate_template,
+    NativeElementRegistry, NativeElementSpec,
 };
+use surgeist_template::{parse_template, render_to_rust, validate_template};
 
 let document = parse_template(
     r#"<Panel title="Hello {$user.name}" visible={$visible}><div>{$message}</div></Panel>"#,
@@ -79,9 +80,9 @@ println!("{rust_source}");
 `parse_template` produces the typed document before registry lookup. Both
 `div` and `Panel` then need registered specifications. The title rule accepts
 static or interpolated values, while `visible` accepts an expression.
-`validate_template` returns the `ValidatedTemplate` required by
+`validate_template` returns the `validation::ValidatedTemplate` required by
 `render_to_rust`. Compile the returned expression in a consumer that depends on
-the `surgeist` facade; its value is a `surgeist::template::TemplateDocument`.
+the `surgeist` facade; its value is a `surgeist::template::ast::TemplateDocument`.
 Pass that value through `validate_template` with the consumer's registries before
 further lowering. The generated code performs no runtime expression evaluation.
 
@@ -91,11 +92,11 @@ failures, or consult the [syntax and API reference](reference.md).
 ## Build concrete HTML through DOM
 
 For the shared closed HTML vocabulary, replace the manual native registry with
-`NativeElementRegistry::from_html_metadata` and an explicit `AttributeRule` for
+`registry::NativeElementRegistry::from_html_metadata` and an explicit `AttributeRule` for
 the template forms your caller accepts. This uses discovery metadata, rather
 than proving full HTML conformance or recognizing open/custom/foreign families.
 
-After validation, `append_static_html` queues concrete native nodes and Text into
+After validation, `dom::append_static_html` queues concrete native nodes and Text into
 the caller's DOM batch. Its [compiled doc example](../src/dom.rs) uses actual
 same-batch document/parent tickets and one atomic `Dom::apply`; the
 [HTML/DOM integration tests](../tests/html_dom.rs) also cover existing operands,

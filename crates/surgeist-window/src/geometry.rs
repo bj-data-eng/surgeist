@@ -1,3 +1,11 @@
+//! Logical and physical points, sizes, rectangles and insets.
+//!
+//! Logical values are `f64` coordinates scaled for the active display;
+//! physical values are native integer pixels. [`point`], [`size`] and [`rect`]
+//! build logical values from anything convertible to `f64`.
+
+pub use super::dsl::{point, rect, size};
+
 use super::{Error, ErrorCode, Result};
 
 /// A point in logical window coordinates.
@@ -25,7 +33,7 @@ pub struct Size {
 
 /// A point in native integer pixel coordinates.
 ///
-/// Use [`Metrics`](crate::Metrics) to convert between this representation and
+/// Use [`Metrics`](crate::descriptor::Metrics) to convert between this representation and
 /// logical coordinates at an observed display scale.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PhysicalPoint {
@@ -120,22 +128,4 @@ pub(crate) fn normalize_local_rect(rect: Rect) -> Result<Rect> {
 
 const fn canonical_zero(value: f64) -> f64 {
     if value == 0.0 { 0.0 } else { value }
-}
-
-/// Opaque native window identifier.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Id(u64);
-
-impl Id {
-    /// Creates an opaque identifier from its raw numeric representation.
-    #[must_use]
-    pub const fn from_u64(value: u64) -> Self {
-        Self(value)
-    }
-
-    /// Returns the raw numeric representation of this identifier.
-    #[must_use]
-    pub const fn as_u64(self) -> u64 {
-        self.0
-    }
 }

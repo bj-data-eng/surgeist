@@ -5,12 +5,14 @@ use std::{
 
 use tokio::{runtime::Runtime, task::JoinHandle};
 
-use crate::{
-    BlockingPolicy, CancelReason, CancellationToken, ExecutorDrainReport, ExecutorError,
-    ExecutorTaskHandle, TaskContext, TaskDiagnosticLevel, TaskEvent, TaskEventSink, TaskExecutor,
-    TaskFailure, TaskFailureKind, TaskHandle, TaskId, TaskJobEvent, TaskPolicy, TaskRunnable,
-    TaskSpawnRequest,
+use crate::internal::cancel::{CancelReason, CancellationToken};
+use crate::internal::event::{TaskDiagnosticLevel, TaskEvent, TaskJobEvent};
+use crate::internal::executor::{
+    ExecutorDrainReport, ExecutorError, ExecutorTaskHandle, TaskContext, TaskEventSink,
+    TaskExecutor, TaskFailure, TaskFailureKind, TaskHandle, TaskRunnable, TaskSpawnRequest,
 };
+use crate::internal::id::TaskId;
+use crate::internal::policy::{BlockingPolicy, TaskPolicy};
 
 pub struct TokioTaskExecutor {
     runtime: Runtime,
@@ -213,7 +215,7 @@ impl CompletionEmitter {
 #[derive(Debug)]
 struct CompletionRecord {
     task_id: TaskId,
-    attempt_id: crate::TaskAttemptId,
+    attempt_id: crate::internal::id::TaskAttemptId,
     policy: TaskPolicy,
     cancellation_requested: bool,
     outcome: RunnableOutcome,
@@ -222,7 +224,7 @@ struct CompletionRecord {
 impl CompletionRecord {
     fn new(
         task_id: TaskId,
-        attempt_id: crate::TaskAttemptId,
+        attempt_id: crate::internal::id::TaskAttemptId,
         policy: TaskPolicy,
         cancellation_requested: bool,
         outcome: RunnableOutcome,
@@ -313,7 +315,7 @@ fn map_terminal_outcome(
 
 fn emit_terminal<Output>(
     task_id: TaskId,
-    attempt_id: crate::TaskAttemptId,
+    attempt_id: crate::internal::id::TaskAttemptId,
     outcome: TerminalOutcome,
     event_sink: &Arc<dyn TaskEventSink<Output>>,
     report: &mut ExecutorDrainReport,
@@ -381,13 +383,16 @@ mod tests {
         time::Duration,
     };
 
-    use crate::{
-        AsyncTaskJob, BlockingPolicy, CancelReason, CancellationToken, CoalescingKey,
-        ExecutorDrainReport, TaskAttemptId, TaskContext, TaskEventKind, TaskExecutor, TaskFailure,
-        TaskId, TaskKey, TaskLifecycleEvent, TaskPolicy, TaskProgressValue, TaskRunnable,
-        TaskScope, TaskSpawnRequest,
-        testing::{RecordedTaskJob, RecordingTaskEventSink},
+    use crate::internal::cancel::{CancelReason, CancellationToken};
+    use crate::internal::event::{TaskEventKind, TaskLifecycleEvent, TaskProgressValue};
+    use crate::internal::executor::{
+        AsyncTaskJob, ExecutorDrainReport, TaskContext, TaskExecutor, TaskFailure, TaskRunnable,
+        TaskSpawnRequest,
     };
+    use crate::internal::id::{CoalescingKey, TaskAttemptId, TaskId, TaskKey};
+    use crate::internal::policy::{BlockingPolicy, TaskPolicy};
+    use crate::internal::scope::TaskScope;
+    use crate::internal::testing::{RecordedTaskJob, RecordingTaskEventSink};
 
     use super::TokioTaskExecutor;
 
@@ -467,7 +472,10 @@ mod tests {
         let mut executor = TokioTaskExecutor::new().unwrap();
         let token = CancellationToken::new();
         let sink: RecordingTaskEventSink<()> = RecordingTaskEventSink::new();
-        let handle = crate::TaskHandle::new(TaskId::from_u64(3), TaskAttemptId::from_u64(1));
+        let handle = crate::internal::executor::TaskHandle::new(
+            TaskId::from_u64(3),
+            TaskAttemptId::from_u64(1),
+        );
         let request = TaskSpawnRequest::new_unit(
             handle.task_id(),
             handle.attempt_id(),
@@ -643,8 +651,8 @@ mod tests {
             context: TaskContext<Output>,
         ) -> Pin<Box<dyn Future<Output = Result<(), TaskFailure>> + Send + 'static>> {
             Box::pin(async move {
-                context.emit_job_event(crate::TaskJobEvent::progress(
-                    crate::TaskProgressEvent::new(
+                context.emit_job_event(crate::internal::event::TaskJobEvent::progress(
+                    crate::internal::event::TaskProgressEvent::new(
                         CoalescingKey::try_new("recorded").unwrap(),
                         self.value,
                     ),

@@ -1,4 +1,8 @@
-use crate::{Error, ErrorCode, Id, Point, PointerEvent, Result, WindowSnapshot};
+use crate::descriptor::WindowSnapshot;
+use crate::event::PointerEvent;
+use crate::geometry::Point;
+use crate::registry::Id;
+use crate::{Error, ErrorCode, Result};
 
 /// Native logical coordinates observed for one window's pointer event.
 ///
@@ -133,11 +137,14 @@ fn finite_point(id: Id, point: Point) -> Result<Point> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        ClientWindowMetrics, EventKind, Handler, HostEnvironment, InputEvent, Metrics,
-        ModifierState, NativeEventTransition, PhysicalPoint, PhysicalSize, Rect, ScreenAreaSource,
-        ScreenMetrics, Size, open, testing::Runner,
+    use crate::descriptor::Metrics;
+    use crate::environment::{
+        ClientWindowMetrics, HostEnvironment, ScreenAreaSource, ScreenMetrics,
     };
+    use crate::event::{EventKind, InputEvent, ModifierState};
+    use crate::geometry::{PhysicalPoint, PhysicalSize, Rect, Size};
+    use crate::host::NativeEventTransition;
+    use crate::{Handler, open, testing::Runner};
 
     fn environment(client_origin: Point, screen_origin: Point) -> HostEnvironment {
         let size = Size {
@@ -356,14 +363,14 @@ mod tests {
             coordinates: Option<NativePointerCoordinates>,
         }
         impl Handler for Observer {
-            fn input(&mut self, input: &mut crate::Input<'_>) -> Result<()> {
+            fn input(&mut self, input: &mut crate::callback::Input<'_>) -> Result<()> {
                 if let InputEvent::Pointer(pointer) = input.event() {
                     self.coordinates = Some(pointer.native_coordinates(input.state())?);
                 }
                 Ok(())
             }
 
-            fn closed(&mut self, closed: &mut crate::Closed<'_>) -> Result<()> {
+            fn closed(&mut self, closed: &mut crate::callback::Closed<'_>) -> Result<()> {
                 closed.exit();
                 Ok(())
             }

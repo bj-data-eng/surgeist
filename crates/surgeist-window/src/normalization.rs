@@ -1,7 +1,10 @@
 use super::{
-    Command, CommandKind, Error, Id, ImeConfig, ImeRequest, Result,
+    Error, Result,
     geometry::{normalize_local_rect, normalize_nonnegative_size, normalize_outer_position},
 };
+use crate::command::{Command, CommandKind};
+use crate::event::{ImeConfig, ImeRequest};
+use crate::registry::Id;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct NormalizedCommand {

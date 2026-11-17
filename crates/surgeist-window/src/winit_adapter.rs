@@ -3,8 +3,8 @@ use super::normalization::{normalize_command, normalize_commands};
 #[cfg(test)]
 use super::planning::{projected_snapshot_from_request, take_single_planned_command};
 use super::{
+    action::Action,
     capability::CapabilityProvider,
-    command::Action,
     descriptor::WindowSnapshotSeed,
     environment_native::{CaptureProfile, CaptureScope},
     event::EventKind,
@@ -24,6 +24,41 @@ use super::{
     },
     registry::{InnerSizeBounds, LifecycleState},
     winit_mapping, *,
+};
+#[cfg(feature = "accessibility")]
+use crate::accessibility::{AccessibilityActionRequest, AccessibilityEvent};
+use crate::capability::{
+    CapabilitySupport, CursorCapability, FullscreenMode, HostCapabilities, ImeCapability, RoleKind,
+    WindowOperation,
+};
+use crate::clipboard::Clipboard;
+use crate::command::{Command, CommandKind, HostCommandPlan};
+use crate::cursor::{Cursor, CursorGrab};
+use crate::descriptor::{Fullscreen, Metrics, Theme, WindowRequest, WindowSnapshot};
+use crate::environment::{HostEnvironment, UserPreferences};
+use crate::event::{
+    FileDragEvent, ImeEvent, ImeHint, ImePurpose, InputEvent, KeyEvent, KeyState,
+    MagnificationDelta, MagnificationEvent, MagnificationGesture, ModifierState, PointerButton,
+    PointerDeviceData, PointerEvent, PointerKind, PointerPhase, TouchPhase, WheelDelta, WheelEvent,
+};
+use crate::geometry::{PhysicalPoint, PhysicalSize, Point, Size};
+use crate::host::{MetricsEvent, NativeEventTransition, WindowStatePatch};
+use crate::registry::{Access, Handle, Id, Instance, Proxy, Registry};
+#[cfg(test)]
+use crate::{
+    callback::{Close, Closed, Context, Event, Frame, Ready},
+    cursor::CursorIcon,
+    environment::{
+        ContrastPreference, DisplayMode, InputCapabilities, NavigationControls, PointerAccuracy,
+        PointerCapability, ReductionPreference, ScaleFactor, ScreenAreaSource, ScreenMetrics,
+        ViewportMetrics, ViewportSizes,
+    },
+    geometry::Rect,
+    host::Loop,
+    native_geometry::{
+        NativeGeometryAuthorization, NativeGeometryBasis, NativeGeometryDisposition,
+        NativeGeometryNoAction, NativeGeometryOutcome, NativeGeometryRequest,
+    },
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},

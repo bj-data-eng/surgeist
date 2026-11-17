@@ -16,10 +16,10 @@ and mapping task events to app inputs remain outside this crate.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door and exported surface | [src/lib.rs](src/lib.rs) and its reexports |
+| Public front door and exported surface | [src/lib.rs](src/lib.rs) and its public domain modules |
 | Current task behavior and runtime semantics | Implementation and inline tests under [src/](src/); source-linked [docs/reference.md](docs/reference.md) and [docs/explanation.md](docs/explanation.md) |
 | Minimal usage and first-success proof | [examples/basic_task.rs](examples/basic_task.rs) and [docs/getting-started.md](docs/getting-started.md) |
-| Focused verification | Inline `#[cfg(test)]` modules, including [src/testing.rs](src/testing.rs) |
+| Focused verification | Inline `#[cfg(test)]` modules, including [src/internal/testing.rs](src/internal/testing.rs), and public-API tests under [tests/](tests/) |
 
 [README.md](README.md) links usage, contract and attribution documentation.
 

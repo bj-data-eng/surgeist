@@ -1,8 +1,11 @@
-use super::{
-    Error, ErrorCode, EventKind, Id, InputEvent, MagnificationEvent, Metrics, ModifierState,
-    PhysicalPoint, Point, PointerDeviceData, PointerEvent, PointerKind, PointerPhase, Theme,
-    WindowSnapshot,
+use super::{Error, ErrorCode};
+use crate::descriptor::{Metrics, Theme, WindowSnapshot};
+use crate::event::{
+    EventKind, InputEvent, MagnificationEvent, ModifierState, PointerDeviceData, PointerEvent,
+    PointerKind, PointerPhase,
 };
+use crate::geometry::{PhysicalPoint, Point};
+use crate::registry::Id;
 
 /// Validated state change reported by a native host.
 ///
@@ -17,7 +20,7 @@ pub enum WindowStatePatch {
         /// Target window identity.
         id: Id,
         /// Coherent replacement observations.
-        environment: Box<crate::HostEnvironment>,
+        environment: Box<crate::environment::HostEnvironment>,
     },
     /// Replaces the title for one target window.
     Title {
@@ -96,7 +99,7 @@ pub enum MetricsEvent {
 #[derive(Clone, Debug, PartialEq)]
 pub struct NativeEventTransition {
     kind: NativeEventTransitionKind,
-    environment: Option<crate::HostEnvironment>,
+    environment: Option<crate::environment::HostEnvironment>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -116,7 +119,7 @@ impl NativeEventTransition {
     /// Attaches observations committed atomically with this transition's event.
     /// A rejected transition changes neither metrics nor host observations.
     #[must_use]
-    pub fn with_environment(mut self, environment: crate::HostEnvironment) -> Self {
+    pub fn with_environment(mut self, environment: crate::environment::HostEnvironment) -> Self {
         match &mut self.kind {
             NativeEventTransitionKind::Patch(WindowStatePatch::Environment {
                 environment: observed,
@@ -131,7 +134,7 @@ impl NativeEventTransition {
 
     /// Creates an independent baseline-host observation change.
     #[must_use]
-    pub fn environment_changed(id: Id, environment: crate::HostEnvironment) -> Self {
+    pub fn environment_changed(id: Id, environment: crate::environment::HostEnvironment) -> Self {
         Self::patch(WindowStatePatch::Environment {
             id,
             environment: Box::new(environment),

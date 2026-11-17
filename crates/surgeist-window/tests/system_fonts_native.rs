@@ -4,7 +4,7 @@
 
 #[cfg(target_os = "macos")]
 fn main() {
-    use surgeist_window::{SystemFont, SystemFontEnvironment, SystemFontRole};
+    use surgeist_window::system_fonts::{SystemFont, SystemFontEnvironment, SystemFontRole};
 
     let environment = SystemFontEnvironment::capture().expect("main-thread native font capture");
     for role in [
@@ -71,7 +71,7 @@ fn main() {
         return;
     }
 
-    use surgeist_window::{SystemFont, SystemFontEnvironment, SystemFontRole};
+    use surgeist_window::system_fonts::{SystemFont, SystemFontEnvironment, SystemFontRole};
 
     let environment = SystemFontEnvironment::capture().expect("native Windows UI font capture");
     use surgeist_typed_winsafe::{UiFontRole, ui_fonts_for_dpi};
@@ -151,7 +151,7 @@ fn main() {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn main() {
-    use surgeist_window::{SystemFontEnvironment, SystemFontError};
+    use surgeist_window::system_fonts::{SystemFontEnvironment, SystemFontError};
     assert_eq!(
         SystemFontEnvironment::capture(),
         Err(SystemFontError::UnsupportedPlatform)

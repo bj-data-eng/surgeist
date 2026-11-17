@@ -1,4 +1,5 @@
-use super::{Id, Instant, command::Action};
+use super::{Instant, action::Action};
+use crate::registry::Id;
 use std::collections::{HashMap, HashSet};
 
 /// Draw scheduler with per-window coalescing.

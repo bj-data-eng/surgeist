@@ -14,7 +14,7 @@ runtime scheduling, and root integration belong to their respective owners.
 From this checkout, run the public transition sampling test:
 
 ```sh
-cargo test --offline -p surgeist-animation --test public_api delayed_transition_sample_uses_public_reexports -- --exact
+cargo test --offline -p surgeist-animation --test public_api delayed_transition_sample_uses_public_modules -- --exact
 ```
 
 Expected result: one passing test that checks a delayed transition before its

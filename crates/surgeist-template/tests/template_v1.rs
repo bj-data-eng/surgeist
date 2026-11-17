@@ -1,10 +1,15 @@
-use surgeist_template::{
-    AttrPart, AttrValue, Attribute, AttributeKind, AttributeRule, AttributeSpec, BinaryOp,
-    ComponentRegistry, ComponentSpec, ElementName, Expr, Literal, NativeElementRegistry,
-    NativeElementSpec, Node, ParseErrorKind, PathField, PathSegment, RegistryError, SourcePos,
-    SourceSpan, TemplateDocument, UnaryOp, ValidationErrorKind, VariablePath, parse_template,
-    validate_template,
+use surgeist_template::ast::{AttrPart, AttrValue, Attribute, ElementName, Node, TemplateDocument};
+use surgeist_template::expr::{
+    BinaryOp, Expr, Literal, PathField, PathSegment, UnaryOp, VariablePath,
 };
+use surgeist_template::parse::ParseErrorKind;
+use surgeist_template::registry::{
+    AttributeKind, AttributeRule, AttributeSpec, ComponentRegistry, ComponentSpec,
+    NativeElementRegistry, NativeElementSpec, RegistryError,
+};
+use surgeist_template::span::{SourcePos, SourceSpan};
+use surgeist_template::validation::ValidationErrorKind;
+use surgeist_template::{parse_template, validate_template};
 
 #[test]
 fn parses_nested_elements_with_text_and_interpolation() {

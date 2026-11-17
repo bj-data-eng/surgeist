@@ -1,4 +1,4 @@
-use crate::{CorrelationId, TaskAttemptId, TaskId};
+use crate::internal::id::{CorrelationId, TaskAttemptId, TaskId};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskProvenance {
@@ -59,7 +59,7 @@ impl TaskProvenance {
 #[cfg(test)]
 mod tests {
     use super::TaskProvenance;
-    use crate::{CorrelationId, TaskAttemptId, TaskId};
+    use crate::internal::id::{CorrelationId, TaskAttemptId, TaskId};
 
     #[test]
     fn provenance_names_task_attempt_and_correlation() {

@@ -1,7 +1,13 @@
+use crate::callback::{Context, Event as EventScope, Frame, Input, Ready};
+use crate::capability::HostCapabilities;
+use crate::clipboard::Clipboard;
+use crate::command::Command;
+use crate::descriptor::WindowSnapshot;
+use crate::event::{EventKind, InputEvent};
+use crate::registry::{Id, Proxy, Registry};
 use crate::{
-    Clipboard, Command, Context, Error, Event as EventScope, EventKind, Frame, Handler,
-    HostCapabilities, Id, Input, InputEvent, Proxy, Ready, Registry, Result, WindowSnapshot,
-    command::Action,
+    Error, Handler, Result,
+    action::Action,
     context::resolve_actions_with,
     dsl::{Close, Closed},
     normalization::{NormalizedCommand, normalize_commands},
@@ -178,7 +184,7 @@ pub(crate) fn invoke_handler_callback<H: Handler>(
                     environment.capabilities,
                     environment.proxy,
                 );
-                let mut resize = crate::Resize::new(id, context);
+                let mut resize = crate::callback::Resize::new(id, context);
                 handler.resize(&mut resize)?;
             }
             replace_callback_actions(actions, resolve_actions_with(actions, Action::DrawNext(id)));
@@ -647,7 +653,8 @@ impl<C> Default for Pump<C> {
 #[cfg(test)]
 mod tests {
     use super::{CallbackCompletion, Pump, PumpBackend};
-    use crate::{Command, Error, ErrorCode, Result, command::Action};
+    use crate::command::Command;
+    use crate::{Error, ErrorCode, Result, action::Action};
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     enum Callback {
@@ -680,21 +687,21 @@ mod tests {
                 Callback::Failure => Err(Error::new(ErrorCode::CommandFailed, "handler failure")),
                 Callback::FailureWithWork => {
                     commands.push(Command::RequestDraw {
-                        id: crate::Id::from_u64(1),
+                        id: crate::registry::Id::from_u64(1),
                     });
-                    actions.push(Action::DrawNow(crate::Id::from_u64(1)));
+                    actions.push(Action::DrawNow(crate::registry::Id::from_u64(1)));
                     Err(Error::new(ErrorCode::CommandFailed, "handler failure"))
                 }
                 Callback::CommandAndAction => {
                     commands.push(Command::RequestDraw {
-                        id: crate::Id::from_u64(1),
+                        id: crate::registry::Id::from_u64(1),
                     });
-                    actions.push(Action::DrawNow(crate::Id::from_u64(1)));
+                    actions.push(Action::DrawNow(crate::registry::Id::from_u64(1)));
                     Ok(CallbackCompletion::None)
                 }
                 Callback::Initial => {
                     commands.push(Command::RequestDraw {
-                        id: crate::Id::from_u64(1),
+                        id: crate::registry::Id::from_u64(1),
                     });
                     Ok(CallbackCompletion::None)
                 }
@@ -702,13 +709,13 @@ mod tests {
                     self.callbacks.push("after-command");
                     self.callback_observed_coherent_state = self.commands.len() == 1;
                     commands.push(Command::RequestDraw {
-                        id: crate::Id::from_u64(2),
+                        id: crate::registry::Id::from_u64(2),
                     });
                     Ok(CallbackCompletion::None)
                 }
                 Callback::Exit => {
                     commands.push(Command::RequestDraw {
-                        id: crate::Id::from_u64(1),
+                        id: crate::registry::Id::from_u64(1),
                     });
                     actions.push(Action::Exit);
                     Ok(CallbackCompletion::None)
@@ -750,7 +757,11 @@ mod tests {
             Ok(())
         }
 
-        fn begin_close(&mut self, _id: crate::Id, _pump: &mut Pump<Callback>) -> Result<()> {
+        fn begin_close(
+            &mut self,
+            _id: crate::registry::Id,
+            _pump: &mut Pump<Callback>,
+        ) -> Result<()> {
             Ok(())
         }
     }
@@ -833,14 +844,14 @@ mod tests {
 
     #[test]
     fn closing_cancels_queued_target_actions() {
-        let closing = crate::Id::from_u64(1);
-        let surviving = crate::Id::from_u64(2);
+        let closing = crate::registry::Id::from_u64(1);
+        let surviving = crate::registry::Id::from_u64(2);
         let mut pump = Pump::new();
         let mut backend = TestBackend::default();
 
         pump.enqueue_queued_normalized_command(
-            crate::normalization::normalize_command(crate::Command::Open {
-                request: crate::WindowRequest::builder("surviving").build(),
+            crate::normalization::normalize_command(crate::command::Command::Open {
+                request: crate::descriptor::WindowRequest::builder("surviving").build(),
             })
             .expect("open command normalizes"),
         );
@@ -864,7 +875,7 @@ mod tests {
 
         assert!(matches!(
             backend.commands.first(),
-            Some(crate::Command::Open { request }) if request.name() == Some("surviving")
+            Some(crate::command::Command::Open { request }) if request.name() == Some("surviving")
         ));
         assert_eq!(backend.actions, [Action::DrawNext(surviving), Action::Exit]);
     }

@@ -11,9 +11,10 @@
 //! Source: [CSSOM View, 16 September 2025, §4 and §4.1](https://www.w3.org/TR/2025/WD-cssom-view-1-20250916/#extensions-to-the-window-interface).
 
 use super::geometry::{normalize_nonnegative_size, normalize_outer_position};
-use super::{
-    Command, Error, ErrorCode, Point, Rect, Result, Size, WindowRequestBuilder, WindowSnapshot,
-};
+use super::{Error, ErrorCode, Result};
+use crate::command::Command;
+use crate::descriptor::{WindowRequestBuilder, WindowSnapshot};
+use crate::geometry::{Point, Rect, Size};
 
 /// Captured mapping from the selected output device's CSS pixels to desktop
 /// logical coordinates. Positive axes point rightward and downward.
@@ -452,10 +453,11 @@ fn clamp_position(position: Point, size: Size, area: Rect) -> Point {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Access, CapabilitySupport, FullscreenMode, Handler, HostCapabilities, Id, Metrics,
-        PhysicalSize, RoleKind, WindowRequest, open, testing::Runner,
-    };
+    use crate::capability::{CapabilitySupport, FullscreenMode, HostCapabilities, RoleKind};
+    use crate::descriptor::{Metrics, WindowRequest};
+    use crate::geometry::PhysicalSize;
+    use crate::registry::{Access, Id};
+    use crate::{Handler, open, testing::Runner};
 
     struct Quiet;
     impl Handler for Quiet {}

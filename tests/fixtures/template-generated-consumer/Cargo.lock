@@ -2187,6 +2187,7 @@ dependencies = [
  "peniko",
  "png",
  "skrifa",
+ "surgeist-color",
  "surgeist-font",
  "surgeist-ledger",
  "vello_encoding",

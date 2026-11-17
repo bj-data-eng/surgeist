@@ -1,6 +1,6 @@
 //! Windows connection-cost observations and the native reduced-data policy.
 
-use crate::ReductionPreference;
+use crate::environment::ReductionPreference;
 
 #[derive(Clone, Copy)]
 enum CostKind {

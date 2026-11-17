@@ -13,8 +13,10 @@ value kinds. A syntactically valid template can therefore fail validation when
 an element is unknown or an attribute has an unaccepted form. Successful
 validation produces a `ValidatedTemplate`, the input required by
 `render_to_rust` or, for concrete native values, `append_static_html`.
-The [public front door](../src/lib.rs) exposes these phase
-boundaries; [validate.rs](../src/validate.rs) owns the registry checks.
+The [public front door](../src/lib.rs) exposes these phase boundaries as
+the `parse_template`, `validate_template` and `render_to_rust` functions and
+the `ast`, `expr`, `name`, `span`, `parse`, `registry`, `validation` and `dom`
+modules; [validate.rs](../src/validate.rs) owns the registry checks.
 
 ## Strictness and typed structure
 
@@ -34,7 +36,8 @@ callers can connect structured failures to authored text. See the
 ## Symbolic generation and ownership
 
 Rendering means code generation. The renderer emits one Rust expression using
-real public constructors under `::surgeist::template`. Its value is an authored
+real public constructors under `::surgeist::template::{ast, expr, name, span}`.
+Its value is an authored
 `TemplateDocument`, preserving typed expressions, native/component names, ordered
 attributes and children, control flow and diagnostic spans. `$user.name` remains
 a typed variable path, and `$match` does not become a Rust identifier. Floating

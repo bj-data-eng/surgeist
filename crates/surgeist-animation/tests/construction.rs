@@ -2,11 +2,18 @@
 
 use std::sync::Arc;
 
-use surgeist_animation::{
-    AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState, CompletionStatus,
-    Easing, ElapsedTime, FillMode, InterpolableNumber, InterpolableValue, IterationCount,
+use surgeist_animation::easing::Easing;
+use surgeist_animation::interpolation::{InterpolableNumber, InterpolableValue, PropertyKey};
+use surgeist_animation::keyframe::{
     KeyframeAnimationId, KeyframeError, KeyframeSegment, KeyframeTiming, KeyframeTrack,
-    NextFrameHint, PropertyKey, SampleClassification, SampleValue, UnitRatio,
+};
+use surgeist_animation::progress::UnitRatio;
+use surgeist_animation::sample::{
+    CompletionStatus, NextFrameHint, SampleClassification, SampleValue,
+};
+use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use surgeist_animation::timing::{
+    AnimationDirection, AnimationPlayState, FillMode, IterationCount,
 };
 
 #[test]

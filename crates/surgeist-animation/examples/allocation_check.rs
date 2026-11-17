@@ -19,7 +19,7 @@ use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 use std::alloc::System;
 use std::cell::Cell;
 use std::hint::black_box;
-use surgeist_animation::AnimationPlayState;
+use surgeist_animation::timing::AnimationPlayState;
 
 use fixtures::{Family, Layout, SIZES};
 

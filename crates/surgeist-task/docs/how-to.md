@@ -25,7 +25,7 @@ Start with an input type and output type that are `Send + 'static`, plus a
 Verify job progress/output at the sink, and terminal outcomes in both the sink
 and `ExecutorDrainReport`. Completion drainage performs terminal emission;
 successful spawning alone does not prove completion. The focused async and
-blocking executor tests in [runtime_tokio.rs](../src/runtime_tokio.rs) show both
+blocking executor tests in [runtime_tokio.rs](../src/internal/runtime_tokio.rs) show both
 paths.
 
 ## Make cancellation observable
@@ -67,5 +67,5 @@ and sink adapter needed by that integration.
 Verify that repeated progress updates for the same task, attempt, and key retain
 the newest value, while different attempts remain separate. Non-progress events
 drain first in FIFO order; the queue does not promise one global arrival order
-across progress and non-progress events. See [queue.rs](../src/queue.rs) for the
+across progress and non-progress events. See [queue.rs](../src/internal/queue.rs) for the
 focused capacity, coalescing, and drainage tests.

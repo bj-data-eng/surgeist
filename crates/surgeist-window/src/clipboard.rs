@@ -1,3 +1,9 @@
+//! The clipboard contract and its in-memory fallback.
+//!
+//! [`Clipboard`] is the immediate text and image clipboard a handler reaches
+//! through its context. [`MemoryClipboard`] keeps contents in the process for
+//! hosts and tests without a system clipboard.
+
 use super::Result;
 
 /// Immediate clipboard operations supplied by the active host.

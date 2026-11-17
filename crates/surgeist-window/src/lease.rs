@@ -1,6 +1,7 @@
+use crate::registry::Id;
+use crate::registry::Proxy;
 #[cfg(test)]
 use crate::registry::UserEvent;
-use crate::{Id, registry::Proxy};
 use raw_window_handle::HandleError;
 use std::{
     fmt,

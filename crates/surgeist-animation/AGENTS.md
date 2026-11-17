@@ -15,7 +15,7 @@ color conversion, gamut mapping, and final property clamping remain caller-owned
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door and reexports | [src/lib.rs](src/lib.rs) |
+| Public modules and crate identity | [src/lib.rs](src/lib.rs) |
 | Implemented behavior and focused verification | [src/](src/), its tracked test modules and doctests, and external consumer tests in [tests/](tests/) |
 | First sample and usage procedures | [docs/getting-started.md](docs/getting-started.md), [docs/how-to.md](docs/how-to.md) |
 | Ownership rationale and integration boundary | [docs/explanation.md](docs/explanation.md) |

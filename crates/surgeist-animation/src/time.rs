@@ -4,7 +4,7 @@
 //! used for sampling. This crate validates and consumes it, but does not own
 //! clocks, scheduling, pause bookkeeping, or track-start resolution.
 
-use crate::{NumericError, NumericInput};
+use crate::diagnostics::{NumericError, NumericInput};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AnimationDuration {
@@ -82,7 +82,7 @@ fn validate_non_negative_finite(input: NumericInput, secs: f64) -> Result<(), Nu
 #[cfg(test)]
 mod tests {
     use super::{AnimationDelay, AnimationDuration, ElapsedTime};
-    use crate::{NumericError, NumericInput};
+    use crate::diagnostics::{NumericError, NumericInput};
 
     #[test]
     fn duration_accepts_zero_and_large_finite_values() {

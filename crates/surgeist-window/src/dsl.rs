@@ -1,8 +1,14 @@
-use super::{
-    Command, Context, Controls, Cursor, CursorGrab, EventKind, Fullscreen, Handle, Id, ImeRequest,
-    InputEvent, Instant, Level, Metrics, Modality, Point, Proxy, Rect, Ref, Result, Role, Size,
-    Theme, WindowRequest, WindowRequestBuilder, WindowSnapshot, command::Action,
+use super::{Instant, Result, action::Action};
+use crate::callback::Context;
+use crate::command::Command;
+use crate::cursor::{Cursor, CursorGrab};
+use crate::descriptor::{
+    Controls, Fullscreen, Level, Metrics, Modality, Role, Theme, WindowRequest,
+    WindowRequestBuilder, WindowSnapshot,
 };
+use crate::event::{EventKind, ImeRequest, InputEvent};
+use crate::geometry::{Point, Rect, Size};
+use crate::registry::{Handle, Id, Proxy, Ref};
 
 #[must_use]
 /// Creates a logical point from horizontal and vertical coordinates.
@@ -1136,17 +1142,17 @@ impl<'a> Input<'a> {
         matches!(
             &self.event,
             InputEvent::Key(event)
-                if event.physical_key == code && event.state == super::KeyState::Pressed
+                if event.physical_key == code && event.state == crate::event::KeyState::Pressed
         )
     }
 
     #[must_use]
     /// Returns whether this payload is a press for the given pointer button.
-    pub fn pointer_pressed(&self, button: super::PointerButton) -> bool {
+    pub fn pointer_pressed(&self, button: crate::event::PointerButton) -> bool {
         matches!(
             &self.event,
             InputEvent::Pointer(event)
-                if event.button == Some(button) && event.phase == super::PointerPhase::Pressed
+                if event.button == Some(button) && event.phase == crate::event::PointerPhase::Pressed
         )
     }
 
@@ -1166,14 +1172,14 @@ impl<'a> Input<'a> {
 
     #[must_use]
     /// Returns payload modifiers, or the empty state for event kinds without them.
-    pub fn modifiers(&self) -> super::ModifierState {
+    pub fn modifiers(&self) -> crate::event::ModifierState {
         match &self.event {
             InputEvent::Pointer(event) => event.modifiers,
             InputEvent::Wheel(event) => event.modifiers,
             InputEvent::Magnification(event) => event.modifiers,
             InputEvent::Key(event) => event.modifiers,
             InputEvent::Modifiers { modifiers, .. } => *modifiers,
-            _ => super::ModifierState::default(),
+            _ => crate::event::ModifierState::default(),
         }
     }
 
@@ -1712,10 +1718,10 @@ impl<'a> Scope<'a> for Frame<'a> {
 /// Display-free application builder that owns a handler and authored startup opens.
 ///
 /// [`App::into_loop`] retains authored startup requests without validation.
-/// [`App::run`] or [`super::Loop::run`] intrinsically validates the complete batch
+/// [`App::run`] or [`crate::host::Loop::run`] intrinsically validates the complete batch
 /// before native event-loop creation.
 pub struct App<H> {
-    window_loop: super::Loop<H>,
+    window_loop: crate::host::Loop<H>,
     startup: Vec<Open>,
 }
 
@@ -1730,7 +1736,7 @@ impl<H> App<H> {
     /// Creates an application builder with no startup windows.
     pub fn new(handler: H) -> Self {
         Self {
-            window_loop: super::Loop::new(handler),
+            window_loop: crate::host::Loop::new(handler),
             startup: Vec::new(),
         }
     }
@@ -1744,7 +1750,7 @@ impl<H> App<H> {
 
     #[must_use]
     /// Replaces the loop-owned clipboard used by every callback.
-    pub fn with_clipboard(mut self, clipboard: Box<dyn super::Clipboard>) -> Self {
+    pub fn with_clipboard(mut self, clipboard: Box<dyn crate::clipboard::Clipboard>) -> Self {
         self.window_loop = self.window_loop.with_clipboard(clipboard);
         self
     }
@@ -1761,10 +1767,10 @@ impl<H> App<H> {
     }
 
     #[must_use]
-    /// Converts startup opens into commands retained by a display-free [`super::Loop`].
+    /// Converts startup opens into commands retained by a display-free [`crate::host::Loop`].
     ///
     /// Validation is deferred until the loop's first run or deterministic runner path.
-    pub fn into_loop(mut self) -> super::Loop<H> {
+    pub fn into_loop(mut self) -> crate::host::Loop<H> {
         for open in self.startup {
             self.window_loop.startup.push(open.into_command());
         }

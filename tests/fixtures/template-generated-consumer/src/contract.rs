@@ -1,8 +1,11 @@
-use surgeist::template::{
-    AttrPart, AttrValue, AttributeKind, AttributeRule, AttributeSpec, BinaryOp, ComponentRegistry,
-    ComponentSpec, ElementName, Expr, Literal, NativeElementRegistry, NativeElementSpec, Node,
-    PathSegment, SourceSpan, TemplateDocument, UnaryOp, parse_template, validate_template,
+use surgeist::template::ast::{AttrPart, AttrValue, ElementName, Node, TemplateDocument};
+use surgeist::template::expr::{BinaryOp, Expr, Literal, PathSegment, UnaryOp};
+use surgeist::template::registry::{
+    AttributeKind, AttributeRule, AttributeSpec, ComponentRegistry, ComponentSpec,
+    NativeElementRegistry, NativeElementSpec,
 };
+use surgeist::template::span::SourceSpan;
+use surgeist::template::{parse_template, validate_template};
 
 pub const SOURCE: &str = concat!(
     r#"<Panel disabled title="Hi {$user.name}" value={$match}>"#,

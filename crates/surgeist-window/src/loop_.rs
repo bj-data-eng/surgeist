@@ -1,12 +1,19 @@
+#[cfg(test)]
+use super::action::Action;
 use super::winit_adapter::WinitRunner;
 use super::winit_mapping;
 use super::{
-    Clipboard, Command, DrawScheduler, Error, ErrorCode, Handler, MemoryClipboard, Proxy, Registry,
-    Result, Role, UserEvent,
+    DrawScheduler, Error, ErrorCode, Handler, Result, UserEvent,
     normalization::{NormalizedCommand, normalize_command},
 };
 #[cfg(test)]
-use super::{Context, HostCapabilities, command::Action};
+use crate::callback::Context;
+#[cfg(test)]
+use crate::capability::HostCapabilities;
+use crate::clipboard::{Clipboard, MemoryClipboard};
+use crate::command::Command;
+use crate::descriptor::Role;
+use crate::registry::{Proxy, Registry};
 
 /// Owner of one handler, its registry, startup requests, and native event-loop run.
 ///

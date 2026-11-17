@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use surgeist_animation::{
+use surgeist_animation::interpolation::{
     CompositeValue, DiscreteValue, InterpolationError, PropertyKey, TransformValue,
 };
 

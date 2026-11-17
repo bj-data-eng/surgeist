@@ -1,8 +1,9 @@
 //! Checked current-monitor enrichment. No renderer capabilities are inferred.
 
+use crate::environment::ScaleFactor;
 #[cfg(any(target_os = "macos", test))]
-use crate::Size;
-use crate::{Point, Rect, ScaleFactor};
+use crate::geometry::Size;
+use crate::geometry::{Point, Rect};
 
 #[cfg(any(target_os = "windows", test))]
 mod windows;
@@ -263,7 +264,7 @@ fn available_area(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ScreenAreaSource, ScreenMetrics};
+    use crate::environment::{ScreenAreaSource, ScreenMetrics};
     fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
         Rect {
             origin: Point { x, y },

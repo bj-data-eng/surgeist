@@ -1,7 +1,9 @@
 # How-to guides
 
 These procedures assume the pipeline in [getting started](getting-started.md)
-is familiar. They use the public exports in [src/lib.rs](../src/lib.rs).
+is familiar. They use the public functions and modules in [src/lib.rs](../src/lib.rs): registry
+types come from `registry`, diagnostics from `parse` and `validation`, and the DOM
+adapter from `dom`.
 
 ## Register a native element or component
 
@@ -45,7 +47,7 @@ element permits.
    kinds. Create an `AttributeSpec` with the attribute's name and rule, and
    include it in the element specification.
 3. Validate the document. Confirm that the intended form succeeds and that an
-   excluded form produces `ValidationErrorKind::InvalidAttributeValue`.
+   excluded form produces `validation::ValidationErrorKind::InvalidAttributeValue`.
    An undeclared attribute produces `InvalidAttribute`; repeated authored
    attributes produce `DuplicateAttribute`.
 
@@ -65,7 +67,8 @@ Keep the original source text available when parsing and validating it.
    mismatch.
 3. Use the span's `start()` and `end()` positions to locate the affected text.
    Each position exposes `line()`, `column()`, and `byte()`; `len_bytes()` on
-   the span reports its byte length.
+   the span reports its byte length. To show the failure to a person, print the
+   error: its `Display` text names the problem and the starting line and column.
 4. Correct the reported input or registry definition and repeat the pipeline.
    Success yields a `ValidatedTemplate` ready for `render_to_rust`.
 

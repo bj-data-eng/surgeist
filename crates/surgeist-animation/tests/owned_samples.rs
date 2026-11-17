@@ -1,11 +1,16 @@
 #![forbid(unsafe_code)]
 
-use surgeist_animation::{
-    AnimationDelay, AnimationDuration, AnimationPlayState, CompletionStatus, DiscreteValue, Easing,
-    ElapsedTime, InterpolableNumber, InterpolableValue, InterpolationComponent, InterpolationError,
-    NextFrameHint, PropertyKey, SampleClassification, SampleValue, SampledPropertyResult,
-    TransformValue, TransitionTrack, TransitionTrackId, ValueFamily,
+use surgeist_animation::easing::Easing;
+use surgeist_animation::interpolation::{
+    DiscreteValue, InterpolableNumber, InterpolableValue, InterpolationComponent,
+    InterpolationError, PropertyKey, TransformValue, ValueFamily,
 };
+use surgeist_animation::sample::{
+    CompletionStatus, NextFrameHint, SampleClassification, SampleValue, SampledPropertyResult,
+};
+use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use surgeist_animation::timing::AnimationPlayState;
+use surgeist_animation::transition::{TransitionTrack, TransitionTrackId};
 
 #[test]
 fn concurrent_discrete_samples_remain_owned_after_track_destruction() {

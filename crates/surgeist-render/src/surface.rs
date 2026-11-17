@@ -1262,7 +1262,7 @@ pub enum Attachment {
     Headless,
     #[cfg(feature = "render-window")]
     /// Native presented host supplied by `surgeist-window`.
-    Window(surgeist_window::Handle),
+    Window(surgeist_window::registry::Handle),
     /// Browser-canvas descriptor or handle, depending on target and feature.
     WebCanvas(WebCanvas),
 }
@@ -1310,7 +1310,7 @@ impl Attachment {
     #[cfg(feature = "render-window")]
     /// Wraps a live native-window handle supplied by the application host.
     #[must_use]
-    pub fn from_window(handle: surgeist_window::Handle) -> Self {
+    pub fn from_window(handle: surgeist_window::registry::Handle) -> Self {
         Self::Window(handle)
     }
 

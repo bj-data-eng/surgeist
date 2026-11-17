@@ -1,7 +1,13 @@
 //! Validated host observations. Consumers own document state and policy overlays.
+//!
+//! The observations cover display scale and output device, screen, client
+//! window and viewport geometry, pointer and input capabilities, and user
+//! preferences. [`HostEnvironment`] groups them for one window.
 
+use crate::descriptor::Theme;
+use crate::geometry::{Insets, Point, Rect, Size};
 use crate::geometry::{normalize_nonnegative_size, normalize_outer_position};
-use crate::{Error, ErrorCode, Insets, Point, Rect, Result, Size, Theme};
+use crate::{Error, ErrorCode, Result};
 
 /// A finite, strictly positive scale factor.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]

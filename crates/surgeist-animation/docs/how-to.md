@@ -10,12 +10,15 @@ through 1 for each property. Root/style own name lookup and endpoint synthesis.
 Construct timing, a segment, and a track, then sample it:
 
 ```rust
-use surgeist_animation::{
-    AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState, Easing,
-    ElapsedTime, FillMode, InterpolableNumber, InterpolableValue, IterationCount,
-    KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack, PropertyKey,
-    SampleClassification, UnitRatio,
+use surgeist_animation::easing::Easing;
+use surgeist_animation::interpolation::{InterpolableNumber, InterpolableValue, PropertyKey};
+use surgeist_animation::keyframe::{
+    KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack,
 };
+use surgeist_animation::progress::UnitRatio;
+use surgeist_animation::sample::SampleClassification;
+use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use surgeist_animation::timing::{AnimationDirection, AnimationPlayState, FillMode, IterationCount};
 
 let timing = KeyframeTiming::try_new(
     AnimationDelay::from_secs(0.0).unwrap(),
@@ -69,7 +72,7 @@ track.sample_into(
     &mut output,
 );
 assert_eq!(output.len(), 1);
-let surgeist_animation::SampleValue::Value(value) = output[0].value() else {
+let surgeist_animation::sample::SampleValue::Value(value) = output[0].value() else {
     panic!("expected sampled opacity");
 };
 assert_eq!(value.property().as_str(), "opacity");

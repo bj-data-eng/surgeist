@@ -7,10 +7,12 @@ and the library import name `surgeist_animation`. It declares no runtime
 dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
-[src/lib.rs](../src/lib.rs) is the public front door. It reexports the contracts
-from the public modules `diagnostics`, `easing`, `interpolation`, `keyframe`,
-`progress`, `sample`, `time`, `timing`, and `transition`. The crate forbids unsafe
-code. Tests live in source modules and the external consumer targets under
+[src/lib.rs](../src/lib.rs) declares the public modules `diagnostics`, `easing`,
+`interpolation`, `keyframe`, `progress`, `sample`, `time`, `timing`, and
+`transition`, and the constant `CRATE_NAME`. Each public type has one path,
+through the module that owns it, for example `surgeist_animation::easing::Easing`;
+the crate root reexports nothing. The crate forbids unsafe code. Tests live in
+source modules and the external consumer targets under
 [tests/](../tests/); crate-level examples are doctests.
 
 ## Sampling contracts
@@ -60,9 +62,10 @@ dropped and across threads. See [key preparation](how-to.md#prepare-property-key
 
 ## Integration boundary
 
-Use the crate root reexports for public API access. The final front door exposes
-typed time, progress, easing, timing, interpolation, transition, keyframe,
-sample, and diagnostic contracts without requiring private module paths.
+Use the public module paths for API access. The modules expose typed time,
+progress, easing, timing, interpolation, transition, keyframe, sample, and
+diagnostic contracts; `transition::TransitionTrack` and `keyframe::KeyframeTrack`
+are the entry points for sampling.
 
 Effective elapsed time is the non-negative finite `ElapsedTime` supplied by
 runtime/root after clocks and track start times have already been resolved. This

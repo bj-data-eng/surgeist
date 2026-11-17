@@ -1,3 +1,12 @@
+//! Diagnostic source positions and spans.
+//!
+//! A [`SourcePos`] holds a one-based line, a one-based column and a zero-based
+//! byte offset. A [`SourceSpan`] is an ordered pair of positions. Both are
+//! diagnostic coordinates only: they do not identify a source buffer or certify
+//! membership in one. Constructors reject zero lines and columns, reversed
+//! ranges and zero-length spans whose positions disagree, returning a
+//! [`SpanError`].
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourcePos {
     line: usize,
@@ -81,6 +90,38 @@ pub enum SpanError {
     EndBeforeStart { start: SourcePos, end: SourcePos },
     InconsistentZeroLengthSpan { start: SourcePos, end: SourcePos },
 }
+
+impl SourceSpan {
+    /// Writes the span's start as `line L, column C` for diagnostics.
+    pub(crate) fn write_start(self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "line {}, column {}", self.start.line, self.start.column)
+    }
+}
+
+impl core::fmt::Display for SpanError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidPosition { line, column } => write!(
+                f,
+                "invalid source position: line {line}, column {column}; lines and columns start at 1"
+            ),
+            Self::EndBeforeStart { start, end } => write!(
+                f,
+                "source span ends at line {}, column {} (byte {}) before it starts at line {}, \
+                 column {} (byte {})",
+                end.line, end.column, end.byte, start.line, start.column, start.byte
+            ),
+            Self::InconsistentZeroLengthSpan { start, end } => write!(
+                f,
+                "source span from line {}, column {} to line {}, column {} has equal byte \
+                 offsets but different positions",
+                start.line, start.column, end.line, end.column
+            ),
+        }
+    }
+}
+
+impl core::error::Error for SpanError {}
 
 #[cfg(test)]
 mod tests {

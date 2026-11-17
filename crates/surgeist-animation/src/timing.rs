@@ -6,10 +6,10 @@
 
 use core::fmt;
 
-use crate::{
-    AnimationDelay, AnimationDuration, EasedProgress, Easing, ElapsedTime, NormalizedProgress,
-    NumericError,
-};
+use crate::diagnostics::NumericError;
+use crate::easing::{EasedProgress, Easing};
+use crate::progress::NormalizedProgress;
+use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationDirection {
@@ -108,9 +108,10 @@ impl std::error::Error for TimingError {}
 /// Validated timing parameters for animation sampling.
 ///
 /// ```
-/// use surgeist_animation::{
-///     AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState, Easing,
-///     ElapsedTime, FillMode, IterationCount, TimingParameters,
+/// use surgeist_animation::easing::Easing;
+/// use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+/// use surgeist_animation::timing::{
+///     AnimationDirection, AnimationPlayState, FillMode, IterationCount, TimingParameters,
 /// };
 ///
 /// let timing = TimingParameters::try_new(
@@ -129,10 +130,11 @@ impl std::error::Error for TimingError {}
 /// assert_eq!(sample.active_duration_secs(), Some(1.0));
 /// ```
 ///
-/// ```compile_fail
-/// use surgeist_animation::{
-///     AnimationDelay, AnimationDirection, AnimationDuration, Easing, FillMode, IterationCount,
-///     TimingParameters,
+/// ```compile_fail,E0599
+/// use surgeist_animation::easing::Easing;
+/// use surgeist_animation::time::{AnimationDelay, AnimationDuration};
+/// use surgeist_animation::timing::{
+///     AnimationDirection, FillMode, IterationCount, TimingParameters,
 /// };
 ///
 /// let _ = TimingParameters::new(
@@ -667,7 +669,8 @@ mod tests {
         IterationCount, PhaseProgress, TimingError, TimingParameters, TimingPhase, TimingSample,
         current_direction,
     };
-    use crate::{AnimationDelay, AnimationDuration, Easing, ElapsedTime};
+    use crate::easing::Easing;
+    use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
 
     fn timing(delay_secs: f64, duration_secs: f64, iterations: IterationCount) -> TimingParameters {
         TimingParameters::try_new(

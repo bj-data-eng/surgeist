@@ -1,9 +1,24 @@
-use super::Id;
+//! Typed accessibility events and the AccessKit types they carry.
+//!
+//! This module exists with the `accessibility` feature. Handlers observe an
+//! [`AccessibilityEvent`] as [`EventKind::Accessibility`](crate::event::EventKind::Accessibility)
+//! and answer with [`Context::update_accessibility`](crate::callback::Context::update_accessibility).
+//!
+//! The `accesskit` crate is re-exported because
+//! [`Command::UpdateAccessibility`](crate::command::Command::UpdateAccessibility)
+//! and [`AccessibilityActionRequest`] carry its types, and it keeps tree
+//! construction independent of the private native adapter. The manifest pins
+//! the dependency to an exact version, so a caller's own copy at another
+//! version would be a different type.
+
+pub use accesskit;
+
+use crate::registry::Id;
 
 /// An accessibility lifecycle or typed action event emitted for a window.
 ///
 /// This feature-gated event is owned by the window host boundary: application
-/// handlers observe it through [`crate::EventKind::Accessibility`] and retain
+/// handlers observe it through [`crate::event::EventKind::Accessibility`] and retain
 /// the supplied [`Id`] when submitting tree updates or handling actions. Native
 /// adapter delivery occurs only for a live window whose host capability report
 /// permits accessibility; callback failure still follows the normal terminal
@@ -13,7 +28,7 @@ pub enum AccessibilityEvent {
     /// Requests the complete initial tree for this live window generation.
     ///
     /// The window is waiting for its initial tree when the callback receives
-    /// this event. Submit one update through [`crate::Context::update_accessibility`]
+    /// this event. Submit one update through [`crate::callback::Context::update_accessibility`]
     /// using this exact id; it must include `TreeUpdate::tree`, its root node,
     /// root-tree id, and focus. The tree becomes active only after the callback
     /// succeeds and the queued update is planned and applied.
