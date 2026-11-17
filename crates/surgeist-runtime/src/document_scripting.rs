@@ -94,7 +94,50 @@ pub enum DocumentScriptNativeError {
 
 impl fmt::Display for DocumentScriptNativeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "native document scripting refused: {self:?}")
+        f.write_str(match self {
+            Self::Hosted(_) => "the native hosted lifecycle refused the operation",
+            Self::Dom(_) => "the canonical DOM refused the operation",
+            Self::StorageLimit => {
+                "the requested adapter storage exceeds the configured limit or cannot be sized"
+            }
+            Self::Busy => {
+                "a native owner or retained record needed by the operation is already in use or unavailable"
+            }
+            Self::ForeignPermit => "the permit or origin does not belong to this attachment",
+            Self::Revoked => {
+                "the attachment has stopped, expired or no longer has scripting enabled"
+            }
+            Self::SourcePending => {
+                "a native Source or hosted operation has an unfinished synchronous obligation"
+            }
+            Self::SourceAccess => {
+                "this hook lacks the Source authority of the selected native event"
+            }
+            Self::CreationGlobalUnavailable => {
+                "the node's creation Global is unavailable in this attachment"
+            }
+            Self::CreationRealmAlreadyRegistered => {
+                "the native Global already has a creation realm"
+            }
+            Self::CustomElementRegistryCustodyUnavailable(_) => {
+                "the Global retains custom element definitions whose executable custody is absent from this realm"
+            }
+            Self::CreationRealmWorkLimit => {
+                "guest binding work for the creation realm was refused or cannot be represented"
+            }
+            Self::ProjectionCustody => {
+                "a projected node or its retained custody record is missing or does not match what was admitted"
+            }
+            Self::RepresentationExhausted => {
+                "a size, count or accounting total cannot be represented or does not balance in the supported service profile"
+            }
+            Self::WindowTimersDisabled => {
+                "this attachment did not enable the Window timer profile"
+            }
+            Self::TrustedTypesPolicyUnavailable => {
+                "the Trusted Types policy evaluation is unavailable for the Window's current CSP"
+            }
+        })
     }
 }
 
@@ -103,7 +146,20 @@ impl std::error::Error for DocumentScriptNativeError {
         match self {
             Self::Hosted(error) => Some(error),
             Self::Dom(error) => Some(error),
-            _ => None,
+            Self::StorageLimit
+            | Self::Busy
+            | Self::ForeignPermit
+            | Self::Revoked
+            | Self::SourcePending
+            | Self::SourceAccess
+            | Self::CreationGlobalUnavailable
+            | Self::CreationRealmAlreadyRegistered
+            | Self::CustomElementRegistryCustodyUnavailable(_)
+            | Self::CreationRealmWorkLimit
+            | Self::ProjectionCustody
+            | Self::RepresentationExhausted
+            | Self::WindowTimersDisabled
+            | Self::TrustedTypesPolicyUnavailable => None,
         }
     }
 }
@@ -512,12 +568,36 @@ pub struct EnableDocumentScriptFailure {
     pub error: DocumentScriptError,
 }
 
+impl fmt::Display for EnableDocumentScriptFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("enabling document scripting failed and returned the unpublished owner")
+    }
+}
+
+impl std::error::Error for EnableDocumentScriptFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
 /// A refused preparation returns the exact original Session.
 pub struct PrepareDocumentScriptFailure {
     /// The original native owner.
     pub session: DomSession,
     /// The native phase's refusal.
     pub error: DocumentScriptNativeError,
+}
+
+impl fmt::Display for PrepareDocumentScriptFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("preparing document scripting failed and returned the original Session")
+    }
+}
+
+impl std::error::Error for PrepareDocumentScriptFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
 }
 
 impl fmt::Debug for PrepareDocumentScriptFailure {

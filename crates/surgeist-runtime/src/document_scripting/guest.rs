@@ -96,15 +96,48 @@ pub enum DocumentGuestEventError {
 
 impl fmt::Display for DocumentGuestEventError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "registered guest EventTarget: {self:?}")
+        f.write_str(match self {
+            Self::Document(_) => "the document script host or the bindings refused the operation",
+            Self::Construction(_) => "the Event or EventTarget construction was refused",
+            Self::Timestamp(_) => "no native creation timestamp is available for the Event",
+            Self::Dispatch(_) => "native event dispatch or registration was refused",
+            Self::CallbackRealmUnavailable => {
+                "the engine Realm has no authority in this attachment"
+            }
+            Self::RegistryState => {
+                "the guest event registry or its retained state is missing or already in use"
+            }
+            Self::RegistryUnbound => "the supplied guest registry has not claimed the native DOM",
+            Self::WorkLimit => "guest adapter work was refused",
+            Self::Accounting(_) => "guest adapter accounting failed",
+            Self::HostRouteUnavailable => {
+                "the guest operation requires a host route that is unavailable"
+            }
+            Self::SourcePending(_) => {
+                "the original Source operation blocked synchronous completion"
+            }
+            Self::HostedPending(_) => {
+                "the original hosted operation blocked synchronous completion"
+            }
+        })
     }
 }
 
 impl std::error::Error for DocumentGuestEventError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Document(error) => Some(error),
+            Self::Construction(error) => Some(error),
+            Self::Timestamp(error) => Some(error),
+            Self::Dispatch(error) => Some(error),
             Self::Accounting(error) => Some(error),
-            _ => None,
+            Self::CallbackRealmUnavailable
+            | Self::RegistryState
+            | Self::RegistryUnbound
+            | Self::WorkLimit
+            | Self::HostRouteUnavailable
+            | Self::SourcePending(_)
+            | Self::HostedPending(_) => None,
         }
     }
 }
@@ -719,6 +752,18 @@ pub struct EnableDocumentGuestEventsFailure {
     pub owner: PreparedDocumentScriptHost,
     /// Exact native, registry, or bindings refusal.
     pub error: DocumentGuestEventError,
+}
+
+impl fmt::Display for EnableDocumentGuestEventsFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("enabling guest event registration failed and returned the unpublished owner")
+    }
+}
+
+impl std::error::Error for EnableDocumentGuestEventsFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
 }
 
 impl PreparedDocumentScriptHost {

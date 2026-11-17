@@ -18,7 +18,7 @@ use surgeist_runtime::{
     DomHostedRuntimeError, DomSession,
     document_scripting::{
         DocumentGuestEventError, DocumentScriptError, DocumentScriptNativeError,
-        PreparedDocumentScriptHost,
+        EnableDocumentGuestEventsFailure, EnableDocumentScriptFailure, PreparedDocumentScriptHost,
     },
 };
 
@@ -143,7 +143,7 @@ fn guest_event_errors_state_the_refused_guest_operation() {
                     | DocumentGuestEventError::Dispatch(_)
             )
         },
-        &[],
+        &[8, 10, 11],
     );
     assert_chains(
         &DocumentGuestEventError::Document(DocumentScriptError::Native(
@@ -227,7 +227,7 @@ fn native_scripting_errors_state_the_refused_native_operation() {
             ),
             (
                 DocumentScriptNativeError::TrustedTypesPolicyUnavailable,
-                "Trusted Types policy evaluation is unavailable for the Window's current CSP",
+                "the Trusted Types policy evaluation is unavailable for the Window's current CSP",
             ),
         ],
         |error| match error {
@@ -353,4 +353,54 @@ fn preparing_with_too_little_storage_returns_the_storage_refusal() {
         failure.error.to_string(),
         "the requested adapter storage exceeds the configured limit or cannot be sized"
     );
+}
+
+#[test]
+fn a_failed_preparation_returns_the_session_and_chains_its_cause() {
+    let failure =
+        PreparedDocumentScriptHost::prepare(session(), 0, Arc::new(AtomicBool::new(false)))
+            .unwrap_err();
+    assert_eq!(
+        failure.to_string(),
+        "preparing document scripting failed and returned the original Session"
+    );
+    let source = failure.source().expect("the native refusal is the source");
+    assert_eq!(
+        source.to_string(),
+        "the requested adapter storage exceeds the configured limit or cannot be sized"
+    );
+    assert!(!failure.to_string().contains("storage"));
+    // The failure still owns the original Session, which the caller can reuse.
+    let _session = failure.session;
+}
+
+fn prepared() -> PreparedDocumentScriptHost {
+    PreparedDocumentScriptHost::prepare(session(), 1 << 20, Arc::new(AtomicBool::new(false)))
+        .unwrap_or_else(|failure| panic!("preparation must succeed: {}", failure.error))
+}
+
+#[test]
+fn a_failed_enable_returns_the_unpublished_owner_and_chains_its_cause() {
+    let failure = EnableDocumentScriptFailure {
+        owner: prepared(),
+        error: DocumentScriptError::Native(DocumentScriptNativeError::Revoked),
+    };
+    assert_eq!(
+        failure.to_string(),
+        "enabling document scripting failed and returned the unpublished owner"
+    );
+    assert_chains(
+        &failure,
+        &DocumentScriptError::Native(DocumentScriptNativeError::Revoked),
+    );
+
+    let failure = EnableDocumentGuestEventsFailure {
+        owner: prepared(),
+        error: DocumentGuestEventError::RegistryUnbound,
+    };
+    assert_eq!(
+        failure.to_string(),
+        "enabling guest event registration failed and returned the unpublished owner"
+    );
+    assert_chains(&failure, &DocumentGuestEventError::RegistryUnbound);
 }
