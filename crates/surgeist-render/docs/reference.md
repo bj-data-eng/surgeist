@@ -1024,6 +1024,14 @@ Accounting errors retain their typed cause without allocating during constructio
 `Error::message` formats and caches human-readable text on first observation;
 typed diagnostic access and Display formatting leave that cache uninitialized.
 
+`Error` prints the lowercase classification phrase of its `ErrorCode`, a colon and
+its message (`glyph preparation refused: …`). The message of a typed diagnostic is
+that diagnostic's own sentence followed by the sentences of its causes, joined by a
+colon and a space; `Error::source` still returns only a backend source, and the
+typed diagnostic stays available through its `*_diagnostic` accessor. Every error
+enum of the crate implements `Display` and `core::error::Error`; a wrapper's text
+names what failed at its own layer and `source` returns the wrapped error.
+
 ### Resolved accounting reports
 
 Accounting reports resolve Ledger scope handles through their owning typed table

@@ -1090,3 +1090,121 @@ fn a_refusal_prints_its_quantity_amount_phase_usage_and_reason() {
         }
     }
 }
+
+#[test]
+fn every_accounting_error_variant_has_its_message_and_cause() {
+    use std::error::Error as _;
+    let refusal = RenderRefusal {
+        phase: RenderPhase::Preparation,
+        quantity: RenderQuantity::Work(RenderWork::GlyphInputs),
+        current: 3,
+        amount: 2,
+        reason: RenderRefusalReason::Limit { limit: 4 },
+    };
+    let limit = RenderRefusalReason::Limit { limit: 6 };
+    let quantity = RenderQuantity::Resource(RenderResource::GpuBytes);
+    let rows = [
+        (
+            RenderAccountingError::Setup(RenderAccountingSetupError::Allocation),
+            "accounting setup failed",
+            true,
+        ),
+        (
+            RenderAccountingError::Refused(refusal),
+            "accounting refused a change",
+            true,
+        ),
+        (
+            RenderAccountingError::StandaloneAllocation {
+                resource: RenderResource::ScratchCpuBytes,
+            },
+            "allocating the standalone backing for scratch cpu bytes failed",
+            false,
+        ),
+        (
+            RenderAccountingError::StandaloneCapacityOverflow {
+                resource: RenderResource::ScratchCpuBytes,
+            },
+            "the standalone backing size for scratch cpu bytes cannot be represented",
+            false,
+        ),
+        (
+            RenderAccountingError::InvalidLimit(RenderWork::PreparedTransferredBytes),
+            "prepared transferred bytes work has no producer at the selected operation boundary and cannot be limited",
+            false,
+        ),
+        (
+            RenderAccountingError::Invariant,
+            "an internal consistency check failed",
+            false,
+        ),
+        (
+            RenderAccountingError::LedgerDefect(surgeist_ledger::Defect::ScopeEntry),
+            "the ledger reported an internal defect: scope identity names no scope entry",
+            false,
+        ),
+        (
+            RenderAccountingError::GenerationRefused {
+                quantity,
+                current: 5,
+                amount: 3,
+                reason: limit,
+            },
+            "generation accounting refused 3 of gpu bytes at usage 5: the limit is 6",
+            false,
+        ),
+        (
+            RenderAccountingError::GenerationRetired,
+            "the device generation is retired and cannot start new work",
+            false,
+        ),
+        (
+            RenderAccountingError::CpuRefused {
+                scope: RenderCpuScope::FrameBacking,
+                quantity,
+                current: 5,
+                amount: 3,
+                reason: limit,
+            },
+            "cpu accounting for frame_backing refused 3 of gpu bytes at usage 5: the limit is 6",
+            false,
+        ),
+        (
+            RenderAccountingError::CpuAllocation {
+                scope: RenderCpuScope::Cleanup,
+                resource: RenderResource::RetainedCpuBytes,
+            },
+            "allocating cpu backing retained cpu bytes for cleanup failed",
+            false,
+        ),
+        (
+            RenderAccountingError::CpuCapacityOverflow {
+                scope: RenderCpuScope::Root,
+                resource: RenderResource::RetainedCpuBytes,
+            },
+            "the cpu backing size of retained cpu bytes for render.cpu cannot be represented",
+            false,
+        ),
+    ];
+    let mut seen = [false; 12];
+    for (error, text, wraps) in rows {
+        assert_eq!(error.to_string(), text);
+        assert_eq!(error.source().is_some(), wraps, "{error:?}");
+        // No wildcard: a new variant must get a row here.
+        seen[match error {
+            RenderAccountingError::Setup(_) => 0,
+            RenderAccountingError::Refused(_) => 1,
+            RenderAccountingError::StandaloneAllocation { .. } => 2,
+            RenderAccountingError::StandaloneCapacityOverflow { .. } => 3,
+            RenderAccountingError::InvalidLimit(_) => 4,
+            RenderAccountingError::Invariant => 5,
+            RenderAccountingError::LedgerDefect(_) => 6,
+            RenderAccountingError::GenerationRefused { .. } => 7,
+            RenderAccountingError::GenerationRetired => 8,
+            RenderAccountingError::CpuRefused { .. } => 9,
+            RenderAccountingError::CpuAllocation { .. } => 10,
+            RenderAccountingError::CpuCapacityOverflow { .. } => 11,
+        }] = true;
+    }
+    assert!(seen.iter().all(|covered| *covered));
+}

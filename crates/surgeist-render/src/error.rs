@@ -157,7 +157,7 @@ impl ErrorPayload {
                 let message = failure
                     .message
                     .into_inner()
-                    .unwrap_or_else(|| format!("render accounting: {diagnostic}"));
+                    .unwrap_or_else(|| chain(&diagnostic));
                 Box::new(ErrorContext {
                     code: ErrorCode::Accounting,
                     message,
@@ -315,9 +315,9 @@ impl Error {
     #[must_use]
     pub fn message(&self) -> &str {
         match &self.payload {
-            ErrorPayload::Accounting(failure) => failure
-                .message
-                .get_or_init(|| format!("render accounting: {}", failure.diagnostic)),
+            ErrorPayload::Accounting(failure) => {
+                failure.message.get_or_init(|| chain(&failure.diagnostic))
+            }
             ErrorPayload::Context(context) => &context.message,
         }
     }
@@ -632,7 +632,7 @@ impl From<crate::GlyphPreparationError> for Error {
     fn from(value: crate::GlyphPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::GlyphPreparation,
-            message: format!("glyph preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -652,7 +652,7 @@ impl From<crate::ConvolutionPreparationError> for Error {
     fn from(value: crate::ConvolutionPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
-            message: format!("convolution preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -672,7 +672,7 @@ impl From<crate::DropShadowPreparationError> for Error {
     fn from(value: crate::DropShadowPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
-            message: format!("native drop-shadow preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -692,7 +692,7 @@ impl From<crate::GaussianPreparationError> for Error {
     fn from(value: crate::GaussianPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
-            message: format!("Gaussian preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -712,7 +712,7 @@ impl From<crate::DisplacementPreparationError> for Error {
     fn from(value: crate::DisplacementPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
-            message: format!("displacement preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -732,7 +732,7 @@ impl From<crate::MorphologyPreparationError> for Error {
     fn from(value: crate::MorphologyPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
-            message: format!("morphology preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -752,7 +752,7 @@ impl From<crate::OffsetPreparationError> for Error {
     fn from(value: crate::OffsetPreparationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
-            message: format!("offset preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -772,7 +772,7 @@ impl From<GradientHintError> for Error {
     fn from(value: GradientHintError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::GradientHint,
-            message: format!("gradient hint refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -876,7 +876,7 @@ impl From<GeometryRealizationError> for Error {
     fn from(value: GeometryRealizationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::GeometryRealization,
-            message: format!("geometry realization refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -923,7 +923,7 @@ impl From<GradientRealizationError> for Error {
     fn from(value: GradientRealizationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::GradientRealization,
-            message: format!("gradient realization refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -969,7 +969,7 @@ impl From<crate::PaintGradientError> for Error {
     fn from(value: crate::PaintGradientError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::PaintGradient,
-            message: format!("Paint gradient preparation refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -990,7 +990,7 @@ impl From<crate::TextLayoutError> for Error {
     fn from(value: crate::TextLayoutError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::TextLayout,
-            message: format!("Text layout admission refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -1009,7 +1009,7 @@ impl From<crate::LeaderPatternError> for Error {
     fn from(value: crate::LeaderPatternError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::LeaderPattern,
-            message: format!("leader pattern admission refused: {value:?}"),
+            message: chain(&value),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -1023,14 +1023,46 @@ impl From<crate::LeaderPatternError> for Error {
     }
 }
 
+/// Writes `error` and its whole `source()` chain, each cause after a `": "`.
+///
+/// This is how the typed diagnostics that `Error` converts are rendered: the diagnostic names what
+/// failed at its own layer and returns the cause through `source()`, and the message of `Error`
+/// joins them so that a caller who prints only the message still sees the complete explanation.
+fn write_chain(f: &mut fmt::Formatter<'_>, error: &(dyn error::Error + 'static)) -> fmt::Result {
+    write!(f, "{error}")?;
+    let mut next = error.source();
+    while let Some(cause) = next {
+        write!(f, ": {cause}")?;
+        next = cause.source();
+    }
+    Ok(())
+}
+
+/// The text `write_chain` writes, for a message that is stored.
+fn chain(error: &(dyn error::Error + 'static)) -> String {
+    struct Chain<'a>(&'a (dyn error::Error + 'static));
+    impl fmt::Display for Chain<'_> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write_chain(f, self.0)
+        }
+    }
+    Chain(error).to_string()
+}
+
+/// Prints the classification phrase of the [`ErrorCode`], a colon and the message.
+///
+/// The message of a typed diagnostic is that diagnostic's own text followed by the text of its causes,
+/// joined by `": "`. The diagnostic itself stays available through its `*_diagnostic` accessor and is
+/// not repeated by [`std::error::Error::source`], which returns only a backend source.
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.payload {
             ErrorPayload::Accounting(failure) => {
-                write!(f, "Accounting: render accounting: {}", failure.diagnostic)
+                write!(f, "{}: ", ErrorCode::Accounting)?;
+                write_chain(f, &failure.diagnostic)
             }
             ErrorPayload::Context(context) => {
-                write!(f, "{:?}: {}", context.code, context.message)
+                write!(f, "{}: {}", context.code, context.message)
             }
         }
     }
@@ -1117,6 +1149,45 @@ pub enum ErrorCode {
     PresentFailed,
     /// Reports that the selected platform or backend path is unsupported.
     UnsupportedBackend,
+}
+
+/// Prints one lowercase phrase naming the classification.
+///
+/// The phrase is the classification, not a message: [`Error`] prints it before its message.
+impl fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Accounting => "accounting failed",
+            Self::GeometryRealization => "geometry realization refused",
+            Self::GradientHint => "gradient hint refused",
+            Self::GradientRealization => "gradient realization refused",
+            #[cfg(feature = "render-paint")]
+            Self::PaintGradient => "paint gradient preparation refused",
+            #[cfg(feature = "render-text")]
+            Self::TextLayout => "text layout admission refused",
+            #[cfg(feature = "render-text")]
+            Self::LeaderPattern => "leader pattern admission refused",
+            Self::GlyphPreparation => "glyph preparation refused",
+            Self::DeviceCreateFailed => "gpu device creation failed",
+            Self::RendererCreateFailed => "renderer creation failed",
+            Self::SurfaceCreateFailed => "surface creation failed",
+            Self::SurfaceConfigureFailed => "surface configuration failed",
+            // Raised for GPU memory exhaustion in any stage, not only surface operations.
+            Self::SurfaceOutOfMemory => "gpu memory exhausted",
+            Self::SurfaceTimeout => "surface operation timed out",
+            Self::SurfaceOutdated => "surface configuration outdated",
+            Self::InvalidInput => "invalid input",
+            Self::UnsupportedPrimitive => "unsupported primitive",
+            Self::UnresolvedResource => "unresolved resource",
+            Self::DegradedQuality => "degraded quality",
+            Self::RuntimeCapabilityUnavailable => "runtime capability unavailable",
+            Self::ImageUploadFailed => "image upload failed",
+            Self::RenderFailed => "render failed",
+            Self::ReadbackFailed => "readback failed",
+            Self::PresentFailed => "presentation failed",
+            Self::UnsupportedBackend => "unsupported backend",
+        })
+    }
 }
 
 /// Validated runtime-phase evidence that an operation cannot use a selected GPU capability.

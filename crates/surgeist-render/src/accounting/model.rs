@@ -1324,12 +1324,81 @@ pub enum RenderAccountingError {
         resource: RenderResource,
     },
 }
-impl std::fmt::Display for RenderAccountingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+impl fmt::Display for RenderAccountingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Setup(_) => f.write_str("accounting setup failed"),
+            Self::Refused(_) => f.write_str("accounting refused a change"),
+            Self::StandaloneAllocation { resource } => write!(
+                f,
+                "allocating the standalone backing for {} failed",
+                resource.label()
+            ),
+            Self::StandaloneCapacityOverflow { resource } => write!(
+                f,
+                "the standalone backing size for {} cannot be represented",
+                resource.label()
+            ),
+            Self::InvalidLimit(work) => write!(
+                f,
+                "{} work has no producer at the selected operation boundary and cannot be limited",
+                work.label()
+            ),
+            Self::Invariant => f.write_str("an internal consistency check failed"),
+            Self::LedgerDefect(defect) => {
+                write!(f, "the ledger reported an internal defect: {defect}")
+            }
+            Self::GenerationRefused {
+                quantity,
+                current,
+                amount,
+                reason,
+            } => write!(
+                f,
+                "generation accounting refused {amount} of {} at usage {current}: {}",
+                QuantityText(*quantity),
+                ReasonText(*reason)
+            ),
+            Self::GenerationRetired => {
+                f.write_str("the device generation is retired and cannot start new work")
+            }
+            Self::CpuRefused {
+                scope,
+                quantity,
+                current,
+                amount,
+                reason,
+            } => write!(
+                f,
+                "cpu accounting for {} refused {amount} of {} at usage {current}: {}",
+                scope.name(),
+                QuantityText(*quantity),
+                ReasonText(*reason)
+            ),
+            Self::CpuAllocation { scope, resource } => write!(
+                f,
+                "allocating cpu backing {} for {} failed",
+                resource.label(),
+                scope.name()
+            ),
+            Self::CpuCapacityOverflow { scope, resource } => write!(
+                f,
+                "the cpu backing size of {} for {} cannot be represented",
+                resource.label(),
+                scope.name()
+            ),
+        }
     }
 }
-impl std::error::Error for RenderAccountingError {}
+impl std::error::Error for RenderAccountingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Setup(error) => Some(error),
+            Self::Refused(refusal) => Some(refusal),
+            _ => None,
+        }
+    }
+}
 /// Exact inclusive accepted usage. Parent and child values are attribution, not sums.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderUsage(IntervalUsage<RenderWork, RenderResource>);
