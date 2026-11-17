@@ -63,3 +63,6 @@ pub use sheet_operations::*;
 pub use sheet_replacement::*;
 pub use store::*;
 pub use style_attribute::{CssomStyleAttributeError, CssomStyleAttributeInput};
+/// The accounting schema of the CSS crates and the scope a host supplies for
+/// it, re-exported from `surgeist-css`.
+pub use surgeist_css::accounting;

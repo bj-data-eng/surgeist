@@ -40,6 +40,7 @@
 //! | [`serialization`] | Serialization limits and errors, rule-graph input and lexical serializers. |
 //! | [`normalize`] | Normalized style sheets. |
 //! | [`conformance`] | The specification source registry and support catalogue. |
+//! | [`accounting`] | The accounting schema of the CSS crates and the scope a host supplies for it, re-exported from `surgeist-css-parser`. |
 //!
 //! # Tasks
 //!
@@ -402,6 +403,10 @@
 //! ```compile_fail,E0432
 //! use surgeist_css::CssSheet;
 //! ```
+
+/// The accounting schema of the CSS crates and the scope a host supplies for
+/// it, re-exported from `surgeist-css-parser`.
+pub use surgeist_css_parser::accounting;
 
 pub mod color;
 pub mod component;

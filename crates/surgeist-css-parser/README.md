@@ -44,6 +44,12 @@ crate offers:
   number or a unicode-range) as `const fn`s. The non-ASCII ident code point
   is the list of ranges in section 4.2 of the pinned edition.
 - `Offset`: a byte offset into the text a tokenizer reads.
+- `accounting`: the accounting schema the CSS crates share. `CssWork` and
+  `CssResource` are the dimensions they charge to a host's ledger operation,
+  `CssFront` names the front that charges each one, `CssHostScope` opens one
+  scope per front below a scope the host supplies, and `CssAccount` is what a
+  front charges through, with or without a host. Request limits are not part
+  of it.
 - `limits`: `Limits`, `DepthExcess`, the `Meter` contract through which a host
   admits work and storage, and the charged helpers `grow`, `copy_str` and
   `copy_boxed`.
@@ -109,7 +115,9 @@ A new edition is adopted deliberately and recorded there.
 
 ## Dependencies
 
-The crate depends on no other Surgeist crate, and `surgeist-css` depends on it.
+The crate's one Surgeist dependency is
+[surgeist-ledger](../surgeist-ledger/README.md), for the accounting schema of
+the CSS crates in `accounting`; `surgeist-css` depends on this crate.
 Its one external runtime dependency is `encoding_rs`, whose decoders implement
 the Encoding Standard for `input::decode`; its license files ship with the
 crate and the [notice](NOTICE.md) links them.
