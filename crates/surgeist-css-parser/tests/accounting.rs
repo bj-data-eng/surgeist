@@ -18,7 +18,7 @@ use CssFront::{Cssom, Input, Normalization, Parse, Serialization, SourceRetentio
 const WORK: [(CssWork, &[CssFront]); 18] = [
     (CssWork::InputUnit, &[Input]),
     (CssWork::PreparationStep, &[Input]),
-    (CssWork::Token, &[Parse]),
+    (CssWork::Document, &[Parse]),
     (CssWork::Component, &[Parse]),
     (CssWork::SpellingByte, &[Parse]),
     (CssWork::SerializedInputNode, &[Serialization]),
@@ -78,10 +78,10 @@ fn host_with(
     (operation.share(), document)
 }
 
-fn token_cap(limit: u64) -> CssLimits {
+fn document_cap(limit: u64) -> CssLimits {
     CssLimits::new(
         CssWorkTable::new(CssWorkFields {
-            Token: limit,
+            Document: limit,
             ..CssWorkFields::splat(u64::MAX)
         }),
         CssResourceTable::splat(u64::MAX),
@@ -176,7 +176,7 @@ fn a_charge_reaches_its_front_scope_and_every_scope_above_it_in_the_same_units()
         .charge(
             Parse,
             &[
-                CssChange::Work(CssWork::Token, 7),
+                CssChange::Work(CssWork::Document, 7),
                 CssChange::Work(CssWork::Component, 3),
                 CssChange::Work(CssWork::SpellingByte, 40),
             ],
@@ -189,7 +189,7 @@ fn a_charge_reaches_its_front_scope_and_every_scope_above_it_in_the_same_units()
         )
         .unwrap();
     for scope in [handle.scope(Parse), document, ledger.root()] {
-        assert_eq!(work(&ledger, scope, CssWork::Token), 7);
+        assert_eq!(work(&ledger, scope, CssWork::Document), 7);
         assert_eq!(work(&ledger, scope, CssWork::Component), 3);
         assert_eq!(work(&ledger, scope, CssWork::SpellingByte), 40);
     }
@@ -243,13 +243,19 @@ fn a_second_handle_opens_its_own_scopes_and_a_clone_shares_them() {
             front.scope_name()
         );
     }
-    let token = |amount| [CssChange::Work(CssWork::Token, amount)];
-    CssAccount::host(&first).charge(Parse, &token(5)).unwrap();
-    CssAccount::host(&second).charge(Parse, &token(9)).unwrap();
-    CssAccount::host(&shared).charge(Parse, &token(1)).unwrap();
-    assert_eq!(work(&ledger, first.scope(Parse), CssWork::Token), 6);
-    assert_eq!(work(&ledger, second.scope(Parse), CssWork::Token), 9);
-    assert_eq!(work(&ledger, document, CssWork::Token), 15);
+    let documents = |amount| [CssChange::Work(CssWork::Document, amount)];
+    CssAccount::host(&first)
+        .charge(Parse, &documents(5))
+        .unwrap();
+    CssAccount::host(&second)
+        .charge(Parse, &documents(9))
+        .unwrap();
+    CssAccount::host(&shared)
+        .charge(Parse, &documents(1))
+        .unwrap();
+    assert_eq!(work(&ledger, first.scope(Parse), CssWork::Document), 6);
+    assert_eq!(work(&ledger, second.scope(Parse), CssWork::Document), 9);
+    assert_eq!(work(&ledger, document, CssWork::Document), 15);
 }
 
 #[test]
@@ -280,13 +286,13 @@ fn a_scope_of_another_operation_is_a_typed_fault() {
 
 #[test]
 fn a_cap_of_the_supplied_scope_refuses_with_its_limit_total_and_amount() {
-    let (ledger, document) = host(no_caps(), token_cap(100), 1);
+    let (ledger, document) = host(no_caps(), document_cap(100), 1);
     let handle = CssHostScope::open(ledger.clone(), document).unwrap();
     let account = CssAccount::host(&handle);
     account
-        .charge(Parse, &[CssChange::Work(CssWork::Token, 60)])
+        .charge(Parse, &[CssChange::Work(CssWork::Document, 60)])
         .unwrap();
-    let refused = CssChange::Work(CssWork::Token, 41);
+    let refused = CssChange::Work(CssWork::Document, 41);
     let stop = account
         .charge(Parse, &[CssChange::Work(CssWork::Component, 5), refused])
         .unwrap_err();
@@ -299,22 +305,22 @@ fn a_cap_of_the_supplied_scope_refuses_with_its_limit_total_and_amount() {
     assert_eq!(refusal.amount(), 41);
     // The batch is admitted whole or not at all.
     for scope in [handle.scope(Parse), document, ledger.root()] {
-        assert_eq!(work(&ledger, scope, CssWork::Token), 60);
+        assert_eq!(work(&ledger, scope, CssWork::Document), 60);
         assert_eq!(work(&ledger, scope, CssWork::Component), 0);
     }
     // The charge that reaches the cap exactly is admitted.
     account
-        .charge(Parse, &[CssChange::Work(CssWork::Token, 40)])
+        .charge(Parse, &[CssChange::Work(CssWork::Document, 40)])
         .unwrap();
-    assert_eq!(work(&ledger, document, CssWork::Token), 100);
+    assert_eq!(work(&ledger, document, CssWork::Document), 100);
 }
 
 #[test]
 fn a_cap_of_a_scope_above_the_supplied_scope_refuses_as_that_scope() {
-    let (ledger, document) = host(token_cap(10), no_caps(), 1);
+    let (ledger, document) = host(document_cap(10), no_caps(), 1);
     let handle = CssHostScope::open(ledger.clone(), document).unwrap();
     let stop = CssAccount::host(&handle)
-        .charge(Parse, &[CssChange::Work(CssWork::Token, 11)])
+        .charge(Parse, &[CssChange::Work(CssWork::Document, 11)])
         .unwrap_err();
     let refusal = stop.host_refusal().unwrap();
     assert_eq!(refusal.scope(), ledger.root());
@@ -332,15 +338,15 @@ fn a_change_outside_the_front_is_a_fault_that_reaches_no_ledger_call() {
     let account = CssAccount::host(&handle);
     let outside = [
         [
-            CssChange::Work(CssWork::Token, 1),
+            CssChange::Work(CssWork::Document, 1),
             CssChange::Work(CssWork::ColorAction, 1),
         ],
         [
-            CssChange::Work(CssWork::Token, 1),
+            CssChange::Work(CssWork::Document, 1),
             CssChange::Acquire(CssResource::RetainedObject, 1),
         ],
         [
-            CssChange::Work(CssWork::Token, 1),
+            CssChange::Work(CssWork::Document, 1),
             CssChange::Release(CssResource::RetainedEntry, 1),
         ],
     ];
@@ -354,7 +360,7 @@ fn a_change_outside_the_front_is_a_fault_that_reaches_no_ledger_call() {
     }
     let parse = report(&ledger, handle.scope(Parse));
     assert_eq!((parse.accepted_batches, parse.refused_batches), (0, 0));
-    assert_eq!(parse.usage.work(CssWork::Token), 0);
+    assert_eq!(parse.usage.work(CssWork::Document), 0);
 }
 
 #[test]
@@ -362,7 +368,7 @@ fn a_charge_longer_than_the_bound_is_a_fault_that_reaches_no_ledger_call() {
     let mode = ProfileMode::Summary { timing: false };
     let (ledger, document) = host_with(no_caps(), no_caps(), 1, mode);
     let handle = CssHostScope::open(ledger.clone(), document).unwrap();
-    let changes = [CssChange::Work(CssWork::Token, 1); 9];
+    let changes = [CssChange::Work(CssWork::Document, 1); 9];
     let stop = CssAccount::host(&handle)
         .charge(Parse, &changes)
         .unwrap_err();
@@ -407,17 +413,17 @@ fn a_counter_that_would_pass_its_range_is_a_fault() {
     let handle = CssHostScope::open(ledger.clone(), document).unwrap();
     let account = CssAccount::host(&handle);
     account
-        .charge(Parse, &[CssChange::Work(CssWork::Token, u64::MAX)])
+        .charge(Parse, &[CssChange::Work(CssWork::Document, u64::MAX)])
         .unwrap();
     let stop = account
-        .charge(Parse, &[CssChange::Work(CssWork::Token, 1)])
+        .charge(Parse, &[CssChange::Work(CssWork::Document, 1)])
         .unwrap_err();
     assert_eq!(
         stop,
         CssAccountingError::Fault(CssAccountingFault::CounterOverflow)
     );
     assert_eq!(stop.host_refusal(), None);
-    assert_eq!(work(&ledger, document, CssWork::Token), u64::MAX);
+    assert_eq!(work(&ledger, document, CssWork::Document), u64::MAX);
 }
 
 #[test]
@@ -485,25 +491,25 @@ fn a_front_charges_inside_its_own_phase() {
     let handle = CssHostScope::open(ledger.clone(), document).unwrap();
     let account = CssAccount::host(&handle);
     let charged = account.timed(Parse, || {
-        account.charge(Parse, &[CssChange::Work(CssWork::Token, 3)])
+        account.charge(Parse, &[CssChange::Work(CssWork::Document, 3)])
     });
     assert_eq!(charged, Ok(Ok(())));
     let parse = report(&ledger, handle.scope(Parse));
     assert_eq!((parse.phases, parse.accepted_batches), (1, 1));
-    assert_eq!(parse.usage.work(CssWork::Token), 3);
+    assert_eq!(parse.usage.work(CssWork::Document), 3);
 }
 
 #[test]
 fn a_refusal_and_a_fault_say_what_stopped_the_charge() {
-    let (ledger, document) = host(no_caps(), token_cap(100), 1);
+    let (ledger, document) = host(no_caps(), document_cap(100), 1);
     let handle = CssHostScope::open(ledger, document).unwrap();
     let account = CssAccount::host(&handle);
     let refused = account
-        .charge(Parse, &[CssChange::Work(CssWork::Token, 101)])
+        .charge(Parse, &[CssChange::Work(CssWork::Document, 101)])
         .unwrap_err();
     assert_eq!(
         refused.to_string(),
-        "a host cap of 100 refused Work(Token, 101) at a total of 0"
+        "a host cap of 100 refused Work(Document, 101) at a total of 0"
     );
     let outside = account
         .charge(Parse, &[CssChange::Work(CssWork::ColorAction, 1)])

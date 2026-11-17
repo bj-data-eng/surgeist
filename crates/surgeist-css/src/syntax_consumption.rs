@@ -145,6 +145,13 @@ impl SyntaxInputLimits {
 fn built(document: Document<'_>) -> Document<'_> {
     #[cfg(test)]
     crate::parser::bounded_execution::work::add_built(document.node_count());
+    noted(document)
+}
+
+/// Adds a built document to the record of the accounted parse call that is
+/// collecting, if any.
+fn noted(document: Document<'_>) -> Document<'_> {
+    crate::parse_work::note(document.metrics());
     document
 }
 
@@ -280,7 +287,7 @@ pub(crate) fn unicode_range_document(
     )
     .map_err(|error| source_failure(&error, text, range.start, original))?;
     document.attach(Host::source(original).into_attached());
-    Ok(document)
+    Ok(noted(document))
 }
 
 /// The tree of `text`, which no snapshot holds, tokenized with unicode ranges
@@ -293,6 +300,7 @@ pub(crate) fn unicode_range_text_document(
         return Err(too_long(text.len()));
     }
     surgeist_css_parser::unicode_range::consume_value(text, Offset::new(0), limits.limits())
+        .map(noted)
         .map_err(|error| {
             CssComponentValueError::new(failure_kind(&error), CssValueOrigin::Programmatic)
         })
@@ -359,7 +367,7 @@ pub(crate) fn source_prefix_unlimited(
     )
     .map_err(|error| source_failure(&error, window, 0, original))?;
     document.attach(Host::source(original).into_attached());
-    Ok(document)
+    Ok(noted(document))
 }
 
 pub(crate) fn source_document_with_limits(
@@ -624,7 +632,7 @@ fn build_checked<'a>(
     let source = control.map(|(_, source)| source);
     let mut document = builder.finish(source.map(CssSourceSnapshot::as_str));
     document.attach(Host::checked(source, meter).into_attached());
-    Ok(document)
+    Ok(noted(document))
 }
 
 /// One token of a test document of supplied tokens: a checked component's
@@ -680,7 +688,7 @@ pub(crate) fn supplied_document<'a>(
     }
     let mut document = builder.finish(text.map(CssSourceSnapshot::as_str));
     document.attach(Host::checked(text, None).into_attached());
-    document
+    noted(document)
 }
 
 pub(crate) fn checked_document<'a>(

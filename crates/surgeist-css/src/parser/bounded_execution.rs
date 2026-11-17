@@ -83,14 +83,25 @@ fn execute<T: Send>(
             .stack_size(PARSER_STACK_BYTES);
         #[cfg(test)]
         let counters = work::current();
+        // An accounted call collects the documents this thread builds too.
+        let collecting = crate::parse_work::is_collecting();
         let parse = move || {
             #[cfg(test)]
             work::install(counters);
-            parse()
+            if collecting {
+                crate::parse_work::collect(parse)
+            } else {
+                (parse(), None)
+            }
         };
         match spawn_parser(scope, builder, parse) {
             Ok(thread) => match thread.join() {
-                Ok(value) => Ok(value),
+                Ok((value, collected)) => {
+                    if let Some(collected) = collected {
+                        crate::parse_work::add(collected);
+                    }
+                    Ok(value)
+                }
                 Err(panic) => std::panic::resume_unwind(panic),
             },
             Err(_) => Err(ParserThreadUnavailable {
@@ -355,6 +366,38 @@ mod tests {
 
     fn nested_rules(depth: usize) -> String {
         format!("{}{}", ".a{".repeat(depth), "}".repeat(depth))
+    }
+
+    /// The parse never runs when its thread cannot start, so an accounted
+    /// call has built no document: it charges the bytes it received and
+    /// returns the refusal a plain call returns.
+    #[test]
+    fn a_refused_parser_thread_charges_an_accounted_sheet_its_input_and_no_document() {
+        use crate::accounting::{CssFront, CssHostScope, CssLimits, CssWork};
+        use surgeist_ledger::{Limits, Operation};
+
+        let source = nested_rules(150);
+        let limits: CssLimits = Limits::unlimited();
+        let operation = Operation::new("host", limits, 1 + CssFront::ALL.len())
+            .unwrap()
+            .share();
+        let host = CssHostScope::open(operation.clone(), operation.root()).unwrap();
+        let parser = crate::CssParser::default();
+        let report =
+            with_parser_thread_unavailable(|| parser.accounted(&host).parse_sheet(&source))
+                .unwrap();
+        assert_eq!(
+            report,
+            with_parser_thread_unavailable(|| parser.parse_sheet(&source))
+        );
+        assert_refusal(report.diagnostics(), &source, STRUCTURAL_DIRECT_DEPTH, 98);
+        let usage = operation.usage(operation.root()).unwrap();
+        // 150 openings of three bytes and 150 closings of one.
+        assert_eq!(usage.work(CssWork::InputUnit), 600);
+        assert_eq!(usage.work(CssWork::Document), 0);
+        assert_eq!(usage.work(CssWork::Component), 0);
+        assert_eq!(usage.work(CssWork::SpellingByte), 0);
+        assert!(!crate::parse_work::is_collecting());
     }
 
     #[test]

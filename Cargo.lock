@@ -3981,6 +3981,7 @@ dependencies = [
  "surgeist-color",
  "surgeist-css-parser",
  "surgeist-fuzz",
+ "surgeist-ledger",
  "unicode-segmentation",
 ]
 

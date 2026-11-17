@@ -18,7 +18,7 @@
 //! | Front | Scope name | Work it charges | Gauges it holds |
 //! | --- | --- | --- | --- |
 //! | [`CssFront::Input`] | `css-input` | [`CssWork::InputUnit`], [`CssWork::PreparationStep`] | |
-//! | [`CssFront::Parse`] | `css-parse` | [`CssWork::Token`], [`CssWork::Component`], [`CssWork::SpellingByte`] | |
+//! | [`CssFront::Parse`] | `css-parse` | [`CssWork::Document`], [`CssWork::Component`], [`CssWork::SpellingByte`] | |
 //! | [`CssFront::Serialization`] | `css-serialize` | [`CssWork::SerializedInputNode`], [`CssWork::SerializedProjectionNode`], [`CssWork::SerializedByte`] | |
 //! | [`CssFront::Normalization`] | `css-normalize` | [`CssWork::NormalizedRule`], [`CssWork::NormalizedDeclaration`], [`CssWork::NormalizedContribution`] | |
 //! | [`CssFront::SourceRetention`] | `css-source` | [`CssWork::SourceVisit`] | |
@@ -42,10 +42,10 @@
 //! };
 //! use surgeist_ledger::Operation;
 //!
-//! // The host's operation: its root caps tokens, and it leaves room for the
+//! // The host's operation: its root caps documents, and it leaves room for the
 //! // front scopes.
 //! let caps = CssLimits::new(
-//!     CssWorkTable::new(CssWorkFields { Token: 100, ..CssWorkFields::splat(u64::MAX) }),
+//!     CssWorkTable::new(CssWorkFields { Document: 100, ..CssWorkFields::splat(u64::MAX) }),
 //!     CssResourceTable::splat(u64::MAX),
 //! );
 //! let operation = Operation::new("host", caps, 1 + CssFront::ALL.len())?.share();
@@ -53,12 +53,12 @@
 //!
 //! // What an accounted parse front does at the end of its call.
 //! let account = CssAccount::host(&host);
-//! account.charge(CssFront::Parse, &[CssChange::Work(CssWork::Token, 60)])?;
-//! assert_eq!(operation.usage(operation.root())?.work(CssWork::Token), 60);
+//! account.charge(CssFront::Parse, &[CssChange::Work(CssWork::Document, 60)])?;
+//! assert_eq!(operation.usage(operation.root())?.work(CssWork::Document), 60);
 //!
 //! // The host's cap refuses the charge that would cross it.
 //! let stop = account
-//!     .charge(CssFront::Parse, &[CssChange::Work(CssWork::Token, 41)])
+//!     .charge(CssFront::Parse, &[CssChange::Work(CssWork::Document, 41)])
 //!     .unwrap_err();
 //! let refusal = stop.host_refusal().expect("a host cap refused the charge");
 //! assert_eq!((refusal.limit(), refusal.total(), refusal.amount()), (100, 60, 41));
@@ -78,8 +78,8 @@ surgeist_ledger::dimensions! {
         InputUnit,
         /// One step of decoding, preprocessing or checkpoint recovery.
         PreparationStep,
-        /// One token built.
-        Token,
+        /// One token document built from source text or from components.
+        Document,
         /// One component built.
         Component,
         /// One byte of retained token spelling.
@@ -139,7 +139,7 @@ pub type CssLedger = SharedOperation<CssWork, CssResource>;
 pub enum CssFront {
     /// Decoding and preprocessing of source input.
     Input,
-    /// Token and component building.
+    /// Token document building.
     Parse,
     /// Specified-value, rule and sheet serialization.
     Serialization,
@@ -188,7 +188,7 @@ impl CssFront {
     pub const fn work(self) -> &'static [CssWork] {
         match self {
             Self::Input => &[CssWork::InputUnit, CssWork::PreparationStep],
-            Self::Parse => &[CssWork::Token, CssWork::Component, CssWork::SpellingByte],
+            Self::Parse => &[CssWork::Document, CssWork::Component, CssWork::SpellingByte],
             Self::Serialization => &[
                 CssWork::SerializedInputNode,
                 CssWork::SerializedProjectionNode,

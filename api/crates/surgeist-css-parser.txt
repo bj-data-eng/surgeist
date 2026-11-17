@@ -69,6 +69,7 @@ pub surgeist_css_parser::accounting::CssWork::CensusRun
 pub surgeist_css_parser::accounting::CssWork::ColorAction
 pub surgeist_css_parser::accounting::CssWork::ColorInputUnit
 pub surgeist_css_parser::accounting::CssWork::Component
+pub surgeist_css_parser::accounting::CssWork::Document
 pub surgeist_css_parser::accounting::CssWork::InputUnit
 pub surgeist_css_parser::accounting::CssWork::NormalizedContribution
 pub surgeist_css_parser::accounting::CssWork::NormalizedDeclaration
@@ -80,7 +81,6 @@ pub surgeist_css_parser::accounting::CssWork::SerializedInputNode
 pub surgeist_css_parser::accounting::CssWork::SerializedProjectionNode
 pub surgeist_css_parser::accounting::CssWork::SourceVisit
 pub surgeist_css_parser::accounting::CssWork::SpellingByte
-pub surgeist_css_parser::accounting::CssWork::Token
 impl surgeist_ledger::__private::Sealed for surgeist_css_parser::accounting::CssWork
 impl surgeist_ledger::dimension::Dimension for surgeist_css_parser::accounting::CssWork
 pub type surgeist_css_parser::accounting::CssWork::Table<T: surgeist_ledger::dimension::TableValue> = surgeist_css_parser::accounting::CssWorkTable<T>
@@ -138,6 +138,7 @@ pub surgeist_css_parser::accounting::CssWorkFields::CensusRun: T
 pub surgeist_css_parser::accounting::CssWorkFields::ColorAction: T
 pub surgeist_css_parser::accounting::CssWorkFields::ColorInputUnit: T
 pub surgeist_css_parser::accounting::CssWorkFields::Component: T
+pub surgeist_css_parser::accounting::CssWorkFields::Document: T
 pub surgeist_css_parser::accounting::CssWorkFields::InputUnit: T
 pub surgeist_css_parser::accounting::CssWorkFields::NormalizedContribution: T
 pub surgeist_css_parser::accounting::CssWorkFields::NormalizedDeclaration: T
@@ -149,7 +150,6 @@ pub surgeist_css_parser::accounting::CssWorkFields::SerializedInputNode: T
 pub surgeist_css_parser::accounting::CssWorkFields::SerializedProjectionNode: T
 pub surgeist_css_parser::accounting::CssWorkFields::SourceVisit: T
 pub surgeist_css_parser::accounting::CssWorkFields::SpellingByte: T
-pub surgeist_css_parser::accounting::CssWorkFields::Token: T
 impl<T: core::marker::Copy> surgeist_css_parser::accounting::CssWorkFields<T>
 pub const fn surgeist_css_parser::accounting::CssWorkFields<T>::splat(value: T) -> Self
 pub struct surgeist_css_parser::accounting::CssWorkTable<T>

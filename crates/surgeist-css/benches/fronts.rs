@@ -12,7 +12,9 @@
 //! smallest value of that limit at which the call still succeeds, found once
 //! outside the timed region by doubling and bisection, the way the
 //! characterization adapter finds charged work. A dimension that no public limit
-//! reaches prints `-`. Run with
+//! reaches prints `-`. The parse cases "with a host" run the accounted front
+//! against a host operation with no caps; their volume is what one call charges
+//! to that operation. Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-css --bench fronts`.
 
 use std::hint::black_box;
@@ -20,6 +22,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use surgeist_css::accounting::{CssFront, CssHostScope, CssLedger, CssLimits, CssWork};
 use surgeist_css::color::{
     CssAuthoredColorOrdinaryLimits, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest,
     CssColorInput, CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorPropertyFacts,
@@ -36,6 +39,7 @@ use surgeist_css::serialization::{
 use surgeist_css::source::{CssSourceRetention, CssUtf16InputLimits};
 use surgeist_css::values::background::CssBackgroundBox;
 use surgeist_css::{CssParseReport, CssParser};
+use surgeist_ledger::{Limits, Operation, ProfileMode};
 
 const ROUNDS: usize = 11;
 /// The time one case should take in one round, in nanoseconds.
@@ -428,6 +432,93 @@ fn block_cases(cases: &mut Vec<Case>) {
         let counts = block_counts(&text, baseline);
         cases.push(Case::new(name, Some(text.len()), counts, move || {
             let report = declarations(black_box(&text));
+            let count = report.syntax().len() + report.diagnostics().len();
+            black_box(&report);
+            count
+        }));
+    }
+}
+
+/// A host operation without caps, and the CSS scopes below its root.
+fn bench_host(mode: ProfileMode) -> (CssLedger, CssHostScope) {
+    let limits: CssLimits = Limits::unlimited();
+    let operation = Operation::with_profile("bench", limits, 1 + CssFront::ALL.len(), mode)
+        .expect("the bench operation is created")
+        .share();
+    let host =
+        CssHostScope::open(operation.clone(), operation.root()).expect("the CSS scopes are opened");
+    (operation, host)
+}
+
+/// What one call of `parse` charges to a fresh host operation.
+fn charged_volume(parse: impl FnOnce(&CssHostScope)) -> Vec<(&'static str, Option<usize>)> {
+    let (ledger, host) = bench_host(ProfileMode::Off);
+    parse(&host);
+    let usage = ledger
+        .usage(ledger.root())
+        .expect("the root of the bench operation");
+    let read = |dimension| usize::try_from(usage.work(dimension)).ok();
+    vec![
+        ("input units", read(CssWork::InputUnit)),
+        ("documents", read(CssWork::Document)),
+        ("components", read(CssWork::Component)),
+        ("spelling bytes", read(CssWork::SpellingByte)),
+    ]
+}
+
+/// The parse fronts called through a host handle. Each case has the input of
+/// the plain case of the same name, so the two rows differ by the accounting.
+fn accounted_cases(cases: &mut Vec<Case>) {
+    let synthetic = synthetic_sheet(1 << 20);
+    let counts = charged_volume(|host| {
+        let _ = CssParser::default().accounted(host).parse_sheet(&synthetic);
+    });
+    let (_, host) = bench_host(ProfileMode::Off);
+    cases.push(Case::new(
+        "parse_sheet with a host, 1 MiB synthetic sheet",
+        Some(synthetic.len()),
+        counts,
+        move || {
+            let report = CssParser::default()
+                .accounted(&host)
+                .parse_sheet(black_box(&synthetic))
+                .expect("a host without caps admits the charge");
+            let count = report.syntax().rules().len() + report.diagnostics().len();
+            black_box(&report);
+            count
+        },
+    ));
+
+    let off = ProfileMode::Off;
+    let timed = ProfileMode::Summary { timing: true };
+    for (name, text, mode) in [
+        (
+            "parse_block_contents with a host, 3000 declarations",
+            declaration_block(3000),
+            off,
+        ),
+        (
+            "parse_block_contents with a host, one declaration (color: red)",
+            "color: red".to_owned(),
+            off,
+        ),
+        (
+            "parse_block_contents with a host and a timed summary, one declaration (color: red)",
+            "color: red".to_owned(),
+            timed,
+        ),
+    ] {
+        let counts = charged_volume(|host| {
+            let _ = CssParser::default()
+                .accounted(host)
+                .parse_block_contents(&text);
+        });
+        let (_, host) = bench_host(mode);
+        cases.push(Case::new(name, Some(text.len()), counts, move || {
+            let report = CssParser::default()
+                .accounted(&host)
+                .parse_block_contents(black_box(&text))
+                .expect("a host without caps admits the charge");
             let count = report.syntax().len() + report.diagnostics().len();
             black_box(&report);
             count
@@ -829,6 +920,7 @@ fn main() {
     let mut cases = Vec::new();
     parse_cases(&mut cases);
     block_cases(&mut cases);
+    accounted_cases(&mut cases);
     serialization_cases(&mut cases);
     normalize_cases(&mut cases);
     colour_cases(&mut cases);
