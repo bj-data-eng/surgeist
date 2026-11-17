@@ -462,6 +462,117 @@ fn a_preparation_refused_before_the_grammar_builds_no_document() {
     assert_eq!(charged(&ledger), [12, 0, 0, 0]);
 }
 
+/// The last step follows the grammar, so a limit one short of the steps a
+/// call needs refuses it after its documents are built.
+#[test]
+fn a_preparation_refused_at_its_last_step_is_charged_the_documents_it_built() {
+    let text = "a{color:red}";
+    let needed = preparation_steps(text);
+    let (ledger, host) = open_host();
+    let refused = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(
+            utf16(text),
+            work_limit(usize::try_from(needed).unwrap() - 1),
+            never,
+        )
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(refused.exhausted_limit(), Some(CssUtf16Resource::Work));
+    assert_eq!(charged(&ledger), [12, 2, 6, 15]);
+    assert_eq!(steps(&ledger), needed);
+}
+
+/// The first poll precedes every step and each step polls once, so the poll
+/// of the last step is one more than the steps a call needs.
+#[test]
+fn a_call_interrupted_at_its_last_poll_is_charged_the_documents_it_built() {
+    let text = "a{color:red}";
+    let needed = preparation_steps(text);
+    let last_poll = usize::try_from(needed).unwrap() + 1;
+    let (ledger, host) = open_host();
+    let mut polls = 0_usize;
+    let interrupted = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(utf16(text), CssUtf16InputLimits::default(), || {
+            polls += 1;
+            if polls == last_poll {
+                Err("stop")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(interrupted.into_interruption(), Ok("stop"));
+    assert_eq!(charged(&ledger), [12, 2, 6, 15]);
+    assert_eq!(steps(&ledger), needed - 1);
+}
+
+#[test]
+fn a_host_cap_on_parse_work_replaces_the_result_of_a_utf16_call() {
+    // `a{color:red}` builds 6 components.
+    let caps = cap(CssWorkFields {
+        Component: 5,
+        ..CssWorkFields::splat(u64::MAX)
+    });
+    let (ledger, host) = host(caps, ProfileMode::Off);
+    let stop = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(utf16("a{color:red}"), CssUtf16InputLimits::default(), never)
+        .unwrap_err();
+    let refusal = stop.host_refusal().unwrap();
+    assert_eq!(refusal.change(), CssChange::Work(CssWork::Component, 6));
+    assert_eq!(
+        (refusal.limit(), refusal.total(), refusal.amount()),
+        (5, 0, 6)
+    );
+    // The parse charge is refused first, so the input batch is not made.
+    assert_eq!(charged(&ledger), [0, 0, 0, 0]);
+    assert_eq!(steps(&ledger), 0);
+}
+
+#[test]
+fn a_utf16_sheet_too_deep_for_the_callers_stack_charges_what_the_parser_thread_built() {
+    let source = format!("{}a{{color:red}}{}", "@media x{".repeat(40), "}".repeat(40));
+    let (_, built, _) = work::measure(|| {
+        let _ = CssParser::default().parse_sheet(&source);
+    });
+    let (ledger, host) = open_host();
+    let report = CssParser::default()
+        .accounted(&host)
+        .parse_sheet_utf16(utf16(&source), CssUtf16InputLimits::default(), never)
+        .unwrap()
+        .unwrap();
+    assert_eq!(report, CssParser::default().parse_sheet(&source));
+    let [input, _, components, _] = charged(&ledger);
+    assert_eq!(input, u64::try_from(source.len()).unwrap());
+    assert!(built > 0);
+    assert_eq!(components, u64::try_from(built).unwrap());
+    assert!(!crate::parse_work::is_collecting());
+}
+
+/// The document of a `unicode-range` value is built outside the sites the
+/// crate's node counter sees, so it shows as the difference between the two:
+/// `U+26` is one token.
+#[test]
+fn a_unicode_range_descriptor_charges_its_own_document() {
+    let parser = CssParser::default();
+    let source = "font-family:x;unicode-range:U+26";
+    let (_, built, _) = work::measure(|| {
+        let _ = parser.parse_font_face_block_contents(source);
+    });
+    let (ledger, host) = open_host();
+    let report = parser
+        .accounted(&host)
+        .parse_font_face_block_contents(source)
+        .unwrap();
+    assert_eq!(report, parser.parse_font_face_block_contents(source));
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [_, _, components, _] = charged(&ledger);
+    assert_eq!(components, u64::try_from(built).unwrap() + 1);
+}
+
 #[test]
 fn an_input_longer_than_its_unit_limit_is_refused_before_any_step() {
     let limits = CssUtf16InputLimits {
