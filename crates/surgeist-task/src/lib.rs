@@ -4,57 +4,55 @@
 //! oriented around Surgeist tasks, task context, cancellation, progress,
 //! resource classes, and scheduler policy. Concrete executors such as Tokio,
 //! thread pools, or process workers belong behind these contracts.
+//!
+//! # Where things live
+//!
+//! The crate root holds only the public modules and [`CRATE_NAME`]. Every public
+//! item has exactly one path, in the module that owns its domain, and a root path
+//! to a module item does not resolve.
+//!
+//! | Module | Domain |
+//! | --- | --- |
+//! | [`cancellation`] | Cancellation tokens, views and reasons. |
+//! | [`coordination`] | Task registration and observer tracking. |
+//! | [`event`] | Task events and the sink that receives them. |
+//! | [`executor`] | The executor contract, spawn requests, handles and the Tokio executor. |
+//! | [`identity`] | Task, attempt, correlation and observer identity, names, keys and provenance. |
+//! | [`job`] | Blocking and async jobs, their context and their failures. |
+//! | [`lifecycle`] | Task records, snapshots, statuses and transition errors. |
+//! | [`policy`] | Admission, priority, retry, blocking and unobserved-task policy. |
+//! | [`progress`] | Progress values reported by running tasks. |
+//! | [`queue`] | The bounded event queue, drain budgets and reports. |
+//! | [`scope`] | Task scopes, segments and their validation errors. |
+//!
+//! # Entry points
+//!
+//! A task author builds a [`executor::TaskSpawnRequest`] from identity
+//! ([`identity::TaskId`], [`identity::TaskAttemptId`], [`identity::TaskKey`]), a
+//! [`scope::TaskScope`], a [`cancellation::CancellationToken`], an
+//! [`event::TaskEventSink`], an input and a [`job::TaskRunnable`], and hands it to
+//! an [`executor::TaskExecutor`]. [`executor::TokioTaskExecutor`] is the concrete
+//! executor. The job reports through its [`job::TaskContext`], and the sink
+//! receives [`event::TaskEvent`] values.
 
 #![forbid(unsafe_code)]
 
+pub mod cancellation;
+pub mod coordination;
+pub mod event;
+pub mod executor;
+pub mod identity;
+pub mod job;
+pub mod lifecycle;
+pub mod policy;
+pub mod progress;
+pub mod queue;
+pub mod scope;
+
+mod internal;
+
 /// Crate identity string used by smoke tests and API artifacts.
 pub const CRATE_NAME: &str = "surgeist-task";
-
-mod cancel;
-mod coordination;
-mod event;
-mod executor;
-mod id;
-mod lifecycle;
-mod policy;
-mod provenance;
-mod queue;
-mod runtime_tokio;
-mod scope;
-#[cfg(test)]
-mod testing;
-
-pub use cancel::{CancelReason, CancelReasonKind, CancellationToken, CancellationView};
-pub use coordination::{
-    ObservationChange, ObserverCountSnapshot, TaskCoordination, TaskRegistration,
-    TaskRegistrationError, TaskRegistrationErrorKind,
-};
-pub use event::{
-    PercentComplete, PercentCompleteError, PercentCompleteErrorKind, TaskDiagnosticEvent,
-    TaskDiagnosticLevel, TaskEvent, TaskEventKind, TaskJobEvent, TaskLifecycleEvent,
-    TaskOutputEvent, TaskProgressEvent, TaskProgressValue,
-};
-pub use executor::{
-    AsyncTaskJob, BlockingTaskJob, ExecutorDrainReport, ExecutorError, ExecutorErrorKind,
-    ExecutorTaskHandle, TaskContext, TaskEventSink, TaskEventSinkError, TaskEventSinkErrorKind,
-    TaskExecutor, TaskFailure, TaskFailureKind, TaskHandle, TaskRunnable, TaskSpawnRequest,
-    TaskSpawnRequestBuilder,
-};
-pub use id::{
-    CoalescingKey, CorrelationId, ObserverId, ResourceClassId, TaskAttemptId, TaskId, TaskIdError,
-    TaskIdErrorKind, TaskKey, TaskName,
-};
-pub use lifecycle::{
-    TaskLifecycleError, TaskLifecycleErrorKind, TaskRecord, TaskSnapshot, TaskStatus,
-    TaskTerminalStatus,
-};
-pub use policy::{BlockingPolicy, RetryPolicy, TaskPolicy, TaskPriority, UnobservedPolicy};
-pub use provenance::TaskProvenance;
-pub use queue::{
-    DrainBudget, DrainReport, QueueError, QueueErrorCode, QueuePolicy, QueueReport, TaskEventQueue,
-};
-pub use runtime_tokio::TokioTaskExecutor;
-pub use scope::{TaskScope, TaskScopeError, TaskScopeErrorKind, TaskScopeSegment};
 
 #[cfg(test)]
 mod tests {
