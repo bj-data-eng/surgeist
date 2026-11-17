@@ -54,6 +54,15 @@ impl State {
             .and_then(|v| v.checked_add(self.media.len()))
             .and_then(|v| v.checked_add(self.maps.len()));
         limit(objects, limits.max_objects, "objects")?;
+        #[cfg(test)]
+        probe::examined(
+            self.sheets.len()
+                + self.rules.len()
+                + self.blocks.len()
+                + self.lists.len()
+                + self.media.len()
+                + self.maps.len(),
+        );
         let mut entries = Some(self.sheet_order.len());
         let mut strings = Some(0usize);
         fn add(total: &mut Option<usize>, count: usize) {
@@ -353,5 +362,91 @@ fn limit(actual: Option<usize>, maximum: usize, resource: &'static str) -> Resul
         Err(CssomError::Limit { resource, maximum })
     } else {
         Ok(())
+    }
+}
+
+/// Counts of the work census runs do on the calling thread.
+#[cfg(test)]
+pub(crate) mod probe {
+    use std::cell::Cell;
+
+    thread_local! {
+        static EXAMINED: Cell<usize> = const { Cell::new(0) };
+        static STEPS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    /// Objects the census has examined and source walk steps it has charged.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(crate) struct Work {
+        pub(crate) examined: usize,
+        pub(crate) steps: usize,
+    }
+
+    pub(crate) fn examined(objects: usize) {
+        EXAMINED.with(|total| total.set(total.get().saturating_add(objects)));
+    }
+    pub(crate) fn steps(steps: usize) {
+        STEPS.with(|total| total.set(total.get().saturating_add(steps)));
+    }
+    pub(crate) fn reset() {
+        EXAMINED.with(|total| total.set(0));
+        STEPS.with(|total| total.set(0));
+    }
+    pub(crate) fn read() -> Work {
+        Work {
+            examined: EXAMINED.with(Cell::get),
+            steps: STEPS.with(Cell::get),
+        }
+    }
+}
+
+#[cfg(test)]
+mod bounded_work_tests {
+    use super::probe;
+    use crate::*;
+
+    /// The work census runs do while one batch creates a sheet of `rules` style rules.
+    fn creation_work(rules: usize) -> probe::Work {
+        let text = (0..rules)
+            .map(|index| format!(".r{index} {{ color: red; margin: 1px 0 }}\n"))
+            .collect::<String>();
+        let mut store = CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap();
+        let mut edit = store
+            .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
+            .unwrap();
+        let inputs = CssomSheetInputs::external(
+            CssomInputVersion {
+                role: CssomInputRole::Owner,
+                identity: "census-work".into(),
+                revision: 1,
+            },
+            true,
+        );
+        probe::reset();
+        edit.create_parsed_sheet(&text, inputs).unwrap();
+        let work = probe::read();
+        store.commit(edit).unwrap();
+        work
+    }
+
+    #[test]
+    fn creating_a_sheet_does_census_work_in_proportion_to_its_rules() {
+        let sizes = [100, 200, 400].map(creation_work);
+        for pair in sizes.windows(2) {
+            let (small, large) = (pair[0], pair[1]);
+            // Doubling the rules at most a little more than doubles the work.
+            assert!(
+                large.examined * 4 <= small.examined * 9,
+                "objects examined grew from {} to {} (100, 200, 400 rules: {sizes:?})",
+                small.examined,
+                large.examined
+            );
+            assert!(
+                large.steps * 4 <= small.steps * 9,
+                "walk steps grew from {} to {} (100, 200, 400 rules: {sizes:?})",
+                small.steps,
+                large.steps
+            );
+        }
     }
 }

@@ -244,6 +244,8 @@ impl State {
             }
             Ok(())
         })();
+        #[cfg(test)]
+        crate::state_limits::probe::steps(sources.steps());
         result.map_err(|error: CssSourceRetentionError| {
             assert!(
                 !error.is_caller_admission(),
