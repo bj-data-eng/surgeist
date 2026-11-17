@@ -216,13 +216,13 @@ impl core::fmt::Display for DomViewTransitionCssomError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("view transition CSSOM association rejected: ")?;
         f.write_str(match self {
-            Self::ForeignOwner => "the CSSOM object belongs to a different DOM owner",
-            Self::MissingObject => "the CSSOM object does not exist",
+            Self::ForeignOwner => "the CSSOM object or revision belongs to a different CSSOM owner",
+            Self::MissingObject => "the CSSOM snapshot could not provide the selected rule",
             Self::WrongKind => "the CSSOM object is not the expected kind of rule",
-            Self::WrongSheet => "the rule belongs to a different style sheet",
-            Self::DuplicateRule => "the style sheet already contains this rule",
-            Self::RuleOrder => "the rule is out of the required order",
-            Self::StaleRevision => "the CSSOM object's revision is stale",
+            Self::WrongSheet => "the rule or captured input belongs to a different style sheet",
+            Self::DuplicateRule => "the same rule is selected for more than one role",
+            Self::RuleOrder => "the selected rules are out of the required order",
+            Self::StaleRevision => "the CSSOM revision is older than the one already recorded",
         })
     }
 }

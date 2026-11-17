@@ -220,7 +220,7 @@ impl core::fmt::Display for DomMetaError {
                 f.write_str("the Document has no supplied Meta processing history")
             }
             Self::DefaultStyleUnsupported => {
-                f.write_str("the preferred stylesheet-set operation requires its CSSOM owner")
+                f.write_str("the preferred stylesheet-set operation cannot be processed in this mutation route or state")
             }
             Self::ContentSecurityPolicyUnsupported => f.write_str(
                 "this mutation route cannot process a Content Security Policy Meta insertion",
@@ -228,11 +228,11 @@ impl core::fmt::Display for DomMetaError {
             Self::ThemeColorMediaUnavailable => f.write_str(
                 "theme-color media matching beyond an empty or ASCII-whitespace query needs matching facts that were not supplied",
             ),
-            Self::ThemeColorUnavailable(_) => f.write_str("the theme-color value is unavailable"),
+            Self::ThemeColorUnavailable(_) => f.write_str("a fact needed to parse the theme-color value was not supplied"),
             Self::ThemeColorUnsupported(_) => {
-                f.write_str("the theme-color value is not supported")
+                f.write_str("the theme-color value needs a color capability that is not supported")
             }
-            Self::ThemeColorFacts(_) => f.write_str("the theme-color facts are defective"),
+            Self::ThemeColorFacts(_) => f.write_str("the supplied theme-color facts are defective"),
             Self::ThemeColorScratchLimit { limit } => write!(
                 f,
                 "theme-color processing exceeded its scratch allowance of {limit}"
@@ -240,9 +240,11 @@ impl core::fmt::Display for DomMetaError {
             Self::ColorSchemeProcessingUnavailable => {
                 f.write_str("no finite color-scheme processing allowance was supplied")
             }
-            Self::ColorSchemeLimit(_) => {
-                f.write_str("color-scheme processing exceeded an input limit")
-            }
+            Self::ColorSchemeLimit(resource) => write!(
+                f,
+                "color-scheme processing exceeded its limit on {}",
+                resource.as_str()
+            ),
             Self::CssProcessingProtocol => {
                 f.write_str("the CSS property processing protocol was violated")
             }

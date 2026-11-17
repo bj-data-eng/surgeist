@@ -237,29 +237,29 @@ impl fmt::Display for DomHostedError {
                 "a hosted source cannot be registered after details task custody was transferred",
             ),
             Self::ForeignSource => {
-                f.write_str("the identity or request was issued by a different hosted source")
+                f.write_str("the identity, request or binding belongs to a different hosted source, DOM owner or Global")
             }
             Self::SourceExpired => {
-                f.write_str("the hosted source that issued the identity no longer exists")
+                f.write_str("the hosted source that issued the identity has expired")
             }
             Self::SourcePoisoned => {
                 f.write_str("the hosted source's state was poisoned by an earlier panic")
             }
-            Self::StaleIdentity => f.write_str("the hosted identity is stale or retired"),
+            Self::StaleIdentity => f.write_str("the hosted identity is unknown, stale or retired"),
             Self::WrongPhase => {
-                f.write_str("the hosted operation is not in a phase that permits this step")
+                f.write_str("the hosted state does not permit this step")
             }
             Self::MissingPublication => {
-                f.write_str("the hosted operation has no pending preparation or publication")
+                f.write_str("a hosted preparation, publication or history record that the operation needs is missing")
             }
             Self::StaleBasis => {
-                f.write_str("the hosted request no longer matches the current hosted state")
+                f.write_str("the supplied basis does not match the current hosted or DOM state")
             }
             Self::IncompleteOperation => {
-                f.write_str("an earlier hosted operation or association is incomplete")
+                f.write_str("a hosted operation, job or association has not completed")
             }
             Self::UnsupportedProfile => {
-                f.write_str("the hosted profile does not support this operation")
+                f.write_str("the selected hosted profile does not support this operation or lacks the hosted state it needs")
             }
             Self::ScriptingDisabled => f.write_str("scripting is disabled for the Document"),
             Self::PendingDocumentObligations => {
@@ -272,16 +272,16 @@ impl fmt::Display for DomHostedError {
                 f.write_str("the Content Security Policy issuer is already borrowed")
             }
             Self::ClockRegression => {
-                f.write_str("the clock reading does not follow the navigation start")
+                f.write_str("the finish-loading clock reading is from another source or precedes the navigation start")
             }
             Self::InvalidClockSample => {
                 f.write_str("the clock sample is not a multiple of 100 microseconds")
             }
             Self::InvalidEntryInitialization => {
-                f.write_str("the entry initialization does not hold canonical version 4 UUIDs")
+                f.write_str("the entry initialization's navigation key or id is not a canonical version 4 UUID")
             }
             Self::RepresentationExhausted => f.write_str(
-                "a hosted counter or retained-byte credit cannot represent the requested amount",
+                "a hosted counter, size or credit cannot represent or cover the requested amount",
             ),
             Self::AllocationFailed => {
                 f.write_str("an allocation required by the hosted operation failed")
@@ -608,17 +608,17 @@ impl core::fmt::Display for DomDocumentConstructorError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
             Self::ForeignIssuer => {
-                "the Document constructor context was issued for a different DOM owner"
+                "the Document constructor context was issued by a different hosted source"
             }
             Self::ExpiredIssuer => "the Document constructor context's issuer has expired",
             Self::PoisonedIssuer => {
                 "the Document constructor context's issuer was poisoned by an earlier failure"
             }
             Self::StaleAssociation => {
-                "the Document constructor context's Global association is stale or in the wrong phase"
+                "the Document constructor context's Global association is missing, stale or retired"
             }
             Self::IncompleteAssociation => {
-                "the Document constructor context's association has an incomplete operation"
+                "the Document constructor context's association is not in the live initial-entry phase"
             }
             Self::Unavailable => "no hosted association is available for the Document constructor",
         })

@@ -18,9 +18,9 @@ impl core::fmt::Display for DomEncodingUrlFactsError {
             Self::BasisRevisionMismatch => {
                 f.write_str("encoding and URL facts were captured at a different store revision")
             }
-            Self::EnvironmentMismatch => f.write_str(
-                "encoding and URL facts were computed for a different document environment",
-            ),
+            Self::EnvironmentMismatch => {
+                f.write_str("encoding and URL facts do not describe this document's environment")
+            }
             Self::Base(missing) => write!(
                 f,
                 "the base URL needed for encoding and URL facts is unavailable: {}",

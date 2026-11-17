@@ -164,7 +164,7 @@ pub enum DomHtmlCaptureError {
 impl fmt::Display for DomHtmlCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Source(_) => f.write_str("the DOM refused the capture's read of canonical state"),
+            Self::Source(_) => f.write_str("the canonical DOM refused the HTML capture"),
             Self::Host(_) => {
                 f.write_str("the host observations do not match the Document being captured")
             }
@@ -207,7 +207,9 @@ impl fmt::Display for DomHtmlCaptureError {
             Self::RepresentationExhausted => {
                 f.write_str("an HTML capture count or size exceeded the representable range")
             }
-            Self::UnmappedSubject => f.write_str("the node or subject is not part of this capture"),
+            Self::UnmappedSubject => {
+                f.write_str("a node, subject or registry could not be mapped within the capture")
+            }
         }
     }
 }

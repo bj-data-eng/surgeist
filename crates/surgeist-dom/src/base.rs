@@ -32,13 +32,13 @@ impl core::fmt::Display for DomBaseFactsError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::EnvironmentMismatch => {
-                f.write_str("base URL facts were captured for a different document environment")
+                f.write_str("base URL facts do not describe this document's environment")
             }
             Self::ForeignProducer => f.write_str(
-                "base URL facts came from a producer that does not belong to this document",
+                "base URL facts came from a different producer than the facts already bound to this document",
             ),
             Self::InputsMismatch => f.write_str(
-                "base URL facts were computed from inputs that differ from the document's current inputs",
+                "base URL facts were computed from inconsistent inputs",
             ),
             Self::BasisRevisionMismatch => {
                 f.write_str("base URL facts were captured at a different store revision")
@@ -49,7 +49,7 @@ impl core::fmt::Display for DomBaseFactsError {
                 missing_clause(*missing)
             ),
             Self::PolicyMismatch => {
-                f.write_str("base URL facts were produced under a different policy")
+                f.write_str("base URL facts were produced under a Content Security Policy that differs from the document's")
             }
         }
     }

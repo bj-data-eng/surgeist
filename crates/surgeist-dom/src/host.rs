@@ -283,10 +283,14 @@ pub enum DomHostError {
 impl fmt::Display for DomHostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ForeignOwner => f.write_str("the Document belongs to a different DOM owner"),
-            Self::WrongDocument => f.write_str("the observations belong to a different Document"),
+            Self::ForeignOwner => {
+                f.write_str("the compared document stamps belong to different DOM owners")
+            }
+            Self::WrongDocument => {
+                f.write_str("the compared document stamps refer to different Documents")
+            }
             Self::DomRevisionMismatch { .. } => {
-                f.write_str("the observations and the canonical view have different DOM revisions")
+                f.write_str("the compared document stamps have different DOM revisions")
             }
             Self::StaleDomRevision { .. } => {
                 f.write_str("publication would move the canonical DOM revision backwards")

@@ -364,7 +364,7 @@ impl std::fmt::Display for DomInlineStyleError {
                 "the Element's namespace has no supported ElementCSSInlineStyle capability",
             ),
             Self::StaleContext => {
-                f.write_str("the supplied Document observation is no longer current")
+                f.write_str("the supplied observation or owner effect no longer matches the current state")
             }
             Self::ParserModeMismatch => {
                 f.write_str("the selected parser mode does not describe the Document")
@@ -376,7 +376,7 @@ impl std::fmt::Display for DomInlineStyleError {
                 "the bound inline style block already exists with different explicit external inputs",
             ),
             Self::Unbound => {
-                f.write_str("the Element has no allocated inline declaration block")
+                f.write_str("the inline declaration block or parked feedback operation the operation needs is absent or does not match")
             }
             Self::OperationPending { .. } => {
                 f.write_str("another inline style owner-write outcome is still resident")

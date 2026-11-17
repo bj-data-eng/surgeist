@@ -291,13 +291,13 @@ impl std::fmt::Display for DomMetaAtomicError {
                 "the CSSOM producer refused the Meta composition operation for the root",
             ),
             Self::MissingOwner { .. } => {
-                f.write_str("no CSSOM owner was supplied for the root's Document")
+                f.write_str("no CSSOM owner was supplied or held for the root's Document")
             }
             Self::MismatchedOwner { .. } => f.write_str(
-                "the CSSOM owners supplied for the root's Document are not one owner",
+                "the CSSOM owner supplied for the root's Document differs from the owner already bound or supplied for it",
             ),
             Self::StaleProducer { .. } => {
-                f.write_str("the sheet is not a member of the root's producer snapshot")
+                f.write_str("the root's producer snapshot is stale or does not contain the sheet")
             }
         }
     }
