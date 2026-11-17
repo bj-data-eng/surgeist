@@ -67,11 +67,13 @@ impl CssColorInput<'_> {
 /// names the resource, never a standard color failure.
 ///
 /// [`Default`] admits inputs of up to 1,024 original units. Its record and action ceilings are
-/// fixed reference values, scaled to that length and multiplied by four. They leave large
-/// headroom over the requirement per unit of every color case of the characterization corpus;
-/// the headroom is measured on that corpus, not guaranteed for every input of that length. The
-/// actions ceiling is a coarse work bound. A caller with longer inputs or a tighter work budget
-/// passes explicit limits, raising the record and action ceilings together with `input_units`.
+/// fixed reference values, scaled to that length and multiplied by four. Each reference is the
+/// densest legitimate input found for its counter (a list of the costliest numerals, a list of
+/// arithmetic terms), so the ceilings leave a fourfold margin over the requirement per unit of
+/// every color case of the characterization corpus. The margin is measured on that corpus, not
+/// guaranteed for every input of that length. The actions ceiling is a coarse work bound. A
+/// caller with longer inputs or a tighter work budget passes explicit limits, raising the record
+/// and action ceilings together with `input_units`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorOrdinaryLimits {
     /// Maximum number of original input units admitted.
@@ -87,8 +89,8 @@ pub struct CssColorOrdinaryLimits {
 }
 impl Default for CssColorOrdinaryLimits {
     /// Returns the ceilings for inputs of up to 1,024 original units: 1,024 input units,
-    /// 275,295 algorithm records, 3,476 arithmetic records, 3,476 evaluation records and
-    /// 2,036,468,185 actions.
+    /// 116,726 algorithm records, 12,132 arithmetic records, 12,132 evaluation records and
+    /// 7,678,235 actions.
     ///
     /// The record and action ceilings are fixed reference values per input unit, scaled to
     /// 1,024 units and multiplied by four. Callers with larger inputs pass explicit limits.
