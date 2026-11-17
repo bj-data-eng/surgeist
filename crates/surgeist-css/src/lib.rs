@@ -404,6 +404,8 @@
 //! use surgeist_css::CssSheet;
 //! ```
 
+/// The accounting schema of the CSS crates and the scope a host supplies for
+/// it, re-exported from `surgeist-css-parser`.
 pub use surgeist_css_parser::accounting;
 
 pub mod color;

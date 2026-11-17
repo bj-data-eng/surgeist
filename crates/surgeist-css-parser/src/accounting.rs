@@ -245,9 +245,10 @@ impl CssFront {
 /// The operation is an `Operation<CssWork, CssResource>` the host shared with
 /// [`surgeist_ledger::Operation::share`]. The front scopes carry no caps, so
 /// a cap that refuses a charge is one of the supplied scope or of a scope
-/// above it. The tariffs between the supplied scope and the scopes above it
-/// must map each dimension to itself, because a refusal names the dimension
-/// of the charged change.
+/// above it. A refusal reports the dimension and the figures of the scope
+/// that refused, in that scope's units. Where the tariffs between the
+/// supplied scope and the scopes above it map each dimension to itself, they
+/// are those of the charged change.
 ///
 /// Cloning the value shares the operation and the front scopes.
 #[derive(Clone)]
@@ -426,7 +427,8 @@ impl CssHostRefusal {
         self.scope
     }
 
-    /// The refused change, which names the dimension.
+    /// The refused change as the refusing scope saw it: its dimension and
+    /// its amount in that scope's units.
     #[must_use]
     pub const fn change(&self) -> CssChange {
         self.change

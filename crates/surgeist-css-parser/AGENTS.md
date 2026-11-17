@@ -8,7 +8,9 @@ This supplement records crate facts and grants no additional authority.
 This crate owns CSS Syntax Module Level 3: input decoding and preprocessing,
 tokenization, parsing results and token streams, parser entry points and
 algorithms, the `An+B` microsyntax and token serialization. It gives syntax no
-CSS meaning. [surgeist-css](../surgeist-css/AGENTS.md) owns grammars, property
+CSS meaning. It also declares, in `accounting`, the accounting schema every CSS
+crate charges to a host's ledger operation, because it is the lowest crate
+they share. [surgeist-css](../surgeist-css/AGENTS.md) owns grammars, property
 and descriptor values, rules, selectors, queries and recovery diagnostics, and
 depends on this crate. This crate's one Surgeist dependency is
 [surgeist-ledger](../surgeist-ledger/README.md), for the accounting schema in

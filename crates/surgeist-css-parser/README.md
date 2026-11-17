@@ -44,6 +44,12 @@ crate offers:
   number or a unicode-range) as `const fn`s. The non-ASCII ident code point
   is the list of ranges in section 4.2 of the pinned edition.
 - `Offset`: a byte offset into the text a tokenizer reads.
+- `accounting`: the accounting schema the CSS crates share. `CssWork` and
+  `CssResource` are the dimensions they charge to a host's ledger operation,
+  `CssFront` names the front that charges each one, `CssHostScope` opens one
+  scope per front below a scope the host supplies, and `CssAccount` is what a
+  front charges through, with or without a host. Request limits are not part
+  of it.
 - `limits`: `Limits`, `DepthExcess`, the `Meter` contract through which a host
   admits work and storage, and the charged helpers `grow`, `copy_str` and
   `copy_boxed`.
