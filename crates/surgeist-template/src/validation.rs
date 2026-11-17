@@ -9,8 +9,9 @@
 //! or runs a loop.
 //!
 //! A failed validation returns a [`ValidationError`] whose
-//! [`ValidationErrorKind`] names the unknown element, duplicate attribute or
-//! unaccepted value form, with the source span of the offending node.
+//! [`ValidationErrorKind`] names the unknown element, the duplicate or
+//! undeclared attribute, or the unaccepted value form, with the source span of
+//! the offending element or attribute.
 //! [`render_to_rust`](crate::render_to_rust) and
 //! [`append_static_html`](crate::dom::append_static_html) consume a
 //! [`ValidatedTemplate`].

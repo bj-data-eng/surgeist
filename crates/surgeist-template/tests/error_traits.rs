@@ -121,6 +121,7 @@ fn span_errors_name_the_violated_coordinate_rule() {
         "source span ends at line 1, column 9 (byte 18) before it starts at line 2, column 5 \
          (byte 14)",
     );
+    // Order is decided by byte offset: this end has the later column but the earlier byte.
     check(
         &SourceSpan::try_new(position(2, 5, 14), position(2, 9, 12)).unwrap_err(),
         "source span ends at line 2, column 9 (byte 12) before it starts at line 2, column 5 \

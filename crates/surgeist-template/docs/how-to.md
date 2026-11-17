@@ -67,7 +67,8 @@ Keep the original source text available when parsing and validating it.
    mismatch.
 3. Use the span's `start()` and `end()` positions to locate the affected text.
    Each position exposes `line()`, `column()`, and `byte()`; `len_bytes()` on
-   the span reports its byte length.
+   the span reports its byte length. To show the failure to a person, print the
+   error: its `Display` text names the problem and the starting line and column.
 4. Correct the reported input or registry definition and repeat the pipeline.
    Success yields a `ValidatedTemplate` ready for `render_to_rust`.
 

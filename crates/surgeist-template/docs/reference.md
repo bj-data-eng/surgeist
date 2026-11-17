@@ -165,7 +165,9 @@ serialization/reparse or separate live tree is involved.
 ## Diagnostics and verification sources
 
 `ParseError` and `ValidationError` expose `kind()` and `span()`. `RegistryError`
-reports specification-construction failures. The variants live in
+reports specification-construction failures. Every error type implements
+`Display` and `core::error::Error`; span-bearing messages end with the line and
+column. The variants live in
 [error.rs](../src/error.rs) and [validate.rs](../src/validate.rs).
 
 Crate-local verification consists of unit tests in [src/](../src/) and the
