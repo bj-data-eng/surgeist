@@ -38,7 +38,9 @@ use crate::{CssParseReport, CssParser};
 /// [`CssAccountingError::host_refusal`] is `Some` when a cap of the host's
 /// scope, or of a scope above it, refused it. The parse scope is charged
 /// before the input scope, so a refusal of the second charge leaves the
-/// first admitted.
+/// first admitted. A front also returns the error when the ledger cannot
+/// open the phase, which only a defect of the host's operation causes; the
+/// input is then not parsed.
 ///
 /// ```
 /// use surgeist_css::accounting::{CssFront, CssHostScope, CssLimits, CssWork};
@@ -135,7 +137,9 @@ impl CssAccountedParser<'_> {
             .account
             .timed(CssFront::Parse, || parse_work::collect(parse))?;
         // An accounted parse call that runs inside another one adds to that
-        // call's record, and that call charges.
+        // call's record, and that call charges. No front calls an accounted
+        // front, so nothing reaches this today; a front that came to do so
+        // would have to decide who charges the inner call's input units.
         if let Some(work) = work {
             self.account.charge(CssFront::Parse, &work.changes())?;
             self.account.charge(
