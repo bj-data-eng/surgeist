@@ -6,10 +6,11 @@
 
 use core::fmt;
 
-use crate::{
-    AnimationDelay, AnimationDuration, AnimationPlayState, Easing, ElapsedTime, InterpolableValue,
-    InterpolationError, InterpolationPair, PropertyKey, SampledPropertyResult, TimingParameters,
-};
+use crate::easing::Easing;
+use crate::interpolation::{InterpolableValue, InterpolationError, InterpolationPair, PropertyKey};
+use crate::sample::SampledPropertyResult;
+use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use crate::timing::{AnimationPlayState, TimingParameters};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransitionTrackId {
@@ -132,12 +133,16 @@ impl TransitionTrack {
 #[cfg(test)]
 mod tests {
     use super::{TransitionError, TransitionTrack, TransitionTrackId};
-    use crate::{
-        AnimationDelay, AnimationDuration, AnimationPlayState, CompletionStatus, Easing,
-        ElapsedTime, InterpolableNumber, InterpolablePercentage, InterpolableValue,
-        InterpolationError, LinearControlPoint, LinearEasing, NextFrameHint, PropertyKey,
-        SampleClassification, SampleValue, SampledPropertyResult, TransformValue, ValueFamily,
+    use crate::easing::{Easing, LinearControlPoint, LinearEasing};
+    use crate::interpolation::{
+        InterpolableNumber, InterpolablePercentage, InterpolableValue, InterpolationError,
+        PropertyKey, TransformValue, ValueFamily,
     };
+    use crate::sample::{
+        CompletionStatus, NextFrameHint, SampleClassification, SampleValue, SampledPropertyResult,
+    };
+    use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+    use crate::timing::AnimationPlayState;
 
     #[test]
     fn transition_track_preserves_identity_property_values_and_timing_inputs() {
@@ -146,7 +151,7 @@ mod tests {
             InterpolableNumber::new(1.0).unwrap(),
             AnimationDuration::from_secs(2.0).unwrap(),
             AnimationDelay::from_secs(-0.25).unwrap(),
-            Easing::keyword(crate::EasingKeyword::EaseIn),
+            Easing::keyword(crate::easing::EasingKeyword::EaseIn),
         );
 
         assert_eq!(track.id(), TransitionTrackId::new(42));
@@ -154,8 +159,14 @@ mod tests {
         assert_eq!(track.duration().as_secs(), 2.0);
         assert_eq!(track.delay().as_secs(), -0.25);
         assert!(track.easing().as_cubic_bezier().is_some());
-        assert_eq!(track.from().family(), crate::ValueFamily::Number);
-        assert_eq!(track.to().family(), crate::ValueFamily::Number);
+        assert_eq!(
+            track.from().family(),
+            crate::interpolation::ValueFamily::Number
+        );
+        assert_eq!(
+            track.to().family(),
+            crate::interpolation::ValueFamily::Number
+        );
     }
 
     #[test]

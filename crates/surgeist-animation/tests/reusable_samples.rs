@@ -1,12 +1,20 @@
 #![forbid(unsafe_code)]
 
-use surgeist_animation::{
-    AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState, CompletionStatus,
-    DiscreteValue, Easing, ElapsedTime, FillMode, InterpolableNumber, InterpolableValue,
-    InterpolationComponent, InterpolationError, IterationCount, KeyframeAnimationId, KeyframeError,
-    KeyframeSegment, KeyframeTiming, KeyframeTrack, NextFrameHint, PropertyKey,
-    SampleClassification, SampleValue, SampledPropertyResult, StepPosition, Steps, TransformValue,
-    UnitRatio, ValueFamily,
+use surgeist_animation::easing::{Easing, StepPosition, Steps};
+use surgeist_animation::interpolation::{
+    DiscreteValue, InterpolableNumber, InterpolableValue, InterpolationComponent,
+    InterpolationError, PropertyKey, TransformValue, ValueFamily,
+};
+use surgeist_animation::keyframe::{
+    KeyframeAnimationId, KeyframeError, KeyframeSegment, KeyframeTiming, KeyframeTrack,
+};
+use surgeist_animation::progress::UnitRatio;
+use surgeist_animation::sample::{
+    CompletionStatus, NextFrameHint, SampleClassification, SampleValue, SampledPropertyResult,
+};
+use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use surgeist_animation::timing::{
+    AnimationDirection, AnimationPlayState, FillMode, IterationCount,
 };
 
 #[test]

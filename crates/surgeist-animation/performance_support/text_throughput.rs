@@ -3,10 +3,12 @@
 use std::hint::black_box;
 use std::sync::Arc;
 
-use surgeist_animation::{
-    AnimationDelay, AnimationDuration, AnimationPlayState, CompositeValue, DiscreteValue,
-    PropertyKey, TransformValue, TransitionTrack, TransitionTrackId,
+use surgeist_animation::interpolation::{
+    CompositeValue, DiscreteValue, PropertyKey, TransformValue,
 };
+use surgeist_animation::time::{AnimationDelay, AnimationDuration};
+use surgeist_animation::timing::AnimationPlayState;
+use surgeist_animation::transition::{TransitionTrack, TransitionTrackId};
 
 use crate::{Config, lifecycle, measure, timed};
 

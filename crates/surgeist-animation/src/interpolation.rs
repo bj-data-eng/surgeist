@@ -13,7 +13,9 @@
 use core::fmt;
 use std::sync::Arc;
 
-use crate::{EasedProgress, NumericError, NumericInput, UnitRatio};
+use crate::diagnostics::{NumericError, NumericInput};
+use crate::easing::EasedProgress;
+use crate::progress::UnitRatio;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PropertyKey {
@@ -858,7 +860,7 @@ mod tests {
         InterpolationError, InterpolationOutcome, InterpolationPair, InterpolationProgress,
         NonFiniteInterpolationResult, PropertyKey, TransformValue, ValueFamily,
     };
-    use crate::{NumericError, NumericInput};
+    use crate::diagnostics::{NumericError, NumericInput};
 
     #[test]
     fn property_key_rejects_empty_names_and_preserves_identity() {
@@ -892,7 +894,7 @@ mod tests {
                     0.1,
                     0.2,
                     0.3,
-                    crate::UnitRatio::new(1.0).unwrap(),
+                    crate::progress::UnitRatio::new(1.0).unwrap(),
                 )
                 .unwrap(),
             )
@@ -929,7 +931,7 @@ mod tests {
             0.4,
             0.2,
             -0.1,
-            crate::UnitRatio::new(0.5).unwrap(),
+            crate::progress::UnitRatio::new(0.5).unwrap(),
         )
         .unwrap();
 
@@ -945,7 +947,7 @@ mod tests {
             -0.25,
             1.5,
             2.0,
-            crate::UnitRatio::new(0.5).unwrap(),
+            crate::progress::UnitRatio::new(0.5).unwrap(),
         )
         .unwrap();
 
@@ -956,7 +958,7 @@ mod tests {
                 f64::NAN,
                 0.0,
                 0.0,
-                crate::UnitRatio::new(1.0).unwrap(),
+                crate::progress::UnitRatio::new(1.0).unwrap(),
             ),
             Err(InterpolationError::NonFiniteNumber { value }) if value.is_nan()
         ));
@@ -966,7 +968,7 @@ mod tests {
                 0.0,
                 f64::INFINITY,
                 0.0,
-                crate::UnitRatio::new(1.0).unwrap(),
+                crate::progress::UnitRatio::new(1.0).unwrap(),
             ),
             Err(InterpolationError::NonFiniteNumber { value }) if value.is_infinite()
         ));
@@ -979,7 +981,7 @@ mod tests {
             f64::MAX,
             -12.0,
             3.5,
-            crate::UnitRatio::new(0.0).unwrap(),
+            crate::progress::UnitRatio::new(0.0).unwrap(),
         )
         .unwrap();
 
@@ -1137,7 +1139,7 @@ mod tests {
             0.1,
             0.2,
             0.3,
-            crate::UnitRatio::new(1.0).unwrap(),
+            crate::progress::UnitRatio::new(1.0).unwrap(),
         )
         .unwrap();
         let to = InterpolableColor::from_straight_components(
@@ -1145,7 +1147,7 @@ mod tests {
             0.1,
             0.2,
             0.3,
-            crate::UnitRatio::new(1.0).unwrap(),
+            crate::progress::UnitRatio::new(1.0).unwrap(),
         )
         .unwrap();
 
@@ -1187,7 +1189,7 @@ mod tests {
                     1.0,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(0.0).unwrap(),
+                    crate::progress::UnitRatio::new(0.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1197,7 +1199,7 @@ mod tests {
                     0.0,
                     0.0,
                     1.0,
-                    crate::UnitRatio::new(1.0).unwrap(),
+                    crate::progress::UnitRatio::new(1.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1222,7 +1224,7 @@ mod tests {
                     1.0,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(0.0).unwrap(),
+                    crate::progress::UnitRatio::new(0.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1232,7 +1234,7 @@ mod tests {
                     0.0,
                     1.0,
                     0.0,
-                    crate::UnitRatio::new(0.0).unwrap(),
+                    crate::progress::UnitRatio::new(0.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1292,7 +1294,7 @@ mod tests {
                     1.0,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(0.5).unwrap(),
+                    crate::progress::UnitRatio::new(0.5).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1302,7 +1304,7 @@ mod tests {
                     0.0,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(0.0).unwrap(),
+                    crate::progress::UnitRatio::new(0.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1323,7 +1325,7 @@ mod tests {
                     0.0,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(0.0).unwrap(),
+                    crate::progress::UnitRatio::new(0.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1348,7 +1350,7 @@ mod tests {
                     0.25,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(1.0).unwrap(),
+                    crate::progress::UnitRatio::new(1.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1358,7 +1360,7 @@ mod tests {
                     0.75,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(1.0).unwrap(),
+                    crate::progress::UnitRatio::new(1.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1383,7 +1385,7 @@ mod tests {
                     f64::MAX,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(1.0).unwrap(),
+                    crate::progress::UnitRatio::new(1.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1393,7 +1395,7 @@ mod tests {
                     -f64::MAX,
                     0.0,
                     0.0,
-                    crate::UnitRatio::new(1.0).unwrap(),
+                    crate::progress::UnitRatio::new(1.0).unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1658,7 +1660,7 @@ mod tests {
             0.0,
             0.0,
             0.0,
-            crate::UnitRatio::new(1.0).unwrap(),
+            crate::progress::UnitRatio::new(1.0).unwrap(),
         )
         .unwrap()
     }

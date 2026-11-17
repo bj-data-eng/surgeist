@@ -2,13 +2,18 @@
 //! Caller keys, values, and tracks are created by these helpers at the measured
 //! boundary. Only elapsed sample times and persistent output capacity are prepared.
 
-use surgeist_animation::{
-    AnimationDelay, AnimationDirection, AnimationDuration, ColorInterpolationSpace, CompositeValue,
-    DiscreteValue, Easing, EasingKeyword, ElapsedTime, FillMode, InterpolableColor,
-    InterpolableNumber, InterpolablePercentage, InterpolableValue, IterationCount,
-    KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack, PropertyKey,
-    TransformValue, TransitionTrack, TransitionTrackId, UnitRatio,
+use surgeist_animation::easing::{Easing, EasingKeyword};
+use surgeist_animation::interpolation::{
+    ColorInterpolationSpace, CompositeValue, DiscreteValue, InterpolableColor, InterpolableNumber,
+    InterpolablePercentage, InterpolableValue, PropertyKey, TransformValue,
 };
+use surgeist_animation::keyframe::{
+    KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack,
+};
+use surgeist_animation::progress::UnitRatio;
+use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+use surgeist_animation::timing::{AnimationDirection, FillMode, IterationCount};
+use surgeist_animation::transition::{TransitionTrack, TransitionTrackId};
 
 use crate::fixtures::{Family, Layout};
 

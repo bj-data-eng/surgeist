@@ -4,7 +4,8 @@
 //! [`EasingInput`] is an unrestricted finite easing input for CSS easing
 //! functions that can extrapolate outside the normalized interval.
 
-use crate::{EasingError, NumericError, NumericInput};
+use crate::diagnostics::{NumericError, NumericInput};
+use crate::easing::EasingError;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NormalizedProgress {
@@ -90,7 +91,8 @@ fn validate_unit_interval(input: NumericInput, value: f64) -> Result<(), Numeric
 #[cfg(test)]
 mod tests {
     use super::{EasingInput, NormalizedProgress, UnitRatio};
-    use crate::{EasingError, NumericError, NumericInput};
+    use crate::diagnostics::{NumericError, NumericInput};
+    use crate::easing::EasingError;
 
     #[test]
     fn normalized_progress_accepts_bounds_and_midpoints() {

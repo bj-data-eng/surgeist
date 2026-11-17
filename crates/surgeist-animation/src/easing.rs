@@ -6,7 +6,8 @@
 
 use core::fmt;
 
-use crate::{EasingInput, NormalizedProgress, NumericError, UnitRatio};
+use crate::diagnostics::NumericError;
+use crate::progress::{EasingInput, NormalizedProgress, UnitRatio};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EasingKeyword {
@@ -833,7 +834,8 @@ mod tests {
         CubicBezier, EasedProgress, Easing, EasingError, EasingKeyword, LinearControlPoint,
         LinearControlPointComponent, LinearEasing, StepPosition, Steps,
     };
-    use crate::{EasingInput, NormalizedProgress, NumericError, NumericInput};
+    use crate::diagnostics::{NumericError, NumericInput};
+    use crate::progress::{EasingInput, NormalizedProgress};
 
     #[test]
     fn linear_easing_is_identity() {

@@ -6,21 +6,37 @@
 //! runtime clocks in `surgeist-runtime`, and cross-crate lowering in the root
 //! `surgeist` facade.
 //!
-//! Callers pass effective [`ElapsedTime`] values that already account for the
-//! runtime clock and track start time. Paused sampling is explicit through
-//! [`AnimationPlayState::Paused`]; advancing wall-clock time alone does not make a
+//! Callers pass effective [`time::ElapsedTime`] values that already account for
+//! the runtime clock and track start time. Paused sampling is explicit through
+//! [`timing::AnimationPlayState::Paused`]; advancing wall-clock time alone does not make a
 //! paused sample unstable. Root supplies normalized transition and keyframe
 //! tracks, including computed endpoints, rectangular color spaces, and property
 //! support policy.
 //!
-//! Transition sampling uses the public front door:
+//! Each public type has one path, through the module that owns it. The nine
+//! modules are:
+//!
+//! | Module | Owns |
+//! | --- | --- |
+//! | [`time`] | Typed elapsed time, delay and duration. |
+//! | [`progress`] | Normalized progress, unit ratios and easing input. |
+//! | [`easing`] | Cubic Bezier, step and linear easing functions. |
+//! | [`timing`] | Timing parameters, phases and the timing sample. |
+//! | [`interpolation`] | Interpolable values, property keys and pairs. |
+//! | [`sample`] | Sampled property results and next-frame hints. |
+//! | [`transition`] | Transition tracks, the entry point for transitions. |
+//! | [`keyframe`] | Keyframe tracks, the entry point for keyframe animations. |
+//! | [`diagnostics`] | Numeric diagnostics shared by the typed constructors. |
+//!
+//! Transition sampling starts from [`transition::TransitionTrack`]:
 //!
 //! ```
-//! use surgeist_animation::{
-//!     AnimationDelay, AnimationDuration, AnimationPlayState, Easing, ElapsedTime,
-//!     InterpolableNumber, InterpolableValue, PropertyKey, SampleClassification, SampleValue,
-//!     TransitionTrack, TransitionTrackId,
-//! };
+//! use surgeist_animation::easing::Easing;
+//! use surgeist_animation::interpolation::{InterpolableNumber, InterpolableValue, PropertyKey};
+//! use surgeist_animation::sample::{SampleClassification, SampleValue};
+//! use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+//! use surgeist_animation::timing::AnimationPlayState;
+//! use surgeist_animation::transition::{TransitionTrack, TransitionTrackId};
 //!
 //! let track = TransitionTrack::new(
 //!     TransitionTrackId::new(1),
@@ -47,15 +63,20 @@
 //! assert_eq!(opacity.value(), 0.5);
 //! ```
 //!
-//! Keyframe sampling also uses root-supplied normalized segments and public
-//! reexports only:
+//! Keyframe sampling starts from [`keyframe::KeyframeTrack`] and root-supplied
+//! normalized segments:
 //!
 //! ```
-//! use surgeist_animation::{
-//!     AnimationDelay, AnimationDirection, AnimationDuration, AnimationPlayState, Easing,
-//!     ElapsedTime, FillMode, InterpolableNumber, InterpolableValue, IterationCount,
-//!     KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack, PropertyKey,
-//!     SampleClassification, SampleValue, UnitRatio,
+//! use surgeist_animation::easing::Easing;
+//! use surgeist_animation::interpolation::{InterpolableNumber, InterpolableValue, PropertyKey};
+//! use surgeist_animation::keyframe::{
+//!     KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack,
+//! };
+//! use surgeist_animation::progress::UnitRatio;
+//! use surgeist_animation::sample::{SampleClassification, SampleValue};
+//! use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
+//! use surgeist_animation::timing::{
+//!     AnimationDirection, AnimationPlayState, FillMode, IterationCount,
 //! };
 //!
 //! let timing = KeyframeTiming::try_new(
@@ -107,32 +128,6 @@ pub mod sample;
 pub mod time;
 pub mod timing;
 pub mod transition;
-
-pub use diagnostics::{NumericError, NumericErrorKind, NumericInput};
-pub use easing::{
-    CubicBezier, EasedProgress, Easing, EasingError, EasingKeyword, LinearControlPoint,
-    LinearControlPointComponent, LinearEasing, StepPosition, Steps,
-};
-pub use interpolation::{
-    ColorInterpolationSpace, CompositeValue, DiscreteValue, InterpolableColor, InterpolableNumber,
-    InterpolablePercentage, InterpolableValue, InterpolationComponent, InterpolationError,
-    InterpolationOutcome, InterpolationPair, InterpolationProgress, NonFiniteInterpolationResult,
-    PropertyKey, TransformValue, ValueFamily,
-};
-pub use keyframe::{
-    KeyframeAnimationId, KeyframeError, KeyframeSegment, KeyframeTiming, KeyframeTrack,
-};
-pub use progress::{EasingInput, NormalizedProgress, UnitRatio};
-pub use sample::{
-    CompletionStatus, NextFrameHint, SampleClassification, SampleValue, SampledProperty,
-    SampledPropertyResult,
-};
-pub use time::{AnimationDelay, AnimationDuration, ElapsedTime};
-pub use timing::{
-    AnimationDirection, AnimationPlayState, CurrentIteration, FillMode, IterationCount,
-    PhaseProgress, TimingError, TimingParameters, TimingPhase, TimingSample,
-};
-pub use transition::{TransitionError, TransitionTrack, TransitionTrackId};
 
 /// Crate identity string used by smoke tests and API artifacts.
 pub const CRATE_NAME: &str = "surgeist-animation";
