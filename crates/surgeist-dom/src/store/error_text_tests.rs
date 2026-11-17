@@ -31,9 +31,8 @@ use surgeist_html::focus::{
 use surgeist_html::security::nonce::HtmlNonceMissing;
 use surgeist_html_semantics::{HtmlCaptureElementError, HtmlCaptureError, HtmlSemanticResource};
 
-/// Every `DomError` variant except the two whose payload no code outside the HTML crates can
-/// build (`ParsedReportUnresolved`, `SelectSemantic`).
-const ROWS: usize = 161;
+/// Variants whose payload no code outside the HTML crates can build, so they have no row.
+const UNBUILDABLE: [&str; 2] = ["ParsedReportUnresolved", "SelectSemantic"];
 
 fn owner() -> DomOwnerId {
     DomOwnerId::allocate().unwrap()
@@ -344,7 +343,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "SourceEventExecutorUnavailable",
             DomError::SourceEventExecutorUnavailable,
-            "no event executor is installed for this Source operation",
+            "no live event executor is available for this Source operation",
         ),
         (
             "SourceAttributeGlobalUnavailable",
@@ -616,7 +615,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "InputFilenameInvalidState",
             DomError::InputFilenameInvalidState,
-            "the Input cannot take this filename in its current state",
+            "a file Input accepts only an empty string as its value",
         ),
         (
             "InputProcessingProtocol",
@@ -691,12 +690,12 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "IncompleteSourceOperation",
             DomError::IncompleteSourceOperation,
-            "an incomplete Source operation must finish first",
+            "a Source operation or its recorded inputs are incomplete and must finish first",
         ),
         (
             "InvalidSourceOperation",
             DomError::InvalidSourceOperation,
-            "the request does not match the retained operation or task-source state",
+            "the request, the retained operation or other retained state is not in the condition this operation requires",
         ),
         (
             "SourcePublicationLimit",
@@ -852,7 +851,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "NotFound",
             DomError::NotFound,
-            "the requested node was not found",
+            "the requested node or relation was not found",
         ),
         (
             "InUseAttribute",
@@ -885,20 +884,20 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
                 resource: DomResource::Ranges,
                 limit: 4,
             },
-            "ranges would exceed its configured limit of 4",
+            "the configured limit of 4 for ranges would be exceeded",
         ),
         (
             "WorkLimit",
             DomError::WorkLimit {
-                resource: DomResource::StringCodeUnits,
+                resource: DomResource::NameWork,
                 limit: 5,
             },
-            "string code units work exhausted its allowance of 5",
+            "the allowance of 5 for name work was exhausted",
         ),
         (
             "InvalidLimit",
             DomError::InvalidLimit(DomResource::ManagedNodes),
-            "the configured limit for managed nodes is invalid",
+            "a configured limit is invalid",
         ),
         (
             "AllocationFailed",
@@ -908,7 +907,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "RepresentationExhausted",
             DomError::RepresentationExhausted,
-            "the canonical storage cannot represent this state",
+            "a length, count or internal state cannot be represented",
         ),
         (
             "HtmlChargeProtocol",
@@ -983,183 +982,203 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
     ]
 }
 
-/// A new `DomError` variant fails to compile here until it is given a row above.
-fn has_row(error: &DomError) {
-    match error {
-        DomError::ParsedReportUnresolved(..)
-        | DomError::ParsedAssociationPending { .. }
-        | DomError::ParsedAssociationSynchronousPending { .. }
-        | DomError::ParsedAssociationProcessingPoisoned { .. }
-        | DomError::InlineStyleProfileMissing { .. }
-        | DomError::InlineStyleProfileConflict { .. }
-        | DomError::InlineStyleContextRequired { .. }
-        | DomError::InlineStyleOperationPending { .. }
-        | DomError::StaleFullscreenExit
-        | DomError::FullscreenExitHandoffRequired
-        | DomError::FullscreenExitAssertionFailed { .. }
-        | DomError::FullscreenExitCompositionUnsupported { .. }
-        | DomError::FullscreenExitDocumentRetired { .. }
-        | DomError::FullscreenModelUnavailable { .. }
-        | DomError::TopLayerAdoptionUnavailable { .. }
-        | DomError::StaleRange
-        | DomError::StaleNodeIterator
-        | DomError::StaleChildListObserver
-        | DomError::ChildListPublicationUnavailable
-        | DomError::ChildListDeliveryActive
-        | DomError::ChildListWorkLimit { .. }
-        | DomError::NodeIteratorFilterActive
-        | DomError::NodeIteratorPublicationUnavailable
-        | DomError::NodeIteratorWorkLimit { .. }
-        | DomError::RangeAssociationIneligible
-        | DomError::RangePublicationUnavailable
-        | DomError::HostedSourceUnavailable
-        | DomError::DocumentConstructor(..)
-        | DomError::HostedCompositionRequired
-        | DomError::InvalidDispatchCustody
-        | DomError::EventRegistryAlreadyBound
-        | DomError::InvalidEventRegistry
-        | DomError::DispatchCustodyWorkLimit { .. }
-        | DomError::SourceLimitReduction
-        | DomError::ParsedAssociationOperationPending { .. }
-        | DomError::InvalidSourceEvent
-        | DomError::SourceInvariantFailed { .. }
-        | DomError::SourceReceiverRetired { .. }
-        | DomError::SourceCloseWatcherReceiverRetired { .. }
-        | DomError::CloseWatcherProtocol(..)
-        | DomError::SourceEventExecutorUnavailable
-        | DomError::SourceAttributeGlobalUnavailable
-        | DomError::SourceAttributeExecutorUnavailable
-        | DomError::SourceAttributeVerificationRejected
-        | DomError::SourceAttributeVerificationAbrupt
-        | DomError::DialogInvalidState
-        | DomError::NeedsEventfulOperation { .. }
-        | DomError::SourceNestedOperationLimit { .. }
-        | DomError::SourceUrlInputsMismatch
-        | DomError::SourceUrlUnavailable
-        | DomError::ForeignOwner
-        | DomError::StaleNode
-        | DomError::NodeRetirementAlreadyWatched
-        | DomError::NodeRetirementWorkLimit { .. }
-        | DomError::ForeignBatch
-        | DomError::UnavailableCreation
-        | DomError::WrongNodeKind
-        | DomError::WrongDocument
-        | DomError::HierarchyRequest
-        | DomError::InvalidAdjacentPosition
-        | DomError::InvalidCharacter
-        | DomError::Namespace
-        | DomError::ScriptPreparationRequired
-        | DomError::MetaCspProcessingRequired
-        | DomError::NotSupported
-        | DomError::NativeInitializationRequired(..)
-        | DomError::NonceInapplicable
-        | DomError::TemplateContentsUnavailable
-        | DomError::MarqueeInapplicable
-        | DomError::DialogInapplicable
-        | DomError::DialogDocumentStateUnavailable
-        | DomError::AutofocusDocumentStateUnavailable
-        | DomError::AutofocusInsertionUnavailable { .. }
-        | DomError::AutofocusInsertionProtocol(..)
-        | DomError::DesignModeProcessingUnavailable { .. }
-        | DomError::DesignModeProtocol(..)
-        | DomError::DialogFocusingUnavailable { .. }
-        | DomError::DialogFocusingProtocol(..)
-        | DomError::FocusDelegateProtocol(..)
-        | DomError::FocusedAreaDesignationUnavailable { .. }
-        | DomError::AutofocusDelegateProtocol(..)
-        | DomError::TopLayerAlreadyActive { .. }
-        | DomError::DialogProcessingUnavailable { .. }
-        | DomError::DialogProtocol(..)
-        | DomError::CustomValidityInapplicable
-        | DomError::ButtonInapplicable
-        | DomError::InputInapplicable
-        | DomError::TextareaInapplicable
-        | DomError::OutputInapplicable
-        | DomError::OutputProtocol(..)
-        | DomError::TextareaReadWorkLimit { .. }
-        | DomError::InputFilenameInvalidState
-        | DomError::InputProcessingProtocol
-        | DomError::InputProcessingWorkLimit { .. }
-        | DomError::InputNumeric(..)
-        | DomError::InputColorUnavailable(..)
-        | DomError::InputColorUnsupported(..)
-        | DomError::InputColorFacts(..)
-        | DomError::StyleCompositionRequired(..)
-        | DomError::StyleOwnerAttributesCompositionRequired
-        | DomError::StyleDisabledCompositionRequired
-        | DomError::StyleProcessingUnavailable
-        | DomError::Meta(..)
-        | DomError::StyleProtocol
-        | DomError::SvgScriptProcessingUnavailable
-        | DomError::SourceOperationPending
-        | DomError::IncompleteSourceOperation
-        | DomError::InvalidSourceOperation
-        | DomError::SourcePublicationLimit
-        | DomError::SourceOutputLimit
-        | DomError::SourceIdentityLimit
-        | DomError::StyleReceiptMismatch
-        | DomError::StyleFactsMismatch
-        | DomError::StyleCssomRootBusy
-        | DomError::StyleCssomRootPoisoned
-        | DomError::SourceWorkLimit { .. }
-        | DomError::SelectInapplicable
-        | DomError::OptionInapplicable
-        | DomError::SelectProtocol
-        | DomError::SelectValueQueriesUnconfigured
-        | DomError::SelectCapture(..)
-        | DomError::SelectElementValues(..)
-        | DomError::SelectSemantic(..)
-        | DomError::InvalidSelectSemanticLimit { .. }
-        | DomError::LinkProcessingUnavailable
-        | DomError::ImageProcessingUnavailable
-        | DomError::MediaResourceEffectUnavailable(..)
-        | DomError::MediaRemovalStableStateUnavailable
-        | DomError::ImageUpdateExhausted
-        | DomError::HyperlinkProcessingUnavailable
-        | DomError::EncodingUrlFacts(..)
-        | DomError::EncodingUrlWorkLimit { .. }
-        | DomError::BaseFacts(..)
-        | DomError::BaseWorkLimit { .. }
-        | DomError::SelectWorkLimit { .. }
-        | DomError::InvalidNativeTask
-        | DomError::SlotInapplicable
-        | DomError::NonceEnvironmentUnavailable(..)
-        | DomError::NotFound
-        | DomError::InUseAttribute
-        | DomError::InvalidDestruction
-        | DomError::CustomElementReactionPending(..)
-        | DomError::IndexSize
-        | DomError::Cancelled
-        | DomError::ResourceLimit { .. }
-        | DomError::WorkLimit { .. }
-        | DomError::InvalidLimit { .. }
-        | DomError::AllocationFailed
-        | DomError::RepresentationExhausted
-        | DomError::HtmlChargeProtocol
-        | DomError::PseudoAttributeCursor(..)
-        | DomError::OwnerIdentityExhausted
-        | DomError::RevisionExhausted
-        | DomError::ViewTransitionsUninitialized
-        | DomError::ViewTransitionRevisionMismatch
-        | DomError::StaleViewTransition
-        | DomError::StaleViewTransitionRecord
-        | DomError::StaleViewTransitionPseudo
-        | DomError::InvalidViewTransitionState
-        | DomError::DuplicateViewTransitionName
-        | DomError::ViewTransitionOriginUnavailable
-        | DomError::ViewTransitionCssom(..)
-        | DomError::ViewTransitionCaptureWorkLimit { .. } => {}
-    }
+/// One entry per `DomError` variant. The match inside `row_name` is exhaustive, so a new variant
+/// does not compile until it is listed here, and `NAMES` is generated from the same list.
+macro_rules! variant_pat {
+    ($n:ident unit) => {
+        DomError::$n
+    };
+    ($n:ident tuple) => {
+        DomError::$n(..)
+    };
+    ($n:ident named) => {
+        DomError::$n { .. }
+    };
+}
+macro_rules! variants {
+    ($($n:ident $k:ident),* $(,)?) => {
+        fn row_name(error: &DomError) -> &'static str {
+            match error {
+                $(variant_pat!($n $k) => stringify!($n),)*
+            }
+        }
+        const NAMES: &[&str] = &[$(stringify!($n)),*];
+    };
+}
+variants! {
+
+    ParsedReportUnresolved tuple,
+    ParsedAssociationPending named,
+    ParsedAssociationSynchronousPending named,
+    ParsedAssociationProcessingPoisoned named,
+    InlineStyleProfileMissing named,
+    InlineStyleProfileConflict named,
+    InlineStyleContextRequired named,
+    InlineStyleOperationPending named,
+    StaleFullscreenExit unit,
+    FullscreenExitHandoffRequired unit,
+    FullscreenExitAssertionFailed named,
+    FullscreenExitCompositionUnsupported named,
+    FullscreenExitDocumentRetired named,
+    FullscreenModelUnavailable named,
+    TopLayerAdoptionUnavailable named,
+    StaleRange unit,
+    StaleNodeIterator unit,
+    StaleChildListObserver unit,
+    ChildListPublicationUnavailable unit,
+    ChildListDeliveryActive unit,
+    ChildListWorkLimit named,
+    NodeIteratorFilterActive unit,
+    NodeIteratorPublicationUnavailable unit,
+    NodeIteratorWorkLimit named,
+    RangeAssociationIneligible unit,
+    RangePublicationUnavailable unit,
+    HostedSourceUnavailable unit,
+    DocumentConstructor tuple,
+    HostedCompositionRequired unit,
+    InvalidDispatchCustody unit,
+    EventRegistryAlreadyBound unit,
+    InvalidEventRegistry unit,
+    DispatchCustodyWorkLimit named,
+    SourceLimitReduction unit,
+    ParsedAssociationOperationPending named,
+    InvalidSourceEvent unit,
+    SourceInvariantFailed named,
+    SourceReceiverRetired named,
+    SourceCloseWatcherReceiverRetired named,
+    CloseWatcherProtocol tuple,
+    SourceEventExecutorUnavailable unit,
+    SourceAttributeGlobalUnavailable unit,
+    SourceAttributeExecutorUnavailable unit,
+    SourceAttributeVerificationRejected unit,
+    SourceAttributeVerificationAbrupt unit,
+    DialogInvalidState unit,
+    NeedsEventfulOperation named,
+    SourceNestedOperationLimit named,
+    SourceUrlInputsMismatch unit,
+    SourceUrlUnavailable unit,
+    ForeignOwner unit,
+    StaleNode unit,
+    NodeRetirementAlreadyWatched unit,
+    NodeRetirementWorkLimit named,
+    ForeignBatch unit,
+    UnavailableCreation unit,
+    WrongNodeKind unit,
+    WrongDocument unit,
+    HierarchyRequest unit,
+    InvalidAdjacentPosition unit,
+    InvalidCharacter unit,
+    Namespace unit,
+    ScriptPreparationRequired unit,
+    MetaCspProcessingRequired unit,
+    NotSupported unit,
+    NativeInitializationRequired tuple,
+    NonceInapplicable unit,
+    TemplateContentsUnavailable unit,
+    MarqueeInapplicable unit,
+    DialogInapplicable unit,
+    DialogDocumentStateUnavailable unit,
+    AutofocusDocumentStateUnavailable unit,
+    AutofocusInsertionUnavailable named,
+    AutofocusInsertionProtocol tuple,
+    DesignModeProcessingUnavailable named,
+    DesignModeProtocol tuple,
+    DialogFocusingUnavailable named,
+    DialogFocusingProtocol tuple,
+    FocusDelegateProtocol tuple,
+    FocusedAreaDesignationUnavailable named,
+    AutofocusDelegateProtocol tuple,
+    TopLayerAlreadyActive named,
+    DialogProcessingUnavailable named,
+    DialogProtocol tuple,
+    CustomValidityInapplicable unit,
+    ButtonInapplicable unit,
+    InputInapplicable unit,
+    TextareaInapplicable unit,
+    OutputInapplicable unit,
+    OutputProtocol tuple,
+    TextareaReadWorkLimit named,
+    InputFilenameInvalidState unit,
+    InputProcessingProtocol unit,
+    InputProcessingWorkLimit named,
+    InputNumeric tuple,
+    InputColorUnavailable tuple,
+    InputColorUnsupported tuple,
+    InputColorFacts tuple,
+    StyleCompositionRequired tuple,
+    StyleOwnerAttributesCompositionRequired unit,
+    StyleDisabledCompositionRequired unit,
+    StyleProcessingUnavailable unit,
+    Meta tuple,
+    StyleProtocol unit,
+    SvgScriptProcessingUnavailable unit,
+    SourceOperationPending unit,
+    IncompleteSourceOperation unit,
+    InvalidSourceOperation unit,
+    SourcePublicationLimit unit,
+    SourceOutputLimit unit,
+    SourceIdentityLimit unit,
+    StyleReceiptMismatch unit,
+    StyleFactsMismatch unit,
+    StyleCssomRootBusy unit,
+    StyleCssomRootPoisoned unit,
+    SourceWorkLimit named,
+    SelectInapplicable unit,
+    OptionInapplicable unit,
+    SelectProtocol unit,
+    SelectValueQueriesUnconfigured unit,
+    SelectCapture tuple,
+    SelectElementValues tuple,
+    SelectSemantic tuple,
+    InvalidSelectSemanticLimit named,
+    LinkProcessingUnavailable unit,
+    ImageProcessingUnavailable unit,
+    MediaResourceEffectUnavailable tuple,
+    MediaRemovalStableStateUnavailable unit,
+    ImageUpdateExhausted unit,
+    HyperlinkProcessingUnavailable unit,
+    EncodingUrlFacts tuple,
+    EncodingUrlWorkLimit named,
+    BaseFacts tuple,
+    BaseWorkLimit named,
+    SelectWorkLimit named,
+    InvalidNativeTask unit,
+    SlotInapplicable unit,
+    NonceEnvironmentUnavailable tuple,
+    NotFound unit,
+    InUseAttribute unit,
+    InvalidDestruction unit,
+    CustomElementReactionPending tuple,
+    IndexSize unit,
+    Cancelled unit,
+    ResourceLimit named,
+    WorkLimit named,
+    InvalidLimit tuple,
+    AllocationFailed unit,
+    RepresentationExhausted unit,
+    HtmlChargeProtocol unit,
+    PseudoAttributeCursor tuple,
+    OwnerIdentityExhausted unit,
+    RevisionExhausted unit,
+    ViewTransitionsUninitialized unit,
+    ViewTransitionRevisionMismatch unit,
+    StaleViewTransition unit,
+    StaleViewTransitionRecord unit,
+    StaleViewTransitionPseudo unit,
+    InvalidViewTransitionState unit,
+    DuplicateViewTransitionName unit,
+    ViewTransitionOriginUnavailable unit,
+    ViewTransitionCssom tuple,
+    ViewTransitionCaptureWorkLimit named,
 }
 
 #[test]
 fn every_variant_with_a_buildable_payload_has_one_row_and_its_exact_message() {
     let rows = rows();
-    assert_eq!(rows.len(), ROWS);
-    let mut seen = std::collections::BTreeSet::new();
+    let mut named = std::collections::BTreeSet::new();
     for (name, error, text) in &rows {
-        has_row(error);
-        assert!(seen.insert(*name), "duplicate row {name}");
+        assert_eq!(row_name(error), *name, "row {name} holds another variant");
+        assert!(named.insert(*name), "duplicate row {name}");
         assert_eq!(error.to_string(), *text, "{name}");
         assert_ne!(
             error.to_string(),
@@ -1167,6 +1186,13 @@ fn every_variant_with_a_buildable_payload_has_one_row_and_its_exact_message() {
             "{name} prints its Debug form"
         );
     }
+    named.extend(UNBUILDABLE);
+    let all: std::collections::BTreeSet<&str> = NAMES.iter().copied().collect();
+    assert_eq!(all.len(), NAMES.len(), "NAMES repeats a variant");
+    assert_eq!(
+        named, all,
+        "every variant has a row or is listed as unbuildable"
+    );
 }
 
 #[test]
@@ -1316,7 +1342,7 @@ fn every_resource_is_named_by_a_distinct_phrase() {
     assert_eq!(all.len(), 61);
     let mut phrases = std::collections::BTreeSet::new();
     for resource in all {
-        let text = DomError::InvalidLimit(resource).to_string();
+        let text = DomError::ResourceLimit { resource, limit: 1 }.to_string();
         assert!(phrases.insert(text.clone()), "{resource:?} repeats {text}");
     }
 }
