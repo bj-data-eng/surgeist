@@ -1,8 +1,9 @@
 //! Resolved native alpha-blur, displacement, flood and source-over shadow.
 //!
 //! [`prepare_drop_shadow`] admits a [`DropShadowInput`] as a [`PreparedDropShadow`]. [`DropShadowSource`]
-//! is the finite, constant or periodic source. A refusal is a [`DropShadowPreparationError`] that can
-//! carry a [`DropShadowNumericPhase`].
+//! is the finite, constant or periodic source. A refused preparation returns an
+//! [`Error`](crate::Error) that can carry a [`DropShadowPreparationError`], which can carry a
+//! [`DropShadowNumericPhase`].
 use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork};
 use crate::number_text::Number;
 use crate::offset::{OffsetDisplacement, prepare_offset_displacement_in};
