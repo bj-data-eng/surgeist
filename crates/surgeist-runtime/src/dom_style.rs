@@ -174,7 +174,56 @@ pub enum DomStyleRuntimeError {
 }
 impl std::fmt::Display for DomStyleRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Style runtime operation refused: {self:?}")
+        f.write_str(match self {
+            Self::PendingParsedAssociations(_) => {
+                "parsed HTML association inputs remain pending under canonical DOM custody"
+            }
+            Self::Dom(_) => "the canonical DOM refused the Style runtime operation",
+            Self::Cssom(_) => "the CSSOM owner refused the mutation",
+            Self::Css(_) => "the CSS input could not be prepared or parsed",
+            Self::Admission => "the Style runtime's own admission refused the operation",
+            Self::Binding => {
+                "the Style runtime owner is borrowed, replaced or conflicts with the supplied binding"
+            }
+            Self::Protocol => {
+                "a Source reply, retained operation or permit is inconsistent with the original request"
+            }
+            Self::Dispatch(_) => "shared DOM event dispatch refused the Style task",
+            Self::SessionUnavailable => "the session that owns the Style runtime has ended",
+            Self::WrongSession => {
+                "the execution permission and the DOM view belong to different sessions"
+            }
+            Self::PreboundSession => {
+                "the DOM already has Style CSSOM roots that a new session cannot reconstruct"
+            }
+            Self::SheetSetRootUnavailable { .. } => {
+                "the root has no bound stylesheet association owner"
+            }
+            Self::SheetSetDocumentRequired { .. } => {
+                "the root is not a Document, which preference history requires"
+            }
+            Self::RootReleasedForHostedDestruction { .. } => {
+                "the root's execution custody was withdrawn for its hosted cleanup"
+            }
+            Self::RootWorkPending { .. } => {
+                "retained processing, notification or cleanup work for the root still needs its execution custody"
+            }
+            Self::StaleSheetSetObservation => {
+                "the canonical, preference or producer state changed since the sheet-set observation"
+            }
+            Self::SheetSetPublicationPending => {
+                "a staged or committed Source publication holds exclusive custody"
+            }
+            Self::SheetSetOutputLimit => {
+                "the preference or producer output could not be admitted"
+            }
+            Self::SourcePending(_) => "a canonical Source operation is already pending",
+            Self::Resource(_) => {
+                "the retained CSSOM root resource is unavailable or refused the work"
+            }
+            Self::EventExecutor(_) => "the Source event executor refused Style event attestation",
+            Self::EventClock(_) => "the hosted runtime refused the Style operation",
+        })
     }
 }
 impl std::error::Error for DomStyleRuntimeError {
@@ -187,7 +236,21 @@ impl std::error::Error for DomStyleRuntimeError {
             Self::Resource(error) => Some(error),
             Self::EventExecutor(error) => Some(error),
             Self::EventClock(error) => Some(error),
-            _ => None,
+            Self::PendingParsedAssociations(_)
+            | Self::Admission
+            | Self::Binding
+            | Self::Protocol
+            | Self::SessionUnavailable
+            | Self::WrongSession
+            | Self::PreboundSession
+            | Self::SheetSetRootUnavailable { .. }
+            | Self::SheetSetDocumentRequired { .. }
+            | Self::RootReleasedForHostedDestruction { .. }
+            | Self::RootWorkPending { .. }
+            | Self::StaleSheetSetObservation
+            | Self::SheetSetPublicationPending
+            | Self::SheetSetOutputLimit
+            | Self::SourcePending(_) => None,
         }
     }
 }

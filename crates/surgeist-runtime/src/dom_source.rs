@@ -214,7 +214,20 @@ pub enum DomSourceRuntimeError {
 }
 impl std::fmt::Display for DomSourceRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Source operation refused: {self:?}")
+        f.write_str(match self {
+            Self::SourceEvent(_) => "the Source event adapter refused the Source operation",
+            Self::Inline(_) => "the inline style producer refused the Source operation",
+            Self::Dom(_) => "the canonical DOM refused the Source operation",
+            Self::Style(_) => "the Style runtime refused the Source operation",
+            Self::ElementTasks(_) => "the element-task owner refused the Source operation",
+            Self::Hosted(_) => "the hosted lifecycle owner refused the Source operation",
+            Self::NativeInstallation(_) => {
+                "the native HTML installation refused the Source operation"
+            }
+            Self::MetaCsp(_) => {
+                "the CSP processor or the Source controller refused the meta CSP pragma"
+            }
+        })
     }
 }
 impl std::error::Error for DomSourceRuntimeError {

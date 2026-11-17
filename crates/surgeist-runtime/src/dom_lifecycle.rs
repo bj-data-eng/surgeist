@@ -96,14 +96,63 @@ pub enum DomHostedRuntimeError {
 }
 impl fmt::Display for DomHostedRuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "native hosted lifecycle refused: {self:?}")
+        f.write_str(match self {
+            Self::Dom(_) => "the canonical DOM refused the hosted lifecycle operation",
+            Self::OwnerDisposed => "the session that issued this hosted permission was disposed",
+            Self::Busy => {
+                "the hosted lifecycle owner or its event loop is already in use by another operation"
+            }
+            Self::Binding => {
+                "the hosted lifecycle permission, DOM view or target does not match the original binding"
+            }
+            Self::Admission => "hosted lifecycle admission refused the operation",
+            Self::ClockUnavailable => "this target has no native monotonic clock provider",
+            Self::ClockRegressed => "the native monotonic clock regressed",
+            Self::ClockOverflow => "the coarsened native time cannot be represented",
+            Self::EntropyUnavailable => "native entropy is unavailable on this target",
+            Self::EntropyFailed => "the native entropy operation failed",
+            Self::Cancelled => "the hosted lifecycle operation was cancelled",
+            Self::OperationPending => {
+                "another retained hosted operation or live hosted record must be settled before this operation"
+            }
+            Self::TargetNotFound => {
+                "the live native host, Global, navigable or retained record this operation names was not found"
+            }
+            Self::Protocol => {
+                "retained hosted lifecycle state disagrees with the canonical request"
+            }
+            Self::Inactive => {
+                "the Document or Global this operation names is not currently active or ready"
+            }
+            Self::CheckpointUnavailable => {
+                "native checkpoint work is unavailable while a Source or hosted operation or a slot signal is pending"
+            }
+            Self::UrlUnavailable => {
+                "no qualified URL observation is available for the reached stage"
+            }
+        })
     }
 }
 impl std::error::Error for DomHostedRuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Dom(error) => Some(error),
-            _ => None,
+            Self::OwnerDisposed
+            | Self::Busy
+            | Self::Binding
+            | Self::Admission
+            | Self::ClockUnavailable
+            | Self::ClockRegressed
+            | Self::ClockOverflow
+            | Self::EntropyUnavailable
+            | Self::EntropyFailed
+            | Self::Cancelled
+            | Self::OperationPending
+            | Self::TargetNotFound
+            | Self::Protocol
+            | Self::Inactive
+            | Self::CheckpointUnavailable
+            | Self::UrlUnavailable => None,
         }
     }
 }
