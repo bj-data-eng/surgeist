@@ -267,13 +267,25 @@ pub const fn surgeist_runtime::document_scripting::DocumentScriptPermit::documen
 pub struct surgeist_runtime::document_scripting::EnableDocumentGuestEventsFailure
 pub surgeist_runtime::document_scripting::EnableDocumentGuestEventsFailure::error: surgeist_runtime::document_scripting::DocumentGuestEventError
 pub surgeist_runtime::document_scripting::EnableDocumentGuestEventsFailure::owner: surgeist_runtime::document_scripting::PreparedDocumentScriptHost
+impl core::error::Error for surgeist_runtime::document_scripting::EnableDocumentGuestEventsFailure
+pub fn surgeist_runtime::document_scripting::EnableDocumentGuestEventsFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_runtime::document_scripting::EnableDocumentGuestEventsFailure
+pub fn surgeist_runtime::document_scripting::EnableDocumentGuestEventsFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::document_scripting::EnableDocumentScriptFailure
 pub surgeist_runtime::document_scripting::EnableDocumentScriptFailure::error: surgeist_runtime::document_scripting::DocumentScriptError
 pub surgeist_runtime::document_scripting::EnableDocumentScriptFailure::owner: surgeist_runtime::document_scripting::PreparedDocumentScriptHost
+impl core::error::Error for surgeist_runtime::document_scripting::EnableDocumentScriptFailure
+pub fn surgeist_runtime::document_scripting::EnableDocumentScriptFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_runtime::document_scripting::EnableDocumentScriptFailure
+pub fn surgeist_runtime::document_scripting::EnableDocumentScriptFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::document_scripting::PrepareDocumentScriptFailure
 pub surgeist_runtime::document_scripting::PrepareDocumentScriptFailure::error: surgeist_runtime::document_scripting::DocumentScriptNativeError
 pub surgeist_runtime::document_scripting::PrepareDocumentScriptFailure::session: surgeist_runtime::DomSession
+impl core::error::Error for surgeist_runtime::document_scripting::PrepareDocumentScriptFailure
+pub fn surgeist_runtime::document_scripting::PrepareDocumentScriptFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for surgeist_runtime::document_scripting::PrepareDocumentScriptFailure
+pub fn surgeist_runtime::document_scripting::PrepareDocumentScriptFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for surgeist_runtime::document_scripting::PrepareDocumentScriptFailure
 pub fn surgeist_runtime::document_scripting::PrepareDocumentScriptFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::document_scripting::PreparedDocumentScriptHost
 impl surgeist_runtime::document_scripting::PreparedDocumentScriptHost
@@ -609,6 +621,7 @@ pub enum surgeist_runtime::DomEventTimestampUnavailable
 pub surgeist_runtime::DomEventTimestampUnavailable::NoAuthenticatedClock
 pub surgeist_runtime::DomEventTimestampUnavailable::Provider(surgeist_dom::internal::source::event::DomSourceEventClockFailure)
 impl core::error::Error for surgeist_runtime::DomEventTimestampUnavailable
+pub fn surgeist_runtime::DomEventTimestampUnavailable::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_runtime::DomEventTimestampUnavailable
 pub fn surgeist_runtime::DomEventTimestampUnavailable::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_runtime::DomHostedRuntimeError
@@ -1549,6 +1562,9 @@ impl<C> core::clone::Clone for surgeist_runtime::DomEventCallback<C>
 pub fn surgeist_runtime::DomEventCallback<C>::clone(&self) -> Self
 pub struct surgeist_runtime::DomEventCallbackError
 pub surgeist_runtime::DomEventCallbackError::code: u64
+impl core::error::Error for surgeist_runtime::DomEventCallbackError
+impl core::fmt::Display for surgeist_runtime::DomEventCallbackError
+pub fn surgeist_runtime::DomEventCallbackError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::DomEventComposedPath
 impl core::iter::traits::iterator::Iterator for surgeist_runtime::DomEventComposedPath
 pub type surgeist_runtime::DomEventComposedPath::Item = surgeist_runtime::DomEventTarget
@@ -1605,6 +1621,9 @@ pub fn surgeist_runtime::DomEventDom<'a>::take_fullscreen_events(&mut self, docu
 pub fn surgeist_runtime::DomEventDom<'a>::usage(&self) -> surgeist_dom::internal::store::DomUsage
 pub struct surgeist_runtime::DomEventHostError
 pub surgeist_runtime::DomEventHostError::code: u64
+impl core::error::Error for surgeist_runtime::DomEventHostError
+impl core::fmt::Display for surgeist_runtime::DomEventHostError
+pub fn surgeist_runtime::DomEventHostError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::DomEventHostInvocation
 impl surgeist_runtime::DomEventHostInvocation
 pub fn surgeist_runtime::DomEventHostInvocation::complete<C>(&mut self, dispatcher: &surgeist_runtime::DomEventDispatcher<C>, result: core::result::Result<(), surgeist_runtime::DomEventCallbackError>) -> core::result::Result<(), surgeist_runtime::DomEventDispatchError>
