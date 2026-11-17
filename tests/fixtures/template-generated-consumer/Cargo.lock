@@ -2061,6 +2061,7 @@ dependencies = [
  "surgeist-html-parser",
  "surgeist-html-semantics",
  "surgeist-layout",
+ "surgeist-ledger",
  "surgeist-paint",
  "surgeist-render",
  "surgeist-runtime",

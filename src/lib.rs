@@ -39,6 +39,7 @@ pub mod html_semantics {
     pub use surgeist_html_semantics::*;
 }
 pub mod layout;
+pub use surgeist_ledger as ledger;
 pub mod paint {
     pub use surgeist_paint::*;
 }
@@ -74,6 +75,44 @@ mod tests {
     #[test]
     fn exposes_crate_identity() {
         assert_eq!(super::crate_name(), "surgeist");
+    }
+
+    #[test]
+    fn ledger_profile_mode_selects_whether_paint_reports() {
+        use super::ledger::ProfileMode;
+        use super::paint::accounting::{PaintLimits, PaintOptions};
+        use super::paint::gradient_stops::{
+            GradientStopItem, GradientStopPositions, resolve_gradient_stops,
+        };
+
+        let stops = [
+            GradientStopItem::Stop {
+                payload: (),
+                positions: GradientStopPositions::Omitted,
+            },
+            GradientStopItem::Stop {
+                payload: (),
+                positions: GradientStopPositions::Omitted,
+            },
+        ];
+        let unobserved = resolve_gradient_stops(
+            100.0,
+            &stops,
+            PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off),
+        );
+        assert!(unobserved.result.is_ok());
+        assert!(unobserved.report.is_none());
+
+        let summarized = resolve_gradient_stops(
+            100.0,
+            &stops,
+            PaintOptions::new(
+                PaintLimits::unlimited(),
+                ProfileMode::Summary { timing: false },
+            ),
+        );
+        assert!(summarized.result.is_ok());
+        assert!(summarized.report.is_some());
     }
 
     #[test]
