@@ -55,9 +55,10 @@ on its owner preserves lazy reads and typed missing-fact errors.
 
 Each package has one root `src/lib.rs` front door. Existing public symbol names
 remain with their semantic owner; old-package reexports are removed. A package
-exposes only the types it owns: parser and semantics never reexport or alias an
-HTML-owned type, even when it appears in their signatures, and consumers import
-it from `surgeist_html` alongside the sibling operation owner. The
+exposes only the types it owns: parser, semantics and DOM never reexport or
+alias an HTML-owned type, even when it appears in their signatures, and
+consumers, including DOM's own tests, Runtime and Template, import it from
+`surgeist_html` alongside the sibling operation owner. The
 controlled primitive surface below is an intentional additional `bounded`
 module in HTML, not publication of every private source module.
 
