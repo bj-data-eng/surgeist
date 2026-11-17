@@ -468,12 +468,12 @@ impl std::fmt::Display for GraphValidationError {
                 actual.0, expected.0
             ),
             Self::UnknownResource(id) => {
-                write!(f, "{} is not recorded in the graph", ResourceText(*id))
+                write!(f, "{} does not identify a recorded resource", ResourceText(*id))
             }
-            Self::UnknownPass(id) => write!(f, "{} is not recorded in the graph", PassText(*id)),
+            Self::UnknownPass(id) => write!(f, "{} does not identify a recorded pass", PassText(*id)),
             Self::ReleasedResource(id) => write!(
                 f,
-                "{} is read after its declared reads are used up",
+                "{} has no declared read left for this pass",
                 ResourceText(*id)
             ),
             Self::ForwardDependency(id) => write!(
@@ -492,7 +492,7 @@ impl std::fmt::Display for GraphValidationError {
                 ResourceText(*id)
             ),
             Self::DuplicateProducer(id) => {
-                write!(f, "{} has more than one producer", ResourceText(*id))
+                write!(f, "{} does not have exactly one producer that records it as a result", ResourceText(*id))
             }
             Self::DuplicateDependency(id) => write!(
                 f,
@@ -555,16 +555,16 @@ impl std::fmt::Display for GraphValidationError {
                 "a clear-root pass must have no dependencies or reads and one working-image result",
             ),
             Self::InvalidCaptureResult => f.write_str(
-                "a capture pass must have no reads and a capture, clip coverage or isolation image result",
+                "a capture does not match the span or coverage that records it: its reads, result role, scale or consumer count",
             ),
             Self::InvalidImportedResourceRole => {
-                f.write_str("an imported resource must have the imported image role")
+                f.write_str("an imported resource must have the imported image role, an imported producer and exactly one import record")
             }
             Self::InvalidPassArity => {
-                f.write_str("a pass reads a number of resources that its intent does not allow")
+                f.write_str("a pass does not have the reads, result, order or count that its recorded operation requires")
             }
             Self::InvalidPassResultRole => f.write_str(
-                "a pass produces a resource whose role its intent does not allow",
+                "a pass result does not have the role, spatial mapping or bounds that its operation requires",
             ),
             Self::InvalidPresentIntent => {
                 f.write_str("the present pass must read exactly one resource and produce none")
@@ -607,7 +607,7 @@ impl std::fmt::Display for GraphValidationError {
                 remaining,
             } => write!(
                 f,
-                "{} has {remaining} reads still to be scheduled",
+                "the schedule does not consume {} as declared (remaining reads {remaining})",
                 ResourceText(*resource)
             ),
         }
@@ -4054,7 +4054,10 @@ mod diagnostic_tests {
                 E::UnknownResource(resource),
                 "resource 3 does not identify a recorded resource",
             ),
-            (E::UnknownPass(pass), "pass 4 does not identify a recorded pass"),
+            (
+                E::UnknownPass(pass),
+                "pass 4 does not identify a recorded pass",
+            ),
             (
                 E::ReleasedResource(resource),
                 "resource 3 has no declared read left for this pass",

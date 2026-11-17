@@ -80,7 +80,10 @@ impl std::fmt::Display for StorageContractError {
                 "cannot insert at index {index} in an owned vector of length {len}"
             ),
             Self::InvalidPosition { index, len } => {
-                write!(f, "position {index} is outside a sequence of length {len}")
+                write!(
+                    f,
+                    "index or count {index} is beyond a sequence of length {len}"
+                )
             }
             Self::BackingCapacityMismatch {
                 admitted_bytes,
@@ -107,7 +110,7 @@ impl std::fmt::Display for StorageContractError {
             ),
             Self::ProducerLengthChanged { expected, actual } => write!(
                 f,
-                "the producer wrote {actual} values where {expected} were qualified"
+                "the producer left {actual} values in the vector where {expected} were qualified"
             ),
         }
     }
