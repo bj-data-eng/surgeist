@@ -6,7 +6,7 @@ reversible mutations. Publication prepares the candidate, admission, identity
 mapping and change records before replacing the canonical root. Source uses
 the same transaction machinery across its admitted phases.
 
-The private [bank implementation](../src/store/bank.rs) stores indexed records
+The private [bank implementation](../src/internal/store/bank.rs) stores indexed records
 and vacant-slot summaries in persistent pages. Copying a root handle does not
 copy its records. A local replacement allocates the affected index paths and
 the replacement record. Selected child sequences still require work for the
@@ -40,7 +40,7 @@ charge. A reserved empty sequence retains its actual buffer and Vec header;
 clones keep that backing. Sequence contents are borrowed as slices, and the
 first write prepares its admitted replacement before changing the selected field.
 
-The [custody primitives](../src/store/custody.rs) attach an admitted debit to
+The [custody primitives](../src/internal/store/custody.rs) attach an admitted debit to
 controlled ownership. Shared receipts represent aliases of the same materialized
 record or page. Their last controlled owner releases that debit. Immutable
 semantic values carry private materialization identities and cached descriptors;
@@ -87,7 +87,7 @@ It does not bound the whole DOM, caller-owned cloned handles or values surviving
 owner destruction, when the registry policy ends. Physical memory qualification
 includes these separately accounted resources.
 
-The [typed payload owner](../src/store/payload.rs) reserves a fresh identity
+The [typed payload owner](../src/internal/store/payload.rs) reserves a fresh identity
 before retaining or allocating a new body. Its pending holder keeps incoming
 Formation credits beside the data through refusal. Language and feature groups
 transfer into the registry independently. A fresh node root instead transfers
@@ -100,7 +100,7 @@ creates a new payload while the staged and previous versions remain controlled.
 Historical adoption borrows that same immutable payload and its cached receipt;
 the external semantic handle itself carries no custody.
 
-An Element's [attribute map](../src/attr.rs) reads its ordered identities from
+An Element's [attribute map](../src/internal/attr.rs) reads its ordered identities from
 the captured snapshot. Each Attr counts as a managed node. Updating its value
 preserves its identity and order. Removing it from the Element preserves the
 Attr and its retained value until explicit destruction. Destroying an Element

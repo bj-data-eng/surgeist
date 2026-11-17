@@ -290,7 +290,7 @@ through a nonblocking canonical read guard, after temporary command holds have
 ended. It supplies no policy reply or publication authority. Repeated queries
 observe the same request. Drop releases the read loan; forgetting it leaves
 Busy rather than discarding or recreating the phase. The
-[borrow examples](../src/store/pending_associations/style_prefix.rs) show how to
+[borrow examples](../src/internal/store/pending_associations/style_prefix.rs) show how to
 release the query before issuing a binding command. Runtime's Session forwards
 this canonical query and orchestrates short commands without retaining another
 policy owner or cloning a report graph.

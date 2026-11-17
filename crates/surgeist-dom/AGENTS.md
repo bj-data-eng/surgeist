@@ -19,14 +19,14 @@ scheduling, delivery and host/resource orchestration.
 | --- | --- |
 | Package identity, dependencies and features | [Cargo.toml](Cargo.toml) |
 | Public front door and bounded capabilities | [src/lib.rs](src/lib.rs), [README.md](README.md) |
-| Canonical storage, publication and admission | [src/store.rs](src/store.rs), [src/store/](src/store/) |
-| Batch and Source fronts | [src/batch.rs](src/batch.rs), [src/source.rs](src/source.rs), [src/source/](src/source/), [src/store/source/](src/store/source/) |
-| Identity, snapshots and change history | [src/identity.rs](src/identity.rs), [src/snapshot.rs](src/snapshot.rs), `DomChanges` in `src/store.rs` |
-| Native family state, hooks and integration | Corresponding modules in `src/` and `src/store/`; [topic contracts](README.md#read-the-contract-for-the-affected-domain) |
-| HTML construction/report installation | [src/installation.rs](src/installation.rs), [src/parsed_installation.rs](src/parsed_installation.rs), their store adapters |
-| Captures, external facts and identity maps | [src/semantic.rs](src/semantic.rs), [src/host.rs](src/host.rs), owning tests |
-| Hosted lifecycle, dispatch and fullscreen | [src/hosted.rs](src/hosted.rs), [src/dispatch.rs](src/dispatch.rs), [src/fullscreen.rs](src/fullscreen.rs), corresponding store modules |
-| Focused behavior and source witnesses | [tests/](tests/), private owning tests under `src/store/`, [../../references/SOURCE-EDITIONS.md](../../references/SOURCE-EDITIONS.md) |
+| Canonical storage, publication and admission | [src/internal/store.rs](src/internal/store.rs), [src/internal/store/](src/internal/store/) |
+| Batch and Source fronts | [src/internal/batch.rs](src/internal/batch.rs), [src/internal/source.rs](src/internal/source.rs), [src/internal/source/](src/internal/source/), [src/internal/store/source/](src/internal/store/source/) |
+| Identity, snapshots and change history | [src/internal/identity.rs](src/internal/identity.rs), [src/internal/snapshot.rs](src/internal/snapshot.rs), `DomChanges` in `src/internal/store.rs` |
+| Native family state, hooks and integration | Corresponding modules in `src/internal/` and `src/internal/store/`; [topic contracts](README.md#read-the-contract-for-the-affected-domain) |
+| HTML construction/report installation | [src/internal/installation.rs](src/internal/installation.rs), [src/internal/parsed_installation.rs](src/internal/parsed_installation.rs), their store adapters |
+| Captures, external facts and identity maps | [src/internal/semantic.rs](src/internal/semantic.rs), [src/internal/host.rs](src/internal/host.rs), owning tests |
+| Hosted lifecycle, dispatch and fullscreen | [src/internal/hosted.rs](src/internal/hosted.rs), [src/internal/dispatch.rs](src/internal/dispatch.rs), [src/internal/fullscreen.rs](src/internal/fullscreen.rs), corresponding store modules |
+| Focused behavior and source witnesses | [tests/](tests/), private owning tests under `src/internal/store/`, [../../references/SOURCE-EDITIONS.md](../../references/SOURCE-EDITIONS.md) |
 
 Read the affected contract, implementation and owning tests rather than treating
 this guide as a capability inventory. Current contribution requirements belong
