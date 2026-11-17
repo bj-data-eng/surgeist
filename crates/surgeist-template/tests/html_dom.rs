@@ -3,10 +3,11 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
-    DocumentId, DocumentString, Dom, DomBatch, DomDocumentClass, DomError, DomLimits, DomResource,
-    DomSnapshot, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomDocumentClass, DomError, DomLimits, DomResource, DomSnapshot,
+    NodeId,
 };
 use surgeist_html::elements::{form::HtmlNativeFormAssociationKind, native::HtmlElementClass};
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_template::dom::{
     TemplateDomError, TemplateDomUnresolvedKind as Unresolved, append_static_html,
 };
