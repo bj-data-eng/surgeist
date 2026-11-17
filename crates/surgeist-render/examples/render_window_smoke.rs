@@ -5,7 +5,10 @@ use surgeist_render::{
     RenderSurfaceAvailability, Renderer, ResolvedLayerAlphaMask,
     RuntimeCapabilityUnavailableReason, Scene, Size, Surface, SurfaceOptions,
 };
-use surgeist_window::{Frame, Handler, Ready, Resize, Result, Scope};
+use surgeist_window::{
+    Handler, Result,
+    callback::{Frame, Ready, Resize, Scope},
+};
 
 #[derive(Default)]
 struct PresentedRouteSmoke {
@@ -158,7 +161,7 @@ fn required_surface(smoke: &PresentedRouteSmoke) -> Result<&Surface> {
     })
 }
 
-fn render_size(size: surgeist_window::Size) -> Result<Size> {
+fn render_size(size: surgeist_window::geometry::Size) -> Result<Size> {
     Size::try_new(size.width, size.height)
         .map_err(|source| render_error("the native window reported an invalid size", source))
 }
@@ -173,7 +176,7 @@ fn main() -> Result<()> {
         .open(
             surgeist_window::open("render-window-smoke")
                 .title("Surgeist presented route smoke")
-                .size(surgeist_window::size(640, 360)),
+                .size(surgeist_window::geometry::size(640, 360)),
         )
         .run()
 }
