@@ -199,7 +199,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             DomError::FullscreenModelUnavailable {
                 step: DomFullscreenModelStep::ReadTopLayer,
             },
-            "the fullscreen model needs a fact that is unavailable at this step",
+            "the fullscreen model cannot proceed at this step",
         ),
         (
             "TopLayerAdoptionUnavailable",
@@ -258,12 +258,12 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "RangePublicationUnavailable",
             DomError::RangePublicationUnavailable,
-            "the Range publication is unavailable",
+            "a Range has boundaries that are invalid at publication",
         ),
         (
             "HostedSourceUnavailable",
             DomError::HostedSourceUnavailable,
-            "the operation needs a current live hosted owner association",
+            "the hosted source, association or registry the operation needs is unavailable or no longer current",
         ),
         (
             "DocumentConstructor",
@@ -278,7 +278,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "InvalidDispatchCustody",
             DomError::InvalidDispatchCustody,
-            "the dispatch custody, target or occurrence does not belong to this owner",
+            "the dispatch custody, target or occurrence is not valid here",
         ),
         (
             "EventRegistryAlreadyBound",
@@ -303,12 +303,12 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "ParsedAssociationOperationPending",
             DomError::ParsedAssociationOperationPending { pending: pending() },
-            "an earlier consuming operation has sealed the prefix of this parsed contribution",
+            "this parsed contribution's consuming operation is outstanding or has sealed its prefix",
         ),
         (
             "InvalidSourceEvent",
             DomError::InvalidSourceEvent,
-            "the Source event does not match the retained operation or its executor",
+            "the Source event, its executor or its custody is not valid for the retained operation at this stage",
         ),
         (
             "SourceInvariantFailed",
@@ -387,22 +387,22 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "SourceUrlInputsMismatch",
             DomError::SourceUrlInputsMismatch,
-            "the URL observation does not match the inputs of the Source stage",
+            "the Source URL request or observation does not match the pending stage's inputs",
         ),
         (
             "SourceUrlUnavailable",
             DomError::SourceUrlUnavailable,
-            "the URL needed by the Source stage is unavailable",
+            "the facts or observation the Source URL stage needs are unavailable",
         ),
         (
             "ForeignOwner",
             DomError::ForeignOwner,
-            "the identity belongs to a different DOM owner",
+            "the identity, basis or capability belongs to a different DOM owner",
         ),
         (
             "StaleNode",
             DomError::StaleNode,
-            "the node identity is stale",
+            "the referenced node, registry or retained fact is stale or unavailable",
         ),
         (
             "NodeRetirementAlreadyWatched",
@@ -417,12 +417,12 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "ForeignBatch",
             DomError::ForeignBatch,
-            "the creation ticket belongs to a different batch",
+            "the ticket, operand or context belongs to a different batch",
         ),
         (
             "UnavailableCreation",
             DomError::UnavailableCreation,
-            "a node created by this batch has no published identity",
+            "a creation requested by this edit has no published result",
         ),
         (
             "WrongNodeKind",
@@ -432,12 +432,12 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "WrongDocument",
             DomError::WrongDocument,
-            "the node belongs to a different Document",
+            "the node is not the expected Document or belongs to a different Document",
         ),
         (
             "HierarchyRequest",
             DomError::HierarchyRequest,
-            "the edit would produce an invalid node hierarchy",
+            "the node hierarchy does not allow this edit or position",
         ),
         (
             "InvalidAdjacentPosition",
@@ -447,7 +447,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "InvalidCharacter",
             DomError::InvalidCharacter,
-            "the name contains a character that is not allowed",
+            "the name or value contains a character or sequence that is not allowed",
         ),
         (
             "Namespace",
@@ -492,12 +492,12 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "DialogInapplicable",
             DomError::DialogInapplicable,
-            "the Element is not a Dialog",
+            "the Element is not a Dialog or has no Dialog state",
         ),
         (
             "DialogDocumentStateUnavailable",
             DomError::DialogDocumentStateUnavailable,
-            "the Document has no Dialog state",
+            "the Document's dialog and top-layer state is unavailable",
         ),
         (
             "AutofocusDocumentStateUnavailable",
@@ -521,7 +521,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             DomError::DesignModeProcessingUnavailable {
                 step: DomSourceDesignModeStep::ReadActiveRange,
             },
-            "designMode processing needs a fact that is unavailable at this step",
+            "designMode processing cannot proceed at this step",
         ),
         (
             "DesignModeProtocol",
@@ -571,7 +571,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             DomError::DialogProcessingUnavailable {
                 action: HtmlDialogAction::ReadOpen,
             },
-            "the Dialog action needs a service that is unavailable",
+            "the Dialog action cannot be processed at this point",
         ),
         (
             "DialogProtocol",
@@ -586,7 +586,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "ButtonInapplicable",
             DomError::ButtonInapplicable,
-            "the Element is not a Button",
+            "the Element is not a Button with this reflected target",
         ),
         (
             "InputInapplicable",
@@ -686,7 +686,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "SourceOperationPending",
             DomError::SourceOperationPending,
-            "a Source operation is already pending",
+            "a Source operation, callback or hold is still pending",
         ),
         (
             "IncompleteSourceOperation",
@@ -696,7 +696,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "InvalidSourceOperation",
             DomError::InvalidSourceOperation,
-            "the Source operation does not match this request or is not in the phase it needs",
+            "the request does not match the retained operation or task-source state",
         ),
         (
             "SourcePublicationLimit",
@@ -751,7 +751,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "SelectProtocol",
             DomError::SelectProtocol,
-            "the Select protocol was violated",
+            "the Select processing or family discovery protocol was violated",
         ),
         (
             "SelectValueQueriesUnconfigured",
@@ -837,7 +837,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "InvalidNativeTask",
             DomError::InvalidNativeTask,
-            "the native task is not the active task or its targets changed",
+            "the native task is not valid for this operation in its current state",
         ),
         (
             "SlotInapplicable",
@@ -862,7 +862,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "InvalidDestruction",
             DomError::InvalidDestruction,
-            "the node cannot be destroyed directly",
+            "the node is attached or is a Document or ShadowRoot, so it cannot be destroyed directly",
         ),
         (
             "CustomElementReactionPending",
@@ -898,7 +898,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "InvalidLimit",
             DomError::InvalidLimit(DomResource::ManagedNodes),
-            "the configured limit for managed nodes exceeds the largest representable allocation",
+            "the configured limit for managed nodes is invalid",
         ),
         (
             "AllocationFailed",
@@ -908,7 +908,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "RepresentationExhausted",
             DomError::RepresentationExhausted,
-            "a count, index or size exceeds its representable range",
+            "the canonical storage cannot represent this state",
         ),
         (
             "HtmlChargeProtocol",
@@ -928,7 +928,7 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
         (
             "RevisionExhausted",
             DomError::RevisionExhausted,
-            "no store revisions remain",
+            "the revision counter cannot advance far enough for this operation",
         ),
         (
             "ViewTransitionsUninitialized",

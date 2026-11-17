@@ -36,14 +36,17 @@ fn variants_without_payload_state_their_condition() {
             DomError::StaleChildListObserver,
             "the child-list observer is stale",
         ),
-        (DomError::StaleNode, "the node identity is stale"),
+        (
+            DomError::StaleNode,
+            "the referenced node, registry or retained fact is stale or unavailable",
+        ),
         (
             DomError::ForeignOwner,
-            "the identity belongs to a different DOM owner",
+            "the identity, basis or capability belongs to a different DOM owner",
         ),
         (
             DomError::ForeignBatch,
-            "the creation ticket belongs to a different batch",
+            "the ticket, operand or context belongs to a different batch",
         ),
         (
             DomError::WrongNodeKind,
@@ -51,15 +54,15 @@ fn variants_without_payload_state_their_condition() {
         ),
         (
             DomError::WrongDocument,
-            "the node belongs to a different Document",
+            "the node is not the expected Document or belongs to a different Document",
         ),
         (
             DomError::HierarchyRequest,
-            "the edit would produce an invalid node hierarchy",
+            "the node hierarchy does not allow this edit or position",
         ),
         (
             DomError::InvalidCharacter,
-            "the name contains a character that is not allowed",
+            "the name or value contains a character or sequence that is not allowed",
         ),
         (
             DomError::Namespace,
@@ -75,19 +78,25 @@ fn variants_without_payload_state_their_condition() {
         (DomError::AllocationFailed, "memory allocation failed"),
         (
             DomError::SourceOperationPending,
-            "a Source operation is already pending",
+            "a Source operation, callback or hold is still pending",
         ),
         (
             DomError::IncompleteSourceOperation,
             "an incomplete Source operation must finish first",
         ),
-        (DomError::ButtonInapplicable, "the Element is not a Button"),
+        (
+            DomError::ButtonInapplicable,
+            "the Element is not a Button with this reflected target",
+        ),
         (DomError::SlotInapplicable, "the node is not a Slot"),
         (
             DomError::OwnerIdentityExhausted,
             "no DOM owner identities remain",
         ),
-        (DomError::RevisionExhausted, "no store revisions remain"),
+        (
+            DomError::RevisionExhausted,
+            "the revision counter cannot advance far enough for this operation",
+        ),
         (
             DomError::SourceLimitReduction,
             "a Source policy call tried to reduce an allowance, which may only be raised",
@@ -132,7 +141,7 @@ fn scalar_payloads_are_appended_and_resources_are_named() {
     );
     assert_eq!(
         DomError::InvalidLimit(DomResource::ManagedNodes).to_string(),
-        "the configured limit for managed nodes exceeds the largest representable allocation"
+        "the configured limit for managed nodes is invalid"
     );
 }
 
@@ -229,7 +238,7 @@ fn inserting_a_document_under_a_comment_reports_an_invalid_hierarchy() {
     let error = dom.apply(batch, &AtomicBool::new(false)).unwrap_err();
     assert_eq!(
         error.to_string(),
-        "the edit would produce an invalid node hierarchy"
+        "the node hierarchy does not allow this edit or position"
     );
 }
 
