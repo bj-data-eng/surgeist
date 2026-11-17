@@ -107,8 +107,9 @@ use surgeist_render::style::decoration::{
     NormalizedOutlineStyle, Outline, OutlineStyle,
 };
 use surgeist_render::style::filter::{
-    BackdropCaptureBounds, BackdropFilterInput, FilterAmount, FilterAngle, FilterBlur,
-    FilterDropShadow, FilterList, FilterOp, FilterOpKind, FilteredImagePaint, UnitFilterAmount,
+    BackdropCaptureBounds, BackdropFilterInput, ColorFilterOp, ColorFilterPipeline, FilterAmount,
+    FilterAngle, FilterBlur, FilterDropShadow, FilterList, FilterOp, FilterOpKind,
+    FilteredImagePaint, UnitFilterAmount,
 };
 use surgeist_render::style::image::{
     BackgroundAreas, BackgroundAttachment, BackgroundBox, BackgroundClipGeometry,
@@ -157,4 +158,4 @@ fn every_public_item_is_imported_from_its_module() {
     // The imports above are the assertion.
 }
 
-// Items: 315 imported through modules, 3 at the root.
+// Items: 317 imported through modules, 3 at the root.
