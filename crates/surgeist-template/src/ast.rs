@@ -1,3 +1,18 @@
+//! The authored template tree and its native constructors.
+//!
+//! [`parse_template`](crate::parse_template) builds a [`TemplateDocument`] from
+//! source text; native callers can construct the same tree through
+//! [`Node::element`], [`Node::text`], [`Node::interpolation`],
+//! [`Node::if_block`] and [`Node::foreach`]. A document preserves typed names,
+//! attributes, symbolic expressions, nesting and diagnostic spans. It is
+//! authored syntax only: elements are neither looked up nor evaluated until
+//! [`validate_template`](crate::validate_template) checks them against
+//! registries.
+//!
+//! Construction rejects invalid names with a [`NameError`] and a conditional
+//! without an initial branch with an [`AstConstructionError`]. Generated Rust
+//! from [`render_to_rust`](crate::render_to_rust) calls these constructors.
+
 use crate::expr::Expr;
 use crate::name::{AttributeName, ComponentName, NameError, NativeElementName, VariableName};
 use crate::span::SourceSpan;

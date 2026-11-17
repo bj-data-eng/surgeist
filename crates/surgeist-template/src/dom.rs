@@ -1,10 +1,23 @@
+//! Static HTML composition into a caller's DOM batch.
+//!
+//! [`append_static_html`] queues construction requests for the concrete part of
+//! a validated template (native elements, their static attributes and text)
+//! into the caller's ordinary [`DomBatch`]. The whole
+//! template is preflighted first, so a [`TemplateDomError`] means no command
+//! was queued. Symbolic components, interpolations, conditionals, iteration and
+//! attribute expressions remain unresolved and are reported through
+//! [`TemplateDomUnresolvedKind`]. The caller applies the batch; DOM owns
+//! document and parent validity, native-family admission, limits and atomic
+//! publication. This module evaluates nothing.
+
 use surgeist_dom::{CreatedNode, DomBatch, NodeOperand};
 use surgeist_html::{
     values::{DocumentString, Namespace},
     vocabulary::KnownHtmlElement,
 };
 
-use crate::{SourceSpan, ValidatedAttrValue, ValidatedNode, ValidatedTemplate};
+use crate::span::SourceSpan;
+use crate::validation::{ValidatedAttrValue, ValidatedNode, ValidatedTemplate};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TemplateDomUnresolvedKind {
@@ -62,8 +75,10 @@ struct PlannedNode {
 /// ```
 /// use std::sync::atomic::AtomicBool;
 /// use surgeist_dom::{Dom, DomBatch, DomLimits, Namespace};
-/// use surgeist_template::{AttributeKind, AttributeRule, ComponentRegistry,
-///     NativeElementRegistry, append_static_html, parse_template, validate_template};
+/// use surgeist_template::dom::append_static_html;
+/// use surgeist_template::registry::{AttributeKind, AttributeRule, ComponentRegistry,
+///     NativeElementRegistry};
+/// use surgeist_template::{parse_template, validate_template};
 /// let native = NativeElementRegistry::from_html_metadata(
 ///     AttributeRule::one(AttributeKind::Static)).unwrap();
 /// let authored = parse_template("<div title=example>hello</div>").unwrap();

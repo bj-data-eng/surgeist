@@ -3,10 +3,11 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist::dom::{Dom, DomBatch, DomLimits, DomSnapshot, Namespace, NodeId};
-use surgeist::template::{
-    AttributeKind, AttributeRule, ComponentRegistry, NativeElementRegistry, append_static_html,
-    parse_template, validate_template,
+use surgeist::template::dom::append_static_html;
+use surgeist::template::registry::{
+    AttributeKind, AttributeRule, ComponentRegistry, NativeElementRegistry,
 };
+use surgeist::template::{parse_template, validate_template};
 
 fn attributes(snapshot: &DomSnapshot, node: NodeId) -> Vec<(String, String)> {
     snapshot

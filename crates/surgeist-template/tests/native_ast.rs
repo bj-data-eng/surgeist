@@ -1,10 +1,14 @@
 #![forbid(unsafe_code)]
 
-use surgeist_template::{
-    AstConstructionError, AttrValue, Attribute, ComponentRegistry, ElementName, Expr, IfBranch,
-    Literal, NativeElementRegistry, NativeElementSpec, Node, SourcePos, SourceSpan, SpanError,
-    TemplateDocument, ValidatedNode, ValidationErrorKind, VariableName, validate_template,
+use surgeist_template::ast::{
+    AstConstructionError, AttrValue, Attribute, ElementName, IfBranch, Node, TemplateDocument,
 };
+use surgeist_template::expr::{Expr, Literal};
+use surgeist_template::name::VariableName;
+use surgeist_template::registry::{ComponentRegistry, NativeElementRegistry, NativeElementSpec};
+use surgeist_template::span::{SourcePos, SourceSpan, SpanError};
+use surgeist_template::validate_template;
+use surgeist_template::validation::{ValidatedNode, ValidationErrorKind};
 
 fn position(line: usize, column: usize, byte: usize) -> SourcePos {
     SourcePos::try_new(line, column, byte).unwrap()

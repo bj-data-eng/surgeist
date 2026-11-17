@@ -1,3 +1,12 @@
+//! Diagnostic source positions and spans.
+//!
+//! A [`SourcePos`] holds a one-based line, a one-based column and a zero-based
+//! byte offset. A [`SourceSpan`] is an ordered pair of positions. Both are
+//! diagnostic coordinates only: they do not identify a source buffer or certify
+//! membership in one. Constructors reject zero lines and columns, reversed
+//! ranges and zero-length spans whose positions disagree, returning a
+//! [`SpanError`].
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourcePos {
     line: usize,

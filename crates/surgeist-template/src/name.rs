@@ -1,3 +1,13 @@
+//! Validated names and the error they report.
+//!
+//! Each name type checks its shape at construction, so a value of
+//! [`VariableName`], [`AttributeName`], [`NativeElementName`] or
+//! [`ComponentName`] is always valid. Native element names are lowercase
+//! kebab-style words, component names start with an uppercase letter, and
+//! variable and attribute names start with a letter or underscore. Native
+//! and component names have distinct types so that a registry cannot mix them.
+//! Invalid input returns a [`NameError`] naming the rejected text.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NameError {
     InvalidVariableName { name: String },

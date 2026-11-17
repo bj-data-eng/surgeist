@@ -4,10 +4,11 @@
 //! expectations come from the module plan (`ast`, `expr`, `name` and `span`
 //! own the emitted items), not from the renderer's output.
 
-use surgeist_template::{
+use surgeist_template::registry::{
     AttributeKind, AttributeRule, AttributeSpec, ComponentRegistry, ComponentSpec,
-    NativeElementRegistry, NativeElementSpec, parse_template, render_to_rust, validate_template,
+    NativeElementRegistry, NativeElementSpec,
 };
+use surgeist_template::{parse_template, render_to_rust, validate_template};
 
 const PREFIX: &str = "::surgeist::template::";
 

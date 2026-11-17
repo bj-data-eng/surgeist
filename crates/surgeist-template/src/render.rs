@@ -5,16 +5,21 @@ use crate::validate::{
     ValidatedIf, ValidatedNode, ValidatedTemplate,
 };
 
-const TEMPLATE: &str = "::surgeist::template";
+const AST: &str = "::surgeist::template::ast";
+const EXPR: &str = "::surgeist::template::expr";
+const NAME: &str = "::surgeist::template::name";
+const SPAN: &str = "::surgeist::template::span";
 
 /// Emits a Rust expression constructing an authored TemplateDocument through
-/// the facade's real public AST constructors. Names, symbolic expressions and
-/// diagnostic spans are retained; the result requires registry validation.
+/// the facade's real public AST constructors. Items are named through the
+/// `ast`, `expr`, `name` and `span` modules under `::surgeist::template`.
+/// Names, symbolic expressions and diagnostic spans are retained; the result
+/// requires registry validation.
 ///
 /// This operation neither evaluates expressions nor constructs a live DOM.
 pub fn render_to_rust(template: &ValidatedTemplate) -> String {
     format!(
-        "{TEMPLATE}::TemplateDocument::from_nodes(::std::vec![{}])",
+        "{AST}::TemplateDocument::from_nodes(::std::vec![{}])",
         render_nodes(template.nodes())
     )
 }
@@ -32,12 +37,12 @@ fn render_node(node: &ValidatedNode) -> String {
             render_element(element, element.name().as_str(), "component")
         }
         ValidatedNode::Text(text) => format!(
-            "{TEMPLATE}::Node::text({}, {})",
+            "{AST}::Node::text({}, {})",
             render_string(text.value()),
             render_span(text.span())
         ),
         ValidatedNode::Interpolation(interpolation) => format!(
-            "{TEMPLATE}::Node::interpolation({}, {})",
+            "{AST}::Node::interpolation({}, {})",
             render_expr(interpolation.expr()),
             render_span(interpolation.span())
         ),
@@ -48,7 +53,7 @@ fn render_node(node: &ValidatedNode) -> String {
 
 fn render_element<Name>(element: &ValidatedElement<Name>, name: &str, kind: &str) -> String {
     format!(
-        "{TEMPLATE}::Node::element({TEMPLATE}::ElementName::{kind}({}).expect(\"validated element name\"), ::std::vec![{}], ::std::vec![{}], {})",
+        "{AST}::Node::element({AST}::ElementName::{kind}({}).expect(\"validated element name\"), ::std::vec![{}], ::std::vec![{}], {})",
         render_string(name),
         element
             .attributes()
@@ -63,29 +68,29 @@ fn render_element<Name>(element: &ValidatedElement<Name>, name: &str, kind: &str
 
 fn render_attribute(attribute: &ValidatedAttribute) -> String {
     let value = match attribute.value() {
-        ValidatedAttrValue::Bool => format!("{TEMPLATE}::AttrValue::Bool"),
+        ValidatedAttrValue::Bool => format!("{AST}::AttrValue::Bool"),
         ValidatedAttrValue::Static(value) => {
-            format!("{TEMPLATE}::AttrValue::Static({})", owned_string(value))
+            format!("{AST}::AttrValue::Static({})", owned_string(value))
         }
         ValidatedAttrValue::Expression(expr) => {
-            format!("{TEMPLATE}::AttrValue::Expression({})", render_expr(expr))
+            format!("{AST}::AttrValue::Expression({})", render_expr(expr))
         }
         ValidatedAttrValue::Interpolated(parts) => format!(
-            "{TEMPLATE}::AttrValue::Interpolated(::std::vec![{}])",
+            "{AST}::AttrValue::Interpolated(::std::vec![{}])",
             parts
                 .iter()
                 .map(|part| match part {
                     ValidatedAttrPart::Text(value) =>
-                        format!("{TEMPLATE}::AttrPart::Text({})", owned_string(value)),
+                        format!("{AST}::AttrPart::Text({})", owned_string(value)),
                     ValidatedAttrPart::Expr(expr) =>
-                        format!("{TEMPLATE}::AttrPart::Expr({})", render_expr(expr)),
+                        format!("{AST}::AttrPart::Expr({})", render_expr(expr)),
                 })
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
     };
     format!(
-        "{TEMPLATE}::Attribute::try_new({}, {value}, {}).expect(\"validated attribute name\")",
+        "{AST}::Attribute::try_new({}, {value}, {}).expect(\"validated attribute name\")",
         render_string(attribute.name().as_str()),
         render_span(attribute.span())
     )
@@ -97,7 +102,7 @@ fn render_if(conditional: &ValidatedIf) -> String {
         .iter()
         .map(|branch| {
             format!(
-                "{TEMPLATE}::IfBranch::new({}, ::std::vec![{}])",
+                "{AST}::IfBranch::new({}, ::std::vec![{}])",
                 render_expr(branch.condition()),
                 render_nodes(branch.children())
             )
@@ -105,7 +110,7 @@ fn render_if(conditional: &ValidatedIf) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{TEMPLATE}::Node::if_block(::std::vec![{branches}], ::std::vec![{}], {}).expect(\"conditional has an initial branch\")",
+        "{AST}::Node::if_block(::std::vec![{branches}], ::std::vec![{}], {}).expect(\"conditional has an initial branch\")",
         render_nodes(conditional.else_children()),
         render_span(conditional.span())
     )
@@ -113,7 +118,7 @@ fn render_if(conditional: &ValidatedIf) -> String {
 
 fn render_for_each(iteration: &ValidatedForEach) -> String {
     format!(
-        "{TEMPLATE}::Node::foreach({}, {TEMPLATE}::VariableName::try_new({}).expect(\"validated iteration binding\"), ::std::vec![{}], ::std::vec![{}], {})",
+        "{AST}::Node::foreach({}, {NAME}::VariableName::try_new({}).expect(\"validated iteration binding\"), ::std::vec![{}], ::std::vec![{}], {})",
         render_expr(iteration.collection()),
         render_string(iteration.item_name().as_str()),
         render_nodes(iteration.children()),
@@ -135,11 +140,11 @@ fn render_expr(expr: &Expr) -> String {
                 Literal::Bool(value) => format!("Bool({value})"),
                 Literal::Null => "Null".to_owned(),
             };
-            format!("{TEMPLATE}::Expr::Literal({TEMPLATE}::Literal::{value})")
+            format!("{EXPR}::Expr::Literal({EXPR}::Literal::{value})")
         }
         Expr::Variable(path) => render_path(path),
         Expr::Unary { op, expr } => format!(
-            "{TEMPLATE}::Expr::Unary {{ op: {TEMPLATE}::UnaryOp::{}, expr: ::std::boxed::Box::new({}) }}",
+            "{EXPR}::Expr::Unary {{ op: {EXPR}::UnaryOp::{}, expr: ::std::boxed::Box::new({}) }}",
             match op {
                 UnaryOp::Not => "Not",
                 UnaryOp::Neg => "Neg",
@@ -147,7 +152,7 @@ fn render_expr(expr: &Expr) -> String {
             render_expr(expr)
         ),
         Expr::Binary { op, left, right } => format!(
-            "{TEMPLATE}::Expr::Binary {{ op: {TEMPLATE}::BinaryOp::{}, left: ::std::boxed::Box::new({}), right: ::std::boxed::Box::new({}) }}",
+            "{EXPR}::Expr::Binary {{ op: {EXPR}::BinaryOp::{}, left: ::std::boxed::Box::new({}), right: ::std::boxed::Box::new({}) }}",
             binary_variant(*op),
             render_expr(left),
             render_expr(right)
@@ -158,13 +163,13 @@ fn render_expr(expr: &Expr) -> String {
 fn render_path(path: &VariablePath) -> String {
     let segments = path.segments().iter().map(|segment| match segment {
         PathSegment::Field(field) => format!(
-            "{TEMPLATE}::PathSegment::Field({TEMPLATE}::PathField::try_new({}).expect(\"validated path field\"))",
+            "{EXPR}::PathSegment::Field({EXPR}::PathField::try_new({}).expect(\"validated path field\"))",
             render_string(field.as_str())
         ),
-        PathSegment::Index(index) => format!("{TEMPLATE}::PathSegment::Index({TEMPLATE}::PathIndex::new({}u64))", index.get()),
+        PathSegment::Index(index) => format!("{EXPR}::PathSegment::Index({EXPR}::PathIndex::new({}u64))", index.get()),
     }).collect::<Vec<_>>().join(", ");
     format!(
-        "{TEMPLATE}::Expr::Variable({TEMPLATE}::VariablePath::try_new({}, ::std::vec![{segments}]).expect(\"validated symbolic path\"))",
+        "{EXPR}::Expr::Variable({EXPR}::VariablePath::try_new({}, ::std::vec![{segments}]).expect(\"validated symbolic path\"))",
         render_string(path.root())
     )
 }
@@ -189,7 +194,7 @@ fn binary_variant(op: BinaryOp) -> &'static str {
 
 fn render_span(span: SourceSpan) -> String {
     format!(
-        "{TEMPLATE}::SourceSpan::try_new({}, {}).expect(\"ordered template span\")",
+        "{SPAN}::SourceSpan::try_new({}, {}).expect(\"ordered template span\")",
         render_position(span.start()),
         render_position(span.end())
     )
@@ -197,7 +202,7 @@ fn render_span(span: SourceSpan) -> String {
 
 fn render_position(position: SourcePos) -> String {
     format!(
-        "{TEMPLATE}::SourcePos::try_new({}usize, {}usize, {}usize).expect(\"nonzero template coordinates\")",
+        "{SPAN}::SourcePos::try_new({}usize, {}usize, {}usize).expect(\"nonzero template coordinates\")",
         position.line(),
         position.column(),
         position.byte()
@@ -216,7 +221,7 @@ fn render_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::render_expr;
-    use crate::{Expr, Literal};
+    use crate::expr::{Expr, Literal};
 
     #[test]
     fn float_source_uses_exact_bits_for_negative_zero_and_nonfinite_payloads() {

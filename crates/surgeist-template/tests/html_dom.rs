@@ -7,11 +7,15 @@ use surgeist_dom::{
     DomSnapshot, Namespace, NodeId,
 };
 use surgeist_html::elements::{form::HtmlNativeFormAssociationKind, native::HtmlElementClass};
-use surgeist_template::{
-    AttributeKind, AttributeRule, ComponentRegistry, ComponentSpec, NativeElementRegistry,
-    SourcePos, SourceSpan, TemplateDomError, TemplateDomUnresolvedKind as Unresolved,
-    ValidatedTemplate, ValidationErrorKind, append_static_html, parse_template, validate_template,
+use surgeist_template::dom::{
+    TemplateDomError, TemplateDomUnresolvedKind as Unresolved, append_static_html,
 };
+use surgeist_template::registry::{
+    AttributeKind, AttributeRule, ComponentRegistry, ComponentSpec, NativeElementRegistry,
+};
+use surgeist_template::span::{SourcePos, SourceSpan};
+use surgeist_template::validation::{ValidatedTemplate, ValidationErrorKind};
+use surgeist_template::{parse_template, validate_template};
 
 fn forms() -> AttributeRule {
     AttributeRule::any(

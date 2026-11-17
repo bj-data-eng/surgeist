@@ -4,37 +4,48 @@
 //! symbolic Rust generation. HTML metadata supplies an explicit known-name
 //! registry profile; concrete templates queue ordinary canonical DOM edits.
 //! Runtime evaluation and host policy belong to their consuming owners.
+//!
+//! The pipeline is three functions at the crate root: [`parse_template`]
+//! turns source text into an [`ast::TemplateDocument`], [`validate_template`]
+//! checks it against explicit [`registry`] vocabularies and returns a
+//! [`validation::ValidatedTemplate`], and [`render_to_rust`] emits Rust source
+//! that constructs the authored document again. The modules hold the values
+//! those functions exchange:
+//!
+//! - [`ast`]: the authored tree and its native constructors.
+//! - [`expr`]: symbolic expressions and variable paths.
+//! - [`name`]: validated element, attribute, component and variable names.
+//! - [`span`]: diagnostic source positions and spans.
+//! - [`parse`]: diagnostics reported by [`parse_template`].
+//! - [`registry`]: native-element and component vocabularies.
+//! - [`validation`]: the validated tree and validation diagnostics.
+//! - [`dom`]: static HTML composition into a caller's DOM batch.
+//!
+//! Each public item has exactly one path.
 
 #![forbid(unsafe_code)]
 
-mod ast;
-mod dom;
+pub mod ast;
+pub mod dom;
+pub mod expr;
+pub mod name;
+pub mod parse;
+pub mod registry;
+pub mod span;
+pub mod validation;
+
 mod error;
-mod expr;
 mod lexer;
-mod name;
 mod parser;
 mod render;
-mod span;
 mod validate;
 
-pub use ast::{
-    AstConstructionError, AttrPart, AttrValue, Attribute, ElementName, ElementNode, ForEachNode,
-    IfBranch, IfNode, InterpolationNode, Node, TemplateDocument, TextNode,
-};
-pub use dom::{TemplateDomError, TemplateDomUnresolvedKind, append_static_html};
-pub use error::{ParseError, ParseErrorKind, ValidationError, ValidationErrorKind};
-pub use expr::{BinaryOp, Expr, Literal, PathField, PathIndex, PathSegment, UnaryOp, VariablePath};
-pub use name::{AttributeName, ComponentName, NameError, NativeElementName, VariableName};
+#[doc(inline)]
 pub use parser::parse_template;
+#[doc(inline)]
 pub use render::render_to_rust;
-pub use span::{SourcePos, SourceSpan, SpanError};
-pub use validate::{
-    AttributeKind, AttributeRule, AttributeSpec, ComponentRegistry, ComponentSpec,
-    NativeElementRegistry, NativeElementSpec, RegistryError, ValidatedAttrPart, ValidatedAttrValue,
-    ValidatedAttribute, ValidatedElement, ValidatedForEach, ValidatedIf, ValidatedIfBranch,
-    ValidatedInterpolation, ValidatedNode, ValidatedTemplate, ValidatedText, validate_template,
-};
+#[doc(inline)]
+pub use validate::validate_template;
 
 /// Crate identity string used by smoke tests and API artifacts.
 pub const CRATE_NAME: &str = "surgeist-template";

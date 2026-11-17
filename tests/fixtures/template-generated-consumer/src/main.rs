@@ -3,7 +3,7 @@
 mod contract;
 
 fn main() {
-    let authored: surgeist::template::TemplateDocument =
+    let authored: surgeist::template::ast::TemplateDocument =
         include!(env!("SURGEIST_TEMPLATE_GENERATED_INPUT"));
     contract::verify(&authored);
     println!("symbolic authored AST, literal spans and revalidation passed");
