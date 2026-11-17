@@ -207,6 +207,11 @@ pub const surgeist_bindings_js::conversion::Resource::ALL: &'static [Self]
 pub fn surgeist_bindings_js::conversion::Resource::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_bindings_js::conversion::ResourceTable<T>
 pub fn surgeist_bindings_js::conversion::Resource::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_bindings_js::conversion::ResourceTable<T>, key: Self) -> &T
 pub fn surgeist_bindings_js::conversion::Resource::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_bindings_js::conversion::ResourceTable<T>, key: Self) -> &mut T
+impl<T> core::ops::index::Index<surgeist_bindings_js::conversion::Resource> for surgeist_bindings_js::conversion::ResourceTable<T>
+pub type surgeist_bindings_js::conversion::ResourceTable<T>::Output = T
+pub fn surgeist_bindings_js::conversion::ResourceTable<T>::index(&self, key: surgeist_bindings_js::conversion::Resource) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_bindings_js::conversion::Resource> for surgeist_bindings_js::conversion::ResourceTable<T>
+pub fn surgeist_bindings_js::conversion::ResourceTable<T>::index_mut(&mut self, key: surgeist_bindings_js::conversion::Resource) -> &mut T
 #[non_exhaustive] pub enum surgeist_bindings_js::conversion::Rule
 pub surgeist_bindings_js::conversion::Rule::ByteString
 pub surgeist_bindings_js::conversion::Rule::CallbackInterface(&'static str)
@@ -237,6 +242,11 @@ pub const surgeist_bindings_js::conversion::Work::ALL: &'static [Self]
 pub fn surgeist_bindings_js::conversion::Work::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_bindings_js::conversion::WorkTable<T>
 pub fn surgeist_bindings_js::conversion::Work::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_bindings_js::conversion::WorkTable<T>, key: Self) -> &T
 pub fn surgeist_bindings_js::conversion::Work::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_bindings_js::conversion::WorkTable<T>, key: Self) -> &mut T
+impl<T> core::ops::index::Index<surgeist_bindings_js::conversion::Work> for surgeist_bindings_js::conversion::WorkTable<T>
+pub type surgeist_bindings_js::conversion::WorkTable<T>::Output = T
+pub fn surgeist_bindings_js::conversion::WorkTable<T>::index(&self, key: surgeist_bindings_js::conversion::Work) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_bindings_js::conversion::Work> for surgeist_bindings_js::conversion::WorkTable<T>
+pub fn surgeist_bindings_js::conversion::WorkTable<T>::index_mut(&mut self, key: surgeist_bindings_js::conversion::Work) -> &mut T
 pub struct surgeist_bindings_js::conversion::Argument<D: surgeist_bindings_js::conversion::Descriptor>
 impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conversion::Argument<D>
 pub fn surgeist_bindings_js::conversion::Argument<D>::declaration(&self) -> &'static str
@@ -335,10 +345,21 @@ impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conv
 pub fn surgeist_bindings_js::conversion::Nullable<D>::sequence(self) -> surgeist_bindings_js::conversion::Sequence<Self>
 impl<D: surgeist_bindings_js::conversion::Descriptor> surgeist_bindings_js::conversion::Descriptor for surgeist_bindings_js::conversion::Nullable<D>
 pub type surgeist_bindings_js::conversion::Nullable<D>::Output = core::option::Option<<D as surgeist_bindings_js::conversion::Descriptor>::Output>
+pub struct surgeist_bindings_js::conversion::ResourceFields<T>
+pub surgeist_bindings_js::conversion::ResourceFields::BufferBytes: T
+impl<T: core::marker::Copy> surgeist_bindings_js::conversion::ResourceFields<T>
+pub const fn surgeist_bindings_js::conversion::ResourceFields<T>::splat(value: T) -> Self
 pub struct surgeist_bindings_js::conversion::ResourceTable<T>
-pub surgeist_bindings_js::conversion::ResourceTable::BufferBytes: T
 impl<T: core::marker::Copy> surgeist_bindings_js::conversion::ResourceTable<T>
+pub const fn surgeist_bindings_js::conversion::ResourceTable<T>::new(fields: surgeist_bindings_js::conversion::ResourceFields<T>) -> Self
 pub const fn surgeist_bindings_js::conversion::ResourceTable<T>::splat(value: T) -> Self
+impl<T: core::fmt::Debug> core::fmt::Debug for surgeist_bindings_js::conversion::ResourceTable<T>
+pub fn surgeist_bindings_js::conversion::ResourceTable<T>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::ops::index::Index<surgeist_bindings_js::conversion::Resource> for surgeist_bindings_js::conversion::ResourceTable<T>
+pub type surgeist_bindings_js::conversion::ResourceTable<T>::Output = T
+pub fn surgeist_bindings_js::conversion::ResourceTable<T>::index(&self, key: surgeist_bindings_js::conversion::Resource) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_bindings_js::conversion::Resource> for surgeist_bindings_js::conversion::ResourceTable<T>
+pub fn surgeist_bindings_js::conversion::ResourceTable<T>::index_mut(&mut self, key: surgeist_bindings_js::conversion::Resource) -> &mut T
 pub struct surgeist_bindings_js::conversion::SecurityPolicyViolationEventOptions
 pub surgeist_bindings_js::conversion::SecurityPolicyViolationEventOptions::blocked_uri: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::UsvString>
 pub surgeist_bindings_js::conversion::SecurityPolicyViolationEventOptions::bubbles: bool
@@ -378,17 +399,28 @@ pub fn surgeist_bindings_js::conversion::Type<T>::nullable(self) -> surgeist_bin
 pub fn surgeist_bindings_js::conversion::Type<T>::sequence(self) -> surgeist_bindings_js::conversion::Sequence<Self>
 impl<T> surgeist_bindings_js::conversion::Descriptor for surgeist_bindings_js::conversion::Type<T>
 pub type surgeist_bindings_js::conversion::Type<T>::Output = T
+pub struct surgeist_bindings_js::conversion::WorkFields<T>
+pub surgeist_bindings_js::conversion::WorkFields::Argument: T
+pub surgeist_bindings_js::conversion::WorkFields::CodeUnit: T
+pub surgeist_bindings_js::conversion::WorkFields::DictionaryMember: T
+pub surgeist_bindings_js::conversion::WorkFields::EnumerationLookup: T
+pub surgeist_bindings_js::conversion::WorkFields::IteratorOperation: T
+pub surgeist_bindings_js::conversion::WorkFields::SequenceItem: T
+pub surgeist_bindings_js::conversion::WorkFields::SequenceMove: T
+pub surgeist_bindings_js::conversion::WorkFields::Value: T
+impl<T: core::marker::Copy> surgeist_bindings_js::conversion::WorkFields<T>
+pub const fn surgeist_bindings_js::conversion::WorkFields<T>::splat(value: T) -> Self
 pub struct surgeist_bindings_js::conversion::WorkTable<T>
-pub surgeist_bindings_js::conversion::WorkTable::Argument: T
-pub surgeist_bindings_js::conversion::WorkTable::CodeUnit: T
-pub surgeist_bindings_js::conversion::WorkTable::DictionaryMember: T
-pub surgeist_bindings_js::conversion::WorkTable::EnumerationLookup: T
-pub surgeist_bindings_js::conversion::WorkTable::IteratorOperation: T
-pub surgeist_bindings_js::conversion::WorkTable::SequenceItem: T
-pub surgeist_bindings_js::conversion::WorkTable::SequenceMove: T
-pub surgeist_bindings_js::conversion::WorkTable::Value: T
 impl<T: core::marker::Copy> surgeist_bindings_js::conversion::WorkTable<T>
+pub const fn surgeist_bindings_js::conversion::WorkTable<T>::new(fields: surgeist_bindings_js::conversion::WorkFields<T>) -> Self
 pub const fn surgeist_bindings_js::conversion::WorkTable<T>::splat(value: T) -> Self
+impl<T: core::fmt::Debug> core::fmt::Debug for surgeist_bindings_js::conversion::WorkTable<T>
+pub fn surgeist_bindings_js::conversion::WorkTable<T>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::ops::index::Index<surgeist_bindings_js::conversion::Work> for surgeist_bindings_js::conversion::WorkTable<T>
+pub type surgeist_bindings_js::conversion::WorkTable<T>::Output = T
+pub fn surgeist_bindings_js::conversion::WorkTable<T>::index(&self, key: surgeist_bindings_js::conversion::Work) -> &T
+impl<T> core::ops::index::IndexMut<surgeist_bindings_js::conversion::Work> for surgeist_bindings_js::conversion::WorkTable<T>
+pub fn surgeist_bindings_js::conversion::WorkTable<T>::index_mut(&mut self, key: surgeist_bindings_js::conversion::Work) -> &mut T
 pub trait surgeist_bindings_js::conversion::BufferRetention: 'static
 pub type surgeist_bindings_js::conversion::BufferRetention::Error: core::error::Error + 'static
 pub fn surgeist_bindings_js::conversion::BufferRetention::release(self) -> core::result::Result<(), Self::Error>
