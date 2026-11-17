@@ -618,3 +618,90 @@ fn fault_of(error: LedgerError<CssWork, CssResource>) -> CssAccountingFault {
         CssAccountingError::Host(_) => CssAccountingFault::Unexpected,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! The mapping of every ledger error shape. The expected classification
+    //! is the one recorded for the schema: a cap is a host refusal, a counter
+    //! at its range and an excess release are their own faults, and the
+    //! conditions of calls this module never makes are one fault.
+
+    use surgeist_ledger::{Operation, Refusal};
+
+    use super::*;
+
+    fn refusal(reason: RefusalReason) -> (LedgerError<CssWork, CssResource>, Scope) {
+        let scope = Operation::<CssWork, CssResource>::new("host", Limits::unlimited(), 1)
+            .unwrap()
+            .root();
+        let refused = Refusal {
+            scope,
+            item: 1,
+            change: Change::Acquire(CssResource::RetainedEntry, 6),
+            current: 9,
+            reason,
+        };
+        (LedgerError::Refused(refused), scope)
+    }
+
+    #[test]
+    fn a_cap_refusal_is_a_host_refusal_with_the_ledger_figures() {
+        let (error, scope) = refusal(RefusalReason::Limit { limit: 12 });
+        let CssAccountingError::Host(host) = classify(error) else {
+            panic!("a cap refusal is a host refusal");
+        };
+        assert_eq!(host.scope(), scope);
+        assert_eq!(
+            host.change(),
+            Change::Acquire(CssResource::RetainedEntry, 6)
+        );
+        assert_eq!((host.limit(), host.total(), host.amount()), (12, 9, 6));
+        assert_eq!(fault_of(error), CssAccountingFault::Unexpected);
+    }
+
+    #[test]
+    fn every_other_ledger_error_is_the_fault_recorded_for_it() {
+        let (overflow, _) = refusal(RefusalReason::Overflow);
+        let (underflow, _) = refusal(RefusalReason::Underflow);
+        let expected = [
+            (overflow, CssAccountingFault::CounterOverflow),
+            (underflow, CssAccountingFault::ReleaseUnderflow),
+            (LedgerError::Allocation, CssAccountingFault::Allocation),
+            (LedgerError::ForeignScope, CssAccountingFault::ForeignScope),
+            (
+                LedgerError::ScopeLimit { limit: 3 },
+                CssAccountingFault::ScopeLimit { limit: 3 },
+            ),
+            (
+                LedgerError::Defect(Defect::ScopeEntry),
+                CssAccountingFault::Defect(Defect::ScopeEntry),
+            ),
+            (
+                LedgerError::IdentityExhausted,
+                CssAccountingFault::Unexpected,
+            ),
+            (
+                LedgerError::TimingUnavailable,
+                CssAccountingFault::Unexpected,
+            ),
+            (
+                LedgerError::ForeignCheckpoint,
+                CssAccountingFault::Unexpected,
+            ),
+            (LedgerError::StaleCheckpoint, CssAccountingFault::Unexpected),
+            (
+                LedgerError::CheckpointLimit { limit: 2 },
+                CssAccountingFault::Unexpected,
+            ),
+            (
+                LedgerError::CheckpointsConfigured,
+                CssAccountingFault::Unexpected,
+            ),
+        ];
+        for (error, fault) in expected {
+            assert_eq!(classify(error), CssAccountingError::Fault(fault), "{error}");
+            assert_eq!(fault_of(error), fault, "{error}");
+            assert_eq!(classify(error).host_refusal(), None, "{error}");
+        }
+    }
+}

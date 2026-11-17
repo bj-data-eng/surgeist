@@ -451,3 +451,65 @@ fn an_account_with_no_host_admits_every_charge_and_only_runs_a_timed_front() {
     assert_eq!(account.timed(Parse, || runs += 1), Ok(()));
     assert_eq!(runs, 1);
 }
+
+#[test]
+fn a_cap_refuses_an_acquisition_with_the_live_total() {
+    let entries = CssResource::RetainedEntry;
+    let caps = CssLimits::from_fn(
+        |_| u64::MAX,
+        |dimension| if dimension == entries { 10 } else { u64::MAX },
+    );
+    let (ledger, document) = host(no_caps(), caps, 1);
+    let handle = CssHostScope::open(ledger.clone(), document).unwrap();
+    let account = CssAccount::host(&handle);
+    account
+        .charge(Cssom, &[CssChange::Acquire(entries, 6)])
+        .unwrap();
+    let stop = account
+        .charge(Cssom, &[CssChange::Acquire(entries, 5)])
+        .unwrap_err();
+    let refusal = stop.host_refusal().unwrap();
+    assert_eq!(refusal.scope(), document);
+    assert_eq!(refusal.change(), CssChange::Acquire(entries, 5));
+    assert_eq!(
+        (refusal.limit(), refusal.total(), refusal.amount()),
+        (10, 6, 5)
+    );
+    assert_eq!(ledger.usage(document).unwrap().live(entries), 6);
+}
+
+#[test]
+fn a_front_charges_inside_its_own_phase() {
+    let mode = ProfileMode::Summary { timing: false };
+    let (ledger, document) = host_with(no_caps(), no_caps(), 1, mode);
+    let handle = CssHostScope::open(ledger.clone(), document).unwrap();
+    let account = CssAccount::host(&handle);
+    let charged = account.timed(Parse, || {
+        account.charge(Parse, &[CssChange::Work(CssWork::Token, 3)])
+    });
+    assert_eq!(charged, Ok(Ok(())));
+    let parse = report(&ledger, handle.scope(Parse));
+    assert_eq!((parse.phases, parse.accepted_batches), (1, 1));
+    assert_eq!(parse.usage.work(CssWork::Token), 3);
+}
+
+#[test]
+fn a_refusal_and_a_fault_say_what_stopped_the_charge() {
+    let (ledger, document) = host(no_caps(), token_cap(100), 1);
+    let handle = CssHostScope::open(ledger, document).unwrap();
+    let account = CssAccount::host(&handle);
+    let refused = account
+        .charge(Parse, &[CssChange::Work(CssWork::Token, 101)])
+        .unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "a host cap of 100 refused Work(Token, 101) at a total of 0"
+    );
+    let outside = account
+        .charge(Parse, &[CssChange::Work(CssWork::ColorAction, 1)])
+        .unwrap_err();
+    assert_eq!(
+        outside.to_string(),
+        "a charge to css-parse named a dimension that front does not charge"
+    );
+}
