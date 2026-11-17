@@ -501,13 +501,6 @@ pub enum CssAccountingFault {
         /// The operation's scope bound.
         limit: usize,
     },
-    /// The ledger's identities are exhausted.
-    IdentityExhausted,
-    /// Timed profiling needs a clock the platform does not supply.
-    TimingUnavailable,
-    /// A checkpoint operation failed. The CSS crates open no checkpoint, so
-    /// only a ledger that reports one for another reason produces it.
-    Checkpoint,
     /// A charge named a dimension its front does not charge.
     UnclassifiedChange {
         /// The front that was charged.
@@ -520,9 +513,10 @@ pub enum CssAccountingFault {
         /// The number of changes in the charge.
         length: usize,
     },
-    /// The ledger refused a change where the CSS crates charge none, such as
-    /// the opening of a scope.
-    UnexpectedChange,
+    /// The ledger reported a condition that no call of this module can
+    /// cause: one of operation setup or of a checkpoint, or a refusal where
+    /// nothing is charged.
+    Unexpected,
     /// The ledger found a broken invariant of its own. It stays latched in
     /// the operation.
     Defect(Defect),
@@ -543,9 +537,6 @@ impl fmt::Display for CssAccountingFault {
                 formatter,
                 "the operation's scope bound of {limit} leaves no room for the front scopes"
             ),
-            Self::IdentityExhausted => formatter.write_str("the ledger's identities are exhausted"),
-            Self::TimingUnavailable => formatter.write_str("timed profiling needs a host clock"),
-            Self::Checkpoint => formatter.write_str("a ledger checkpoint operation failed"),
             Self::UnclassifiedChange { front } => write!(
                 formatter,
                 "a charge to {} named a dimension that front does not charge",
@@ -556,8 +547,8 @@ impl fmt::Display for CssAccountingFault {
                 "a charge to {} carried {length} changes",
                 front.scope_name()
             ),
-            Self::UnexpectedChange => {
-                formatter.write_str("the ledger refused a change where none is charged")
+            Self::Unexpected => {
+                formatter.write_str("the ledger reported a condition no CSS accounting call causes")
             }
             Self::Defect(defect) => write!(formatter, "the ledger found a defect: {defect}"),
         }
@@ -623,12 +614,14 @@ fn classify(error: LedgerError<CssWork, CssResource>) -> CssAccountingError {
         LedgerError::Allocation => CssAccountingFault::Allocation,
         LedgerError::ForeignScope => CssAccountingFault::ForeignScope,
         LedgerError::ScopeLimit { limit } => CssAccountingFault::ScopeLimit { limit },
-        LedgerError::IdentityExhausted => CssAccountingFault::IdentityExhausted,
-        LedgerError::TimingUnavailable => CssAccountingFault::TimingUnavailable,
-        LedgerError::ForeignCheckpoint
+        // Conditions of operation setup and of checkpoints, which this
+        // module never performs.
+        LedgerError::IdentityExhausted
+        | LedgerError::TimingUnavailable
+        | LedgerError::ForeignCheckpoint
         | LedgerError::StaleCheckpoint
         | LedgerError::CheckpointLimit { .. }
-        | LedgerError::CheckpointsConfigured => CssAccountingFault::Checkpoint,
+        | LedgerError::CheckpointsConfigured => CssAccountingFault::Unexpected,
         LedgerError::Defect(defect) => CssAccountingFault::Defect(defect),
     })
 }
@@ -638,6 +631,6 @@ fn classify(error: LedgerError<CssWork, CssResource>) -> CssAccountingError {
 fn fault_of(error: LedgerError<CssWork, CssResource>) -> CssAccountingFault {
     match classify(error) {
         CssAccountingError::Fault(fault) => fault,
-        CssAccountingError::Host(_) => CssAccountingFault::UnexpectedChange,
+        CssAccountingError::Host(_) => CssAccountingFault::Unexpected,
     }
 }
