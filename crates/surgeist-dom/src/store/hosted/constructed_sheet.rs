@@ -28,7 +28,21 @@ pub enum DomHostedSheetConstructionError {
 
 impl std::fmt::Display for DomHostedSheetConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::Hosted(_) => f.write_str(
+                "the hosted issuer, Document or custody refused the constructed stylesheet operation",
+            ),
+            Self::Root(_) => f.write_str(
+                "the style CSSOM root could not be loaned for the constructed stylesheet",
+            ),
+            Self::Cssom(_) => {
+                f.write_str("CSSOM staging or preparation refused the constructed stylesheet")
+            }
+            Self::InvalidBaseSerialization { offset, unit } => write!(
+                f,
+                "the base URL serialization contains an isolated surrogate {unit:#06x} at offset {offset}"
+            ),
+        }
     }
 }
 

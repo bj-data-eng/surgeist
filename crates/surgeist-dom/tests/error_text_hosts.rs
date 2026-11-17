@@ -85,6 +85,14 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 
+/// The error of a result whose success value has no `Debug`.
+fn refusal<T, E>(result: Result<T, E>, expected: &str) -> E {
+    match result {
+        Err(error) => error,
+        Ok(_) => panic!("{expected}"),
+    }
+}
+
 const MISSING: [(HtmlBaseMissing, &str); 8] = [
     (HtmlBaseMissing::DocumentFacts, "document facts are missing"),
     (HtmlBaseMissing::DocumentUrl, "the document URL is missing"),
@@ -757,10 +765,10 @@ fn registering_a_second_hosted_source_reports_the_existing_registration() {
     let _source = dom
         .register_hosted_source(hosted_limits(16), &cancel())
         .unwrap();
-    let error = dom
-        .register_hosted_source(hosted_limits(16), &cancel())
-        .err()
-        .expect("a second registration is refused");
+    let error = refusal(
+        dom.register_hosted_source(hosted_limits(16), &cancel()),
+        "a second registration is refused",
+    );
     assert_eq!(error, DomHostedError::AlreadyRegistered);
     assert_eq!(
         error.to_string(),
@@ -1076,10 +1084,10 @@ fn html_capture_refusals_return_messages_naming_the_cause() {
     let snapshot = dom.snapshot();
 
     let (html, dom_limits) = capture_limits(128, 0);
-    let error = snapshot
-        .html_capture(document, None, html, dom_limits, &cancel())
-        .err()
-        .expect("a zero work allowance is refused");
+    let error = refusal(
+        snapshot.html_capture(document, None, html, dom_limits, &cancel()),
+        "a zero work allowance is refused",
+    );
     assert!(matches!(
         error,
         DomHtmlCaptureError::ResourceLimit {
@@ -1093,10 +1101,10 @@ fn html_capture_refusals_return_messages_naming_the_cause() {
     );
 
     let (html, dom_limits) = capture_limits(0, 1_000_000);
-    let error = snapshot
-        .html_capture(document, None, html, dom_limits, &cancel())
-        .err()
-        .expect("a zero subject allowance is refused");
+    let error = refusal(
+        snapshot.html_capture(document, None, html, dom_limits, &cancel()),
+        "a zero subject allowance is refused",
+    );
     assert_eq!(
         error.to_string(),
         "the HTML capture exceeded its subject limit of 0"
@@ -1254,10 +1262,10 @@ fn inline_style_refusals_return_messages_naming_the_cause() {
     let (mut dom, document, _, element) = fixture(1_000_000);
     let inputs = inline_inputs(&dom, document);
 
-    let error = dom
-        .inline_style(element, &inputs, inline_requests(), no_decisions, &cancel())
-        .err()
-        .expect("binding without a policy is refused");
+    let error = refusal(
+        dom.inline_style(element, &inputs, inline_requests(), no_decisions, &cancel()),
+        "binding without a policy is refused",
+    );
     assert!(matches!(error, DomInlineStyleError::Unconfigured));
     assert_eq!(
         error.to_string(),
@@ -1279,10 +1287,10 @@ fn inline_style_refusals_return_messages_naming_the_cause() {
     let other = batch.create_element_ns(document, Namespace::from_uri("urn:test"), "e");
     let commit = dom.apply(batch, &cancel()).unwrap();
     let other = commit.created(&other).unwrap().unwrap();
-    let error = dom
-        .inline_style(other, &inputs, inline_requests(), no_decisions, &cancel())
-        .err()
-        .expect("an unknown namespace has no inline style");
+    let error = refusal(
+        dom.inline_style(other, &inputs, inline_requests(), no_decisions, &cancel()),
+        "an unknown namespace has no inline style",
+    );
     assert!(matches!(error, DomInlineStyleError::Inapplicable));
     assert_eq!(
         error.to_string(),

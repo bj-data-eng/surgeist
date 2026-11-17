@@ -282,14 +282,51 @@ pub enum DomHostError {
 }
 impl fmt::Display for DomHostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DOM host publication rejected: {self:?}")
+        match self {
+            Self::ForeignOwner => f.write_str("the Document belongs to a different DOM owner"),
+            Self::WrongDocument => f.write_str("the observations belong to a different Document"),
+            Self::DomRevisionMismatch { .. } => {
+                f.write_str("the observations and the canonical view have different DOM revisions")
+            }
+            Self::StaleDomRevision { .. } => {
+                f.write_str("publication would move the canonical DOM revision backwards")
+            }
+            Self::DomainMismatch { .. } => f.write_str(
+                "the observations do not supply exactly this source's configured domains",
+            ),
+            Self::ForeignSource => {
+                f.write_str("the stamp belongs to a different publisher or configuration")
+            }
+            Self::FutureHostRevision => {
+                f.write_str("the stamp has a later external revision than the current publication")
+            }
+            Self::FutureDomRevision => {
+                f.write_str("the stamp has a later canonical revision than the current publication")
+            }
+            Self::Unpublished => f.write_str("the publisher has not published a capture yet"),
+            Self::Subject { .. } => {
+                f.write_str("a selected subject is not a current Element of the same Document")
+            }
+            Self::HostRevisionExhausted => {
+                f.write_str("the external revision cannot advance for the changed observations")
+            }
+        }
     }
 }
 impl std::error::Error for DomHostError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Subject { error, .. } => Some(error),
-            _ => None,
+            Self::ForeignOwner
+            | Self::WrongDocument
+            | Self::DomRevisionMismatch { .. }
+            | Self::StaleDomRevision { .. }
+            | Self::DomainMismatch { .. }
+            | Self::ForeignSource
+            | Self::FutureHostRevision
+            | Self::FutureDomRevision
+            | Self::Unpublished
+            | Self::HostRevisionExhausted => None,
         }
     }
 }

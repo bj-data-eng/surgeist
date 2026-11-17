@@ -20,14 +20,23 @@ pub enum DomStyleCssomRootError {
 }
 impl std::fmt::Display for DomStyleCssomRootError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::Busy => f.write_str("the style CSSOM root is in use by another operation"),
+            Self::Poisoned => f.write_str("the style CSSOM root was poisoned by an earlier panic"),
+            Self::MissingBatch => {
+                f.write_str("the commit envelope holds no unattempted CSSOM batch")
+            }
+            Self::Cssom(_) => {
+                f.write_str("the CSSOM producer rejected an attempted batch operation")
+            }
+        }
     }
 }
 impl std::error::Error for DomStyleCssomRootError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Cssom(error) => Some(error),
-            _ => None,
+            Self::Busy | Self::Poisoned | Self::MissingBatch => None,
         }
     }
 }

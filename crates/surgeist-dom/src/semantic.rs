@@ -163,7 +163,52 @@ pub enum DomHtmlCaptureError {
 }
 impl fmt::Display for DomHtmlCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DOM HTML capture rejected: {self:?}")
+        match self {
+            Self::Source(_) => f.write_str("the DOM refused the capture's read of canonical state"),
+            Self::Host(_) => {
+                f.write_str("the host observations do not match the Document being captured")
+            }
+            Self::StaleScriptingObservation => f.write_str(
+                "the scripting observation was not made for this snapshot's exact state",
+            ),
+            Self::Capture(_) => f.write_str("the HTML capture refused its input"),
+            Self::ElementValues(_) => {
+                f.write_str("the HTML capture could not read an element's attributes")
+            }
+            Self::Context(_) => {
+                f.write_str("the HTML semantic context could not be formed from the capture")
+            }
+            Self::Semantic(_) => f.write_str("the HTML semantic query failed"),
+            Self::Language(_) => {
+                f.write_str("the language and direction facts could not be derived")
+            }
+            Self::Inert(_) => f.write_str("the inertness facts could not be derived"),
+            Self::GlobalInheritance(_) => {
+                f.write_str("the global attribute inheritance facts could not be derived")
+            }
+            Self::Controls(_) => f.write_str("the control facts could not be derived"),
+            Self::BaseFacts(_) => f.write_str("the base URL facts could not be captured"),
+            Self::OutputDefaults(_) => f.write_str("the output default facts could not be derived"),
+            Self::ElementReferences(_) => {
+                f.write_str("the element reference facts could not be derived")
+            }
+            Self::ResourceLimit { resource, limit } => match resource {
+                DomHtmlCaptureResource::Subjects => {
+                    write!(f, "the HTML capture exceeded its subject limit of {limit}")
+                }
+                DomHtmlCaptureResource::Work => {
+                    write!(f, "the HTML capture exceeded its work allowance of {limit}")
+                }
+            },
+            Self::Cancelled => f.write_str("the HTML capture was cancelled"),
+            Self::AllocationFailed => {
+                f.write_str("an allocation required by the HTML capture failed")
+            }
+            Self::RepresentationExhausted => {
+                f.write_str("an HTML capture count or size exceeded the representable range")
+            }
+            Self::UnmappedSubject => f.write_str("the node or subject is not part of this capture"),
+        }
     }
 }
 impl std::error::Error for DomHtmlCaptureError {
