@@ -502,6 +502,9 @@ fn capturing_after_a_canonical_change_reports_the_basis_mismatch() {
         error.to_string(),
         "the supplied DOM basis differs from the basis admitted by bind or rebind"
     );
+    runtime
+        .rebind_dom_host(&mut host, document, vec![(elements[0], a)], limits())
+        .unwrap();
     let error = runtime
         .rebind_dom_host(&mut host, old_document, vec![(elements[0], a)], limits())
         .unwrap_err();

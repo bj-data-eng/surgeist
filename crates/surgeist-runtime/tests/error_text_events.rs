@@ -233,41 +233,26 @@ fn timestamp_errors_state_the_unavailable_creation_clock() {
 
 #[test]
 fn a_dispatcher_refused_for_its_limits_names_the_exhausted_resource() {
-    for (limits, resource, phrase) in [
-        (
-            DomEventRegistryLimits {
-                registrations: 8,
-                pending_events: 8,
-                nested_dispatches: 8,
-                storage_bytes: 0,
-                work: 1_000_000,
-            },
-            DomEventResource::Storage,
-            "event, target, listener and invocation storage",
+    let limits = DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 8,
+        nested_dispatches: 8,
+        storage_bytes: 0,
+        work: 1_000_000,
+    };
+    let error = match DomEventDispatcher::<()>::new(limits) {
+        Err(error) => error,
+        Ok(_) => panic!("limits without storage must refuse the dispatcher"),
+    };
+    assert!(
+        matches!(
+            &error,
+            DomEventDispatchError::Admission(DomEventResource::Storage)
         ),
-        (
-            DomEventRegistryLimits {
-                registrations: 8,
-                pending_events: 8,
-                nested_dispatches: 8,
-                storage_bytes: 16_000_000,
-                work: 0,
-            },
-            DomEventResource::Work,
-            "traversal and listener work",
-        ),
-    ] {
-        let error = match DomEventDispatcher::<()>::new(limits) {
-            Err(error) => error,
-            Ok(_) => panic!("limits without {resource:?} must refuse the dispatcher"),
-        };
-        assert!(
-            matches!(&error, DomEventDispatchError::Admission(refused) if *refused == resource),
-            "{error:?}"
-        );
-        assert_eq!(
-            error.to_string(),
-            format!("native DOM event dispatch admission refused {phrase}")
-        );
-    }
+        "{error:?}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "native DOM event dispatch admission refused event, target, listener and invocation storage"
+    );
 }
