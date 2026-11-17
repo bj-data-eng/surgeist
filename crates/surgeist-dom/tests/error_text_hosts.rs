@@ -268,7 +268,7 @@ fn meta_errors_state_the_refused_processing() {
             ),
             (
                 DomMetaError::DefaultStyleUnsupported,
-                "the preferred stylesheet-set operation is not supported by this mutation route for this Document",
+                "the preferred stylesheet-set operation cannot be processed in this mutation route or state",
             ),
             (
                 DomMetaError::ContentSecurityPolicyUnsupported,
