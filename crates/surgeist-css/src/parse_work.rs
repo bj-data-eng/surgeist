@@ -12,6 +12,7 @@
 
 use std::cell::Cell;
 
+use surgeist_css_parser::accounting::{CssChange, CssWork};
 use surgeist_css_parser::document::Metrics;
 
 /// Sums over the token documents one accounted parse call built.
@@ -23,6 +24,15 @@ pub(crate) struct ParseWork {
 }
 
 impl ParseWork {
+    /// The changes that charge this work to the parse front.
+    pub(crate) const fn changes(self) -> [CssChange; 3] {
+        [
+            CssChange::Work(CssWork::Document, self.documents),
+            CssChange::Work(CssWork::Component, self.components),
+            CssChange::Work(CssWork::SpellingByte, self.spelling_bytes),
+        ]
+    }
+
     fn add_document(&mut self, metrics: Metrics) {
         self.documents = self.documents.saturating_add(1);
         self.components = self.components.saturating_add(amount(metrics.components()));
@@ -39,7 +49,7 @@ impl ParseWork {
 }
 
 /// A count as a ledger amount. A count beyond `u64` is charged as `u64::MAX`.
-fn amount(count: usize) -> u64 {
+pub(crate) fn amount(count: usize) -> u64 {
     u64::try_from(count).unwrap_or(u64::MAX)
 }
 
@@ -111,5 +121,111 @@ impl Collecting {
 impl Drop for Collecting {
     fn drop(&mut self) {
         let _ = COLLECTING.try_with(|record| record.set(None));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The record of one collecting call. The expected sums are those of the
+    //! documents each test builds: `a b` is three components (two idents and
+    //! the whitespace between them) and three bytes.
+
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    use surgeist_css_parser::Document;
+    use surgeist_css_parser::lexer::Options;
+    use surgeist_css_parser::limits::{DepthExcess, Limits};
+
+    use super::*;
+
+    fn metrics(text: &str) -> Metrics {
+        let document: Document<'_> = Document::parse(
+            text,
+            &Options::default(),
+            Limits::default(),
+            0,
+            DepthExcess::Fail,
+        )
+        .unwrap();
+        document.metrics()
+    }
+
+    fn work(documents: u64, components: u64, spelling_bytes: u64) -> ParseWork {
+        ParseWork {
+            documents,
+            components,
+            spelling_bytes,
+        }
+    }
+
+    #[test]
+    fn a_document_built_while_nothing_collects_is_not_recorded() {
+        note(metrics("a b"));
+        add(work(5, 5, 5));
+        assert!(!is_collecting());
+        let ((), collected) = collect(|| {});
+        assert_eq!(collected, Some(work(0, 0, 0)));
+    }
+
+    #[test]
+    fn a_collecting_call_sums_the_documents_built_during_it() {
+        let (value, collected) = collect(|| {
+            assert!(is_collecting());
+            note(metrics("a b"));
+            note(metrics("{}"));
+            note(metrics(""));
+            7
+        });
+        assert_eq!(value, 7);
+        // `{}` is one component of two bytes; the empty text has none.
+        assert_eq!(collected, Some(work(3, 4, 5)));
+        assert!(!is_collecting());
+    }
+
+    #[test]
+    fn a_call_inside_a_collecting_call_adds_to_it_and_returns_no_work() {
+        let ((), outer) = collect(|| {
+            note(metrics("a"));
+            let ((), inner) = collect(|| note(metrics("a b")));
+            assert_eq!(inner, None);
+            assert!(is_collecting());
+            note(metrics("b"));
+        });
+        assert_eq!(outer, Some(work(3, 5, 5)));
+    }
+
+    #[test]
+    fn work_collected_elsewhere_joins_the_collecting_call() {
+        let ((), collected) = collect(|| {
+            note(metrics("a"));
+            add(work(2, 10, 20));
+        });
+        assert_eq!(collected, Some(work(3, 11, 21)));
+    }
+
+    #[test]
+    fn a_call_that_unwinds_leaves_no_record() {
+        let unwound = catch_unwind(AssertUnwindSafe(|| {
+            collect(|| {
+                note(metrics("a"));
+                std::panic::resume_unwind(Box::new("stop"));
+            })
+        }));
+        assert!(unwound.is_err());
+        assert!(!is_collecting());
+        let ((), collected) = collect(|| note(metrics("a")));
+        assert_eq!(collected, Some(work(1, 1, 1)));
+    }
+
+    #[test]
+    fn the_work_charges_documents_components_and_spelling_bytes() {
+        assert_eq!(
+            work(1, 2, 3).changes(),
+            [
+                CssChange::Work(CssWork::Document, 1),
+                CssChange::Work(CssWork::Component, 2),
+                CssChange::Work(CssWork::SpellingByte, 3),
+            ]
+        );
     }
 }

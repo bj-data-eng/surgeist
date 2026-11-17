@@ -20,7 +20,8 @@
 //! The crate root holds the five items every task needs: [`CssParser`], the configured front
 //! door; [`CssParserContext`] and [`CssParserMode`], the grammar context a declaration retains;
 //! [`CssParseReport`], retained syntax plus ordered recovery diagnostics; and
-//! [`CssValidationFailure`], the diagnostics of a rejected clean-report check. Every other
+//! [`CssValidationFailure`], the diagnostics of a rejected clean-report check. It also holds
+//! [`CssAccountedParser`], the same front door charged to a host's ledger scope. Every other
 //! public item has exactly one path, in the module that owns its domain, and a root path to a
 //! module item does not resolve.
 //!
@@ -397,7 +398,7 @@
 //! animation; or expose a mutable CSSOM.
 //!
 //! Public items live in their domain modules; the crate root re-exports only the
-//! parser and its report types, so a root path to a module item does not resolve
+//! parser, its accounted form and its report types, so a root path to a module item does not resolve
 //! (CF24):
 //!
 //! ```compile_fail,E0432
@@ -423,6 +424,7 @@ pub mod serialization;
 pub mod source;
 pub mod values;
 
+mod accounted_parser;
 mod parse_work;
 mod parser;
 mod parser_context;
@@ -435,6 +437,8 @@ mod test_support;
 mod tests;
 mod validation;
 
+#[doc(inline)]
+pub use accounted_parser::CssAccountedParser;
 #[doc(inline)]
 pub use parser_context::{CssParser, CssParserContext, CssParserMode};
 #[doc(inline)]
