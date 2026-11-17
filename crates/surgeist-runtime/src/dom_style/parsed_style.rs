@@ -42,8 +42,12 @@ pub enum DomStyleParsedPrefixError {
 impl std::fmt::Display for DomStyleParsedPrefixError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(error) => write!(f, "parsed Style Runtime preparation refused: {error}"),
-            Self::Style(error) => error.fmt(f),
+            Self::Runtime(_) => {
+                f.write_str("the Style runtime refused the parsed Style prefix command")
+            }
+            Self::Style(_) => {
+                f.write_str("canonical parsed Style input refused the prefix command")
+            }
             Self::ProcessingUnavailable { .. } => {
                 f.write_str("original creation receipt unavailable")
             }

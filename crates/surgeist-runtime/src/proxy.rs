@@ -441,13 +441,7 @@ impl<Input> fmt::Display for AppProxyError<Input> {
                     self.capacity.unwrap_or(0)
                 )
             }
-            AppProxyErrorCode::WakeFailed => {
-                formatter.write_str("native wake bridge failed")?;
-                if let Some(wake_error) = &self.wake_error {
-                    write!(formatter, ": {wake_error}")?;
-                }
-                Ok(())
-            }
+            AppProxyErrorCode::WakeFailed => formatter.write_str("native wake bridge failed"),
         }
     }
 }

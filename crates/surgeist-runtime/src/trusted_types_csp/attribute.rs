@@ -36,14 +36,18 @@ pub enum AttributePolicyError {
 impl fmt::Display for AttributePolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Dom(error) => error.fmt(f),
+            Self::Dom(_) => f.write_str(
+                "the native lease, registration or Source controller refused the policy lookup",
+            ),
             Self::ContainerUnavailable => {
                 f.write_str("the registered Global's CSP container is unavailable")
             }
             Self::ProcessorUnavailable => {
                 f.write_str("the associated CSP processor is unavailable")
             }
-            Self::Csp(error) => error.fmt(f),
+            Self::Csp(_) => {
+                f.write_str("the selected CSP processor could not qualify the associated artifact")
+            }
         }
     }
 }

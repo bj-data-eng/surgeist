@@ -455,7 +455,7 @@ impl fmt::Debug for DocumentGuestEventDispatchFailure {
 
 impl fmt::Display for DocumentGuestEventDispatchFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.error.fmt(f)
+        f.write_str("the direct guest event dispatch was refused")
     }
 }
 

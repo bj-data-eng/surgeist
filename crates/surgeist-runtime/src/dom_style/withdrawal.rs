@@ -28,8 +28,10 @@ impl From<DomHostedRuntimeError> for DomStyleRootWithdrawalError {
 impl std::fmt::Display for DomStyleRootWithdrawalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Style(error) => error.fmt(f),
-            Self::Hosted(error) => error.fmt(f),
+            Self::Style(_) => f.write_str("the Style owner refused the root withdrawal"),
+            Self::Hosted(_) => f.write_str(
+                "the hosted task, cleanup or canonical producer refused the root withdrawal",
+            ),
         }
     }
 }

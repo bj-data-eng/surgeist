@@ -138,8 +138,10 @@ pub enum DomSourceDriveError {
 impl std::fmt::Display for DomSourceDriveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Source(error) => write!(f, "Source drive refused: {error}"),
-            Self::Meta(error) => write!(f, "Source native Meta drive refused: {error}"),
+            Self::Source(_) => f.write_str("the Source driver refused the operation"),
+            Self::Meta(_) => f.write_str(
+                "the native Meta composition of the Source driver refused the operation",
+            ),
         }
     }
 }

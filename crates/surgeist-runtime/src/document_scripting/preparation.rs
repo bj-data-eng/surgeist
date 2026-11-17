@@ -121,8 +121,12 @@ pub(super) enum ConversionCleanupError {
 impl fmt::Display for ConversionCleanupError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Accounting(error) => error.fmt(formatter),
-            Self::Native(error) => error.fmt(formatter),
+            Self::Accounting(_) => {
+                formatter.write_str("guest conversion cleanup failed to settle its accounting")
+            }
+            Self::Native(_) => {
+                formatter.write_str("guest conversion cleanup failed in the bindings")
+            }
         }
     }
 }

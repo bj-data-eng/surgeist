@@ -87,8 +87,12 @@ pub enum DomEventConstructionError {
 impl std::fmt::Display for DomEventConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Hosted(error) => error.fmt(f),
-            Self::Event(error) => error.fmt(f),
+            Self::Hosted(_) => f.write_str(
+                "the creation Global, Source owner or native clock refused the Event observation",
+            ),
+            Self::Event(_) => {
+                f.write_str("the Event or EventTarget storage or type construction was refused")
+            }
             Self::UnsupportedInterface => f.write_str("unsupported legacy Event interface"),
             Self::MissingRelevantGlobal => f.write_str("Document has no native relevant Global"),
         }

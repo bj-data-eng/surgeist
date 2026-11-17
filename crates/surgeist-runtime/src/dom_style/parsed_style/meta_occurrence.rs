@@ -34,8 +34,10 @@ impl From<DomParsedHtmlMetaOccurrenceError> for DomStyleParsedMetaOccurrenceErro
 impl std::fmt::Display for DomStyleParsedMetaOccurrenceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(e) => e.fmt(f),
-            Self::Meta(e) => e.fmt(f),
+            Self::Runtime(_) => f.write_str("the Style runtime refused the parsed Meta occurrence"),
+            Self::Meta(_) => {
+                f.write_str("canonical parsed Meta occurrence preparation was refused")
+            }
         }
     }
 }

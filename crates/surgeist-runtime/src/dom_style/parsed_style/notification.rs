@@ -70,8 +70,12 @@ impl From<DomParsedHtmlStyleError> for DomStyleParsedNotificationError {
 impl std::fmt::Display for DomStyleParsedNotificationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime(e) => e.fmt(f),
-            Self::Notification(e) => e.fmt(f),
+            Self::Runtime(_) => {
+                f.write_str("the Style runtime refused to queue the parsed notification")
+            }
+            Self::Notification(_) => {
+                f.write_str("canonical parsed Style notification qualification refused the queue")
+            }
             Self::ProcessingUnavailable { .. } => {
                 f.write_str("original processing receipt unavailable")
             }

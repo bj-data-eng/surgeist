@@ -200,8 +200,8 @@ pub enum DocumentScriptError {
 impl fmt::Display for DocumentScriptError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Native(error) => error.fmt(f),
-            Self::Script(error) => error.fmt(f),
+            Self::Native(_) => f.write_str("a native entry or owner operation was refused"),
+            Self::Script(_) => f.write_str("the bindings execution outcome is an error"),
         }
     }
 }

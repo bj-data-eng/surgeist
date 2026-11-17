@@ -1756,12 +1756,22 @@ pub enum DomSessionCreateFailure {
 impl std::fmt::Display for DomSessionCreateFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Events(error) => std::fmt::Display::fmt(error, f),
-            Self::SourceEvents(error) => std::fmt::Display::fmt(error, f),
-            Self::Style(error) => std::fmt::Display::fmt(error, f),
-            Self::Parsed(error) => std::fmt::Display::fmt(error, f),
-            Self::ElementTasks(error) => std::fmt::Display::fmt(error, f),
-            Self::Hosted(error) => std::fmt::Display::fmt(error, f),
+            Self::Events(_) => {
+                f.write_str("session creation was refused by the shared Event object storage")
+            }
+            Self::SourceEvents(_) => {
+                f.write_str("session creation was refused by the Source event executor")
+            }
+            Self::Style(_) => f.write_str("session creation was refused by the Style owner"),
+            Self::Parsed(_) => {
+                f.write_str("session creation was refused by the parsed association admission")
+            }
+            Self::ElementTasks(_) => {
+                f.write_str("session creation was refused by the element-task owner")
+            }
+            Self::Hosted(_) => {
+                f.write_str("session creation was refused by the hosted lifecycle owner")
+            }
         }
     }
 }
@@ -1823,7 +1833,7 @@ impl std::fmt::Debug for DomSessionCreateError {
 }
 impl std::fmt::Display for DomSessionCreateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.error, f)
+        f.write_str("creating the DOM session failed and returned the original DOM")
     }
 }
 impl std::error::Error for DomSessionCreateError {

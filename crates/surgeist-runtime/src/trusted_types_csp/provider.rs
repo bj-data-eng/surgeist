@@ -64,8 +64,12 @@ impl<E> From<PolicyListCapacity> for PolicyListError<E> {
 impl<E> fmt::Display for PolicyListError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Csp(error) => error.fmt(f),
-            Self::Capacity(error) => error.fmt(f),
+            Self::Csp(_) => {
+                f.write_str("the CSP protocol or the admission controller refused the policy list")
+            }
+            Self::Capacity(_) => {
+                f.write_str("the native policy list could not be represented or reserved")
+            }
         }
     }
 }
